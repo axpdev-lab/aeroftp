@@ -17,9 +17,8 @@ use zeroize::Zeroize;
 
 use super::{
     mega_crypto::{
-        aes_ctr_apply_inplace, aes_ctr_decrypt, aes_ecb_decrypt_block,
-        aes_ecb_encrypt_block, aes_ecb_encrypt_multi, chunk_mac, compute_chunk_boundaries,
-        decrypt_node_attrs,
+        aes_ctr_apply_inplace, aes_ctr_decrypt, aes_ecb_decrypt_block, aes_ecb_encrypt_block,
+        aes_ecb_encrypt_multi, chunk_mac, compute_chunk_boundaries, decrypt_node_attrs,
         decrypt_node_key_xor, decrypt_rsa_privkey, encrypt_node_attrs, kdf_v1, kdf_v2,
         mega_base64_decode, mega_base64_encode, meta_mac, pack_node_key, rsa_decrypt_csid,
         unpack_node_key, username_hash_v1,
@@ -1148,10 +1147,9 @@ impl StorageProvider for MegaNativeProvider {
         let mut stream = response.bytes_stream();
         use futures_util::StreamExt;
 
-        let mut atomic =
-            super::atomic_write::AtomicFile::new(local_path)
-                .await
-                .map_err(ProviderError::IoError)?;
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
         let mut downloaded: u64 = 0;
         let mut chunk_idx = 0usize;
         let mut chunk_buf: Vec<u8> = Vec::new();
@@ -1270,9 +1268,9 @@ impl StorageProvider for MegaNativeProvider {
         for &(offset, size) in &chunks {
             // Read one MEGA chunk from disk
             let mut chunk_buf = vec![0u8; size];
-            file.read_exact(&mut chunk_buf).await.map_err(|e| {
-                ProviderError::TransferFailed(format!("Failed to read chunk: {e}"))
-            })?;
+            file.read_exact(&mut chunk_buf)
+                .await
+                .map_err(|e| ProviderError::TransferFailed(format!("Failed to read chunk: {e}")))?;
 
             // Compute MAC on plaintext BEFORE encryption
             chunk_macs.push(chunk_mac(&chunk_buf, &file_key, &nonce)?);

@@ -17,13 +17,22 @@ use crate::rsync_native_proto::engine_adapter::{
     engine_ops_to_wire, CurrentDeltaSyncBridge, DeltaEngineAdapter,
     DeltaInstructionConversionError, EngineDeltaOp, EngineSignatureBlock,
 };
+use crate::rsync_native_proto::events::{
+    classify_oob_frame, BailingSink, EventSink, NativeRsyncEvent,
+};
 use crate::rsync_native_proto::fixtures::{
     BaselineCounters, RealRsyncBaselineByteTranscript, RealRsyncTranscriptPaths,
     BASELINE_LITERAL_BYTES, BASELINE_MATCHED_BYTES, DOWNLOAD_REMOTE_COMMAND,
     REAL_RSYNC_FROZEN_TRANSCRIPT_REL, REAL_RSYNC_LANE_PORT, UPLOAD_REMOTE_COMMAND,
 };
-use crate::rsync_native_proto::events::{
-    classify_oob_frame, BailingSink, EventSink, NativeRsyncEvent,
+use crate::rsync_native_proto::mock::{
+    MockRemoteShellTransport, MockTransportConfig, OpenStreamBehavior, ReadExhaustedBehavior,
+};
+use crate::rsync_native_proto::planner::{TransferCandidate, TransferPlanner};
+use crate::rsync_native_proto::protocol::{
+    DeltaInstruction, ErrorMessage, FileMetadataMessage, FrameCodec, HelloMessage,
+    NativeFrameCodec, SignatureBatchMessage, SignatureBlock, SummaryMessage, WireMessage,
+    ENVELOPE_VERSION, FRAME_HEADER_SIZE, FRAME_MAGIC,
 };
 use crate::rsync_native_proto::real_wire::{
     compress_zstd_literal_stream, decode_client_preamble, decode_delta_stream,
@@ -34,18 +43,9 @@ use crate::rsync_native_proto::real_wire::{
     DeltaOp, FileListDecodeOptions, FileListDecodeOutcome, MuxDemuxer, MuxHeader, MuxTag, NdxState,
     NDX_DONE, NDX_FLIST_EOF,
 };
-use crate::rsync_native_proto::mock::{
-    MockRemoteShellTransport, MockTransportConfig, OpenStreamBehavior, ReadExhaustedBehavior,
-};
-use crate::rsync_native_proto::transport::CancelHandle;
-use crate::rsync_native_proto::planner::{TransferCandidate, TransferPlanner};
-use crate::rsync_native_proto::protocol::{
-    DeltaInstruction, ErrorMessage, FileMetadataMessage, FrameCodec, HelloMessage, NativeFrameCodec,
-    SignatureBatchMessage, SignatureBlock, SummaryMessage, WireMessage, ENVELOPE_VERSION,
-    FRAME_HEADER_SIZE, FRAME_MAGIC,
-};
 use crate::rsync_native_proto::remote_command::RemoteCommandSpec;
 use crate::rsync_native_proto::session::{NativeRsyncSession, SessionState};
+use crate::rsync_native_proto::transport::CancelHandle;
 use crate::rsync_native_proto::transport::RemoteShellTransport;
 use crate::rsync_native_proto::types::{
     FeatureFlag, FileEntry, NativeRsyncConfig, NativeRsyncErrorKind, ProtocolVersion, SessionRole,
@@ -325,7 +325,9 @@ fn session_rejects_unsupported_remote_version() {
         role: SessionRole::Sender,
         features: vec![],
     };
-    let err = s.mark_negotiated(&hello, "rsync old".to_string()).unwrap_err();
+    let err = s
+        .mark_negotiated(&hello, "rsync old".to_string())
+        .unwrap_err();
     assert_eq!(err.kind, NativeRsyncErrorKind::UnsupportedVersion);
     // Session stays non-terminal so the caller can decide to fail it.
     assert_eq!(s.state, SessionState::Probed);
@@ -535,7 +537,10 @@ fn delta_instruction_literal_becomes_engine_literal() {
 #[test]
 fn delta_instruction_end_of_file_rejects_with_typed_error() {
     let err = EngineDeltaOp::try_from(DeltaInstruction::EndOfFile).unwrap_err();
-    assert_eq!(err, DeltaInstructionConversionError::EndOfFileIsFramingMarker);
+    assert_eq!(
+        err,
+        DeltaInstructionConversionError::EndOfFileIsFramingMarker
+    );
     // Display is meaningful and stable enough to inline in logs:
     let rendered = format!("{err}");
     assert!(rendered.contains("framing marker"));
@@ -610,9 +615,7 @@ fn baseline_summary_frame(upload: bool) -> WireMessage {
     })
 }
 
-fn new_driver(
-    config: MockTransportConfig,
-) -> SessionDriver<MockRemoteShellTransport> {
+fn new_driver(config: MockTransportConfig) -> SessionDriver<MockRemoteShellTransport> {
     let transport = MockRemoteShellTransport::new(config);
     let session = NativeRsyncSession::new(transport, NativeRsyncConfig::default());
     SessionDriver::new(session, driver_codec())
@@ -629,7 +632,9 @@ async fn driver_upload_happy_path_reaches_finalized_and_matches_baseline() {
             role: SessionRole::Receiver,
             features: vec![FeatureFlag::DeltaTransfer],
         })),
-        encode(&WireMessage::SignatureBatch(sample_signature_batch_message())),
+        encode(&WireMessage::SignatureBatch(
+            sample_signature_batch_message(),
+        )),
         encode(&baseline_summary_frame(true)),
     ];
     let mut cfg = MockTransportConfig::healthy_upload();
@@ -725,10 +730,7 @@ async fn driver_rejects_unsupported_version_in_remote_hello() {
 
     let mut driver = new_driver(cfg);
     let err = driver
-        .drive_upload(
-            RemoteCommandSpec::upload("/t"),
-            sample_upload_plan(),
-        )
+        .drive_upload(RemoteCommandSpec::upload("/t"), sample_upload_plan())
         .await
         .unwrap_err();
     assert_eq!(err.kind, NativeRsyncErrorKind::UnsupportedVersion);
@@ -806,7 +808,9 @@ async fn driver_handles_remote_close_before_summary() {
             role: SessionRole::Receiver,
             features: vec![],
         })),
-        encode(&WireMessage::SignatureBatch(sample_signature_batch_message())),
+        encode(&WireMessage::SignatureBatch(
+            sample_signature_batch_message(),
+        )),
     ];
     let mut cfg = MockTransportConfig::healthy_upload();
     cfg.stream_behavior = OpenStreamBehavior::Success { inbound };
@@ -1168,10 +1172,7 @@ fn build_scripted_signature_batch(
 ) -> (u32, SignatureBatchMessage) {
     let bs_usize = adapter.compute_block_size(destination.len() as u64);
     let engine_sigs = adapter.build_signatures(destination, bs_usize);
-    let blocks: Vec<SignatureBlock> = engine_sigs
-        .into_iter()
-        .map(SignatureBlock::from)
-        .collect();
+    let blocks: Vec<SignatureBlock> = engine_sigs.into_iter().map(SignatureBlock::from).collect();
     let bs = bs_usize as u32;
     (
         bs,
@@ -1231,7 +1232,11 @@ async fn driver_upload_with_engine_computes_delta_internally() {
     // recomputes the source. This ties the driver's output to a
     // functioning end-to-end delta pipeline.
     let reconstructed = bridge
-        .apply_delta(&destination, &outcome.engine_delta_ops, outcome.block_size as usize)
+        .apply_delta(
+            &destination,
+            &outcome.engine_delta_ops,
+            outcome.block_size as usize,
+        )
         .expect("apply_delta succeeds");
     assert_eq!(reconstructed, source);
 }
@@ -1279,7 +1284,9 @@ async fn driver_download_with_engine_reconstructs_source_file() {
 
     assert_eq!(outcome.final_state, SessionState::Finalized);
     assert_eq!(outcome.block_size, bs_usize as u32);
-    let rebuilt = outcome.reconstructed.expect("download-with-engine rebuilds");
+    let rebuilt = outcome
+        .reconstructed
+        .expect("download-with-engine rebuilds");
     // THE proof: reconstructed bytes == original source, byte-for-byte.
     assert_eq!(
         rebuilt, source,
@@ -1297,7 +1304,7 @@ async fn driver_download_with_engine_surfaces_apply_delta_failure() {
     // and mark the session Failed.
     let bridge = CurrentDeltaSyncBridge::new();
     let destination = deterministic_buffer(4096); // only a few blocks
-    // Pick a CopyBlock index far beyond any valid one.
+                                                  // Pick a CopyBlock index far beyond any valid one.
     let malicious_delta = vec![
         DeltaInstruction::CopyBlock { index: 999_999 },
         DeltaInstruction::EndOfFile,
@@ -1317,11 +1324,7 @@ async fn driver_download_with_engine_surfaces_apply_delta_failure() {
 
     let mut driver = new_driver(cfg);
     let err = driver
-        .drive_download_with_engine(
-            RemoteCommandSpec::download("/t"),
-            destination,
-            &bridge,
-        )
+        .drive_download_with_engine(RemoteCommandSpec::download("/t"), destination, &bridge)
         .await
         .unwrap_err();
     assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
@@ -1371,11 +1374,7 @@ async fn driver_download_with_engine_handles_remote_error_frame() {
 
     let mut driver = new_driver(cfg);
     let err = driver
-        .drive_download_with_engine(
-            RemoteCommandSpec::download("/t"),
-            destination,
-            &bridge,
-        )
+        .drive_download_with_engine(RemoteCommandSpec::download("/t"), destination, &bridge)
         .await
         .unwrap_err();
     assert_eq!(err.kind, NativeRsyncErrorKind::RemoteError);
@@ -1513,9 +1512,7 @@ fn real_rsync_frozen_transcript_path_layout_is_stable() {
         paths.summary_env.ends_with("summary.env"),
         "summary.env missing from layout"
     );
-    assert!(paths
-        .upload_capture_out
-        .ends_with("upload/capture_out.bin"));
+    assert!(paths.upload_capture_out.ends_with("upload/capture_out.bin"));
     assert!(paths
         .download_capture_out
         .ends_with("download/capture_out.bin"));
@@ -1657,8 +1654,7 @@ fn real_wire_demuxes_frozen_server_post_preamble_to_msg_data_frames() {
     }
 
     let total_payload: usize = frames.iter().map(|(_, len)| *len).sum();
-    let total_headers: usize =
-        frames.len() * crate::rsync_native_proto::real_wire::MUX_HEADER_LEN;
+    let total_headers: usize = frames.len() * crate::rsync_native_proto::real_wire::MUX_HEADER_LEN;
     assert_eq!(
         preamble.consumed + total_headers + total_payload,
         transcript.upload_server_to_client.len(),
@@ -1797,10 +1793,7 @@ fn real_wire_client_to_server_upload_is_multiplexed_like_server_side() {
     // not a lucky coincidence of header-shaped bytes.
     let window = b"real-live-upload";
     assert!(
-        report
-            .app_stream
-            .windows(window.len())
-            .any(|w| w == window),
+        report.app_stream.windows(window.len()).any(|w| w == window),
         "reassembled client stream does not contain the injected marker"
     );
 
@@ -1840,7 +1833,11 @@ fn real_wire_app_stream_first_bytes_are_nonzero_nonmarker() {
         "first 4 bytes of app stream are all zero: {head:?}"
     );
 
-    let _ = MuxHeader { tag: MuxTag::Data, length: 1 }.encode();
+    let _ = MuxHeader {
+        tag: MuxTag::Data,
+        length: 1,
+    }
+    .encode();
 }
 
 // ---------------------------------------------------------------------------
@@ -1877,10 +1874,7 @@ fn real_wire_decodes_first_file_list_entry_from_frozen_upload_client_stream() {
         entry.path, "upload.bin",
         "frozen upload transcript uploads upload.bin -> target.bin"
     );
-    assert_eq!(
-        entry.size, 262_144,
-        "frozen upload uses a 256 KiB payload"
-    );
+    assert_eq!(entry.size, 262_144, "frozen upload uses a 256 KiB payload");
     assert_eq!(
         entry.uid_name.as_deref(),
         Some("axpnet"),
@@ -1992,10 +1986,7 @@ fn real_wire_decodes_first_file_list_entry_from_frozen_download_server_stream() 
     );
     assert_eq!(entry.size, 262_144);
     assert_eq!(entry.checksum.len(), opts.csum_len);
-    assert!(
-        entry.mode & 0o170_000 == 0o100_000,
-        "regular file mode"
-    );
+    assert!(entry.mode & 0o170_000 == 0o100_000, "regular file mode");
 
     // Terminator anchor on this direction too.
     let terminator = report.app_stream[consumed];
@@ -2061,8 +2052,7 @@ fn real_wire_decodes_sum_head_from_frozen_upload_server_stream() {
         "iflags must have ITEM_TRANSFER set; got {iflags:#06x}"
     );
 
-    let (head, head_bytes) =
-        decode_sum_head(&app[ndx_bytes + iflags_bytes..]).expect("sum_head");
+    let (head, head_bytes) = decode_sum_head(&app[ndx_bytes + iflags_bytes..]).expect("sum_head");
     assert_eq!(head.count, FROZEN_SUM_HEAD_COUNT);
     assert_eq!(head.block_length, FROZEN_SUM_HEAD_BLENGTH);
     assert_eq!(head.checksum_length, FROZEN_SUM_HEAD_S2LENGTH);
@@ -2110,7 +2100,10 @@ fn real_wire_decodes_all_375_sum_blocks_from_frozen_upload_server_stream() {
         seen += 1;
     }
     assert_eq!(seen, FROZEN_SUM_HEAD_COUNT);
-    assert_eq!(cursor, 1 + 2 + 16 + FROZEN_SUM_HEAD_COUNT as usize * FROZEN_SUM_BLOCK_BYTES);
+    assert_eq!(
+        cursor,
+        1 + 2 + 16 + FROZEN_SUM_HEAD_COUNT as usize * FROZEN_SUM_BLOCK_BYTES
+    );
     assert_ne!(
         first_rolling, 0,
         "first block rolling checksum is zero — likely misalignment"
@@ -2134,8 +2127,7 @@ fn real_wire_trailing_ndx_done_markers_close_byte_accounting_on_upload_receiver_
         .unwrap()
         .app_stream;
 
-    let header_and_blocks =
-        1 + 2 + 16 + FROZEN_SUM_HEAD_COUNT as usize * FROZEN_SUM_BLOCK_BYTES;
+    let header_and_blocks = 1 + 2 + 16 + FROZEN_SUM_HEAD_COUNT as usize * FROZEN_SUM_BLOCK_BYTES;
     let tail = &app[header_and_blocks..];
     assert_eq!(
         tail.len(),
@@ -2207,7 +2199,13 @@ fn s8e_scout_hex_dump_post_flist_regions() {
             let hex: Vec<String> = chunk.iter().map(|b| format!("{:02x}", b)).collect();
             let ascii: String = chunk
                 .iter()
-                .map(|&b| if (0x20..0x7f).contains(&b) { b as char } else { '.' })
+                .map(|&b| {
+                    if (0x20..0x7f).contains(&b) {
+                        b as char
+                    } else {
+                        '.'
+                    }
+                })
                 .collect();
             eprintln!("{:04x}  {:<48}  {}", i * 16, hex.join(" "), ascii);
         }
@@ -2376,7 +2374,10 @@ fn real_wire_decodes_full_delta_stream_from_frozen_upload_client_stream() {
     )
     .expect("delta stream must decode cleanly");
 
-    assert!(!report.ops.is_empty(), "delta stream must contain at least one op");
+    assert!(
+        !report.ops.is_empty(),
+        "delta stream must contain at least one op"
+    );
     assert_eq!(
         report.file_checksum.len(),
         FROZEN_FILE_CHECKSUM_LEN,
@@ -2614,7 +2615,13 @@ fn s8g_scout_hex_dump_stream_tails() {
             let hex: Vec<String> = chunk.iter().map(|b| format!("{:02x}", b)).collect();
             let ascii: String = chunk
                 .iter()
-                .map(|&b| if (0x20..0x7f).contains(&b) { b as char } else { '.' })
+                .map(|&b| {
+                    if (0x20..0x7f).contains(&b) {
+                        b as char
+                    } else {
+                        '.'
+                    }
+                })
                 .collect();
             eprintln!(
                 "{:04x}  {:<48}  {}",
@@ -2713,7 +2720,10 @@ fn s8g_scout_hex_dump_stream_tails() {
         );
         if stop_at < app.len() {
             hexdump(
-                &format!("{}: bytes AFTER last parseable NDX (summary candidate)", label),
+                &format!(
+                    "{}: bytes AFTER last parseable NDX (summary candidate)",
+                    label
+                ),
                 &app[stop_at..],
                 stop_at,
             );
@@ -2790,7 +2800,11 @@ fn decode_download_s2c_up_to_file_csum(
 
     // First (and only) file ndx + iflags + sum_head.
     let (file_ndx, n) = decode_ndx(&app[cursor..], &mut ndx_state).unwrap();
-    assert!(file_ndx >= 0, "file ndx must be non-negative, got {}", file_ndx);
+    assert!(
+        file_ndx >= 0,
+        "file ndx must be non-negative, got {}",
+        file_ndx
+    );
     cursor += n;
     let (_iflags, n) = decode_item_flags(&app[cursor..]).unwrap();
     cursor += n;
@@ -2824,9 +2838,12 @@ fn real_wire_decodes_summary_frame_from_frozen_download_s2c_stream() {
     // Reassemble the app stream of download server->client (server is
     // sender; summary frame is emitted here per main.c:347-352).
     let spre = decode_server_preamble(&transcript.download_server_to_client).unwrap();
-    let report = reassemble_msg_data(&transcript.download_server_to_client[spre.consumed..])
-        .unwrap();
-    assert!(report.out_of_band.is_empty(), "download s->c must be pure MSG_DATA");
+    let report =
+        reassemble_msg_data(&transcript.download_server_to_client[spre.consumed..]).unwrap();
+    assert!(
+        report.out_of_band.is_empty(),
+        "download s->c must be pure MSG_DATA"
+    );
     let app = &report.app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
@@ -2840,16 +2857,12 @@ fn real_wire_decodes_summary_frame_from_frozen_download_s2c_stream() {
     // is pinned for the frozen oracle — a greedy drain would
     // over-consume because a small total_read varlong can legitimately
     // start with 0x00.
-    let summary_start = consume_exact_ndx_done(
-        app,
-        after_csum,
-        FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT,
-    );
+    let summary_start =
+        consume_exact_ndx_done(app, after_csum, FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT);
 
     // Protocol 31 → 5 × varlong(3). Decode the summary frame.
-    let (summary, summary_consumed) =
-        decode_summary_frame(&app[summary_start..], 31)
-            .unwrap_or_else(|e| panic!("decode_summary_frame failed: {:?}", e));
+    let (summary, summary_consumed) = decode_summary_frame(&app[summary_start..], 31)
+        .unwrap_or_else(|e| panic!("decode_summary_frame failed: {:?}", e));
 
     // Sanity checks against the known frozen profile. The transfer
     // fixture is a 262_144-byte file seeded with a real-live marker.
@@ -2882,7 +2895,10 @@ fn real_wire_decodes_summary_frame_from_frozen_download_s2c_stream() {
     // emit one trailing NDX_DONE. The capture proxy can cut the tee
     // before this last write is flushed, so accept 0 or 1.
     let tail_cursor = summary_start + summary_consumed;
-    let trailing_zeros = app[tail_cursor..].iter().take_while(|&&b| b == 0x00).count();
+    let trailing_zeros = app[tail_cursor..]
+        .iter()
+        .take_while(|&&b| b == 0x00)
+        .count();
     assert_eq!(
         tail_cursor + trailing_zeros,
         app.len(),
@@ -2903,8 +2919,8 @@ fn real_wire_summary_frame_byte_accounting_closes_on_download_s2c_stream() {
     };
 
     let spre = decode_server_preamble(&transcript.download_server_to_client).unwrap();
-    let report = reassemble_msg_data(&transcript.download_server_to_client[spre.consumed..])
-        .unwrap();
+    let report =
+        reassemble_msg_data(&transcript.download_server_to_client[spre.consumed..]).unwrap();
     let app = &report.app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
@@ -2912,11 +2928,8 @@ fn real_wire_summary_frame_byte_accounting_closes_on_download_s2c_stream() {
 
     // Inter-phase NDX_DONE markers + summary + optional trailing
     // NDX_DONE must exactly consume the rest of the app stream.
-    let summary_start = consume_exact_ndx_done(
-        app,
-        after_csum,
-        FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT,
-    );
+    let summary_start =
+        consume_exact_ndx_done(app, after_csum, FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT);
     let (_, summary_len) = decode_summary_frame(&app[summary_start..], 31).unwrap();
     let tail_start = summary_start + summary_len;
     let trailing_zeros = app[tail_start..].iter().take_while(|&&b| b == 0x00).count();
@@ -2938,18 +2951,15 @@ fn real_wire_summary_frame_flist_times_in_realistic_range() {
     };
 
     let spre = decode_server_preamble(&transcript.download_server_to_client).unwrap();
-    let report = reassemble_msg_data(&transcript.download_server_to_client[spre.consumed..])
-        .unwrap();
+    let report =
+        reassemble_msg_data(&transcript.download_server_to_client[spre.consumed..]).unwrap();
     let app = &report.app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
     let (after_csum, _) = decode_download_s2c_up_to_file_csum(app, &opts);
 
-    let summary_start = consume_exact_ndx_done(
-        app,
-        after_csum,
-        FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT,
-    );
+    let summary_start =
+        consume_exact_ndx_done(app, after_csum, FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT);
     let (summary, _) = decode_summary_frame(&app[summary_start..], 31).unwrap();
 
     // The frozen oracle is a local Docker transfer of a 262 KiB file.
@@ -2977,16 +2987,13 @@ fn real_wire_summary_frame_pre_ndx_done_count_matches_frozen_oracle() {
     };
 
     let spre = decode_server_preamble(&transcript.download_server_to_client).unwrap();
-    let report = reassemble_msg_data(&transcript.download_server_to_client[spre.consumed..])
-        .unwrap();
+    let report =
+        reassemble_msg_data(&transcript.download_server_to_client[spre.consumed..]).unwrap();
     let app = &report.app_stream;
     let opts = FileListDecodeOptions::frozen_oracle_default();
     let (after_csum, _) = decode_download_s2c_up_to_file_csum(app, &opts);
 
-    let count = app[after_csum..]
-        .iter()
-        .take_while(|&&b| b == 0x00)
-        .count();
+    let count = app[after_csum..].iter().take_while(|&&b| b == 0x00).count();
     // The summary starts with total_read (small value → first byte 0x00),
     // so a greedy zero-drain would report 4. The pinned value is 3.
     // Verify the byte AT `after_csum + 3` is part of the summary varlong
@@ -3024,8 +3031,7 @@ fn real_wire_summary_frame_absent_on_upload_server_to_client_stream() {
     };
 
     let spre = decode_server_preamble(&transcript.upload_server_to_client).unwrap();
-    let report = reassemble_msg_data(&transcript.upload_server_to_client[spre.consumed..])
-        .unwrap();
+    let report = reassemble_msg_data(&transcript.upload_server_to_client[spre.consumed..]).unwrap();
     let app = &report.app_stream;
 
     // Hard pin #1: the stream must terminate with a bare 0x00
@@ -3294,25 +3300,67 @@ fn real_wire_frozen_oracle_has_zero_oob_events_on_all_four_streams() {
 fn real_wire_events_mock_driver_bails_cleanly_on_mid_session_error() {
     let mut buf = Vec::new();
     // Pretend file-list entry bytes.
-    buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 5 }.encode());
+    buf.extend_from_slice(
+        &MuxHeader {
+            tag: MuxTag::Data,
+            length: 5,
+        }
+        .encode(),
+    );
     buf.extend_from_slice(b"FLIST");
     // Receiver sends a benign info frame.
-    buf.extend_from_slice(&MuxHeader { tag: MuxTag::Info, length: 12 }.encode());
+    buf.extend_from_slice(
+        &MuxHeader {
+            tag: MuxTag::Info,
+            length: 12,
+        }
+        .encode(),
+    );
     buf.extend_from_slice(b"recv ready\r\n");
     // Pretend ndx + sum_head bytes.
-    buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 4 }.encode());
+    buf.extend_from_slice(
+        &MuxHeader {
+            tag: MuxTag::Data,
+            length: 4,
+        }
+        .encode(),
+    );
     buf.extend_from_slice(b"NDXS");
     // Sender warning before the failure (still recorded).
-    buf.extend_from_slice(&MuxHeader { tag: MuxTag::Warning, length: 6 }.encode());
+    buf.extend_from_slice(
+        &MuxHeader {
+            tag: MuxTag::Warning,
+            length: 6,
+        }
+        .encode(),
+    );
     buf.extend_from_slice(b"slow\r\n");
     // Fatal error mid-transfer.
-    buf.extend_from_slice(&MuxHeader { tag: MuxTag::Error, length: 26 }.encode());
+    buf.extend_from_slice(
+        &MuxHeader {
+            tag: MuxTag::Error,
+            length: 26,
+        }
+        .encode(),
+    );
     buf.extend_from_slice(b"file system full on remote");
     // The remote may push trailing bytes after the failure (RST race,
     // pending sender writes). They MUST NOT touch the app stream.
-    buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 8 }.encode());
+    buf.extend_from_slice(
+        &MuxHeader {
+            tag: MuxTag::Data,
+            length: 8,
+        }
+        .encode(),
+    );
     buf.extend_from_slice(b"GHOSTBYT");
-    buf.extend_from_slice(&MuxHeader { tag: MuxTag::ErrorExit, length: 4 }.encode());
+    buf.extend_from_slice(
+        &MuxHeader {
+            tag: MuxTag::ErrorExit,
+            length: 4,
+        }
+        .encode(),
+    );
     buf.extend_from_slice(&[0x0B, 0x00, 0x00, 0x00]); // RERR_FILEIO=11
 
     let report = reassemble_until_terminal(&buf).unwrap();
@@ -3468,7 +3516,8 @@ fn encode_server_preamble_matches_frozen_oracle_byte_for_byte() {
     let re_encoded = encode_server_preamble(&original);
     let frozen_prefix = &transcript.upload_server_to_client[..original.consumed];
     assert_eq!(
-        re_encoded, frozen_prefix,
+        re_encoded,
+        frozen_prefix,
         "encode_server_preamble drifted from frozen bytes (len {} vs {})",
         re_encoded.len(),
         frozen_prefix.len(),
@@ -3501,10 +3550,9 @@ fn encode_file_list_entry_matches_frozen_oracle_byte_for_byte() {
         return;
     };
     let preamble = decode_client_preamble(&transcript.upload_client_to_server).unwrap();
-    let app =
-        reassemble_msg_data(&transcript.upload_client_to_server[preamble.consumed..])
-            .unwrap()
-            .app_stream;
+    let app = reassemble_msg_data(&transcript.upload_client_to_server[preamble.consumed..])
+        .unwrap()
+        .app_stream;
 
     let opts = FileListDecodeOptions::frozen_oracle_default();
     let (outcome, consumed) = decode_file_list_entry(&app, &opts).unwrap();
@@ -3523,7 +3571,8 @@ fn encode_file_list_entry_matches_frozen_oracle_byte_for_byte() {
         frozen_slice.len(),
     );
     assert_eq!(
-        re_encoded, frozen_slice,
+        re_encoded,
+        frozen_slice,
         "encode_file_list_entry drifted from frozen bytes; first divergence at offset {:?}",
         re_encoded
             .iter()
@@ -3547,10 +3596,9 @@ fn encode_delta_stream_matches_frozen_oracle_byte_for_byte() {
         return;
     };
     let preamble = decode_client_preamble(&transcript.upload_client_to_server).unwrap();
-    let app =
-        reassemble_msg_data(&transcript.upload_client_to_server[preamble.consumed..])
-            .unwrap()
-            .app_stream;
+    let app = reassemble_msg_data(&transcript.upload_client_to_server[preamble.consumed..])
+        .unwrap()
+        .app_stream;
 
     // Mirrors real_wire_decodes_full_delta_stream_from_frozen_upload_client_stream:
     // the client→server upload stream is `flist + sum_head` (NO sum_blocks
@@ -3575,7 +3623,8 @@ fn encode_delta_stream_matches_frozen_oracle_byte_for_byte() {
         frozen_slice.len(),
     );
     assert_eq!(
-        re_encoded, frozen_slice,
+        re_encoded,
+        frozen_slice,
         "encode_delta_stream drifted from frozen bytes; first divergence at offset {:?}",
         re_encoded
             .iter()
@@ -3595,10 +3644,9 @@ fn encode_sum_block_matches_frozen_oracle_byte_for_byte() {
         return;
     };
     let preamble = decode_server_preamble(&transcript.upload_server_to_client).unwrap();
-    let app =
-        reassemble_msg_data(&transcript.upload_server_to_client[preamble.consumed..])
-            .unwrap()
-            .app_stream;
+    let app = reassemble_msg_data(&transcript.upload_server_to_client[preamble.consumed..])
+        .unwrap()
+        .app_stream;
     // Mirror real_wire_decodes_all_375_sum_blocks_from_frozen_upload_server_stream:
     // upload_server_to_client opens with `ndx + iflags + sum_head +
     // N×sum_block`. No flist on this direction (the client owns the flist
@@ -3648,8 +3696,7 @@ fn compress_zstd_literal_stream_round_trips_through_frozen_oracle_payloads() {
     let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
     let (delta_start, head) =
         crate::rsync_native_proto::tests::advance_past_sum_head(&app, entry_bytes);
-    let (report, _) =
-        decode_delta_stream(&app[delta_start..], 16, Some(head.count)).unwrap();
+    let (report, _) = decode_delta_stream(&app[delta_start..], 16, Some(head.count)).unwrap();
 
     // Step 1: decompress the captured Literals (S8f-bis verified path).
     let literal_slices: Vec<&[u8]> = report

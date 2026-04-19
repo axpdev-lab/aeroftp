@@ -889,37 +889,36 @@ impl CloudService {
                     }
                 }
             }
-            SyncAction::KeepBoth
-                if !comparison.is_dir => {
-                    let local_path = config.local_folder.join(&comparison.relative_path);
-                    // Rename local file with Dropbox-style conflict suffix to preserve both versions
-                    if local_path.exists() {
-                        let conflict_path = local_path.with_file_name(conflict_rename(&local_path));
-                        std::fs::rename(&local_path, &conflict_path).map_err(|e| {
-                            format!("Failed to preserve local copy before download: {}", e)
-                        })?;
-                    }
-                    // Download remote version to original path
-                    if let Some(remote_info) = &comparison.remote_info {
-                        if let Some(parent) = local_path.parent() {
-                            if let Err(e) = std::fs::create_dir_all(parent) {
-                                tracing::warn!(
-                                    "Failed to create directory {}: {}",
-                                    parent.display(),
-                                    e
-                                );
-                            }
-                        }
-                        ftp_manager
-                            .download_file_with_progress(
-                                &remote_info.path,
-                                &local_path.to_string_lossy(),
-                                |_| true,
-                            )
-                            .await
-                            .map_err(|e| format!("KeepBoth download failed: {}", e))?;
-                    }
+            SyncAction::KeepBoth if !comparison.is_dir => {
+                let local_path = config.local_folder.join(&comparison.relative_path);
+                // Rename local file with Dropbox-style conflict suffix to preserve both versions
+                if local_path.exists() {
+                    let conflict_path = local_path.with_file_name(conflict_rename(&local_path));
+                    std::fs::rename(&local_path, &conflict_path).map_err(|e| {
+                        format!("Failed to preserve local copy before download: {}", e)
+                    })?;
                 }
+                // Download remote version to original path
+                if let Some(remote_info) = &comparison.remote_info {
+                    if let Some(parent) = local_path.parent() {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            tracing::warn!(
+                                "Failed to create directory {}: {}",
+                                parent.display(),
+                                e
+                            );
+                        }
+                    }
+                    ftp_manager
+                        .download_file_with_progress(
+                            &remote_info.path,
+                            &local_path.to_string_lossy(),
+                            |_| true,
+                        )
+                        .await
+                        .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                }
+            }
             _ => {}
         }
 
@@ -1207,33 +1206,32 @@ impl CloudService {
                     }
                 }
             }
-            SyncAction::KeepBoth
-                if !comparison.is_dir => {
-                    let local_path = config.local_folder.join(&comparison.relative_path);
-                    // Rename local file with Dropbox-style conflict suffix to preserve both versions
-                    if local_path.exists() {
-                        let conflict_path = local_path.with_file_name(conflict_rename(&local_path));
-                        std::fs::rename(&local_path, &conflict_path).map_err(|e| {
-                            format!("Failed to preserve local copy before download: {}", e)
-                        })?;
-                    }
-                    // Download remote version to original path
-                    if let Some(remote_info) = &comparison.remote_info {
-                        if let Some(parent) = local_path.parent() {
-                            if let Err(e) = std::fs::create_dir_all(parent) {
-                                tracing::warn!(
-                                    "Failed to create directory {}: {}",
-                                    parent.display(),
-                                    e
-                                );
-                            }
-                        }
-                        provider
-                            .download(&remote_info.path, &local_path.to_string_lossy(), None)
-                            .await
-                            .map_err(|e| format!("KeepBoth download failed: {}", e))?;
-                    }
+            SyncAction::KeepBoth if !comparison.is_dir => {
+                let local_path = config.local_folder.join(&comparison.relative_path);
+                // Rename local file with Dropbox-style conflict suffix to preserve both versions
+                if local_path.exists() {
+                    let conflict_path = local_path.with_file_name(conflict_rename(&local_path));
+                    std::fs::rename(&local_path, &conflict_path).map_err(|e| {
+                        format!("Failed to preserve local copy before download: {}", e)
+                    })?;
                 }
+                // Download remote version to original path
+                if let Some(remote_info) = &comparison.remote_info {
+                    if let Some(parent) = local_path.parent() {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            tracing::warn!(
+                                "Failed to create directory {}: {}",
+                                parent.display(),
+                                e
+                            );
+                        }
+                    }
+                    provider
+                        .download(&remote_info.path, &local_path.to_string_lossy(), None)
+                        .await
+                        .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                }
+            }
             _ => {}
         }
 

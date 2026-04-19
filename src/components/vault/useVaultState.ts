@@ -8,6 +8,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { ArchiveEntry, AeroVaultMeta } from '../../types';
 import { useTranslation } from '../../i18n';
+import { guardedUnlisten } from '../../hooks/useTauriListener';
 
 // --- Error mapping ---
 
@@ -871,7 +872,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         if (mode !== 'browse') return;
 
         const webview = getCurrentWebview();
-        const unlisten = webview.onDragDropEvent((event) => {
+        return guardedUnlisten(webview.onDragDropEvent((event) => {
             if (event.payload.type === 'over' || event.payload.type === 'enter') {
                 setDragOver(true);
             } else if (event.payload.type === 'drop') {
@@ -884,11 +885,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setDragOver(false);
                 setDragTargetDir(null);
             }
-        });
-
-        return () => {
-            unlisten.then(fn => fn());
-        };
+        }));
     }, [mode, handleDropFiles]);
 
     // Load recent vaults on mount
@@ -901,13 +898,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         if (!initialFolderPath) return;
 
         const webview = getCurrentWebview();
-        const unlisten = webview.listen<FolderProgress>('vault-add-progress', (event) => {
+        return guardedUnlisten(webview.listen<FolderProgress>('vault-add-progress', (event) => {
             setFolderProgress(event.payload);
-        });
-
-        return () => {
-            unlisten.then(fn => fn());
-        };
+        }));
     }, [initialFolderPath]);
 
     // Scan folder on mount if initialFolderPath is provided

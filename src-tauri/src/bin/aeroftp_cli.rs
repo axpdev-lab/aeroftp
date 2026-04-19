@@ -71,6 +71,7 @@ use ftp_client_gui_lib::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, ShareLinkOptions,
     StorageProvider, MAX_DOWNLOAD_TO_BYTES,
 };
+use ftp_client_gui_lib::util::shutdown_signal;
 use futures_util::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use semver::Version;
@@ -611,7 +612,12 @@ enum Commands {
         #[arg(default_value = "_")]
         url: String,
         /// Test file size (e.g. 1M, 8M, 64M). Also accepts --size / -s.
-        #[arg(long = "test-size", visible_alias = "size", short = 's', default_value = "8M")]
+        #[arg(
+            long = "test-size",
+            visible_alias = "size",
+            short = 's',
+            default_value = "8M"
+        )]
         test_size: String,
         /// Number of upload/download iterations
         #[arg(long, default_value = "1")]
@@ -2144,7 +2150,11 @@ fn load_files_from(cli: &Cli) -> Option<std::collections::HashSet<String>> {
     const MAX_FILES_FROM_SIZE: u64 = 10 * 1024 * 1024;
     match std::fs::metadata(path) {
         Ok(meta) if meta.len() > MAX_FILES_FROM_SIZE => {
-            eprintln!("Error: --files-from '{}' exceeds 10 MB limit ({} bytes)", path, meta.len());
+            eprintln!(
+                "Error: --files-from '{}' exceeds 10 MB limit ({} bytes)",
+                path,
+                meta.len()
+            );
             std::process::exit(5);
         }
         Err(e) => {
@@ -2163,8 +2173,20 @@ fn load_files_from(cli: &Cli) -> Option<std::collections::HashSet<String>> {
     };
     let set: std::collections::HashSet<String> = content
         .lines()
-        .map(|l| if raw { l.to_string() } else { l.trim().to_string() })
-        .filter(|l| if raw { true } else { !l.is_empty() && !l.starts_with('#') })
+        .map(|l| {
+            if raw {
+                l.to_string()
+            } else {
+                l.trim().to_string()
+            }
+        })
+        .filter(|l| {
+            if raw {
+                true
+            } else {
+                !l.is_empty() && !l.starts_with('#')
+            }
+        })
         .map(|l| {
             // Normalize: strip leading ./ and /
             let s = l.strip_prefix("./").unwrap_or(&l);
@@ -2173,7 +2195,11 @@ fn load_files_from(cli: &Cli) -> Option<std::collections::HashSet<String>> {
         })
         .collect();
     if !cli.quiet {
-        eprintln!("Note: --files-from loaded {} entries from '{}'", set.len(), path);
+        eprintln!(
+            "Note: --files-from loaded {} entries from '{}'",
+            set.len(),
+            path
+        );
     }
     Some(set)
 }
@@ -2661,7 +2687,10 @@ async fn upload_transfer_task(
     // --immutable: skip if remote file already exists (never overwrite)
     if cli.immutable && provider.stat(&remote_path).await.is_ok() {
         let _ = provider.disconnect().await;
-        return Err(format!("skipped (already exists, --immutable): {}", remote_path));
+        return Err(format!(
+            "skipped (already exists, --immutable): {}",
+            remote_path
+        ));
     }
 
     if let Some(parent) = Path::new(&remote_path).parent() {
@@ -2920,8 +2949,8 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         } else {
             let last_segment = trimmed.rsplit('/').next().unwrap_or("");
             let segment_count = trimmed.trim_start_matches('/').split('/').count();
-            let looks_file_like = !last_segment.is_empty()
-                && (last_segment.contains('.') || segment_count >= 2);
+            let looks_file_like =
+                !last_segment.is_empty() && (last_segment.contains('.') || segment_count >= 2);
             if looks_file_like {
                 let parent = match trimmed.rfind('/') {
                     Some(idx) if idx > 0 => trimmed[..idx].to_string(),
@@ -3205,11 +3234,21 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
     // Debug: list all vault keys related to AI
     if cli.verbose > 0 {
         if let Ok(accounts) = store.list_accounts() {
-            let ai_keys: Vec<_> = accounts.iter().filter(|a| a.contains("ai") || a.contains("AI")).collect();
+            let ai_keys: Vec<_> = accounts
+                .iter()
+                .filter(|a| a.contains("ai") || a.contains("AI"))
+                .collect();
             if ai_keys.is_empty() {
-                eprintln!("[debug] No AI-related keys found in vault ({} total accounts)", accounts.len());
+                eprintln!(
+                    "[debug] No AI-related keys found in vault ({} total accounts)",
+                    accounts.len()
+                );
             } else {
-                eprintln!("[debug] AI-related vault keys ({}/{} total):", ai_keys.len(), accounts.len());
+                eprintln!(
+                    "[debug] AI-related vault keys ({}/{} total):",
+                    ai_keys.len(),
+                    accounts.len()
+                );
                 for k in &ai_keys {
                     eprintln!("  {}", k);
                 }
@@ -3243,7 +3282,10 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
 
     // 1. Read ai_settings from vault (saved from the desktop app)
     // GUI secureStorage uses "config_" prefix (see src/utils/secureStorage.ts VAULT_PREFIX)
-    if let Ok(settings_json) = store.get("config_ai_settings").or_else(|_| store.get("ai_settings")) {
+    if let Ok(settings_json) = store
+        .get("config_ai_settings")
+        .or_else(|_| store.get("ai_settings"))
+    {
         if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&settings_json) {
             if let Some(providers) = settings.get("providers").and_then(|v| v.as_array()) {
                 for p in providers {
@@ -3775,7 +3817,12 @@ fn suggest_stat_followup(cli: &Cli, path: &str) -> String {
     )
 }
 
-fn suggest_transfer_apply(source_profile: &str, dest_profile: &str, source_path: &str, dest_path: &str) -> String {
+fn suggest_transfer_apply(
+    source_profile: &str,
+    dest_profile: &str,
+    source_path: &str,
+    dest_path: &str,
+) -> String {
     format!(
         "aeroftp-cli transfer \"{}\" \"{}\" \"{}\" \"{}\" --format json",
         shell_double_quote(source_profile),
@@ -5080,18 +5127,16 @@ async fn create_and_connect(
     if let Err(e) = provider.connect().await {
         let code = provider_error_to_exit_code(&e);
         let hint = match &e {
-            ProviderError::ConnectionFailed(_) => " (check hostname/port and verify the service is running)",
+            ProviderError::ConnectionFailed(_) => {
+                " (check hostname/port and verify the service is running)"
+            }
             ProviderError::AuthenticationFailed(_) => " (check credentials in --profile or URL)",
             ProviderError::Timeout => " (increase --timeout or check firewall rules)",
             ProviderError::NetworkError(_) => " (check network connectivity and DNS resolution)",
             ProviderError::InvalidConfig(_) => " (verify profile settings or URL format)",
             _ => "",
         };
-        print_error(
-            format,
-            &format!("Connection failed: {}{}", e, hint),
-            code,
-        );
+        print_error(format, &format!("Connection failed: {}{}", e, hint), code);
         return Err(code);
     }
 
@@ -5310,7 +5355,10 @@ fn request_is_authorized(headers: &HeaderMap, expected_token: Option<&str>) -> b
         return true;
     };
 
-    let Some(raw_auth) = headers.get(AUTHORIZATION).and_then(|value| value.to_str().ok()) else {
+    let Some(raw_auth) = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    else {
         return false;
     };
 
@@ -5996,7 +6044,10 @@ async fn cmd_serve_http(
 
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+            // shutdown_signal() awaits both SIGINT and SIGTERM so systemd /
+            // Docker / any well-behaved supervisor can request a clean
+            // shutdown without needing SIGKILL.
+            let _ = shutdown_signal().await;
         })
         .await;
 
@@ -6481,7 +6532,7 @@ async fn cmd_serve_webdav(
 
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+            let _ = shutdown_signal().await;
         })
         .await;
 
@@ -6810,13 +6861,14 @@ async fn cmd_serve_ftp(
 
     let base_path = serve_effective_base_path(path, &url_path);
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
-    let bind_addr = match validate_bind_addr(&endpoint.addr, endpoint.allow_remote_bind, "FTP serve") {
-        Ok(addr) => addr,
-        Err(error) => {
-            print_error(format, &error, 5);
-            return 5;
-        }
-    };
+    let bind_addr =
+        match validate_bind_addr(&endpoint.addr, endpoint.allow_remote_bind, "FTP serve") {
+            Ok(addr) => addr,
+            Err(error) => {
+                print_error(format, &error, 5);
+                return 5;
+            }
+        };
     let auth_credentials =
         resolve_service_credentials(endpoint.auth.username, endpoint.auth.password, bind_addr);
 
@@ -6838,7 +6890,10 @@ async fn cmd_serve_ftp(
     let builder = if let Some(credentials) = auth_credentials.as_ref() {
         libunftp::ServerBuilder::with_authenticator(
             Box::new(move || {
-                serve_ftp_backend::AeroFtpBackend::new(backend_provider.clone(), backend_base.clone())
+                serve_ftp_backend::AeroFtpBackend::new(
+                    backend_provider.clone(),
+                    backend_base.clone(),
+                )
             }),
             Arc::new(serve_ftp_backend::TokenAuthenticator::new(
                 credentials.username.clone(),
@@ -6892,9 +6947,26 @@ async fn cmd_serve_ftp(
         eprintln!("Press Ctrl+C to stop.");
     }
 
-    if let Err(e) = server.listen(bind_addr.to_string()).await {
-        print_error(format, &format!("FTP server failed: {}", e), 1);
-        return 1;
+    // libunftp's `listen` does not accept a shutdown future, so race it
+    // against `shutdown_signal()`. On signal the server future is dropped
+    // (libunftp cleans up its own listener/sessions on drop) and the
+    // disconnect below runs, preventing the previous behaviour where a
+    // SIGINT/SIGTERM would leave the process hanging until SIGKILL.
+    let serve_fut = server.listen(bind_addr.to_string());
+    tokio::select! {
+        res = serve_fut => {
+            if let Err(e) = res {
+                print_error(format, &format!("FTP server failed: {}", e), 1);
+                let mut p = provider_arc.lock().await;
+                let _ = p.disconnect().await;
+                return 1;
+            }
+        }
+        _ = shutdown_signal() => {
+            if !quiet {
+                eprintln!("Shutdown signal received, stopping FTP server...");
+            }
+        }
     }
 
     let mut p = provider_arc.lock().await;
@@ -7394,7 +7466,9 @@ mod serve_sftp {
                         Auth::Accept
                     }
                     Some(_) => Auth::Reject {
-                        proceed_with_methods: Some(russh::MethodSet::from(&[russh::MethodKind::Password][..])),
+                        proceed_with_methods: Some(russh::MethodSet::from(
+                            &[russh::MethodKind::Password][..],
+                        )),
                         partial_success: false,
                     },
                     None => Auth::Accept,
@@ -7410,7 +7484,9 @@ mod serve_sftp {
             async move {
                 Ok(if auth_enabled {
                     Auth::Reject {
-                        proceed_with_methods: Some(russh::MethodSet::from(&[russh::MethodKind::Password][..])),
+                        proceed_with_methods: Some(russh::MethodSet::from(
+                            &[russh::MethodKind::Password][..],
+                        )),
                         partial_success: false,
                     }
                 } else {
@@ -7517,14 +7593,25 @@ mod serve_sftp {
         let cancelled = Arc::new(AtomicBool::new(false));
         let cancelled_clone = cancelled.clone();
         tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
+            let _ = shutdown_signal().await;
             cancelled_clone.store(true, Ordering::Relaxed);
         });
+
+        // Track per-connection tasks in a JoinSet so they are aborted when
+        // the server loop exits. Previously bare `tokio::spawn` leaked
+        // handles — on SIGINT the loop broke but active SSH sessions kept
+        // running until they happened to close, holding the provider Arc
+        // and any open file descriptors.
+        let mut sessions = tokio::task::JoinSet::new();
 
         loop {
             if cancelled.load(Ordering::Relaxed) {
                 break;
             }
+
+            // Drain finished sessions so the JoinSet does not accumulate
+            // completed handles for long-running server lifetimes.
+            while sessions.try_join_next().is_some() {}
 
             let accept = tokio::select! {
                 result = listener.accept() => result,
@@ -7548,10 +7635,18 @@ mod serve_sftp {
             };
 
             let cfg = config.clone();
-            tokio::spawn(async move {
+            sessions.spawn(async move {
                 let _ = russh::server::run_stream(cfg, stream, handler).await;
             });
         }
+
+        // Graceful drain: request abort then give sessions a short grace
+        // window to close cleanly before force-exiting the loop.
+        sessions.abort_all();
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while sessions.join_next().await.is_some() {}
+        })
+        .await;
 
         0
     }
@@ -7571,13 +7666,14 @@ async fn cmd_serve_sftp(
 
     let base_path = serve_effective_base_path(path, &url_path);
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
-    let bind_addr = match validate_bind_addr(&endpoint.addr, endpoint.allow_remote_bind, "SFTP serve") {
-        Ok(addr) => addr,
-        Err(error) => {
-            print_error(format, &error, 5);
-            return 5;
-        }
-    };
+    let bind_addr =
+        match validate_bind_addr(&endpoint.addr, endpoint.allow_remote_bind, "SFTP serve") {
+            Ok(addr) => addr,
+            Err(error) => {
+                print_error(format, &error, 5);
+                return 5;
+            }
+        };
     let auth_credentials =
         resolve_service_credentials(endpoint.auth.username, endpoint.auth.password, bind_addr);
 
@@ -7882,7 +7978,12 @@ async fn cmd_get(
     let local_path_owned: String;
     let local_path = if let Some(dest) = local {
         if dest.ends_with('/') || std::path::Path::new(dest).is_dir() {
-            local_path_owned = format!("{}{}{}", dest, if dest.ends_with('/') { "" } else { "/" }, filename);
+            local_path_owned = format!(
+                "{}{}{}",
+                dest,
+                if dest.ends_with('/') { "" } else { "/" },
+                filename
+            );
             &local_path_owned
         } else {
             dest
@@ -7898,7 +7999,9 @@ async fn cmd_get(
             eprintln!("Skipped: {} (already exists, --immutable)", local_path);
         }
         if let OutputFormat::Json = format {
-            print_json(&serde_json::json!({"status": "skipped", "reason": "already_exists", "path": local_path}));
+            print_json(
+                &serde_json::json!({"status": "skipped", "reason": "already_exists", "path": local_path}),
+            );
         }
         return 9;
     }
@@ -8694,8 +8797,18 @@ async fn cmd_get_glob(
 
     if matched.is_empty() {
         match format {
-            OutputFormat::Text => eprintln!("No remote files matching glob '{}' in {}", glob_pattern, dir),
-            OutputFormat::Json => print_error(format, &format!("No remote files matching glob '{}' in {}", glob_pattern, dir), 2),
+            OutputFormat::Text => eprintln!(
+                "No remote files matching glob '{}' in {}",
+                glob_pattern, dir
+            ),
+            OutputFormat::Json => print_error(
+                format,
+                &format!(
+                    "No remote files matching glob '{}' in {}",
+                    glob_pattern, dir
+                ),
+                2,
+            ),
         }
         let _ = provider.disconnect().await;
         return 2;
@@ -8842,7 +8955,11 @@ async fn cmd_put(
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
-                            let flag_name = if cli.immutable { "--immutable" } else { "--no-clobber" };
+                            let flag_name = if cli.immutable {
+                                "--immutable"
+                            } else {
+                                "--no-clobber"
+                            };
                             eprintln!("Skipped: {} (already exists, {})", remote_path, flag_name);
                         }
                     }
@@ -8976,7 +9093,10 @@ async fn cmd_put_recursive(
     // Walk local directory (bounded: max 100 levels deep, 500K entries)
     const MAX_SCAN_DEPTH_PUT: usize = 100;
     const MAX_SCAN_ENTRIES_PUT: usize = 500_000;
-    let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH_PUT);
+    let scan_depth = cli
+        .max_depth
+        .map(|d| d as usize)
+        .unwrap_or(MAX_SCAN_DEPTH_PUT);
     let files_from_set = load_files_from(cli);
     let walker = walkdir::WalkDir::new(local_dir)
         .follow_links(false)
@@ -9064,9 +9184,7 @@ async fn cmd_put_recursive(
         .collect();
     let files: Vec<(String, String, u64)> = files
         .into_iter()
-        .map(|(local, remote, size)| {
-            (local, resolve_cli_remote_path(&initial_path, &remote), size)
-        })
+        .map(|(local, remote, size)| (local, resolve_cli_remote_path(&initial_path, &remote), size))
         .collect();
 
     for dir in &dirs {
@@ -9151,11 +9269,7 @@ async fn cmd_put_recursive(
         }
         OutputFormat::Json => {
             print_json(&CliSyncResult {
-                status: if errors.is_empty() {
-                    "ok"
-                } else {
-                    "partial"
-                },
+                status: if errors.is_empty() { "ok" } else { "partial" },
                 uploaded,
                 downloaded: 0,
                 deleted: 0,
@@ -9176,13 +9290,7 @@ async fn cmd_put_recursive(
     }
 }
 
-async fn cmd_mkdir(
-    url: &str,
-    path: &str,
-    parents: bool,
-    cli: &Cli,
-    format: OutputFormat,
-) -> i32 {
+async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -9337,10 +9445,7 @@ async fn cmd_rm(
             // Some providers (FTP, WebDAV) return ServerError instead of NotFound
             // for missing files, so we also check the error message.
             let is_not_found = matches!(e, ProviderError::NotFound(_))
-                || (matches!(
-                    e,
-                    ProviderError::ServerError(_) | ProviderError::Other(_)
-                ) && {
+                || (matches!(e, ProviderError::ServerError(_) | ProviderError::Other(_)) && {
                     let msg = e.to_string().to_ascii_lowercase();
                     msg.contains("not found")
                         || msg.contains("no such file")
@@ -9877,7 +9982,9 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
                     );
                 } else {
                     eprintln!("Error: rclone configuration not found.");
-                    eprintln!("Specify the path manually: aeroftp import rclone /path/to/rclone.conf");
+                    eprintln!(
+                        "Specify the path manually: aeroftp import rclone /path/to/rclone.conf"
+                    );
                 }
                 return 1;
             }
@@ -9916,12 +10023,14 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
                     "sourcePath": result.source_path,
                     "totalRemotes": result.total_remotes,
                 });
-                println!("{}", serde_json::to_string_pretty(&redacted).unwrap_or_default());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&redacted).unwrap_or_default()
+                );
             } else {
                 println!(
                     "Scanned {} remotes from {}",
-                    result.total_remotes,
-                    result.source_path
+                    result.total_remotes, result.source_path
                 );
                 println!();
 
@@ -10023,7 +10132,10 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                     "sourcePath": result.source_path,
                     "totalSessions": result.total_sessions,
                 });
-                println!("{}", serde_json::to_string_pretty(&redacted).unwrap_or_default());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&redacted).unwrap_or_default()
+                );
             } else {
                 println!(
                     "Scanned {} sessions from {}",
@@ -10128,7 +10240,10 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                     "sourcePath": result.source_path,
                     "totalServers": result.total_servers,
                 });
-                println!("{}", serde_json::to_string_pretty(&redacted).unwrap_or_default());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&redacted).unwrap_or_default()
+                );
             } else {
                 println!(
                     "Scanned {} sites from {}",
@@ -10770,13 +10885,7 @@ async fn cmd_speed(
     0
 }
 
-async fn cmd_cleanup(
-    url: &str,
-    path: &str,
-    force: bool,
-    cli: &Cli,
-    format: OutputFormat,
-) -> i32 {
+async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -10844,7 +10953,11 @@ async fn cmd_cleanup(
             }));
         }
         let _ = provider.disconnect().await;
-        return if scan_errors == 0 { 0 } else { exit_code.max(4) };
+        return if scan_errors == 0 {
+            0
+        } else {
+            exit_code.max(4)
+        };
     }
 
     let total_bytes: u64 = orphans.iter().map(|(_, s)| *s).sum();
@@ -10880,7 +10993,11 @@ async fn cmd_cleanup(
             }
         }
         let _ = provider.disconnect().await;
-        return if scan_errors == 0 { 0 } else { exit_code.max(4) };
+        return if scan_errors == 0 {
+            0
+        } else {
+            exit_code.max(4)
+        };
     }
 
     // Force: delete orphans
@@ -10933,7 +11050,11 @@ async fn cmd_cleanup(
     }
 
     let _ = provider.disconnect().await;
-    if had_partial_errors { exit_code.max(4) } else { 0 }
+    if had_partial_errors {
+        exit_code.max(4)
+    } else {
+        0
+    }
 }
 
 async fn cmd_dedupe(
@@ -11048,7 +11169,11 @@ async fn cmd_dedupe(
             }));
         }
         let _ = provider.disconnect().await;
-        return if scan_errors == 0 { 0 } else { exit_code.max(4) };
+        return if scan_errors == 0 {
+            0
+        } else {
+            exit_code.max(4)
+        };
     }
 
     if !quiet {
@@ -11159,7 +11284,13 @@ async fn cmd_dedupe(
                             _ => "DELETE",
                         }
                     };
-                    eprintln!("    [{}] {} ({}, {})", marker, p, format_size(*sz), mtime_str);
+                    eprintln!(
+                        "    [{}] {} ({}, {})",
+                        marker,
+                        p,
+                        format_size(*sz),
+                        mtime_str
+                    );
                 }
 
                 // Interactive mode: ask the user which file to keep
@@ -11733,7 +11864,10 @@ async fn cmd_sync(
         // Try --fast-list first (S3 only), then fall back to BFS
         let mut used_fast_list = false;
         if cli.fast_list {
-            if let Some(s3) = provider.as_any_mut().downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>() {
+            if let Some(s3) = provider
+                .as_any_mut()
+                .downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>()
+            {
                 if !quiet {
                     eprintln!("Using --fast-list (S3 recursive listing)...");
                 }
@@ -11747,7 +11881,10 @@ async fn cmd_sync(
                             // Cap entries like BFS path
                             if remote_entries.len() >= MAX_SCAN_ENTRIES {
                                 if !quiet {
-                                    eprintln!("Warning: --fast-list capped at {} entries", MAX_SCAN_ENTRIES);
+                                    eprintln!(
+                                        "Warning: --fast-list capped at {} entries",
+                                        MAX_SCAN_ENTRIES
+                                    );
                                 }
                                 break;
                             }
@@ -11784,7 +11921,10 @@ async fn cmd_sync(
                     }
                     Err(e) => {
                         if !quiet {
-                            eprintln!("Warning: --fast-list failed, falling back to BFS scan: {}", e);
+                            eprintln!(
+                                "Warning: --fast-list failed, falling back to BFS scan: {}",
+                                e
+                            );
                         }
                         // used_fast_list stays false → BFS will execute below
                     }
@@ -11801,58 +11941,58 @@ async fn cmd_sync(
         // is always relative; the queue carries the accumulated
         // rel_prefix from the root down.
         if !used_fast_list {
-        let remote_scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
-        let mut queue: Vec<(String, String, usize)> =
-            vec![(remote.to_string(), String::new(), 0)];
-        while let Some((abs_dir, rel_prefix, depth)) = queue.pop() {
-            if cancelled.load(Ordering::Relaxed) {
-                break;
-            }
-            if depth >= remote_scan_depth {
-                if !quiet {
-                    eprintln!("Warning: max scan depth reached at {}", abs_dir);
+            let remote_scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+            let mut queue: Vec<(String, String, usize)> =
+                vec![(remote.to_string(), String::new(), 0)];
+            while let Some((abs_dir, rel_prefix, depth)) = queue.pop() {
+                if cancelled.load(Ordering::Relaxed) {
+                    break;
                 }
-                continue;
-            }
-            if remote_entries.len() >= MAX_SCAN_ENTRIES {
-                if !quiet {
-                    eprintln!("Warning: max entries reached during remote scan");
+                if depth >= remote_scan_depth {
+                    if !quiet {
+                        eprintln!("Warning: max scan depth reached at {}", abs_dir);
+                    }
+                    continue;
                 }
-                break;
-            }
-            match provider.list(&abs_dir).await {
-                Ok(entries) => {
-                    for e in entries {
-                        let entry_rel = if rel_prefix.is_empty() {
-                            e.name.clone()
-                        } else {
-                            format!("{}/{}", rel_prefix, e.name)
-                        };
-                        if e.is_dir {
-                            queue.push((e.path.clone(), entry_rel, depth + 1));
-                        } else {
-                            let relative = entry_rel;
-                            if !relative.is_empty() && relative != BISYNC_SNAPSHOT_FILE {
-                                // Apply exclude patterns to remote entries too
-                                if exclude_matchers
-                                    .iter()
-                                    .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                                {
-                                    continue;
+                if remote_entries.len() >= MAX_SCAN_ENTRIES {
+                    if !quiet {
+                        eprintln!("Warning: max entries reached during remote scan");
+                    }
+                    break;
+                }
+                match provider.list(&abs_dir).await {
+                    Ok(entries) => {
+                        for e in entries {
+                            let entry_rel = if rel_prefix.is_empty() {
+                                e.name.clone()
+                            } else {
+                                format!("{}/{}", rel_prefix, e.name)
+                            };
+                            if e.is_dir {
+                                queue.push((e.path.clone(), entry_rel, depth + 1));
+                            } else {
+                                let relative = entry_rel;
+                                if !relative.is_empty() && relative != BISYNC_SNAPSHOT_FILE {
+                                    // Apply exclude patterns to remote entries too
+                                    if exclude_matchers
+                                        .iter()
+                                        .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                                    {
+                                        continue;
+                                    }
+                                    remote_entries.push((relative, e.size, e.modified));
                                 }
-                                remote_entries.push((relative, e.size, e.modified));
                             }
                         }
                     }
-                }
-                Err(e) => {
-                    if !quiet {
-                        eprintln!("Warning: cannot scan {}: {}", abs_dir, e);
+                    Err(e) => {
+                        if !quiet {
+                            eprintln!("Warning: cannot scan {}: {}", abs_dir, e);
+                        }
                     }
                 }
             }
-        }
-    } // end if !used_fast_list
+        } // end if !used_fast_list
     } // end if !no_check_dest
 
     // Build comparison maps
@@ -12068,14 +12208,20 @@ async fn cmd_sync(
         to_upload.retain(|path| !remote_map.contains_key(path));
         let removed = before - to_upload.len();
         if removed > 0 && !quiet {
-            eprintln!("Note: --immutable skipped {} file(s) that already exist on remote", removed);
+            eprintln!(
+                "Note: --immutable skipped {} file(s) that already exist on remote",
+                removed
+            );
         }
         // Also prevent downloads that would overwrite local files
         let before_dl = to_download.len();
         to_download.retain(|path| !local_map.contains_key(path));
         let removed_dl = before_dl - to_download.len();
         if removed_dl > 0 && !quiet {
-            eprintln!("Note: --immutable skipped {} download(s) that already exist locally", removed_dl);
+            eprintln!(
+                "Note: --immutable skipped {} download(s) that already exist locally",
+                removed_dl
+            );
         }
     }
 
@@ -12087,7 +12233,10 @@ async fn cmd_sync(
             Ok(p) => p,
             Err(e) => {
                 if !quiet {
-                    eprintln!("Warning: --compare-dest/--copy-dest '{}' not accessible: {}. Skipping.", cdir, e);
+                    eprintln!(
+                        "Warning: --compare-dest/--copy-dest '{}' not accessible: {}. Skipping.",
+                        cdir, e
+                    );
                 }
                 Path::new(cdir).to_path_buf()
             }
@@ -12136,7 +12285,11 @@ async fn cmd_sync(
         to_upload = retained;
         let removed = before - to_upload.len();
         if removed > 0 && !quiet {
-            let label = if is_copy { "--copy-dest" } else { "--compare-dest" };
+            let label = if is_copy {
+                "--copy-dest"
+            } else {
+                "--compare-dest"
+            };
             eprintln!(
                 "Note: {} skipped {} upload(s) matched in {}",
                 label, removed, cdir
@@ -12352,7 +12505,10 @@ async fn cmd_sync(
         if cancelled.load(Ordering::Relaxed) {
             break;
         }
-        let local_path = Path::new(local).join(orig_path).to_string_lossy().to_string();
+        let local_path = Path::new(local)
+            .join(orig_path)
+            .to_string_lossy()
+            .to_string();
         let remote_conflict = format!("{}/{}", remote.trim_end_matches('/'), conflict_path);
         match upload_transfer_task(
             url,
@@ -12378,12 +12534,11 @@ async fn cmd_sync(
     }
 
     let mut download_jobs: Vec<(String, String, String, u64)> = Vec::new();
-    for path in normal_download_paths
-        .into_iter()
-        .chain(gated_conflict_download_paths.into_iter().filter(|path| {
-            preserved_conflict_downloads.contains(*path)
-        }))
-    {
+    for path in normal_download_paths.into_iter().chain(
+        gated_conflict_download_paths
+            .into_iter()
+            .filter(|path| preserved_conflict_downloads.contains(*path)),
+    ) {
         if validate_relative_path(path).is_none() {
             errors.push(format!(
                 "download {}: unsafe path (traversal rejected)",
@@ -12498,7 +12653,13 @@ async fn cmd_sync(
         let local_path = format!("{}/{}", local, path);
         // Backup before delete (if --backup-dir set)
         if let Some(bdir) = backup_dir {
-            backup_file(&local_path, bdir, backup_suffix, path, suffix_keep_extension);
+            backup_file(
+                &local_path,
+                bdir,
+                backup_suffix,
+                path,
+                suffix_keep_extension,
+            );
         }
         match std::fs::remove_file(&local_path) {
             Ok(()) => deleted += 1,
@@ -13143,14 +13304,12 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                     state.current.children.len() + if state.path_stack.is_empty() { 0 } else { 1 };
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Down | KeyCode::Char('j')
-                        if state.selected + 1 < max_idx => {
-                            state.selected += 1;
-                        }
-                    KeyCode::Up | KeyCode::Char('k')
-                        if state.selected > 0 => {
-                            state.selected -= 1;
-                        }
+                    KeyCode::Down | KeyCode::Char('j') if state.selected + 1 < max_idx => {
+                        state.selected += 1;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') if state.selected > 0 => {
+                        state.selected -= 1;
+                    }
                     KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
                         // If on ".." entry, go back
                         if !state.path_stack.is_empty() && state.selected == 0 {
@@ -13169,10 +13328,9 @@ fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
                         state.go_back();
                     }
                     KeyCode::Home => state.selected = 0,
-                    KeyCode::End
-                        if max_idx > 0 => {
-                            state.selected = max_idx - 1;
-                        }
+                    KeyCode::End if max_idx > 0 => {
+                        state.selected = max_idx - 1;
+                    }
                     KeyCode::PageDown => {
                         state.selected = (state.selected + 20).min(max_idx.saturating_sub(1));
                     }
@@ -14291,32 +14449,48 @@ mod fuse_mount {
             options.push(MountOption::AllowOther);
         }
 
-        // Mount in a blocking thread (FUSE event loop is blocking)
+        // Use `spawn_mount2` so the FUSE session handle is owned by a
+        // `BackgroundSession`; dropping it triggers `fuse_unmount`. Previously
+        // `mount2` blocked the spawn_blocking task forever — on panic or
+        // process abort the kernel was left with a dangling mountpoint that
+        // only `fusermount -u` could clear.
         let mountpoint_owned = mountpoint.to_string();
-        let mount_result =
-            tokio::task::spawn_blocking(move || fuser::mount2(fs, &mountpoint_owned, &options))
-                .await;
+        let session_result = tokio::task::spawn_blocking(move || {
+            fuser::spawn_mount2(fs, &mountpoint_owned, &options)
+        })
+        .await;
+
+        let session = match session_result {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => {
+                print_error(format, &format!("Mount failed: {}", e), 99);
+                let mut p = provider_arc.lock().await;
+                let _ = p.disconnect().await;
+                return 99;
+            }
+            Err(e) => {
+                print_error(format, &format!("Mount task failed: {}", e), 99);
+                let mut p = provider_arc.lock().await;
+                let _ = p.disconnect().await;
+                return 99;
+            }
+        };
+
+        // Wait for a real shutdown signal (SIGINT/SIGTERM). On any return
+        // path `session` is dropped → FUSE unmount runs → kernel releases
+        // the mountpoint. Previously the mount lived forever because the
+        // blocking `mount2` had no cancellation surface.
+        let _ = shutdown_signal().await;
+        drop(session);
 
         // Cleanup
         let mut p = provider_arc.lock().await;
         let _ = p.disconnect().await;
 
-        match mount_result {
-            Ok(Ok(())) => {
-                if !quiet {
-                    eprintln!("Unmounted successfully");
-                }
-                0
-            }
-            Ok(Err(e)) => {
-                print_error(format, &format!("Mount failed: {}", e), 99);
-                99
-            }
-            Err(e) => {
-                print_error(format, &format!("Mount task failed: {}", e), 99);
-                99
-            }
+        if !quiet {
+            eprintln!("Unmounted successfully");
         }
+        0
     }
 }
 
@@ -14423,7 +14597,7 @@ async fn cmd_mount_windows(
     let server_handle = tokio::spawn(async move {
         axum::serve(listener, app)
             .with_graceful_shutdown(async {
-                let _ = tokio::signal::ctrl_c().await;
+                let _ = shutdown_signal().await;
             })
             .await
     });
@@ -14560,7 +14734,8 @@ fn write_daemon_auth_token(token: &str) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(daemon_token_path(), std::fs::Permissions::from_mode(0o600));
+        let _ =
+            std::fs::set_permissions(daemon_token_path(), std::fs::Permissions::from_mode(0o600));
     }
     Ok(())
 }
@@ -14754,7 +14929,8 @@ async fn daemon_jobs_add_handler(
 
     let command = body.get("command").and_then(|v| v.as_str()).unwrap_or("");
     if command.is_empty() {
-        let mut response = axum::Json(serde_json::json!({"error": "missing command"})).into_response();
+        let mut response =
+            axum::Json(serde_json::json!({"error": "missing command"})).into_response();
         *response.status_mut() = StatusCode::BAD_REQUEST;
         return response;
     }
@@ -14788,7 +14964,8 @@ async fn daemon_job_status_handler(
     match jobs_get(&conn, &id) {
         Some(job) => axum::Json(serde_json::json!(job)).into_response(),
         None => {
-            let mut response = axum::Json(serde_json::json!({"error": "not found"})).into_response();
+            let mut response =
+                axum::Json(serde_json::json!({"error": "not found"})).into_response();
             *response.status_mut() = StatusCode::NOT_FOUND;
             response
         }
@@ -14921,7 +15098,7 @@ async fn cmd_daemon_start(
 
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+            let _ = shutdown_signal().await;
         })
         .await;
 
@@ -15062,7 +15239,10 @@ async fn cmd_jobs_list(format: OutputFormat) -> i32 {
     let addr = daemon_addr();
     let url = format!("http://{}/api/jobs", addr);
 
-    match daemon_request(reqwest::Client::new().get(&url)).send().await {
+    match daemon_request(reqwest::Client::new().get(&url))
+        .send()
+        .await
+    {
         Ok(resp) => {
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
                 print_error(format, &daemon_auth_failure_message(), 6);
@@ -15101,7 +15281,10 @@ async fn cmd_jobs_list(format: OutputFormat) -> i32 {
 async fn cmd_jobs_status(id: &str, format: OutputFormat) -> i32 {
     let addr = daemon_addr();
     let url = format!("http://{}/api/jobs/{}", addr, id);
-    match daemon_request(reqwest::Client::new().get(&url)).send().await {
+    match daemon_request(reqwest::Client::new().get(&url))
+        .send()
+        .await
+    {
         Ok(resp) => {
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
                 print_error(format, &daemon_auth_failure_message(), 6);
@@ -15734,7 +15917,11 @@ async fn cmd_put_glob(
     if matched.is_empty() {
         match format {
             OutputFormat::Text => eprintln!("No local files matching glob '{}'", glob_pattern),
-            OutputFormat::Json => print_error(format, &format!("No local files matching glob '{}'", glob_pattern), 2),
+            OutputFormat::Json => print_error(
+                format,
+                &format!("No local files matching glob '{}'", glob_pattern),
+                2,
+            ),
         }
         return 2;
     }
@@ -15834,10 +16021,7 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
         Some(n) => n,
         None => return false,
     };
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     // OS metadata
     if matches!(
         name,
@@ -15846,7 +16030,10 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
         return true;
     }
     // VCS / heavy dirs (will never be a leaf event worth syncing)
-    if matches!(name, ".git" | ".svn" | ".hg" | "node_modules" | "__pycache__") {
+    if matches!(
+        name,
+        ".git" | ".svn" | ".hg" | "node_modules" | "__pycache__"
+    ) {
         return true;
     }
     // Temp/editor artifacts by extension
@@ -15893,10 +16080,7 @@ fn incremental_local_scan(
             continue;
         }
         // Check excludes
-        let fname = changed
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let fname = changed.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if exclude_matchers
             .iter()
             .any(|m| m.is_match(&relative) || m.is_match(fname))
@@ -15939,8 +16123,8 @@ fn start_watch_watcher(
     match mode {
         "poll" => {
             use notify::PollWatcher;
-            let config = notify::Config::default()
-                .with_poll_interval(std::time::Duration::from_secs(5));
+            let config =
+                notify::Config::default().with_poll_interval(std::time::Duration::from_secs(5));
             let watcher = PollWatcher::new(
                 move |res: Result<notify::Event, notify::Error>| {
                     if let Ok(event) = res {
@@ -16030,7 +16214,9 @@ async fn cmd_sync_watch(
     let local_path = std::path::Path::new(local);
     if !local_path.is_dir() {
         if matches!(format, OutputFormat::Json) {
-            print_json(&serde_json::json!({"error": "Local path is not a directory", "path": local}));
+            print_json(
+                &serde_json::json!({"error": "Local path is not a directory", "path": local}),
+            );
         } else {
             eprintln!("Error: local path is not a directory: {}", local);
         }
@@ -16039,17 +16225,20 @@ async fn cmd_sync_watch(
 
     // Start filesystem watcher
     let (std_tx, std_rx) = std::sync::mpsc::channel::<Vec<std::path::PathBuf>>();
-    let _watcher_handle = match start_watch_watcher(local_path, watch_mode, watch_debounce_ms, std_tx) {
-        Ok(h) => h,
-        Err(e) => {
-            if matches!(format, OutputFormat::Json) {
-                print_json(&serde_json::json!({"error": format!("Failed to start watcher: {}", e)}));
-            } else {
-                eprintln!("Error: failed to start filesystem watcher: {}", e);
+    let _watcher_handle =
+        match start_watch_watcher(local_path, watch_mode, watch_debounce_ms, std_tx) {
+            Ok(h) => h,
+            Err(e) => {
+                if matches!(format, OutputFormat::Json) {
+                    print_json(
+                        &serde_json::json!({"error": format!("Failed to start watcher: {}", e)}),
+                    );
+                } else {
+                    eprintln!("Error: failed to start filesystem watcher: {}", e);
+                }
+                return 5;
             }
-            return 5;
-        }
-    };
+        };
 
     // Bridge std mpsc to tokio mpsc so we can use tokio::select!
     let (async_tx, mut async_rx) = tokio::sync::mpsc::channel::<Vec<std::path::PathBuf>>(64);
@@ -16194,37 +16383,38 @@ async fn cmd_sync_watch(
         std::collections::HashMap::new();
 
     // Helper: build snapshot from a full local walkdir scan
-    let build_snapshot = |local_dir: &str| -> std::collections::HashMap<String, (u64, Option<String>)> {
-        let mut snap = std::collections::HashMap::new();
-        let walker = walkdir::WalkDir::new(local_dir)
-            .follow_links(false)
-            .max_depth(100);
-        for entry in walker {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            if !entry.file_type().is_file() {
-                continue;
+    let build_snapshot =
+        |local_dir: &str| -> std::collections::HashMap<String, (u64, Option<String>)> {
+            let mut snap = std::collections::HashMap::new();
+            let walker = walkdir::WalkDir::new(local_dir)
+                .follow_links(false)
+                .max_depth(100);
+            for entry in walker {
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+                let relative = match entry.path().strip_prefix(local_dir) {
+                    Ok(r) => r.to_string_lossy().replace('\\', "/"),
+                    Err(_) => continue,
+                };
+                if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                    continue;
+                }
+                if let Ok(meta) = entry.metadata() {
+                    let size = meta.len();
+                    let mtime = meta.modified().ok().map(|t| {
+                        let dt: chrono::DateTime<chrono::Utc> = t.into();
+                        dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+                    });
+                    snap.insert(relative, (size, mtime));
+                }
             }
-            let relative = match entry.path().strip_prefix(local_dir) {
-                Ok(r) => r.to_string_lossy().replace('\\', "/"),
-                Err(_) => continue,
-            };
-            if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                continue;
-            }
-            if let Ok(meta) = entry.metadata() {
-                let size = meta.len();
-                let mtime = meta.modified().ok().map(|t| {
-                    let dt: chrono::DateTime<chrono::Utc> = t.into();
-                    dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-                });
-                snap.insert(relative, (size, mtime));
-            }
-        }
-        snap
-    };
+            snap
+        };
 
     // Initial sync
     if !watch_no_initial {
@@ -16375,7 +16565,10 @@ async fn cmd_sync_doctor(
 
     let mut local_files = 0usize;
     let mut local_bytes = 0u64;
-    for entry in walkdir::WalkDir::new(local).follow_links(false).max_depth(100) {
+    for entry in walkdir::WalkDir::new(local)
+        .follow_links(false)
+        .max_depth(100)
+    {
         let Ok(entry) = entry else { continue };
         if !entry.file_type().is_file() {
             continue;
@@ -16443,7 +16636,9 @@ async fn cmd_sync_doctor(
         serde_json::json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote}),
     ];
     if !exclude.is_empty() {
-        checks.push(serde_json::json!({"name": "exclude_patterns", "ok": true, "count": exclude.len()}));
+        checks.push(
+            serde_json::json!({"name": "exclude_patterns", "ok": true, "count": exclude.len()}),
+        );
     }
 
     let mut risks = Vec::new();
@@ -16466,13 +16661,15 @@ async fn cmd_sync_doctor(
         risks.push("track-renames is disabled; moved files may be recopied".to_string());
     }
     if checksum {
-        risks.push("checksum is enabled; later verification may be slower but stricter".to_string());
+        risks
+            .push("checksum is enabled; later verification may be slower but stricter".to_string());
     }
     if !remote_root_ok {
         risks.push("remote path could not be listed".to_string());
     }
 
-    let suggested_next_command = format!(
+    let suggested_next_command =
+        format!(
         "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}{}",
         profile_or_placeholder(cli),
         shell_double_quote(local),
@@ -16519,8 +16716,16 @@ async fn cmd_sync_doctor(
         OutputFormat::Json => print_json(&result),
         OutputFormat::Text => {
             println!("Sync doctor");
-            println!("  Local:  {} file(s), {}", local_files, format_size(local_bytes));
-            println!("  Remote: {} file(s), {}", remote_files, format_size(remote_bytes));
+            println!(
+                "  Local:  {} file(s), {}",
+                local_files,
+                format_size(local_bytes)
+            );
+            println!(
+                "  Remote: {} file(s), {}",
+                remote_files,
+                format_size(remote_bytes)
+            );
             println!("  Direction: {}", direction);
             if !result.risks.is_empty() {
                 println!("  Risks:");
@@ -16535,7 +16740,11 @@ async fn cmd_sync_doctor(
     }
 
     let _ = provider.disconnect().await;
-    if remote_root_ok { 0 } else { 4 }
+    if remote_root_ok {
+        0
+    } else {
+        4
+    }
 }
 
 // ── Head / Tail / Touch / Hashsum / Check ─────────────────────────
@@ -17024,10 +17233,7 @@ async fn cmd_reconcile(
                 "  Missing remote: {}",
                 result.summary["missing_remote_count"]
             );
-            println!(
-                "  Missing local: {}",
-                result.summary["missing_local_count"]
-            );
+            println!("  Missing local: {}", result.summary["missing_local_count"]);
             if !cli.quiet {
                 eprintln!("Next: {}", result.suggested_next_command);
             }
@@ -17035,7 +17241,11 @@ async fn cmd_reconcile(
     }
 
     let _ = provider.disconnect().await;
-    if result.status == "ok" { 0 } else { 4 }
+    if result.status == "ok" {
+        0
+    } else {
+        4
+    }
 }
 
 // ── Cross-profile transfer ─────────────────────────────────────────────────
@@ -17065,24 +17275,40 @@ async fn cmd_transfer_doctor(
     let mut source = match ProviderFactory::create(&src_cfg) {
         Ok(p) => p,
         Err(e) => {
-            print_error(format, &format!("Failed to create source provider: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("Failed to create source provider: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             return provider_error_to_exit_code(&e);
         }
     };
     let mut dest = match ProviderFactory::create(&dst_cfg) {
         Ok(p) => p,
         Err(e) => {
-            print_error(format, &format!("Failed to create dest provider: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("Failed to create dest provider: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             return provider_error_to_exit_code(&e);
         }
     };
 
     if let Err(e) = source.connect().await {
-        print_error(format, &format!("Source connection failed: {}", e), provider_error_to_exit_code(&e));
+        print_error(
+            format,
+            &format!("Source connection failed: {}", e),
+            provider_error_to_exit_code(&e),
+        );
         return provider_error_to_exit_code(&e);
     }
     if let Err(e) = dest.connect().await {
-        print_error(format, &format!("Dest connection failed: {}", e), provider_error_to_exit_code(&e));
+        print_error(
+            format,
+            &format!("Dest connection failed: {}", e),
+            provider_error_to_exit_code(&e),
+        );
         let _ = source.disconnect().await;
         return provider_error_to_exit_code(&e);
     }
@@ -17100,7 +17326,11 @@ async fn cmd_transfer_doctor(
     let plan = match plan_transfer(source.as_mut(), dest.as_mut(), &request).await {
         Ok(plan) => plan,
         Err(e) => {
-            print_error(format, &format!("Transfer doctor failed: {}", e), provider_error_to_exit_code(&e));
+            print_error(
+                format,
+                &format!("Transfer doctor failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
             let _ = source.disconnect().await;
             let _ = dest.disconnect().await;
             return provider_error_to_exit_code(&e);
@@ -17148,7 +17378,11 @@ async fn cmd_transfer_doctor(
     }
 
     let result = CliDoctorResult {
-        status: if plan.total_files > 0 { "ok" } else { "attention" },
+        status: if plan.total_files > 0 {
+            "ok"
+        } else {
+            "attention"
+        },
         doctor: "transfer".to_string(),
         summary: serde_json::json!({
             "source_profile": source_profile,
@@ -17168,7 +17402,12 @@ async fn cmd_transfer_doctor(
         }),
         checks,
         risks,
-        suggested_next_command: suggest_transfer_apply(source_profile, dest_profile, source_path, dest_path),
+        suggested_next_command: suggest_transfer_apply(
+            source_profile,
+            dest_profile,
+            source_path,
+            dest_path,
+        ),
     };
 
     match format {
@@ -17192,7 +17431,11 @@ async fn cmd_transfer_doctor(
 
     let _ = source.disconnect().await;
     let _ = dest.disconnect().await;
-    if plan.total_files > 0 { 0 } else { 4 }
+    if plan.total_files > 0 {
+        0
+    } else {
+        4
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -17208,9 +17451,7 @@ async fn cmd_transfer_profiles(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    use ftp_client_gui_lib::cross_profile_transfer::{
-        plan_transfer, CrossProfileTransferRequest,
-    };
+    use ftp_client_gui_lib::cross_profile_transfer::{plan_transfer, CrossProfileTransferRequest};
 
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
 
@@ -17341,7 +17582,12 @@ async fn cmd_transfer_profiles(
                 format_size(plan.total_bytes)
             );
             for entry in &plan.entries {
-                eprintln!("  {} -> {} ({})", entry.source_path, entry.dest_path, format_size(entry.size));
+                eprintln!(
+                    "  {} -> {} ({})",
+                    entry.source_path,
+                    entry.dest_path,
+                    format_size(entry.size)
+                );
             }
             eprintln!(
                 "Next: {}",
@@ -18181,7 +18427,10 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
             }
             "CONNECT_SOURCE_PROFILE" => {
                 if parts.len() < 2 {
-                    eprintln!("Line {}: CONNECT_SOURCE_PROFILE requires a profile name", line_num + 1);
+                    eprintln!(
+                        "Line {}: CONNECT_SOURCE_PROFILE requires a profile name",
+                        line_num + 1
+                    );
                     return 5;
                 }
                 let profile_name = parts[1..].join(" ");
@@ -18196,7 +18445,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         cross_source = Some((provider, profile_name));
                     }
                     Err(code) => {
-                        if let Some(c) = check_exit(code, line_num, "CONNECT_SOURCE_PROFILE", on_error_continue, &mut failed_commands) {
+                        if let Some(c) = check_exit(
+                            code,
+                            line_num,
+                            "CONNECT_SOURCE_PROFILE",
+                            on_error_continue,
+                            &mut failed_commands,
+                        ) {
                             return c;
                         }
                     }
@@ -18204,7 +18459,10 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
             }
             "CONNECT_DEST_PROFILE" => {
                 if parts.len() < 2 {
-                    eprintln!("Line {}: CONNECT_DEST_PROFILE requires a profile name", line_num + 1);
+                    eprintln!(
+                        "Line {}: CONNECT_DEST_PROFILE requires a profile name",
+                        line_num + 1
+                    );
                     return 5;
                 }
                 let profile_name = parts[1..].join(" ");
@@ -18218,7 +18476,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         cross_dest = Some((provider, profile_name));
                     }
                     Err(code) => {
-                        if let Some(c) = check_exit(code, line_num, "CONNECT_DEST_PROFILE", on_error_continue, &mut failed_commands) {
+                        if let Some(c) = check_exit(
+                            code,
+                            line_num,
+                            "CONNECT_DEST_PROFILE",
+                            on_error_continue,
+                            &mut failed_commands,
+                        ) {
                             return c;
                         }
                     }
@@ -18232,8 +18496,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 let (src_provider, src_name) = match &mut cross_source {
                     Some((p, n)) => (p.as_mut(), n.clone()),
                     None => {
-                        eprintln!("Line {}: No source profile. Use CONNECT_SOURCE_PROFILE first.", line_num + 1);
-                        if !on_error_continue { return 5; }
+                        eprintln!(
+                            "Line {}: No source profile. Use CONNECT_SOURCE_PROFILE first.",
+                            line_num + 1
+                        );
+                        if !on_error_continue {
+                            return 5;
+                        }
                         failed_commands += 1;
                         continue;
                     }
@@ -18241,8 +18510,13 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 let (dest_provider, dest_name) = match &mut cross_dest {
                     Some((p, n)) => (p.as_mut(), n.clone()),
                     None => {
-                        eprintln!("Line {}: No dest profile. Use CONNECT_DEST_PROFILE first.", line_num + 1);
-                        if !on_error_continue { return 5; }
+                        eprintln!(
+                            "Line {}: No dest profile. Use CONNECT_DEST_PROFILE first.",
+                            line_num + 1
+                        );
+                        if !on_error_continue {
+                            return 5;
+                        }
                         failed_commands += 1;
                         continue;
                     }
@@ -18274,7 +18548,11 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                         if plan.entries.is_empty() {
                             eprintln!("  Nothing to transfer.");
                         } else if dry_run {
-                            eprintln!("  DRY RUN: {} file(s), {}", plan.total_files, format_size(plan.total_bytes));
+                            eprintln!(
+                                "  DRY RUN: {} file(s), {}",
+                                plan.total_files,
+                                format_size(plan.total_bytes)
+                            );
                             for entry in &plan.entries {
                                 eprintln!("    {} -> {}", entry.source_path, entry.dest_path);
                             }
@@ -18301,14 +18579,26 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                                 exit_code = 4;
                             }
                         }
-                        if let Some(code) = check_exit(exit_code, line_num, "TRANSFER", on_error_continue, &mut failed_commands) {
+                        if let Some(code) = check_exit(
+                            exit_code,
+                            line_num,
+                            "TRANSFER",
+                            on_error_continue,
+                            &mut failed_commands,
+                        ) {
                             return code;
                         }
                     }
                     Err(e) => {
                         let code = provider_error_to_exit_code(&e);
                         eprintln!("  Planning failed: {}", e);
-                        if let Some(c) = check_exit(code, line_num, "TRANSFER", on_error_continue, &mut failed_commands) {
+                        if let Some(c) = check_exit(
+                            code,
+                            line_num,
+                            "TRANSFER",
+                            on_error_continue,
+                            &mut failed_commands,
+                        ) {
                             return c;
                         }
                     }
@@ -18428,7 +18718,8 @@ fn resolve_vault_ai_provider(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     target_type: Option<&str>,
 ) -> Option<(String, String, String)> {
-    let settings_json = store.get("config_ai_settings")
+    let settings_json = store
+        .get("config_ai_settings")
         .or_else(|_| store.get("ai_settings"))
         .ok()?;
     let settings: serde_json::Value = serde_json::from_str(&settings_json).ok()?;
@@ -18436,9 +18727,23 @@ fn resolve_vault_ai_provider(
 
     // Priority order for auto-detect (when target_type is None)
     let priority = [
-        "anthropic", "openai", "google", "xai", "openrouter", "deepseek",
-        "mistral", "groq", "perplexity", "cohere", "together", "kimi", "qwen",
-        "cerebras", "sambanova", "fireworks", "ai21",
+        "anthropic",
+        "openai",
+        "google",
+        "xai",
+        "openrouter",
+        "deepseek",
+        "mistral",
+        "groq",
+        "perplexity",
+        "cohere",
+        "together",
+        "kimi",
+        "qwen",
+        "cerebras",
+        "sambanova",
+        "fireworks",
+        "ai21",
     ];
 
     let base_url_for = |ptype: &str| -> &str {
@@ -18469,7 +18774,10 @@ fn resolve_vault_ai_provider(
     for p in providers {
         let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let ptype = p.get("type").and_then(|v| v.as_str()).unwrap_or(id);
-        let enabled = p.get("isEnabled").and_then(|v| v.as_bool()).unwrap_or(false);
+        let enabled = p
+            .get("isEnabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let custom_base = p.get("baseUrl").and_then(|v| v.as_str()).unwrap_or("");
 
         if id.is_empty() || !enabled {
@@ -18491,9 +18799,8 @@ fn resolve_vault_ai_provider(
 
     // Sort by priority order (for auto-detect mode)
     if target_type.is_none() {
-        candidates.sort_by_key(|(ptype, _, _, _)| {
-            priority.iter().position(|p| p == ptype).unwrap_or(99)
-        });
+        candidates
+            .sort_by_key(|(ptype, _, _, _)| priority.iter().position(|p| p == ptype).unwrap_or(99));
     }
 
     // Find first candidate with a valid API key in vault
@@ -18628,26 +18935,13 @@ fn tool_exposure_kind(tool: &str) -> ToolExposureKind {
         }
         "remote_read" => ToolExposureKind::RemotePreview,
         "server_exec" => ToolExposureKind::RemoteBulkRead,
-        "local_write"
-        | "local_mkdir"
-        | "local_edit"
-        | "local_rename"
-        | "local_copy_files"
-        | "local_move_files"
-        | "local_batch_rename"
-        | "archive_compress"
-        | "archive_decompress"
-        | "clipboard_write"
-        | "agent_memory_write"
-        | "sync_preview"
-        | "set_theme" => ToolExposureKind::LocalModify,
-        "remote_upload"
-        | "remote_mkdir"
-        | "remote_rename"
-        | "remote_edit"
-        | "upload_files"
-        | "download_files"
-        | "remote_download" => ToolExposureKind::RemoteModify,
+        "local_write" | "local_mkdir" | "local_edit" | "local_rename" | "local_copy_files"
+        | "local_move_files" | "local_batch_rename" | "archive_compress" | "archive_decompress"
+        | "clipboard_write" | "agent_memory_write" | "sync_preview" | "set_theme" => {
+            ToolExposureKind::LocalModify
+        }
+        "remote_upload" | "remote_mkdir" | "remote_rename" | "remote_edit" | "upload_files"
+        | "download_files" | "remote_download" => ToolExposureKind::RemoteModify,
         "local_delete" | "local_trash" | "remote_delete" | "sync_control" => {
             ToolExposureKind::Destructive
         }
@@ -18678,7 +18972,10 @@ fn tool_data_egress(tool: &str) -> &'static str {
         "local_grep" | "local_head" | "local_tail" | "local_diff" | "rag_search" => "content",
         "rag_index" => "preview",
         // Metadata-only tools: no file content egress
-        "local_file_info" | "local_disk_usage" | "local_find_duplicates" | "local_stat_batch"
+        "local_file_info"
+        | "local_disk_usage"
+        | "local_find_duplicates"
+        | "local_stat_batch"
         | "local_tree" => "metadata",
         _ => "none",
     }
@@ -20331,9 +20628,10 @@ async fn execute_cli_tool(
                     })
                 }
                 "cat" => {
-                    let (preview, size, truncated) = read_remote_preview(&mut provider, &effective_path)
-                        .await
-                        .map_err(|e| e.to_string())?;
+                    let (preview, size, truncated) =
+                        read_remote_preview(&mut provider, &effective_path)
+                            .await
+                            .map_err(|e| e.to_string())?;
                     if truncated {
                         let preview = String::from_utf8_lossy(&preview);
                         json!({
@@ -21027,24 +21325,24 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                 "/tools" => {
                     let tools = cli_tool_definitions();
                     eprintln!("\n  \x1b[1mAvailable Tools ({}):\x1b[0m\n", tools.len());
-                     for t in &tools {
-                         let danger = tool_danger_level(&t.name);
-                         let label = match danger {
-                             0 => "\x1b[32mSAFE\x1b[0m",
-                             1 => "\x1b[33mMEDIUM\x1b[0m",
-                             _ => "\x1b[1;31mHIGH\x1b[0m",
-                         };
-                         eprintln!(
-                             "  [{}] \x1b[1m{}\x1b[0m - {} ({}, egress: {})",
-                             label,
-                             t.name,
-                             t.description,
-                             tool_exposure_category(&t.name),
-                             tool_data_egress(&t.name)
-                         );
-                     }
-                     eprintln!();
-                 }
+                    for t in &tools {
+                        let danger = tool_danger_level(&t.name);
+                        let label = match danger {
+                            0 => "\x1b[32mSAFE\x1b[0m",
+                            1 => "\x1b[33mMEDIUM\x1b[0m",
+                            _ => "\x1b[1;31mHIGH\x1b[0m",
+                        };
+                        eprintln!(
+                            "  [{}] \x1b[1m{}\x1b[0m - {} ({}, egress: {})",
+                            label,
+                            t.name,
+                            t.description,
+                            tool_exposure_category(&t.name),
+                            tool_data_egress(&t.name)
+                        );
+                    }
+                    eprintln!();
+                }
                 "/context" => {
                     let cwd = std::env::current_dir()
                         .map(|p| p.to_string_lossy().to_string())
@@ -21529,9 +21827,17 @@ async fn main() {
             let max_transfer_limit = resolve_max_transfer(&cli);
             let mut last_code = 0i32;
             for attempt in 1..=max_attempts {
-                last_code =
-                    cmd_put(u, l, r, *recursive, *no_clobber, &cli, format, cancelled.clone())
-                        .await;
+                last_code = cmd_put(
+                    u,
+                    l,
+                    r,
+                    *recursive,
+                    *no_clobber,
+                    &cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
                 if !is_retryable_exit(last_code)
                     || session_transfer_exceeded(max_transfer_limit)
                     || attempt == max_attempts
@@ -21550,11 +21856,7 @@ async fn main() {
             }
             last_code
         }
-        Commands::Mkdir {
-            url,
-            path,
-            parents,
-        } => {
+        Commands::Mkdir { url, path, parents } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
@@ -21657,8 +21959,16 @@ async fn main() {
                 } else {
                     (url.as_str(), path.as_str())
                 };
-                cmd_serve_http(u, p, addr, *allow_remote_bind, auth_token.clone(), &cli, format)
-                    .await
+                cmd_serve_http(
+                    u,
+                    p,
+                    addr,
+                    *allow_remote_bind,
+                    auth_token.clone(),
+                    &cli,
+                    format,
+                )
+                .await
             }
             ServeCommands::WebDav {
                 url,
@@ -22216,7 +22526,9 @@ async fn main() {
         Commands::Import { command } => match command {
             ImportCommands::Rclone { path, json } => cmd_import_rclone(path.clone(), *json).await,
             ImportCommands::Winscp { path, json } => cmd_import_winscp(path.clone(), *json).await,
-            ImportCommands::Filezilla { path, json } => cmd_import_filezilla(path.clone(), *json).await,
+            ImportCommands::Filezilla { path, json } => {
+                cmd_import_filezilla(path.clone(), *json).await
+            }
         },
         Commands::Transfer {
             source_profile,
@@ -22548,7 +22860,10 @@ mod tests {
         let endpoint = apply_s3_profile_defaults(&mut extra, Some("google-cloud-storage"));
 
         assert_eq!(endpoint.as_deref(), Some("https://storage.googleapis.com"));
-        assert_eq!(extra.get("endpoint").map(|s| s.as_str()), Some("https://storage.googleapis.com"));
+        assert_eq!(
+            extra.get("endpoint").map(|s| s.as_str()),
+            Some("https://storage.googleapis.com")
+        );
         assert_eq!(extra.get("region").map(|s| s.as_str()), Some("auto"));
         assert_eq!(extra.get("path_style").map(|s| s.as_str()), Some("true"));
         assert_eq!(
@@ -22572,7 +22887,10 @@ mod tests {
 
         let endpoint = apply_s3_profile_defaults(&mut extra, Some("wasabi"));
 
-        assert_eq!(endpoint.as_deref(), Some("https://s3.eu-central-1.wasabisys.com"));
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://s3.eu-central-1.wasabisys.com")
+        );
         assert_eq!(
             extra.get("endpoint").map(|s| s.as_str()),
             Some("https://s3.eu-central-1.wasabisys.com")
@@ -23342,8 +23660,7 @@ mod tests {
             ),
         ];
 
-        let (normal, gated) =
-            partition_conflict_rename_downloads(to_download, &to_conflict_upload);
+        let (normal, gated) = partition_conflict_rename_downloads(to_download, &to_conflict_upload);
 
         assert_eq!(normal, vec!["remote-only.txt"]);
         assert_eq!(gated, vec!["same.txt", "nested/file.bin"]);
@@ -23367,48 +23684,94 @@ mod tests {
 
     #[test]
     fn test_should_exclude_watch_path_os_metadata() {
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/.DS_Store")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/Thumbs.db")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/desktop.ini")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/.directory")));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/.DS_Store"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/Thumbs.db"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/desktop.ini"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/.directory"
+        )));
     }
 
     #[test]
     fn test_should_exclude_watch_path_vcs_dirs() {
-        assert!(should_exclude_watch_path(std::path::Path::new("/repo/.git")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/repo/.svn")));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/repo/.git"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/repo/.svn"
+        )));
         assert!(should_exclude_watch_path(std::path::Path::new("/repo/.hg")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/repo/node_modules")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/repo/__pycache__")));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/repo/node_modules"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/repo/__pycache__"
+        )));
     }
 
     #[test]
     fn test_should_exclude_watch_path_temp_extensions() {
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.swp")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.swo")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.tmp")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.temp")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.bak")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.crdownload")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.part")));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.swp"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.swo"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.tmp"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.temp"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.bak"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.crdownload"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.part"
+        )));
     }
 
     #[test]
     fn test_should_exclude_watch_path_temp_patterns() {
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/~tempfile")));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/~tempfile"
+        )));
         assert!(should_exclude_watch_path(std::path::Path::new("/a/.#lock")));
         assert!(should_exclude_watch_path(std::path::Path::new("/a/file~")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/file.aerotmp")));
-        assert!(should_exclude_watch_path(std::path::Path::new("/a/.file.swp")));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/file.aerotmp"
+        )));
+        assert!(should_exclude_watch_path(std::path::Path::new(
+            "/a/.file.swp"
+        )));
     }
 
     #[test]
     fn test_should_exclude_watch_path_normal_files_pass() {
-        assert!(!should_exclude_watch_path(std::path::Path::new("/a/readme.md")));
-        assert!(!should_exclude_watch_path(std::path::Path::new("/a/src/main.rs")));
-        assert!(!should_exclude_watch_path(std::path::Path::new("/a/photo.jpg")));
-        assert!(!should_exclude_watch_path(std::path::Path::new("/a/data.csv")));
-        assert!(!should_exclude_watch_path(std::path::Path::new("/a/.gitignore")));
+        assert!(!should_exclude_watch_path(std::path::Path::new(
+            "/a/readme.md"
+        )));
+        assert!(!should_exclude_watch_path(std::path::Path::new(
+            "/a/src/main.rs"
+        )));
+        assert!(!should_exclude_watch_path(std::path::Path::new(
+            "/a/photo.jpg"
+        )));
+        assert!(!should_exclude_watch_path(std::path::Path::new(
+            "/a/data.csv"
+        )));
+        assert!(!should_exclude_watch_path(std::path::Path::new(
+            "/a/.gitignore"
+        )));
     }
 
     #[test]
@@ -23434,7 +23797,10 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
 
         let mut previous = std::collections::HashMap::new();
-        previous.insert("gone.txt".to_string(), (100u64, Some("2026-01-01T00:00:00".to_string())));
+        previous.insert(
+            "gone.txt".to_string(),
+            (100u64, Some("2026-01-01T00:00:00".to_string())),
+        );
 
         // File does not exist on disk
         let ghost = dir.join("gone.txt");
@@ -23453,7 +23819,10 @@ mod tests {
         std::fs::write(&file, "new content").unwrap();
 
         let mut previous = std::collections::HashMap::new();
-        previous.insert("existing.txt".to_string(), (50u64, Some("2026-01-01T00:00:00".to_string())));
+        previous.insert(
+            "existing.txt".to_string(),
+            (50u64, Some("2026-01-01T00:00:00".to_string())),
+        );
 
         let result = incremental_local_scan(&dir, std::slice::from_ref(&file), &previous, &[]);
 
@@ -23474,7 +23843,12 @@ mod tests {
         std::fs::write(&file, "log data").unwrap();
 
         let matcher = globset::Glob::new("*.log").unwrap().compile_matcher();
-        let result = incremental_local_scan(&dir, std::slice::from_ref(&file), &std::collections::HashMap::new(), &[matcher]);
+        let result = incremental_local_scan(
+            &dir,
+            std::slice::from_ref(&file),
+            &std::collections::HashMap::new(),
+            &[matcher],
+        );
 
         assert!(result.is_empty()); // excluded by glob
 

@@ -4,12 +4,12 @@
 //! Provider-backed transfer executor for the shared orchestrator.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::providers::{ProviderType, StorageProvider};
@@ -24,7 +24,7 @@ pub struct ProviderDownloadExecutor {
     app: AppHandle,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     runtime_settings: ResolvedTransferSettings,
-    cancel_flag: Arc<AtomicBool>,
+    cancel_token: CancellationToken,
 }
 
 impl ProviderDownloadExecutor {
@@ -32,13 +32,13 @@ impl ProviderDownloadExecutor {
         app: AppHandle,
         provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
         runtime_settings: ResolvedTransferSettings,
-        cancel_flag: Arc<AtomicBool>,
+        cancel_token: CancellationToken,
     ) -> Self {
         Self {
             app,
             provider,
             runtime_settings,
-            cancel_flag,
+            cancel_token,
         }
     }
 }
@@ -48,7 +48,7 @@ pub struct ProviderUploadExecutor {
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     runtime_settings: ResolvedTransferSettings,
     commit_message: Option<String>,
-    cancel_flag: Arc<AtomicBool>,
+    cancel_token: CancellationToken,
 }
 
 impl ProviderUploadExecutor {
@@ -57,14 +57,14 @@ impl ProviderUploadExecutor {
         provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
         runtime_settings: ResolvedTransferSettings,
         commit_message: Option<String>,
-        cancel_flag: Arc<AtomicBool>,
+        cancel_token: CancellationToken,
     ) -> Self {
         Self {
             app,
             provider,
             runtime_settings,
             commit_message,
-            cancel_flag,
+            cancel_token,
         }
     }
 }
@@ -102,14 +102,20 @@ impl TransferExecutor for ProviderDownloadExecutor {
         let mut last_error = String::new();
 
         for attempt in 0..=retry_policy.max_retries {
-            if self.cancel_flag.load(Ordering::Relaxed) {
+            if self.cancel_token.is_cancelled() {
                 last_error = "Transfer cancelled by user".to_string();
                 break;
             }
 
             if attempt > 0 {
                 let delay = retry_policy.delay_for_attempt(attempt);
-                tokio::time::sleep(Duration::from_millis(delay)).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(delay)) => {}
+                    _ = self.cancel_token.cancelled() => {
+                        last_error = "Transfer cancelled by user".to_string();
+                        break;
+                    }
+                }
             }
 
             let app = self.app.clone();
@@ -119,10 +125,10 @@ impl TransferExecutor for ProviderDownloadExecutor {
             let remote_path_for_progress = entry.remote_path.clone();
             let local_path = entry.local_path.clone();
             let file_size = entry.size;
-            let cancel_flag = self.cancel_flag.clone();
+            let cancel_token = self.cancel_token.clone();
             let result = {
                 let mut provider_lock = self.provider.lock().await;
-                if self.cancel_flag.load(Ordering::Relaxed) {
+                if self.cancel_token.is_cancelled() {
                     last_error = "Transfer cancelled by user".to_string();
                     break;
                 }
@@ -143,7 +149,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
                         };
                         let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> =
                             Some(Box::new(move |transferred, total| {
-                                if cancel_flag.load(Ordering::Relaxed) {
+                                if cancel_token.is_cancelled() {
                                     return;
                                 }
                                 let percentage = if total > 0 {
@@ -157,8 +163,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
                                 } else {
                                     0
                                 };
-                                let remaining =
-                                    total.max(file_size).saturating_sub(transferred);
+                                let remaining = total.max(file_size).saturating_sub(transferred);
                                 let eta = if speed > 0 {
                                     (remaining as f64 / speed as f64) as u64
                                 } else {
@@ -203,17 +208,15 @@ impl TransferExecutor for ProviderDownloadExecutor {
                                 progress_cb,
                             )
                         } else {
-                            provider.download(
-                                &remote_path,
-                                &local_path,
-                                progress_cb,
-                            )
+                            provider.download(&remote_path, &local_path, progress_cb)
                         };
 
                         // Dynamic timeout: base timeout + file_size / 50 KB/s (pessimistic slow connection)
                         // Ensures large files on slow connections (e.g. 70 MB at 180 KB/s) don't time out
                         let size_based_secs = file_size / 50_000; // 50 KB/s minimum assumed speed
-                        let effective_timeout = self.runtime_settings.timeout_seconds
+                        let effective_timeout = self
+                            .runtime_settings
+                            .timeout_seconds
                             .max(size_based_secs + self.runtime_settings.timeout_seconds);
                         match tokio::time::timeout(
                             Duration::from_secs(effective_timeout),
@@ -251,7 +254,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
                 }
                 Err(error) => {
                     last_error = error;
-                    if self.cancel_flag.load(Ordering::Relaxed) {
+                    if self.cancel_token.is_cancelled() {
                         break;
                     }
                     let err_info =
@@ -270,14 +273,15 @@ impl TransferExecutor for ProviderDownloadExecutor {
             }
         }
 
-        let failure = if self.cancel_flag.load(Ordering::Relaxed) || last_error.contains("cancelled") {
+        let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
             TransferFailure {
                 kind: crate::transfer_domain::TransferFailureKind::Cancelled,
                 message: "Transfer cancelled by user".to_string(),
                 retryable: false,
             }
         } else {
-            let error_info = crate::sync::classify_sync_error(&last_error, Some(&entry.remote_path));
+            let error_info =
+                crate::sync::classify_sync_error(&last_error, Some(&entry.remote_path));
             let failure_kind = transfer_failure_kind_from_sync(&error_info.kind);
             TransferFailure {
                 kind: failure_kind,
@@ -344,14 +348,20 @@ impl TransferExecutor for ProviderUploadExecutor {
         let mut last_error = String::new();
 
         for attempt in 0..=retry_policy.max_retries {
-            if self.cancel_flag.load(Ordering::Relaxed) {
+            if self.cancel_token.is_cancelled() {
                 last_error = "Transfer cancelled by user".to_string();
                 break;
             }
 
             if attempt > 0 {
                 let delay = retry_policy.delay_for_attempt(attempt);
-                tokio::time::sleep(Duration::from_millis(delay)).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(delay)) => {}
+                    _ = self.cancel_token.cancelled() => {
+                        last_error = "Transfer cancelled by user".to_string();
+                        break;
+                    }
+                }
             }
 
             let app = self.app.clone();
@@ -361,10 +371,10 @@ impl TransferExecutor for ProviderUploadExecutor {
             let remote_path_for_progress = entry.remote_path.clone();
             let local_path = entry.local_path.clone();
             let commit_message = self.commit_message.clone();
-            let cancel_flag = self.cancel_flag.clone();
+            let cancel_token = self.cancel_token.clone();
             let result = {
                 let mut provider_lock = self.provider.lock().await;
-                if self.cancel_flag.load(Ordering::Relaxed) {
+                if self.cancel_token.is_cancelled() {
                     last_error = "Transfer cancelled by user".to_string();
                     break;
                 }
@@ -379,7 +389,9 @@ impl TransferExecutor for ProviderUploadExecutor {
                             match github {
                                 Ok(github) => {
                                     let size_secs = file_size / 50_000;
-                                    let eff_timeout = self.runtime_settings.timeout_seconds
+                                    let eff_timeout = self
+                                        .runtime_settings
+                                        .timeout_seconds
                                         .max(size_secs + self.runtime_settings.timeout_seconds);
                                     match tokio::time::timeout(
                                         Duration::from_secs(eff_timeout),
@@ -397,13 +409,15 @@ impl TransferExecutor for ProviderUploadExecutor {
                                             eff_timeout
                                         )),
                                     }
-                                },
+                                }
                                 Err(error) => Err(error),
                             }
                         } else {
                             let ul_start = std::time::Instant::now();
                             let size_secs = file_size / 50_000;
-                            let eff_timeout = self.runtime_settings.timeout_seconds
+                            let eff_timeout = self
+                                .runtime_settings
+                                .timeout_seconds
                                 .max(size_secs + self.runtime_settings.timeout_seconds);
                             match tokio::time::timeout(
                                 Duration::from_secs(eff_timeout),
@@ -411,7 +425,7 @@ impl TransferExecutor for ProviderUploadExecutor {
                                     &local_path,
                                     &remote_path,
                                     Some(Box::new(move |transferred, total| {
-                                        if cancel_flag.load(Ordering::Relaxed) {
+                                        if cancel_token.is_cancelled() {
                                             return;
                                         }
 
@@ -421,9 +435,18 @@ impl TransferExecutor for ProviderUploadExecutor {
                                             0
                                         };
                                         let elapsed = ul_start.elapsed().as_secs_f64();
-                                        let speed = if elapsed > 0.1 { (transferred as f64 / elapsed) as u64 } else { 0 };
-                                        let remaining = total.max(file_size).saturating_sub(transferred);
-                                        let eta = if speed > 0 { (remaining as f64 / speed as f64) as u64 } else { 0 };
+                                        let speed = if elapsed > 0.1 {
+                                            (transferred as f64 / elapsed) as u64
+                                        } else {
+                                            0
+                                        };
+                                        let remaining =
+                                            total.max(file_size).saturating_sub(transferred);
+                                        let eta = if speed > 0 {
+                                            (remaining as f64 / speed as f64) as u64
+                                        } else {
+                                            0
+                                        };
 
                                         let _ = app.emit(
                                             "transfer_event",
@@ -454,10 +477,9 @@ impl TransferExecutor for ProviderUploadExecutor {
                             .await
                             {
                                 Ok(result) => result.map_err(|e| e.to_string()),
-                                Err(_) => Err(format!(
-                                    "Upload timed out after {} seconds",
-                                    eff_timeout
-                                )),
+                                Err(_) => {
+                                    Err(format!("Upload timed out after {} seconds", eff_timeout))
+                                }
                             }
                         }
                     }
@@ -483,7 +505,7 @@ impl TransferExecutor for ProviderUploadExecutor {
                 }
                 Err(error) => {
                     last_error = error;
-                    if self.cancel_flag.load(Ordering::Relaxed) {
+                    if self.cancel_token.is_cancelled() {
                         break;
                     }
                     let err_info =
@@ -502,7 +524,7 @@ impl TransferExecutor for ProviderUploadExecutor {
             }
         }
 
-        let failure = if self.cancel_flag.load(Ordering::Relaxed) || last_error.contains("cancelled") {
+        let failure = if self.cancel_token.is_cancelled() || last_error.contains("cancelled") {
             TransferFailure {
                 kind: crate::transfer_domain::TransferFailureKind::Cancelled,
                 message: "Transfer cancelled by user".to_string(),

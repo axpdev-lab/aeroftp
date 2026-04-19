@@ -3,6 +3,7 @@
 
 import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { guardedUnlisten } from './useTauriListener';
 import { TransferEvent, TransferProgress } from '../types';
 import { dispatchTransferToast } from '../components/Transfer/TransferToastContainer';
 import type { TransferToastLane, TransferToastState } from '../components/Transfer';
@@ -264,6 +265,47 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       const { t, activityLog, humanLog, transferQueue, notify, setActiveTransfer } = optRef.current;
       const data = event.payload;
       window.dispatchEvent(new CustomEvent<TransferEvent>(TRANSFER_EVENT_BRIDGE, { detail: data }));
+
+      // Cross-profile transfers render progress *inside* CrossProfilePanel.
+      // Log to Activity Log (the user wants traceability), but skip the floating
+      // toast and the auto-opened queue — those compete with the panel's own UI.
+      if (data.direction === 'cross-profile') {
+        if (data.event_type === 'start') {
+          const src = data.message?.split(' -> ')[0] || '';
+          const dst = data.message?.split(' -> ')[1] || '';
+          const logId = humanLog.logRaw(
+            'activity.crossprofile_start',
+            'INFO',
+            { count: data.filename, source: src, dest: dst },
+            'running',
+          );
+          transferIdToLogId.current.set(data.transfer_id, logId);
+        } else if (data.event_type === 'file_complete' && data.progress) {
+          humanLog.logRaw(
+            'activity.crossprofile_file_success',
+            'UPLOAD',
+            { filename: data.filename, index: data.progress.transferred, total: data.progress.total },
+            'success',
+          );
+        } else if (data.event_type === 'file_error') {
+          humanLog.logRaw(
+            'activity.crossprofile_file_error',
+            'ERROR',
+            { filename: data.filename, error: data.message || '' },
+            'error',
+          );
+        } else if (data.event_type === 'complete' || data.event_type === 'cancelled') {
+          const logId = transferIdToLogId.current.get(data.transfer_id);
+          if (logId) {
+            activityLog.updateEntry(logId, {
+              status: data.event_type === 'cancelled' ? 'error' : 'success',
+              message: data.message || '',
+            });
+            transferIdToLogId.current.delete(data.transfer_id);
+          }
+        }
+        return;
+      }
 
       // ========== TRANSFER EVENTS (download/upload) ==========
       if (data.event_type === 'start') {
@@ -797,11 +839,20 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
       }
     });
+    const disposeUnlisten = guardedUnlisten(unlisten);
+    const disposeBatchStarted = guardedUnlisten(unlistenBatchStarted);
+
     return () => {
+      // Clear the debounced toast dismiss so it cannot fire after unmount
+      // (would otherwise call setActiveTransfer on a dead tree).
+      if (clearToastTimer.current) {
+        clearTimeout(clearToastTimer.current);
+        clearToastTimer.current = null;
+      }
       for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
       toastLaneCleanupTimers.current.clear();
-      unlisten.then(fn => fn());
-      unlistenBatchStarted.then(fn => fn());
+      disposeUnlisten();
+      disposeBatchStarted();
     };
   // Subscribe once, never re-subscribe. All mutable values accessed via optRef.current.
   // eslint-disable-next-line react-hooks/exhaustive-deps

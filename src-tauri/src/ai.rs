@@ -756,14 +756,17 @@ mod openai_compat {
                 content: m.to_openai_content(),
                 tool_call_id: m.tool_call_id.clone(),
                 tool_calls: m.tool_calls_echo.as_ref().map(|echos| {
-                    echos.iter().map(|tc| OpenAIToolCallSer {
-                        id: tc.id.clone(),
-                        call_type: "function".to_string(),
-                        function: OpenAIToolCallFnSer {
-                            name: tc.name.clone(),
-                            arguments: tc.arguments.clone(),
-                        },
-                    }).collect()
+                    echos
+                        .iter()
+                        .map(|tc| OpenAIToolCallSer {
+                            id: tc.id.clone(),
+                            call_type: "function".to_string(),
+                            function: OpenAIToolCallFnSer {
+                                name: tc.name.clone(),
+                                arguments: tc.arguments.clone(),
+                            },
+                        })
+                        .collect()
                 }),
             })
             .collect();

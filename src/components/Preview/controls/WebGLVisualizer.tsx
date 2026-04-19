@@ -131,9 +131,11 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
     const startTimeRef = useRef<number>(0);
     const prevBassEnergyRef = useRef<number>(0);
 
-    // Track initial shader to prevent double compilation on mount
-    const initialShaderRef = useRef<WebGLShaderName>(shader);
-    const initDoneRef = useRef(false);
+    // Last shader successfully compiled. The init effect writes to this
+    // after its compile, and the shader-change effect reads it and skips
+    // when the prop matches — no self-mutating sentinel, no spurious
+    // recompile on remounts that happen to have the same shader prop.
+    const compiledShaderRef = useRef<WebGLShaderName | null>(null);
 
     // Error state for UI feedback
     const [error, setError] = useState<string | null>(null);
@@ -210,7 +212,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
             gl.bindVertexArray(null);
 
             setError(null);
-            initDoneRef.current = true;
+            compiledShaderRef.current = shader;
         } catch (e) {
             const msg = e instanceof Error ? e.message : 'Shader compilation failed';
             setError(msg);
@@ -251,9 +253,10 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
         const gl = glRef.current;
         if (!gl || !vsRef.current) return;
 
-        // Skip on first mount — init effect already compiled the initial shader
-        if (shader === initialShaderRef.current && initDoneRef.current) {
-            initialShaderRef.current = '' as WebGLShaderName; // Allow future recompilation to same shader
+        // Skip if the currently-active program was compiled from the same
+        // shader. Avoids a spurious recompile on the synchronous useEffect
+        // run that follows the init effect's own compile.
+        if (compiledShaderRef.current === shader) {
             return;
         }
 
@@ -282,6 +285,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
 
             // Re-get uniform locations
             uniformsRef.current = getUniformLocations(gl, program);
+            compiledShaderRef.current = shader;
 
             setError(null);
         } catch (e) {

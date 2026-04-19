@@ -10,6 +10,7 @@ import { readTextFile } from '@tauri-apps/plugin-fs';
 import { AIChat } from './AIChat';
 import { useTranslation } from '../../i18n';
 import type { EffectiveTheme } from '../../hooks/useTheme';
+import { usePointerDrag } from '../../hooks/usePointerDrag';
 
 interface DevToolsV2Props {
     isOpen: boolean;
@@ -89,8 +90,6 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     const [containerWidth, setContainerWidth] = useState(window.innerWidth);
     const [isMaximized, setIsMaximized] = useState(false);
     const [height, setHeight] = useState(500);
-    const isDragging = useRef(false);
-    const isHDragging = useRef(false);
     const [panelRatios, setPanelRatios] = useState<number[]>([]);
 
     // Theme-aware classes based on appTheme
@@ -253,70 +252,68 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         return idx >= 0 && idx < visiblePanels.length - 1;
     };
 
-    // Vertical resize handling
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Vertical resize: usePointerDrag captures on the handle so unmount
+    // mid-drag releases pointer events cleanly (no global document listener
+    // to forget removing).
+    const vDragRef = useRef<{ y: number; startHeight: number } | null>(null);
+    const { onPointerDown: onVResizePointerDown } = usePointerDrag({
+        onPointerMove: (e) => {
+            const s = vDragRef.current;
+            if (!s) return;
+            const delta = s.y - e.clientY;
+            const maxHeight = window.innerHeight - 120;
+            setHeight(Math.min(maxHeight, Math.max(200, s.startHeight + delta)));
+        },
+        onPointerUp: () => { vDragRef.current = null; },
+        onPointerCancel: () => { vDragRef.current = null; },
+    });
+    const handleMouseDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
-        isDragging.current = true;
-        const startY = e.clientY;
-        const startHeight = height;
+        vDragRef.current = { y: e.clientY, startHeight: height };
+        onVResizePointerDown(e);
+    }, [height, onVResizePointerDown]);
 
-        const handleMouseMove = (moveEvent: MouseEvent) => {
-            if (!isDragging.current) return;
-            const delta = startY - moveEvent.clientY;
-            const maxHeight = window.innerHeight - 120; // Leave space for header/statusbar
-            const newHeight = Math.min(maxHeight, Math.max(200, startHeight + delta));
-            setHeight(newHeight);
-        };
-
-        const handleMouseUp = () => {
-            isDragging.current = false;
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-    }, [height]);
-
-    // Horizontal panel resize handler
-    const handlePanelResize = useCallback((handleIndex: number) => (e: React.MouseEvent) => {
-        e.preventDefault();
-        isHDragging.current = true;
-        const startX = e.clientX;
-        const startRatios = [...panelRatios];
-        const containerW = containerRef.current?.offsetWidth || window.innerWidth;
-        const MIN_RATIO = 0.15;
-
-        document.body.style.userSelect = 'none';
-        document.body.style.cursor = 'col-resize';
-
-        const onMove = (moveEvent: MouseEvent) => {
-            if (!isHDragging.current) return;
-            const deltaPct = (moveEvent.clientX - startX) / containerW;
-
-            let left = startRatios[handleIndex] + deltaPct;
-            let right = startRatios[handleIndex + 1] - deltaPct;
-
+    // Horizontal panel resize: same pattern, plus explicit body style cleanup
+    // on pointer up/cancel.
+    const hDragRef = useRef<{ x: number; startRatios: number[]; handleIndex: number; containerW: number } | null>(null);
+    const { onPointerDown: onHResizePointerDown } = usePointerDrag({
+        onPointerMove: (e) => {
+            const s = hDragRef.current;
+            if (!s) return;
+            const MIN_RATIO = 0.15;
+            const deltaPct = (e.clientX - s.x) / s.containerW;
+            let left = s.startRatios[s.handleIndex] + deltaPct;
+            let right = s.startRatios[s.handleIndex + 1] - deltaPct;
             if (left < MIN_RATIO) { right += left - MIN_RATIO; left = MIN_RATIO; }
             if (right < MIN_RATIO) { left += right - MIN_RATIO; right = MIN_RATIO; }
-
-            const newRatios = [...startRatios];
-            newRatios[handleIndex] = left;
-            newRatios[handleIndex + 1] = right;
+            const newRatios = [...s.startRatios];
+            newRatios[s.handleIndex] = left;
+            newRatios[s.handleIndex + 1] = right;
             setPanelRatios(newRatios);
-        };
-
-        const onUp = () => {
-            isHDragging.current = false;
+        },
+        onPointerUp: () => {
+            hDragRef.current = null;
             document.body.style.userSelect = '';
             document.body.style.cursor = '';
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
+        },
+        onPointerCancel: () => {
+            hDragRef.current = null;
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+        },
+    });
+    const handlePanelResize = useCallback((handleIndex: number) => (e: React.PointerEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        hDragRef.current = {
+            x: e.clientX,
+            startRatios: [...panelRatios],
+            handleIndex,
+            containerW: containerRef.current?.offsetWidth || window.innerWidth,
         };
-
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-    }, [panelRatios]);
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
+        onHResizePointerDown(e);
+    }, [panelRatios, onHResizePointerDown]);
 
     const togglePanel = (panel: keyof PanelVisibility) => {
         setPanels(prev => ({ ...prev, [panel]: !prev[panel] }));
@@ -366,7 +363,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         >
             {/* Resize handle */}
             <div
-                onMouseDown={handleMouseDown}
+                onPointerDown={handleMouseDown}
                 className={`h-2 ${theme.resizeHandle} cursor-ns-resize transition-colors flex-shrink-0 flex items-center justify-center group`}
             >
                 <div className={`w-10 h-0.5 rounded-full ${theme.resizeBar} transition-colors`} />
@@ -477,7 +474,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                         {/* Resize handle after editor */}
                         {visiblePanels.includes('editor') && isNotLastVisible('editor') && (
                             <div
-                                onMouseDown={handlePanelResize(visiblePanels.indexOf('editor'))}
+                                onPointerDown={handlePanelResize(visiblePanels.indexOf('editor'))}
                                 className={`w-1 cursor-col-resize ${theme.resizeHandle} transition-colors flex-shrink-0 group flex items-center justify-center`}
                             >
                                 <div className={`w-0.5 h-8 rounded-full ${theme.resizeBar} transition-opacity`} />
@@ -502,7 +499,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                         {/* Resize handle after terminal */}
                         {visiblePanels.includes('terminal') && isNotLastVisible('terminal') && (
                             <div
-                                onMouseDown={handlePanelResize(visiblePanels.indexOf('terminal'))}
+                                onPointerDown={handlePanelResize(visiblePanels.indexOf('terminal'))}
                                 className={`w-1 cursor-col-resize ${theme.resizeHandle} transition-colors flex-shrink-0 group flex items-center justify-center`}
                             >
                                 <div className={`w-0.5 h-8 rounded-full ${theme.resizeBar} transition-opacity`} />

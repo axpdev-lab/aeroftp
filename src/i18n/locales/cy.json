@@ -452,7 +452,7 @@
             "modeUnavailable": "Mae rhagosodiadau modd trosglwyddo ar gael ar hyn o bryd ar gyfer FTP/FTPS yn unig",
             "crossProfile": {
                 "title": "Trosglwyddo Traws-Broffil",
-                "subtitle": "Panel arnofiol: mae'r ciw, log a chynnydd yn parhau i fod yn weladwy tra'i fod yn rhedeg.",
+                "subtitle": "Copïwch ffeiliau'n uniongyrchol rhwng dau weinydd wedi'u cadw.",
                 "closeAria": "Cau panel trosglwyddo traws-broffil",
                 "source": "Ffynhonnell",
                 "destination": "Cyrchfan",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Maint",
                 "executeTransfer": "Gweithredu'r Trosglwyddiad",
                 "transferInProgress": "Trosglwyddiad ar waith",
-                "transferHint": "Cadwch lygad ar y ciw, log gweithgaredd a chynnydd isod. Mae'r panel hwn yn fwriadol ysgafn.",
+                "transferHint": "Mae'r cynnydd byw yn cael ei ddangos isod. Mae'r hanes manwl yn aros yn y Log Gweithgaredd.",
                 "summary": "{transferred} wedi'u trosglwyddo, {skipped} wedi'u hepgor, {failed} wedi methu",
                 "summaryMeta": "{size} mewn {seconds}s",
-                "newTransfer": "Trosglwyddiad Newydd"
+                "newTransfer": "Trosglwyddiad Newydd",
+                "preparing": "Yn paratoi'r trosglwyddiad…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} wedi'i dynnu",
             "release_asset_download_start": "[{provider}] Yn lawrlwytho release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} wedi'i lawrlwytho",
-            "release_asset_download_error": "[{provider}] Methwyd lawrlwytho release asset {filename}"
+            "release_asset_download_error": "[{provider}] Methwyd lawrlwytho release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Dechrau trosglwyddo {count} o {source} i {dest}",
+            "crossprofile_file_success": "[Cross-profile] Copïwyd {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Methiant ar {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Amserlen lled band",
             "bwScheduleOff": "Llaw (defnyddiwch y terfynau uchod)",
             "bwScheduleOffice": "Oriau swyddfa (arafu 08-18)",
-            "bwScheduleNight": "Modd nos (arafu 18-08)"
+            "bwScheduleNight": "Modd nos (arafu 18-08)",
+            "allInSync": "Mae'r holl ffeiliau wedi'u cysoni — dim i'w drosglwyddo",
+            "nothingInDirection": "Cafwyd gwahaniaethau, ond nid oes yr un yn cyd-fynd â'r cyfeiriad a ddewiswyd. Rhowch gynnig ar Two-way i weld pob newid."
         },
         "ui": {
             "syncing": "Yn cysoni...",

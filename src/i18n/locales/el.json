@@ -452,7 +452,7 @@
             "modeUnavailable": "Οι προεπιλογές λειτουργίας μεταφοράς είναι διαθέσιμες μόνο για FTP/FTPS",
             "crossProfile": {
                 "title": "Μεταφορά μεταξύ προφίλ",
-                "subtitle": "Αιωρούμενο πάνελ: η ουρά, το αρχείο καταγραφής και η πρόοδος παραμένουν ορατά κατά την εκτέλεση.",
+                "subtitle": "Αντιγράψτε αρχεία απευθείας μεταξύ δύο αποθηκευμένων διακομιστών.",
                 "closeAria": "Κλείσιμο πάνελ μεταφοράς μεταξύ προφίλ",
                 "source": "Πηγή",
                 "destination": "Προορισμός",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Μέγεθος",
                 "executeTransfer": "Εκτέλεση μεταφοράς",
                 "transferInProgress": "Μεταφορά σε εξέλιξη",
-                "transferHint": "Παρακολουθήστε την ουρά, το αρχείο καταγραφής και την πρόοδο παρακάτω. Αυτό το πάνελ είναι σκόπιμα ελαφρύ.",
+                "transferHint": "Η πρόοδος σε πραγματικό χρόνο εμφανίζεται παρακάτω. Το λεπτομερές ιστορικό παραμένει στο Αρχείο καταγραφής δραστηριότητας.",
                 "summary": "{transferred} μεταφέρθηκαν, {skipped} παραλείφθηκαν, {failed} απέτυχαν",
                 "summaryMeta": "{size} σε {seconds}s",
-                "newTransfer": "Νέα μεταφορά"
+                "newTransfer": "Νέα μεταφορά",
+                "preparing": "Προετοιμασία μεταφοράς…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Το asset {filename} αφαιρέθηκε",
             "release_asset_download_start": "[{provider}] Λήψη release asset {filename}...",
             "release_asset_download_success": "[{provider}] Το release asset {filename} λήφθηκε",
-            "release_asset_download_error": "[{provider}] Αποτυχία λήψης release asset {filename}"
+            "release_asset_download_error": "[{provider}] Αποτυχία λήψης release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Έναρξη μεταφοράς {count} από {source} σε {dest}",
+            "crossprofile_file_success": "[Cross-profile] Αντιγράφηκε {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Σφάλμα στο {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Πρόγραμμα εύρους ζώνης",
             "bwScheduleOff": "Χειροκίνητο (χρήση ορίων παραπάνω)",
             "bwScheduleOffice": "Ώρες γραφείου (περιορισμός 08-18)",
-            "bwScheduleNight": "Νυχτερινή λειτουργία (περιορισμός 18-08)"
+            "bwScheduleNight": "Νυχτερινή λειτουργία (περιορισμός 18-08)",
+            "allInSync": "Όλα τα αρχεία είναι συγχρονισμένα — τίποτα για μεταφορά",
+            "nothingInDirection": "Βρέθηκαν διαφορές, αλλά καμία δεν ταιριάζει με την επιλεγμένη κατεύθυνση. Δοκιμάστε Two-way για να δείτε όλες τις αλλαγές."
         },
         "ui": {
             "syncing": "Συγχρονισμός...",

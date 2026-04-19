@@ -244,7 +244,11 @@ fn chunk_nonce(file_nonce: &[u8; FILE_NONCE_SIZE], chunk_num: u64) -> [u8; FILE_
 /// Decrypt a filename encrypted with rclone's `standard` mode.
 ///
 /// Flow: Base32-decode -> EME-decrypt with name_key + dir_iv -> PKCS#7 unpad -> UTF-8.
-pub fn decrypt_name(name_key: &[u8; 32], dir_iv: &[u8; 16], encrypted_name: &str) -> Result<String, String> {
+pub fn decrypt_name(
+    name_key: &[u8; 32],
+    dir_iv: &[u8; 16],
+    encrypted_name: &str,
+) -> Result<String, String> {
     // 1. Base32hex decode (rclone uses uppercase base32hex, no padding)
     let ciphertext = base32hex_decode(encrypted_name)?;
 
@@ -268,7 +272,11 @@ pub fn decrypt_name(name_key: &[u8; 32], dir_iv: &[u8; 16], encrypted_name: &str
 
 /// Encrypt a filename with rclone's `standard` mode (for test verification).
 #[cfg(test)]
-pub fn encrypt_name(name_key: &[u8; 32], dir_iv: &[u8; 16], plain_name: &str) -> Result<String, String> {
+pub fn encrypt_name(
+    name_key: &[u8; 32],
+    dir_iv: &[u8; 16],
+    plain_name: &str,
+) -> Result<String, String> {
     // 1. PKCS#7 pad
     let padded = pkcs7_pad(plain_name.as_bytes());
 
@@ -295,7 +303,12 @@ fn eme_encrypt(key: &[u8; 32], tweak: &[u8; 16], data: &[u8]) -> Result<Vec<u8>,
 
 /// Core EME transform (encrypt or decrypt).
 /// Ported verbatim from rfjakob/eme (Go), Halevi-Rogaway 2003.
-fn eme_transform(key: &[u8; 32], tweak: &[u8; 16], data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
+fn eme_transform(
+    key: &[u8; 32],
+    tweak: &[u8; 16],
+    data: &[u8],
+    encrypt: bool,
+) -> Result<Vec<u8>, String> {
     let m = data.len() / AES_BLOCK;
     if m == 0 || data.len() % AES_BLOCK != 0 {
         return Err("EME: data must be a non-empty multiple of 16 bytes".into());
@@ -314,7 +327,11 @@ fn eme_transform(key: &[u8; 32], tweak: &[u8; 16], data: &[u8], encrypt: bool) -
     // Steps 1-2: PPj = Pj XOR L_table[j], then PPPj = AES(K, PPj) or AES_dec
     let mut ppj = [0u8; AES_BLOCK];
     for j in 0..m {
-        xor_into(&mut ppj, &data[j * AES_BLOCK..(j + 1) * AES_BLOCK], &l_table[j]);
+        xor_into(
+            &mut ppj,
+            &data[j * AES_BLOCK..(j + 1) * AES_BLOCK],
+            &l_table[j],
+        );
         let mut block = ppj;
         if encrypt {
             bc.encrypt_block((&mut block).into());
@@ -741,7 +758,9 @@ mod tests {
         let plaintext = b"Hello, rclone crypt!";
         let file_nonce = [0xABu8; FILE_NONCE_SIZE];
         let nonce0 = chunk_nonce(&file_nonce, 0);
-        let encrypted_chunk = cipher.encrypt((&nonce0).into(), plaintext.as_ref()).unwrap();
+        let encrypted_chunk = cipher
+            .encrypt((&nonce0).into(), plaintext.as_ref())
+            .unwrap();
 
         // Build file: magic + nonce + chunk
         let mut file_data = Vec::new();

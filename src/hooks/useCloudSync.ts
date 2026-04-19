@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { createTauriListener } from './useTauriListener';
 import { logger } from '../utils/logger';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
@@ -91,8 +91,9 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     let lastCloudLogTime = 0;
     let cloudSyncLogId: string | null = null;
 
-    // Listen for cloud sync status events
-    const unlistenStatus = listen<{ status: string; message: string }>('cloud-sync-status', (event) => {
+    // Listen for cloud sync status events — createTauriListener protects
+    // against the orphan-listener race when cleanup fires before `listen()` resolves.
+    const unlistenStatus = createTauriListener<{ status: string; message: string }>('cloud-sync-status', (event) => {
       const { status, message } = event.payload;
       const { activityLog: al, humanLog: hl, t: tr, cloudServerName: csn } = callbacksRef.current;
       logger.debug('Cloud status:', status, message);
@@ -141,7 +142,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     });
 
     // Listen for tray menu events
-    const unlistenMenu = listen<string>('menu-event', async (event) => {
+    const unlistenMenu = createTauriListener<string>('menu-event', async (event) => {
       const action = event.payload;
       const { activityLog: al, checkForUpdate: cfu, t: tr } = callbacksRef.current;
       logger.debug('Tray menu action:', action);
@@ -178,7 +179,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     // Listen for cloud sync completion — update the existing "Syncing..." log entry
     // instead of creating a duplicate. Clear cloudSyncLogId so the later 'active' status
     // event doesn't create yet another update.
-    const unlistenSyncComplete = listen<{
+    const unlistenSyncComplete = createTauriListener<{
       uploaded: number;
       downloaded: number;
       errors: string[];
@@ -229,9 +230,9 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     });
 
     return () => {
-      unlistenStatus.then(fn => fn());
-      unlistenMenu.then(fn => fn());
-      unlistenSyncComplete.then(fn => fn());
+      unlistenStatus();
+      unlistenMenu();
+      unlistenSyncComplete();
     };
   }, []);
 

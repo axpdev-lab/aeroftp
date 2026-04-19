@@ -452,7 +452,7 @@
             "modeUnavailable": "ট্রান্সফার মোড প্রিসেট বর্তমানে শুধুমাত্র FTP/FTPS-এর জন্য উপলব্ধ",
             "crossProfile": {
                 "title": "ক্রস-প্রোফাইল ট্রান্সফার",
-                "subtitle": "ভাসমান প্যানেল: কিউ, লগ এবং অগ্রগতি চলাকালীন দৃশ্যমান থাকে।",
+                "subtitle": "দুটি সংরক্ষিত সার্ভারের মধ্যে সরাসরি ফাইল কপি করুন।",
                 "closeAria": "ক্রস-প্রোফাইল ট্রান্সফার প্যানেল বন্ধ করুন",
                 "source": "উৎস",
                 "destination": "গন্তব্য",
@@ -474,10 +474,11 @@
                 "sizeColumn": "আকার",
                 "executeTransfer": "ট্রান্সফার শুরু করুন",
                 "transferInProgress": "ট্রান্সফার চলছে",
-                "transferHint": "নীচে কিউ, কার্যকলাপ লগ এবং অগ্রগতির দিকে নজর রাখুন। এই প্যানেলটি সচেতনভাবে হালকা রাখা হয়েছে।",
+                "transferHint": "রিয়েল-টাইম অগ্রগতি নীচে দেখানো হয়েছে। বিস্তারিত ইতিহাস অ্যাক্টিভিটি লগে থাকে।",
                 "summary": "{transferred} স্থানান্তরিত, {skipped} এড়িয়ে যাওয়া, {failed} ব্যর্থ",
                 "summaryMeta": "{size} {seconds}s-এ",
-                "newTransfer": "নতুন ট্রান্সফার"
+                "newTransfer": "নতুন ট্রান্সফার",
+                "preparing": "স্থানান্তর প্রস্তুত করা হচ্ছে…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} সরানো হয়েছে",
             "release_asset_download_start": "[{provider}] Release asset {filename} ডাউনলোড হচ্ছে...",
             "release_asset_download_success": "[{provider}] Release asset {filename} ডাউনলোড হয়েছে",
-            "release_asset_download_error": "[{provider}] Release asset {filename} ডাউনলোড ব্যর্থ হয়েছে"
+            "release_asset_download_error": "[{provider}] Release asset {filename} ডাউনলোড ব্যর্থ হয়েছে",
+            "crossprofile_start": "[Cross-profile] {source} থেকে {dest}-এ {count} স্থানান্তর শুরু করা হচ্ছে",
+            "crossprofile_file_success": "[Cross-profile] কপি করা হয়েছে {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] {filename}-এ ব্যর্থ: {error}"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "ব্যান্ডউইথ সময়সূচি",
             "bwScheduleOff": "ম্যানুয়াল (উপরের সীমা ব্যবহার করুন)",
             "bwScheduleOffice": "অফিস সময় (throttle 08-18)",
-            "bwScheduleNight": "রাত মোড (throttle 18-08)"
+            "bwScheduleNight": "রাত মোড (throttle 18-08)",
+            "allInSync": "সমস্ত ফাইল সিঙ্কে রয়েছে — স্থানান্তর করার কিছু নেই",
+            "nothingInDirection": "পার্থক্য পাওয়া গেছে, কিন্তু কোনোটিই নির্বাচিত দিকের সাথে মেলে না। সব পরিবর্তন দেখতে Two-way চেষ্টা করুন।"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",

@@ -3,7 +3,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { guardedUnlisten } from '../hooks/useTauriListener';
+import { listen } from '@tauri-apps/api/event';
 import { SyncSchedule, TimeWindow, Weekday } from '../types';
 import { useTranslation } from '../i18n';
 import { Clock, Play, Pause, CalendarDays } from 'lucide-react';
@@ -55,7 +56,6 @@ export const SyncScheduler: React.FC<SyncSchedulerProps> = ({ disabled }) => {
     });
     const [nextSyncSecs, setNextSyncSecs] = useState<number | null>(null);
     const [showTimeWindow, setShowTimeWindow] = useState(false);
-    const unlistenRef = useRef<UnlistenFn | null>(null);
 
     // Load schedule on mount
     useEffect(() => {
@@ -69,25 +69,22 @@ export const SyncScheduler: React.FC<SyncSchedulerProps> = ({ disabled }) => {
             })
             .catch(() => {});
 
-        // Listen for schedule events from backend
-        listen<{ next_sync_in_secs?: number; enabled?: boolean; paused?: boolean }>(
-            'cloud-sync-schedule',
-            (event) => {
-                if (event.payload.next_sync_in_secs != null) {
-                    setNextSyncSecs(event.payload.next_sync_in_secs);
-                }
-            }
-        ).then(fn => {
-            if (mounted) {
-                unlistenRef.current = fn;
-            } else {
-                fn(); // Already unmounted, clean up immediately
-            }
-        });
+        // Listen for schedule events from backend — guardedUnlisten handles
+        // the unmount-before-resolve race without bespoke mounted tracking.
+        const disposeListener = guardedUnlisten(
+            listen<{ next_sync_in_secs?: number; enabled?: boolean; paused?: boolean }>(
+                'cloud-sync-schedule',
+                (event) => {
+                    if (event.payload.next_sync_in_secs != null) {
+                        setNextSyncSecs(event.payload.next_sync_in_secs);
+                    }
+                },
+            ),
+        );
 
         return () => {
             mounted = false;
-            unlistenRef.current?.();
+            disposeListener();
         };
     }, []);
 

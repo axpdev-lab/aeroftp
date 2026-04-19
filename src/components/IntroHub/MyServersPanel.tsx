@@ -144,7 +144,13 @@ export function MyServersPanel({
             scrollTimeout.current = window.setTimeout(() => el.classList.remove('is-scrolling'), 600);
         };
         el.addEventListener('scroll', onScroll, { passive: true });
-        return () => el.removeEventListener('scroll', onScroll);
+        return () => {
+            el.removeEventListener('scroll', onScroll);
+            if (scrollTimeout.current) {
+                window.clearTimeout(scrollTimeout.current);
+                scrollTimeout.current = null;
+            }
+        };
     }, [viewMode]); // re-attach when container swaps between grid/list
 
     useEffect(() => {

@@ -22,8 +22,8 @@ use tracing::info;
 
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
-    sanitize_api_error, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
-    StorageProvider, AEROFTP_USER_AGENT,
+    sanitize_api_error, ProviderConfig, ProviderError, ProviderType, RemoteEntry, StorageProvider,
+    AEROFTP_USER_AGENT,
 };
 
 const PHOTOS_API_BASE: &str = "https://photoslibrary.googleapis.com/v1";
@@ -303,10 +303,7 @@ impl GooglePhotosProvider {
     }
 
     /// List media items inside an album (paginated).
-    async fn list_media_in_album(
-        &self,
-        album_id: &str,
-    ) -> Result<Vec<MediaItem>, ProviderError> {
+    async fn list_media_in_album(&self, album_id: &str) -> Result<Vec<MediaItem>, ProviderError> {
         let mut all_items = Vec::new();
         let mut page_token: Option<String> = None;
 
@@ -463,11 +460,7 @@ impl GooglePhotosProvider {
     }
 
     /// Convert a `MediaItem` into a `RemoteEntry`, caching the baseUrl.
-    fn media_to_remote_entry(
-        &mut self,
-        item: &MediaItem,
-        path_prefix: &str,
-    ) -> RemoteEntry {
+    fn media_to_remote_entry(&mut self, item: &MediaItem, path_prefix: &str) -> RemoteEntry {
         let filename = item
             .filename
             .clone()
@@ -485,11 +478,7 @@ impl GooglePhotosProvider {
                 .insert(item.id.clone(), (base_url.clone(), Instant::now()));
         }
 
-        let path = format!(
-            "{}/{}",
-            path_prefix.trim_end_matches('/'),
-            filename
-        );
+        let path = format!("{}/{}", path_prefix.trim_end_matches('/'), filename);
 
         let mut metadata = HashMap::new();
         metadata.insert("id".to_string(), item.id.clone());
@@ -592,17 +581,12 @@ impl GooglePhotosProvider {
                     .map(|f| f == filename)
                     .unwrap_or(false)
             })
-            .ok_or_else(|| {
-                ProviderError::NotFound(format!("{}/{}", folder, filename))
-            })
+            .ok_or_else(|| ProviderError::NotFound(format!("{}/{}", folder, filename)))
     }
 
     /// Get a fresh (non-expired) `baseUrl` for a media item, re-fetching from
     /// the API when the cached value has exceeded `BASE_URL_TTL_SECS`.
-    async fn get_fresh_base_url(
-        &mut self,
-        media_id: &str,
-    ) -> Result<String, ProviderError> {
+    async fn get_fresh_base_url(&mut self, media_id: &str) -> Result<String, ProviderError> {
         // Check cache
         if let Some((url, fetched_at)) = self.base_url_cache.get(media_id) {
             if fetched_at.elapsed().as_secs() < BASE_URL_TTL_SECS {
@@ -902,11 +886,7 @@ impl StorageProvider for GooglePhotosProvider {
                 format!("/{}", parts.join("/"))
             }
         } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                path
-            )
+            format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
 
         // Validate the path exists by attempting to list it
@@ -961,9 +941,7 @@ impl StorageProvider for GooglePhotosProvider {
             ProviderError::InvalidPath("Path must point to a media file, not a folder".to_string())
         })?;
 
-        let item = self
-            .resolve_media_item(folder_name, filename)
-            .await?;
+        let item = self.resolve_media_item(folder_name, filename).await?;
 
         let is_video = Self::is_video_item(&item);
         let media_id = item.id.clone();
@@ -1000,8 +978,7 @@ impl StorageProvider for GooglePhotosProvider {
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1032,9 +1009,7 @@ impl StorageProvider for GooglePhotosProvider {
             ProviderError::InvalidPath("Cannot download root directory".to_string())
         })?;
         let filename = filename.ok_or_else(|| {
-            ProviderError::InvalidPath(
-                "Path must point to a media file, not a folder".to_string(),
-            )
+            ProviderError::InvalidPath("Path must point to a media file, not a folder".to_string())
         })?;
 
         let item = self.resolve_media_item(folder_name, filename).await?;
@@ -1064,10 +1039,7 @@ impl StorageProvider for GooglePhotosProvider {
         .await
     }
 
-    async fn download_to_bytes(
-        &mut self,
-        remote_path: &str,
-    ) -> Result<Vec<u8>, ProviderError> {
+    async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let (folder, filename) = Self::parse_path(remote_path);
         let folder_name = folder.ok_or_else(|| {
             ProviderError::InvalidPath("Cannot download root directory".to_string())
@@ -1076,9 +1048,7 @@ impl StorageProvider for GooglePhotosProvider {
             ProviderError::InvalidPath("Path must point to a media file, not a folder".to_string())
         })?;
 
-        let item = self
-            .resolve_media_item(folder_name, filename)
-            .await?;
+        let item = self.resolve_media_item(folder_name, filename).await?;
 
         let is_video = Self::is_video_item(&item);
         let media_id = item.id.clone();
@@ -1222,10 +1192,7 @@ impl StorageProvider for GooglePhotosProvider {
                 if let Some(ref st) = result.status {
                     if let Some(code) = st.code {
                         if code != 0 {
-                            let msg = st
-                                .message
-                                .as_deref()
-                                .unwrap_or("unknown error");
+                            let msg = st.message.as_deref().unwrap_or("unknown error");
                             return Err(ProviderError::Other(format!(
                                 "Media item creation failed (code {}): {}",
                                 code, msg
@@ -1351,11 +1318,28 @@ impl StorageProvider for GooglePhotosProvider {
                 metadata: HashMap::new(),
             }),
             // A folder (album or virtual)
-            (Some(folder_name), None) => {
-                match folder_name {
-                    VIRTUAL_ALL_PHOTOS | VIRTUAL_FAVORITES => Ok(RemoteEntry {
-                        name: folder_name.to_string(),
-                        path: format!("/{}", folder_name),
+            (Some(folder_name), None) => match folder_name {
+                VIRTUAL_ALL_PHOTOS | VIRTUAL_FAVORITES => Ok(RemoteEntry {
+                    name: folder_name.to_string(),
+                    path: format!("/{}", folder_name),
+                    is_dir: true,
+                    size: 0,
+                    modified: None,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                    metadata: HashMap::new(),
+                }),
+                album_title => {
+                    let album_id = self.resolve_album_id(album_title).await?;
+                    let mut metadata = HashMap::new();
+                    metadata.insert("id".to_string(), album_id);
+                    Ok(RemoteEntry {
+                        name: album_title.to_string(),
+                        path: format!("/{}", album_title),
                         is_dir: true,
                         size: 0,
                         modified: None,
@@ -1365,29 +1349,10 @@ impl StorageProvider for GooglePhotosProvider {
                         is_symlink: false,
                         link_target: None,
                         mime_type: None,
-                        metadata: HashMap::new(),
-                    }),
-                    album_title => {
-                        let album_id = self.resolve_album_id(album_title).await?;
-                        let mut metadata = HashMap::new();
-                        metadata.insert("id".to_string(), album_id);
-                        Ok(RemoteEntry {
-                            name: album_title.to_string(),
-                            path: format!("/{}", album_title),
-                            is_dir: true,
-                            size: 0,
-                            modified: None,
-                            permissions: None,
-                            owner: None,
-                            group: None,
-                            is_symlink: false,
-                            link_target: None,
-                            mime_type: None,
-                            metadata,
-                        })
-                    }
+                        metadata,
+                    })
                 }
-            }
+            },
             // A file inside a folder
             (Some(folder_name), Some(fname)) => {
                 let item = self.resolve_media_item(folder_name, fname).await?;

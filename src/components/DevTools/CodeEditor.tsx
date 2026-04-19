@@ -121,6 +121,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const onAskAgentRef = useRef(onAskAgent);
     const fileRef = useRef(file);
+    // Monaco IDisposable handles — every `addAction`, `defineTheme`, and
+    // `onDidChangeX` returns one. Previously these were discarded and the
+    // theme registry plus action closures leaked on every remount; on
+    // unmount we call `.dispose()` on each.
+    const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [originalContent, setOriginalContent] = useState('');
@@ -145,8 +150,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             setOriginalContent(file.content);
         }
 
-        // "Ask AeroAgent" context menu action
-        editor.addAction({
+        // "Ask AeroAgent" context menu action — capture the IDisposable so
+        // we can clean it up on unmount, preventing duplicate actions from
+        // accumulating across remounts.
+        const askAction = editor.addAction({
             id: 'ask-aeroagent',
             label: 'Ask AeroAgent',
             contextMenuGroupId: '9_aeroagent',
@@ -162,6 +169,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 }
             },
         });
+        if (askAction) {
+            disposablesRef.current.push(askAction);
+        }
 
         // Force layout update after mount to fix rendering issues
         setTimeout(() => {
@@ -169,6 +179,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             editor.focus();
         }, 100);
     };
+
+    // Dispose Monaco resources on unmount. The editor itself is disposed by
+    // @monaco-editor/react, but IDisposables returned by `addAction` et al.
+    // belong to us.
+    useEffect(() => {
+        return () => {
+            for (const d of disposablesRef.current) {
+                try { d.dispose(); } catch { /* noop */ }
+            }
+            disposablesRef.current = [];
+        };
+    }, []);
 
     // Force layout update when container might have changed
     useEffect(() => {

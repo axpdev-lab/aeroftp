@@ -885,10 +885,9 @@ impl JottacloudProvider {
                                 "state" => {
                                     current_state = text;
                                 }
-                                "modified" | "updated"
-                                    if current_modified.is_empty() => {
-                                        current_modified = Self::parse_jotta_time(&text);
-                                    }
+                                "modified" | "updated" if current_modified.is_empty() => {
+                                    current_modified = Self::parse_jotta_time(&text);
+                                }
                                 _ => {}
                             }
                         }
@@ -1899,10 +1898,9 @@ impl JottacloudProvider {
                             "state" => {
                                 current_state = text;
                             }
-                            "modified" | "updated"
-                                if current_modified.is_empty() => {
-                                    current_modified = Self::parse_jotta_time(&text);
-                                }
+                            "modified" | "updated" if current_modified.is_empty() => {
+                                current_modified = Self::parse_jotta_time(&text);
+                            }
                             _ => {}
                         }
                     }

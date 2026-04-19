@@ -125,6 +125,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     const [loadError, setLoadError] = useState<string | null>(null);
     const [retryCount, setRetryCount] = useState(0);
     const maxRetries = 3;
+    const retryTimerRef = useRef<number | null>(null);
 
     // Audio source URL
     const audioSrc = file.blobUrl || file.content as string || '';
@@ -253,17 +254,44 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         }
     }, [playback.playbackRate]);
 
-    // Cleanup on unmount
+    // Cleanup on unmount. Critical: the module-level `connectedAudioElements`
+    // WeakMap must also drop its entry for this <audio> element, otherwise a
+    // StrictMode remount / navigation / theme change sees the cached nodes,
+    // tries to reuse them against the newly-closed AudioContext, and produces
+    // a silent visualizer + dead EQ. The WeakMap was added to work around
+    // browsers rejecting `createMediaElementSource` twice, but its lifetime
+    // must track the component, not the element.
     useEffect(() => {
+        const audioEl = audioRef.current;
         return () => {
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current.removeAttribute('src');
-                audioRef.current.load();
+            if (retryTimerRef.current !== null) {
+                window.clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
             }
+            if (audioEl) {
+                audioEl.pause();
+                audioEl.removeAttribute('src');
+                audioEl.load();
+                connectedAudioElements.delete(audioEl);
+            }
+            // Disconnect Web Audio nodes before closing the context — prevents
+            // the browser from retaining their references until the AudioContext
+            // is garbage-collected.
+            try { sourceNodeRef.current?.disconnect(); } catch { /* noop */ }
+            try { analyserRef.current?.disconnect(); } catch { /* noop */ }
+            for (const node of eqNodesRef.current) {
+                try { node.disconnect(); } catch { /* noop */ }
+            }
+            try { pannerRef.current?.disconnect(); } catch { /* noop */ }
+            sourceNodeRef.current = null;
+            analyserRef.current = null;
+            eqNodesRef.current = [];
+            pannerRef.current = null;
+            graphBuiltRef.current = false;
             if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-                audioCtxRef.current.close();
+                audioCtxRef.current.close().catch(() => { /* noop */ });
             }
+            audioCtxRef.current = null;
         };
     }, []);
 
@@ -558,7 +586,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         if (retryCount < maxRetries) {
             logger.debug(`Retrying audio load (${retryCount + 1}/${maxRetries})...`);
             setRetryCount(prev => prev + 1);
-            setTimeout(() => {
+            if (retryTimerRef.current !== null) {
+                window.clearTimeout(retryTimerRef.current);
+            }
+            retryTimerRef.current = window.setTimeout(() => {
+                retryTimerRef.current = null;
                 if (audioRef.current) {
                     audioRef.current.load();
                 }

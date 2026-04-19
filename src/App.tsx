@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -170,7 +171,12 @@ import { ImageThumbnail } from './components/ImageThumbnail';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
 import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
-import DebugPanel, { activateGlobalCapture, activateNetworkCapture } from './components/DebugPanel';
+import DebugPanel, {
+  activateGlobalCapture,
+  activateNetworkCapture,
+  deactivateGlobalCapture,
+  deactivateNetworkCapture,
+} from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
 import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo, GitLabLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
 
@@ -388,9 +394,17 @@ const App: React.FC = () => {
   const [serversRefreshKey, setServersRefreshKey] = useState(0);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
-  // Activate global console capture when debug mode is enabled
+  // Activate global console capture when debug mode is enabled.
+  // Paired deactivation ensures toggling debug mode off actually restores
+  // the original `console.*` and `__TAURI_INTERNALS__.invoke` bindings.
   React.useEffect(() => {
-    if (debugMode) { activateGlobalCapture(); activateNetworkCapture(); }
+    if (!debugMode) return;
+    activateGlobalCapture();
+    activateNetworkCapture();
+    return () => {
+      deactivateGlobalCapture();
+      deactivateNetworkCapture();
+    };
   }, [debugMode]);
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
@@ -746,11 +760,16 @@ const App: React.FC = () => {
     return () => window.removeEventListener('app-background-changed', handleBackgroundChange as EventListener);
   }, []);
 
-  // Auto-lock timer: check every 30 seconds if timeout has expired
+  // Auto-lock timer: check every 30 seconds if timeout has expired.
+  // Interval identity is stable on `masterPasswordSet` only — `isAppLocked`
+  // is read through a ref so a lock/unlock tick does NOT reset the interval.
+  const isAppLockedRef = useRef(isAppLocked);
+  useEffect(() => { isAppLockedRef.current = isAppLocked; }, [isAppLocked]);
   useEffect(() => {
-    if (!masterPasswordSet || isAppLocked) return;
+    if (!masterPasswordSet) return;
 
     const checkAutoLock = async () => {
+      if (isAppLockedRef.current) return; // already locked — skip probe
       try {
         const shouldLock = await invoke<boolean>('app_master_password_check_timeout');
         if (shouldLock) {
@@ -762,9 +781,9 @@ const App: React.FC = () => {
       }
     };
 
-    const interval = setInterval(checkAutoLock, 30000); // Check every 30 seconds
+    const interval = setInterval(checkAutoLock, 30000);
     return () => clearInterval(interval);
-  }, [masterPasswordSet, isAppLocked]);
+  }, [masterPasswordSet]);
 
   // Update activity timestamp on user interaction
   useEffect(() => {
@@ -1667,34 +1686,27 @@ interface UpdateVerificationInfo {
   // Stuck detection moved to TransferToastContainer (isolated from App re-renders)
 
   // Update download progress listener
-  useEffect(() => {
-    const unlisten = listen<{
-      downloaded: number; total: number; percentage: number;
-      speed_bps: number; eta_seconds: number; filename: string;
-    }>('update-download-progress', (event) => {
-      const p = event.payload;
-      setUpdateDownload(prev => ({
-        ...(prev || { downloading: true, error: undefined, completedPath: undefined }),
-        ...p,
-        downloading: p.percentage < 100,
-        completedPath: p.percentage >= 100 ? prev?.completedPath : undefined,
-      }));
-    });
-    
-    // Listen for phase updates during install_deb/etc
-    const unlistenPhase = listen<string>('update_install_phase', (event) => {
-      setUpdateDownload(prev => prev ? { 
-        ...prev, 
-        installPhase: event.payload as 'auth' | 'running' | 'restart',
-        installing: true 
-      } : null);
-    });
-    
-    return () => { 
-      unlisten.then(fn => fn()); 
-      unlistenPhase.then(fn => fn());
-    };
-  }, []);
+  useTauriListener<{
+    downloaded: number; total: number; percentage: number;
+    speed_bps: number; eta_seconds: number; filename: string;
+  }>('update-download-progress', (event) => {
+    const p = event.payload;
+    setUpdateDownload(prev => ({
+      ...(prev || { downloading: true, error: undefined, completedPath: undefined }),
+      ...p,
+      downloading: p.percentage < 100,
+      completedPath: p.percentage >= 100 ? prev?.completedPath : undefined,
+    }));
+  });
+
+  // Phase updates during install_deb/etc
+  useTauriListener<string>('update_install_phase', (event) => {
+    setUpdateDownload(prev => prev ? {
+      ...prev,
+      installPhase: event.payload as 'auth' | 'running' | 'restart',
+      installing: true
+    } : null);
+  });
 
   // 2.4 Post-Restart Confirmation
   useEffect(() => {
@@ -1748,9 +1760,11 @@ interface UpdateVerificationInfo {
   useEffect(() => { themeRef.current = theme; }, [theme]);
   useEffect(() => { debugModeRef.current = debugMode; }, [debugMode]);
 
-  // Menu events from native menu — registered once, reads from refs to avoid stale closures
+  // Menu events from native menu — registered once, reads from refs to avoid stale closures.
+  // Keeps `listen()` directly (not the hook) because the handler mutates refs the hook
+  // doesn't know about; the import of guardedUnlisten covers the late-resolution race.
   useEffect(() => {
-    const unlisten = listen<string>('menu-event', (event) => {
+    const unlistenPromise = listen<string>('menu-event', (event) => {
       const id = event.payload;
       switch (id) {
         case 'about': setShowAboutDialog(true); break;
@@ -1799,42 +1813,33 @@ interface UpdateVerificationInfo {
           break;
       }
     });
-    return () => { unlisten.then(fn => fn()); };
+    return guardedUnlisten(unlistenPromise);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // AeroAgent app tool events — theme switching + sync control
-  useEffect(() => {
-    const unlistenTheme = listen<{ theme: string }>('ai-set-theme', (event) => {
-      const t = event.payload.theme;
-      if (['light', 'dark', 'tokyo', 'cyber'].includes(t)) {
-        setTheme(t as Theme);
-      }
-    });
-    const unlistenSync = listen<{ action: string }>('ai-sync-control', (event) => {
-      const action = event.payload.action;
-      if (action === 'start') {
-        invoke('start_background_sync').catch(() => { });
-      } else if (action === 'stop') {
-        invoke('stop_background_sync').catch(() => { });
-      }
-    });
-    return () => {
-      unlistenTheme.then(fn => fn());
-      unlistenSync.then(fn => fn());
-    };
-  }, []);
+  useTauriListener<{ theme: string }>('ai-set-theme', (event) => {
+    const th = event.payload.theme;
+    if (['light', 'dark', 'tokyo', 'cyber'].includes(th)) {
+      setTheme(th as Theme);
+    }
+  });
+  useTauriListener<{ action: string }>('ai-sync-control', (event) => {
+    const action = event.payload.action;
+    if (action === 'start') {
+      invoke('start_background_sync').catch(() => { });
+    } else if (action === 'stop') {
+      invoke('stop_background_sync').catch(() => { });
+    }
+  });
 
   // OS file association: listen for .aerovault files opened via double-click or single-instance forwarding
-  useEffect(() => {
-    const unlisten = listen<string>('vault-open-file', (event) => {
-      const vaultPath = event.payload;
-      if (vaultPath && vaultPath.endsWith('.aerovault')) {
-        setShowVaultPanel({ mode: 'open', path: vaultPath });
-      }
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, []);
+  useTauriListener<string>('vault-open-file', (event) => {
+    const vaultPath = event.payload;
+    if (vaultPath && vaultPath.endsWith('.aerovault')) {
+      setShowVaultPanel({ mode: 'open', path: vaultPath });
+    }
+  });
 
   // Auto-enable debug mode when Cyber theme is active, disable when switching away
   useEffect(() => {

@@ -452,7 +452,7 @@
             "modeUnavailable": "Претходно поставените режими на пренос моментално се достапни само за FTP/FTPS",
             "crossProfile": {
                 "title": "Пренос меѓу профили",
-                "subtitle": "Лебдечки панел: редот, дневникот и напредокот остануваат видливи додека работи.",
+                "subtitle": "Копирајте датотеки директно помеѓу два зачувани сервери.",
                 "closeAria": "Затвори го панелот за пренос меѓу профили",
                 "source": "Извор",
                 "destination": "Дестинација",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Големина",
                 "executeTransfer": "Изврши пренос",
                 "transferInProgress": "Преносот е во тек",
-                "transferHint": "Следете го редот, дневникот на активности и напредокот подолу. Овој панел е намерно едноставен.",
+                "transferHint": "Напредокот во живо е прикажан подолу. Деталната историја останува во Дневникот на активности.",
                 "summary": "{transferred} пренесено, {skipped} прескокнато, {failed} неуспешно",
                 "summaryMeta": "{size} за {seconds}s",
-                "newTransfer": "Нов пренос"
+                "newTransfer": "Нов пренос",
+                "preparing": "Подготовка на преносот…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Отстранет asset {filename}",
             "release_asset_download_start": "[{provider}] Преземање на release asset {filename}...",
             "release_asset_download_success": "[{provider}] Преземен release asset {filename}",
-            "release_asset_download_error": "[{provider}] Неуспешно преземање на release asset {filename}"
+            "release_asset_download_error": "[{provider}] Неуспешно преземање на release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Започнување пренос на {count} од {source} до {dest}",
+            "crossprofile_file_success": "[Cross-profile] Копирано {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Грешка кај {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Распоред на пропусен опсег",
             "bwScheduleOff": "Рачно (користи горни ограничувања)",
             "bwScheduleOffice": "Работно време (throttle 08-18)",
-            "bwScheduleNight": "Ноќен режим (throttle 18-08)"
+            "bwScheduleNight": "Ноќен режим (throttle 18-08)",
+            "allInSync": "Сите датотеки се синхронизирани — нема ништо за пренос",
+            "nothingInDirection": "Пронајдени се разлики, но ниту една не одговара на избраната насока. Обидете се со Two-way за да ги видите сите промени."
         },
         "ui": {
             "syncing": "Синхронизирање...",

@@ -452,7 +452,7 @@
             "modeUnavailable": "Aktarım modu ön ayarları şu anda yalnızca FTP/FTPS için kullanılabilir",
             "crossProfile": {
                 "title": "Profiller Arası Aktarım",
-                "subtitle": "Kayan panel: kuyruk, günlük ve ilerleme çalışırken görünür kalır.",
+                "subtitle": "Dosyaları iki kayıtlı sunucu arasında doğrudan kopyalayın.",
                 "closeAria": "Profiller arası aktarım panelini kapat",
                 "source": "Kaynak",
                 "destination": "Hedef",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Boyut",
                 "executeTransfer": "Aktarımı Başlat",
                 "transferInProgress": "Aktarım devam ediyor",
-                "transferHint": "Aşağıdaki kuyruğu, etkinlik günlüğünü ve ilerlemeyi takip edin. Bu panel bilerek hafif tutulmuştur.",
+                "transferHint": "Canlı ilerleme aşağıda gösterilir. Ayrıntılı geçmiş Etkinlik Günlüğü'nde kalır.",
                 "summary": "{transferred} aktarıldı, {skipped} atlandı, {failed} başarısız",
                 "summaryMeta": "{size}, {seconds}s içinde",
-                "newTransfer": "Yeni Aktarım"
+                "newTransfer": "Yeni Aktarım",
+                "preparing": "Aktarım hazırlanıyor…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} kaldırıldı",
             "release_asset_download_start": "[{provider}] Release asset {filename} indiriliyor...",
             "release_asset_download_success": "[{provider}] Release asset {filename} indirildi",
-            "release_asset_download_error": "[{provider}] Release asset {filename} indirilemedi"
+            "release_asset_download_error": "[{provider}] Release asset {filename} indirilemedi",
+            "crossprofile_start": "[Cross-profile] {source} kaynağından {dest} hedefine {count} aktarımı başlatılıyor",
+            "crossprofile_file_success": "[Cross-profile] Kopyalandı {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] {filename} başarısız: {error}"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Bant genisligi zamanlama",
             "bwScheduleOff": "Manuel (yukaridaki limitleri kullan)",
             "bwScheduleOffice": "Mesai saatleri (kisitlama 08-18)",
-            "bwScheduleNight": "Gece modu (kisitlama 18-08)"
+            "bwScheduleNight": "Gece modu (kisitlama 18-08)",
+            "allInSync": "Tüm dosyalar senkronize — aktarılacak bir şey yok",
+            "nothingInDirection": "Farklılıklar bulundu, ancak hiçbiri seçilen yönle eşleşmiyor. Tüm değişiklikleri görmek için Two-way seçeneğini deneyin."
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",

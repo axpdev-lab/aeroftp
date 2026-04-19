@@ -229,9 +229,7 @@ impl SftpProvider {
     /// into provider internals, preserving the forward compatibility promise for
     /// the strada C native transport.
     #[cfg(unix)]
-    pub fn delta_transport(
-        &self,
-    ) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
+    pub fn delta_transport(&self) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
         let handle = self.ssh_handle.clone()?;
         let key_path_str = self.config.private_key_path.as_ref()?;
         let key_path = std::path::PathBuf::from(Self::expand_home_path(key_path_str));
@@ -287,12 +285,11 @@ impl SftpProvider {
                     }
                 };
 
-                match NativeRsyncDeltaTransport::from_rsync_config(
-                    &rsync_config,
-                    host_key_policy,
-                ) {
+                match NativeRsyncDeltaTransport::from_rsync_config(&rsync_config, host_key_policy) {
                     Ok(transport) => {
-                        tracing::info!("providers::sftp: using native rsync delta transport (host key pinned)");
+                        tracing::info!(
+                            "providers::sftp: using native rsync delta transport (host key pinned)"
+                        );
                         return Some(Box::new(transport));
                     }
                     Err(error) => {

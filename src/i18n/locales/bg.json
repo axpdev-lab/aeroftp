@@ -452,7 +452,7 @@
             "modeUnavailable": "Предварителните настройки за режим на трансфер са налични само за FTP/FTPS",
             "crossProfile": {
                 "title": "Прехвърляне между профили",
-                "subtitle": "Плаващ панел: опашка, дневник и напредък остават видими по време на изпълнение.",
+                "subtitle": "Копирайте файлове директно между два запазени сървъра.",
                 "closeAria": "Затвори панела за прехвърляне между профили",
                 "source": "Източник",
                 "destination": "Дестинация",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Размер",
                 "executeTransfer": "Изпълни прехвърлянето",
                 "transferInProgress": "Прехвърлянето е в ход",
-                "transferHint": "Следете опашката, дневника на активността и напредъка по-долу. Този панел е нарочно лек.",
+                "transferHint": "Напредъкът в реално време е показан по-долу. Подробната история остава в дневника на активността.",
                 "summary": "{transferred} прехвърлени, {skipped} пропуснати, {failed} неуспешни",
                 "summaryMeta": "{size} за {seconds}с",
-                "newTransfer": "Ново прехвърляне"
+                "newTransfer": "Ново прехвърляне",
+                "preparing": "Подготовка на прехвърлянето…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Премахнат asset {filename}",
             "release_asset_download_start": "[{provider}] Изтегляне на release asset {filename}...",
             "release_asset_download_success": "[{provider}] Изтеглен release asset {filename}",
-            "release_asset_download_error": "[{provider}] Неуспешно изтегляне на release asset {filename}"
+            "release_asset_download_error": "[{provider}] Неуспешно изтегляне на release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Стартиране на прехвърляне на {count} от {source} към {dest}",
+            "crossprofile_file_success": "[Cross-profile] Копиран {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Грешка при {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "График на честотна лента",
             "bwScheduleOff": "Ръчно (използвай лимитите по-горе)",
             "bwScheduleOffice": "Работно време (throttle 08-18)",
-            "bwScheduleNight": "Нощен режим (throttle 18-08)"
+            "bwScheduleNight": "Нощен режим (throttle 18-08)",
+            "allInSync": "Всички файлове са синхронизирани — няма нищо за прехвърляне",
+            "nothingInDirection": "Открити са разлики, но нито една не съответства на избраната посока. Опитайте Two-way, за да видите всички промени."
         },
         "ui": {
             "syncing": "Синхронизиране...",

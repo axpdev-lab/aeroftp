@@ -452,7 +452,7 @@
             "modeUnavailable": "Mipangilio ya hali ya uhamishaji inapatikana kwa FTP/FTPS pekee kwa sasa",
             "crossProfile": {
                 "title": "Uhamisho wa Profaili Mtambuka",
-                "subtitle": "Paneli inayoelea: foleni, kumbukumbu na maendeleo yanaendelea kuonekana wakati inafanya kazi.",
+                "subtitle": "Nakili faili moja kwa moja kati ya seva mbili zilizohifadhiwa.",
                 "closeAria": "Funga paneli ya uhamisho wa profaili mtambuka",
                 "source": "Chanzo",
                 "destination": "Lengwa",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Ukubwa",
                 "executeTransfer": "Tekeleza Uhamisho",
                 "transferInProgress": "Uhamisho unaendelea",
-                "transferHint": "Fuatilia foleni, kumbukumbu ya shughuli na maendeleo hapa chini. Paneli hii imekusudiwa kuwa nyepesi.",
+                "transferHint": "Maendeleo ya moja kwa moja yanaonyeshwa hapa chini. Historia ya kina inabaki kwenye Kumbukumbu ya Shughuli.",
                 "summary": "{transferred} zimehamishwa, {skipped} zimerukwa, {failed} zimeshindwa",
                 "summaryMeta": "{size} katika sekunde {seconds}",
-                "newTransfer": "Uhamisho Mpya"
+                "newTransfer": "Uhamisho Mpya",
+                "preparing": "Inaandaa uhamishaji…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} imeondolewa",
             "release_asset_download_start": "[{provider}] Inapakua release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} imepakuwa",
-            "release_asset_download_error": "[{provider}] Imeshindwa kupakua release asset {filename}"
+            "release_asset_download_error": "[{provider}] Imeshindwa kupakua release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Inaanzisha uhamishaji wa {count} kutoka {source} hadi {dest}",
+            "crossprofile_file_success": "[Cross-profile] Imenakiliwa {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Imeshindwa kwenye {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Ratiba ya kipimo data",
             "bwScheduleOff": "Mwongozo (tumia vikomo vya hapo juu)",
             "bwScheduleOffice": "Masaa ya ofisi (throttle 08-18)",
-            "bwScheduleNight": "Hali ya usiku (throttle 18-08)"
+            "bwScheduleNight": "Hali ya usiku (throttle 18-08)",
+            "allInSync": "Faili zote zimesawazishwa — hakuna chochote cha kuhamisha",
+            "nothingInDirection": "Tofauti zimepatikana, lakini hakuna inayolingana na mwelekeo uliochaguliwa. Jaribu Two-way ili kuona mabadiliko yote."
         },
         "ui": {
             "syncing": "Inasawazisha...",

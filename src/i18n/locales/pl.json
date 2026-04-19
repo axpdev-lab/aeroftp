@@ -452,7 +452,7 @@
             "modeUnavailable": "Ustawienia trybu transferu są obecnie dostępne tylko dla FTP/FTPS",
             "crossProfile": {
                 "title": "Transfer miedzy profilami",
-                "subtitle": "Plywajacy panel: kolejka, dziennik i postep pozostaja widoczne podczas wykonywania.",
+                "subtitle": "Kopiuj pliki bezpośrednio między dwoma zapisanymi serwerami.",
                 "closeAria": "Zamknij panel transferu miedzy profilami",
                 "source": "Zrodlo",
                 "destination": "Cel",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Rozmiar",
                 "executeTransfer": "Wykonaj transfer",
                 "transferInProgress": "Transfer w toku",
-                "transferHint": "Obserwuj kolejke, dziennik aktywnosci i postep ponizej. Ten panel jest celowo lekki.",
+                "transferHint": "Postęp na żywo jest wyświetlany poniżej. Szczegółowa historia pozostaje w dzienniku aktywności.",
                 "summary": "{transferred} przeslanych, {skipped} pominietych, {failed} nieudanych",
                 "summaryMeta": "{size} w {seconds}s",
-                "newTransfer": "Nowy transfer"
+                "newTransfer": "Nowy transfer",
+                "preparing": "Przygotowywanie transferu…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Usunieto asset {filename}",
             "release_asset_download_start": "[{provider}] Pobieranie release asset {filename}...",
             "release_asset_download_success": "[{provider}] Pobrano release asset {filename}",
-            "release_asset_download_error": "[{provider}] Nie udalo sie pobrac release asset {filename}"
+            "release_asset_download_error": "[{provider}] Nie udalo sie pobrac release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Rozpoczynanie transferu {count} z {source} do {dest}",
+            "crossprofile_file_success": "[Cross-profile] Skopiowano {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Błąd przy {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Harmonogram przepustowości",
             "bwScheduleOff": "Ręcznie (użyj powyższych limitów)",
             "bwScheduleOffice": "Godziny biurowe (throttle 08-18)",
-            "bwScheduleNight": "Tryb nocny (throttle 18-08)"
+            "bwScheduleNight": "Tryb nocny (throttle 18-08)",
+            "allInSync": "Wszystkie pliki są zsynchronizowane — nie ma nic do przesłania",
+            "nothingInDirection": "Znaleziono różnice, ale żadna nie pasuje do wybranego kierunku. Wypróbuj Two-way, aby zobaczyć wszystkie zmiany."
         },
         "ui": {
             "syncing": "Synchronizacja...",

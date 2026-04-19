@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { useTauriListener } from './useTauriListener';
 
 // Sync status types
 export type TrayStatus = 'idle' | 'syncing' | 'error' | 'paused' | 'disabled';
@@ -68,50 +68,38 @@ export function useTraySync() {
         checkRunningState();
     }, []);
 
-    // Listen to sync status events from Rust backend
-    useEffect(() => {
-        let unlistenSyncStatus: UnlistenFn | null = null;
-        let unlistenTrayStatus: UnlistenFn | null = null;
+    // Listen to sync status events from Rust backend — useTauriListener owns
+    // both the synchronous disposable and the late-resolution guard, so an
+    // unmount between `listen()` registration and its await resolution cannot
+    // orphan the handler (previously it could, because `unlistenSyncStatus`
+    // was set only after `await` and cleanup saw null).
+    useTauriListener<CloudSyncStatusEvent>('cloud-sync-status', (event) => {
+        const { status, message } = event.payload;
 
-        const setupListeners = async () => {
-            // Listen for cloud sync status updates
-            unlistenSyncStatus = await listen<CloudSyncStatusEvent>('cloud-sync-status', (event) => {
-                const { status, message } = event.payload;
+        setTrayState(prev => ({
+            ...prev,
+            status: status === 'active' ? 'syncing' : status === 'error' ? 'error' : 'idle',
+            tooltip: message || 'AeroCloud',
+            isBackgroundSyncActive: status === 'active',
+        }));
 
-                setTrayState(prev => ({
-                    ...prev,
-                    status: status === 'active' ? 'syncing' : status === 'error' ? 'error' : 'idle',
-                    tooltip: message || 'AeroCloud',
-                    isBackgroundSyncActive: status === 'active',
-                }));
+        setIsRunning(status === 'active');
 
-                setIsRunning(status === 'active');
+        if (status === 'idle') {
+            setTrayState(prev => ({
+                ...prev,
+                lastSync: new Date(),
+            }));
+        }
+    });
 
-                if (status === 'idle') {
-                    setTrayState(prev => ({
-                        ...prev,
-                        lastSync: new Date(),
-                    }));
-                }
-            });
-
-            // Listen for tray status updates
-            unlistenTrayStatus = await listen<TrayStatusUpdateEvent>('tray-status-update', (event) => {
-                const { status, tooltip } = event.payload;
-                setTrayState(prev => ({
-                    ...prev,
-                    tooltip: tooltip || prev.tooltip,
-                }));
-            });
-        };
-
-        setupListeners();
-
-        return () => {
-            if (unlistenSyncStatus) unlistenSyncStatus();
-            if (unlistenTrayStatus) unlistenTrayStatus();
-        };
-    }, []);
+    useTauriListener<TrayStatusUpdateEvent>('tray-status-update', (event) => {
+        const { tooltip } = event.payload;
+        setTrayState(prev => ({
+            ...prev,
+            tooltip: tooltip || prev.tooltip,
+        }));
+    });
 
     /**
      * Start background sync process

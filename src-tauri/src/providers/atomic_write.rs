@@ -143,10 +143,7 @@ impl ResumableFile {
             // Resume: open existing file in append mode
             let meta = fs::metadata(&temp_path).await?;
             let offset = meta.len();
-            let file = fs::OpenOptions::new()
-                .append(true)
-                .open(&temp_path)
-                .await?;
+            let file = fs::OpenOptions::new().append(true).open(&temp_path).await?;
             (file, offset)
         } else {
             // Fresh: create new file

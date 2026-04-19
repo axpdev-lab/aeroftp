@@ -65,15 +65,14 @@ use crate::rsync_native_proto::engine_adapter::{
     EngineSignatureBlock,
 };
 use crate::rsync_native_proto::protocol::{
-    DeltaInstruction, FileMetadataMessage, FrameCodec, HelloMessage, MessageType,
-    NativeFrameCodec, SignatureBatchMessage, SignatureBlock, WireMessage,
+    DeltaInstruction, FileMetadataMessage, FrameCodec, HelloMessage, MessageType, NativeFrameCodec,
+    SignatureBatchMessage, SignatureBlock, WireMessage,
 };
 use crate::rsync_native_proto::remote_command::RemoteCommandSpec;
 use crate::rsync_native_proto::session::{NativeRsyncSession, SessionState};
 use crate::rsync_native_proto::transport::{BidirectionalByteStream, RemoteShellTransport};
 use crate::rsync_native_proto::types::{
-    FeatureFlag, NativeRsyncError, NativeRsyncErrorKind, ProtocolVersion, SessionRole,
-    SessionStats,
+    FeatureFlag, NativeRsyncError, NativeRsyncErrorKind, ProtocolVersion, SessionRole, SessionStats,
 };
 
 /// Upload with caller-computed delta. The last element of
@@ -135,7 +134,8 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         plan: UploadPlan,
     ) -> Result<DriveOutcome, NativeRsyncError> {
         Self::validate_upload_plan(&plan)?;
-        self.drive_internal(spec, DrivePlan::UploadCaller(plan)).await
+        self.drive_internal(spec, DrivePlan::UploadCaller(plan))
+            .await
     }
 
     pub async fn drive_download(
@@ -238,9 +238,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         self.guarded_transition(SessionState::FileListPrepared)?;
 
         // 5. Signature exchange.
-        let (block_size, engine_sigs) = self
-            .phase_signatures(&mut stream, role, &plan)
-            .await?;
+        let (block_size, engine_sigs) = self.phase_signatures(&mut stream, role, &plan).await?;
 
         // 6. Delta exchange. Engine-mode computes/applies here.
         let (engine_ops, reconstructed) = self
@@ -252,7 +250,11 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         let summary_msg = self.recv_non_error(&mut stream).await?;
         let summary = match summary_msg {
             WireMessage::Summary(s) => s,
-            other => return self.unexpected(MessageType::Summary, &other).map(|_| unreachable!()),
+            other => {
+                return self
+                    .unexpected(MessageType::Summary, &other)
+                    .map(|_| unreachable!())
+            }
         };
         self.session.record_literal(summary.literal_bytes);
         self.session.record_matched(summary.matched_bytes);
@@ -429,7 +431,8 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
     ) -> Result<(Vec<EngineDeltaOp>, Option<Vec<u8>>), NativeRsyncError> {
         match role {
             Role::LocalSender => {
-                let instructions = self.build_sender_delta_instructions(plan, block_size, engine_sigs)?;
+                let instructions =
+                    self.build_sender_delta_instructions(plan, block_size, engine_sigs)?;
                 self.send(stream, &WireMessage::DeltaBatch(instructions.clone()))
                     .await?;
                 let ops = self.convert_delta_batch(instructions)?;
@@ -456,9 +459,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
                             .apply_delta(destination_data, &ops, block_size as usize)
                             .map_err(|e| {
                                 self.session.fail();
-                                NativeRsyncError::invalid_frame(format!(
-                                    "apply_delta failed: {e}"
-                                ))
+                                NativeRsyncError::invalid_frame(format!("apply_delta failed: {e}"))
                             })?;
                         Some(bytes)
                     }

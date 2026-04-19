@@ -452,7 +452,7 @@
             "modeUnavailable": "Förinställningar för överföringsläge är för närvarande tillgängliga endast för FTP/FTPS",
             "crossProfile": {
                 "title": "Profiloverforande overforing",
-                "subtitle": "Flytande panel: ko, logg och forlopp forblir synliga medan den kors.",
+                "subtitle": "Kopiera filer direkt mellan två sparade servrar.",
                 "closeAria": "Stang panelen for profiloverforande overforing",
                 "source": "Kalla",
                 "destination": "Destination",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Storlek",
                 "executeTransfer": "Utfor overforing",
                 "transferInProgress": "Overforing pagar",
-                "transferHint": "Holl ett oga pa ko, aktivitetslogg och forlopp nedan. Denna panel ar avsiktligt lattvigtad.",
+                "transferHint": "Realtidsförloppet visas nedan. Den detaljerade historiken ligger kvar i aktivitetsloggen.",
                 "summary": "{transferred} overforda, {skipped} overhoppade, {failed} misslyckade",
                 "summaryMeta": "{size} pa {seconds}s",
-                "newTransfer": "Ny overforing"
+                "newTransfer": "Ny overforing",
+                "preparing": "Förbereder överföring…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} borttagen",
             "release_asset_download_start": "[{provider}] Laddar ned release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} nedladdad",
-            "release_asset_download_error": "[{provider}] Kunde inte ladda ned release asset {filename}"
+            "release_asset_download_error": "[{provider}] Kunde inte ladda ned release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Startar överföring av {count} från {source} till {dest}",
+            "crossprofile_file_success": "[Cross-profile] Kopierade {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Fel på {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Schema för bandbredd",
             "bwScheduleOff": "Manuell (använd gränser ovan)",
             "bwScheduleOffice": "Kontorstid (begränsa 08-18)",
-            "bwScheduleNight": "Nattläge (begränsa 18-08)"
+            "bwScheduleNight": "Nattläge (begränsa 18-08)",
+            "allInSync": "Alla filer är synkroniserade — inget att överföra",
+            "nothingInDirection": "Skillnader hittades, men ingen matchar den valda riktningen. Prova Two-way för att se alla ändringar."
         },
         "ui": {
             "syncing": "Synkroniserar...",

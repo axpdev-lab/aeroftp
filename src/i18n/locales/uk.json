@@ -452,7 +452,7 @@
             "modeUnavailable": "Налаштування режиму передачі наразі доступні лише для FTP/FTPS",
             "crossProfile": {
                 "title": "Передача між профілями",
-                "subtitle": "Плаваюча панель: черга, журнал та прогрес залишаються видимими під час виконання.",
+                "subtitle": "Копіюйте файли безпосередньо між двома збереженими серверами.",
                 "closeAria": "Закрити панель передачі між профілями",
                 "source": "Джерело",
                 "destination": "Призначення",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Розмір",
                 "executeTransfer": "Виконати передачу",
                 "transferInProgress": "Передача виконується",
-                "transferHint": "Слідкуйте за чергою, журналом активності та прогресом нижче. Ця панель навмисно легка.",
+                "transferHint": "Прогрес у реальному часі показано нижче. Докладна історія зберігається в журналі активності.",
                 "summary": "{transferred} передано, {skipped} пропущено, {failed} невдалих",
                 "summaryMeta": "{size} за {seconds}s",
-                "newTransfer": "Нова передача"
+                "newTransfer": "Нова передача",
+                "preparing": "Підготовка передачі…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} видалено",
             "release_asset_download_start": "[{provider}] Завантаження release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} завантажено",
-            "release_asset_download_error": "[{provider}] Не вдалося завантажити release asset {filename}"
+            "release_asset_download_error": "[{provider}] Не вдалося завантажити release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Запуск передачі {count} з {source} до {dest}",
+            "crossprofile_file_success": "[Cross-profile] Скопійовано {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Помилка в {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Розклад швидкості",
             "bwScheduleOff": "Вручну (використовувати ліміти вище)",
             "bwScheduleOffice": "Робочі години (обмеження 08-18)",
-            "bwScheduleNight": "Нічний режим (обмеження 18-08)"
+            "bwScheduleNight": "Нічний режим (обмеження 18-08)",
+            "allInSync": "Усі файли синхронізовані — немає чого передавати",
+            "nothingInDirection": "Знайдено відмінності, але жодна не відповідає обраному напрямку. Спробуйте Two-way, щоб побачити всі зміни."
         },
         "ui": {
             "syncing": "Синхронізація...",

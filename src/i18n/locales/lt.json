@@ -452,7 +452,7 @@
             "modeUnavailable": "Perdavimo režimo nustatymai šiuo metu galimi tik FTP/FTPS",
             "crossProfile": {
                 "title": "Perkėlimas tarp profilių",
-                "subtitle": "Slankusis skydelis: eilė, žurnalas ir eiga lieka matomi vykdymo metu.",
+                "subtitle": "Kopijuokite failus tiesiogiai tarp dviejų išsaugotų serverių.",
                 "closeAria": "Uždaryti perkėlimo tarp profilių skydelis",
                 "source": "Šaltinis",
                 "destination": "Paskirtis",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Dydis",
                 "executeTransfer": "Vykdyti perkėlimą",
                 "transferInProgress": "Perkėlimas vykdomas",
-                "transferHint": "Stebėkite eilę, veiklos žurnalą ir eigą žemiau. Šis skydelis yra sąmoningai lengvas.",
+                "transferHint": "Tiesioginė eiga rodoma žemiau. Išsami istorija lieka veiklos žurnale.",
                 "summary": "{transferred} perkelta, {skipped} praleista, {failed} nepavyko",
                 "summaryMeta": "{size} per {seconds}s",
-                "newTransfer": "Naujas perkėlimas"
+                "newTransfer": "Naujas perkėlimas",
+                "preparing": "Ruošiamas perdavimas…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Pašalintas asset {filename}",
             "release_asset_download_start": "[{provider}] Atsisiunčiamas release asset {filename}...",
             "release_asset_download_success": "[{provider}] Atsisiųstas release asset {filename}",
-            "release_asset_download_error": "[{provider}] Nepavyko atsisiųsti release asset {filename}"
+            "release_asset_download_error": "[{provider}] Nepavyko atsisiųsti release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Pradedamas {count} perdavimas iš {source} į {dest}",
+            "crossprofile_file_success": "[Cross-profile] Nukopijuota {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Klaida faile {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Pralaidumo grafikas",
             "bwScheduleOff": "Rankinis (naudoti auksciau esancius apribojimus)",
             "bwScheduleOffice": "Darbo valandos (throttle 08-18)",
-            "bwScheduleNight": "Naktinis rezimas (throttle 18-08)"
+            "bwScheduleNight": "Naktinis rezimas (throttle 18-08)",
+            "allInSync": "Visi failai sinchronizuoti — nėra ko perkelti",
+            "nothingInDirection": "Rasta skirtumų, bet nė vienas neatitinka pasirinktos krypties. Išbandykite Two-way, kad pamatytumėte visus pakeitimus."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

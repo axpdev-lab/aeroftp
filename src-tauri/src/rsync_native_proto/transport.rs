@@ -68,8 +68,10 @@ pub trait RemoteShellTransport: Send + Sync {
 
     async fn probe(&self) -> Result<TransportProbe, NativeRsyncError>;
 
-    async fn exec(&self, request: RemoteExecRequest)
-        -> Result<RemoteCommandOutput, NativeRsyncError>;
+    async fn exec(
+        &self,
+        request: RemoteExecRequest,
+    ) -> Result<RemoteCommandOutput, NativeRsyncError>;
 
     async fn open_stream(
         &self,

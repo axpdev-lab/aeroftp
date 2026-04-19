@@ -401,7 +401,10 @@ fn preserve_temp_mtime(path: &Path, source_modified: Option<&str>) {
     };
 
     let Some(file_time) = parse_file_time(source_modified) else {
-        tracing::debug!("cross-profile: unsupported mtime format '{}'", source_modified);
+        tracing::debug!(
+            "cross-profile: unsupported mtime format '{}'",
+            source_modified
+        );
         return;
     };
 
@@ -412,10 +415,16 @@ fn preserve_temp_mtime(path: &Path, source_modified: Option<&str>) {
 
 fn parse_file_time(value: &str) -> Option<FileTime> {
     if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(value) {
-        return Some(FileTime::from_unix_time(ts.timestamp(), ts.timestamp_subsec_nanos()));
+        return Some(FileTime::from_unix_time(
+            ts.timestamp(),
+            ts.timestamp_subsec_nanos(),
+        ));
     }
     if let Ok(ts) = chrono::DateTime::parse_from_rfc2822(value) {
-        return Some(FileTime::from_unix_time(ts.timestamp(), ts.timestamp_subsec_nanos()));
+        return Some(FileTime::from_unix_time(
+            ts.timestamp(),
+            ts.timestamp_subsec_nanos(),
+        ));
     }
     if let Ok(ts) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%SZ") {
         return Some(FileTime::from_unix_time(ts.and_utc().timestamp(), 0));

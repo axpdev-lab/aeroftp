@@ -452,7 +452,7 @@
             "modeUnavailable": "Los ajustes preestablecidos de modo de transferencia solo están disponibles para FTP/FTPS",
             "crossProfile": {
                 "title": "Transferencia entre perfiles",
-                "subtitle": "Panel flotante: cola, registro y progreso permanecen visibles durante la ejecucion.",
+                "subtitle": "Copia archivos directamente entre dos servidores guardados.",
                 "closeAria": "Cerrar panel de transferencia entre perfiles",
                 "source": "Origen",
                 "destination": "Destino",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Tamano",
                 "executeTransfer": "Ejecutar transferencia",
                 "transferInProgress": "Transferencia en curso",
-                "transferHint": "Vigila la Cola, el Registro de actividad y el Progreso a continuacion. Este panel se mantiene ligero a proposito.",
+                "transferHint": "El progreso en tiempo real se muestra abajo. El historial detallado permanece en el Registro de actividad.",
                 "summary": "{transferred} transferidos, {skipped} omitidos, {failed} fallidos",
                 "summaryMeta": "{size} en {seconds}s",
-                "newTransfer": "Nueva transferencia"
+                "newTransfer": "Nueva transferencia",
+                "preparing": "Preparando la transferencia…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} eliminado",
             "release_asset_download_start": "[{provider}] Descargando release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} descargado",
-            "release_asset_download_error": "[{provider}] Error al descargar release asset {filename}"
+            "release_asset_download_error": "[{provider}] Error al descargar release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Iniciando transferencia de {count} desde {source} a {dest}",
+            "crossprofile_file_success": "[Cross-profile] Copiado {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Error en {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Programación de ancho de banda",
             "bwScheduleOff": "Manual (usar límites de arriba)",
             "bwScheduleOffice": "Horario de oficina (throttle 08-18)",
-            "bwScheduleNight": "Modo nocturno (throttle 18-08)"
+            "bwScheduleNight": "Modo nocturno (throttle 18-08)",
+            "allInSync": "Todos los archivos están sincronizados — nada que transferir",
+            "nothingInDirection": "Se encontraron diferencias, pero ninguna coincide con la dirección seleccionada. Prueba Two-way para ver todos los cambios."
         },
         "ui": {
             "syncing": "Sincronizando...",

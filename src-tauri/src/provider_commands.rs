@@ -7,27 +7,47 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::provider_transfer_executor::{ProviderDownloadExecutor, ProviderUploadExecutor};
 use crate::providers::{
     FileVersion, LockInfo, ProviderConfig, ProviderFactory, ProviderType, RemoteEntry,
     ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, SharePermission, StorageInfo,
     StorageProvider,
 };
-use crate::provider_transfer_executor::{ProviderDownloadExecutor, ProviderUploadExecutor};
 use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
 use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
 use crate::transfer_settings::{
     resolve_provider_transfer_settings, ResolvedTransferSettings, TransferSettingsInput,
 };
+use crate::util::AbortOnDrop;
 
 /// Global flag: when true, filesystem watcher should suppress sync triggers.
 /// Set during folder download/upload to prevent AeroCloud interference.
 pub static TRANSFER_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// RAII guard that clears `TRANSFER_IN_PROGRESS` on drop. Covers normal
+/// returns AND panic-unwind: without this, a panic in the folder transfer
+/// pipeline left the watcher suppressed forever until app restart.
+struct TransferInProgressGuard(());
+
+impl TransferInProgressGuard {
+    fn acquire() -> Self {
+        TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
+        Self(())
+    }
+}
+
+impl Drop for TransferInProgressGuard {
+    fn drop(&mut self) {
+        TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
+    }
+}
 
 /// State for managing the active storage provider
 pub struct ProviderState {
@@ -37,6 +57,8 @@ pub struct ProviderState {
     pub config: Arc<Mutex<Option<ProviderConfig>>>,
     /// Cancel flag for aborting folder transfers
     pub cancel_flag: Arc<AtomicBool>,
+    /// Cancellation token cloned into async retry waits so user cancel wakes them immediately.
+    cancel_token: Mutex<CancellationToken>,
     /// Held GitHub App installation token — never crosses IPC.
     /// Set by `github_app_token_from_pem`/`_from_vault`, consumed by `provider_connect`.
     pub held_github_app_token: Mutex<Option<String>>,
@@ -48,8 +70,25 @@ impl ProviderState {
             provider: Arc::new(Mutex::new(None)),
             config: Arc::new(Mutex::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            cancel_token: Mutex::new(CancellationToken::new()),
             held_github_app_token: Mutex::new(None),
         }
+    }
+
+    pub async fn reset_cancel_state(&self) -> CancellationToken {
+        self.cancel_flag.store(false, Ordering::Relaxed);
+        let token = CancellationToken::new();
+        *self.cancel_token.lock().await = token.clone();
+        token
+    }
+
+    pub async fn current_cancel_token(&self) -> CancellationToken {
+        self.cancel_token.lock().await.clone()
+    }
+
+    pub async fn request_cancel(&self) {
+        self.cancel_flag.store(true, Ordering::Relaxed);
+        self.cancel_token.lock().await.cancel();
     }
 }
 
@@ -445,9 +484,21 @@ pub async fn provider_connect(
     let display_name = provider.display_name();
     let protocol = format!("{:?}", provider.provider_type());
 
-    // Store provider and config
+    // Store provider and config. If a previous provider is still held here
+    // (reconnect-without-disconnect, user swapping servers from the UI, etc.),
+    // gracefully disconnect it first; synchronously dropping a connected
+    // `Box<dyn StorageProvider>` does not run async disconnect, which leaks
+    // server-side sessions, socket handles, and OAuth refresh tokens.
     {
         let mut prov_lock = state.provider.lock().await;
+        if let Some(mut previous) = prov_lock.take() {
+            if let Err(err) = previous.disconnect().await {
+                warn!(
+                    "provider_connect: previous provider disconnect failed: {}",
+                    err
+                );
+            }
+        }
         *prov_lock = Some(provider);
     }
     {
@@ -666,10 +717,22 @@ pub async fn provider_download_file(
     let dl_start_time = std::time::Instant::now();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
         Some(Box::new(move |transferred: u64, total: u64| {
-            let pct = if total > 0 { ((transferred as f64 / total as f64) * 100.0) as u8 } else { 0 };
+            let pct = if total > 0 {
+                ((transferred as f64 / total as f64) * 100.0) as u8
+            } else {
+                0
+            };
             let elapsed = dl_start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.1 { (transferred as f64 / elapsed) as u64 } else { 0 };
-            let eta = if speed > 0 && transferred < total { ((total - transferred) as f64 / speed as f64) as u64 } else { 0 };
+            let speed = if elapsed > 0.1 {
+                (transferred as f64 / elapsed) as u64
+            } else {
+                0
+            };
+            let eta = if speed > 0 && transferred < total {
+                ((total - transferred) as f64 / speed as f64) as u64
+            } else {
+                0
+            };
             let _ = app_progress.emit(
                 "transfer_event",
                 crate::TransferEvent {
@@ -730,7 +793,10 @@ pub async fn provider_download_file(
         Ok(()) => {
             // Preserve remote mtime on the local file
             crate::preserve_remote_mtime(&local_path, modified.as_deref());
-            let actual_size = tokio::fs::metadata(&local_path).await.map(|m| m.len()).unwrap_or(file_size);
+            let actual_size = tokio::fs::metadata(&local_path)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(file_size);
             let _ = app.emit(
                 "transfer_event",
                 crate::TransferEvent {
@@ -738,7 +804,14 @@ pub async fn provider_download_file(
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
                     direction: "download".to_string(),
-                    message: Some(format!("({} in 0s)", if actual_size > 1_048_576 { format!("{:.1} MB", actual_size as f64 / 1_048_576.0) } else { format!("{:.1} KB", actual_size as f64 / 1024.0) })),
+                    message: Some(format!(
+                        "({} in 0s)",
+                        if actual_size > 1_048_576 {
+                            format!("{:.1} MB", actual_size as f64 / 1_048_576.0)
+                        } else {
+                            format!("{:.1} KB", actual_size as f64 / 1024.0)
+                        }
+                    )),
                     progress: None,
                     path: None,
                 },
@@ -793,8 +866,8 @@ pub async fn provider_download_folder(
         }
     };
 
-    // Set transfer-in-progress flag to suppress filesystem watcher/AeroCloud
-    TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
+    // RAII guard: clears TRANSFER_IN_PROGRESS on every exit path including panic.
+    let _transfer_guard = TransferInProgressGuard::acquire();
     let result = provider_download_folder_inner(
         &app,
         &state,
@@ -804,7 +877,6 @@ pub async fn provider_download_folder(
         runtime_settings,
     )
     .await;
-    TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
 
     // Restore provider pwd (folder scan traverses subdirectories via cd)
     if !original_pwd.is_empty() {
@@ -846,7 +918,7 @@ pub async fn provider_upload_folder(
         }
     };
 
-    TRANSFER_IN_PROGRESS.store(true, Ordering::SeqCst);
+    let _transfer_guard = TransferInProgressGuard::acquire();
     let result = provider_upload_folder_inner(
         &app,
         &state,
@@ -856,7 +928,6 @@ pub async fn provider_upload_folder(
         commit_message,
     )
     .await;
-    TRANSFER_IN_PROGRESS.store(false, Ordering::SeqCst);
 
     // Restore provider pwd (upload may change it via mkdir/cd)
     if !original_pwd.is_empty() {
@@ -970,8 +1041,7 @@ async fn provider_download_folder_inner(
 ) -> Result<String, String> {
     let file_exists_action = file_exists_action.unwrap_or_default();
 
-    // Reset cancel flag
-    state.cancel_flag.store(false, Ordering::Relaxed);
+    let cancel_token = state.reset_cancel_state().await;
 
     let folder_name = std::path::Path::new(remote_path)
         .file_name()
@@ -1288,7 +1358,7 @@ async fn provider_download_folder_inner(
         app.clone(),
         state.provider.clone(),
         runtime_settings,
-        state.cancel_flag.clone(),
+        cancel_token,
     ));
 
     let batch_result = execute_batch(
@@ -1349,7 +1419,7 @@ async fn provider_upload_folder_inner(
     runtime_settings: ResolvedTransferSettings,
     commit_message: Option<String>,
 ) -> Result<String, String> {
-    state.cancel_flag.store(false, Ordering::Relaxed);
+    let cancel_token = state.reset_cancel_state().await;
 
     let folder_name = std::path::Path::new(local_path)
         .file_name()
@@ -1401,7 +1471,10 @@ async fn provider_upload_folder_inner(
                 .await
             {
                 let err_str = e.to_string().to_lowercase();
-                if !err_str.contains("exist") && !err_str.contains("409") && !err_str.contains("already") {
+                if !err_str.contains("exist")
+                    && !err_str.contains("409")
+                    && !err_str.contains("already")
+                {
                     return Err(format!("Failed to create directory: {}", e));
                 }
             }
@@ -1452,11 +1525,15 @@ async fn provider_upload_folder_inner(
         while let Ok(Some(entry)) = read_dir.next_entry().await {
             let local_entry_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
-            let remote_entry_path = format!("{}/{}", current_remote_dir.trim_end_matches('/'), name);
+            let remote_entry_path =
+                format!("{}/{}", current_remote_dir.trim_end_matches('/'), name);
             let file_type = match entry.file_type().await {
                 Ok(file_type) => file_type,
                 Err(error) => {
-                    warn!("Failed to read provider upload entry type {:?}: {}", local_entry_path, error);
+                    warn!(
+                        "Failed to read provider upload entry type {:?}: {}",
+                        local_entry_path, error
+                    );
                     continue;
                 }
             };
@@ -1540,7 +1617,10 @@ async fn provider_upload_folder_inner(
         if let Err(error) = mkdir_result {
             let lowered = error.to_lowercase();
             if !lowered.contains("exist") && !lowered.contains("409") {
-                warn!("Failed to create provider directory {}: {}", remote_dir, error);
+                warn!(
+                    "Failed to create provider directory {}: {}",
+                    remote_dir, error
+                );
             }
         }
     }
@@ -1603,7 +1683,7 @@ async fn provider_upload_folder_inner(
         state.provider.clone(),
         runtime_settings,
         commit_message,
-        state.cancel_flag.clone(),
+        cancel_token,
     ));
 
     let batch_result = execute_batch(
@@ -1623,9 +1703,15 @@ async fn provider_upload_folder_inner(
         "complete".to_string()
     };
     let result_message = if batch_result.cancelled {
-        format!("Upload cancelled after {} files", files_uploaded + files_errored)
+        format!(
+            "Upload cancelled after {} files",
+            files_uploaded + files_errored
+        )
     } else {
-        format!("Uploaded {} files, {} errors", files_uploaded, files_errored)
+        format!(
+            "Uploaded {} files, {} errors",
+            files_uploaded, files_errored
+        )
     };
 
     let _ = app.emit(
@@ -1665,7 +1751,10 @@ pub async fn provider_upload_file(
         .unwrap_or_else(|| "file".to_string());
 
     let transfer_id = format!("pul-{}", chrono::Utc::now().timestamp_millis());
-    let file_size = tokio::fs::metadata(&local_path).await.map(|m| m.len()).unwrap_or(0);
+    let file_size = tokio::fs::metadata(&local_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     info!("Uploading via provider: {} -> {}", local_path, remote_path);
 
@@ -1690,10 +1779,22 @@ pub async fn provider_upload_file(
     let ul_start_time = std::time::Instant::now();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
         Some(Box::new(move |transferred: u64, total: u64| {
-            let pct = if total > 0 { ((transferred as f64 / total as f64) * 100.0) as u8 } else { 0 };
+            let pct = if total > 0 {
+                ((transferred as f64 / total as f64) * 100.0) as u8
+            } else {
+                0
+            };
             let elapsed = ul_start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.1 { (transferred as f64 / elapsed) as u64 } else { 0 };
-            let eta = if speed > 0 && transferred < total { ((total - transferred) as f64 / speed as f64) as u64 } else { 0 };
+            let speed = if elapsed > 0.1 {
+                (transferred as f64 / elapsed) as u64
+            } else {
+                0
+            };
+            let eta = if speed > 0 && transferred < total {
+                ((total - transferred) as f64 / speed as f64) as u64
+            } else {
+                0
+            };
             let _ = app_progress.emit(
                 "transfer_event",
                 crate::TransferEvent {
@@ -1747,7 +1848,14 @@ pub async fn provider_upload_file(
                     transfer_id,
                     filename: filename.clone(),
                     direction: "upload".to_string(),
-                    message: Some(format!("({} in 0s)", if file_size > 1_048_576 { format!("{:.1} MB", file_size as f64 / 1_048_576.0) } else { format!("{:.1} KB", file_size as f64 / 1024.0) })),
+                    message: Some(format!(
+                        "({} in 0s)",
+                        if file_size > 1_048_576 {
+                            format!("{:.1} MB", file_size as f64 / 1_048_576.0)
+                        } else {
+                            format!("{:.1} KB", file_size as f64 / 1024.0)
+                        }
+                    )),
                     progress: None,
                     path: None,
                 },
@@ -2194,11 +2302,10 @@ pub async fn oauth2_connect(
     params: OAuthConnectionParams,
 ) -> Result<OAuth2ConnectResult, String> {
     use crate::providers::{
-        dropbox::DropboxConfig, google_drive::GoogleDriveConfig,
-        google_photos::GooglePhotosConfig, onedrive::OneDriveConfig, types::BoxConfig,
-        types::PCloudConfig, zoho_workdrive::ZohoWorkdriveConfig, BoxProvider, DropboxProvider,
-        GoogleDriveProvider, GooglePhotosProvider, OneDriveProvider, PCloudProvider,
-        ZohoWorkdriveProvider,
+        dropbox::DropboxConfig, google_drive::GoogleDriveConfig, google_photos::GooglePhotosConfig,
+        onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
+        zoho_workdrive::ZohoWorkdriveConfig, BoxProvider, DropboxProvider, GoogleDriveProvider,
+        GooglePhotosProvider, OneDriveProvider, PCloudProvider, ZohoWorkdriveProvider,
     };
 
     info!("Connecting to OAuth2 provider: {}", params.provider);
@@ -2376,8 +2483,11 @@ pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, S
         .await
         .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
 
-    // Start waiting for callback in background (listener already bound)
-    let callback_handle = tokio::spawn(async move { wait_for_callback(listener).await });
+    // Start waiting for callback in background. AbortOnDrop ensures the task
+    // (and the bound TCP listener) is aborted on ANY early-return path below —
+    // raw tokio::spawn would detach the handle and leak the port until process
+    // restart if `open::that` fails or the 5-minute timeout fires.
+    let mut callback_task = AbortOnDrop::spawn(async move { wait_for_callback(listener).await });
 
     // Open URL in default browser
     if let Err(e) = open::that(&auth_url) {
@@ -2390,15 +2500,17 @@ pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, S
 
     info!("Browser opened, waiting for callback...");
 
-    // Wait for callback (with timeout)
-    let callback_result = tokio::time::timeout(
-        tokio::time::Duration::from_secs(300), // 5 minute timeout
-        callback_handle,
-    )
-    .await
-    .map_err(|_| "OAuth timeout: no response within 5 minutes")?
-    .map_err(|e| format!("Callback server error: {}", e))?
-    .map_err(|e| format!("Callback error: {}", e))?;
+    // Wait for callback (with timeout). tokio::select! keeps ownership of the
+    // guard inside the macro; on timeout the guard drops at function exit and
+    // aborts the task, releasing the port.
+    let callback_result = tokio::select! {
+        res = callback_task.wait() => res
+            .map_err(|e| format!("Callback server error: {}", e))?
+            .map_err(|e| format!("Callback error: {}", e))?,
+        _ = tokio::time::sleep(tokio::time::Duration::from_secs(300)) => {
+            return Err("OAuth timeout: no response within 5 minutes".to_string());
+        }
+    };
 
     let (code, state) = callback_result;
 
@@ -3075,6 +3187,12 @@ pub async fn provider_compare_directories(
         local_path, remote_path
     );
 
+    // Reset the provider cancel flag — takes ownership for this compare run.
+    // The user's next Cancel click flips it back to true and the scan stops.
+    state
+        .cancel_flag
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+
     let _ = app.emit(
         "sync_scan_progress",
         serde_json::json!({
@@ -3082,13 +3200,16 @@ pub async fn provider_compare_directories(
         }),
     );
 
-    // Get local files (reuse the same logic from lib.rs)
-    let local_files = crate::get_local_files_recursive(
+    // Get local files (reuse the same logic from lib.rs).
+    // Pass the AppHandle so the scan emits throttled progress events —
+    // otherwise large trees (e.g. a home directory) look like a stall.
+    let local_files = crate::get_local_files_recursive_with_progress(
         &local_path,
         &local_path,
         &options.exclude_patterns,
         options.compare_checksum,
-        None,
+        Some(&state.cancel_flag),
+        Some(&app),
     )
     .await
     .map_err(|e| format!("Failed to scan local directory: {}", e))?;
@@ -3113,6 +3234,13 @@ pub async fn provider_compare_directories(
     }
 
     while let Some(current_dir) = dirs_to_process.pop() {
+        // Abort the remote scan if the user cancelled from the UI.
+        // Without this, the walk keeps listing directories until the tree is
+        // exhausted, which can look like a runaway scan on large providers.
+        if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err("Compare cancelled by user".to_string());
+        }
+
         // Lock provider only for this single list operation, then release
         let entries = {
             let mut provider_lock = state.provider.lock().await;

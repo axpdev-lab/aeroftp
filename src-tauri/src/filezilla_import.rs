@@ -101,8 +101,7 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                 };
                 // Store folder path for reference
                 if !folder_path.is_empty() {
-                    current_fields
-                        .insert("_folder".to_string(), folder_path.join("/"));
+                    current_fields.insert("_folder".to_string(), folder_path.join("/"));
                 }
                 servers.push(FileZillaServer {
                     fields: current_fields.clone(),
@@ -150,8 +149,7 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                     }
                     // Store pass encoding info
                     if current_tag == "Pass" {
-                        current_fields
-                            .insert("_pass_encoding".to_string(), pass_encoding.clone());
+                        current_fields.insert("_pass_encoding".to_string(), pass_encoding.clone());
                     }
                     current_tag.clear();
                 }
@@ -169,8 +167,7 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                     current_fields.insert(current_tag.clone(), value);
                 }
                 if current_tag == "Pass" {
-                    current_fields
-                        .insert("_pass_encoding".to_string(), pass_encoding.clone());
+                    current_fields.insert("_pass_encoding".to_string(), pass_encoding.clone());
                 }
             }
             current_tag.clear();
@@ -213,9 +210,7 @@ fn decode_filezilla_password(encoded: &str, encoding: &str) -> Option<String> {
         use base64::Engine;
 
         match STANDARD.decode(encoded) {
-            Ok(bytes) => String::from_utf8(bytes)
-                .ok()
-                .filter(|s| !s.is_empty()),
+            Ok(bytes) => String::from_utf8(bytes).ok().filter(|s| !s.is_empty()),
             Err(_) => None,
         }
     } else {
@@ -280,8 +275,8 @@ fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
     let (protocol, default_port) = match fz_protocol {
         0 => ("ftp", 21u32),
         1 => ("sftp", 22),
-        3 => ("ftps", 990),  // implicit
-        4 => ("ftps", 21),   // explicit
+        3 => ("ftps", 990), // implicit
+        4 => ("ftps", 21),  // explicit
         6 => ("s3", 443),
         _ => {
             log::info!(
@@ -379,7 +374,9 @@ pub fn default_filezilla_config_path() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            let path = PathBuf::from(appdata).join("FileZilla").join("sitemanager.xml");
+            let path = PathBuf::from(appdata)
+                .join("FileZilla")
+                .join("sitemanager.xml");
             if path.exists() {
                 return Some(path);
             }
@@ -553,7 +550,11 @@ pub fn export_filezilla(
                     .and_then(|o| o.get("ftpsMode"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("explicit");
-                if mode == "implicit" { 3 } else { 4 }
+                if mode == "implicit" {
+                    3
+                } else {
+                    4
+                }
             }
             "s3" => 6,
             _ => continue,
@@ -572,7 +573,10 @@ pub fn export_filezilla(
         xml.push_str(&format!("      <Host>{}</Host>\n", sanitize(&server.host)));
         xml.push_str(&format!("      <Port>{}</Port>\n", server.port));
         xml.push_str(&format!("      <Protocol>{}</Protocol>\n", fz_protocol));
-        xml.push_str(&format!("      <User>{}</User>\n", sanitize(&server.username)));
+        xml.push_str(&format!(
+            "      <User>{}</User>\n",
+            sanitize(&server.username)
+        ));
 
         // Password
         if let Some(password) = passwords.get(&server.name) {

@@ -169,10 +169,14 @@ pub async fn sync_tree_core(
 
     use std::collections::{HashMap, HashSet};
     let mut seen: HashSet<String> = HashSet::new();
-    let local_index: HashMap<&str, u64> =
-        locals.iter().map(|e| (e.rel_path.as_str(), e.size)).collect();
-    let remote_index: HashMap<&str, u64> =
-        remotes.iter().map(|e| (e.rel_path.as_str(), e.size)).collect();
+    let local_index: HashMap<&str, u64> = locals
+        .iter()
+        .map(|e| (e.rel_path.as_str(), e.size))
+        .collect();
+    let remote_index: HashMap<&str, u64> = remotes
+        .iter()
+        .map(|e| (e.rel_path.as_str(), e.size))
+        .collect();
 
     sink.on_phase(SyncPhase::Executing);
 
@@ -207,7 +211,10 @@ pub async fn sync_tree_core(
     }
 
     // Remote → local (download)
-    if matches!(opts.direction, SyncDirection::Download | SyncDirection::Both) {
+    if matches!(
+        opts.direction,
+        SyncDirection::Download | SyncDirection::Both
+    ) {
         for remote_entry in &remotes {
             let already_seen = !seen.insert(remote_entry.rel_path.clone());
             let local_size = local_index.get(remote_entry.rel_path.as_str()).copied();

@@ -444,7 +444,10 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
     // Concurrent connection limiter (audit fix GB-002: Semaphore instead of counter)
     let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
 
-    // Spawn accept loop
+    // Daemon spawn — shutdown via `SHUTDOWN_TX` broadcast channel, not
+    // `AbortOnDrop`. This server is started from a Tauri setup hook that
+    // does not own a cancel scope, so there is no parent handle to bind to.
+    // Exempt from the "no spawn-without-handle" rule per AUDIT-POST-FIX CL-1.
     tokio::spawn(async move {
         let mut shutdown_rx = shutdown_tx.subscribe();
         let mut conn_id = 0u32;
@@ -464,9 +467,13 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
                             conn_id = conn_id.wrapping_add(1);
                             let client_shutdown_rx = shutdown_tx.subscribe();
                             let id = conn_id;
+                            // Per-client task: exits when client disconnects
+                            // OR the shared `client_shutdown_rx` fires. Semaphore
+                            // permit drops with the task; no handle retention
+                            // needed. See AUDIT-POST-FIX CL-1.
                             tokio::spawn(async move {
                                 handle_client(stream, id, client_shutdown_rx).await;
-                                drop(permit); // Release semaphore when client disconnects
+                                drop(permit);
                             });
                         }
                         Err(e) => {
@@ -518,6 +525,9 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
 
+    // Daemon spawn (Windows named pipe accept loop) — shutdown via
+    // `SHUTDOWN_TX` broadcast channel. Same rationale as the Unix path
+    // above. See AUDIT-POST-FIX CL-1.
     tokio::spawn(async move {
         let mut shutdown_rx = shutdown_tx.subscribe();
         let mut conn_id = 0u32;
@@ -551,6 +561,8 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
                             // Split the connected pipe for the client
                             let (reader, writer) = tokio::io::split(server);
 
+                            // Per-client task: same rationale as the Unix path
+                            // (see AUDIT-POST-FIX CL-1).
                             tokio::spawn(async move {
                                 handle_client_generic(reader, writer, id, client_shutdown_rx).await;
                                 drop(permit);

@@ -345,53 +345,49 @@ impl AzureProvider {
                         ParseState::BlobContentLength => {
                             current_size = text.parse().unwrap_or(0);
                         }
-                        ParseState::BlobLastModified
-                            if !text.is_empty() => {
-                                current_modified = Some(text);
-                            }
-                        ParseState::NextMarker
-                            if !text.is_empty() => {
-                                next_marker = Some(text);
-                            }
+                        ParseState::BlobLastModified if !text.is_empty() => {
+                            current_modified = Some(text);
+                        }
+                        ParseState::NextMarker if !text.is_empty() => {
+                            next_marker = Some(text);
+                        }
                         _ => {}
                     }
                 }
                 Ok(Event::End(ref e)) => match e.name().as_ref() {
-                    b"BlobPrefix"
-                        if in_prefix => {
-                            let display_name = current_name.trim_end_matches('/');
-                            let relative = display_name
-                                .strip_prefix(&self.current_prefix)
-                                .unwrap_or(display_name);
-                            let relative = relative.trim_start_matches('/');
-                            if !relative.is_empty() {
-                                items.push(BlobItem {
-                                    name: relative.to_string(),
-                                    size: 0,
-                                    last_modified: None,
-                                    is_prefix: true,
-                                });
-                            }
-                            in_prefix = false;
-                            state = ParseState::Root;
+                    b"BlobPrefix" if in_prefix => {
+                        let display_name = current_name.trim_end_matches('/');
+                        let relative = display_name
+                            .strip_prefix(&self.current_prefix)
+                            .unwrap_or(display_name);
+                        let relative = relative.trim_start_matches('/');
+                        if !relative.is_empty() {
+                            items.push(BlobItem {
+                                name: relative.to_string(),
+                                size: 0,
+                                last_modified: None,
+                                is_prefix: true,
+                            });
                         }
-                    b"Blob"
-                        if in_blob => {
-                            let relative = current_name
-                                .strip_prefix(&self.current_prefix)
-                                .unwrap_or(&current_name);
-                            let relative = relative.trim_start_matches('/');
-                            if !relative.is_empty() && !relative.contains('/') {
-                                items.push(BlobItem {
-                                    name: relative.to_string(),
-                                    size: current_size,
-                                    last_modified: current_modified.clone(),
-                                    is_prefix: false,
-                                });
-                            }
-                            in_blob = false;
-                            state = ParseState::Root;
+                        in_prefix = false;
+                        state = ParseState::Root;
+                    }
+                    b"Blob" if in_blob => {
+                        let relative = current_name
+                            .strip_prefix(&self.current_prefix)
+                            .unwrap_or(&current_name);
+                        let relative = relative.trim_start_matches('/');
+                        if !relative.is_empty() && !relative.contains('/') {
+                            items.push(BlobItem {
+                                name: relative.to_string(),
+                                size: current_size,
+                                last_modified: current_modified.clone(),
+                                is_prefix: false,
+                            });
                         }
+                        in_blob = false;
+                        state = ParseState::Root;
+                    }
                     b"Name" => {
                         if in_prefix {
                             state = ParseState::BlobPrefix;
@@ -399,14 +395,12 @@ impl AzureProvider {
                             state = ParseState::Blob;
                         }
                     }
-                    b"Properties"
-                        if in_blob => {
-                            state = ParseState::Blob;
-                        }
-                    b"Content-Length" | b"Last-Modified"
-                        if in_blob => {
-                            state = ParseState::BlobProperties;
-                        }
+                    b"Properties" if in_blob => {
+                        state = ParseState::Blob;
+                    }
+                    b"Content-Length" | b"Last-Modified" if in_blob => {
+                        state = ParseState::BlobProperties;
+                    }
                     b"NextMarker" => {
                         state = ParseState::Root;
                     }
@@ -969,8 +963,7 @@ impl StorageProvider for AzureProvider {
                 let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
                     .await
                     .map_err(ProviderError::IoError)?;
-                super::stream_response_to_resumable(resp, &mut fresh, total_size, progress)
-                    .await?;
+                super::stream_response_to_resumable(resp, &mut fresh, total_size, progress).await?;
                 fresh.commit().await.map_err(|e| {
                     ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
                 })?;
@@ -1133,7 +1126,8 @@ impl StorageProvider for AzureProvider {
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         if path.trim_matches('/').is_empty() {
             return Err(ProviderError::InvalidPath(
-                "Refusing to recursively delete root '/'. This would erase the entire container.".into(),
+                "Refusing to recursively delete root '/'. This would erase the entire container."
+                    .into(),
             ));
         }
         let entries = self.list(path).await?;
@@ -1320,10 +1314,7 @@ impl StorageProvider for AzureProvider {
 
         let mut headers = HeaderMap::new();
         headers.insert("x-ms-date", HeaderValue::from_str(&date_str).unwrap());
-        headers.insert(
-            "x-ms-version",
-            HeaderValue::from_static(API_VERSION),
-        );
+        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
         // x-ms-copy-source points to the source blob URL
         headers.insert(
             "x-ms-copy-source",
@@ -1334,13 +1325,7 @@ impl StorageProvider for AzureProvider {
         headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
 
         let resp = self
-            .send_with_auth_and_retry(
-                reqwest::Method::PUT,
-                &dest_url,
-                headers,
-                0,
-                None,
-            )
+            .send_with_auth_and_retry(reqwest::Method::PUT, &dest_url, headers, 0, None)
             .await?;
 
         let status = resp.status();
@@ -1350,7 +1335,8 @@ impl StorageProvider for AzureProvider {
             let body = resp.text().await.unwrap_or_default();
             Err(ProviderError::ServerError(format!(
                 "Copy Blob failed ({}): {}",
-                status, sanitize_api_error(&body)
+                status,
+                sanitize_api_error(&body)
             )))
         }
     }
@@ -1717,31 +1703,32 @@ impl AzureProvider {
                         }
                     }
                     Ok(quick_xml::events::Event::End(ref e))
-                        if String::from_utf8_lossy(e.name().as_ref()) == "Blob" => {
-                            if in_blob && is_deleted && !blob_name.is_empty() {
-                                let mut meta = std::collections::HashMap::new();
-                                meta.insert("deleted".to_string(), "true".to_string());
-                                all_entries.push(super::RemoteEntry {
-                                    name: blob_name
-                                        .rsplit('/')
-                                        .next()
-                                        .unwrap_or(&blob_name)
-                                        .to_string(),
-                                    path: blob_name.clone(),
-                                    is_dir: false,
-                                    size: blob_size,
-                                    modified: blob_modified.clone(),
-                                    permissions: None,
-                                    owner: None,
-                                    group: None,
-                                    is_symlink: false,
-                                    link_target: None,
-                                    mime_type: None,
-                                    metadata: meta,
-                                });
-                            }
-                            in_blob = false;
+                        if String::from_utf8_lossy(e.name().as_ref()) == "Blob" =>
+                    {
+                        if in_blob && is_deleted && !blob_name.is_empty() {
+                            let mut meta = std::collections::HashMap::new();
+                            meta.insert("deleted".to_string(), "true".to_string());
+                            all_entries.push(super::RemoteEntry {
+                                name: blob_name
+                                    .rsplit('/')
+                                    .next()
+                                    .unwrap_or(&blob_name)
+                                    .to_string(),
+                                path: blob_name.clone(),
+                                is_dir: false,
+                                size: blob_size,
+                                modified: blob_modified.clone(),
+                                permissions: None,
+                                owner: None,
+                                group: None,
+                                is_symlink: false,
+                                link_target: None,
+                                mime_type: None,
+                                metadata: meta,
+                            });
                         }
+                        in_blob = false;
+                    }
                     Ok(quick_xml::events::Event::Eof) => break,
                     Err(_) => break,
                     _ => {}

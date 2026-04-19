@@ -452,7 +452,7 @@
             "modeUnavailable": "Pratetap mod pemindahan kini hanya tersedia untuk FTP/FTPS",
             "crossProfile": {
                 "title": "Pemindahan Merentas Profil",
-                "subtitle": "Panel terapung: baris gilir, log dan kemajuan kekal kelihatan semasa berjalan.",
+                "subtitle": "Salin fail terus antara dua pelayan yang disimpan.",
                 "closeAria": "Tutup panel pemindahan merentas profil",
                 "source": "Sumber",
                 "destination": "Destinasi",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Saiz",
                 "executeTransfer": "Laksana Pemindahan",
                 "transferInProgress": "Pemindahan sedang berjalan",
-                "transferHint": "Pantau baris gilir, log aktiviti dan kemajuan di bawah. Panel ini sengaja direka ringan.",
+                "transferHint": "Kemajuan langsung ditunjukkan di bawah. Sejarah terperinci kekal dalam Log Aktiviti.",
                 "summary": "{transferred} dipindahkan, {skipped} dilangkau, {failed} gagal",
                 "summaryMeta": "{size} dalam {seconds}s",
-                "newTransfer": "Pemindahan Baharu"
+                "newTransfer": "Pemindahan Baharu",
+                "preparing": "Menyediakan pemindahan…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Berjaya mengalih keluar asset {filename}",
             "release_asset_download_start": "[{provider}] Memuat turun release asset {filename}...",
             "release_asset_download_success": "[{provider}] Berjaya memuat turun release asset {filename}",
-            "release_asset_download_error": "[{provider}] Gagal memuat turun release asset {filename}"
+            "release_asset_download_error": "[{provider}] Gagal memuat turun release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Memulakan pemindahan {count} dari {source} ke {dest}",
+            "crossprofile_file_success": "[Cross-profile] Disalin {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Gagal pada {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Jadual lebar jalur",
             "bwScheduleOff": "Manual (guna had di atas)",
             "bwScheduleOffice": "Waktu pejabat (had 08-18)",
-            "bwScheduleNight": "Mod malam (had 18-08)"
+            "bwScheduleNight": "Mod malam (had 18-08)",
+            "allInSync": "Semua fail telah disegerakkan — tiada apa untuk dipindahkan",
+            "nothingInDirection": "Perbezaan ditemui, tetapi tiada yang sepadan dengan arah yang dipilih. Cuba Two-way untuk melihat semua perubahan."
         },
         "ui": {
             "syncing": "Menyegerak...",

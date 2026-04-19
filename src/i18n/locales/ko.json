@@ -452,7 +452,7 @@
             "modeUnavailable": "전송 모드 프리셋은 현재 FTP/FTPS에서만 사용 가능합니다",
             "crossProfile": {
                 "title": "크로스 프로필 전송",
-                "subtitle": "플로팅 패널: 실행 중에도 대기열, 로그 및 진행 상황이 표시됩니다.",
+                "subtitle": "저장된 두 서버 간에 파일을 직접 복사합니다.",
                 "closeAria": "크로스 프로필 전송 패널 닫기",
                 "source": "소스",
                 "destination": "대상",
@@ -474,10 +474,11 @@
                 "sizeColumn": "크기",
                 "executeTransfer": "전송 실행",
                 "transferInProgress": "전송 진행 중",
-                "transferHint": "아래에서 대기열, 활동 로그 및 진행 상황을 확인하세요. 이 패널은 의도적으로 가볍게 설계되었습니다.",
+                "transferHint": "실시간 진행 상황이 아래에 표시됩니다. 자세한 기록은 활동 로그에 남습니다.",
                 "summary": "{transferred} 전송됨, {skipped} 건너뜀, {failed} 실패",
                 "summaryMeta": "{size}, {seconds}초 소요",
-                "newTransfer": "새 전송"
+                "newTransfer": "새 전송",
+                "preparing": "전송 준비 중…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] asset 제거 완료 {filename}",
             "release_asset_download_start": "[{provider}] release asset 다운로드 중 {filename}...",
             "release_asset_download_success": "[{provider}] release asset 다운로드 완료 {filename}",
-            "release_asset_download_error": "[{provider}] release asset 다운로드 실패 {filename}"
+            "release_asset_download_error": "[{provider}] release asset 다운로드 실패 {filename}",
+            "crossprofile_start": "[Cross-profile] {source}에서 {dest}(으)로 {count}개 전송 시작",
+            "crossprofile_file_success": "[Cross-profile] {filename} 복사 완료 ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] {filename} 실패: {error}"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "대역폭 일정",
             "bwScheduleOff": "수동 (위 제한 사용)",
             "bwScheduleOffice": "업무 시간 (제한 08-18)",
-            "bwScheduleNight": "야간 모드 (제한 18-08)"
+            "bwScheduleNight": "야간 모드 (제한 18-08)",
+            "allInSync": "모든 파일이 동기화됨 — 전송할 항목 없음",
+            "nothingInDirection": "차이점이 발견되었지만 선택한 방향과 일치하는 항목이 없습니다. 모든 변경 사항을 보려면 Two-way를 시도하세요."
         },
         "ui": {
             "syncing": "동기화 중...",

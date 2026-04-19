@@ -47,10 +47,10 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'pcloud', name: 'pCloud', description: 'Swiss cloud storage (10 GB free)', protocol: 'pcloud', badge: 'OAuth', signupUrl: 'https://www.pcloud.com', healthCheckUrl: 'https://api.pcloud.com', source: 'protocol' },
     { id: 'filen', name: 'Filen', description: 'Zero-knowledge encrypted cloud (10 GB free)', protocol: 'filen', badge: 'E2E', signupUrl: 'https://filen.io', healthCheckUrl: 'https://gateway.filen.io', source: 'protocol' },
     { id: 'internxt', name: 'Internxt', description: 'Privacy-focused encrypted cloud (1 GB free)', protocol: 'internxt', badge: 'E2E', signupUrl: 'https://internxt.com', healthCheckUrl: 'https://api.internxt.com', source: 'protocol' },
-    { id: 'zohoworkdrive', name: 'Zoho WorkDrive', description: 'Team collaboration and storage (5 GB free)', protocol: 'zohoworkdrive', badge: 'OAuth', signupUrl: 'https://www.zoho.com/workdrive/', healthCheckUrl: 'https://www.zohoapis.com', source: 'protocol' },
+    { id: 'koofr-cloud', name: 'Koofr', description: 'EU-based privacy-friendly cloud (10 GB free)', protocol: 'koofr', badge: 'API', signupUrl: 'https://koofr.eu', healthCheckUrl: 'https://app.koofr.net', source: 'protocol' },
     { id: 'kdrive', name: 'kDrive', description: 'Infomaniak Swiss cloud (15 GB free)', protocol: 'kdrive', badge: 'API', signupUrl: 'https://www.infomaniak.com/en/kdrive', healthCheckUrl: 'https://api.infomaniak.com', source: 'protocol' },
     { id: 'filelu', name: 'FileLu', description: 'Multi-protocol cloud storage (1 GB free)', protocol: 'filelu', badge: 'API', signupUrl: 'https://filelu.com', healthCheckUrl: 'https://filelu.com/api/', source: 'protocol' },
-    { id: 'koofr-cloud', name: 'Koofr', description: 'EU-based privacy-friendly cloud (10 GB free)', protocol: 'koofr', badge: 'API', signupUrl: 'https://koofr.eu', healthCheckUrl: 'https://app.koofr.net', source: 'protocol' },
+    { id: 'zohoworkdrive', name: 'Zoho WorkDrive', description: 'Team collaboration and storage (5 GB free)', protocol: 'zohoworkdrive', badge: 'OAuth', signupUrl: 'https://www.zoho.com/workdrive/', healthCheckUrl: 'https://www.zohoapis.com', source: 'protocol' },
     { id: 'drime', name: 'Drime Cloud', description: 'Cloud storage with API access (20 GB free)', protocol: 'drime', badge: 'API', signupUrl: 'https://drime.cloud', healthCheckUrl: 'https://app.drime.cloud', source: 'protocol' },
     { id: 'jottacloud', name: 'Jottacloud', description: 'Norwegian cloud storage (5 GB free)', protocol: 'jottacloud', badge: 'API', signupUrl: 'https://www.jottacloud.com', healthCheckUrl: 'https://jottacloud.com', source: 'protocol' },
     { id: 'fourshared', name: '4shared', description: 'File sharing platform (15 GB free)', protocol: 'fourshared', badge: 'OAuth', signupUrl: 'https://www.4shared.com', healthCheckUrl: 'https://webdav.4shared.com', source: 'protocol' },
@@ -200,9 +200,11 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
                 'mega-s4': 7, 'backblaze': 8, 'idrive-e2': 9,
                 // Row 4+: remaining
                 'digitalocean-spaces': 10, 'filelu-s3': 11, 'wasabi': 12,
-                'oracle-cloud': 13, 'quotaless-s3': 14,
-                // Asian providers last
+                'oracle-cloud': 13,
+                // Asian providers
                 'alibaba-oss': 20, 'tencent-cos': 21, 'yandex-storage': 22,
+                // Trial-only / restricted signup — kept at the end
+                'quotaless-s3': 99,
             };
             const pa = priority[a.id] ?? 15;
             const pb = priority[b.id] ?? 15;
@@ -211,8 +213,15 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
         });
     const webdavProviders = getProvidersByCategory('webdav').map(registryToDiscoverItem)
         .sort((a, b) => {
-            // WebDAV Server (generic) first, then Nextcloud, Felicloud, then alphabetical
-            const priority: Record<string, number> = { 'custom-webdav': 0, 'nextcloud': 1, 'felicloud': 2 };
+            // WebDAV Server (generic) first, then Nextcloud, Felicloud, Koofr (partners),
+            // then alphabetical. Quotaless is trial-only → pushed to the very end.
+            const priority: Record<string, number> = {
+                'custom-webdav': 0,
+                'nextcloud': 1,
+                'felicloud': 2,
+                'koofr': 3,
+                'quotaless-webdav': 99,
+            };
             const pa = priority[a.id] ?? 10;
             const pb = priority[b.id] ?? 10;
             if (pa !== pb) return pa - pb;

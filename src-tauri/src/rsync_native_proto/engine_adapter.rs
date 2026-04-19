@@ -116,8 +116,10 @@ impl From<EngineDeltaOp> for ProtocolDeltaInstruction {
 /// `DeltaInstruction`s terminated by `EndOfFile` — which is required by the
 /// driver's pre-flight validation on `UploadPlan.delta_instructions`.
 pub fn engine_ops_to_wire(ops: Vec<EngineDeltaOp>) -> Vec<ProtocolDeltaInstruction> {
-    let mut out: Vec<ProtocolDeltaInstruction> =
-        ops.into_iter().map(ProtocolDeltaInstruction::from).collect();
+    let mut out: Vec<ProtocolDeltaInstruction> = ops
+        .into_iter()
+        .map(ProtocolDeltaInstruction::from)
+        .collect();
     out.push(ProtocolDeltaInstruction::EndOfFile);
     out
 }

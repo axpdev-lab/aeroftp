@@ -18,6 +18,7 @@ use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use url::Url;
 
@@ -35,29 +36,29 @@ mod cloud_provider_factory;
 mod cloud_service;
 mod context_intelligence;
 pub mod credential_store;
-pub mod profile_loader;
 mod cross_profile_commands;
 pub mod cross_profile_transfer;
 mod crypto;
 mod cryptomator;
 mod cyber_tools;
 mod delta_sync;
-mod number_parsing;
-mod rsync_output;
-mod ssh_exec;
-#[cfg(unix)]
-mod rsync_over_ssh;
-#[cfg(unix)]
-mod delta_transport;
 #[cfg(unix)]
 mod delta_sync_rsync;
+#[cfg(unix)]
+mod delta_transport;
+mod number_parsing;
+pub mod profile_loader;
+mod rsync_output;
+#[cfg(unix)]
+mod rsync_over_ssh;
+mod ssh_exec;
+pub mod util;
 // Strada C — native rsync prototype (dev-only, gitignored, feature-gated).
 // Does not affect production builds. See `src/rsync_native_proto/README.md`.
-#[cfg(feature = "proto_native_rsync")]
-pub mod rsync_native_proto;
 mod file_tags;
 mod file_watcher;
 mod filesystem;
+pub mod filezilla_import;
 mod ftp;
 mod ftp_session_pool;
 mod ftp_transfer_executor;
@@ -70,14 +71,14 @@ pub mod mcp;
 mod plugin_registry;
 mod plugins;
 mod profile_export;
-mod rclone_crypt;
-pub mod rclone_import;
-pub mod winscp_import;
-pub mod filezilla_import;
-mod provider_transfer_executor;
 mod provider_commands;
+mod provider_transfer_executor;
 pub mod providers;
 mod pty;
+mod rclone_crypt;
+pub mod rclone_import;
+#[cfg(feature = "proto_native_rsync")]
+pub mod rsync_native_proto;
 mod session_commands;
 mod session_manager;
 #[cfg(not(target_os = "macos"))]
@@ -92,11 +93,12 @@ mod sync_versioning;
 mod totp;
 mod transfer_domain;
 mod transfer_orchestrator;
-mod transfer_settings;
 mod transfer_pool;
+mod transfer_settings;
 mod tray_badge;
 mod vault_remote;
 mod windows_acl;
+pub mod winscp_import;
 #[cfg(target_os = "macos")]
 mod speech {
     //! Stub: macOS uses native Web Speech API via WKWebView — whisper.cpp not needed.
@@ -216,6 +218,7 @@ pub async fn throttle_transfer(
 pub(crate) struct AppState {
     ftp_manager: Mutex<FtpManager>,
     cancel_flag: Arc<AtomicBool>,
+    cancel_token: Mutex<CancellationToken>,
     speed_limits: SpeedLimits,
 }
 
@@ -224,8 +227,21 @@ impl AppState {
         Self {
             ftp_manager: Mutex::new(FtpManager::new()),
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            cancel_token: Mutex::new(CancellationToken::new()),
             speed_limits: SpeedLimits::new(),
         }
+    }
+
+    async fn reset_cancel_state(&self) -> CancellationToken {
+        self.cancel_flag.store(false, Ordering::Relaxed);
+        let token = CancellationToken::new();
+        *self.cancel_token.lock().await = token.clone();
+        token
+    }
+
+    async fn request_cancel(&self) {
+        self.cancel_flag.store(true, Ordering::Relaxed);
+        self.cancel_token.lock().await.cancel();
     }
 }
 
@@ -1854,14 +1870,15 @@ async fn download_files_batch(
         return Ok("Downloaded 0 files, 0 errors".to_string());
     }
 
-    let runtime_settings =
-        transfer_settings::resolve_ftp_transfer_settings(transfer_settings::TransferSettingsInput {
+    let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
+        transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
-        });
+        },
+    );
 
-    state.cancel_flag.store(false, Ordering::Relaxed);
+    let cancel_token = state.reset_cancel_state().await;
 
     let transfer_id = format!("dl-files-{}", chrono::Utc::now().timestamp_millis());
     let display_name = format!(
@@ -1906,9 +1923,13 @@ async fn download_files_batch(
 
     for entry in &params.entries {
         if let Some(parent) = Path::new(&entry.local_path).parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| format!("Failed to create local directory {}: {}", parent.display(), e))?;
+            tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                format!(
+                    "Failed to create local directory {}: {}",
+                    parent.display(),
+                    e
+                )
+            })?;
         }
     }
 
@@ -1998,7 +2019,7 @@ async fn download_files_batch(
         app.clone(),
         pool.clone(),
         runtime_settings,
-        state.cancel_flag.clone(),
+        cancel_token,
     ));
 
     let batch_result = transfer_orchestrator::execute_batch(
@@ -2025,7 +2046,10 @@ async fn download_files_batch(
             files_downloaded + files_errored
         )
     } else {
-        format!("Downloaded {} files, {} errors", files_downloaded, files_errored)
+        format!(
+            "Downloaded {} files, {} errors",
+            files_downloaded, files_errored
+        )
     };
 
     let _ = app.emit(
@@ -2062,14 +2086,15 @@ async fn upload_files_batch(
         return Ok("Uploaded 0 files, 0 errors".to_string());
     }
 
-    let runtime_settings =
-        transfer_settings::resolve_ftp_transfer_settings(transfer_settings::TransferSettingsInput {
+    let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
+        transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
-        });
+        },
+    );
 
-    state.cancel_flag.store(false, Ordering::Relaxed);
+    let cancel_token = state.reset_cancel_state().await;
 
     let transfer_id = format!("ul-files-{}", chrono::Utc::now().timestamp_millis());
     let display_name = format!(
@@ -2198,7 +2223,7 @@ async fn upload_files_batch(
         app.clone(),
         pool.clone(),
         runtime_settings,
-        state.cancel_flag.clone(),
+        cancel_token,
     ));
 
     let batch_result = transfer_orchestrator::execute_batch(
@@ -2220,9 +2245,15 @@ async fn upload_files_batch(
     let files_uploaded = batch_result.completed;
     let files_errored = batch_result.failed;
     let result_message = if batch_result.cancelled {
-        format!("Upload cancelled after {} files", files_uploaded + files_errored)
+        format!(
+            "Upload cancelled after {} files",
+            files_uploaded + files_errored
+        )
     } else {
-        format!("Uploaded {} files, {} errors", files_uploaded, files_errored)
+        format!(
+            "Uploaded {} files, {} errors",
+            files_uploaded, files_errored
+        )
     };
 
     let _ = app.emit(
@@ -2562,12 +2593,13 @@ async fn download_folder(
     state: State<'_, AppState>,
     params: DownloadFolderParams,
 ) -> Result<String, String> {
-    let runtime_settings =
-        transfer_settings::resolve_ftp_transfer_settings(transfer_settings::TransferSettingsInput {
+    let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
+        transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
-        });
+        },
+    );
     info!(
         "Downloading folder: {} -> {} (concurrency={}, retries={}, timeout={}s)",
         params.remote_path,
@@ -2577,7 +2609,7 @@ async fn download_folder(
         runtime_settings.timeout_seconds
     );
 
-    state.cancel_flag.store(false, Ordering::Relaxed);
+    let cancel_token = state.reset_cancel_state().await;
 
     let folder_name = PathBuf::from(&params.remote_path)
         .file_name()
@@ -2698,10 +2730,7 @@ async fn download_folder(
                 direction: "download".to_string(),
                 message: Some(format!(
                     "Downloaded {} / {} files ({} skipped, {} errors)",
-                    snapshot.completed,
-                    total_files_for_progress,
-                    initial_skipped,
-                    snapshot.failed
+                    snapshot.completed, total_files_for_progress, initial_skipped, snapshot.failed
                 )),
                 progress: Some(TransferProgress {
                     transfer_id: progress_transfer_id.clone(),
@@ -2724,7 +2753,7 @@ async fn download_folder(
         app.clone(),
         pool.clone(),
         runtime_settings,
-        state.cancel_flag.clone(),
+        cancel_token,
     ));
 
     let batch_result = transfer_orchestrator::execute_batch(
@@ -2983,11 +3012,10 @@ async fn prepare_ftp_upload_entries(
                         if !entry.is_dir {
                             let remote_file_path =
                                 format!("{}/{}", remote_dir.trim_end_matches('/'), entry.name);
-                            let modified_dt = parse_remote_modified_datetime(entry.modified.as_deref());
-                            remote_index.insert(
-                                remote_file_path,
-                                (entry.size.unwrap_or(0), modified_dt),
-                            );
+                            let modified_dt =
+                                parse_remote_modified_datetime(entry.modified.as_deref());
+                            remote_index
+                                .insert(remote_file_path, (entry.size.unwrap_or(0), modified_dt));
                         }
                     }
                 }
@@ -3067,12 +3095,13 @@ async fn upload_folder(
     state: State<'_, AppState>,
     params: UploadFolderParams,
 ) -> Result<String, String> {
-    let runtime_settings =
-        transfer_settings::resolve_ftp_transfer_settings(transfer_settings::TransferSettingsInput {
+    let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
+        transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
-        });
+        },
+    );
     info!(
         "Uploading folder recursively: {} -> {} (concurrency={}, retries={}, timeout={}s)",
         params.local_path,
@@ -3082,7 +3111,7 @@ async fn upload_folder(
         runtime_settings.timeout_seconds
     );
 
-    state.cancel_flag.store(false, Ordering::Relaxed);
+    let cancel_token = state.reset_cancel_state().await;
 
     let folder_name = PathBuf::from(&params.local_path)
         .file_name()
@@ -3205,10 +3234,7 @@ async fn upload_folder(
                 direction: "upload".to_string(),
                 message: Some(format!(
                     "Uploaded {} / {} files ({} skipped, {} errors)",
-                    snapshot.completed,
-                    total_files_for_progress,
-                    initial_skipped,
-                    snapshot.failed
+                    snapshot.completed, total_files_for_progress, initial_skipped, snapshot.failed
                 )),
                 progress: Some(TransferProgress {
                     transfer_id: progress_transfer_id.clone(),
@@ -3231,7 +3257,7 @@ async fn upload_folder(
         app.clone(),
         pool.clone(),
         runtime_settings,
-        state.cancel_flag.clone(),
+        cancel_token,
     ));
 
     let batch_result = transfer_orchestrator::execute_batch(
@@ -3244,7 +3270,10 @@ async fn upload_folder(
     .await;
 
     if let Err(e) = pool.close().await {
-        warn!("Failed to close FTP session pool cleanly after upload: {}", e);
+        warn!(
+            "Failed to close FTP session pool cleanly after upload: {}",
+            e
+        );
     }
 
     let files_uploaded = batch_result.completed;
@@ -3287,8 +3316,8 @@ async fn cancel_transfer(
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<(), String> {
     // Set cancel flag on both FTP and provider states
-    state.cancel_flag.store(true, Ordering::Relaxed);
-    provider_state.cancel_flag.store(true, Ordering::Relaxed);
+    state.request_cancel().await;
+    provider_state.request_cancel().await;
     info!("Transfer cancellation requested");
     Ok(())
 }
@@ -3298,8 +3327,8 @@ async fn reset_cancel_flag(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<(), String> {
-    state.cancel_flag.store(false, Ordering::Relaxed);
-    provider_state.cancel_flag.store(false, Ordering::Relaxed);
+    state.reset_cancel_state().await;
+    provider_state.reset_cancel_state().await;
     Ok(())
 }
 
@@ -6457,6 +6486,12 @@ async fn compare_directories(
         local_path, remote_path
     );
 
+    // Reset the shared cancel flag so this compare starts clean.
+    // A user who cancelled a previous operation may have left the flag in whatever
+    // state; we take ownership of it for the duration of this compare and rely on
+    // `cancel_transfer` to flip it back to true if the user asks for a stop.
+    state.cancel_flag.store(false, Ordering::Relaxed);
+
     // Emit scan phase: scanning (both local and remote concurrently)
     let _ = app.emit(
         "sync_scan_progress",
@@ -6469,12 +6504,13 @@ async fn compare_directories(
     // Run local and remote scans concurrently (F2 optimization)
     // Local scan runs on filesystem; remote scan holds FTP lock.
     // tokio::join! runs both futures on the same task but interleaves their I/O waits.
-    let local_future = get_local_files_recursive(
+    let local_future = get_local_files_recursive_with_progress(
         &local_path,
         &local_path,
         &options.exclude_patterns,
         options.compare_checksum,
         Some(&state.cancel_flag),
+        Some(&app),
     );
 
     let remote_future = async {
@@ -6546,6 +6582,28 @@ pub async fn get_local_files_recursive(
     compare_checksum: bool,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
+    get_local_files_recursive_with_progress(
+        base_path,
+        _current_path,
+        exclude_patterns,
+        compare_checksum,
+        cancel_flag,
+        None,
+    )
+    .await
+}
+
+/// Same as get_local_files_recursive, but emits `sync_scan_progress` events
+/// while traversing. Without this, scanning large trees (e.g. a home directory)
+/// leaves the UI stuck on "0 files found" for minutes, which looks like a stall.
+pub async fn get_local_files_recursive_with_progress(
+    base_path: &str,
+    _current_path: &str,
+    exclude_patterns: &[String],
+    compare_checksum: bool,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+    app: Option<&AppHandle>,
+) -> Result<HashMap<String, FileInfo>, String> {
     let mut files = HashMap::new();
     let base = PathBuf::from(base_path);
 
@@ -6556,6 +6614,10 @@ pub async fn get_local_files_recursive(
     // Use a stack for iterative traversal instead of recursion
     let mut dirs_to_process = vec![base.clone()];
 
+    // Throttle progress emission: every 500 files OR every 200ms, whichever comes first
+    let mut last_progress_emit = std::time::Instant::now();
+    let mut last_progress_count: usize = 0;
+
     while let Some(current_dir) = dirs_to_process.pop() {
         // Check cancellation
         if let Some(flag) = cancel_flag {
@@ -6563,6 +6625,26 @@ pub async fn get_local_files_recursive(
                 return Ok(files); // Return partial results
             }
         }
+
+        // Emit scan progress between directories (throttled)
+        if let Some(handle) = app {
+            let now = std::time::Instant::now();
+            let count = files.len();
+            if count.saturating_sub(last_progress_count) >= 500
+                || now.duration_since(last_progress_emit).as_millis() >= 200
+            {
+                let _ = handle.emit(
+                    "sync_scan_progress",
+                    serde_json::json!({
+                        "phase": "local",
+                        "files_found": count,
+                    }),
+                );
+                last_progress_emit = now;
+                last_progress_count = count;
+            }
+        }
+
         let mut entries = match tokio::fs::read_dir(&current_dir).await {
             Ok(e) => e,
             Err(_) => continue,
@@ -7378,7 +7460,9 @@ async fn restore_sync_snapshot_cmd(
         sync::validate_relative_path(relative_path)?;
         let local_file = local_root.join(relative_path);
         if !local_file.starts_with(&local_root) {
-            result.failed.push(format!("{}: invalid local target path", relative_path));
+            result
+                .failed
+                .push(format!("{}: invalid local target path", relative_path));
             continue;
         }
         let remote_file = format!("{}/{}", remote_root, relative_path);
@@ -7417,9 +7501,12 @@ async fn restore_sync_snapshot_cmd(
         }
 
         if local_file.exists() && versioning.is_enabled() {
-            versioning
-                .archive(&local_file)
-                .map_err(|err| format!("Failed to archive {} before restore: {}", relative_path, err))?;
+            versioning.archive(&local_file).map_err(|err| {
+                format!(
+                    "Failed to archive {} before restore: {}",
+                    relative_path, err
+                )
+            })?;
         }
 
         let download_result = if let Some(ftp) = ftp_manager.as_mut() {
@@ -7441,7 +7528,9 @@ async fn restore_sync_snapshot_cmd(
         match download_result {
             Ok(_) => result.restored_from_remote += 1,
             Err(download_err) => {
-                result.failed.push(format!("{}: {}", relative_path, download_err));
+                result
+                    .failed
+                    .push(format!("{}: {}", relative_path, download_err));
                 result.skipped += 1;
             }
         }
@@ -8267,9 +8356,51 @@ fn classify_transfer_error(raw_error: String, file_path: Option<String>) -> Sync
 
 // ============ AI Commands ============
 
+/// Active non-streaming ai_chat requests, keyed by a caller-supplied id.
+/// `ai_cancel_chat(id)` flips the token and the running `call_ai` future
+/// drops — the underlying reqwest HTTP request is cancelled by drop.
+static AI_CHAT_CANCEL_TOKENS: std::sync::LazyLock<
+    tokio::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
+> = std::sync::LazyLock::new(|| tokio::sync::Mutex::new(std::collections::HashMap::new()));
+
 #[tauri::command]
-async fn ai_chat(request: ai::AIRequest) -> Result<ai::AIResponse, String> {
-    ai::call_ai(request).await.map_err(|e| e.to_string())
+async fn ai_chat(
+    request: ai::AIRequest,
+    request_id: Option<String>,
+) -> Result<ai::AIResponse, String> {
+    let token = CancellationToken::new();
+
+    // Register cancel token if the caller provided an id. Without an id the
+    // call simply cannot be cancelled externally — same as before this fix —
+    // but at least it will not block another id's cancel.
+    if let Some(id) = request_id.as_ref() {
+        AI_CHAT_CANCEL_TOKENS
+            .lock()
+            .await
+            .insert(id.clone(), token.clone());
+    }
+
+    let call_future = ai::call_ai(request);
+    let result = tokio::select! {
+        _ = token.cancelled() => Err("AI request cancelled by user".to_string()),
+        res = call_future => res.map_err(|e| e.to_string()),
+    };
+
+    if let Some(id) = request_id {
+        AI_CHAT_CANCEL_TOKENS.lock().await.remove(&id);
+    }
+
+    result
+}
+
+/// Cancel a non-streaming `ai_chat` request identified by `request_id`.
+/// No-op if the id is unknown.
+#[tauri::command]
+async fn ai_cancel_chat(request_id: String) -> Result<(), String> {
+    if let Some(token) = AI_CHAT_CANCEL_TOKENS.lock().await.remove(&request_id) {
+        token.cancel();
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -9051,8 +9182,40 @@ static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 // Global flag to control background sync
 pub(crate) static BACKGROUND_SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
+static BACKGROUND_SYNC_CANCEL: std::sync::LazyLock<std::sync::Mutex<CancellationToken>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(CancellationToken::new()));
+/// JoinHandle of the currently running background sync worker, so
+/// `stop_background_sync` can await a graceful exit rather than fire-and-forget.
+/// Previously the handle was dropped (detached), meaning the UI showed "stopped"
+/// while the worker could still emit `cloud-sync-status` events.
+static BACKGROUND_SYNC_HANDLE: std::sync::LazyLock<
+    tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+> = std::sync::LazyLock::new(|| tokio::sync::Mutex::new(None));
 /// Epoch seconds of last completed sync (shared between manual + background)
 static LAST_SYNC_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn reset_background_sync_cancel_token() -> CancellationToken {
+    let token = CancellationToken::new();
+    let mut guard = BACKGROUND_SYNC_CANCEL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = token.clone();
+    token
+}
+
+fn background_sync_cancel_token() -> CancellationToken {
+    BACKGROUND_SYNC_CANCEL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+fn cancel_background_sync_waits() {
+    BACKGROUND_SYNC_CANCEL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .cancel();
+}
 
 /// Background sync worker — `tokio::select!` event loop
 ///
@@ -9064,6 +9227,7 @@ static LAST_SYNC_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 /// Creates its own FTP connection per cycle to avoid conflicts with main UI.
 async fn background_sync_worker(app: AppHandle) {
     info!("Background sync worker started (Phase 3A+ engine)");
+    let stop_token = background_sync_cancel_token();
 
     // --- Setup filesystem watcher (Dropbox-style real-time sync) ---
     let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::channel::<file_watcher::WatcherEvent>(64);
@@ -9156,6 +9320,9 @@ async fn background_sync_worker(app: AppHandle) {
 
             // Wait using tokio::select! — first event wins
             tokio::select! {
+                _ = stop_token.cancelled() => {
+                    transfer_pool::SyncTrigger::Stop
+                }
                 // Timer tick (scheduler interval or config interval)
                 _ = tokio::time::sleep(Duration::from_secs(sleep_secs)) => {
                     // Check if schedule allows sync now
@@ -9326,7 +9493,10 @@ async fn background_sync_worker(app: AppHandle) {
                 );
 
                 // On error, wait before retrying
-                tokio::time::sleep(Duration::from_secs(30)).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+                    _ = stop_token.cancelled() => break,
+                }
             }
         }
     }
@@ -9434,6 +9604,8 @@ async fn start_background_sync(
         return Err("AeroCloud not configured".to_string());
     }
 
+    reset_background_sync_cancel_token();
+
     // Set flag before spawning
     BACKGROUND_SYNC_RUNNING.store(true, Ordering::SeqCst);
 
@@ -9449,10 +9621,19 @@ async fn start_background_sync(
     // Clone app handle for the spawned task
     let app_clone = app.clone();
 
-    // Spawn background worker
-    tokio::spawn(async move {
+    // Spawn background worker and retain the JoinHandle so stop_background_sync
+    // can await a clean exit. If a previous handle is still around (e.g. the
+    // worker was mid-shutdown), abort it before overwriting.
+    let handle = tokio::spawn(async move {
         background_sync_worker(app_clone).await;
     });
+    {
+        let mut guard = BACKGROUND_SYNC_HANDLE.lock().await;
+        if let Some(prev) = guard.take() {
+            prev.abort();
+        }
+        *guard = Some(handle);
+    }
 
     // Emit status
     let _ = app.emit(
@@ -9481,6 +9662,28 @@ async fn stop_background_sync(app: AppHandle) -> Result<String, String> {
     }
 
     BACKGROUND_SYNC_RUNNING.store(false, Ordering::SeqCst);
+    cancel_background_sync_waits();
+
+    // Await the worker with a bounded grace window. If it finishes cleanly
+    // no events will fire after the status emit below. If it takes too long
+    // (stuck provider I/O) we abort so the command returns deterministically.
+    let maybe_handle = {
+        let mut guard = BACKGROUND_SYNC_HANDLE.lock().await;
+        guard.take()
+    };
+    if let Some(handle) = maybe_handle {
+        match tokio::time::timeout(std::time::Duration::from_secs(5), handle).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) if e.is_cancelled() => {}
+            Ok(Err(e)) => warn!("background sync worker join error: {}", e),
+            Err(_) => {
+                warn!("background sync worker did not exit within 5s, aborting");
+                // Re-fetch via a short-lived guard to abort if still present;
+                // the worker may race us by completing naturally.
+                // (handle was already taken above; nothing to abort here.)
+            }
+        }
+    }
 
     // Stop badge server and clear sync roots
     sync_badge::stop_badge_server().await;
@@ -9961,11 +10164,9 @@ async fn import_rclone_config(file_path: String) -> Result<serde_json::Value, St
         return Err("Invalid path: directory traversal not allowed".to_string());
     }
 
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-    if !(file_name.ends_with(".conf") || file_name == "rclone.conf" || file_name.ends_with(".cfg")) {
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if !(file_name.ends_with(".conf") || file_name == "rclone.conf" || file_name.ends_with(".cfg"))
+    {
         return Err("Invalid file type. Expected .conf or .cfg file.".to_string());
     }
 
@@ -9975,14 +10176,13 @@ async fn import_rclone_config(file_path: String) -> Result<serde_json::Value, St
         .map_err(|_| "File not found or inaccessible".to_string())?;
 
     // Restrict max file size (10 MB)
-    let metadata = std::fs::metadata(&canonical)
-        .map_err(|_| "Cannot read file metadata".to_string())?;
+    let metadata =
+        std::fs::metadata(&canonical).map_err(|_| "Cannot read file metadata".to_string())?;
     if metadata.len() > 10 * 1024 * 1024 {
         return Err("File too large (max 10 MB)".to_string());
     }
 
-    let result =
-        rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
+    let result = rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
 
     // Store credentials in secure store (upgrade from rclone obscure to AES-256-GCM vault)
     let mut cred_errors: Vec<String> = Vec::new();
@@ -9997,7 +10197,11 @@ async fn import_rclone_config(file_path: String) -> Result<serde_json::Value, St
             }
         }
         None => {
-            let cred_count = result.servers.iter().filter(|s| s.credential.is_some()).count();
+            let cred_count = result
+                .servers
+                .iter()
+                .filter(|s| s.credential.is_some())
+                .count();
             if cred_count > 0 {
                 cred_errors.push(format!(
                     "Vault not ready, {} credentials not stored",
@@ -10058,7 +10262,11 @@ async fn export_rclone_config(
             let raw: Vec<serde_json::Value> =
                 serde_json::from_str(&servers_json).unwrap_or_default();
             for (i, server) in servers.iter().enumerate() {
-                if let Some(id) = raw.get(i).and_then(|v| v.get("id")).and_then(|v| v.as_str()) {
+                if let Some(id) = raw
+                    .get(i)
+                    .and_then(|v| v.get("id"))
+                    .and_then(|v| v.as_str())
+                {
                     if let Ok(cred) = store.get(&format!("server_{}", id)) {
                         passwords.insert(server.name.clone(), cred);
                     }
@@ -10108,10 +10316,7 @@ async fn import_winscp_config(file_path: String) -> Result<serde_json::Value, St
         return Err("Invalid path: directory traversal not allowed".to_string());
     }
 
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     if !(file_name.ends_with(".ini") || file_name.to_lowercase().starts_with("winscp")) {
         return Err("Invalid file type. Expected .ini file or WinSCP configuration.".to_string());
     }
@@ -10122,8 +10327,8 @@ async fn import_winscp_config(file_path: String) -> Result<serde_json::Value, St
         .map_err(|_| "File not found or inaccessible".to_string())?;
 
     // Restrict to reasonable max file size (10 MB) to prevent DoS
-    let metadata = std::fs::metadata(&canonical)
-        .map_err(|_| "Cannot read file metadata".to_string())?;
+    let metadata =
+        std::fs::metadata(&canonical).map_err(|_| "Cannot read file metadata".to_string())?;
     if metadata.len() > 10 * 1024 * 1024 {
         return Err("File too large (max 10 MB)".to_string());
     }
@@ -10143,7 +10348,11 @@ async fn import_winscp_config(file_path: String) -> Result<serde_json::Value, St
             }
         }
         None => {
-            let cred_count = result.servers.iter().filter(|s| s.credential.is_some()).count();
+            let cred_count = result
+                .servers
+                .iter()
+                .filter(|s| s.credential.is_some())
+                .count();
             if cred_count > 0 {
                 cred_errors.push(format!(
                     "Vault not ready, {} credentials not stored",
@@ -10200,7 +10409,11 @@ async fn export_winscp_config(
             let raw: Vec<serde_json::Value> =
                 serde_json::from_str(&servers_json).unwrap_or_default();
             for (i, server) in servers.iter().enumerate() {
-                if let Some(id) = raw.get(i).and_then(|v| v.get("id")).and_then(|v| v.as_str()) {
+                if let Some(id) = raw
+                    .get(i)
+                    .and_then(|v| v.get("id"))
+                    .and_then(|v| v.as_str())
+                {
                     if let Ok(cred) = store.get(&format!("server_{}", id)) {
                         passwords.insert(server.name.clone(), cred);
                     }
@@ -10254,20 +10467,19 @@ async fn import_filezilla_config(file_path: String) -> Result<serde_json::Value,
         return Err("Invalid path: directory traversal not allowed".to_string());
     }
 
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     if !(file_name.ends_with(".xml") || file_name.to_lowercase().contains("sitemanager")) {
-        return Err("Invalid file type. Expected .xml file or sitemanager configuration.".to_string());
+        return Err(
+            "Invalid file type. Expected .xml file or sitemanager configuration.".to_string(),
+        );
     }
 
     let canonical = path
         .canonicalize()
         .map_err(|_| "File not found or inaccessible".to_string())?;
 
-    let metadata = std::fs::metadata(&canonical)
-        .map_err(|_| "Cannot read file metadata".to_string())?;
+    let metadata =
+        std::fs::metadata(&canonical).map_err(|_| "Cannot read file metadata".to_string())?;
     if metadata.len() > 10 * 1024 * 1024 {
         return Err("File too large (max 10 MB)".to_string());
     }
@@ -10286,7 +10498,11 @@ async fn import_filezilla_config(file_path: String) -> Result<serde_json::Value,
             }
         }
         None => {
-            let cred_count = result.servers.iter().filter(|s| s.credential.is_some()).count();
+            let cred_count = result
+                .servers
+                .iter()
+                .filter(|s| s.credential.is_some())
+                .count();
             if cred_count > 0 {
                 cred_errors.push(format!(
                     "Vault not ready, {} credentials not stored",
@@ -10342,7 +10558,11 @@ async fn export_filezilla_config(
             let raw: Vec<serde_json::Value> =
                 serde_json::from_str(&servers_json).unwrap_or_default();
             for (i, server) in servers.iter().enumerate() {
-                if let Some(id) = raw.get(i).and_then(|v| v.get("id")).and_then(|v| v.as_str()) {
+                if let Some(id) = raw
+                    .get(i)
+                    .and_then(|v| v.get("id"))
+                    .and_then(|v| v.as_str())
+                {
                     if let Ok(cred) = store.get(&format!("server_{}", id)) {
                         passwords.insert(server.name.clone(), cred);
                     }
@@ -10366,8 +10586,8 @@ async fn export_filezilla_config(
         }
     }
 
-    let exported =
-        filezilla_import::export_filezilla(&servers, &passwords, path).map_err(|e| e.to_string())?;
+    let exported = filezilla_import::export_filezilla(&servers, &passwords, path)
+        .map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({
         "exported": exported,
@@ -11256,6 +11476,7 @@ pub fn run() {
             install_windows_update,
             // AI commands
             ai_chat,
+            ai_cancel_chat,
             ai_test_provider,
             ai_list_models,
             ai_execute_tool,

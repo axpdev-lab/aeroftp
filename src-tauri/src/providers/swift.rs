@@ -482,9 +482,9 @@ impl SwiftProvider {
             if let Some(data) = body {
                 req2 = req2.body(data);
             }
-            let request2 = req2
-                .build()
-                .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {e}")))?;
+            let request2 = req2.build().map_err(|e| {
+                ProviderError::NetworkError(format!("Failed to build request: {e}"))
+            })?;
             send_with_retry(&self.client, request2, &HttpRetryConfig::default())
                 .await
                 .map_err(|e| ProviderError::ConnectionFailed(format!("Retry failed: {e}")))
@@ -842,10 +842,7 @@ impl StorageProvider for SwiftProvider {
         super::http_resumable_download(
             local_path,
             |range_header| {
-                let mut req = self
-                    .client
-                    .get(&url)
-                    .header("X-Auth-Token", &token);
+                let mut req = self.client.get(&url).header("X-Auth-Token", &token);
                 if let Some(range) = range_header {
                     req = req.header("Range", range);
                 }
@@ -1003,7 +1000,8 @@ impl StorageProvider for SwiftProvider {
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         if path.trim_matches('/').is_empty() {
             return Err(ProviderError::InvalidPath(
-                "Refusing to recursively delete root '/'. This would erase the entire container.".into(),
+                "Refusing to recursively delete root '/'. This would erase the entire container."
+                    .into(),
             ));
         }
         let prefix = Self::normalize_path(path);

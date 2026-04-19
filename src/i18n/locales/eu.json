@@ -452,7 +452,7 @@
             "modeUnavailable": "Transferentzia moduaren aurrezarpenak une honetan FTP/FTPS-erako soilik daude eskuragarri",
             "crossProfile": {
                 "title": "Profil arteko transferentzia",
-                "subtitle": "Panel flotatzailea: ilara, erregistroa eta aurrerapena ikusgai daude exekutatzen den bitartean.",
+                "subtitle": "Kopiatu fitxategiak zuzenean gordetako bi zerbitzarien artean.",
                 "closeAria": "Itxi profil arteko transferentzia panela",
                 "source": "Jatorria",
                 "destination": "Helburua",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Tamaina",
                 "executeTransfer": "Exekutatu Transferentzia",
                 "transferInProgress": "Transferentzia abian",
-                "transferHint": "Jarraitu ilara, jarduera erregistroa eta aurrerapena behean. Panel hau nahita arina da.",
+                "transferHint": "Denbora errealeko aurrerapena behean erakusten da. Historia xehatua Jarduera-erregistroan geratzen da.",
                 "summary": "{transferred} transferituta, {skipped} saltatuta, {failed} huts eginda",
                 "summaryMeta": "{size} {seconds}s-tan",
-                "newTransfer": "Transferentzia Berria"
+                "newTransfer": "Transferentzia Berria",
+                "preparing": "Transferentzia prestatzen…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} kenduta",
             "release_asset_download_start": "[{provider}] Release asset {filename} deskargatzen...",
             "release_asset_download_success": "[{provider}] Release asset {filename} deskargatuta",
-            "release_asset_download_error": "[{provider}] Ezin izan da release asset {filename} deskargatu"
+            "release_asset_download_error": "[{provider}] Ezin izan da release asset {filename} deskargatu",
+            "crossprofile_start": "[Cross-profile] {count} transferitzen hasten, iturria: {source}, helburua: {dest}",
+            "crossprofile_file_success": "[Cross-profile] Kopiatuta {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Errorea {filename}-n: {error}"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Banda-zabalera antolaketa",
             "bwScheduleOff": "Eskuzkoa (erabili goiko mugak)",
             "bwScheduleOffice": "Bulego orduak (throttle 08-18)",
-            "bwScheduleNight": "Gau modua (throttle 18-08)"
+            "bwScheduleNight": "Gau modua (throttle 18-08)",
+            "allInSync": "Fitxategi guztiak sinkronizatuta daude — ez dago ezer transferitzeko",
+            "nothingInDirection": "Desberdintasunak aurkitu dira, baina bat ere ez dator bat aukeratutako norabidearekin. Saiatu Two-way aldaketa guztiak ikusteko."
         },
         "ui": {
             "syncing": "Sinkronizatzen...",

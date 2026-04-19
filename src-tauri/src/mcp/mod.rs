@@ -79,7 +79,10 @@ impl McpServer {
                 if let Ok(master) = std::env::var("AEROFTP_MASTER_PASSWORD") {
                     match CredentialStore::unlock_with_master(&master) {
                         Ok(()) => None,
-                        Err(e) => Some(format!("Failed to unlock vault with AEROFTP_MASTER_PASSWORD: {}", e)),
+                        Err(e) => Some(format!(
+                            "Failed to unlock vault with AEROFTP_MASTER_PASSWORD: {}",
+                            e
+                        )),
                     }
                 } else {
                     Some(

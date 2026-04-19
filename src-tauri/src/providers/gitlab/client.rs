@@ -100,19 +100,18 @@ impl GitLabHttpClient {
 
     /// Send a request, update rate-limit, classify errors.
     async fn execute(&mut self, builder: RequestBuilder) -> Result<Response, ProviderError> {
-        let request = builder.build().map_err(|e| {
-            ProviderError::NetworkError(format!("Failed to build request: {}", e))
-        })?;
-        let response =
-            send_with_retry(&self.client, request, &HttpRetryConfig::default())
-                .await
-                .map_err(|e| {
-                    if e.is_timeout() {
-                        ProviderError::Timeout
-                    } else {
-                        ProviderError::ConnectionFailed(format!("GitLab network error: {}", e))
-                    }
-                })?;
+        let request = builder
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+        let response = send_with_retry(&self.client, request, &HttpRetryConfig::default())
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ProviderError::Timeout
+                } else {
+                    ProviderError::ConnectionFailed(format!("GitLab network error: {}", e))
+                }
+            })?;
 
         self.rate_limit.update_from_headers(response.headers());
 

@@ -146,10 +146,7 @@ pub fn format_transfer_message(pct: u64, sent: u64, total: u64, bps: u64) -> Str
     let sent_fmt = format_bytes(sent);
     let total_fmt = format_bytes(total);
     let bps_fmt = format_bytes(bps);
-    format!(
-        "{}% - {} / {} - {}/s",
-        pct, sent_fmt, total_fmt, bps_fmt
-    )
+    format!("{}% - {} / {} - {}/s", pct, sent_fmt, total_fmt, bps_fmt)
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -183,10 +180,7 @@ mod tests {
                 "_meta": { "progressToken": "upload-42" }
             }
         });
-        assert_eq!(
-            extract_progress_token(&req),
-            Some(json!("upload-42"))
-        );
+        assert_eq!(extract_progress_token(&req), Some(json!("upload-42")));
     }
 
     #[test]

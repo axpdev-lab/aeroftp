@@ -15,11 +15,26 @@ use notify_debouncer_full::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
+
+/// Cumulative count of `try_send` drops, throttled to one log line per
+/// `WATCHER_DROP_LOG_INTERVAL` drops to avoid log spam under burst load.
+static WATCHER_DROP_COUNT: AtomicU64 = AtomicU64::new(0);
+const WATCHER_DROP_LOG_INTERVAL: u64 = 100;
+
+fn record_watcher_drop(source: &'static str, err: impl std::fmt::Display) {
+    let n = WATCHER_DROP_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    if n == 1 || n % WATCHER_DROP_LOG_INTERVAL == 0 {
+        warn!(
+            "Watcher channel saturated at {} (total drops={}, last error={})",
+            source, n, err
+        );
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Configuration constants
@@ -381,7 +396,7 @@ impl FileWatcher {
 
                         // Non-blocking send — if channel is full, log and drop
                         if let Err(e) = tx.try_send(event) {
-                            warn!("Watcher event channel full, dropping event: {}", e);
+                            record_watcher_drop("debounced", e);
                         }
                     }
                     Err(errors) => {
@@ -432,7 +447,7 @@ impl FileWatcher {
                     }
 
                     if let Err(e) = tx.try_send(watcher_event) {
-                        warn!("Poll watcher event channel full, dropping: {}", e);
+                        record_watcher_drop("poll", e);
                     }
                 }
                 Err(e) => {

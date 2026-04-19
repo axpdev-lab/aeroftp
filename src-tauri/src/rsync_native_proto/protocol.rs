@@ -160,7 +160,10 @@ impl NativeFrameCodec {
         Self { max_frame_size }
     }
 
-    fn validate_header_slice(&self, raw: &[u8]) -> Result<(usize, MessageType, u16), NativeRsyncError> {
+    fn validate_header_slice(
+        &self,
+        raw: &[u8],
+    ) -> Result<(usize, MessageType, u16), NativeRsyncError> {
         if raw.len() < FRAME_HEADER_SIZE {
             return Err(NativeRsyncError::invalid_frame(format!(
                 "frame too short: {} bytes (need at least {})",
@@ -202,7 +205,11 @@ impl NativeFrameCodec {
         Ok((payload_len, msg_type, flags))
     }
 
-    fn write_header(&self, msg: &WireMessage, payload_len: usize) -> Result<[u8; FRAME_HEADER_SIZE], NativeRsyncError> {
+    fn write_header(
+        &self,
+        msg: &WireMessage,
+        payload_len: usize,
+    ) -> Result<[u8; FRAME_HEADER_SIZE], NativeRsyncError> {
         if FRAME_HEADER_SIZE + payload_len > self.max_frame_size {
             return Err(NativeRsyncError::invalid_frame(format!(
                 "outgoing frame size {} exceeds max {}",

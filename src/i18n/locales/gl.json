@@ -452,7 +452,7 @@
             "modeUnavailable": "Os axustes predefinidos de modo de transferencia só están dispoñibles para FTP/FTPS",
             "crossProfile": {
                 "title": "Transferencia entre perfís",
-                "subtitle": "Panel flotante: a cola, o rexistro e o progreso permanecen visibles mentres se executa.",
+                "subtitle": "Copia ficheiros directamente entre dous servidores gardados.",
                 "closeAria": "Pechar o panel de transferencia entre perfís",
                 "source": "Orixe",
                 "destination": "Destino",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Tamaño",
                 "executeTransfer": "Executar Transferencia",
                 "transferInProgress": "Transferencia en curso",
-                "transferHint": "Observe a cola, o rexistro de actividade e o progreso abaixo. Este panel é lixeiro a propósito.",
+                "transferHint": "O progreso en tempo real móstrase abaixo. O historial detallado permanece no Rexistro de actividade.",
                 "summary": "{transferred} transferidos, {skipped} omitidos, {failed} fallidos",
                 "summaryMeta": "{size} en {seconds}s",
-                "newTransfer": "Nova Transferencia"
+                "newTransfer": "Nova Transferencia",
+                "preparing": "Preparando a transferencia…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} eliminado",
             "release_asset_download_start": "[{provider}] Descargando release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} descargado",
-            "release_asset_download_error": "[{provider}] Erro ao descargar release asset {filename}"
+            "release_asset_download_error": "[{provider}] Erro ao descargar release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Iniciando transferencia de {count} desde {source} a {dest}",
+            "crossprofile_file_success": "[Cross-profile] Copiado {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Erro en {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Programación de ancho de banda",
             "bwScheduleOff": "Manual (usar límites de arriba)",
             "bwScheduleOffice": "Horario de oficina (throttle 08-18)",
-            "bwScheduleNight": "Modo nocturno (throttle 18-08)"
+            "bwScheduleNight": "Modo nocturno (throttle 18-08)",
+            "allInSync": "Todos os ficheiros están sincronizados — nada que transferir",
+            "nothingInDirection": "Atopáronse diferenzas, pero ningunha coincide coa dirección seleccionada. Proba Two-way para ver todos os cambios."
         },
         "ui": {
             "syncing": "Sincronizando...",

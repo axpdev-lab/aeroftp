@@ -70,15 +70,12 @@ static RE_PROGRESS: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static RE_SUMMARY_BYTES: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"^sent\s+([\d.,]+)\s+bytes\s+received\s+([\d.,]+)\s+bytes\s+([\d.,]+)\s+bytes/sec",
-    )
-    .unwrap()
+    Regex::new(r"^sent\s+([\d.,]+)\s+bytes\s+received\s+([\d.,]+)\s+bytes\s+([\d.,]+)\s+bytes/sec")
+        .unwrap()
 });
 
-static RE_SUMMARY_TOTAL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^total size is\s+([\d.,]+)\s+speedup is\s+([\d.,]+)").unwrap()
-});
+static RE_SUMMARY_TOTAL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^total size is\s+([\d.,]+)\s+speedup is\s+([\d.,]+)").unwrap());
 
 static RE_ERROR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^rsync error:\s*(.+?)(?:\s*\(code\s*\d+\))?$").unwrap());
@@ -105,7 +102,9 @@ pub fn parse_line(line: &str) -> Option<RsyncEvent> {
     if trimmed.starts_with("rsync error:") || trimmed.starts_with("rsync: error:") {
         if let Some(caps) = RE_ERROR.captures(trimmed) {
             return Some(RsyncEvent::Error {
-                message: caps.get(1).map_or(trimmed.to_string(), |m| m.as_str().trim().to_string()),
+                message: caps
+                    .get(1)
+                    .map_or(trimmed.to_string(), |m| m.as_str().trim().to_string()),
             });
         }
         return Some(RsyncEvent::Error {
@@ -113,7 +112,8 @@ pub fn parse_line(line: &str) -> Option<RsyncEvent> {
         });
     }
 
-    if trimmed.starts_with("rsync:") || trimmed.starts_with("skipping ")
+    if trimmed.starts_with("rsync:")
+        || trimmed.starts_with("skipping ")
         || trimmed.starts_with("file has vanished:")
         || trimmed.starts_with("symlink has no referent:")
     {
@@ -327,8 +327,7 @@ mod tests {
     #[test]
     fn summary_high_speedup_delta_case() {
         // Case with identical file: speedup very high.
-        let e =
-            parse_line("total size is 104,857,600  speedup is 52.40").expect("must parse");
+        let e = parse_line("total size is 104,857,600  speedup is 52.40").expect("must parse");
         match e {
             RsyncEvent::Summary { speedup, .. } => assert!((speedup - 52.4).abs() < 0.01),
             other => panic!("unexpected {:?}", other),

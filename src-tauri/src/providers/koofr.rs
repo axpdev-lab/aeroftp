@@ -1222,10 +1222,7 @@ impl StorageProvider for KoofrProvider {
         })
     }
 
-    async fn list_share_links(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+    async fn list_share_links(&mut self, path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }

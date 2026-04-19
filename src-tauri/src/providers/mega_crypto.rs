@@ -243,15 +243,9 @@ pub fn aes_ctr_encrypt(
 
 /// AES-128-CTR decrypt/encrypt **in-place** — zero extra allocation.
 /// Used by streaming download/upload to avoid 2x-3x memory overhead.
-pub fn aes_ctr_apply_inplace(
-    buf: &mut [u8],
-    key: &[u8; 16],
-    nonce: &[u8; 8],
-    offset: u64,
-) {
+pub fn aes_ctr_apply_inplace(buf: &mut [u8], key: &[u8; 16], nonce: &[u8; 8], offset: u64) {
     let iv = build_ctr_iv(nonce, offset);
-    let mut cipher =
-        <ctr::Ctr128BE<Aes128> as CtrKeyIvInit>::new(key.into(), &iv.into());
+    let mut cipher = <ctr::Ctr128BE<Aes128> as CtrKeyIvInit>::new(key.into(), &iv.into());
     cipher.apply_keystream(buf);
 }
 

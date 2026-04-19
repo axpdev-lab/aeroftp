@@ -452,7 +452,7 @@
             "modeUnavailable": "Voreinstellungen für den Übertragungsmodus sind derzeit nur für FTP/FTPS verfügbar",
             "crossProfile": {
                 "title": "Profiluebergreifende Uebertragung",
-                "subtitle": "Schwebendes Panel: Warteschlange, Protokoll und Fortschritt bleiben waehrend der Ausfuehrung sichtbar.",
+                "subtitle": "Kopiere Dateien direkt zwischen zwei gespeicherten Servern.",
                 "closeAria": "Profiluebergreifendes Uebertragungspanel schliessen",
                 "source": "Quelle",
                 "destination": "Ziel",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Groesse",
                 "executeTransfer": "Uebertragung starten",
                 "transferInProgress": "Uebertragung laeuft",
-                "transferHint": "Behalten Sie Warteschlange, Aktivitaetsprotokoll und Fortschritt unten im Blick. Dieses Panel ist bewusst schlank gehalten.",
+                "transferHint": "Der Live-Fortschritt wird unten angezeigt. Der detaillierte Verlauf bleibt im Aktivitätsprotokoll.",
                 "summary": "{transferred} uebertragen, {skipped} uebersprungen, {failed} fehlgeschlagen",
                 "summaryMeta": "{size} in {seconds}s",
-                "newTransfer": "Neue Uebertragung"
+                "newTransfer": "Neue Uebertragung",
+                "preparing": "Übertragung wird vorbereitet…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} entfernt",
             "release_asset_download_start": "[{provider}] Release asset {filename} wird heruntergeladen...",
             "release_asset_download_success": "[{provider}] Release asset {filename} heruntergeladen",
-            "release_asset_download_error": "[{provider}] Herunterladen von release asset {filename} fehlgeschlagen"
+            "release_asset_download_error": "[{provider}] Herunterladen von release asset {filename} fehlgeschlagen",
+            "crossprofile_start": "[Cross-profile] Starte Übertragung von {count} von {source} nach {dest}",
+            "crossprofile_file_success": "[Cross-profile] Kopiert {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Fehler bei {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Bandbreitenplanung",
             "bwScheduleOff": "Manuell (obige Limits verwenden)",
             "bwScheduleOffice": "Bürozeiten (throttle 08-18)",
-            "bwScheduleNight": "Nachtmodus (throttle 18-08)"
+            "bwScheduleNight": "Nachtmodus (throttle 18-08)",
+            "allInSync": "Alle Dateien sind synchron — nichts zu übertragen",
+            "nothingInDirection": "Unterschiede gefunden, aber keiner entspricht der ausgewählten Richtung. Versuchen Sie Two-way, um alle Änderungen zu sehen."
         },
         "ui": {
             "syncing": "Synchronisiere...",

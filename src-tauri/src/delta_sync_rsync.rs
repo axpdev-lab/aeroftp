@@ -258,9 +258,7 @@ pub async fn transfer_with_delta(
         Err(RsyncError::PasswordAuthUnsupported) => Ok(DeltaSyncResult::fallback(
             "password SSH auth (configure an SSH key to enable delta sync)",
         )),
-        Err(RsyncError::MissingKey(s)) => {
-            Ok(DeltaSyncResult::fallback(format!("ssh key: {}", s)))
-        }
+        Err(RsyncError::MissingKey(s)) => Ok(DeltaSyncResult::fallback(format!("ssh key: {}", s))),
         Err(RsyncError::RemoteNotAvailable) => Ok(DeltaSyncResult::fallback(
             "remote rsync disappeared between probe and transfer",
         )),
@@ -273,7 +271,8 @@ pub async fn transfer_with_delta(
             // caller is responsible for surfacing the error to the UI.
             tracing::error!(
                 "delta sync {:?} hard rejection: {} — classic fallback suppressed",
-                direction, msg
+                direction,
+                msg
             );
             Ok(DeltaSyncResult::hard_error(msg))
         }
@@ -328,15 +327,23 @@ pub async fn try_delta_transfer(
         .unwrap_or(0);
     let session_key = format!("sftp#{:x}", handle_ptr);
 
-    let result =
-        transfer_with_delta(transport.as_ref(), direction, local_path, remote_path, &session_key)
-            .await;
+    let result = transfer_with_delta(
+        transport.as_ref(),
+        direction,
+        local_path,
+        remote_path,
+        &session_key,
+    )
+    .await;
 
     match result {
         Ok(r) => Some(r),
         Err(reason) => {
             tracing::warn!("delta transfer adapter error: {}", reason);
-            Some(DeltaSyncResult::fallback(format!("adapter error: {}", reason)))
+            Some(DeltaSyncResult::fallback(format!(
+                "adapter error: {}",
+                reason
+            )))
         }
     }
 }
@@ -426,18 +433,10 @@ mod tests {
                 _remote: &str,
                 _local: &Path,
             ) -> Result<RsyncStats, RsyncError> {
-                Err(RsyncError::HardRejection(
-                    "host key mismatch (test)".into(),
-                ))
+                Err(RsyncError::HardRejection("host key mismatch (test)".into()))
             }
-            async fn upload(
-                &self,
-                _local: &Path,
-                _remote: &str,
-            ) -> Result<RsyncStats, RsyncError> {
-                Err(RsyncError::HardRejection(
-                    "host key mismatch (test)".into(),
-                ))
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                Err(RsyncError::HardRejection("host key mismatch (test)".into()))
             }
         }
 
@@ -458,7 +457,10 @@ mod tests {
             "hard rejection must NOT produce a fallback_reason"
         );
         assert!(
-            r.hard_error.as_deref().unwrap().contains("host key mismatch"),
+            r.hard_error
+                .as_deref()
+                .unwrap()
+                .contains("host key mismatch"),
             "hard rejection must surface in hard_error with the original message"
         );
     }

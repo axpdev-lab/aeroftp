@@ -4,7 +4,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download, Square } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { createTauriListener } from '../../hooks/useTauriListener';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
@@ -539,6 +539,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         autoStopRef.current = true;
         streamingMsgIdRef.current = null;
     }, []);
+
+    // Unmount cleanup: abort any stream in flight. Previously closing DevTools
+    // mid-stream left the Tauri listener registered and the backend SSE task
+    // writing into a dead tree — tokens continued to be billed and the
+    // `ai-stream-*` channel stayed subscribed until the next reload.
+    useEffect(() => () => {
+        cancelActiveStream();
+    }, [cancelActiveStream]);
 
     // BUG-008: Wrap switchConversation — await async base, clear pending tools first
     // A6-06: Abort any ongoing streaming before switching conversation
@@ -2052,8 +2060,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 let resolveStream: () => void;
                 const streamDone = new Promise<void>(resolve => { resolveStream = resolve; });
 
-                // Listen for stream chunks (with thinking + tool calls support)
-                const unlisten: UnlistenFn = await listen<{
+                // Listen for stream chunks (with thinking + tool calls support).
+                // createTauriListener returns a synchronous disposer and internally
+                // guards the late-resolution race — if the component unmounts or
+                // cancelActiveStream runs before the underlying `listen()` resolves,
+                // the eventual UnlistenFn is called immediately on arrival instead
+                // of being orphaned.
+                const unlisten = createTauriListener<{
                     content: string;
                     done: boolean;
                     tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
@@ -2111,19 +2124,28 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     resolveStream();
                 });
 
-                // Wait for the done event with timeout, then unlisten
+                // Wait for the done event with timeout, then unlisten.
+                // The timeout handle is tracked so a successful stream clears it
+                // — previously the setTimeout kept the runtime alive until its
+                // full duration even when the stream had finished seconds earlier.
                 const streamTimeoutMs = (settings.advancedSettings?.streamingTimeoutSecs ?? 120) * 1000;
-                const timeoutPromise = new Promise<void>((_, reject) =>
-                    setTimeout(() => reject(new Error(`Stream timeout after ${Math.round(streamTimeoutMs / 1000)}s`)), streamTimeoutMs)
-                );
+                let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+                const timeoutPromise = new Promise<void>((_, reject) => {
+                    timeoutHandle = setTimeout(() => reject(new Error(`Stream timeout after ${Math.round(streamTimeoutMs / 1000)}s`)), streamTimeoutMs);
+                });
                 try {
                     await Promise.race([streamDone, timeoutPromise]);
-                } catch (timeoutErr) {
+                } catch (_timeoutErr) {
                     // Timeout occurred - add error message and clean up
                     streamContent += `\n\n[Stream timeout - no response received for ${Math.round(streamTimeoutMs / 1000)} seconds]`;
                     setMessages(prev => prev.map(m =>
                         m.id === msgId ? { ...m, content: streamContent } : m
                     ));
+                } finally {
+                    if (timeoutHandle !== null) {
+                        clearTimeout(timeoutHandle);
+                        timeoutHandle = null;
+                    }
                 }
                 unlisten();
                 streamUnlistenRef.current = null;

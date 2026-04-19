@@ -4,7 +4,7 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
@@ -188,6 +188,25 @@ pub fn init_cli_db() -> Result<Connection, String> {
     init_db_at_path(&path)
 }
 
+/// Per-process memoized handle to the CLI memory DB.
+/// Previously every `store_memory_entry_cli` / `search_memory_cli` call opened
+/// and closed a fresh `Connection`, paying WAL + schema-init costs on every
+/// tool call. MCP hosts invoke these in tight loops, so the cost showed up.
+static CLI_DB: OnceLock<Mutex<Connection>> = OnceLock::new();
+
+/// Acquire a lock on the CLI memory DB, initializing it on the first call.
+/// Subsequent callers block on the mutex rather than opening a new Connection.
+pub fn cli_db_lock() -> Result<MutexGuard<'static, Connection>, String> {
+    if CLI_DB.get().is_none() {
+        let conn = init_cli_db()?;
+        let _ = CLI_DB.set(Mutex::new(conn));
+    }
+    CLI_DB
+        .get()
+        .ok_or_else(|| "CLI memory DB not initialized".to_string())
+        .map(|m| m.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
 fn init_db_at_path(path: &Path) -> Result<Connection, String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Cannot create config dir: {e}"))?;
@@ -312,7 +331,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentMemoryEntry> {
 }
 
 fn base_search_query(project_path: &str, limit: usize) -> Result<Vec<AgentMemoryEntry>, String> {
-    let conn = init_cli_db()?;
+    let conn = cli_db_lock()?;
     archive_stale_entries_if_due(&conn)?;
     search_entries_in_conn(&conn, project_path, None, limit)
 }
@@ -395,7 +414,7 @@ pub fn store_memory_entry_cli(
     content: &str,
     server_host: Option<&str>,
 ) -> Result<AgentMemoryEntry, String> {
-    let conn = init_cli_db()?;
+    let conn = cli_db_lock()?;
     archive_stale_entries_if_due(&conn)?;
     insert_entry(&conn, project_path, category, content, server_host)
 }
@@ -521,7 +540,7 @@ pub fn search_memory_cli(
     query: Option<&str>,
     limit: usize,
 ) -> Result<Vec<AgentMemoryEntry>, String> {
-    let conn = init_cli_db()?;
+    let conn = cli_db_lock()?;
     archive_stale_entries_if_due(&conn)?;
     search_entries_in_conn(&conn, project_path, query, limit.clamp(1, MEMORY_MAX_LIMIT))
 }

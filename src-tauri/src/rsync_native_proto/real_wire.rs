@@ -167,13 +167,23 @@ pub enum RealWireError {
 impl fmt::Display for RealWireError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RealWireError::TruncatedBuffer { at, needed, available } => {
-                write!(f, "truncated buffer at {at}: need {needed}, have {available}")
+            RealWireError::TruncatedBuffer {
+                at,
+                needed,
+                available,
+            } => {
+                write!(
+                    f,
+                    "truncated buffer at {at}: need {needed}, have {available}"
+                )
             }
             RealWireError::InvalidProtocolVersion { value } => {
                 write!(f, "invalid rsync protocol version: {value}")
             }
-            RealWireError::InvalidAlgoListLen { declared, available } => {
+            RealWireError::InvalidAlgoListLen {
+                declared,
+                available,
+            } => {
                 write!(
                     f,
                     "algo-list length {declared} exceeds remaining buffer {available}"
@@ -198,7 +208,10 @@ impl fmt::Display for RealWireError {
                     "varint overflow: first byte {first_byte:#04x} claims more than 4 extra bytes"
                 )
             }
-            RealWireError::InvalidNameLen { declared, available } => {
+            RealWireError::InvalidNameLen {
+                declared,
+                available,
+            } => {
                 write!(
                     f,
                     "name length {declared} exceeds remaining buffer {available}"
@@ -228,13 +241,20 @@ impl fmt::Display for RealWireError {
                     "sum_head field `{field}` value {value} out of range (max {max})"
                 )
             }
-            RealWireError::DeltaTokenTruncated { at, needed, available } => {
+            RealWireError::DeltaTokenTruncated {
+                at,
+                needed,
+                available,
+            } => {
                 write!(
                     f,
                     "delta token truncated at {at}: need {needed}, have {available}"
                 )
             }
-            RealWireError::DeltaTokenOutOfRange { token_index, block_count } => {
+            RealWireError::DeltaTokenOutOfRange {
+                token_index,
+                block_count,
+            } => {
                 write!(
                     f,
                     "delta token {token_index} out of range for sum_head.count={block_count}"
@@ -363,8 +383,8 @@ pub struct MuxHeader {
 impl MuxHeader {
     /// Encode the header into its 4-byte LE wire form.
     pub fn encode(&self) -> [u8; MUX_HEADER_LEN] {
-        let combined: u32 = ((MPLEX_BASE as u32 + self.tag.code() as u32) << 24)
-            | (self.length & 0x00FF_FFFF);
+        let combined: u32 =
+            ((MPLEX_BASE as u32 + self.tag.code() as u32) << 24) | (self.length & 0x00FF_FFFF);
         combined.to_le_bytes()
     }
 
@@ -375,7 +395,9 @@ impl MuxHeader {
         let raw = u32::from_le_bytes(bytes);
         let raw_high = (raw >> 24) as u8;
         if raw_high < MPLEX_BASE {
-            return Err(RealWireError::InvalidMuxHeader { raw_high_byte: raw_high });
+            return Err(RealWireError::InvalidMuxHeader {
+                raw_high_byte: raw_high,
+            });
         }
         let code = raw_high - MPLEX_BASE;
         let length = raw & 0x00FF_FFFF;
@@ -745,9 +767,7 @@ pub struct ClassifiedReassemblyReport {
 /// Equivalent in app_stream contents to `reassemble_msg_data` —
 /// pinned by the `reassemble_with_events_app_stream_matches_legacy`
 /// regression test.
-pub fn reassemble_with_events(
-    buf: &[u8],
-) -> Result<ClassifiedReassemblyReport, RealWireError> {
+pub fn reassemble_with_events(buf: &[u8]) -> Result<ClassifiedReassemblyReport, RealWireError> {
     use crate::rsync_native_proto::events::classify_oob_frame;
 
     let mut app_stream = Vec::new();
@@ -781,9 +801,7 @@ pub fn reassemble_with_events(
 /// arrives AFTER the terminal frame is ever appended. `consumed_bytes`
 /// includes the terminating frame's header + payload but no further
 /// bytes. See `reassemble_until_terminal_does_not_consume_data_after_error`.
-pub fn reassemble_until_terminal(
-    buf: &[u8],
-) -> Result<ClassifiedReassemblyReport, RealWireError> {
+pub fn reassemble_until_terminal(buf: &[u8]) -> Result<ClassifiedReassemblyReport, RealWireError> {
     use crate::rsync_native_proto::events::classify_oob_frame;
 
     let mut app_stream = Vec::new();
@@ -1076,8 +1094,7 @@ pub fn decode_varlong(buf: &[u8], min_bytes: u8) -> Result<(i64, usize), RealWir
     let mut u = [0u8; 9];
     u[..min_bytes - 1].copy_from_slice(&buf[1..min_bytes]);
     if extra > 0 {
-        u[min_bytes - 1..min_bytes - 1 + extra]
-            .copy_from_slice(&buf[min_bytes..min_bytes + extra]);
+        u[min_bytes - 1..min_bytes - 1 + extra].copy_from_slice(&buf[min_bytes..min_bytes + extra]);
         let bit: u8 = 1u8 << (8 - extra as u8);
         u[min_bytes + extra - 1] = first & (bit - 1);
     } else {
@@ -1237,11 +1254,7 @@ pub struct FileListEntry {
 /// Rsync guarantees ASCII for paths and owner/group names in the wild;
 /// accepting UTF-8 is a strict superset that tolerates the occasional
 /// non-ASCII filename without a silent replacement.
-fn read_utf8_slice(
-    buf: &[u8],
-    offset: usize,
-    len: usize,
-) -> Result<String, RealWireError> {
+fn read_utf8_slice(buf: &[u8], offset: usize, len: usize) -> Result<String, RealWireError> {
     if offset + len > buf.len() {
         return Err(RealWireError::InvalidNameLen {
             declared: len,
@@ -1568,10 +1581,7 @@ fn compute_flist_name_split<'a>(
 /// context). For SAME_NAME, the encoder DOES compute `l1` from
 /// `entry.path` vs `options.previous_name` since that is the only
 /// well-defined choice given the path.
-pub fn encode_file_list_entry(
-    entry: &FileListEntry,
-    options: &FileListDecodeOptions,
-) -> Vec<u8> {
+pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOptions) -> Vec<u8> {
     let mut out = Vec::with_capacity(64);
 
     // --- 1. Flags ---------------------------------------------------------
@@ -1734,7 +1744,10 @@ pub struct NdxState {
 impl NdxState {
     /// Fresh baselines matching rsync's static initialisers.
     pub fn new() -> Self {
-        Self { prev_positive: -1, prev_negative: 1 }
+        Self {
+            prev_positive: -1,
+            prev_negative: 1,
+        }
     }
 
     /// Current positive baseline. Exposed for white-box testing; a
@@ -1785,9 +1798,7 @@ pub struct SumBlock {
 /// five-byte form (`0xFE + 4-byte absolute int32 with high bit set`),
 /// negative prefix `0xFF` followed by one of the above on the negative
 /// baseline, or single-byte 0 meaning `NDX_DONE`.
-pub fn decode_ndx(buf: &[u8], state: &mut NdxState)
-    -> Result<(i32, usize), RealWireError>
-{
+pub fn decode_ndx(buf: &[u8], state: &mut NdxState) -> Result<(i32, usize), RealWireError> {
     if buf.is_empty() {
         return Err(RealWireError::NdxTruncated { form: "prefix" });
     }
@@ -1805,7 +1816,9 @@ pub fn decode_ndx(buf: &[u8], state: &mut NdxState)
     // with the standard 1/3/5-byte form on the second byte.
     let (payload, negate, consumed_prefix) = if first == 0xFF {
         if buf.len() < 2 {
-            return Err(RealWireError::NdxTruncated { form: "negative_prefix" });
+            return Err(RealWireError::NdxTruncated {
+                form: "negative_prefix",
+            });
         }
         (&buf[1..], true, 1usize)
     } else {
@@ -1822,7 +1835,9 @@ fn decode_ndx_body(
     state: &mut NdxState,
 ) -> Result<(i32, usize), RealWireError> {
     if buf.is_empty() {
-        return Err(RealWireError::NdxTruncated { form: "body_first_byte" });
+        return Err(RealWireError::NdxTruncated {
+            form: "body_first_byte",
+        });
     }
     let first = buf[0];
 
@@ -1865,7 +1880,11 @@ fn decode_ndx_body(
             let hi = u32::from(second);
             let lo = u32::from(buf[2]);
             let diff = (hi << 8) | lo;
-            let baseline = if negate { state.prev_negative } else { state.prev_positive };
+            let baseline = if negate {
+                state.prev_negative
+            } else {
+                state.prev_positive
+            };
             let num = baseline.wrapping_add(diff as i32);
             Ok((finalize(state, negate, num), 3))
         }
@@ -1873,7 +1892,11 @@ fn decode_ndx_body(
         // Single-byte diff (1..=253). `first` is always interpreted as
         // unsigned here, added on top of the selected baseline.
         let diff = u32::from(first);
-        let baseline = if negate { state.prev_negative } else { state.prev_positive };
+        let baseline = if negate {
+            state.prev_negative
+        } else {
+            state.prev_positive
+        };
         let num = baseline.wrapping_add(diff as i32);
         Ok((finalize(state, negate, num), 1))
     }
@@ -2009,9 +2032,7 @@ pub fn encode_sum_head(head: &SumHead) -> [u8; 16] {
 /// Decode a single signature block: u32 LE rolling checksum followed by
 /// exactly `strong_len` bytes of strong checksum. Caller passes
 /// `strong_len` from a previously-decoded `SumHead.checksum_length`.
-pub fn decode_sum_block(buf: &[u8], strong_len: usize)
-    -> Result<(SumBlock, usize), RealWireError>
-{
+pub fn decode_sum_block(buf: &[u8], strong_len: usize) -> Result<(SumBlock, usize), RealWireError> {
     let needed = 4usize
         .checked_add(strong_len)
         .ok_or(RealWireError::SumHeadFieldOutOfRange {
@@ -2130,9 +2151,7 @@ pub enum DeltaOp {
     /// contents of a self-contained zlib stream or zstd frame — the
     /// outer framing does NOT tell us which compressor produced them;
     /// the caller is expected to know from the negotiated algo.
-    Literal {
-        compressed_payload: Vec<u8>,
-    },
+    Literal { compressed_payload: Vec<u8> },
 }
 
 /// State carried between successive `decode_delta_op` calls on the **same**
@@ -2332,10 +2351,7 @@ pub fn decode_delta_op(
 /// The length is not encoded on the wire — it comes from the earlier
 /// algorithm negotiation (commonly 16 bytes for MD5 / xxh128, 20 for
 /// SHA1). Returns the checksum bytes and the consumed byte count.
-pub fn decode_file_checksum(
-    buf: &[u8],
-    len: usize,
-) -> Result<(Vec<u8>, usize), RealWireError> {
+pub fn decode_file_checksum(buf: &[u8], len: usize) -> Result<(Vec<u8>, usize), RealWireError> {
     if buf.len() < len {
         return Err(RealWireError::DeltaTokenTruncated {
             at: "file_checksum",
@@ -2452,8 +2468,13 @@ pub fn decode_delta_stream(
         match outcome {
             DeltaOpOutcome::EndFlag => break,
             DeltaOpOutcome::Op(op) => {
-                if let (Some(count), DeltaOp::CopyRun { start_token_index, run_length }) =
-                    (sum_head_count, &op)
+                if let (
+                    Some(count),
+                    DeltaOp::CopyRun {
+                        start_token_index,
+                        run_length,
+                    },
+                ) = (sum_head_count, &op)
                 {
                     let end = start_token_index
                         .checked_add(i32::from(*run_length))
@@ -2500,9 +2521,7 @@ pub fn decode_delta_stream(
 ///
 /// Available only when the `proto_native_rsync` feature is enabled
 /// (the `zstd` crate is an optional dependency gated behind it).
-pub fn decompress_zstd_literal_stream(
-    payloads: &[&[u8]],
-) -> Result<Vec<u8>, RealWireError> {
+pub fn decompress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<u8>, RealWireError> {
     // A session-wide zstd context mirrors `recv_zstd_token`'s
     // `zstd_dctx` (token.c:778+ — a single static DCtx across all
     // DEFLATED_DATA records of the session). Feeding one payload at a
@@ -2536,10 +2555,11 @@ pub fn decompress_zstd_literal_stream(
         // output bytes depending on how much of the frame is ready.
         while input.pos < payload.len() {
             let mut output = OutBuffer::around(&mut staging[..]);
-            ctx.decompress_stream(&mut output, &mut input).map_err(|code| {
-                let reason = zstd::zstd_safe::get_error_name(code).to_string();
-                RealWireError::ZstdDecompressionFailed { reason }
-            })?;
+            ctx.decompress_stream(&mut output, &mut input)
+                .map_err(|code| {
+                    let reason = zstd::zstd_safe::get_error_name(code).to_string();
+                    RealWireError::ZstdDecompressionFailed { reason }
+                })?;
             out.extend_from_slice(output.as_slice());
         }
     }
@@ -2577,10 +2597,11 @@ pub fn decompress_zstd_literal_stream_boundaries(
             let mut input = InBuffer::around(payload);
             while input.pos < payload.len() {
                 let mut output = OutBuffer::around(&mut staging[..]);
-                ctx.decompress_stream(&mut output, &mut input).map_err(|code| {
-                    let reason = zstd::zstd_safe::get_error_name(code).to_string();
-                    RealWireError::ZstdDecompressionFailed { reason }
-                })?;
+                ctx.decompress_stream(&mut output, &mut input)
+                    .map_err(|code| {
+                        let reason = zstd::zstd_safe::get_error_name(code).to_string();
+                        RealWireError::ZstdDecompressionFailed { reason }
+                    })?;
                 this_out.extend_from_slice(output.as_slice());
             }
         }
@@ -2621,11 +2642,9 @@ pub fn decompress_zstd_literal_stream_boundaries(
 /// emitting an empty token, see token.c:691 `if (nb)` guard).
 ///
 /// Available only when `proto_native_rsync` is enabled.
-pub fn compress_zstd_literal_stream(
-    payloads: &[&[u8]],
-) -> Result<Vec<Vec<u8>>, RealWireError> {
-    use zstd::zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
+pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, RealWireError> {
     use zstd::zstd_safe::zstd_sys::ZSTD_EndDirective;
+    use zstd::zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
 
     let mut ctx = CCtx::create();
     // Match rsync's negotiated default level. `send_zstd_token` honours
@@ -2813,9 +2832,13 @@ pub fn decode_summary_frame(
                 // field-specific `at` so error messages can pinpoint
                 // which summary field tripped.
                 match e {
-                    RealWireError::TruncatedBuffer { needed, available, .. } => {
-                        RealWireError::TruncatedBuffer { at: field, needed, available }
-                    }
+                    RealWireError::TruncatedBuffer {
+                        needed, available, ..
+                    } => RealWireError::TruncatedBuffer {
+                        at: field,
+                        needed,
+                        available,
+                    },
                     other => other,
                 }
             })?
@@ -2963,7 +2986,13 @@ mod tests {
     #[test]
     fn protocol_version_rejects_truncated() {
         let err = decode_protocol_version(&[0x1F, 0]).unwrap_err();
-        assert!(matches!(err, RealWireError::TruncatedBuffer { at: "protocol_version", .. }));
+        assert!(matches!(
+            err,
+            RealWireError::TruncatedBuffer {
+                at: "protocol_version",
+                ..
+            }
+        ));
     }
 
     // -------------------------------------------------------------------------
@@ -3012,7 +3041,10 @@ mod tests {
         // high byte 0 = classic "no mux yet" signal (e.g. reading into
         // the capability preamble). Detected as InvalidMuxHeader.
         let err = MuxHeader::decode([0x00, 0x00, 0x00, 0x00]).unwrap_err();
-        assert!(matches!(err, RealWireError::InvalidMuxHeader { raw_high_byte: 0 }));
+        assert!(matches!(
+            err,
+            RealWireError::InvalidMuxHeader { raw_high_byte: 0 }
+        ));
     }
 
     // -------------------------------------------------------------------------
@@ -3060,7 +3092,10 @@ mod tests {
         let preamble = decode_server_preamble(&buf).unwrap();
         assert_eq!(preamble.protocol_version, 32);
         assert_eq!(preamble.compat_flags, 0x01FF);
-        assert_eq!(preamble.checksum_algos, "xxh128 xxh3 xxh64 md5 md4 sha1 none");
+        assert_eq!(
+            preamble.checksum_algos,
+            "xxh128 xxh3 xxh64 md5 md4 sha1 none"
+        );
         assert_eq!(preamble.compression_algos, "zstd lz4 zlibx zlib none");
         assert_eq!(preamble.checksum_seed, 0x69E2_7A9A);
         assert_eq!(preamble.consumed, 71);
@@ -3125,7 +3160,13 @@ mod tests {
         //   MSG_DATA len=1  -> 0x00
         let mut buf = Vec::new();
         for (len, payload_byte) in [(1u32, 0x00), (3u32, 0x00), (1u32, 0x00)] {
-            buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: len }.encode());
+            buf.extend_from_slice(
+                &MuxHeader {
+                    tag: MuxTag::Data,
+                    length: len,
+                }
+                .encode(),
+            );
             for _ in 0..len {
                 buf.push(payload_byte);
             }
@@ -3144,13 +3185,22 @@ mod tests {
     #[test]
     fn demuxer_flags_truncated_payload_on_final_frame() {
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 5 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 5,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0xAA, 0xBB]); // only 2 of 5 payload bytes
         let mut demuxer = MuxDemuxer::new(&buf);
         let result = demuxer.next().unwrap();
         assert!(matches!(
             result,
-            Err(RealWireError::TruncatedBuffer { at: "mux_payload", .. })
+            Err(RealWireError::TruncatedBuffer {
+                at: "mux_payload",
+                ..
+            })
         ));
         // Subsequent next() returns None — iterator is exhausted once
         // an error is surfaced.
@@ -3164,7 +3214,10 @@ mod tests {
         let result = demuxer.next().unwrap();
         assert!(matches!(
             result,
-            Err(RealWireError::TruncatedBuffer { at: "mux_header", .. })
+            Err(RealWireError::TruncatedBuffer {
+                at: "mux_header",
+                ..
+            })
         ));
     }
 
@@ -3175,9 +3228,21 @@ mod tests {
     #[test]
     fn reassembly_concatenates_two_msg_data_payloads() {
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 3 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 3,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0xAA, 0xBB, 0xCC]);
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 2 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 2,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0xDD, 0xEE]);
 
         let report = reassemble_msg_data(&buf).unwrap();
@@ -3189,13 +3254,37 @@ mod tests {
     #[test]
     fn reassembly_filters_out_of_band_frames_but_records_them() {
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 2 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 2,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0x01, 0x02]);
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Info, length: 4 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Info,
+                length: 4,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"info");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 1 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 1,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0x03]);
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Warning, length: 3 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Warning,
+                length: 3,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"WRN");
 
         let report = reassemble_msg_data(&buf).unwrap();
@@ -3210,12 +3299,21 @@ mod tests {
     #[test]
     fn reassembly_propagates_demuxer_errors() {
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 5 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 5,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0xAA, 0xBB]); // short — only 2 of 5 bytes
         let err = reassemble_msg_data(&buf).unwrap_err();
         assert!(matches!(
             err,
-            RealWireError::TruncatedBuffer { at: "mux_payload", .. }
+            RealWireError::TruncatedBuffer {
+                at: "mux_payload",
+                ..
+            }
         ));
     }
 
@@ -3234,11 +3332,29 @@ mod tests {
         // sequence that `out_of_band` describes by length only. A drift
         // between the two would silently break event classification.
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 2 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 2,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0xFE, 0xED]);
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Info, length: 5 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Info,
+                length: 5,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"hello");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Warning, length: 3 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Warning,
+                length: 3,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"WRN");
 
         let report = reassemble_msg_data(&buf).unwrap();
@@ -3268,11 +3384,29 @@ mod tests {
         // equals the one produced by `reassemble_msg_data` on the same
         // buffer. Classification is purely additive.
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 2 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 2,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0x01, 0x02]);
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Info, length: 4 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Info,
+                length: 4,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"info");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 1 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 1,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0x03]);
 
         let legacy = reassemble_msg_data(&buf).unwrap();
@@ -3287,11 +3421,29 @@ mod tests {
     #[test]
     fn reassemble_with_events_collects_every_oob_in_order() {
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Info, length: 3 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Info,
+                length: 3,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"one");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Warning, length: 3 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Warning,
+                length: 3,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"two");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 4 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 4,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"DATA");
 
         let report = reassemble_with_events(&buf).unwrap();
@@ -3316,16 +3468,40 @@ mod tests {
         // `app_stream`. consumed_bytes stops at the end of the Error
         // frame's header + payload, not at end-of-buffer.
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 2 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 2,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"OK");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Warning, length: 2 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Warning,
+                length: 2,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"hm");
         let error_header_offset = buf.len();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Error, length: 5 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Error,
+                length: 5,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"BOOM!");
         let consumed_at_terminal = buf.len();
         // These MUST NOT be touched.
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 6 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 6,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"AFTER!");
 
         let report = reassemble_until_terminal(&buf).unwrap();
@@ -3351,11 +3527,29 @@ mod tests {
         // No terminal frame -> terminal: None, consumed_bytes == buf.len(),
         // every event in `events` (warnings, info, etc.).
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 2 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 2,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"AB");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Warning, length: 1 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Warning,
+                length: 1,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"!");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::IoError, length: 4 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::IoError,
+                length: 4,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
 
         let report = reassemble_until_terminal(&buf).unwrap();
@@ -3370,9 +3564,21 @@ mod tests {
         // ErrorExit semantics: code > 0 is terminal. Pinned vs
         // events::is_terminal source-of-truth.
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 1 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 1,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"x");
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::ErrorExit, length: 4 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::ErrorExit,
+                length: 4,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0x17, 0x00, 0x00, 0x00]); // 23 = RERR_PARTIAL
 
         let report = reassemble_until_terminal(&buf).unwrap();
@@ -3387,8 +3593,20 @@ mod tests {
         // ErrorExit with code 0 (cleanup signal) is NOT terminal. Pinned
         // by the same dual-payload rules in events::classify_oob_frame.
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::ErrorExit, length: 0 }.encode());
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 3 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::ErrorExit,
+                length: 0,
+            }
+            .encode(),
+        );
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 3,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(b"OK!");
 
         let report = reassemble_until_terminal(&buf).unwrap();
@@ -3402,17 +3620,29 @@ mod tests {
         // surfaces the same `RealWireError::TruncatedBuffer` the legacy
         // path would. No silent recovery, no partial classification.
         let mut buf = Vec::new();
-        buf.extend_from_slice(&MuxHeader { tag: MuxTag::Data, length: 5 }.encode());
+        buf.extend_from_slice(
+            &MuxHeader {
+                tag: MuxTag::Data,
+                length: 5,
+            }
+            .encode(),
+        );
         buf.extend_from_slice(&[0xAA, 0xBB]); // short
         let err1 = reassemble_with_events(&buf).unwrap_err();
         let err2 = reassemble_until_terminal(&buf).unwrap_err();
         assert!(matches!(
             err1,
-            RealWireError::TruncatedBuffer { at: "mux_payload", .. }
+            RealWireError::TruncatedBuffer {
+                at: "mux_payload",
+                ..
+            }
         ));
         assert!(matches!(
             err2,
-            RealWireError::TruncatedBuffer { at: "mux_payload", .. }
+            RealWireError::TruncatedBuffer {
+                at: "mux_payload",
+                ..
+            }
         ));
     }
 
@@ -3442,11 +3672,7 @@ mod tests {
         ];
         for &(value, bytes) in golden {
             let encoded = encode_varint(value);
-            assert_eq!(
-                encoded.as_slice(),
-                bytes,
-                "encode_varint({value}) mismatch"
-            );
+            assert_eq!(encoded.as_slice(), bytes, "encode_varint({value}) mismatch");
             let (decoded, consumed) = decode_varint(bytes).unwrap();
             assert_eq!(decoded as i32, value, "decode_varint({bytes:?}) mismatch");
             assert_eq!(consumed, bytes.len(), "varint consumed {value}");
@@ -3705,11 +3931,8 @@ mod tests {
     #[test]
     fn decode_file_list_entry_same_name_reuses_previous_prefix() {
         let mut buf: Vec<u8> = Vec::new();
-        let flags = XMIT_SAME_NAME
-            | XMIT_SAME_UID
-            | XMIT_SAME_GID
-            | XMIT_SAME_TIME
-            | XMIT_SAME_MODE;
+        let flags =
+            XMIT_SAME_NAME | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME | XMIT_SAME_MODE;
         buf.extend_from_slice(&encode_varint(flags as i32));
         buf.push(4); // l1 — reuse "/tmp" prefix
         buf.push(3); // l2 — " .a"
@@ -3842,7 +4065,10 @@ mod tests {
         let err = decode_item_flags(&[0x02]).unwrap_err();
         assert!(matches!(
             err,
-            RealWireError::TruncatedBuffer { at: "item_flags", .. }
+            RealWireError::TruncatedBuffer {
+                at: "item_flags",
+                ..
+            }
         ));
     }
 
@@ -3925,7 +4151,9 @@ mod tests {
         let buf: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x01]; // 4 rolling + 1 strong
         let err = decode_sum_block(buf, 16).unwrap_err();
         let (needed, available) = match err {
-            RealWireError::TruncatedBuffer { needed, available, .. } => (needed, available),
+            RealWireError::TruncatedBuffer {
+                needed, available, ..
+            } => (needed, available),
             other => panic!("unexpected error variant: {other:?}"),
         };
         assert_eq!(needed, 20);
@@ -4061,7 +4289,10 @@ mod tests {
         let err = decode_delta_op(&[0x40, 0x00], &mut state).unwrap_err();
         assert!(matches!(
             err,
-            RealWireError::DeltaTokenTruncated { at: "deflated_len_zero", .. }
+            RealWireError::DeltaTokenTruncated {
+                at: "deflated_len_zero",
+                ..
+            }
         ));
     }
 
@@ -4071,7 +4302,11 @@ mod tests {
         let mut state = DeltaStreamState::new();
         let err = decode_delta_op(&[0x40, 0x0A, 0x11, 0x22, 0x33], &mut state).unwrap_err();
         match err {
-            RealWireError::DeltaTokenTruncated { at, needed, available } => {
+            RealWireError::DeltaTokenTruncated {
+                at,
+                needed,
+                available,
+            } => {
                 assert_eq!(at, "deflated_payload");
                 assert_eq!(needed, 10);
                 assert_eq!(available, 3);
@@ -4120,7 +4355,11 @@ mod tests {
         let mut state = DeltaStreamState::new();
         let err = decode_delta_op(&[], &mut state).unwrap_err();
         match err {
-            RealWireError::DeltaTokenTruncated { at, needed, available } => {
+            RealWireError::DeltaTokenTruncated {
+                at,
+                needed,
+                available,
+            } => {
                 assert_eq!(at, "tag");
                 assert_eq!(needed, 1);
                 assert_eq!(available, 0);
@@ -4136,7 +4375,11 @@ mod tests {
         // the u16 run_count).
         let err = decode_delta_op(&[0xC0, 0x05], &mut state).unwrap_err();
         match err {
-            RealWireError::DeltaTokenTruncated { at, needed, available } => {
+            RealWireError::DeltaTokenTruncated {
+                at,
+                needed,
+                available,
+            } => {
                 assert_eq!(at, "tokenrun_rel");
                 assert_eq!(needed, 3);
                 assert_eq!(available, 2);
@@ -4158,16 +4401,21 @@ mod tests {
         wire.push(TOKEN_END_FLAG);
         wire.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
 
-        let (report, consumed) =
-            decode_delta_stream(&wire, 4, Some(10)).unwrap();
+        let (report, consumed) = decode_delta_stream(&wire, 4, Some(10)).unwrap();
         assert_eq!(report.ops.len(), 2);
         assert_eq!(
             report.ops[0],
-            DeltaOp::CopyRun { start_token_index: 0, run_length: 3 }
+            DeltaOp::CopyRun {
+                start_token_index: 0,
+                run_length: 3
+            }
         );
         assert_eq!(
             report.ops[1],
-            DeltaOp::CopyRun { start_token_index: 3, run_length: 1 }
+            DeltaOp::CopyRun {
+                start_token_index: 3,
+                run_length: 1
+            }
         );
         assert_eq!(report.file_checksum, vec![0xDE, 0xAD, 0xBE, 0xEF]);
         assert_eq!(consumed, 3 + 1 + 1 + 4);
@@ -4179,7 +4427,10 @@ mod tests {
         let wire = [0xC0, 0x0B, 0x00, TOKEN_END_FLAG];
         let err = decode_delta_stream(&wire, 0, Some(10)).unwrap_err();
         match err {
-            RealWireError::DeltaTokenOutOfRange { token_index, block_count } => {
+            RealWireError::DeltaTokenOutOfRange {
+                token_index,
+                block_count,
+            } => {
                 assert_eq!(token_index, 0);
                 assert_eq!(block_count, 10);
             }
@@ -4215,7 +4466,11 @@ mod tests {
     fn decode_file_checksum_truncation_reports_needed() {
         let err = decode_file_checksum(&[0x11, 0x22], 16).unwrap_err();
         match err {
-            RealWireError::DeltaTokenTruncated { at, needed, available } => {
+            RealWireError::DeltaTokenTruncated {
+                at,
+                needed,
+                available,
+            } => {
                 assert_eq!(at, "file_checksum");
                 assert_eq!(needed, 16);
                 assert_eq!(available, 2);
@@ -4273,9 +4528,9 @@ mod tests {
     fn summary_frame_proto31_round_trip_large_values() {
         // Force varlong extra bytes: value > 2^31 triggers min_bytes + extra.
         let frame = SummaryFrame {
-            total_read: 8_589_934_592, // 2^33
+            total_read: 8_589_934_592,    // 2^33
             total_written: 4_294_967_296, // 2^32
-            total_size: 10_737_418_240, // 10 GiB
+            total_size: 10_737_418_240,   // 10 GiB
             flist_buildtime: Some(250),
             flist_xfertime: Some(500),
         };
@@ -4335,7 +4590,13 @@ mod tests {
         let truncated = &wire[..6];
         let err = decode_summary_frame(truncated, 31).unwrap_err();
         assert!(
-            matches!(err, RealWireError::TruncatedBuffer { at: "summary_total_size", .. }),
+            matches!(
+                err,
+                RealWireError::TruncatedBuffer {
+                    at: "summary_total_size",
+                    ..
+                }
+            ),
             "expected truncated-buffer pointing at summary_total_size, got {:?}",
             err
         );
@@ -4345,7 +4606,13 @@ mod tests {
     fn summary_frame_proto31_empty_buffer_reports_first_field() {
         let err = decode_summary_frame(&[], 31).unwrap_err();
         assert!(
-            matches!(err, RealWireError::TruncatedBuffer { at: "summary_total_read", .. }),
+            matches!(
+                err,
+                RealWireError::TruncatedBuffer {
+                    at: "summary_total_read",
+                    ..
+                }
+            ),
             "expected truncation on first field, got {:?}",
             err
         );
@@ -4506,8 +4773,7 @@ mod tests {
         // Pin the frame magic so a silent library change to a different
         // container (e.g. bare deflate) fails loudly.
         assert_eq!(&compressed[..4], &[0x28, 0xB5, 0x2F, 0xFD]);
-        let decompressed =
-            decompress_zstd_literal_stream(&[compressed.as_slice()]).unwrap();
+        let decompressed = decompress_zstd_literal_stream(&[compressed.as_slice()]).unwrap();
         assert_eq!(decompressed, original);
     }
 
@@ -4515,8 +4781,7 @@ mod tests {
     fn decompress_zstd_literal_stream_round_trip_empty_frame() {
         let original: Vec<u8> = Vec::new();
         let compressed = zstd::stream::encode_all(&original[..], 3).unwrap();
-        let decompressed =
-            decompress_zstd_literal_stream(&[compressed.as_slice()]).unwrap();
+        let decompressed = decompress_zstd_literal_stream(&[compressed.as_slice()]).unwrap();
         assert!(decompressed.is_empty());
     }
 
@@ -4531,8 +4796,7 @@ mod tests {
             compressed.len() < original.len(),
             "zstd must reduce a highly-patterned buffer"
         );
-        let decompressed =
-            decompress_zstd_literal_stream(&[compressed.as_slice()]).unwrap();
+        let decompressed = decompress_zstd_literal_stream(&[compressed.as_slice()]).unwrap();
         assert_eq!(decompressed, original);
     }
 
@@ -4607,7 +4871,13 @@ mod tests {
         // fail with `summary_total_written`.
         let err = decode_summary_frame(&wire[..4], 28).unwrap_err();
         assert!(
-            matches!(err, RealWireError::TruncatedBuffer { at: "summary_total_written", .. }),
+            matches!(
+                err,
+                RealWireError::TruncatedBuffer {
+                    at: "summary_total_written",
+                    ..
+                }
+            ),
             "expected truncation on total_written, got {:?}",
             err
         );
@@ -4734,7 +5004,11 @@ mod tests {
         let bytes = encode_file_list_entry(&entry, opts);
         let (outcome, consumed) =
             decode_file_list_entry(&bytes, opts).expect("entry must decode after encode");
-        assert_eq!(consumed, bytes.len(), "decoder should consume exactly the encoded slice");
+        assert_eq!(
+            consumed,
+            bytes.len(),
+            "decoder should consume exactly the encoded slice"
+        );
         match outcome {
             FileListDecodeOutcome::Entry(decoded) => {
                 assert_eq!(decoded.flags, entry.flags, "flags drift");
@@ -4915,7 +5189,10 @@ mod tests {
         let bytes = encode_file_list_terminator(&opts);
         assert_eq!(bytes, vec![0x00]);
         let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).unwrap();
-        assert!(matches!(outcome, FileListDecodeOutcome::EndOfList { io_error: 0 }));
+        assert!(matches!(
+            outcome,
+            FileListDecodeOutcome::EndOfList { io_error: 0 }
+        ));
         assert_eq!(consumed, 1);
     }
 
@@ -4964,8 +5241,15 @@ mod tests {
 
         let mut dec_state = DeltaStreamState::new();
         let (outcome, consumed) = decode_delta_op(&bytes, &mut dec_state).unwrap();
-        assert_eq!(consumed, bytes.len(), "decoder did not consume entire encoded slice");
-        assert_eq!(enc_state, dec_state, "state divergence between encoder and decoder");
+        assert_eq!(
+            consumed,
+            bytes.len(),
+            "decoder did not consume entire encoded slice"
+        );
+        assert_eq!(
+            enc_state, dec_state,
+            "state divergence between encoder and decoder"
+        );
         match (op, outcome) {
             (a, DeltaOpOutcome::Op(b)) => assert_eq!(a, b, "op round-trip drift"),
             _ => panic!("unexpected outcome"),
@@ -5078,14 +5362,20 @@ mod tests {
         let mut state = DeltaStreamState::new();
         // First: rel 0, run 1 => last_run_end = 1
         let bytes = encode_delta_op(
-            &DeltaOp::CopyRun { start_token_index: 0, run_length: 1 },
+            &DeltaOp::CopyRun {
+                start_token_index: 0,
+                run_length: 1,
+            },
             &mut state,
         );
         assert_eq!(bytes, vec![TOKEN_REL]);
         assert_eq!(state.last_run_end(), 1);
         // Second: rel 5, run 1 => start_token_index = 6, last_run_end = 7
         let bytes = encode_delta_op(
-            &DeltaOp::CopyRun { start_token_index: 6, run_length: 1 },
+            &DeltaOp::CopyRun {
+                start_token_index: 6,
+                run_length: 1,
+            },
             &mut state,
         );
         assert_eq!(bytes, vec![TOKEN_REL | 5]);
@@ -5097,11 +5387,24 @@ mod tests {
     fn encode_delta_stream_full_round_trip_matches_decoder() {
         let report = DeltaStreamReport {
             ops: vec![
-                DeltaOp::Literal { compressed_payload: vec![0x01; 10] },
-                DeltaOp::CopyRun { start_token_index: 0, run_length: 3 },
-                DeltaOp::CopyRun { start_token_index: 100, run_length: 1 },
-                DeltaOp::Literal { compressed_payload: vec![0x02; 50] },
-                DeltaOp::CopyRun { start_token_index: 200_000, run_length: 5 },
+                DeltaOp::Literal {
+                    compressed_payload: vec![0x01; 10],
+                },
+                DeltaOp::CopyRun {
+                    start_token_index: 0,
+                    run_length: 3,
+                },
+                DeltaOp::CopyRun {
+                    start_token_index: 100,
+                    run_length: 1,
+                },
+                DeltaOp::Literal {
+                    compressed_payload: vec![0x02; 50],
+                },
+                DeltaOp::CopyRun {
+                    start_token_index: 200_000,
+                    run_length: 5,
+                },
             ],
             file_checksum: vec![0xFE; 16],
         };

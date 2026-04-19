@@ -71,7 +71,8 @@ pub fn decode_winscp_password(hex_str: &str, key: &str) -> Result<String, String
             length = ((hi as usize) << 8) | (lo as usize);
         } else {
             // 8-bit length
-            length = dec_next_char(&mut nibbles).ok_or("password too short: missing length")? as usize;
+            length =
+                dec_next_char(&mut nibbles).ok_or("password too short: missing length")? as usize;
         }
     } else {
         length = flag as usize;
@@ -133,7 +134,8 @@ fn url_decode(s: &str) -> String {
         decoded_bytes.push(bytes[i]);
         i += 1;
     }
-    String::from_utf8(decoded_bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+    String::from_utf8(decoded_bytes)
+        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
 // ============ INI Parser ============
@@ -207,10 +209,7 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         .get("FSProtocol")
         .and_then(|v| v.parse().ok())
         .unwrap_or(1); // default: SFTP
-    let ftps: u32 = fields
-        .get("Ftps")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+    let ftps: u32 = fields.get("Ftps").and_then(|v| v.parse().ok()).unwrap_or(0);
     let port: u32 = fields
         .get("PortNumber")
         .and_then(|v| v.parse().ok())
@@ -265,7 +264,9 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         _ => {
             log::info!(
                 "WinSCP session '{}': unsupported FSProtocol={} Ftps={}",
-                name, fs_protocol, ftps
+                name,
+                fs_protocol,
+                ftps
             );
             return None;
         }
@@ -401,11 +402,7 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 );
 
                 // Extract display name: last segment after '/' (folder hierarchy)
-                let display_name = name
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(name)
-                    .to_string();
+                let display_name = name.rsplit('/').next().unwrap_or(name).to_string();
 
                 servers.push(ServerProfileExport {
                     id,
@@ -565,7 +562,9 @@ pub fn export_winscp(
 
         // Sanitize values to prevent INI injection (strip newlines and bracket chars)
         let sanitize = |s: &str| -> String {
-            s.chars().filter(|c| *c != '\n' && *c != '\r' && *c != '[' && *c != ']').collect()
+            s.chars()
+                .filter(|c| *c != '\n' && *c != '\r' && *c != '[' && *c != ']')
+                .collect()
         };
 
         ini.push_str(&format!("[Sessions\\{}]\n", encoded_name));

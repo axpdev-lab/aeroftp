@@ -452,7 +452,7 @@
             "modeUnavailable": "Forstillingar flutningshamattar eru aoheins tiltaekar fyrir FTP/FTPS",
             "crossProfile": {
                 "title": "Millifærsla milli sniða",
-                "subtitle": "Fljótandi spjald: biðröð, skrá og framvinda eru sýnileg á meðan keyrt er.",
+                "subtitle": "Afritaðu skrár beint á milli tveggja vistaðra þjóna.",
                 "closeAria": "Loka millifærslu spjaldi milli sniða",
                 "source": "Uppruni",
                 "destination": "Áfangastaður",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Stærð",
                 "executeTransfer": "Framkvæma flutning",
                 "transferInProgress": "Flutningur í gangi",
-                "transferHint": "Fylgstu með biðröð, aðgerðaskrá og framvindu hér að neðan. Þetta spjald er viljandi létt.",
+                "transferHint": "Framvinda í rauntíma birtist hér að neðan. Ítarleg saga helst í virknialeggjunni.",
                 "summary": "{transferred} flutt, {skipped} sleppt, {failed} mistókst",
                 "summaryMeta": "{size} á {seconds}s",
-                "newTransfer": "Nýr flutningur"
+                "newTransfer": "Nýr flutningur",
+                "preparing": "Undirbý flutning…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset fjarlægt {filename}",
             "release_asset_download_start": "[{provider}] Sæki release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset sótt {filename}",
-            "release_asset_download_error": "[{provider}] Ekki tókst að sækja release asset {filename}"
+            "release_asset_download_error": "[{provider}] Ekki tókst að sækja release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Hef flutning á {count} frá {source} til {dest}",
+            "crossprofile_file_success": "[Cross-profile] Afritað {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Villa á {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Bandvíddaráætlun",
             "bwScheduleOff": "Handvirkt (nota takmörk að ofan)",
             "bwScheduleOffice": "Skrifstofutími (throttle 08-18)",
-            "bwScheduleNight": "Næturstilling (throttle 18-08)"
+            "bwScheduleNight": "Næturstilling (throttle 18-08)",
+            "allInSync": "Allar skrár eru samstilltar — ekkert að flytja",
+            "nothingInDirection": "Munur fannst, en enginn passar við valda stefnu. Prófaðu Two-way til að sjá allar breytingar."
         },
         "ui": {
             "syncing": "Samstillir...",

@@ -923,10 +923,9 @@ impl WebDavProvider {
                                 "getlastmodified" => getlastmodified = text,
                                 "getcontenttype" => getcontenttype = text,
                                 "getetag" => getetag = text,
-                                "iscollection"
-                                    if text == "1" => {
-                                        is_collection_by_iscollection = true;
-                                    }
+                                "iscollection" if text == "1" => {
+                                    is_collection_by_iscollection = true;
+                                }
                                 _ => {}
                             }
                         }
@@ -944,10 +943,9 @@ impl WebDavProvider {
                                 "getlastmodified" => getlastmodified = text,
                                 "getcontenttype" => getcontenttype = text,
                                 "getetag" => getetag = text,
-                                "iscollection"
-                                    if text == "1" => {
-                                        is_collection_by_iscollection = true;
-                                    }
+                                "iscollection" if text == "1" => {
+                                    is_collection_by_iscollection = true;
+                                }
                                 _ => {}
                             }
                         }
@@ -1178,9 +1176,7 @@ impl StorageProvider for WebDavProvider {
                 "Invalid credentials".to_string(),
             )),
             StatusCode::METHOD_NOT_ALLOWED => {
-                tracing::debug!(
-                    "[WebDAV] PROPFIND / returned 405, trying well-known WebDAV paths"
-                );
+                tracing::debug!("[WebDAV] PROPFIND / returned 405, trying well-known WebDAV paths");
 
                 // Try well-known Nextcloud/ownCloud WebDAV paths before falling back to OPTIONS
                 let username = &self.config.username;
@@ -1208,7 +1204,8 @@ impl StorageProvider for WebDavProvider {
                         if st == StatusCode::OK || st == StatusCode::MULTI_STATUS {
                             tracing::info!(
                                 "[WebDAV] Auto-detected WebDAV path: {} ({})",
-                                wk_path, st
+                                wk_path,
+                                st
                             );
                             self.connected = true;
                             self.current_path = wk_path.clone();
@@ -1447,7 +1444,9 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let response = self.send_with_too_early_retry(Method::GET, remote_path).await?;
+        let response = self
+            .send_with_too_early_retry(Method::GET, remote_path)
+            .await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -1487,7 +1486,9 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let response = self.send_with_too_early_retry(Method::GET, remote_path).await?;
+        let response = self
+            .send_with_too_early_retry(Method::GET, remote_path)
+            .await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -2043,13 +2044,8 @@ impl StorageProvider for WebDavProvider {
                 let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
                     .await
                     .map_err(ProviderError::IoError)?;
-                super::stream_response_to_resumable(
-                    response,
-                    &mut fresh,
-                    total_size,
-                    on_progress,
-                )
-                .await?;
+                super::stream_response_to_resumable(response, &mut fresh, total_size, on_progress)
+                    .await?;
                 fresh.commit().await.map_err(|e| {
                     ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
                 })?;

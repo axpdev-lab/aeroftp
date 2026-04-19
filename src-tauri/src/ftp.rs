@@ -193,7 +193,8 @@ impl FtpManager {
             info!("Disconnecting from FTP server");
 
             // Send QUIT command with timeout
-            let result = tokio::time::timeout(self.timeouts.disconnect_timeout, stream.quit()).await;
+            let result =
+                tokio::time::timeout(self.timeouts.disconnect_timeout, stream.quit()).await;
 
             match result {
                 Ok(Ok(_)) => info!("Successfully disconnected"),

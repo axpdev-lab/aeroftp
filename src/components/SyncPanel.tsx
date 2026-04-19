@@ -3,46 +3,26 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
-import {
-    FileComparison, CompareOptions, SyncStatus, SyncDirection, ProviderType,
-    isFtpProtocol, TransferProgress, TransferEvent, SyncIndex,
-    RetryPolicy, VerifyPolicy, SyncJournal, SyncJournalEntry,
-    SyncErrorInfo, SyncErrorKind, VerifyResult, JournalEntryStatus,
-    CompressionMode, SyncTransferEntry, ParallelSyncResult,
-    JournalSummary
-} from '../types';
+import { FileComparison, CompareOptions, SyncStatus, SyncDirection, ProviderType, isFtpProtocol, TransferProgress, TransferEvent, SyncIndex, RetryPolicy, VerifyPolicy, SyncJournal, SyncJournalEntry, SyncErrorInfo, SyncErrorKind, VerifyResult, JournalEntryStatus, CompressionMode, SyncTransferEntry, ParallelSyncResult, JournalSummary } from '../types';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
 import { TRANSFER_EVENT_BRIDGE } from '../hooks/useTransferEvents';
 import { Checkbox } from './ui/Checkbox';
-import {
-    Loader2, Search, RefreshCw, Zap, X, FolderSync,
-    Folder, Globe, File, AlertTriangle, Check,
-    ArrowUp, ArrowDown, Plus, Minus, ArrowLeftRight,
-    CheckCircle2, XCircle,
-    Clock, SkipForward, StopCircle, RotateCcw, ShieldCheck,
-    WifiOff, KeyRound, HardDrive, Timer, Ban,
-    Download, ShieldAlert,
-    History, FileCheck, FilePen, ChevronDown, ChevronRight, FlaskConical, Trash2
-} from 'lucide-react';
+import { Loader2, Search, RefreshCw, Zap, X, FolderSync, Folder, Globe, File, AlertTriangle, Check, ArrowUp, ArrowDown, Plus, Minus, ArrowLeftRight, CheckCircle2, XCircle, Clock, SkipForward, StopCircle, RotateCcw, ShieldCheck, WifiOff, KeyRound, HardDrive, Timer, Ban, Download, ShieldAlert, History, FileCheck, FilePen, ChevronDown, ChevronRight, FlaskConical, Trash2 } from 'lucide-react';
 import './SyncPanel.css';
 import { formatSize } from '../utils/formatters';
 import { SyncQuickMode } from './Sync/SyncQuickMode';
 import { SyncAdvancedConfig } from './Sync/SyncAdvancedConfig';
 import { useSyncProfiles } from './Sync/useSyncProfiles';
 import { useSyncOptimization } from './Sync/useSyncOptimization';
-import {
-    SpeedMode, SPEED_PRESETS, MANIAC_OVERRIDES,
-    DEFAULT_RETRY_POLICY, DEFAULT_VERIFY_POLICY, VIRTUAL_ROW_HEIGHT, VIRTUAL_OVERSCAN,
-    VIRTUAL_VIEWPORT, FTP_TRANSFER_DELAY_MS, isCyberTheme
-} from './Sync/syncConstants';
+import { SpeedMode, SPEED_PRESETS, MANIAC_OVERRIDES, DEFAULT_RETRY_POLICY, DEFAULT_VERIFY_POLICY, VIRTUAL_ROW_HEIGHT, VIRTUAL_OVERSCAN, VIRTUAL_VIEWPORT, FTP_TRANSFER_DELAY_MS, isCyberTheme } from './Sync/syncConstants';
 import { MultiPathEditor } from './Sync/MultiPathEditor';
 import { SyncTemplateDialog } from './Sync/SyncTemplateDialog';
 import { RollbackDialog } from './Sync/RollbackDialog';
 import { CanaryResultDialog, CanaryResult } from './Sync/CanaryResultDialog';
+import { createTauriListener } from '../hooks/useTauriListener';
 
 interface SyncPanelProps {
     isOpen: boolean;
@@ -107,15 +87,7 @@ async function getJournalSigningKey(localPath: string, remotePath: string): Prom
 // Integrity status for a journal entry in the history list
 type JournalIntegrityStatus = 'unknown' | 'checking' | 'signed' | 'verified' | 'tampered' | 'unsigned';
 
-export const SyncPanel: React.FC<SyncPanelProps> = ({
-    isOpen,
-    onClose,
-    localPath,
-    remotePath,
-    isConnected,
-    protocol,
-    onSyncComplete,
-}) => {
+export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath, remotePath, isConnected, protocol, onSyncComplete }) => {
     const t = useTranslation();
 
     // --- Tab & Speed Mode State ---
@@ -147,9 +119,22 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     const [comparisons, setComparisons] = useState<FileComparison[]>([]);
     const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
     const [isComparing, setIsComparing] = useState(false);
-    const [scanProgress, setScanProgress] = useState<{ phase: string; files_found: number } | null>(null);
+    // Tracks the outcome of the last completed compare, so the empty-state UI
+    // can distinguish "not yet compared" from "compared but nothing to sync".
+    // `rawResultCount` is the count before the directional filter — if it's >0
+    // but differences is 0, we can hint that the direction hides everything.
+    const [lastCompare, setLastCompare] = useState<{
+        rawResultCount: number;
+    } | null>(null);
+    const [scanProgress, setScanProgress] = useState<{
+        phase: string;
+        files_found: number;
+    } | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
-    const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null);
+    const [syncProgress, setSyncProgress] = useState<{
+        current: number;
+        total: number;
+    } | null>(null);
     const [currentFileProgress, setCurrentFileProgress] = useState<TransferProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
@@ -200,7 +185,8 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         exclude_patterns: ['node_modules', '.git', '.DS_Store', 'Thumbs.db', '__pycache__', 'target'],
         direction: 'bidirectional',
     });
-    const unlistenRef = useRef<UnlistenFn | null>(null);
+    const compareScanCleanupRef = useRef<(() => void) | null>(null);
+    const transferBridgeCleanupRef = useRef<(() => void) | null>(null);
     const cancelledRef = useRef(false);
     const compareAbortedRef = useRef(false);
     const speedHistoryRef = useRef<number[]>([]);
@@ -210,7 +196,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     // Batched state update refs — prevent O(n²) Map copies with large file counts
     const pendingFileResultsRef = useRef<Map<string, FileSyncResult>>(new Map());
     const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pendingSyncProgressRef = useRef<{ current: number; total: number } | null>(null);
+    const pendingSyncProgressRef = useRef<{
+        current: number;
+        total: number;
+    } | null>(null);
     const progressFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const flushFileResults = useCallback(() => {
@@ -218,7 +207,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         if (pending.size > 0) {
             const batch = new Map(pending);
             pending.clear();
-            setFileResults(prev => {
+            setFileResults((prev) => {
                 const next = new Map(prev);
                 for (const [k, v] of batch) {
                     next.set(k, v);
@@ -229,12 +218,15 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         flushTimerRef.current = null;
     }, []);
 
-    const updateFileResult = useCallback((path: string, result: FileSyncResult) => {
-        pendingFileResultsRef.current.set(path, result);
-        if (!flushTimerRef.current) {
-            flushTimerRef.current = setTimeout(flushFileResults, 200);
-        }
-    }, [flushFileResults]);
+    const updateFileResult = useCallback(
+        (path: string, result: FileSyncResult) => {
+            pendingFileResultsRef.current.set(path, result);
+            if (!flushTimerRef.current) {
+                flushTimerRef.current = setTimeout(flushFileResults, 200);
+            }
+        },
+        [flushFileResults]
+    );
 
     // Virtual scroll handler — update scroll position for visible row calculation
     const handleVirtualScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -253,12 +245,28 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
     }, []);
 
+    const clearCompareScanListener = useCallback(() => {
+        if (compareScanCleanupRef.current) {
+            compareScanCleanupRef.current();
+            compareScanCleanupRef.current = null;
+        }
+    }, []);
+
+    const clearTransferBridgeListener = useCallback(() => {
+        if (transferBridgeCleanupRef.current) {
+            transferBridgeCleanupRef.current();
+            transferBridgeCleanupRef.current = null;
+        }
+    }, []);
+
     // Sync paths from props when panel opens
     // Hide all scrollbars while modal is open — WebKitGTK paints native scrollbars above CSS z-index
     useEffect(() => {
         if (isOpen) {
             document.documentElement.classList.add('modal-open');
-            return () => { document.documentElement.classList.remove('modal-open'); };
+            return () => {
+                document.documentElement.classList.remove('modal-open');
+            };
         }
     }, [isOpen]);
 
@@ -268,11 +276,14 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             setEditRemotePath(remotePath);
             // Check if a sync index exists for this path pair
             invoke<SyncIndex | null>('load_sync_index_cmd', { localPath, remotePath })
-                .then(idx => setHasIndex(!!idx))
+                .then((idx) => setHasIndex(!!idx))
                 .catch(() => setHasIndex(false));
             // Check for interrupted journal
-            invoke<SyncJournal | null>('load_sync_journal_cmd', { localPath, remotePath })
-                .then(journal => {
+            invoke<SyncJournal | null>('load_sync_journal_cmd', {
+                localPath,
+                remotePath,
+            })
+                .then((journal) => {
                     if (journal && !journal.completed) {
                         setHasJournal(true);
                         setPendingJournal(journal);
@@ -288,27 +299,34 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             // Auto-cleanup completed journals older than 30 days
             invoke<number>('cleanup_old_journals_cmd', { maxAgeDays: 30 }).catch(() => {});
             // Load journal history list and check integrity status
-            invoke<JournalSummary[]>('list_sync_journals_cmd').then(async (journals) => {
-                setJournalList(journals);
-                const statusMap = new Map<string, JournalIntegrityStatus>();
-                for (const j of journals) {
-                    const key = `${j.local_path}|${j.remote_path}`;
-                    try {
-                        const signingKey = await getJournalSigningKey(j.local_path, j.remote_path);
-                        const valid = await invoke<boolean>('verify_journal_signature', {
-                            localPath: j.local_path, remotePath: j.remote_path, signingKey,
-                        });
-                        statusMap.set(key, valid ? 'verified' : 'tampered');
-                    } catch {
-                        statusMap.set(key, 'unsigned');
+            invoke<JournalSummary[]>('list_sync_journals_cmd')
+                .then(async (journals) => {
+                    setJournalList(journals);
+                    const statusMap = new Map<string, JournalIntegrityStatus>();
+                    for (const j of journals) {
+                        const key = `${j.local_path}|${j.remote_path}`;
+                        try {
+                            const signingKey = await getJournalSigningKey(j.local_path, j.remote_path);
+                            const valid = await invoke<boolean>('verify_journal_signature', {
+                                localPath: j.local_path,
+                                remotePath: j.remote_path,
+                                signingKey,
+                            });
+                            statusMap.set(key, valid ? 'verified' : 'tampered');
+                        } catch {
+                            statusMap.set(key, 'unsigned');
+                        }
                     }
-                }
-                setJournalIntegrity(statusMap);
-            }).catch(() => setJournalList([]));
+                    setJournalIntegrity(statusMap);
+                })
+                .catch(() => setJournalList([]));
             // Load current speed limits
             const loadCmd = isFtp ? 'get_speed_limit' : 'provider_get_speed_limit';
             invoke<[number, number]>(loadCmd)
-                .then(([dl, ul]) => { setDownloadLimit(dl); setUploadLimit(ul); })
+                .then(([dl, ul]) => {
+                    setDownloadLimit(dl);
+                    setUploadLimit(ul);
+                })
                 .catch(() => {});
             // Sync profiles loaded by useSyncProfiles hook
         }
@@ -334,13 +352,20 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     // Cleanup event listener and timers on unmount
     useEffect(() => {
         return () => {
-            if (unlistenRef.current) {
-                unlistenRef.current();
-            }
+            clearCompareScanListener();
+            clearTransferBridgeListener();
             if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
             if (progressFlushTimerRef.current) clearTimeout(progressFlushTimerRef.current);
         };
-    }, []);
+    }, [clearCompareScanListener, clearTransferBridgeListener]);
+
+    useEffect(() => {
+        if (isOpen) return;
+        clearCompareScanListener();
+        clearTransferBridgeListener();
+        setScanProgress(null);
+        setCurrentFileProgress(null);
+    }, [clearCompareScanListener, clearTransferBridgeListener, isOpen]);
 
     const handleCompare = async () => {
         if (!isConnected) {
@@ -356,11 +381,15 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setFileResults(new Map());
         setScanProgress(null);
         setScrollTop(0);
+        setLastCompare(null);
         compareAbortedRef.current = false;
+        clearCompareScanListener();
 
-        let unlistenScan: UnlistenFn | null = null;
         try {
-            unlistenScan = await listen<{ phase: string; files_found: number }>('sync_scan_progress', (event) => {
+            compareScanCleanupRef.current = createTauriListener<{
+                phase: string;
+                files_found: number;
+            }>('sync_scan_progress', (event) => {
                 if (!compareAbortedRef.current) {
                     setScanProgress(event.payload);
                 }
@@ -383,28 +412,26 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             // Discard results if user cancelled the scan
             if (compareAbortedRef.current) return;
 
+            // Capture the raw (pre-filter) non-identical count. If the directional
+            // filter below hides everything, the empty-state UI uses this hint
+            // to tell the user "there ARE diffs, just not in this direction".
+            const rawResultCount = results.filter((r) => r.status !== 'identical').length;
+            setLastCompare({ rawResultCount });
+
             // Filter to only show differences (not identical)
-            let differences = results.filter(r => r.status !== 'identical');
+            let differences = results.filter((r) => r.status !== 'identical');
 
             // Remove directory size/mtime mismatches — directory "size" is filesystem block
             // metadata (always 4.0 KB on ext4), not actual content size. Comparing is meaningless.
             // Only keep directories that are truly new (remote_only/local_only).
-            differences = differences.filter(r =>
-                !r.is_dir || r.status === 'remote_only' || r.status === 'local_only'
-            );
+            differences = differences.filter((r) => !r.is_dir || r.status === 'remote_only' || r.status === 'local_only');
 
             // Apply direction filter
             // When delete_orphans is active, include orphans from the opposite side (they'll be deleted)
             if (options.direction === 'remote_to_local') {
-                differences = differences.filter(r =>
-                    r.status === 'remote_newer' || r.status === 'remote_only'
-                    || (options.delete_orphans && r.status === 'local_only')
-                );
+                differences = differences.filter((r) => r.status === 'remote_newer' || r.status === 'remote_only' || (options.delete_orphans && r.status === 'local_only'));
             } else if (options.direction === 'local_to_remote') {
-                differences = differences.filter(r =>
-                    r.status === 'local_newer' || r.status === 'local_only'
-                    || (options.delete_orphans && r.status === 'remote_only')
-                );
+                differences = differences.filter((r) => r.status === 'local_newer' || r.status === 'local_only' || (options.delete_orphans && r.status === 'remote_only'));
             }
 
             // Detect renames (SHA256 matching between local_only and remote_only)
@@ -424,9 +451,11 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     setDetectedRenames(renameMap);
                     // Remove matched pairs from differences (they don't need transfer)
                     if (removePaths.size > 0) {
-                        differences = differences.filter(d => !removePaths.has(d.relative_path));
+                        differences = differences.filter((d) => !removePaths.has(d.relative_path));
                     }
-                } catch { setDetectedRenames(new Map()); }
+                } catch {
+                    setDetectedRenames(new Map());
+                }
             } else {
                 setDetectedRenames(new Map());
             }
@@ -448,11 +477,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         const rt = c.remote_info?.modified ? new Date(c.remote_info.modified).getTime() : 0;
                         autoResolutions.set(c.relative_path, lt <= rt ? 'upload' : 'download');
                     } else if (strategy === 'larger') {
-                        autoResolutions.set(c.relative_path,
-                            (c.local_info?.size || 0) >= (c.remote_info?.size || 0) ? 'upload' : 'download');
+                        autoResolutions.set(c.relative_path, (c.local_info?.size || 0) >= (c.remote_info?.size || 0) ? 'upload' : 'download');
                     } else if (strategy === 'smaller') {
-                        autoResolutions.set(c.relative_path,
-                            (c.local_info?.size || 0) <= (c.remote_info?.size || 0) ? 'upload' : 'download');
+                        autoResolutions.set(c.relative_path, (c.local_info?.size || 0) <= (c.remote_info?.size || 0) ? 'upload' : 'download');
                     } else if (strategy === 'skip') {
                         autoResolutions.set(c.relative_path, 'skip');
                     }
@@ -465,7 +492,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             // Auto-select all non-conflict, non-directory items
             // (conflicts auto-resolved by strategy are also selected)
             const autoSelect = new Set<string>();
-            differences.forEach(c => {
+            differences.forEach((c) => {
                 if (c.status !== 'conflict' && c.status !== 'size_mismatch' && !c.is_dir) {
                     autoSelect.add(c.relative_path);
                 }
@@ -475,33 +502,38 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 }
             });
             setSelectedPaths(autoSelect);
-
         } catch (e: any) {
             if (!compareAbortedRef.current) {
                 console.error('[SyncPanel] Compare error:', e);
                 setError(e.toString());
             }
         } finally {
-            if (unlistenScan) unlistenScan();
+            clearCompareScanListener();
             setScanProgress(null);
             setIsComparing(false);
         }
     };
 
-    // Cancel an ongoing compare/scan — signals the Rust backend to abort and release the FTP lock
+    // Cancel an ongoing compare/scan — signals the Rust backend to abort and release the FTP lock.
+    // IMPORTANT: do NOT call reset_cancel_flag here. The scan polls the flag between
+    // directories; if we flip it back to false immediately, the running scan never
+    // observes the cancellation and keeps walking the tree (I/O+CPU burn until done).
+    // Each compare/sync entrypoint resets the flag itself when it starts fresh.
     const handleCancelCompare = async () => {
         compareAbortedRef.current = true;
+        clearCompareScanListener();
         setIsComparing(false);
         setScanProgress(null);
-        // Signal backend to stop scanning — releases FTP mutex so other operations can proceed
-        try { await invoke('cancel_transfer'); } catch { /* ignore */ }
-        // Reset the flag so subsequent transfers aren't blocked
-        try { await invoke('reset_cancel_flag'); } catch { /* ignore */ }
+        try {
+            await invoke('cancel_transfer');
+        } catch {
+            /* ignore */
+        }
     };
 
     const handleSelectAll = () => {
         const all = new Set<string>();
-        comparisons.forEach(c => {
+        comparisons.forEach((c) => {
             if (!c.is_dir) all.add(c.relative_path);
         });
         setSelectedPaths(all);
@@ -534,10 +566,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     // handleDirectionChange moved to SyncAdvancedConfig
 
     // Count directories that would be synced (empty dirs not in selectedPaths)
-    const syncableDirs = comparisons.filter(c => c.is_dir &&
-        ((c.status === 'remote_only' && (options.direction === 'remote_to_local' || options.direction === 'bidirectional')) ||
-            (c.status === 'local_only' && (options.direction === 'local_to_remote' || options.direction === 'bidirectional')))
-    ).length;
+    const syncableDirs = comparisons.filter((c) => c.is_dir && ((c.status === 'remote_only' && (options.direction === 'remote_to_local' || options.direction === 'bidirectional')) || (c.status === 'local_only' && (options.direction === 'local_to_remote' || options.direction === 'bidirectional')))).length;
 
     const hasSyncableItems = selectedPaths.size > 0 || syncableDirs > 0;
 
@@ -552,6 +581,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setScrollTop(0);
         setConflictResolutions(new Map());
         setShowConflictPanel(false);
+        setLastCompare(null);
     };
 
     const handleClose = async () => {
@@ -597,10 +627,23 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
     };
 
+    // Determine if an orphan file is a delete candidate.
+    // - One-way (Mirror/Pull): opposite-side orphans are always deleted when delete_orphans is active
+    // - Bidirectional (Both): only delete orphans that were previously synced (the other side deleted them)
+    //   New files (not in index) are uploaded/downloaded, not deleted.
+    // Declared here (before deleteCount) so render-time filter predicates don't hit a TDZ.
+    const isDeleteOrphan = (status: SyncStatus, comparison?: FileComparison): boolean => {
+        if (!options.delete_orphans) return false;
+        if (options.direction === 'local_to_remote' && status === 'remote_only') return true;
+        if (options.direction === 'remote_to_local' && status === 'local_only') return true;
+        if (options.direction === 'bidirectional' && comparison?.previously_synced) {
+            if (status === 'remote_only' || status === 'local_only') return true;
+        }
+        return false;
+    };
+
     // Count files that will be deleted in this sync
-    const deleteCount = comparisons.filter(c =>
-        !c.is_dir && selectedPaths.has(c.relative_path) && isDeleteOrphan(c.status, c)
-    ).length;
+    const deleteCount = comparisons.filter((c) => !c.is_dir && selectedPaths.has(c.relative_path) && isDeleteOrphan(c.status, c)).length;
 
     // Delete safety confirmation state
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -630,7 +673,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 filters: [{ name: 'JSON', extensions: ['json'] }],
             });
             if (filePath) {
-                const data = comparisons.map(c => ({
+                const data = comparisons.map((c) => ({
                     path: c.relative_path,
                     status: c.status,
                     is_dir: c.is_dir,
@@ -642,7 +685,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 }));
                 await writeTextFile(filePath, JSON.stringify(data, null, 2));
             }
-        } catch { /* dialog cancelled or write error */ }
+        } catch {
+            /* dialog cancelled or write error */
+        }
     };
 
     // #149: Dry-run export — CSV
@@ -657,27 +702,23 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             if (filePath) {
                 const header = 'path,status,is_dir,sync_reason,local_size,local_modified,remote_size,remote_modified';
                 const escape = (s: string) => `"${(s || '').replace(/"/g, '""')}"`;
-                const rows = comparisons.map(c =>
-                    [escape(c.relative_path), c.status, c.is_dir, escape(c.sync_reason),
-                     c.local_info?.size ?? '', c.local_info?.modified ?? '',
-                     c.remote_info?.size ?? '', c.remote_info?.modified ?? ''].join(',')
-                );
+                const rows = comparisons.map((c) => [escape(c.relative_path), c.status, c.is_dir, escape(c.sync_reason), c.local_info?.size ?? '', c.local_info?.modified ?? '', c.remote_info?.size ?? '', c.remote_info?.modified ?? ''].join(','));
                 await writeTextFile(filePath, [header, ...rows].join('\n'));
             }
-        } catch { /* dialog cancelled or write error */ }
+        } catch {
+            /* dialog cancelled or write error */
+        }
     };
 
     // #146: Safety Score — computed from comparisons
     const safetyScore = React.useMemo(() => {
         if (comparisons.length === 0) return null;
-        const files = comparisons.filter(c => !c.is_dir);
-        const conflicts = files.filter(c => c.status === 'conflict' || c.status === 'size_mismatch').length;
+        const files = comparisons.filter((c) => !c.is_dir);
+        const conflicts = files.filter((c) => c.status === 'conflict' || c.status === 'size_mismatch').length;
         const dangerousExts = ['.exe', '.sh', '.bat', '.cmd', '.ps1', '.env', '.pem', '.key', '.p12'];
-        const dangerous = files.filter(c => dangerousExts.some(ext => c.relative_path.toLowerCase().endsWith(ext))).length;
+        const dangerous = files.filter((c) => dangerousExts.some((ext) => c.relative_path.toLowerCase().endsWith(ext))).length;
         const totalSize = files.reduce((sum, c) => sum + (c.local_info?.size ?? 0) + (c.remote_info?.size ?? 0), 0);
-        const level: 'low' | 'medium' | 'high' =
-            conflicts > 5 || dangerous > 10 ? 'high' :
-            conflicts > 0 || dangerous > 0 ? 'medium' : 'low';
+        const level: 'low' | 'medium' | 'high' = conflicts > 5 || dangerous > 10 ? 'high' : conflicts > 0 || dangerous > 0 ? 'medium' : 'low';
         return { conflicts, dangerous, totalSize, level };
     }, [comparisons]);
 
@@ -688,7 +729,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 localPath: editLocalPath,
                 remotePath: editRemotePath,
             });
-        } catch { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
         setHasJournal(false);
         setPendingJournal(null);
     };
@@ -705,23 +748,27 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 setError(t('syncPanel.journalsCleared', { count: String(count) }));
                 setTimeout(() => setError(null), 3000);
             }
-        } catch { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
     };
 
     // Sign a journal for tamper detection
     const handleSignJournal = async (lp: string, rp: string) => {
         const key = `${lp}|${rp}`;
-        setJournalIntegrity(prev => new Map(prev).set(key, 'checking'));
+        setJournalIntegrity((prev) => new Map(prev).set(key, 'checking'));
         try {
             const signingKey = await getJournalSigningKey(lp, rp);
             await invoke<string>('sign_sync_journal', {
-                localPath: lp, remotePath: rp, signingKey,
+                localPath: lp,
+                remotePath: rp,
+                signingKey,
             });
-            setJournalIntegrity(prev => new Map(prev).set(key, 'signed'));
+            setJournalIntegrity((prev) => new Map(prev).set(key, 'signed'));
             setJournalFeedback(t('syncPanel.journalSignSuccess'));
             setTimeout(() => setJournalFeedback(null), 3000);
         } catch {
-            setJournalIntegrity(prev => new Map(prev).set(key, 'unsigned'));
+            setJournalIntegrity((prev) => new Map(prev).set(key, 'unsigned'));
             setJournalFeedback(t('syncPanel.journalSignError'));
             setTimeout(() => setJournalFeedback(null), 3000);
         }
@@ -730,17 +777,19 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     // Verify a journal's integrity
     const handleVerifyJournal = async (lp: string, rp: string) => {
         const key = `${lp}|${rp}`;
-        setJournalIntegrity(prev => new Map(prev).set(key, 'checking'));
+        setJournalIntegrity((prev) => new Map(prev).set(key, 'checking'));
         try {
             const signingKey = await getJournalSigningKey(lp, rp);
             const valid = await invoke<boolean>('verify_journal_signature', {
-                localPath: lp, remotePath: rp, signingKey,
+                localPath: lp,
+                remotePath: rp,
+                signingKey,
             });
-            setJournalIntegrity(prev => new Map(prev).set(key, valid ? 'verified' : 'tampered'));
+            setJournalIntegrity((prev) => new Map(prev).set(key, valid ? 'verified' : 'tampered'));
             setJournalFeedback(valid ? t('syncPanel.journalVerifySuccess') : t('syncPanel.journalVerifyFailed'));
             setTimeout(() => setJournalFeedback(null), 4000);
         } catch {
-            setJournalIntegrity(prev => new Map(prev).set(key, 'unsigned'));
+            setJournalIntegrity((prev) => new Map(prev).set(key, 'unsigned'));
             setJournalFeedback(t('syncPanel.journalVerifyError'));
             setTimeout(() => setJournalFeedback(null), 3000);
         }
@@ -756,7 +805,11 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         const shouldThrottle = (schedule === 'office' && isOfficeHours) || (schedule === 'night' && !isOfficeHours);
         const limit = shouldThrottle ? 512 : 0; // 512 KB/s during throttle, unlimited otherwise
         const cmd = isFtp ? 'set_speed_limit' : 'provider_set_speed_limit';
-        try { await invoke(cmd, { downloadKb: limit, uploadKb: limit }); } catch { /* ignore */ }
+        try {
+            await invoke(cmd, { downloadKb: limit, uploadKb: limit });
+        } catch {
+            /* ignore */
+        }
     };
 
     const handleSpeedLimitChange = async (dl: number, ul: number) => {
@@ -765,7 +818,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         const cmd = isFtp ? 'set_speed_limit' : 'provider_set_speed_limit';
         try {
             await invoke(cmd, { downloadKb: dl, uploadKb: ul });
-        } catch { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
     };
 
     const applyProfile = (profileId: string) => {
@@ -800,24 +855,24 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     };
 
     // Conflict resolution helpers
-    const conflicts = comparisons.filter(c => c.status === 'conflict');
-    const unresolvedConflicts = conflicts.filter(c => !conflictResolutions.has(c.relative_path));
+    const conflicts = comparisons.filter((c) => c.status === 'conflict');
+    const unresolvedConflicts = conflicts.filter((c) => !conflictResolutions.has(c.relative_path));
 
     const resolveConflict = (path: string, resolution: ConflictResolution) => {
-        setConflictResolutions(prev => {
+        setConflictResolutions((prev) => {
             const next = new Map(prev);
             next.set(path, resolution);
             return next;
         });
         // Auto-select resolved conflicts for sync
         if (resolution !== 'skip') {
-            setSelectedPaths(prev => {
+            setSelectedPaths((prev) => {
                 const next = new Set(prev);
                 next.add(path);
                 return next;
             });
         } else {
-            setSelectedPaths(prev => {
+            setSelectedPaths((prev) => {
                 const next = new Set(prev);
                 next.delete(path);
                 return next;
@@ -856,7 +911,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         setShowConflictPanel(false);
     };
 
-    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     // Calculate retry delay with exponential backoff
     const getRetryDelay = (attempt: number): number => {
@@ -865,11 +920,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     };
 
     // Execute a single transfer with retry logic and error classification
-    const executeTransferWithRetry = async (
-        cmd: string,
-        args: Record<string, unknown>,
-        filePath: string,
-    ): Promise<{ success: boolean; attempts: number; error?: SyncErrorInfo }> => {
+    const executeTransferWithRetry = async (cmd: string, args: Record<string, unknown>, filePath: string): Promise<{ success: boolean; attempts: number; error?: SyncErrorInfo }> => {
         const maxAttempts = Math.max(1, retryPolicy.max_retries);
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -906,7 +957,11 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     updateFileResult(filePath, 'retrying');
                     // FTP: NOOP to reset server state
                     if (isFtp) {
-                        try { await invoke('ftp_noop'); } catch { /* ignore */ }
+                        try {
+                            await invoke('ftp_noop');
+                        } catch {
+                            /* ignore */
+                        }
                     }
                     await delay(getRetryDelay(attempt));
                     continue;
@@ -919,11 +974,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     };
 
     // Post-transfer verification for downloads
-    const verifyDownload = async (
-        localFilePath: string,
-        expectedSize: number,
-        expectedMtime: string | null,
-    ): Promise<VerifyResult | null> => {
+    const verifyDownload = async (localFilePath: string, expectedSize: number, expectedMtime: string | null): Promise<VerifyResult | null> => {
         if (verifyPolicy === 'none') return null;
         try {
             return await invoke<VerifyResult>('verify_local_transfer', {
@@ -966,33 +1017,53 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         // CRITICAL: Reset backend cancel flag before starting sync
         // Without this, any previous cancel (from panels or sync) leaves the flag stuck on true
         // and ALL subsequent download_file/upload_file calls fail immediately
-        try { await invoke('reset_cancel_flag'); } catch { /* ignore */ }
+        try {
+            await invoke('reset_cancel_flag');
+        } catch {
+            /* ignore */
+        }
 
         // Build transfer list — from comparisons or from journal entries (resume without compare)
         let selectedComparisons: FileComparison[];
         if (resumeJournal && comparisons.length === 0) {
             // Resume mode: reconstruct minimal FileComparison objects from journal entries
-            selectedComparisons = resumeJournal.entries.map(e => ({
+            selectedComparisons = resumeJournal.entries.map((e) => ({
                 relative_path: e.relative_path,
                 status: (e.action === 'upload' ? 'local_newer' : 'remote_newer') as SyncStatus,
                 is_dir: false,
-                local_info: e.action === 'upload'
-                    ? { name: e.relative_path.split('/').pop() || '', path: e.relative_path, size: e.bytes_transferred || 0, modified: null, is_dir: false, checksum: null }
-                    : null,
-                remote_info: e.action === 'download'
-                    ? { name: e.relative_path.split('/').pop() || '', path: e.relative_path, size: e.bytes_transferred || 0, modified: null, is_dir: false, checksum: null }
-                    : null,
+                local_info:
+                    e.action === 'upload'
+                        ? {
+                              name: e.relative_path.split('/').pop() || '',
+                              path: e.relative_path,
+                              size: e.bytes_transferred || 0,
+                              modified: null,
+                              is_dir: false,
+                              checksum: null,
+                          }
+                        : null,
+                remote_info:
+                    e.action === 'download'
+                        ? {
+                              name: e.relative_path.split('/').pop() || '',
+                              path: e.relative_path,
+                              size: e.bytes_transferred || 0,
+                              modified: null,
+                              is_dir: false,
+                              checksum: null,
+                          }
+                        : null,
                 sync_reason: e.action === 'upload' ? 'Resumed from journal (upload)' : 'Resumed from journal (download)',
             }));
         } else {
-            selectedComparisons = comparisons.filter(c => selectedPaths.has(c.relative_path) && !c.is_dir);
+            selectedComparisons = comparisons.filter((c) => selectedPaths.has(c.relative_path) && !c.is_dir);
         }
 
         setSyncProgress({ current: 0, total: selectedComparisons.length });
 
         // Initialize file results
         const initialResults = new Map<string, FileSyncResult>();
-        selectedComparisons.forEach(c => initialResults.set(c.relative_path, 'pending'));
+        selectedComparisons.forEach((c) => initialResults.set(c.relative_path, 'pending'));
         if (resumeJournal) {
             // Mark already-completed/skipped entries from journal
             for (const e of resumeJournal.entries) {
@@ -1022,8 +1093,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 }
             }
         };
+        clearTransferBridgeListener();
         window.addEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
-        unlistenRef.current = () => window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
+        transferBridgeCleanupRef.current = () => window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
         let completed = 0;
         let uploaded = 0;
         let downloaded = 0;
@@ -1048,7 +1120,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             direction: options.direction,
             retry_policy: retryPolicy,
             verify_policy: verifyPolicy,
-            entries: selectedComparisons.map(c => {
+            entries: selectedComparisons.map((c) => {
                 let action: string;
                 if (isDeleteOrphan(c.status, c)) {
                     action = 'delete';
@@ -1056,7 +1128,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     const resolution = conflictResolutions.get(c.relative_path);
                     action = resolution === 'upload' ? 'upload' : 'download';
                 } else {
-                    action = (c.status === 'local_newer' || c.status === 'local_only') ? 'upload' : 'download';
+                    action = c.status === 'local_newer' || c.status === 'local_only' ? 'upload' : 'download';
                 }
                 return {
                     relative_path: c.relative_path,
@@ -1079,11 +1151,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
 
         // Pre-create remote directories needed for uploads
-        if (selectedComparisons.some(c => c.status === 'local_newer' || c.status === 'local_only')) {
+        if (selectedComparisons.some((c) => c.status === 'local_newer' || c.status === 'local_only')) {
             const dirsToCreate = new Set<string>();
             for (const item of selectedComparisons) {
-                const shouldUpload = (item.status === 'local_newer' || item.status === 'local_only') &&
-                    (options.direction === 'local_to_remote' || options.direction === 'bidirectional');
+                const shouldUpload = (item.status === 'local_newer' || item.status === 'local_only') && (options.direction === 'local_to_remote' || options.direction === 'bidirectional');
                 if (shouldUpload && /[\\/]/.test(item.relative_path)) {
                     const parts = item.relative_path.split(/[\\/]/);
                     for (let i = 1; i < parts.length; i++) {
@@ -1108,11 +1179,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
 
         // Pre-create local directories needed for downloads
-        if (selectedComparisons.some(c => c.status === 'remote_newer' || c.status === 'remote_only')) {
+        if (selectedComparisons.some((c) => c.status === 'remote_newer' || c.status === 'remote_only')) {
             const dirsToCreate = new Set<string>();
             for (const item of selectedComparisons) {
-                const shouldDownload = (item.status === 'remote_newer' || item.status === 'remote_only') &&
-                    (options.direction === 'remote_to_local' || options.direction === 'bidirectional');
+                const shouldDownload = (item.status === 'remote_newer' || item.status === 'remote_only') && (options.direction === 'remote_to_local' || options.direction === 'bidirectional');
                 if (shouldDownload && /[\\/]/.test(item.relative_path)) {
                     const parts = item.relative_path.split(/[\\/]/);
                     for (let i = 1; i < parts.length; i++) {
@@ -1132,10 +1202,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
 
         // Create standalone empty directories (remote_only → local, local_only → remote)
         let dirsCreated = 0;
-        const dirComparisons = comparisons.filter(c => c.is_dir &&
-            ((c.status === 'remote_only' && (options.direction === 'remote_to_local' || options.direction === 'bidirectional')) ||
-                (c.status === 'local_only' && (options.direction === 'local_to_remote' || options.direction === 'bidirectional')))
-        );
+        const dirComparisons = comparisons.filter((c) => c.is_dir && ((c.status === 'remote_only' && (options.direction === 'remote_to_local' || options.direction === 'bidirectional')) || (c.status === 'local_only' && (options.direction === 'local_to_remote' || options.direction === 'bidirectional'))));
         for (const dir of dirComparisons.sort((a, b) => a.relative_path.split('/').length - b.relative_path.split('/').length)) {
             try {
                 if (dir.status === 'remote_only') {
@@ -1202,7 +1269,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     flushTimerRef.current = null;
                 }
                 flushFileResults();
-                setFileResults(prev => {
+                setFileResults((prev) => {
                     const next = new Map(prev);
                     for (const c of selectedComparisons.slice(i)) {
                         if (next.get(c.relative_path) === 'pending') {
@@ -1215,7 +1282,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 // Save journal checkpoint on cancel
                 try {
                     await invoke('save_sync_journal_cmd', { journal });
-                } catch { /* ignore */ }
+                } catch {
+                    /* ignore */
+                }
                 break;
             }
 
@@ -1234,19 +1303,18 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 if (journalEntry) journalEntry.status = 'skipped';
                 updateFileResult(item.relative_path, 'skipped');
                 completed++;
-                setSyncProgress({ current: completed, total: selectedComparisons.length });
+                setSyncProgress({
+                    current: completed,
+                    total: selectedComparisons.length,
+                });
                 continue;
             }
 
             const shouldDelete = !conflictRes && isDeleteOrphan(item.status, item);
 
-            const shouldUpload = !shouldDelete && (conflictRes === 'upload' ||
-                (!conflictRes && (item.status === 'local_newer' || item.status === 'local_only') &&
-                (options.direction === 'local_to_remote' || options.direction === 'bidirectional')));
+            const shouldUpload = !shouldDelete && (conflictRes === 'upload' || (!conflictRes && (item.status === 'local_newer' || item.status === 'local_only') && (options.direction === 'local_to_remote' || options.direction === 'bidirectional')));
 
-            const shouldDownload = !shouldDelete && (conflictRes === 'download' ||
-                (!conflictRes && (item.status === 'remote_newer' || item.status === 'remote_only') &&
-                (options.direction === 'remote_to_local' || options.direction === 'bidirectional')));
+            const shouldDownload = !shouldDelete && (conflictRes === 'download' || (!conflictRes && (item.status === 'remote_newer' || item.status === 'remote_only') && (options.direction === 'remote_to_local' || options.direction === 'bidirectional')));
 
             // Track whether a data connection was actually opened (for FTP delay logic)
             let didTransfer = false;
@@ -1255,7 +1323,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 const cmd = isProvider ? 'provider_upload_file' : 'upload_file';
                 const args = isProvider
                     ? { localPath: localFilePath, remotePath: remoteFilePath }
-                    : { params: { local_path: localFilePath, remote_path: remoteFilePath } };
+                    : {
+                          params: {
+                              local_path: localFilePath,
+                              remote_path: remoteFilePath,
+                          },
+                      };
 
                 const result = await executeTransferWithRetry(cmd, args, item.relative_path);
                 if (journalEntry) {
@@ -1279,19 +1352,18 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         journalEntry.status = 'failed';
                         journalEntry.last_error = result.error || null;
                     }
-                    errors.push(result.error || {
-                        kind: 'unknown',
-                        message: `Upload failed: ${item.relative_path}`,
-                        retryable: false,
-                        file_path: item.relative_path,
-                    });
+                    errors.push(
+                        result.error || {
+                            kind: 'unknown',
+                            message: `Upload failed: ${item.relative_path}`,
+                            retryable: false,
+                            file_path: item.relative_path,
+                        }
+                    );
                     updateFileResult(item.relative_path, 'error');
                 }
             } else if (shouldDownload) {
-                const shouldArchiveLocal =
-                    !!options.versioning_strategy
-                    && options.versioning_strategy !== 'disabled'
-                    && item.status !== 'remote_only';
+                const shouldArchiveLocal = !!options.versioning_strategy && options.versioning_strategy !== 'disabled' && item.status !== 'remote_only';
                 if (shouldArchiveLocal) {
                     try {
                         await archiveLocalBeforeMutation(localFilePath, item.relative_path);
@@ -1320,8 +1392,18 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 }
                 const cmd = isProvider ? 'provider_download_file' : 'download_file';
                 const args = isProvider
-                    ? { remotePath: remoteFilePath, localPath: localFilePath, modified: item.remote_info?.modified || undefined }
-                    : { params: { remote_path: remoteFilePath, local_path: localFilePath, modified: item.remote_info?.modified || undefined } };
+                    ? {
+                          remotePath: remoteFilePath,
+                          localPath: localFilePath,
+                          modified: item.remote_info?.modified || undefined,
+                      }
+                    : {
+                          params: {
+                              remote_path: remoteFilePath,
+                              local_path: localFilePath,
+                              modified: item.remote_info?.modified || undefined,
+                          },
+                      };
 
                 const result = await executeTransferWithRetry(cmd, args, item.relative_path);
                 if (journalEntry) {
@@ -1373,12 +1455,14 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         journalEntry.status = 'failed';
                         journalEntry.last_error = result.error || null;
                     }
-                    errors.push(result.error || {
-                        kind: 'unknown',
-                        message: `Download failed: ${item.relative_path}`,
-                        retryable: false,
-                        file_path: item.relative_path,
-                    });
+                    errors.push(
+                        result.error || {
+                            kind: 'unknown',
+                            message: `Download failed: ${item.relative_path}`,
+                            retryable: false,
+                            file_path: item.relative_path,
+                        }
+                    );
                     updateFileResult(item.relative_path, 'error');
                 }
             } else if (shouldDelete) {
@@ -1387,9 +1471,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     if (item.status === 'remote_only') {
                         // Delete from remote (local_to_remote mirror: remote has file that local doesn't)
                         const cmd = isProvider ? 'provider_delete_file' : 'delete_remote_file';
-                        const args = isProvider
-                            ? { path: remoteFilePath }
-                            : { path: remoteFilePath, isDir: item.is_dir };
+                        const args = isProvider ? { path: remoteFilePath } : { path: remoteFilePath, isDir: item.is_dir };
                         await invoke(cmd, args);
                     } else {
                         // Delete from local (remote_to_local pull: local has file that remote doesn't)
@@ -1432,12 +1514,20 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 if (selectedComparisons.length > 100) {
                     // Large batch: minimal delay, NOOP only every 10 files for keep-alive
                     if ((i + 1) % 10 === 0) {
-                        try { await invoke('ftp_noop'); } catch { /* ignore */ }
+                        try {
+                            await invoke('ftp_noop');
+                        } catch {
+                            /* ignore */
+                        }
                     }
                     await delay(15);
                 } else {
                     // Small batch: full safety delay
-                    try { await invoke('ftp_noop'); } catch { /* ignore */ }
+                    try {
+                        await invoke('ftp_noop');
+                    } catch {
+                        /* ignore */
+                    }
                     await delay(FTP_TRANSFER_DELAY_MS);
                 }
             }
@@ -1446,12 +1536,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             updateSyncProgress(completed, selectedComparisons.length);
 
             // Save journal checkpoint — adaptive interval to reduce I/O (F7)
-            const checkpointInterval = selectedComparisons.length > 2000 ? 200
-                : selectedComparisons.length > 500 ? 100 : 10;
+            const checkpointInterval = selectedComparisons.length > 2000 ? 200 : selectedComparisons.length > 500 ? 100 : 10;
             if (completed % checkpointInterval === 0) {
                 try {
                     await invoke('save_sync_journal_cmd', { journal });
-                } catch { /* ignore */ }
+                } catch {
+                    /* ignore */
+                }
             }
         }
 
@@ -1466,7 +1557,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     remotePath: editRemotePath,
                 });
             }
-        } catch { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
 
         // Flush any pending batched state updates before showing report
         if (flushTimerRef.current) {
@@ -1480,10 +1573,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
         }
 
         // Cleanup listener
-        if (unlistenRef.current) {
-            unlistenRef.current();
-            unlistenRef.current = null;
-        }
+        clearTransferBridgeListener();
 
         setIsSyncing(false);
         setSyncProgress(null);
@@ -1562,32 +1652,25 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
 
     if (!isOpen) return null;
 
-    // Determine if an orphan file is a delete candidate.
-    // - One-way (Mirror/Pull): opposite-side orphans are always deleted when delete_orphans is active
-    // - Bidirectional (Both): only delete orphans that were previously synced (the other side deleted them)
-    //   New files (not in index) are uploaded/downloaded, not deleted.
-    const isDeleteOrphan = (status: SyncStatus, comparison?: FileComparison): boolean => {
-        if (!options.delete_orphans) return false;
-        if (options.direction === 'local_to_remote' && status === 'remote_only') return true;
-        if (options.direction === 'remote_to_local' && status === 'local_only') return true;
-        // Bidirectional: only delete if previously synced (the other side intentionally deleted it)
-        if (options.direction === 'bidirectional' && comparison?.previously_synced) {
-            if (status === 'remote_only' || status === 'local_only') return true;
-        }
-        return false;
-    };
-
     const getStatusLabel = (status: SyncStatus, comparison?: FileComparison): string => {
         if (isDeleteOrphan(status, comparison)) return t('syncPanel.statusDelete');
         switch (status) {
-            case 'identical': return t('syncPanel.statusIdentical');
-            case 'local_newer': return t('syncPanel.statusUpload');
-            case 'remote_newer': return t('syncPanel.statusDownload');
-            case 'local_only': return t('syncPanel.statusNewLocal');
-            case 'remote_only': return t('syncPanel.statusNewRemote');
-            case 'conflict': return t('syncPanel.statusConflict');
-            case 'size_mismatch': return t('syncPanel.statusSizeDiffers');
-            default: return status || 'Unknown';
+            case 'identical':
+                return t('syncPanel.statusIdentical');
+            case 'local_newer':
+                return t('syncPanel.statusUpload');
+            case 'remote_newer':
+                return t('syncPanel.statusDownload');
+            case 'local_only':
+                return t('syncPanel.statusNewLocal');
+            case 'remote_only':
+                return t('syncPanel.statusNewRemote');
+            case 'conflict':
+                return t('syncPanel.statusConflict');
+            case 'size_mismatch':
+                return t('syncPanel.statusSizeDiffers');
+            default:
+                return status || 'Unknown';
         }
     };
 
@@ -1636,42 +1719,29 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             <div className="sync-panel">
                 <div className="sync-panel-header">
                     <div className="flex items-center gap-3">
-                        <h2><FolderSync size={20} className="inline mr-2" /> {t('syncPanel.title')}</h2>
-                        {speedMode !== 'normal' && (
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                                speedMode === 'maniac' ? 'bg-red-500/20 text-red-400' :
-                                speedMode === 'extreme' ? 'bg-orange-500/20 text-orange-400' :
-                                speedMode === 'turbo' ? 'bg-yellow-500/20 text-yellow-400' :
-                                'bg-blue-500/20 text-blue-400'
-                            }`}>
-                                {speedMode.toUpperCase()}
-                            </span>
-                        )}
+                        <h2>
+                            <FolderSync size={20} className="inline mr-2" /> {t('syncPanel.title')}
+                        </h2>
+                        {speedMode !== 'normal' && <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${speedMode === 'maniac' ? 'bg-red-500/20 text-red-400' : speedMode === 'extreme' ? 'bg-orange-500/20 text-orange-400' : speedMode === 'turbo' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'}`}>{speedMode.toUpperCase()}</span>}
                     </div>
-                    <button className="sync-close-btn" onClick={handleClose}><X size={18} /></button>
+                    <button className="sync-close-btn" onClick={handleClose}>
+                        <X size={18} />
+                    </button>
                 </div>
 
                 {/* Path Display */}
                 <div className="sync-paths-display">
                     <div className="sync-path-row">
-                        <span className="sync-path-label"><Folder size={14} className="inline mr-1" /> {t('syncPanel.local')}:</span>
-                        <input
-                            className="sync-path-input"
-                            value={editLocalPath}
-                            onChange={e => setEditLocalPath(e.target.value)}
-                            disabled={isSyncing || isComparing}
-                            spellCheck={false}
-                        />
+                        <span className="sync-path-label">
+                            <Folder size={14} className="inline mr-1" /> {t('syncPanel.local')}:
+                        </span>
+                        <input className="sync-path-input" value={editLocalPath} onChange={(e) => setEditLocalPath(e.target.value)} disabled={isSyncing || isComparing} spellCheck={false} />
                     </div>
                     <div className="sync-path-row">
-                        <span className="sync-path-label"><Globe size={14} className="inline mr-1" /> {t('syncPanel.remote')}:</span>
-                        <input
-                            className="sync-path-input"
-                            value={editRemotePath}
-                            onChange={e => setEditRemotePath(e.target.value)}
-                            disabled={isSyncing || isComparing}
-                            spellCheck={false}
-                        />
+                        <span className="sync-path-label">
+                            <Globe size={14} className="inline mr-1" /> {t('syncPanel.remote')}:
+                        </span>
+                        <input className="sync-path-input" value={editRemotePath} onChange={(e) => setEditRemotePath(e.target.value)} disabled={isSyncing || isComparing} spellCheck={false} />
                     </div>
                 </div>
 
@@ -1684,24 +1754,17 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         </div>
                         <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
                             {t('syncPanel.journalDescription', {
-                                completed: String(pendingJournal.entries.filter(e => e.status === 'completed').length),
+                                completed: String(pendingJournal.entries.filter((e) => e.status === 'completed').length),
                                 total: String(pendingJournal.entries.length),
                                 date: new Date(pendingJournal.updated_at).toLocaleString(),
                             })}
                         </p>
                         <div className="flex gap-2">
-                            <button
-                                className="text-xs px-3 py-1 rounded bg-amber-500 text-white hover:bg-amber-600"
-                                onClick={() => handleSync(pendingJournal)}
-                                disabled={!isConnected}
-                            >
+                            <button className="text-xs px-3 py-1 rounded bg-amber-500 text-white hover:bg-amber-600" onClick={() => handleSync(pendingJournal)} disabled={!isConnected}>
                                 <RotateCcw size={12} className="inline mr-1" />
                                 {t('syncPanel.resumeSync')}
                             </button>
-                            <button
-                                className="text-xs px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-                                onClick={handleDismissJournal}
-                            >
+                            <button className="text-xs px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600" onClick={handleDismissJournal}>
                                 {t('syncPanel.dismissJournal')}
                             </button>
                         </div>
@@ -1711,11 +1774,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 {/* Journal History Section */}
                 {journalList.length > 0 && !isSyncing && !syncReport && (
                     <div className="mx-4 my-2">
-                        <button
-                            className="flex items-center gap-2 w-full text-left text-xs font-semibold py-1.5 px-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                            style={{ color: 'var(--color-text-secondary, #9ca3af)' }}
-                            onClick={() => setShowJournalHistory(!showJournalHistory)}
-                        >
+                        <button className="flex items-center gap-2 w-full text-left text-xs font-semibold py-1.5 px-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" style={{ color: 'var(--color-text-secondary, #9ca3af)' }} onClick={() => setShowJournalHistory(!showJournalHistory)}>
                             {showJournalHistory ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             <History size={14} />
                             <span>{t('syncPanel.journalHistory')}</span>
@@ -1724,14 +1783,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         {showJournalHistory && (
                             <div className="mt-1 space-y-1 max-h-48 overflow-y-auto pr-1">
                                 {journalFeedback && (
-                                    <div className="text-[11px] px-2 py-1.5 rounded border"
+                                    <div
+                                        className="text-[11px] px-2 py-1.5 rounded border"
                                         style={{
-                                            background: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess')
-                                                ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                                            borderColor: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess')
-                                                ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)',
-                                            color: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess')
-                                                ? '#10b981' : '#ef4444',
+                                            background: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess') ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                                            borderColor: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess') ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)',
+                                            color: journalFeedback === t('syncPanel.journalVerifySuccess') || journalFeedback === t('syncPanel.journalSignSuccess') ? '#10b981' : '#ef4444',
                                         }}
                                     >
                                         {journalFeedback}
@@ -1750,33 +1807,35 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                             className="flex items-center gap-2 text-xs py-1.5 px-2 rounded border transition-colors"
                                             style={{
                                                 background: 'var(--color-bg-secondary, rgba(0,0,0,0.05))',
-                                                borderColor: isJournalTampered
-                                                    ? 'rgba(239,68,68,0.4)'
-                                                    : isJournalVerified
-                                                    ? 'rgba(16,185,129,0.3)'
-                                                    : 'var(--color-border, rgba(128,128,128,0.2))',
+                                                borderColor: isJournalTampered ? 'rgba(239,68,68,0.4)' : isJournalVerified ? 'rgba(16,185,129,0.3)' : 'var(--color-border, rgba(128,128,128,0.2))',
                                             }}
                                         >
-                                            <div className="flex-shrink-0">
-                                                {j.completed
-                                                    ? <CheckCircle2 size={14} className="text-green-500" />
-                                                    : <RotateCcw size={14} className="text-amber-500" />}
-                                            </div>
+                                            <div className="flex-shrink-0">{j.completed ? <CheckCircle2 size={14} className="text-green-500" /> : <RotateCcw size={14} className="text-amber-500" />}</div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="truncate font-medium" style={{ color: 'var(--color-text-primary, #e5e7eb)' }}>
+                                                <div
+                                                    className="truncate font-medium"
+                                                    style={{
+                                                        color: 'var(--color-text-primary, #e5e7eb)',
+                                                    }}
+                                                >
                                                     {j.local_path.split('/').pop() || j.local_path}
                                                     <span className="mx-1 opacity-40">&rarr;</span>
                                                     {j.remote_path}
                                                 </div>
-                                                <div className="flex items-center gap-2 text-[10px]" style={{ color: 'var(--color-text-tertiary, #6b7280)' }}>
+                                                <div
+                                                    className="flex items-center gap-2 text-[10px]"
+                                                    style={{
+                                                        color: 'var(--color-text-tertiary, #6b7280)',
+                                                    }}
+                                                >
                                                     <span>{new Date(j.updated_at).toLocaleDateString()}</span>
-                                                    <span>{t('syncPanel.journalEntries', {
-                                                        completed: String(j.completed_entries),
-                                                        total: String(j.total_entries),
-                                                    })}</span>
-                                                    <span className={j.completed ? 'text-green-500' : 'text-amber-500'}>
-                                                        {j.completed ? t('syncPanel.journalCompleted') : t('syncPanel.journalInterrupted')}
+                                                    <span>
+                                                        {t('syncPanel.journalEntries', {
+                                                            completed: String(j.completed_entries),
+                                                            total: String(j.total_entries),
+                                                        })}
                                                     </span>
+                                                    <span className={j.completed ? 'text-green-500' : 'text-amber-500'}>{j.completed ? t('syncPanel.journalCompleted') : t('syncPanel.journalInterrupted')}</span>
                                                 </div>
                                             </div>
                                             <div className="flex-shrink-0">
@@ -1800,22 +1859,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                             </div>
                                             <div className="flex-shrink-0 flex gap-1">
                                                 {!isJournalVerified && !isJournalTampered && (
-                                                    <button
-                                                        className="px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20"
-                                                        onClick={() => handleSignJournal(j.local_path, j.remote_path)}
-                                                        disabled={isJournalChecking}
-                                                        title={t('syncPanel.journalSignAction')}
-                                                    >
+                                                    <button className="px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20" onClick={() => handleSignJournal(j.local_path, j.remote_path)} disabled={isJournalChecking} title={t('syncPanel.journalSignAction')}>
                                                         {t('syncPanel.journalSignAction')}
                                                     </button>
                                                 )}
                                                 {(isJournalVerified || isJournalTampered) && (
-                                                    <button
-                                                        className="px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
-                                                        onClick={() => handleVerifyJournal(j.local_path, j.remote_path)}
-                                                        disabled={isJournalChecking}
-                                                        title={t('syncPanel.journalVerifyAction')}
-                                                    >
+                                                    <button className="px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20" onClick={() => handleVerifyJournal(j.local_path, j.remote_path)} disabled={isJournalChecking} title={t('syncPanel.journalVerifyAction')}>
                                                         {t('syncPanel.journalVerifyAction')}
                                                     </button>
                                                 )}
@@ -1835,7 +1884,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                             <div className="flex items-center gap-2">
                                 <AlertTriangle size={16} className="text-red-500" />
                                 <span className="font-semibold text-sm">
-                                    {t('syncPanel.conflictsFound', { count: String(conflicts.length) })}
+                                    {t('syncPanel.conflictsFound', {
+                                        count: String(conflicts.length),
+                                    })}
                                 </span>
                                 {unresolvedConflicts.length === 0 && (
                                     <span className="text-xs text-green-500 flex items-center gap-1">
@@ -1843,44 +1894,29 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                     </span>
                                 )}
                             </div>
-                            <button
-                                className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
-                                onClick={() => setShowConflictPanel(!showConflictPanel)}
-                            >
+                            <button className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30" onClick={() => setShowConflictPanel(!showConflictPanel)}>
                                 {showConflictPanel ? t('syncPanel.close') : t('syncPanel.resolveConflicts')}
                             </button>
                         </div>
                         {!showConflictPanel && (
                             <div className="flex gap-2 flex-wrap">
-                                <button
-                                    className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30"
-                                    onClick={resolveAllKeepNewer}
-                                >
+                                <button className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30" onClick={resolveAllKeepNewer}>
                                     {t('syncPanel.keepNewerAll')}
                                 </button>
-                                <button
-                                    className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30"
-                                    onClick={() => resolveAllConflicts('upload')}
-                                >
+                                <button className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30" onClick={() => resolveAllConflicts('upload')}>
                                     {t('syncPanel.keepLocalAll')}
                                 </button>
-                                <button
-                                    className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
-                                    onClick={() => resolveAllConflicts('download')}
-                                >
+                                <button className="text-xs px-2 py-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30" onClick={() => resolveAllConflicts('download')}>
                                     {t('syncPanel.keepRemoteAll')}
                                 </button>
-                                <button
-                                    className="text-xs px-2 py-1 rounded bg-gray-500/20 text-gray-400 border border-gray-500/30 hover:bg-gray-500/30"
-                                    onClick={() => resolveAllConflicts('skip')}
-                                >
+                                <button className="text-xs px-2 py-1 rounded bg-gray-500/20 text-gray-400 border border-gray-500/30 hover:bg-gray-500/30" onClick={() => resolveAllConflicts('skip')}>
                                     {t('syncPanel.skipAll')}
                                 </button>
                             </div>
                         )}
                         {showConflictPanel && (
                             <div className="mt-2 max-h-48 overflow-y-auto space-y-1">
-                                {conflicts.map(c => {
+                                {conflicts.map((c) => {
                                     const res = conflictResolutions.get(c.relative_path);
                                     return (
                                         <div key={c.relative_path} className="flex items-center gap-2 text-xs py-1 border-b border-gray-200/10 last:border-0">
@@ -1892,25 +1928,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                                 {c.local_info ? formatSize(c.local_info.size) : '—'} / {c.remote_info ? formatSize(c.remote_info.size) : '—'}
                                             </span>
                                             <div className="flex gap-1 flex-shrink-0">
-                                                <button
-                                                    className={`px-1.5 py-0.5 rounded text-[10px] ${res === 'upload' ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
-                                                    onClick={() => resolveConflict(c.relative_path, 'upload')}
-                                                    title={t('syncPanel.keepLocal')}
-                                                >
+                                                <button className={`px-1.5 py-0.5 rounded text-[10px] ${res === 'upload' ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`} onClick={() => resolveConflict(c.relative_path, 'upload')} title={t('syncPanel.keepLocal')}>
                                                     <ArrowUp size={10} className="inline" />
                                                 </button>
-                                                <button
-                                                    className={`px-1.5 py-0.5 rounded text-[10px] ${res === 'download' ? 'bg-amber-500 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
-                                                    onClick={() => resolveConflict(c.relative_path, 'download')}
-                                                    title={t('syncPanel.keepRemote')}
-                                                >
+                                                <button className={`px-1.5 py-0.5 rounded text-[10px] ${res === 'download' ? 'bg-amber-500 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`} onClick={() => resolveConflict(c.relative_path, 'download')} title={t('syncPanel.keepRemote')}>
                                                     <ArrowDown size={10} className="inline" />
                                                 </button>
-                                                <button
-                                                    className={`px-1.5 py-0.5 rounded text-[10px] ${res === 'skip' ? 'bg-gray-500 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}
-                                                    onClick={() => resolveConflict(c.relative_path, 'skip')}
-                                                    title={t('syncPanel.skipAll')}
-                                                >
+                                                <button className={`px-1.5 py-0.5 rounded text-[10px] ${res === 'skip' ? 'bg-gray-500 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`} onClick={() => resolveConflict(c.relative_path, 'skip')} title={t('syncPanel.skipAll')}>
                                                     <SkipForward size={10} className="inline" />
                                                 </button>
                                             </div>
@@ -1926,71 +1950,85 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 {syncReport && (
                     <div className={`mx-4 my-3 p-4 rounded-lg border ${syncReport.errors.length > 0 ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700' : 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'}`}>
                         <div className="flex items-center gap-2 mb-3">
-                            {syncReport.errors.length > 0 ? (
-                                <AlertTriangle size={20} className="text-yellow-500" />
-                            ) : (
-                                <CheckCircle2 size={20} className="text-green-500" />
-                            )}
-                            <span className="font-semibold text-sm">
-                                {syncReport.errors.length > 0 ? t('syncPanel.reportPartial') : t('syncPanel.reportSuccess')}
-                            </span>
+                            {syncReport.errors.length > 0 ? <AlertTriangle size={20} className="text-yellow-500" /> : <CheckCircle2 size={20} className="text-green-500" />}
+                            <span className="font-semibold text-sm">{syncReport.errors.length > 0 ? t('syncPanel.reportPartial') : t('syncPanel.reportSuccess')}</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                             {syncReport.uploaded > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <ArrowUp size={14} className="text-blue-500" />
-                                    <span>{t('syncPanel.reportUploaded')}: <strong>{syncReport.uploaded}</strong></span>
+                                    <span>
+                                        {t('syncPanel.reportUploaded')}: <strong>{syncReport.uploaded}</strong>
+                                    </span>
                                 </div>
                             )}
                             {syncReport.downloaded > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <ArrowDown size={14} className="text-amber-500" />
-                                    <span>{t('syncPanel.reportDownloaded')}: <strong>{syncReport.downloaded}</strong></span>
+                                    <span>
+                                        {t('syncPanel.reportDownloaded')}: <strong>{syncReport.downloaded}</strong>
+                                    </span>
                                 </div>
                             )}
                             {syncReport.deleted > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <Trash2 size={14} className="text-red-500" />
-                                    <span>{t('syncPanel.reportDeleted')}: <strong>{syncReport.deleted}</strong></span>
+                                    <span>
+                                        {t('syncPanel.reportDeleted')}: <strong>{syncReport.deleted}</strong>
+                                    </span>
                                 </div>
                             )}
                             {syncReport.dirsCreated > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <Folder size={14} className="text-purple-500" />
-                                    <span>{t('syncPanel.reportDirsCreated')}: <strong>{syncReport.dirsCreated}</strong></span>
+                                    <span>
+                                        {t('syncPanel.reportDirsCreated')}: <strong>{syncReport.dirsCreated}</strong>
+                                    </span>
                                 </div>
                             )}
                             {syncReport.skipped > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <SkipForward size={14} className="text-gray-400" />
-                                    <span>{t('syncPanel.reportSkipped')}: <strong>{syncReport.skipped}</strong></span>
+                                    <span>
+                                        {t('syncPanel.reportSkipped')}: <strong>{syncReport.skipped}</strong>
+                                    </span>
                                 </div>
                             )}
                             {syncReport.retried > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <RotateCcw size={14} className="text-amber-400" />
-                                    <span>{t('syncPanel.reportRetried')}: <strong>{syncReport.retried}</strong></span>
+                                    <span>
+                                        {t('syncPanel.reportRetried')}: <strong>{syncReport.retried}</strong>
+                                    </span>
                                 </div>
                             )}
                             {syncReport.verifyFailed > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <ShieldCheck size={14} className="text-red-500" />
-                                    <span>{t('syncPanel.reportVerifyFailed')}: <strong>{syncReport.verifyFailed}</strong></span>
+                                    <span>
+                                        {t('syncPanel.reportVerifyFailed')}: <strong>{syncReport.verifyFailed}</strong>
+                                    </span>
                                 </div>
                             )}
                             {syncReport.errors.length > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <XCircle size={14} className="text-red-500" />
-                                    <span>{t('syncPanel.reportErrors')}: <strong>{syncReport.errors.length}</strong></span>
+                                    <span>
+                                        {t('syncPanel.reportErrors')}: <strong>{syncReport.errors.length}</strong>
+                                    </span>
                                 </div>
                             )}
                             <div className="flex items-center gap-1.5">
                                 <ArrowLeftRight size={14} className="text-gray-400" />
-                                <span>{t('syncPanel.reportTransferred')}: <strong>{formatSize(syncReport.totalBytes)}</strong></span>
+                                <span>
+                                    {t('syncPanel.reportTransferred')}: <strong>{formatSize(syncReport.totalBytes)}</strong>
+                                </span>
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <Clock size={14} className="text-gray-400" />
-                                <span>{t('syncPanel.reportDuration')}: <strong>{formatDuration(syncReport.durationMs)}</strong></span>
+                                <span>
+                                    {t('syncPanel.reportDuration')}: <strong>{formatDuration(syncReport.durationMs)}</strong>
+                                </span>
                             </div>
                         </div>
                         {/* Classified error breakdown */}
@@ -2003,14 +2041,16 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                         <div key={kind} className="mb-1">
                                             <div className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300">
                                                 <ErrIcon size={12} />
-                                                <span>{getErrorKindLabel(kind)} ({errs.length})</span>
-                                                {errs[0]?.retryable && (
-                                                    <span className="text-[10px] text-amber-500 ml-1">{t('syncPanel.retryable')}</span>
-                                                )}
+                                                <span>
+                                                    {getErrorKindLabel(kind)} ({errs.length})
+                                                </span>
+                                                {errs[0]?.retryable && <span className="text-[10px] text-amber-500 ml-1">{t('syncPanel.retryable')}</span>}
                                             </div>
                                             <div className="ml-4 text-[11px] text-red-600 dark:text-red-400 max-h-20 overflow-y-auto">
                                                 {errs.map((err, i) => (
-                                                    <div key={i} className="truncate">{err.file_path || err.message}</div>
+                                                    <div key={i} className="truncate">
+                                                        {err.file_path || err.message}
+                                                    </div>
                                                 ))}
                                             </div>
                                         </div>
@@ -2026,16 +2066,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     <div className="sync-panel-options">
                         {/* Tab Bar */}
                         <div className="sync-tab-bar">
-                            <button
-                                className={`sync-tab ${syncTab === 'quick' ? 'active' : ''}`}
-                                onClick={() => setSyncTab('quick')}
-                            >
+                            <button className={`sync-tab ${syncTab === 'quick' ? 'active' : ''}`} onClick={() => setSyncTab('quick')}>
                                 {t('syncPanel.quickSyncTab')}
                             </button>
-                            <button
-                                className={`sync-tab ${syncTab === 'advanced' ? 'active' : ''}`}
-                                onClick={() => setSyncTab('advanced')}
-                            >
+                            <button className={`sync-tab ${syncTab === 'advanced' ? 'active' : ''}`} onClick={() => setSyncTab('advanced')}>
                                 {t('syncPanel.advancedTab')}
                             </button>
                         </div>
@@ -2072,7 +2106,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                     setOptions(newOpts);
                                     // Sync activeProfileId when direction changes in Advanced tab
                                     if (newOpts.direction !== options.direction) {
-                                        const match = profiles.find(p => p.builtin && p.direction === newOpts.direction);
+                                        const match = profiles.find((p) => p.builtin && p.direction === newOpts.direction);
                                         setActiveProfileId(match ? match.id : 'custom');
                                     }
                                 }}
@@ -2113,15 +2147,15 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
 
                         {/* Compare Button (always visible) */}
                         <div className="flex items-center gap-3 mt-2">
-                            <button
-                                className="sync-compare-btn"
-                                onClick={handleCompare}
-                                disabled={isComparing || !isConnected || isSyncing}
-                            >
+                            <button className="sync-compare-btn" onClick={handleCompare} disabled={isComparing || !isConnected || isSyncing}>
                                 {isComparing ? (
-                                    <><Loader2 size={16} className="animate-spin" /> {t('syncPanel.comparing')}...</>
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" /> {t('syncPanel.comparing')}...
+                                    </>
                                 ) : (
-                                    <><Search size={16} /> {t('syncPanel.compareNow')}</>
+                                    <>
+                                        <Search size={16} /> {t('syncPanel.compareNow')}
+                                    </>
                                 )}
                             </button>
                             {hasIndex && (
@@ -2143,41 +2177,20 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                     {isComparing && (
                         <div className="sync-loading">
                             <Loader2 size={32} className="animate-spin" />
-                            <span>
-                                {scanProgress
-                                    ? `${t(`syncPanel.scanPhase.${scanProgress.phase}`)} (${scanProgress.files_found} ${t('syncPanel.filesFound')})`
-                                    : `${t('syncPanel.scanning')}...`}
-                            </span>
-                            <button
-                                className="mt-2 px-4 py-1.5 text-xs rounded bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 transition-colors flex items-center gap-1.5"
-                                onClick={handleCancelCompare}
-                            >
+                            <span>{scanProgress ? `${t(`syncPanel.scanPhase.${scanProgress.phase}`)} (${scanProgress.files_found} ${t('syncPanel.filesFound')})` : `${t('syncPanel.scanning')}...`}</span>
+                            <button className="mt-2 px-4 py-1.5 text-xs rounded bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 transition-colors flex items-center gap-1.5" onClick={handleCancelCompare}>
                                 <StopCircle size={14} /> {t('syncPanel.cancel')}
                             </button>
                         </div>
                     )}
 
-                    {comparisons.length === 0 && !isComparing && !syncReport && (
-                        <div className="sync-empty">
-                            {isConnected
-                                ? t('syncPanel.clickCompare')
-                                : t('syncPanel.notConnected')}
-                        </div>
-                    )}
+                    {comparisons.length === 0 && !isComparing && !syncReport && <div className="sync-empty">{!isConnected ? t('syncPanel.notConnected') : lastCompare === null ? t('syncPanel.clickCompare') : lastCompare.rawResultCount === 0 ? t('syncPanel.allInSync') : t('syncPanel.nothingInDirection')}</div>}
 
                     {comparisons.length > 0 && (
                         <>
                             <div className="sync-table-header">
                                 <div className="sync-col-check">
-                                    <Checkbox
-                                        checked={selectedPaths.size === comparisons.filter(c => !c.is_dir).length && comparisons.length > 0}
-                                        onChange={() =>
-                                            selectedPaths.size === comparisons.filter(c => !c.is_dir).length
-                                                ? handleDeselectAll()
-                                                : handleSelectAll()
-                                        }
-                                        disabled={isSyncing}
-                                    />
+                                    <Checkbox checked={selectedPaths.size === comparisons.filter((c) => !c.is_dir).length && comparisons.length > 0} onChange={() => (selectedPaths.size === comparisons.filter((c) => !c.is_dir).length ? handleDeselectAll() : handleSelectAll())} disabled={isSyncing} />
                                 </div>
                                 <div className="sync-col-status">{t('syncPanel.colStatus')}</div>
                                 <div className="sync-col-file">{t('syncPanel.colFile')}</div>
@@ -2186,20 +2199,26 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 <div className="sync-col-remote">{t('syncPanel.colRemote')}</div>
                             </div>
 
-                            <div
-                                className="sync-table-body"
-                                ref={scrollContainerRef}
-                                onScroll={handleVirtualScroll}
-                            >
+                            <div className="sync-table-body" ref={scrollContainerRef} onScroll={handleVirtualScroll}>
                                 {/* Virtual scroll container — total height for scrollbar, only visible rows rendered */}
                                 <div style={{ height: virtualTotalHeight, position: 'relative' }}>
-                                    <div style={{ position: 'absolute', top: virtualTopPad, left: 0, right: 0 }}>
+                                    <div
+                                        style={{
+                                            position: 'absolute',
+                                            top: virtualTopPad,
+                                            left: 0,
+                                            right: 0,
+                                        }}
+                                    >
                                         {comparisons.slice(virtualStart, virtualEnd).map((comparison) => {
                                             if (!comparison || !comparison.relative_path) return null;
                                             const isOrphanDelete = isDeleteOrphan(comparison.status, comparison);
                                             const statusCfg = isOrphanDelete
                                                 ? { Icon: Trash2, color: '#ef4444' }
-                                                : (STATUS_ICONS[comparison.status] || { Icon: AlertTriangle, color: '#9ca3af' });
+                                                : STATUS_ICONS[comparison.status] || {
+                                                      Icon: AlertTriangle,
+                                                      color: '#9ca3af',
+                                                  };
                                             const StatusIcon = statusCfg.Icon;
                                             const resultIcon = getFileResultIcon(comparison.relative_path);
                                             const result = fileResults.get(comparison.relative_path);
@@ -2208,17 +2227,16 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                                     key={comparison.relative_path}
                                                     className={`sync-row ${selectedPaths.has(comparison.relative_path) ? 'selected' : ''} ${result === 'success' ? 'sync-row-success' : result === 'error' || result === 'verify_failed' ? 'sync-row-error' : ''} ${comparison.is_dir ? 'sync-row-dir' : ''}`}
                                                     onClick={() => !isSyncing && !comparison.is_dir && toggleSelection(comparison.relative_path)}
-                                                    style={{ height: VIRTUAL_ROW_HEIGHT, boxSizing: 'border-box' }}
+                                                    style={{
+                                                        height: VIRTUAL_ROW_HEIGHT,
+                                                        boxSizing: 'border-box',
+                                                    }}
                                                     title={comparison.sync_reason}
                                                 >
                                                     <div className="sync-col-check">
                                                         {!comparison.is_dir ? (
-                                                            <span onClick={e => e.stopPropagation()}>
-                                                                <Checkbox
-                                                                    checked={selectedPaths.has(comparison.relative_path)}
-                                                                    onChange={() => toggleSelection(comparison.relative_path)}
-                                                                    disabled={isSyncing}
-                                                                />
+                                                            <span onClick={(e) => e.stopPropagation()}>
+                                                                <Checkbox checked={selectedPaths.has(comparison.relative_path)} onChange={() => toggleSelection(comparison.relative_path)} disabled={isSyncing} />
                                                             </span>
                                                         ) : (
                                                             <span className="text-gray-500 text-xs">&mdash;</span>
@@ -2234,24 +2252,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                                                 {comparison.is_dir ? <Folder size={14} className="inline mr-1" /> : <File size={14} className="inline mr-1" />}
                                                                 {comparison.relative_path}
                                                             </span>
-                                                            {comparison.sync_reason && comparison.status !== 'identical' && (
-                                                                <span className="sync-reason-text">{comparison.sync_reason}</span>
-                                                            )}
+                                                            {comparison.sync_reason && comparison.status !== 'identical' && <span className="sync-reason-text">{comparison.sync_reason}</span>}
                                                         </div>
                                                     </div>
-                                                    <div className="sync-col-result">
-                                                        {resultIcon}
-                                                    </div>
-                                                    <div className="sync-col-local">
-                                                        {comparison.local_info
-                                                            ? formatSize(comparison.local_info.size)
-                                                            : '\u2014'}
-                                                    </div>
-                                                    <div className="sync-col-remote">
-                                                        {comparison.remote_info
-                                                            ? formatSize(comparison.remote_info.size)
-                                                            : '\u2014'}
-                                                    </div>
+                                                    <div className="sync-col-result">{resultIcon}</div>
+                                                    <div className="sync-col-local">{comparison.local_info ? formatSize(comparison.local_info.size) : '\u2014'}</div>
+                                                    <div className="sync-col-remote">{comparison.remote_info ? formatSize(comparison.remote_info.size) : '\u2014'}</div>
                                                 </div>
                                             );
                                         })}
@@ -2268,29 +2274,22 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         {/* Batch progress bar — always visible even when individual files fail */}
                         <div className="mb-2">
                             <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>{syncProgress.current}/{syncProgress.total}</span>
+                                <span>
+                                    {syncProgress.current}/{syncProgress.total}
+                                </span>
                                 <span>{syncProgress.total > 0 ? Math.round((syncProgress.current / syncProgress.total) * 100) : 0}%</span>
                             </div>
                             <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                                    style={{ width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%` }}
+                                    style={{
+                                        width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%`,
+                                    }}
                                 />
                             </div>
                         </div>
                         {/* Per-file transfer progress — always visible during sync to prevent flicker */}
-                        <TransferProgressBar
-                            percentage={currentFileProgress?.percentage ?? 0}
-                            filename={currentFileProgress?.filename}
-                            speedBps={currentFileProgress?.speed_bps}
-                            currentFile={syncProgress.current}
-                            totalFiles={syncProgress.total}
-                            size="md"
-                            variant="gradient"
-                            slideAnimation
-                            showGraph
-                            speedHistory={[...speedHistoryRef.current]}
-                        />
+                        <TransferProgressBar percentage={currentFileProgress?.percentage ?? 0} filename={currentFileProgress?.filename} speedBps={currentFileProgress?.speed_bps} currentFile={syncProgress.current} totalFiles={syncProgress.total} size="md" variant="gradient" slideAnimation showGraph speedHistory={[...speedHistoryRef.current]} />
                     </div>
                 )}
 
@@ -2304,22 +2303,34 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         ) : syncReport ? (
                             <span className="text-sm">{t('syncPanel.syncComplete')}</span>
                         ) : comparisons.length > 0 ? (
-                            <span>{selectedPaths.size} / {comparisons.filter(c => !c.is_dir).length} {t('syncPanel.filesSelected')}</span>
+                            <span>
+                                {selectedPaths.size} / {comparisons.filter((c) => !c.is_dir).length} {t('syncPanel.filesSelected')}
+                            </span>
                         ) : null}
                         {/* #146: Safety Score badge */}
                         {safetyScore && !isSyncing && !syncReport && (
                             <span
                                 className={`sync-safety-badge ${safetyScore.level}`}
                                 title={[
-                                    safetyScore.conflicts > 0 ? t('syncPanel.safetyConflicts', { count: String(safetyScore.conflicts) }) : '',
-                                    safetyScore.dangerous > 0 ? t('syncPanel.safetyDangerous', { count: String(safetyScore.dangerous) }) : '',
-                                    t('syncPanel.safetyTotalSize', { size: formatSize(safetyScore.totalSize) }),
-                                ].filter(Boolean).join(' · ')}
+                                    safetyScore.conflicts > 0
+                                        ? t('syncPanel.safetyConflicts', {
+                                              count: String(safetyScore.conflicts),
+                                          })
+                                        : '',
+                                    safetyScore.dangerous > 0
+                                        ? t('syncPanel.safetyDangerous', {
+                                              count: String(safetyScore.dangerous),
+                                          })
+                                        : '',
+                                    t('syncPanel.safetyTotalSize', {
+                                        size: formatSize(safetyScore.totalSize),
+                                    }),
+                                ]
+                                    .filter(Boolean)
+                                    .join(' · ')}
                             >
                                 {safetyScore.level === 'high' ? <ShieldAlert size={14} /> : <ShieldCheck size={14} />}
-                                {safetyScore.level === 'low' ? t('syncPanel.safetyLow')
-                                    : safetyScore.level === 'medium' ? t('syncPanel.safetyMedium')
-                                    : t('syncPanel.safetyHigh')}
+                                {safetyScore.level === 'low' ? t('syncPanel.safetyLow') : safetyScore.level === 'medium' ? t('syncPanel.safetyMedium') : t('syncPanel.safetyHigh')}
                             </span>
                         )}
                     </div>
@@ -2357,17 +2368,19 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                 <Check size={16} /> {t('syncPanel.close')}
                             </button>
                         ) : (
-                            <button
-                                className="sync-execute-btn"
-                                onClick={() => handleCanaryOrSync()}
-                                disabled={!hasSyncableItems || isSyncing || (speedMode === 'maniac' && !maniacConfirmed)}
-                            >
+                            <button className="sync-execute-btn" onClick={() => handleCanaryOrSync()} disabled={!hasSyncableItems || isSyncing || (speedMode === 'maniac' && !maniacConfirmed)}>
                                 {isSyncing ? (
-                                    <><Loader2 size={16} className="animate-spin" /> {t('syncPanel.syncing')} ({syncProgress?.current || 0}/{syncProgress?.total || 0})...</>
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" /> {t('syncPanel.syncing')} ({syncProgress?.current || 0}/{syncProgress?.total || 0})...
+                                    </>
                                 ) : canaryMode ? (
-                                    <><FlaskConical size={16} /> {t('syncPanel.canaryRun') || 'Canary Sync'} ({selectedPaths.size + syncableDirs})</>
+                                    <>
+                                        <FlaskConical size={16} /> {t('syncPanel.canaryRun') || 'Canary Sync'} ({selectedPaths.size + syncableDirs})
+                                    </>
                                 ) : (
-                                    <><Zap size={16} /> {t('syncPanel.synchronize')} ({selectedPaths.size + syncableDirs})</>
+                                    <>
+                                        <Zap size={16} /> {t('syncPanel.synchronize')} ({selectedPaths.size + syncableDirs})
+                                    </>
                                 )}
                             </button>
                         )}
@@ -2376,28 +2389,9 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
             </div>
 
             {/* Dialogs */}
-            <MultiPathEditor
-                isOpen={showMultiPath}
-                onClose={() => setShowMultiPath(false)}
-                localPath={editLocalPath}
-                remotePath={editRemotePath}
-            />
-            <SyncTemplateDialog
-                isOpen={showTemplate}
-                onClose={() => setShowTemplate(false)}
-                localPath={editLocalPath}
-                remotePath={editRemotePath}
-                profileId={activeProfileId}
-                excludePatterns={options.exclude_patterns}
-            />
-            <RollbackDialog
-                isOpen={showRollback}
-                onClose={() => setShowRollback(false)}
-                localPath={editLocalPath}
-                remotePath={editRemotePath}
-                isProvider={isProvider}
-                versioningStrategy={options.versioning_strategy}
-            />
+            <MultiPathEditor isOpen={showMultiPath} onClose={() => setShowMultiPath(false)} localPath={editLocalPath} remotePath={editRemotePath} />
+            <SyncTemplateDialog isOpen={showTemplate} onClose={() => setShowTemplate(false)} localPath={editLocalPath} remotePath={editRemotePath} profileId={activeProfileId} excludePatterns={options.exclude_patterns} />
+            <RollbackDialog isOpen={showRollback} onClose={() => setShowRollback(false)} localPath={editLocalPath} remotePath={editRemotePath} isProvider={isProvider} versioningStrategy={options.versioning_strategy} />
             {canaryResult && (
                 <CanaryResultDialog
                     result={canaryResult}
@@ -2417,20 +2411,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                             <AlertTriangle size={20} className="text-red-500" />
                             <h3 className="text-base font-semibold text-red-400">{t('syncPanel.deleteWarningTitle')}</h3>
                         </div>
-                        <p className="text-sm text-gray-300 mb-4">
-                            {t('syncPanel.deleteWarningBody', { count: deleteCount })}
-                        </p>
+                        <p className="text-sm text-gray-300 mb-4">{t('syncPanel.deleteWarningBody', { count: deleteCount })}</p>
                         <div className="flex justify-end gap-2">
-                            <button
-                                className="px-4 py-2 text-sm rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-                                onClick={() => setShowDeleteConfirm(false)}
-                            >
+                            <button className="px-4 py-2 text-sm rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors" onClick={() => setShowDeleteConfirm(false)}>
                                 {t('common.cancel')}
                             </button>
-                            <button
-                                className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors"
-                                onClick={() => handleCanaryOrSync()}
-                            >
+                            <button className="px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors" onClick={() => handleCanaryOrSync()}>
                                 <Trash2 size={14} className="inline mr-1" />
                                 {t('syncPanel.deleteConfirmBtn', { count: deleteCount })}
                             </button>

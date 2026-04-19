@@ -1560,7 +1560,9 @@ impl ZohoWorkdriveProvider {
                 .get(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .build()
-                .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+                .map_err(|e| {
+                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
+                })?;
 
             let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await
@@ -2471,7 +2473,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 )
                 .body(move_body.to_string())
                 .build()
-                .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+                .map_err(|e| {
+                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
+                })?;
 
             let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await
@@ -2511,7 +2515,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 )
                 .body(rename_body.to_string())
                 .build()
-                .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+                .map_err(|e| {
+                    ProviderError::NetworkError(format!("Failed to build request: {}", e))
+                })?;
 
             let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await
@@ -2682,10 +2688,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
     }
 
-    async fn list_share_links(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+    async fn list_share_links(&mut self, path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
         let zoho_links = self.get_file_share_links(path).await?;
         let links = zoho_links
             .into_iter()

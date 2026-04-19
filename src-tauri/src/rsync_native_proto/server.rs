@@ -8,7 +8,9 @@ use crate::rsync_native_proto::engine_adapter::{
     engine_ops_to_wire, CurrentDeltaSyncBridge, DeltaEngineAdapter,
     DeltaInstructionConversionError, EngineDeltaOp, EngineSignatureBlock,
 };
-use crate::rsync_native_proto::frame_io::{read_length_prefixed_frame, write_length_prefixed_frame};
+use crate::rsync_native_proto::frame_io::{
+    read_length_prefixed_frame, write_length_prefixed_frame,
+};
 use crate::rsync_native_proto::protocol::{
     DeltaInstruction, FileMetadataMessage, FrameCodec, HelloMessage, NativeFrameCodec,
     SignatureBatchMessage, SignatureBlock, SummaryMessage, WireMessage,
@@ -178,7 +180,11 @@ fn expect_message<R: Read>(codec: &NativeFrameCodec, input: &mut R) -> Result<Wi
     codec.decode(&raw).map_err(|e| e.to_string())
 }
 
-fn send_message<W: Write>(codec: &NativeFrameCodec, output: &mut W, msg: &WireMessage) -> Result<(), String> {
+fn send_message<W: Write>(
+    codec: &NativeFrameCodec,
+    output: &mut W,
+    msg: &WireMessage,
+) -> Result<(), String> {
     let raw = codec.encode(msg).map_err(|e| e.to_string())?;
     write_length_prefixed_frame(output, &raw).map_err(|e| e.to_string())
 }
@@ -198,10 +204,16 @@ fn expect_hello<R: Read>(
     }
 }
 
-fn expect_file_metadata<R: Read>(codec: &NativeFrameCodec, input: &mut R) -> Result<FileMetadataMessage, String> {
+fn expect_file_metadata<R: Read>(
+    codec: &NativeFrameCodec,
+    input: &mut R,
+) -> Result<FileMetadataMessage, String> {
     match expect_message(codec, input)? {
         WireMessage::FileMetadata(meta) => Ok(meta),
-        other => Err(format!("expected FileMetadata, got {:?}", other.message_type())),
+        other => Err(format!(
+            "expected FileMetadata, got {:?}",
+            other.message_type()
+        )),
     }
 }
 
@@ -211,14 +223,23 @@ fn expect_signature_batch<R: Read>(
 ) -> Result<SignatureBatchMessage, String> {
     match expect_message(codec, input)? {
         WireMessage::SignatureBatch(batch) => Ok(batch),
-        other => Err(format!("expected SignatureBatch, got {:?}", other.message_type())),
+        other => Err(format!(
+            "expected SignatureBatch, got {:?}",
+            other.message_type()
+        )),
     }
 }
 
-fn expect_delta_batch<R: Read>(codec: &NativeFrameCodec, input: &mut R) -> Result<Vec<DeltaInstruction>, String> {
+fn expect_delta_batch<R: Read>(
+    codec: &NativeFrameCodec,
+    input: &mut R,
+) -> Result<Vec<DeltaInstruction>, String> {
     match expect_message(codec, input)? {
         WireMessage::DeltaBatch(delta) => Ok(delta),
-        other => Err(format!("expected DeltaBatch, got {:?}", other.message_type())),
+        other => Err(format!(
+            "expected DeltaBatch, got {:?}",
+            other.message_type()
+        )),
     }
 }
 
@@ -331,10 +352,12 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
 mod tests {
     use super::{ProtoServeMode, ProtoServeOptions};
     use crate::rsync_native_proto::engine_adapter::{CurrentDeltaSyncBridge, DeltaEngineAdapter};
-    use crate::rsync_native_proto::frame_io::{read_length_prefixed_frame, write_length_prefixed_frame};
+    use crate::rsync_native_proto::frame_io::{
+        read_length_prefixed_frame, write_length_prefixed_frame,
+    };
     use crate::rsync_native_proto::protocol::{
-        FileMetadataMessage, FrameCodec, HelloMessage, NativeFrameCodec,
-        SignatureBatchMessage, SignatureBlock, SummaryMessage, WireMessage,
+        FileMetadataMessage, FrameCodec, HelloMessage, NativeFrameCodec, SignatureBatchMessage,
+        SignatureBlock, SummaryMessage, WireMessage,
     };
     use crate::rsync_native_proto::types::{FeatureFlag, ProtocolVersion, SessionRole};
     use std::fs;
@@ -421,7 +444,10 @@ mod tests {
         let output = unpack(&writer);
         assert!(matches!(output[0], WireMessage::Hello(_)));
         assert!(matches!(output[1], WireMessage::SignatureBatch(_)));
-        assert!(matches!(output[2], WireMessage::Summary(SummaryMessage { .. })));
+        assert!(matches!(
+            output[2],
+            WireMessage::Summary(SummaryMessage { .. })
+        ));
         assert_eq!(fs::read(target).unwrap(), source);
     }
 

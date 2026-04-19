@@ -286,10 +286,7 @@ mod tests {
         let native = NativeRsyncEvent::IoError { flags: 0xDEAD_BEEF };
         match map_native_to_rsync_event(&native) {
             Some(RsyncEvent::Warning { message }) => {
-                assert!(
-                    message.contains("0xDEADBEEF"),
-                    "hex missing: {message}"
-                );
+                assert!(message.contains("0xDEADBEEF"), "hex missing: {message}");
             }
             other => panic!("expected Warning, got {other:?}"),
         }
@@ -349,16 +346,12 @@ mod tests {
 
     #[test]
     fn redo_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Redo {
-            flist_index: 7
-        })
-        .is_none());
+        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Redo { flist_index: 7 }).is_none());
     }
 
     #[test]
     fn stats_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Stats { total_read: 4096 })
-            .is_none());
+        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Stats { total_read: 4096 }).is_none());
     }
 
     #[test]
@@ -368,14 +361,12 @@ mod tests {
 
     #[test]
     fn success_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Success { flist_index: 5 })
-            .is_none());
+        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Success { flist_index: 5 }).is_none());
     }
 
     #[test]
     fn no_send_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::NoSend { flist_index: 9 })
-            .is_none());
+        assert!(map_native_to_rsync_event(&NativeRsyncEvent::NoSend { flist_index: 9 }).is_none());
     }
 
     #[test]
@@ -425,9 +416,15 @@ mod tests {
             NativeRsyncEvent::IoTimeout { seconds: 30 },
             NativeRsyncEvent::ErrorExit { code: None },
             NativeRsyncEvent::ErrorExit { code: Some(0) },
-            NativeRsyncEvent::Info { message: "i".into() },
-            NativeRsyncEvent::Log { message: "l".into() },
-            NativeRsyncEvent::Client { message: "c".into() },
+            NativeRsyncEvent::Info {
+                message: "i".into(),
+            },
+            NativeRsyncEvent::Log {
+                message: "l".into(),
+            },
+            NativeRsyncEvent::Client {
+                message: "c".into(),
+            },
             NativeRsyncEvent::Redo { flist_index: 0 },
             NativeRsyncEvent::Stats { total_read: 0 },
             NativeRsyncEvent::Noop,
@@ -440,10 +437,7 @@ mod tests {
             },
         ];
         for e in cases {
-            assert!(
-                !e.is_terminal(),
-                "{e:?} must NOT be terminal per events.rs"
-            );
+            assert!(!e.is_terminal(), "{e:?} must NOT be terminal per events.rs");
             if let Some(RsyncEvent::Error { .. }) = map_native_to_rsync_event(&e) {
                 panic!("non-terminal {e:?} mapped to Error — severity drift");
             }
@@ -459,14 +453,17 @@ mod tests {
         // compile-time guarantee that the bridge works in `Send` futures.
         let collected = std::sync::Arc::new(std::sync::Mutex::new(Vec::<RsyncEvent>::new()));
         let collected_for_closure = collected.clone();
-        let mut bridge = RsyncEventBridge::new(move |evt| {
-            collected_for_closure.lock().unwrap().push(evt)
-        });
+        let mut bridge =
+            RsyncEventBridge::new(move |evt| collected_for_closure.lock().unwrap().push(evt));
         bridge.handle(NativeRsyncEvent::Warning {
             message: "w".into(),
         });
-        bridge.handle(NativeRsyncEvent::Info { message: "i".into() });
-        bridge.handle(NativeRsyncEvent::Error { message: "e".into() });
+        bridge.handle(NativeRsyncEvent::Info {
+            message: "i".into(),
+        });
+        bridge.handle(NativeRsyncEvent::Error {
+            message: "e".into(),
+        });
         let log = collected.lock().unwrap();
         assert_eq!(log.len(), 2, "Info must be dropped");
         assert!(matches!(log[0], RsyncEvent::Warning { .. }));
@@ -477,13 +474,14 @@ mod tests {
     fn bridge_captures_first_terminal_and_forwards_subsequent() {
         let collected = std::sync::Arc::new(std::sync::Mutex::new(Vec::<RsyncEvent>::new()));
         let collected_for_closure = collected.clone();
-        let mut bridge = RsyncEventBridge::new(move |evt| {
-            collected_for_closure.lock().unwrap().push(evt)
-        });
+        let mut bridge =
+            RsyncEventBridge::new(move |evt| collected_for_closure.lock().unwrap().push(evt));
         bridge.handle(NativeRsyncEvent::Warning {
             message: "pre".into(),
         });
-        bridge.handle(NativeRsyncEvent::Error { message: "first".into() });
+        bridge.handle(NativeRsyncEvent::Error {
+            message: "first".into(),
+        });
         bridge.handle(NativeRsyncEvent::Error {
             message: "second".into(),
         });
@@ -501,10 +499,16 @@ mod tests {
     #[test]
     fn bridge_counters_track_forwarded_vs_dropped() {
         let mut bridge = RsyncEventBridge::new(|_| ());
-        bridge.handle(NativeRsyncEvent::Info { message: "i".into() });
+        bridge.handle(NativeRsyncEvent::Info {
+            message: "i".into(),
+        });
         bridge.handle(NativeRsyncEvent::Noop);
-        bridge.handle(NativeRsyncEvent::Warning { message: "w".into() });
-        bridge.handle(NativeRsyncEvent::Error { message: "e".into() });
+        bridge.handle(NativeRsyncEvent::Warning {
+            message: "w".into(),
+        });
+        bridge.handle(NativeRsyncEvent::Error {
+            message: "e".into(),
+        });
         assert_eq!(bridge.events_forwarded(), 2);
         assert_eq!(bridge.events_dropped(), 2);
     }
@@ -512,7 +516,9 @@ mod tests {
     #[test]
     fn bridge_with_no_terminal_does_not_flag_bailed() {
         let mut bridge = RsyncEventBridge::new(|_| ());
-        bridge.handle(NativeRsyncEvent::Warning { message: "w".into() });
+        bridge.handle(NativeRsyncEvent::Warning {
+            message: "w".into(),
+        });
         bridge.handle(NativeRsyncEvent::IoError { flags: 1 });
         assert!(!bridge.bailed());
         assert!(bridge.first_terminal().is_none());

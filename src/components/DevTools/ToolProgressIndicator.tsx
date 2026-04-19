@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useState, useEffect } from 'react';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import React, { useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useTauriListener } from '../../hooks/useTauriListener';
 
 interface ProgressEvent {
     tool: string;
@@ -19,26 +19,10 @@ interface ToolProgressIndicatorProps {
 export const ToolProgressIndicator: React.FC<ToolProgressIndicatorProps> = ({ toolName }) => {
     const [progress, setProgress] = useState<ProgressEvent | null>(null);
 
-    useEffect(() => {
-        let mounted = true;
-        let unlisten: UnlistenFn | null = null;
-
-        listen<ProgressEvent>('ai-tool-progress', (event) => {
-            if (mounted && event.payload.tool === toolName) {
-                setProgress(event.payload);
-            }
-        }).then(fn => {
-            if (mounted) {
-                unlisten = fn;
-            } else {
-                fn(); // Already unmounted, clean up immediately
-            }
-        });
-
-        return () => {
-            mounted = false;
-            if (unlisten) unlisten();
-        };
+    useTauriListener<ProgressEvent>('ai-tool-progress', (event) => {
+        if (event.payload.tool === toolName) {
+            setProgress(event.payload);
+        }
     }, [toolName]);
 
     if (!progress) return null;

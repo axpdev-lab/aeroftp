@@ -2,16 +2,18 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { ArrowLeftRight, ArrowRight, ArrowRightLeft, Play, RefreshCw, X } from 'lucide-react';
-import { ServerProfile } from '../../types';
+import { ServerProfile, TransferEvent } from '../../types';
 import { useTranslation } from '../../i18n';
 import { secureGetWithFallback } from '../../utils/secureStorage';
-import { formatSize } from '../../utils/formatters';
+import { formatBytes } from '../../utils/formatters';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { Checkbox } from '../ui/Checkbox';
 import { TransferActionBar } from './TransferActionBar';
+import { TransferProgressBar } from '../TransferProgressBar';
 
 const getDefaultRemotePath = (profile: ServerProfile | null): string =>
     profile?.initialPath?.trim() ? profile.initialPath.trim() : '/';
@@ -179,6 +181,21 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
     const [error, setError] = useState<string | null>(null);
     const [phase, setPhase] = useState<'setup' | 'plan' | 'executing' | 'done'>('setup');
 
+    // Live transfer progress — populated while phase === 'executing'.
+    // Values come from `transfer_event` Tauri events filtered by plan.plan_id.
+    interface LiveProgress {
+        currentFile: string;
+        currentIndex: number;      // 1-based count of the file being transferred
+        totalFiles: number;
+        bytesTransferred: number;
+        percentage: number;        // based on file count (granularity is per-file)
+        speedBps: number;
+    }
+    const [liveProgress, setLiveProgress] = useState<LiveProgress | null>(null);
+    // Track transfer start time locally to compute speed from aggregate bytes.
+    const executeStartRef = useRef<number | null>(null);
+    const speedHistoryRef = useRef<number[]>([]);
+
     useEffect(() => {
         (async () => {
             const saved = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
@@ -237,12 +254,119 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
         }
     };
 
+    // Subscribe to transfer_event while executing. We scope the listener to this
+    // plan_id so other concurrent transfers don't pollute our in-panel progress.
+    useEffect(() => {
+        if (phase !== 'executing' || !plan) return;
+
+        let unlisten: UnlistenFn | null = null;
+        let cancelled = false;
+
+        (async () => {
+            const fn = await listen<TransferEvent>('transfer_event', (event) => {
+                const data = event.payload;
+                if (data.transfer_id !== plan.plan_id) return;
+                if (data.direction !== 'cross-profile') return;
+
+                // Helper: cumulative bytes for the first N plan entries.
+                const cumBytesUpTo = (completed: number): number =>
+                    plan.entries.slice(0, completed).reduce((sum, e) => sum + (e.size || 0), 0);
+
+                const updateSpeed = (cumBytes: number) => {
+                    const elapsedMs = executeStartRef.current
+                        ? Date.now() - executeStartRef.current
+                        : 0;
+                    const speed = elapsedMs > 0 ? Math.round((cumBytes * 1000) / elapsedMs) : 0;
+                    if (speed > 0) {
+                        const history = speedHistoryRef.current;
+                        history.push(speed);
+                        if (history.length > 120) history.shift();
+                    }
+                    return speed;
+                };
+
+                // Byte-based percentage matches what the user actually sees transferring
+                // (e.g. "183 MB / 202 MB" reads 91%, not the file-count 17/69 = 24%).
+                // Falls back to file count when total_bytes isn't known (empty plan edge case).
+                const bytePct = (cumBytes: number, fileCount: number, total: number): number => {
+                    if (plan.total_bytes > 0) {
+                        return Math.min(100, Math.round((cumBytes * 100) / plan.total_bytes));
+                    }
+                    return Math.min(100, Math.round((fileCount * 100) / Math.max(total, 1)));
+                };
+
+                if (data.event_type === 'file_start' && data.progress) {
+                    const completed = data.progress.transferred;
+                    const cumBytes = cumBytesUpTo(completed);
+                    setLiveProgress({
+                        currentFile: data.filename,
+                        currentIndex: completed + 1,
+                        totalFiles: data.progress.total,
+                        bytesTransferred: cumBytes,
+                        percentage: bytePct(cumBytes, completed, data.progress.total),
+                        speedBps: updateSpeed(cumBytes),
+                    });
+                } else if (data.event_type === 'file_complete' && data.progress) {
+                    const total = data.progress.total || 1;
+                    const done = data.progress.transferred;
+                    const cumBytes = cumBytesUpTo(done);
+                    setLiveProgress({
+                        currentFile: data.filename,
+                        currentIndex: done,
+                        totalFiles: total,
+                        bytesTransferred: cumBytes,
+                        percentage: bytePct(cumBytes, done, total),
+                        speedBps: updateSpeed(cumBytes),
+                    });
+                } else if (data.event_type === 'file_skip' && data.progress) {
+                    const total = data.progress.total || 1;
+                    const done = data.progress.transferred;
+                    const cumBytes = cumBytesUpTo(done);
+                    setLiveProgress({
+                        currentFile: data.filename,
+                        currentIndex: done,
+                        totalFiles: total,
+                        bytesTransferred: cumBytes,
+                        percentage: bytePct(cumBytes, done, total),
+                        speedBps: updateSpeed(cumBytes),
+                    });
+                }
+            });
+            // If cleanup already ran while `listen()` was in-flight, drop the
+            // freshly-registered listener instead of leaving it orphaned —
+            // otherwise a second execute() would stack another subscription.
+            if (cancelled) {
+                fn();
+            } else {
+                unlisten = fn;
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            if (unlisten) {
+                unlisten();
+                unlisten = null;
+            }
+        };
+    }, [phase, plan]);
+
     const handleExecute = async () => {
         if (!plan) return;
 
         setLoading(true);
         setError(null);
         setPhase('executing');
+        setLiveProgress({
+            currentFile: '',
+            currentIndex: 0,
+            totalFiles: plan.total_files,
+            bytesTransferred: 0,
+            percentage: 0,
+            speedBps: 0,
+        });
+        executeStartRef.current = Date.now();
+        speedHistoryRef.current = [];
 
         try {
             const result = await invoke<TransferSummary>('cross_profile_execute', {
@@ -257,6 +381,8 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
             setPhase('plan');
         } finally {
             setLoading(false);
+            setLiveProgress(null);
+            executeStartRef.current = null;
         }
     };
 
@@ -289,8 +415,14 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
     };
 
     return (
-        <div className="pointer-events-none fixed inset-x-0 top-16 z-50 flex justify-center px-4">
-            <div className="pointer-events-auto flex max-h-[calc(100vh-8rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+        <div
+            className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[5vh] bg-black/60 backdrop-blur-sm animate-scale-in"
+            onClick={(e) => {
+                // Only close when clicking the overlay itself — not during transfer.
+                if (e.target === e.currentTarget && phase !== 'executing') onClose();
+            }}
+        >
+            <div className="flex max-h-[calc(100vh-8rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-gray-800">
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
                     <div className="flex items-center gap-2">
@@ -414,7 +546,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
                                 <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
                                     {t('transfer.crossProfile.planReady', {
                                         count: plan.total_files,
-                                        size: formatSize(plan.total_bytes),
+                                        size: formatBytes(plan.total_bytes),
                                     })}
                                 </div>
                                 <div className="mt-1 text-xs text-blue-600/80 dark:text-blue-200/80">
@@ -441,7 +573,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
                                                         {entry.display_name || entry.source_path || entry.dest_path}
                                                     </td>
                                                     <td className="px-3 py-1.5 text-right text-gray-500 dark:text-gray-400">
-                                                        {formatSize(entry.size)}
+                                                        {formatBytes(entry.size)}
                                                     </td>
                                                 </tr>
                                             ))}
@@ -470,20 +602,59 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
                     )}
 
                     {phase === 'executing' && (
-                        <div className="space-y-4 py-4">
+                        <div className="space-y-4 py-2">
                             <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
                                 <div className="flex items-start gap-3">
                                     <TransferBarsSpinner className="mt-0.5 h-6 w-6 shrink-0" />
-                                    <div>
+                                    <div className="min-w-0 flex-1">
                                         <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
                                             {t('transfer.crossProfile.transferInProgress')}
                                         </div>
-                                        <p className="mt-1 text-sm text-blue-600/80 dark:text-blue-200/80">
-                                            {t('transfer.crossProfile.transferHint')}
-                                        </p>
+                                        {plan && (
+                                            <div className="mt-1 text-xs text-blue-600/80 dark:text-blue-200/80">
+                                                {plan.source_profile}
+                                                <ArrowRight className="mx-1 inline h-3.5 w-3.5" />
+                                                {plan.dest_profile}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
+
+                            {liveProgress && (
+                                <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700 space-y-2">
+                                    <div className="flex items-baseline justify-between gap-2">
+                                        <span className="truncate text-sm font-medium text-gray-900 dark:text-white" title={liveProgress.currentFile}>
+                                            {liveProgress.currentFile || t('transfer.crossProfile.preparing')}
+                                        </span>
+                                        <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                                            {liveProgress.currentIndex}/{liveProgress.totalFiles}
+                                        </span>
+                                    </div>
+                                    <TransferProgressBar
+                                        percentage={liveProgress.percentage}
+                                        filename={liveProgress.currentFile}
+                                        speedBps={liveProgress.speedBps}
+                                        transferredBytes={liveProgress.bytesTransferred}
+                                        totalBytes={plan?.total_bytes}
+                                        currentFile={liveProgress.currentIndex}
+                                        totalFiles={liveProgress.totalFiles}
+                                        size="md"
+                                        variant={liveProgress.percentage > 0 ? 'gradient' : 'indeterminate'}
+                                        speedHistory={speedHistoryRef.current}
+                                        showGraph={false}
+                                    />
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                                        <span>
+                                            {formatBytes(liveProgress.bytesTransferred)} / {formatBytes(plan?.total_bytes || 0)}
+                                        </span>
+                                        {liveProgress.speedBps > 0 && (
+                                            <span>{formatBytes(liveProgress.speedBps)}/s</span>
+                                        )}
+                                        <span>{liveProgress.percentage}%</span>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="flex justify-end">
                                 <button
@@ -508,7 +679,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
                                 </div>
                                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                     {t('transfer.crossProfile.summaryMeta', {
-                                        size: formatSize(summary.total_bytes),
+                                        size: formatBytes(summary.total_bytes),
                                         seconds: (summary.duration_ms / 1000).toFixed(1),
                                     })}
                                 </div>

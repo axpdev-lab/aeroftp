@@ -53,10 +53,7 @@ pub fn insert_profile_option(
 }
 
 /// Copy the entire `options` object from a saved profile into `extra`.
-pub fn apply_profile_options(
-    extra: &mut HashMap<String, String>,
-    profile: &serde_json::Value,
-) {
+pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serde_json::Value) {
     if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
         for (k, v) in opts {
             insert_profile_option(extra, k, v);
@@ -142,7 +139,12 @@ pub fn apply_s3_profile_defaults(
     }
     extra.insert(
         S3_REGION_SOURCE_META_KEY.to_string(),
-        if region_from_profile { "profile" } else { "preset" }.to_string(),
+        if region_from_profile {
+            "profile"
+        } else {
+            "preset"
+        }
+        .to_string(),
     );
 
     let path_style_from_profile = extra.contains_key("path_style");

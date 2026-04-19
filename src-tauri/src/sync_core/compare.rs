@@ -43,9 +43,7 @@ impl DiffReport {
         self.missing_remote.len()
     }
     pub fn has_differences(&self) -> bool {
-        !self.differ.is_empty()
-            || !self.missing_local.is_empty()
-            || !self.missing_remote.is_empty()
+        !self.differ.is_empty() || !self.missing_local.is_empty() || !self.missing_remote.is_empty()
     }
 }
 
@@ -54,22 +52,14 @@ impl DiffReport {
 /// `one_way` restricts the comparison to local → remote direction (skipping
 /// `missing_local` detection), matching the semantics of the CLI
 /// `check --one-way` flag.
-pub fn compare_trees(
-    local: &[LocalEntry],
-    remote: &[RemoteEntry],
-    one_way: bool,
-) -> DiffReport {
+pub fn compare_trees(local: &[LocalEntry], remote: &[RemoteEntry], one_way: bool) -> DiffReport {
     use std::collections::HashMap;
 
     let mut report = DiffReport::default();
-    let local_map: HashMap<&str, &LocalEntry> = local
-        .iter()
-        .map(|e| (e.rel_path.as_str(), e))
-        .collect();
-    let remote_map: HashMap<&str, &RemoteEntry> = remote
-        .iter()
-        .map(|e| (e.rel_path.as_str(), e))
-        .collect();
+    let local_map: HashMap<&str, &LocalEntry> =
+        local.iter().map(|e| (e.rel_path.as_str(), e)).collect();
+    let remote_map: HashMap<&str, &RemoteEntry> =
+        remote.iter().map(|e| (e.rel_path.as_str(), e)).collect();
 
     for (rel, local_entry) in &local_map {
         match remote_map.get(rel) {
@@ -136,7 +126,11 @@ mod tests {
 
     #[test]
     fn compare_trees_categorizes_entries() {
-        let locals = vec![local("keep.txt", 10), local("changed.txt", 5), local("local_only.txt", 3)];
+        let locals = vec![
+            local("keep.txt", 10),
+            local("changed.txt", 5),
+            local("local_only.txt", 3),
+        ];
         let remotes = vec![
             remote("keep.txt", 10),
             remote("changed.txt", 8),

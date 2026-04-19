@@ -452,7 +452,7 @@
             "modeUnavailable": "გადაცემის რეჟიმის პარამეტრები ამჟამად ხელმისაწვდომია მხოლოდ FTP/FTPS-ისთვის",
             "crossProfile": {
                 "title": "ტრანსფერი პროფილებს შორის",
-                "subtitle": "მცურავი პანელი: რიგი, ჯურნალი და პროგრესი ხილული რჩება მუშაობის დროს.",
+                "subtitle": "დააკოპირეთ ფაილები პირდაპირ ორ შენახულ სერვერს შორის.",
                 "closeAria": "პროფილებს შორის ტრანსფერის პანელის დახურვა",
                 "source": "წყარო",
                 "destination": "დანიშნულება",
@@ -474,10 +474,11 @@
                 "sizeColumn": "ზომა",
                 "executeTransfer": "ტრანსფერის შესრულება",
                 "transferInProgress": "ტრანსფერი მიმდინარეობს",
-                "transferHint": "თვალი ადევნეთ რიგს, აქტივობის ჯურნალს და პროგრესს ქვემოთ. ეს პანელი განზრახ მსუბუქია.",
+                "transferHint": "რეალურ დროში პროგრესი ნაჩვენებია ქვემოთ. დეტალური ისტორია რჩება აქტივობის ჟურნალში.",
                 "summary": "{transferred} გადატანილი, {skipped} გამოტოვებული, {failed} ჩავარდა",
                 "summaryMeta": "{size} {seconds}s-ში",
-                "newTransfer": "ახალი ტრანსფერი"
+                "newTransfer": "ახალი ტრანსფერი",
+                "preparing": "გადაცემის მომზადება…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] asset წაიშალა {filename}",
             "release_asset_download_start": "[{provider}] release asset ჩამოტვირთვა {filename}...",
             "release_asset_download_success": "[{provider}] release asset ჩამოტვირთა {filename}",
-            "release_asset_download_error": "[{provider}] release asset ვერ ჩამოტვირთა {filename}"
+            "release_asset_download_error": "[{provider}] release asset ვერ ჩამოტვირთა {filename}",
+            "crossprofile_start": "[Cross-profile] იწყება {count}-ის გადაცემა {source}-დან {dest}-ში",
+            "crossprofile_file_success": "[Cross-profile] კოპირებულია {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] შეცდომა {filename}-ზე: {error}"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "გამტარუნარიანობის განრიგი",
             "bwScheduleOff": "ხელით (გამოიყენეთ ზემოთ მოცემული ლიმიტები)",
             "bwScheduleOffice": "სამუშაო საათები (throttle 08-18)",
-            "bwScheduleNight": "ღამის რეჟიმი (throttle 18-08)"
+            "bwScheduleNight": "ღამის რეჟიმი (throttle 18-08)",
+            "allInSync": "ყველა ფაილი სინქრონიზებულია — გადასატანი არაფერია",
+            "nothingInDirection": "განსხვავებები ნაპოვნია, მაგრამ არცერთი არ შეესაბამება არჩეულ მიმართულებას. სცადეთ Two-way ყველა ცვლილების სანახავად."
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",

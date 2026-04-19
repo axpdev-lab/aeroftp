@@ -1097,10 +1097,7 @@ impl StorageProvider for PCloudProvider {
         })
     }
 
-    async fn list_share_links(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+    async fn list_share_links(&mut self, path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
         let resolved = self.resolve_path(path);
         let auth = self.auth_header().await?;
 

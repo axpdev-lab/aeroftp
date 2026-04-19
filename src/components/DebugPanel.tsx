@@ -7,6 +7,7 @@ import { X, Wifi, Activity, Monitor, ScrollText, Layout, Copy, Trash2, Pause, Pl
 import { useTranslation } from '../i18n';
 import type { EffectiveTheme } from '../hooks/useTheme';
 import { TRANSFER_EVENT_BRIDGE } from '../hooks/useTransferEvents';
+import { usePointerDrag } from '../hooks/usePointerDrag';
 
 // ─── Shared timestamp helper ───────────────────────────────────────────────
 function ts() {
@@ -23,12 +24,17 @@ interface CapturedLog {
 
 const globalLogBuffer: CapturedLog[] = [];
 let globalLogId = 0;
-let globalCaptureActive = false;
+let globalCaptureRefCount = 0;
+let restoreConsole: (() => void) | null = null;
 const globalLogListeners = new Set<() => void>();
 
+/// Ref-counted patch of `console.{log,warn,error,debug}` that survives as long
+/// as at least one DebugPanel is mounted. When the last panel unmounts, the
+/// originals are restored — preventing a permanent interceptor for users who
+/// opened debug once and moved on.
 function activateGlobalCapture() {
-    if (globalCaptureActive) return;
-    globalCaptureActive = true;
+    globalCaptureRefCount += 1;
+    if (globalCaptureRefCount > 1) return;
 
     const origLog = console.log;
     const origWarn = console.warn;
@@ -47,6 +53,22 @@ function activateGlobalCapture() {
     console.warn = (...args) => { origWarn(...args); addEntry('WARN', args); };
     console.error = (...args) => { origError(...args); addEntry('ERROR', args); };
     console.debug = (...args) => { origDebug(...args); addEntry('DEBUG', args); };
+
+    restoreConsole = () => {
+        console.log = origLog;
+        console.warn = origWarn;
+        console.error = origError;
+        console.debug = origDebug;
+    };
+}
+
+function deactivateGlobalCapture() {
+    if (globalCaptureRefCount === 0) return;
+    globalCaptureRefCount -= 1;
+    if (globalCaptureRefCount === 0 && restoreConsole) {
+        restoreConsole();
+        restoreConsole = null;
+    }
 }
 
 function clearGlobalLogs() {
@@ -67,7 +89,8 @@ interface NetworkEntry {
 
 const globalNetworkBuffer: NetworkEntry[] = [];
 let globalNetworkId = 0;
-let globalNetworkActive = false;
+let globalNetworkRefCount = 0;
+let restoreNetworkCapture: (() => void) | null = null;
 const globalNetworkListeners = new Set<() => void>();
 
 function notifyNetworkListeners() {
@@ -93,11 +116,11 @@ const INVOKE_SKIP = new Set([
 ]);
 
 function activateNetworkCapture() {
-    if (globalNetworkActive) return;
-    globalNetworkActive = true;
+    globalNetworkRefCount += 1;
+    if (globalNetworkRefCount > 1) return;
 
     // 1) Listen for bridged transfer events from the primary transfer listener
-    window.addEventListener(TRANSFER_EVENT_BRIDGE, (event: Event) => {
+    const transferListener = (event: Event) => {
         const d = (event as CustomEvent<{ event_type: string; transfer_id: string; filename: string; direction: string; message?: string }>).detail;
         const evType = d.event_type.toLowerCase();
         const status: NetworkEntry['status'] = evType.includes('error') ? 'error'
@@ -110,48 +133,70 @@ function activateNetworkCapture() {
             command: `${d.direction} ${d.event_type}`,
             detail: `${d.filename}${d.message ? ` — ${d.message}` : ''}`,
         });
-    });
+    };
+    window.addEventListener(TRANSFER_EVENT_BRIDGE, transferListener);
 
     // 2) Intercept __TAURI_INTERNALS__.invoke to log all IPC calls with timing
     const internals = (window as any).__TAURI_INTERNALS__;
+    let revertInvokePatch: (() => void) | null = null;
     if (internals && !internals.__debugPatched) {
         try {
-        const origFn = internals.invoke.bind(internals);
-        internals.__debugPatched = true;
-        internals.invoke = async (cmd: string, args?: any, options?: any) => {
-            if (INVOKE_SKIP.has(cmd)) return origFn(cmd, args, options);
-            const t0 = performance.now();
-            const argSummary = args ? Object.keys(args).filter((k: string) => k !== 'appWindow' && k !== '__invokeKey').join(',') : '';
-            addNetworkEntry({
-                type: 'INVOKE',
-                status: 'start',
-                command: cmd,
-                detail: argSummary ? `args: ${argSummary}` : '',
-            });
-            try {
-                const result = await origFn(cmd, args, options);
-                const dur = Math.round(performance.now() - t0);
+            const origFn = internals.invoke.bind(internals);
+            internals.__debugPatched = true;
+            internals.invoke = async (cmd: string, args?: any, options?: any) => {
+                if (INVOKE_SKIP.has(cmd)) return origFn(cmd, args, options);
+                const t0 = performance.now();
+                const argSummary = args ? Object.keys(args).filter((k: string) => k !== 'appWindow' && k !== '__invokeKey').join(',') : '';
                 addNetworkEntry({
                     type: 'INVOKE',
-                    status: 'ok',
+                    status: 'start',
                     command: cmd,
-                    detail: `${dur}ms`,
-                    duration: dur,
+                    detail: argSummary ? `args: ${argSummary}` : '',
                 });
-                return result;
-            } catch (err: any) {
-                const dur = Math.round(performance.now() - t0);
-                addNetworkEntry({
-                    type: 'INVOKE',
-                    status: 'error',
-                    command: cmd,
-                    detail: `${dur}ms — ${String(err).slice(0, 120)}`,
-                    duration: dur,
-                });
-                throw err;
-            }
-        };
+                try {
+                    const result = await origFn(cmd, args, options);
+                    const dur = Math.round(performance.now() - t0);
+                    addNetworkEntry({
+                        type: 'INVOKE',
+                        status: 'ok',
+                        command: cmd,
+                        detail: `${dur}ms`,
+                        duration: dur,
+                    });
+                    return result;
+                } catch (err: any) {
+                    const dur = Math.round(performance.now() - t0);
+                    addNetworkEntry({
+                        type: 'INVOKE',
+                        status: 'error',
+                        command: cmd,
+                        detail: `${dur}ms — ${String(err).slice(0, 120)}`,
+                        duration: dur,
+                    });
+                    throw err;
+                }
+            };
+            revertInvokePatch = () => {
+                try {
+                    internals.invoke = origFn;
+                    delete internals.__debugPatched;
+                } catch { /* frozen */ }
+            };
         } catch { /* __TAURI_INTERNALS__ may be frozen/sealed */ }
+    }
+
+    restoreNetworkCapture = () => {
+        window.removeEventListener(TRANSFER_EVENT_BRIDGE, transferListener);
+        revertInvokePatch?.();
+    };
+}
+
+function deactivateNetworkCapture() {
+    if (globalNetworkRefCount === 0) return;
+    globalNetworkRefCount -= 1;
+    if (globalNetworkRefCount === 0 && restoreNetworkCapture) {
+        restoreNetworkCapture();
+        restoreNetworkCapture = null;
     }
 }
 
@@ -244,7 +289,8 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
         })();
     }, [isVisible]);
 
-    // Activate global captures on first mount and subscribe to updates
+    // Activate global captures on first mount and subscribe to updates.
+    // Ref-counted: patches are reverted when the last DebugPanel unmounts.
     useEffect(() => {
         activateGlobalCapture();
         activateNetworkCapture();
@@ -263,6 +309,8 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
         return () => {
             globalLogListeners.delete(logListener);
             globalNetworkListeners.delete(netListener);
+            deactivateGlobalCapture();
+            deactivateNetworkCapture();
         };
     }, []);
 
@@ -280,19 +328,23 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
         }
     }, [logs, networkEvents, logPaused, activeTab]);
 
-    // Resize handle
-    const handleResize = useCallback((e: React.MouseEvent) => {
+    // Resize handle — usePointerDrag holds the capture on the handle itself
+    // so unmount mid-drag can release it without touching document globals.
+    const resizeStartRef = useRef<{ y: number; startHeight: number } | null>(null);
+    const { onPointerDown: onResizePointerDown } = usePointerDrag({
+        onPointerMove: (ev) => {
+            const s = resizeStartRef.current;
+            if (!s) return;
+            setHeight(Math.max(150, Math.min(600, s.startHeight - (ev.clientY - s.y))));
+        },
+        onPointerUp: () => { resizeStartRef.current = null; },
+        onPointerCancel: () => { resizeStartRef.current = null; },
+    });
+    const handleResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
-        const startY = e.clientY;
-        const startH = height;
-        const onMove = (ev: MouseEvent) => {
-            const newH = Math.max(150, Math.min(600, startH - (ev.clientY - startY)));
-            setHeight(newH);
-        };
-        const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-    }, [height]);
+        resizeStartRef.current = { y: e.clientY, startHeight: height };
+        onResizePointerDown(e);
+    }, [height, onResizePointerDown]);
 
     const copyLogs = useCallback(() => {
         const text = logs.map(l => `[${l.timestamp}] [${l.level}] ${l.message}`).join('\n');
@@ -329,7 +381,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
             {/* Resize handle */}
             <div
                 ref={resizeRef}
-                onMouseDown={handleResize}
+                onPointerDown={handleResize}
                 className={`h-2 cursor-ns-resize ${resizeTheme.base} transition-colors flex-shrink-0 flex items-center justify-center group`}
             >
                 <div className={`w-10 h-0.5 rounded-full ${resizeTheme.bar} transition-colors`} />
@@ -573,5 +625,10 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     );
 };
 
-export { activateGlobalCapture, activateNetworkCapture };
+export {
+    activateGlobalCapture,
+    activateNetworkCapture,
+    deactivateGlobalCapture,
+    deactivateNetworkCapture,
+};
 export default DebugPanel;

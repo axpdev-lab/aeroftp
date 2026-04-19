@@ -20,14 +20,29 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-/// A pooled connection with last-used timestamp and usage counters.
+/// A pooled connection with last-used timestamp (millis since pool creation)
+/// and usage counters.
+///
+/// `last_used` was previously a `Mutex<Instant>` — meaning every pool read
+/// serialized against every pool write across ALL pooled profiles. Replaced
+/// with `AtomicU64` so hot-path reads are lock-free.
 struct PooledConnection {
     provider: Arc<Mutex<Box<dyn StorageProvider>>>,
-    last_used: Mutex<Instant>,
+    last_used_ms: AtomicU64,
     profile_name: String,
     protocol: String,
     connected_at: DateTime<Utc>,
     requests_served: AtomicU64,
+}
+
+/// Process-wide monotonic anchor used to convert `Instant` to a 64-bit
+/// millisecond delta that fits in `AtomicU64`. Cheaper than a system time
+/// conversion for every pool operation.
+static POOL_EPOCH: std::sync::LazyLock<Instant> = std::sync::LazyLock::new(Instant::now);
+
+#[inline]
+fn now_ms() -> u64 {
+    Instant::now().duration_since(*POOL_EPOCH).as_millis() as u64
 }
 
 /// Connection pool keyed by profile ID.
@@ -69,7 +84,7 @@ impl ConnectionPool {
         {
             let conns = self.connections.lock().await;
             if let Some(entry) = conns.get(&profile_id) {
-                *entry.last_used.lock().await = Instant::now();
+                entry.last_used_ms.store(now_ms(), Ordering::Relaxed);
                 entry.requests_served.fetch_add(1, Ordering::Relaxed);
                 return Ok(Arc::clone(&entry.provider));
             }
@@ -88,20 +103,29 @@ impl ConnectionPool {
 
         let entry = PooledConnection {
             provider: Arc::clone(&arc),
-            last_used: Mutex::new(Instant::now()),
+            last_used_ms: AtomicU64::new(now_ms()),
             profile_name: name,
             protocol,
             connected_at: Utc::now(),
             requests_served: AtomicU64::new(1),
         };
 
-        let mut conns = self.connections.lock().await;
-
-        // Evict oldest if at capacity
-        if conns.len() >= self.max_connections {
-            evict_oldest(&mut conns).await;
+        // Evict oldest if at capacity. Candidates are selected inside the map
+        // lock but the actual `disconnect().await` is done outside — otherwise
+        // one hung SFTP provider freezes every pool read.
+        let victim = {
+            let mut conns = self.connections.lock().await;
+            if conns.len() >= self.max_connections {
+                pick_lru_victim(&conns).and_then(|id| conns.remove(&id))
+            } else {
+                None
+            }
+        };
+        if let Some(entry) = victim {
+            disconnect_outside_lock(entry).await;
         }
 
+        let mut conns = self.connections.lock().await;
         conns.insert(profile_id, entry);
 
         Ok(arc)
@@ -113,39 +137,59 @@ impl ConnectionPool {
     /// Accepts either the profile id or the profile name (case-insensitive).
     pub async fn close_one(&self, server_query: &str) -> Option<String> {
         let query_lower = server_query.to_lowercase();
-        let mut conns = self.connections.lock().await;
-        let matched_id: Option<String> = conns
-            .iter()
-            .find(|(id, entry)| {
-                id.as_str() == server_query
-                    || entry.profile_name.to_lowercase() == query_lower
-                    || entry.profile_name.to_lowercase().contains(&query_lower)
-            })
-            .map(|(id, _)| id.clone());
-        let id = matched_id?;
-        let entry = conns.remove(&id)?;
-        let mut provider = entry.provider.lock().await;
-        let _ = provider.disconnect().await;
-        Some(entry.profile_name)
+        let entry = {
+            let mut conns = self.connections.lock().await;
+            let matched_id: Option<String> = conns
+                .iter()
+                .find(|(id, entry)| {
+                    id.as_str() == server_query
+                        || entry.profile_name.to_lowercase() == query_lower
+                        || entry.profile_name.to_lowercase().contains(&query_lower)
+                })
+                .map(|(id, _)| id.clone());
+            let id = matched_id?;
+            conns.remove(&id)?
+        };
+        let name = entry.profile_name.clone();
+        // Disconnect outside the pool lock so a hung network does not stall
+        // every other pool operation.
+        disconnect_outside_lock(entry).await;
+        Some(name)
     }
 
-    /// Remove idle connections older than the timeout.
+    /// Remove idle connections older than the timeout. Entries currently in
+    /// use (strong_count > 1 on the provider Arc) are spared — otherwise a
+    /// long-running upload could be disconnected mid-transfer. This is the
+    /// same invariant used by `r2d2`/`bb8`.
     pub async fn evict_idle(&self) {
-        let mut conns = self.connections.lock().await;
-        let now = Instant::now();
-        let mut to_remove = Vec::new();
-        for (id, entry) in conns.iter() {
-            let last = *entry.last_used.lock().await;
-            if now.duration_since(last) > self.idle_timeout {
-                to_remove.push(id.clone());
-            }
-        }
-        for id in &to_remove {
-            if let Some(entry) = conns.remove(id) {
-                let mut provider = entry.provider.lock().await;
-                let _ = provider.disconnect().await;
-                eprintln!("[mcp-pool] evicted idle connection: {}", entry.profile_name);
-            }
+        let timeout = self.idle_timeout;
+        let victims = {
+            let mut conns = self.connections.lock().await;
+            let now_ms = now_ms();
+            let timeout_ms = timeout.as_millis() as u64;
+            let victim_ids: Vec<String> = conns
+                .iter()
+                .filter_map(|(id, entry)| {
+                    let last_ms = entry.last_used_ms.load(Ordering::Relaxed);
+                    let idle_ms = now_ms.saturating_sub(last_ms);
+                    if idle_ms > timeout_ms && Arc::strong_count(&entry.provider) == 1 {
+                        Some(id.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            victim_ids
+                .into_iter()
+                .filter_map(|id| conns.remove(&id))
+                .collect::<Vec<_>>()
+        };
+
+        // Disconnect outside the lock.
+        for entry in victims {
+            let name = entry.profile_name.clone();
+            disconnect_outside_lock(entry).await;
+            eprintln!("[mcp-pool] evicted idle connection: {}", name);
         }
     }
 
@@ -158,11 +202,13 @@ impl ConnectionPool {
     pub async fn status(&self) -> Vec<serde_json::Value> {
         let conns = self.connections.lock().await;
         let mut result = Vec::new();
+        let now_ms = now_ms();
         for (id, entry) in conns.iter() {
-            let last = *entry.last_used.lock().await;
-            let idle_secs = Instant::now().duration_since(last).as_secs();
+            let last_ms = entry.last_used_ms.load(Ordering::Relaxed);
+            let idle_secs = now_ms.saturating_sub(last_ms) / 1000;
             let requests_served = entry.requests_served.load(Ordering::Relaxed);
-            let state = if idle_secs == 0 { "busy" } else { "idle" };
+            let in_use = Arc::strong_count(&entry.provider) > 1;
+            let state = if in_use { "busy" } else { "idle" };
             result.push(serde_json::json!({
                 "profile_id": id,
                 "name": entry.profile_name,
@@ -177,22 +223,29 @@ impl ConnectionPool {
     }
 }
 
-/// Evict the connection with the oldest last_used timestamp.
-async fn evict_oldest(conns: &mut HashMap<String, PooledConnection>) {
-    let mut oldest_id: Option<String> = None;
-    let mut oldest_time = Instant::now();
-    for (id, entry) in conns.iter() {
-        let last = *entry.last_used.lock().await;
-        if last < oldest_time {
-            oldest_time = last;
-            oldest_id = Some(id.clone());
-        }
-    }
-    if let Some(id) = oldest_id {
-        if let Some(entry) = conns.remove(&id) {
-            let mut provider = entry.provider.lock().await;
+/// Pick the LRU entry that is not currently in use.
+fn pick_lru_victim(conns: &HashMap<String, PooledConnection>) -> Option<String> {
+    conns
+        .iter()
+        .filter(|(_, entry)| Arc::strong_count(&entry.provider) == 1)
+        .min_by_key(|(_, entry)| entry.last_used_ms.load(Ordering::Relaxed))
+        .map(|(id, _)| id.clone())
+}
+
+/// Drop a removed pool entry with an awaited disconnect. Must be called
+/// OUTSIDE `self.connections.lock()` — the provider's `.disconnect().await`
+/// can take seconds on stalled networks.
+async fn disconnect_outside_lock(entry: PooledConnection) {
+    // Arc::try_unwrap lets us get sole ownership of the provider when no
+    // caller is still using it. If someone is (strong_count > 1), just drop
+    // our reference and let the last holder clean up naturally.
+    match Arc::try_unwrap(entry.provider) {
+        Ok(mutex) => {
+            let mut provider = mutex.into_inner();
             let _ = provider.disconnect().await;
-            eprintln!("[mcp-pool] evicted LRU connection: {}", entry.profile_name);
+        }
+        Err(_arc) => {
+            // Another caller still holds it; they own the disconnect lifecycle.
         }
     }
 }
@@ -322,14 +375,15 @@ fn create_provider_from_vault(
                     .unwrap_or("")
                     .to_string();
                 (
-                    if u.is_empty() { username.to_string() } else { u },
+                    if u.is_empty() {
+                        username.to_string()
+                    } else {
+                        u
+                    },
                     p,
                 )
             } else {
-                (
-                    username.to_string(),
-                    raw_cred.trim_matches('"').to_string(),
-                )
+                (username.to_string(), raw_cred.trim_matches('"').to_string())
             }
         } else {
             (username.to_string(), raw_cred)
@@ -441,9 +495,5 @@ fn create_provider_from_vault(
     let provider = ProviderFactory::create(&config)
         .map_err(|e| format!("Failed to create provider for '{}': {}", profile_name, e))?;
 
-    Ok((
-        provider,
-        profile_name.to_string(),
-        protocol.to_uppercase(),
-    ))
+    Ok((provider, profile_name.to_string(), protocol.to_uppercase()))
 }

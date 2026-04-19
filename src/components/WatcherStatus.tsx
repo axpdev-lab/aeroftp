@@ -3,7 +3,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { guardedUnlisten } from '../hooks/useTauriListener';
+import { listen } from '@tauri-apps/api/event';
 import { WatcherStatus as WatcherStatusType } from '../types';
 import { useTranslation } from '../i18n';
 import { Eye, EyeOff, AlertTriangle } from 'lucide-react';
@@ -17,7 +18,6 @@ export const WatcherStatus: React.FC<WatcherStatusProps> = ({ watchPath }) => {
     const [active, setActive] = useState(false);
     const [mode, setMode] = useState<string | null>(null);
     const [status, setStatus] = useState<WatcherStatusType | null>(null);
-    const unlistenRef = useRef<UnlistenFn | null>(null);
 
     useEffect(() => {
         let mounted = true;
@@ -27,24 +27,21 @@ export const WatcherStatus: React.FC<WatcherStatusProps> = ({ watchPath }) => {
             .then(s => { if (mounted) setStatus(s); })
             .catch(() => {});
 
-        // Listen for watcher status events from backend
-        listen<{ active: boolean; mode?: string; path?: string }>(
-            'cloud-watcher-status',
-            (event) => {
-                setActive(event.payload.active);
-                if (event.payload.mode) setMode(event.payload.mode);
-            }
-        ).then(fn => {
-            if (mounted) {
-                unlistenRef.current = fn;
-            } else {
-                fn(); // Already unmounted, clean up immediately
-            }
-        });
+        // Listen for watcher status events from backend — guardedUnlisten
+        // owns the unmount-before-resolve race.
+        const disposeListener = guardedUnlisten(
+            listen<{ active: boolean; mode?: string; path?: string }>(
+                'cloud-watcher-status',
+                (event) => {
+                    setActive(event.payload.active);
+                    if (event.payload.mode) setMode(event.payload.mode);
+                },
+            ),
+        );
 
         return () => {
             mounted = false;
-            unlistenRef.current?.();
+            disposeListener();
         };
     }, [watchPath]);
 

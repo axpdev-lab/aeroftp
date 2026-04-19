@@ -74,6 +74,12 @@ impl Handler for ShellSshHandler {
 struct SshShellSession {
     handle: Handle<ShellSshHandler>,
     channel_id: ChannelId,
+    /// Reader task that pumps `ChannelMsg` into the `ssh-shell-data-*` event
+    /// stream. Wrapping in `AbortOnDrop` guarantees the task is cancelled
+    /// when the session is removed from the map — previously the JoinHandle
+    /// was discarded and the reader kept decoding bytes into emits for dead
+    /// sessions until the remote SSH side finally sent EOF.
+    _reader: crate::util::AbortOnDrop<()>,
 }
 
 /// Maximum concurrent SSH shell sessions (matches PTY limit)
@@ -199,23 +205,31 @@ pub async fn ssh_shell_open(
     let event_name = format!("pty-output-{}", session_id);
     let close_event = format!("ssh-shell-closed-{}", session_id);
 
-    // Store handle + channel_id for writing
-    {
-        let mut mgr = state.lock().await;
-        mgr.sessions
-            .insert(session_id.clone(), SshShellSession { handle, channel_id });
-    }
-
-    // Spawn read task — channel is consumed here, writing goes through Handle.data()
+    // Spawn read task FIRST, then store the session with the AbortOnDrop
+    // reader wrapped inside. When the session is removed from the map (either
+    // by explicit close or because the remote side closed), the reader task
+    // is cancelled deterministically.
     let app_clone = app.clone();
     let session_id_clone = session_id.clone();
     let state_clone = state.inner().clone();
-    tokio::spawn(async move {
+    let reader = crate::util::AbortOnDrop::spawn(async move {
         read_channel(channel, &app_clone, &event_name).await;
         let _ = app_clone.emit(&close_event, "closed");
         let mut mgr = state_clone.lock().await;
         mgr.sessions.remove(&session_id_clone);
     });
+
+    {
+        let mut mgr = state.lock().await;
+        mgr.sessions.insert(
+            session_id.clone(),
+            SshShellSession {
+                handle,
+                channel_id,
+                _reader: reader,
+            },
+        );
+    }
 
     Ok(format!("SSH shell opened [session:{}]", session_id))
 }

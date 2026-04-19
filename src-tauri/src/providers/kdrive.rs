@@ -1386,10 +1386,7 @@ impl StorageProvider for KDriveProvider {
         })
     }
 
-    async fn list_share_links(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+    async fn list_share_links(&mut self, path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
@@ -1423,10 +1420,11 @@ impl StorageProvider for KDriveProvider {
 
         if let Some(link_data) = api_resp.data {
             if let Some(ref link_url) = link_data.url {
-                let expires_at = link_data
-                    .valid_until
-                    .as_ref()
-                    .and_then(|v| v.as_str().map(|s| s.to_string()).or_else(|| v.as_i64().map(|ts| ts.to_string())));
+                let expires_at = link_data.valid_until.as_ref().and_then(|v| {
+                    v.as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| v.as_i64().map(|ts| ts.to_string()))
+                });
 
                 return Ok(vec![ShareLinkInfo {
                     id: link_data.uuid.unwrap_or_else(|| file_id.to_string()),

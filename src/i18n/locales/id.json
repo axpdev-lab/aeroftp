@@ -452,7 +452,7 @@
             "modeUnavailable": "Preset mode transfer saat ini hanya tersedia untuk FTP/FTPS",
             "crossProfile": {
                 "title": "Transfer Lintas Profil",
-                "subtitle": "Panel mengambang: antrean, log, dan progres tetap terlihat saat berjalan.",
+                "subtitle": "Salin file langsung antara dua server tersimpan.",
                 "closeAria": "Tutup panel transfer lintas profil",
                 "source": "Sumber",
                 "destination": "Tujuan",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Ukuran",
                 "executeTransfer": "Jalankan Transfer",
                 "transferInProgress": "Transfer sedang berlangsung",
-                "transferHint": "Pantau antrean, log aktivitas, dan progres di bawah. Panel ini sengaja dibuat ringan.",
+                "transferHint": "Kemajuan langsung ditampilkan di bawah. Riwayat detail tetap berada di Log Aktivitas.",
                 "summary": "{transferred} ditransfer, {skipped} dilewati, {failed} gagal",
                 "summaryMeta": "{size} dalam {seconds} detik",
-                "newTransfer": "Transfer Baru"
+                "newTransfer": "Transfer Baru",
+                "preparing": "Menyiapkan transfer…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Berhasil menghapus asset {filename}",
             "release_asset_download_start": "[{provider}] Mengunduh release asset {filename}...",
             "release_asset_download_success": "[{provider}] Berhasil mengunduh release asset {filename}",
-            "release_asset_download_error": "[{provider}] Gagal mengunduh release asset {filename}"
+            "release_asset_download_error": "[{provider}] Gagal mengunduh release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Memulai transfer {count} dari {source} ke {dest}",
+            "crossprofile_file_success": "[Cross-profile] Disalin {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Gagal pada {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Jadwal bandwidth",
             "bwScheduleOff": "Manual (gunakan batas di atas)",
             "bwScheduleOffice": "Jam kantor (throttle 08-18)",
-            "bwScheduleNight": "Mode malam (throttle 18-08)"
+            "bwScheduleNight": "Mode malam (throttle 18-08)",
+            "allInSync": "Semua file sudah sinkron — tidak ada yang perlu ditransfer",
+            "nothingInDirection": "Perbedaan ditemukan, tetapi tidak ada yang sesuai dengan arah yang dipilih. Coba Two-way untuk melihat semua perubahan."
         },
         "ui": {
             "syncing": "Menyinkronkan...",

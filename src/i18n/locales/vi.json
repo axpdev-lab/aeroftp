@@ -452,7 +452,7 @@
             "modeUnavailable": "Các thiết lập chế độ truyền hiện chỉ khả dụng cho FTP/FTPS",
             "crossProfile": {
                 "title": "Chuyển đổi chéo hồ sơ",
-                "subtitle": "Bảng nổi: hàng đợi, nhật ký và tiến trình vẫn hiển thị khi đang chạy.",
+                "subtitle": "Sao chép tệp trực tiếp giữa hai máy chủ đã lưu.",
                 "closeAria": "Đóng bảng chuyển đổi chéo hồ sơ",
                 "source": "Nguồn",
                 "destination": "Đích",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Kích thước",
                 "executeTransfer": "Thực hiện chuyển",
                 "transferInProgress": "Đang chuyển",
-                "transferHint": "Theo dõi hàng đợi, nhật ký hoạt động và tiến trình bên dưới. Bảng này được thiết kế nhẹ có chủ đích.",
+                "transferHint": "Tiến trình trực tiếp được hiển thị bên dưới. Lịch sử chi tiết được lưu trong Nhật ký hoạt động.",
                 "summary": "{transferred} đã chuyển, {skipped} đã bỏ qua, {failed} thất bại",
                 "summaryMeta": "{size} trong {seconds} giây",
-                "newTransfer": "Chuyển mới"
+                "newTransfer": "Chuyển mới",
+                "preparing": "Đang chuẩn bị truyền…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Đã gỡ asset {filename}",
             "release_asset_download_start": "[{provider}] Đang tải xuống release asset {filename}...",
             "release_asset_download_success": "[{provider}] Đã tải xuống release asset {filename}",
-            "release_asset_download_error": "[{provider}] Không thể tải xuống release asset {filename}"
+            "release_asset_download_error": "[{provider}] Không thể tải xuống release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Bắt đầu truyền {count} từ {source} đến {dest}",
+            "crossprofile_file_success": "[Cross-profile] Đã sao chép {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Lỗi tại {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Lịch băng thông",
             "bwScheduleOff": "Thủ công (dùng giới hạn ở trên)",
             "bwScheduleOffice": "Giờ làm việc (hạn chế 08-18)",
-            "bwScheduleNight": "Chế độ ban đêm (hạn chế 18-08)"
+            "bwScheduleNight": "Chế độ ban đêm (hạn chế 18-08)",
+            "allInSync": "Tất cả tệp đã được đồng bộ — không có gì để chuyển",
+            "nothingInDirection": "Đã tìm thấy khác biệt, nhưng không có gì khớp với hướng đã chọn. Hãy thử Two-way để xem tất cả các thay đổi."
         },
         "ui": {
             "syncing": "Đang đồng bộ...",

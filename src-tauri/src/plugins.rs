@@ -708,10 +708,16 @@ async fn execute_hook_script(
     script_path: &std::path::Path,
     stdin_data: &str,
 ) -> Result<String, String> {
+    // kill_on_drop(true) — if the enclosing `timeout()` cancels us, the child
+    // process receives SIGKILL on drop rather than leaking as a zombie. The
+    // sister function execute_plugin_tool already uses this flag; the hook
+    // path was an accidental copy-paste divergence that let plugin hooks
+    // orphan subprocesses on timeout.
     let mut child = tokio::process::Command::new(script_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)
         .env_clear()
         .envs(std::env::vars().filter(|(k, _)| {
             matches!(

@@ -1955,19 +1955,13 @@ impl StorageProvider for BoxProvider {
         }
     }
 
-    async fn list_share_links(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+    async fn list_share_links(&mut self, path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
         let resp = self
             .client
-            .get(format!(
-                "{}/files/{}?fields=shared_link",
-                API_BASE, file_id
-            ))
+            .get(format!("{}/files/{}?fields=shared_link", API_BASE, file_id))
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await

@@ -452,7 +452,7 @@
             "modeUnavailable": "การตั้งค่าโหมดการถ่ายโอนใช้ได้เฉพาะ FTP/FTPS เท่านั้นในขณะนี้",
             "crossProfile": {
                 "title": "โอนย้ายข้ามโปรไฟล์",
-                "subtitle": "แผงลอย: คิว บันทึก และความคืบหน้าจะแสดงอยู่ตลอดขณะทำงาน",
+                "subtitle": "คัดลอกไฟล์โดยตรงระหว่างเซิร์ฟเวอร์ที่บันทึกไว้สองเครื่อง",
                 "closeAria": "ปิดแผงโอนย้ายข้ามโปรไฟล์",
                 "source": "ต้นทาง",
                 "destination": "ปลายทาง",
@@ -474,10 +474,11 @@
                 "sizeColumn": "ขนาด",
                 "executeTransfer": "ดำเนินการโอนย้าย",
                 "transferInProgress": "กำลังโอนย้าย",
-                "transferHint": "ติดตามคิว บันทึกกิจกรรม และความคืบหน้าด้านล่าง แผงนี้ออกแบบให้เบาโดยตั้งใจ",
+                "transferHint": "ความคืบหน้าแบบเรียลไทม์แสดงอยู่ด้านล่าง ประวัติโดยละเอียดจะอยู่ในบันทึกกิจกรรม",
                 "summary": "{transferred} โอนแล้ว, {skipped} ข้ามแล้ว, {failed} ล้มเหลว",
                 "summaryMeta": "{size} ใน {seconds} วินาที",
-                "newTransfer": "โอนย้ายใหม่"
+                "newTransfer": "โอนย้ายใหม่",
+                "preparing": "กำลังเตรียมการถ่ายโอน…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] ลบ asset {filename} แล้ว",
             "release_asset_download_start": "[{provider}] กำลังดาวน์โหลด release asset {filename}...",
             "release_asset_download_success": "[{provider}] ดาวน์โหลด release asset {filename} แล้ว",
-            "release_asset_download_error": "[{provider}] ดาวน์โหลด release asset {filename} ไม่สำเร็จ"
+            "release_asset_download_error": "[{provider}] ดาวน์โหลด release asset {filename} ไม่สำเร็จ",
+            "crossprofile_start": "[Cross-profile] กำลังเริ่มถ่ายโอน {count} จาก {source} ไปยัง {dest}",
+            "crossprofile_file_success": "[Cross-profile] คัดลอกแล้ว {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] ล้มเหลวที่ {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "ตารางแบนด์วิธ",
             "bwScheduleOff": "ด้วยตนเอง (ใช้ขีดจำกัดด้านบน)",
             "bwScheduleOffice": "เวลาทำงาน (จำกัด 08-18)",
-            "bwScheduleNight": "โหมดกลางคืน (จำกัด 18-08)"
+            "bwScheduleNight": "โหมดกลางคืน (จำกัด 18-08)",
+            "allInSync": "ไฟล์ทั้งหมดซิงค์แล้ว — ไม่มีอะไรต้องถ่ายโอน",
+            "nothingInDirection": "พบความแตกต่าง แต่ไม่มีรายการใดตรงกับทิศทางที่เลือก ลองใช้ Two-way เพื่อดูการเปลี่ยนแปลงทั้งหมด"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",

@@ -51,20 +51,17 @@ use crate::rsync_native_proto::engine_adapter::{
 };
 use crate::rsync_native_proto::events::EventSink;
 use crate::rsync_native_proto::real_wire::{
-    compress_zstd_literal_stream, decode_delta_stream, decode_file_list_entry,
-    decode_item_flags, decode_ndx, decode_server_preamble, decode_sum_block,
-    decode_sum_head, decode_summary_frame, decompress_zstd_literal_stream_boundaries,
-    encode_client_preamble, encode_delta_stream, encode_file_list_entry,
-    encode_file_list_terminator, encode_item_flags, encode_ndx, encode_sum_block,
-    encode_sum_head, encode_summary_frame, ClientPreamble, DeltaOp, DeltaStreamReport,
-    FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader, MuxPoll,
-    MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
+    compress_zstd_literal_stream, decode_delta_stream, decode_file_list_entry, decode_item_flags,
+    decode_ndx, decode_server_preamble, decode_sum_block, decode_sum_head, decode_summary_frame,
+    decompress_zstd_literal_stream_boundaries, encode_client_preamble, encode_delta_stream,
+    encode_file_list_entry, encode_file_list_terminator, encode_item_flags, encode_ndx,
+    encode_sum_block, encode_sum_head, encode_summary_frame, ClientPreamble, DeltaOp,
+    DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader,
+    MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
     MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::rsync_native_proto::remote_command::RemoteCommandSpec;
-use crate::rsync_native_proto::transport::{
-    CancelHandle, RawByteStream, RawRemoteShellTransport,
-};
+use crate::rsync_native_proto::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::rsync_native_proto::types::{
     NativeRsyncError, NativeRsyncErrorKind, SessionRole, SessionStats,
 };
@@ -513,7 +510,8 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
             .await?;
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
-        self.send_delta_phase_single_file(source_data, adapter).await?;
+        self.send_delta_phase_single_file(source_data, adapter)
+            .await?;
         Ok(())
     }
 
@@ -581,9 +579,7 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
                 Err(RealWireError::TruncatedBuffer { .. }) => {
                     // Need more bytes — read another chunk.
                     let stream = self.stream.as_mut().ok_or_else(|| {
-                        NativeRsyncError::transport(
-                            "perform_preamble_exchange: stream not open",
-                        )
+                        NativeRsyncError::transport("perform_preamble_exchange: stream not open")
                     })?;
                     let chunk = stream.read_bytes(RAW_READ_CHUNK).await?;
                     if chunk.is_empty() {
@@ -606,9 +602,7 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
             consumed: 0,
         });
         let stream = self.stream.as_mut().ok_or_else(|| {
-            NativeRsyncError::transport(
-                "perform_preamble_exchange: stream vanished pre-write",
-            )
+            NativeRsyncError::transport("perform_preamble_exchange: stream vanished pre-write")
         })?;
         stream.write_bytes(&outbound).await?;
         self.phase = NativeSessionPhase::ClientPreambleRecvd;
@@ -1169,9 +1163,7 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
         }
         let reconstructed = adapter
             .apply_delta(destination_data, &engine_ops, block_size)
-            .map_err(|e| {
-                NativeRsyncError::invalid_frame(format!("apply_delta: {e}"))
-            })?;
+            .map_err(|e| NativeRsyncError::invalid_frame(format!("apply_delta: {e}")))?;
         self.reconstructed = Some(reconstructed);
         Ok(())
     }
@@ -1182,9 +1174,7 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
     /// bytes are ever consulted by the engine for matching.
     fn wire_sigs_to_engine(&self) -> Result<Vec<EngineSignatureBlock>, NativeRsyncError> {
         let head = self.received_sum_head.as_ref().ok_or_else(|| {
-            NativeRsyncError::invalid_frame(
-                "wire_sigs_to_engine: no received sum_head",
-            )
+            NativeRsyncError::invalid_frame("wire_sigs_to_engine: no received sum_head")
         })?;
         let block_len = head.block_length as u32;
         let mut out = Vec::with_capacity(self.received_signatures.len());
@@ -1215,9 +1205,7 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
         let literals: Vec<&[u8]> = wire_ops
             .iter()
             .filter_map(|op| match op {
-                DeltaOp::Literal { compressed_payload } => {
-                    Some(compressed_payload.as_slice())
-                }
+                DeltaOp::Literal { compressed_payload } => Some(compressed_payload.as_slice()),
                 DeltaOp::CopyRun { .. } => None,
             })
             .collect();
@@ -1486,11 +1474,7 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
     ///   if lane 3 telemetry shows the zeros are surprising.
     async fn emit_summary_phase(&mut self) -> Result<(), NativeRsyncError> {
         self.phase = NativeSessionPhase::SummaryReceiving;
-        let total_size = self
-            .file_list
-            .first()
-            .map(|e| e.size)
-            .unwrap_or(0);
+        let total_size = self.file_list.first().map(|e| e.size).unwrap_or(0);
         // `SummaryFrame` snapshots the counters as of the moment the
         // client decided to announce them — matching rsync 3.2.7's
         // `handle_stats`, which reads `stats.total_written` before
@@ -1589,10 +1573,7 @@ impl<T: RawRemoteShellTransport> NativeRsyncDriver<T> {
     }
 
     #[allow(clippy::unused_async)]
-    async fn receive_server_preamble(
-        &mut self,
-        source: &[u8],
-    ) -> Result<usize, NativeRsyncError> {
+    async fn receive_server_preamble(&mut self, source: &[u8]) -> Result<usize, NativeRsyncError> {
         let preamble = decode_server_preamble(source).map_err(|e| {
             self.phase = NativeSessionPhase::Failed;
             map_realwire_error(e, "server preamble")
@@ -1624,14 +1605,10 @@ mod tests {
     use crate::rsync_native_proto::engine_adapter::{
         DeltaEngineAdapter, EngineDeltaOp, EngineDeltaPlan, EngineSignatureBlock,
     };
-    use crate::rsync_native_proto::events::{
-        classify_oob_frame, CollectingSink, NativeRsyncEvent,
-    };
+    use crate::rsync_native_proto::events::{classify_oob_frame, CollectingSink, NativeRsyncEvent};
     use crate::rsync_native_proto::fixtures::RealRsyncBaselineByteTranscript;
     use crate::rsync_native_proto::mock::{MockRemoteShellTransport, MockTransportConfig};
-    use crate::rsync_native_proto::real_wire::{
-        encode_server_preamble, ServerPreamble,
-    };
+    use crate::rsync_native_proto::real_wire::{encode_server_preamble, ServerPreamble};
 
     /// Mock adapter used by A2.2/A2.3 tests. Returns a configurable
     /// block size, pre-fabricated signatures, and a pre-canned delta
@@ -1647,10 +1624,7 @@ mod tests {
     }
 
     impl MockSigAdapter {
-        fn with_fixed_signatures(
-            block_size: usize,
-            signatures: Vec<EngineSignatureBlock>,
-        ) -> Self {
+        fn with_fixed_signatures(block_size: usize, signatures: Vec<EngineSignatureBlock>) -> Self {
             Self {
                 block_size: Some(block_size),
                 signatures,
@@ -1739,8 +1713,15 @@ mod tests {
     /// Build a synthetic server signature-phase payload (bytes as they
     /// appear inside one or more `MSG_DATA` frames before mux-wrapping).
     /// The caller decides the chunking.
-    fn build_sig_phase_payload(ndx: i32, iflags: u16, head: &SumHead, blocks: &[SumBlock]) -> Vec<u8> {
-        use crate::rsync_native_proto::real_wire::{encode_ndx, encode_item_flags, encode_sum_head, encode_sum_block, NdxState};
+    fn build_sig_phase_payload(
+        ndx: i32,
+        iflags: u16,
+        head: &SumHead,
+        blocks: &[SumBlock],
+    ) -> Vec<u8> {
+        use crate::rsync_native_proto::real_wire::{
+            encode_item_flags, encode_ndx, encode_sum_block, encode_sum_head, NdxState,
+        };
         let mut st = NdxState::new();
         let mut out = Vec::new();
         out.extend_from_slice(&encode_ndx(ndx, &mut st));
@@ -1759,7 +1740,12 @@ mod tests {
         }
     }
 
-    fn make_engine_sig(index: u32, rolling: u32, strong_first_byte: u8, block_len: u32) -> EngineSignatureBlock {
+    fn make_engine_sig(
+        index: u32,
+        rolling: u32,
+        strong_first_byte: u8,
+        block_len: u32,
+    ) -> EngineSignatureBlock {
         let mut strong = [0u8; 32];
         for b in strong.iter_mut().take(32) {
             *b = strong_first_byte;
@@ -2143,7 +2129,10 @@ mod tests {
         assert_eq!(err.kind, NativeRsyncErrorKind::RemoteError);
         assert!(err.detail.contains("remote kaboom"));
         // PreCommit pin: committed stays false.
-        assert!(!d.committed(), "stub path must not cross PreCommit boundary");
+        assert!(
+            !d.committed(),
+            "stub path must not cross PreCommit boundary"
+        );
         assert_eq!(d.phase(), NativeSessionPhase::Failed);
         // Bridge saw the terminal event (forwarded before bail).
         let terminals: Vec<_> = sink
@@ -2298,18 +2287,20 @@ mod tests {
         // Skip-graceful if the Docker harness is not reachable. CI starts
         // the container explicitly; a local dev run without Docker simply
         // observes the skip and moves on.
-        if tokio::net::TcpStream::connect("127.0.0.1:2224").await.is_err() {
+        if tokio::net::TcpStream::connect("127.0.0.1:2224")
+            .await
+            .is_err()
+        {
             eprintln!("lane 3 Docker harness not reachable on 127.0.0.1:2224 — skipping");
             return;
         }
 
-        let source_data: Vec<u8> =
-            b"aeroftp lane 3 native rsync upload payload\n"
-                .iter()
-                .copied()
-                .cycle()
-                .take(1024)
-                .collect();
+        let source_data: Vec<u8> = b"aeroftp lane 3 native rsync upload payload\n"
+            .iter()
+            .copied()
+            .cycle()
+            .take(1024)
+            .collect();
 
         let key_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/rsync_native_proto/capture/keys/id_ed25519");
@@ -2456,8 +2447,7 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
 
         // A2.3: append an empty delta stream to let the driver reach
@@ -2625,8 +2615,7 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -2639,10 +2628,8 @@ mod tests {
         let mut sink = CollectingSink::default();
         // Cancel before the driver starts.
         cancel_flag.store(true, Ordering::SeqCst);
-        let adapter = MockSigAdapter::with_fixed_signatures(
-            1024,
-            vec![make_engine_sig(0, 0x11, 0x22, 1024)],
-        );
+        let adapter =
+            MockSigAdapter::with_fixed_signatures(1024, vec![make_engine_sig(0, 0x11, 0x22, 1024)]);
         let err = d
             .drive_download(
                 RemoteCommandSpec::download("/remote/target.bin"),
@@ -2666,8 +2653,7 @@ mod tests {
             eprintln!("frozen oracle missing — A2.2 upload sig pin skipped");
             return;
         };
-        let transport =
-            mock_transport_with_raw_inbound(frozen.upload_server_to_client.clone());
+        let transport = mock_transport_with_raw_inbound(frozen.upload_server_to_client.clone());
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let entry = sample_file_list_entry("target.bin");
@@ -2810,8 +2796,7 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
 
         let mut inbound = canonical_server_preamble_bytes();
@@ -2854,10 +2839,7 @@ mod tests {
         assert_eq!(&reconstructed[4..8], b"BLK2");
         assert_eq!(&reconstructed[8..], raw_literal.as_slice());
         // File checksum trailer exposed.
-        assert_eq!(
-            d.received_file_checksum(),
-            Some(vec![0xCC; 16].as_slice()),
-        );
+        assert_eq!(d.received_file_checksum(), Some(vec![0xCC; 16].as_slice()),);
     }
 
     #[tokio::test]
@@ -2913,18 +2895,15 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
         let transport = mock_transport_with_raw_inbound(inbound);
-        let adapter = MockSigAdapter::with_fixed_signatures(
-            4,
-            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
-        );
+        let adapter =
+            MockSigAdapter::with_fixed_signatures(4, vec![make_engine_sig(0, 0xA0, 0x01, 4)]);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let _ = d
@@ -2953,18 +2932,15 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Error, b"delta stream crashed"));
         let transport = mock_transport_with_raw_inbound(inbound);
-        let adapter = MockSigAdapter::with_fixed_signatures(
-            4,
-            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
-        );
+        let adapter =
+            MockSigAdapter::with_fixed_signatures(4, vec![make_engine_sig(0, 0xA0, 0x01, 4)]);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let err = d
@@ -3041,8 +3017,7 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -3051,10 +3026,8 @@ mod tests {
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes[half..]));
 
         let transport = mock_transport_with_raw_inbound(inbound);
-        let adapter = MockSigAdapter::with_fixed_signatures(
-            4,
-            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
-        );
+        let adapter =
+            MockSigAdapter::with_fixed_signatures(4, vec![make_engine_sig(0, 0xA0, 0x01, 4)]);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let err = d
@@ -3068,10 +3041,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.kind, NativeRsyncErrorKind::UnsupportedVersion);
         assert!(d.reconstructed().is_some());
-        assert_eq!(
-            d.received_file_checksum(),
-            Some(vec![0xEE; 16].as_slice()),
-        );
+        assert_eq!(d.received_file_checksum(), Some(vec![0xEE; 16].as_slice()),);
     }
 
     // ---- A2.4 tests ------------------------------------------------------
@@ -3179,9 +3149,7 @@ mod tests {
             v
         };
         let guard = last_raw_outbound.lock().unwrap();
-        let outbound_arc = guard
-            .as_ref()
-            .expect("raw stream must have been opened");
+        let outbound_arc = guard.as_ref().expect("raw stream must have been opened");
         let outbound = outbound_arc.lock().unwrap().clone();
         assert!(
             outbound
@@ -3307,8 +3275,7 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let summary_bytes = build_summary_frame_bytes(31);
         // S8j: real rsync 3.2.7 emits exactly 3 leading NDX_DONE
@@ -3324,10 +3291,8 @@ mod tests {
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &summary_bytes));
 
         let transport = mock_transport_with_raw_inbound(inbound);
-        let adapter = MockSigAdapter::with_fixed_signatures(
-            4,
-            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
-        );
+        let adapter =
+            MockSigAdapter::with_fixed_signatures(4, vec![make_engine_sig(0, 0xA0, 0x01, 4)]);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let _ = d
@@ -3340,7 +3305,10 @@ mod tests {
             .await;
         d.finish_session(&mut sink).await.unwrap();
         assert_eq!(d.phase(), NativeSessionPhase::Complete);
-        assert!(!d.committed(), "download A2.4 stays PreCommit; A4 owns the flip");
+        assert!(
+            !d.committed(),
+            "download A2.4 stays PreCommit; A4 owns the flip"
+        );
         assert!(d.reconstructed().is_some());
         assert!(d.received_summary().is_some());
     }
@@ -3470,8 +3438,7 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let summary_bytes = build_summary_frame_bytes(31);
 
@@ -3487,10 +3454,8 @@ mod tests {
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &combined));
 
         let transport = mock_transport_with_raw_inbound(inbound);
-        let adapter = MockSigAdapter::with_fixed_signatures(
-            4,
-            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
-        );
+        let adapter =
+            MockSigAdapter::with_fixed_signatures(4, vec![make_engine_sig(0, 0xA0, 0x01, 4)]);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let _ = d
@@ -3529,8 +3494,7 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
 
         // First byte is NDX_DONE (drain enters the strict path), second
@@ -3543,10 +3507,8 @@ mod tests {
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &poisoned));
 
         let transport = mock_transport_with_raw_inbound(inbound);
-        let adapter = MockSigAdapter::with_fixed_signatures(
-            4,
-            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
-        );
+        let adapter =
+            MockSigAdapter::with_fixed_signatures(4, vec![make_engine_sig(0, 0xA0, 0x01, 4)]);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let _ = d
@@ -3629,8 +3591,7 @@ mod tests {
             preserve_gid: false,
             previous_name: None,
         };
-        let entry_bytes =
-            encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
         let term_bytes = encode_file_list_terminator(&opts);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -3638,10 +3599,8 @@ mod tests {
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
 
         let transport = mock_transport_with_raw_inbound(inbound);
-        let adapter = MockSigAdapter::with_fixed_signatures(
-            4,
-            vec![make_engine_sig(0, 0xA0, 0x01, 4)],
-        );
+        let adapter =
+            MockSigAdapter::with_fixed_signatures(4, vec![make_engine_sig(0, 0xA0, 0x01, 4)]);
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let res = d
@@ -3652,7 +3611,11 @@ mod tests {
                 &mut sink,
             )
             .await;
-        assert!(res.is_ok(), "through_delta download must return Ok, got {:?}", res);
+        assert!(
+            res.is_ok(),
+            "through_delta download must return Ok, got {:?}",
+            res
+        );
         assert!(d.reconstructed().is_some());
         // Download path leaves committed=false; A4 flips it at temp-file open.
         assert!(!d.committed());
@@ -3751,8 +3714,7 @@ mod tests {
             eprintln!("frozen oracle missing — A2.1 driver pin skipped");
             return;
         };
-        let transport =
-            mock_transport_with_raw_inbound(frozen.download_server_to_client.clone());
+        let transport = mock_transport_with_raw_inbound(frozen.download_server_to_client.clone());
         let mut d = make_driver(transport);
         let mut sink = CollectingSink::default();
         let outcome = d

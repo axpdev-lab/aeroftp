@@ -4,7 +4,8 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { guardedUnlisten } from '../hooks/useTauriListener';
+import { listen } from '@tauri-apps/api/event';
 import {
   Home, Monitor, FileText, Image, Music, Download, Video,
   Trash2, Folder, HardDrive, Usb, Disc, Globe,
@@ -261,11 +262,11 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     // Event-driven: backend mount watcher (poll + inotify on Linux) emits
     // 'volumes-changed' immediately when /proc/mounts or GVFS dir changes.
     // Fallback polling at 30s for macOS/Windows where no watcher exists.
-    let unlisten: UnlistenFn | null = null;
-
-    listen<void>('volumes-changed', () => {
-      if (mountedRef.current) fetchVolumes();
-    }).then((fn) => { unlisten = fn; });
+    const disposeListener = guardedUnlisten(
+      listen<void>('volumes-changed', () => {
+        if (mountedRef.current) fetchVolumes();
+      }),
+    );
 
     // Fallback poll for non-Linux platforms (watcher is Linux-only)
     volumeIntervalRef.current = setInterval(async () => {
@@ -278,7 +279,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     }, VOLUME_POLL_FALLBACK_MS);
 
     return () => {
-      if (unlisten) unlisten();
+      disposeListener();
       if (volumeIntervalRef.current) {
         clearInterval(volumeIntervalRef.current);
         volumeIntervalRef.current = null;

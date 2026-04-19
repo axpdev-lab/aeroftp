@@ -29,6 +29,20 @@ const EVICTION_INTERVAL_SECS: u64 = 60;
 /// Maximum time to wait for in-flight tool calls to complete on shutdown.
 const SHUTDOWN_DRAIN_SECS: u64 = 10;
 
+/// Hard wall-clock cap for a single MCP tool call. Prevents a wedged provider
+/// (TCP half-open, dead SSH session, slow SFTP) from pinning a connection
+/// pool slot indefinitely. Override with `AEROFTP_MCP_TOOL_TIMEOUT_SECS`.
+const MCP_TOOL_TIMEOUT_DEFAULT_SECS: u64 = 600;
+
+fn mcp_tool_timeout() -> Duration {
+    let secs = std::env::var("AEROFTP_MCP_TOOL_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|s| *s > 0)
+        .unwrap_or(MCP_TOOL_TIMEOUT_DEFAULT_SECS);
+    Duration::from_secs(secs)
+}
+
 /// Key used for per-profile serialization when a tool call does not name a
 /// specific server (non-mutating or cross-server operations).
 const GLOBAL_SERIALIZATION_KEY: &str = "__aeroftp_global__";
@@ -44,7 +58,12 @@ pub struct McpServerCore {
     /// that concurrent tool calls against the same server are linearized
     /// (prevents e.g. upload racing a preceding `mkdir` on slow NAS targets),
     /// while different servers continue to run in parallel.
-    profile_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    ///
+    /// Storage is `Weak<Mutex<()>>`: once every outstanding tool call releases
+    /// its `Arc`, the `Weak` can no longer upgrade and the entry is pruned on
+    /// next access. Previously a `HashMap<String, Arc<Mutex<()>>>` leaked one
+    /// lock per unique server name for the lifetime of the process.
+    profile_locks: Arc<Mutex<HashMap<String, std::sync::Weak<Mutex<()>>>>>,
     /// JoinSet of currently dispatched tool-call tasks. Used to drain pending
     /// work on shutdown so responses are not dropped when stdin closes.
     pending_tasks: Arc<Mutex<JoinSet<()>>>,
@@ -71,12 +90,27 @@ impl McpServerCore {
     /// Acquire the per-profile serialization mutex. Tool calls against the
     /// same `profile_key` wait for each other, so e.g. a PUT cannot race a
     /// preceding MKDIR on the same server.
+    ///
+    /// Uses `Weak` storage: the returned strong `Arc` keeps the lock alive
+    /// only as long as callers hold it; when the last caller drops it, the
+    /// `Weak` stored in the map no longer upgrades and the entry is pruned.
     async fn profile_mutex(&self, profile_key: &str) -> Arc<Mutex<()>> {
         let mut locks = self.profile_locks.lock().await;
-        locks
-            .entry(profile_key.to_string())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+
+        // Try to upgrade the existing weak reference.
+        if let Some(weak) = locks.get(profile_key) {
+            if let Some(strong) = weak.upgrade() {
+                return strong;
+            }
+        }
+
+        // Opportunistic GC: prune dead Weak entries so the map does not grow
+        // monotonically across many unique server names.
+        locks.retain(|_, weak| weak.strong_count() > 0);
+
+        let strong = Arc::new(Mutex::new(()));
+        locks.insert(profile_key.to_string(), Arc::downgrade(&strong));
+        strong
     }
 
     /// Run the server main loop. Returns exit code (0 = clean shutdown).
@@ -234,6 +268,9 @@ impl McpServerCore {
         };
 
         let mut tasks = self.pending_tasks.lock().await;
+        // Drain finished handles so the JoinSet does not accumulate completed
+        // tasks across long server lifetimes. try_join_next is non-blocking.
+        while tasks.try_join_next().is_some() {}
         tasks.spawn(async move {
             // Serialize tool calls per-server. The global lock is effectively
             // a single-slot path shared by operations that do not name a
@@ -404,9 +441,33 @@ async fn process_request(
                 }));
             }
 
-            let (result, is_error) =
-                tools::execute_tool(tool_name, &args, &pool, &rate_limiter, notifier.as_ref())
-                    .await;
+            let exec_future =
+                tools::execute_tool(tool_name, &args, &pool, &rate_limiter, notifier.as_ref());
+            let (result, is_error) = match tokio::time::timeout(mcp_tool_timeout(), exec_future)
+                .await
+            {
+                Ok(pair) => pair,
+                Err(_) => {
+                    // Timeout: the dispatch task may still be running inside the
+                    // provider (we cannot cancel it mid-IO without risking half-
+                    // written state), but we release the caller's response slot
+                    // so stdin keeps flowing. The pool connection is left in
+                    // whatever state the provider produces; the pool eviction
+                    // task will reap it on the next idle sweep.
+                    return Some(json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32000,
+                            "message": format!(
+                                "Tool call '{}' exceeded wall-clock timeout of {:?}",
+                                tool_name,
+                                mcp_tool_timeout()
+                            )
+                        }
+                    }));
+                }
+            };
 
             let text = serde_json::to_string_pretty(&result).unwrap_or_default();
             let content = json!([{

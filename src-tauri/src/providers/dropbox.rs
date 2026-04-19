@@ -1373,10 +1373,7 @@ impl StorageProvider for DropboxProvider {
         })
     }
 
-    async fn list_share_links(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+    async fn list_share_links(&mut self, path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {

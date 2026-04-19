@@ -24,11 +24,11 @@
 // `delta_sync_rsync`. Remove this allow when T1.5 Part B lands.
 #![allow(dead_code)]
 
+use crate::providers::sftp::SharedSshHandle;
 use crate::rsync_over_ssh::{
     probe_local_rsync, probe_rsync, rsync_download, rsync_upload, RsyncCapability, RsyncConfig,
     RsyncError, RsyncStats,
 };
-use crate::providers::sftp::SharedSshHandle;
 use async_trait::async_trait;
 use std::path::Path;
 
@@ -62,11 +62,7 @@ pub trait DeltaTransport: Send + Sync {
     ) -> Result<RsyncStats, RsyncError>;
 
     /// Upload `local_path` to `remote_path` with delta semantics.
-    async fn upload(
-        &self,
-        local_path: &Path,
-        remote_path: &str,
-    ) -> Result<RsyncStats, RsyncError>;
+    async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError>;
 }
 
 /// Delta transport backed by the local `rsync` binary driven via SSH.
@@ -95,10 +91,7 @@ impl DeltaTransport for RsyncBinaryTransport {
     }
 
     async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
-        let handle = self
-            .handle
-            .clone()
-            .ok_or(RsyncError::RemoteNotAvailable)?;
+        let handle = self.handle.clone().ok_or(RsyncError::RemoteNotAvailable)?;
         probe_rsync(handle).await
     }
 
@@ -114,11 +107,7 @@ impl DeltaTransport for RsyncBinaryTransport {
         rsync_download(remote_path, local_path, &self.config).await
     }
 
-    async fn upload(
-        &self,
-        local_path: &Path,
-        remote_path: &str,
-    ) -> Result<RsyncStats, RsyncError> {
+    async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
         rsync_upload(local_path, remote_path, &self.config).await
     }
 }

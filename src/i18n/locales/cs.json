@@ -452,7 +452,7 @@
             "modeUnavailable": "Předvolby režimu přenosu jsou aktuálně dostupné pouze pro FTP/FTPS",
             "crossProfile": {
                 "title": "Prenos mezi profily",
-                "subtitle": "Plovouci panel: fronta, zaznam a prubeh zustavaji viditelne behem provadeni.",
+                "subtitle": "Kopírujte soubory přímo mezi dvěma uloženými servery.",
                 "closeAria": "Zavrit panel prenosu mezi profily",
                 "source": "Zdroj",
                 "destination": "Cil",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Velikost",
                 "executeTransfer": "Provest prenos",
                 "transferInProgress": "Prenos probiha",
-                "transferHint": "Sledujte frontu, zaznam aktivity a prubeh nize. Tento panel je zamerne odlehceny.",
+                "transferHint": "Průběh v reálném čase je zobrazen níže. Podrobná historie zůstává v protokolu aktivity.",
                 "summary": "{transferred} preneseno, {skipped} preskoceno, {failed} selhalo",
                 "summaryMeta": "{size} za {seconds}s",
-                "newTransfer": "Novy prenos"
+                "newTransfer": "Novy prenos",
+                "preparing": "Příprava přenosu…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} odstraněn",
             "release_asset_download_start": "[{provider}] Stahování release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} stažen",
-            "release_asset_download_error": "[{provider}] Nepodařilo se stáhnout release asset {filename}"
+            "release_asset_download_error": "[{provider}] Nepodařilo se stáhnout release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Zahájení přenosu {count} z {source} do {dest}",
+            "crossprofile_file_success": "[Cross-profile] Zkopírováno {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Chyba u {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Plánování šířky pásma",
             "bwScheduleOff": "Ruční (použít limity výše)",
             "bwScheduleOffice": "Úřední hodiny (throttle 08-18)",
-            "bwScheduleNight": "Noční režim (throttle 18-08)"
+            "bwScheduleNight": "Noční režim (throttle 18-08)",
+            "allInSync": "Všechny soubory jsou synchronizovány — není co přenášet",
+            "nothingInDirection": "Nalezeny rozdíly, ale žádný neodpovídá zvolenému směru. Zkuste Two-way, abyste viděli všechny změny."
         },
         "ui": {
             "syncing": "Synchronizace...",

@@ -3,23 +3,15 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { Checkbox } from '../ui/Checkbox';
-import {
-    X, Plus, Trash2, Edit2, Check, AlertCircle, ShieldAlert, ShieldCheck, Shield,
-    Zap, Server, Key, Globe, Cpu, ChevronDown, ChevronRight, Sliders, MessageSquare, Puzzle, Layers,
-    Eye, EyeOff, List
-} from 'lucide-react';
+import { X, Plus, Trash2, Edit2, Check, AlertCircle, ShieldAlert, ShieldCheck, Shield, Zap, Server, Key, Globe, Cpu, ChevronDown, ChevronRight, Sliders, MessageSquare, Puzzle, Layers, Eye, EyeOff, List } from 'lucide-react';
 import type { PluginManifest } from '../../types/plugins';
 import { DEFAULT_MACROS } from '../DevTools/aiChatToolMacros';
 import { detectOllamaModelFamily } from '../DevTools/aiProviderProfiles';
 import { OllamaGpuMonitor } from '../DevTools/OllamaGpuMonitor';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon } from '../DevTools/AIIcons';
-import {
-    AIProvider, AIModel, AISettings, AIProviderType,
-    PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings
-} from '../../types/ai';
+import { AIProvider, AIModel, AISettings, AIProviderType, PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings } from '../../types/ai';
 import { logger } from '../../utils/logger';
 import './AISettingsPanel.css';
 import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
@@ -27,6 +19,7 @@ import { ProviderMarketplace } from './ProviderMarketplace';
 import { PluginBrowser } from './PluginBrowser';
 import { applyRegistryDefaults, lookupModelSpec } from '../../types/aiModelRegistry';
 import { useTranslation } from '../../i18n';
+import { createTauriListener } from '../../hooks/useTauriListener';
 
 interface AISettingsPanelProps {
     isOpen: boolean;
@@ -36,26 +29,46 @@ interface AISettingsPanelProps {
 // Provider type icons
 const getProviderIcon = (type: AIProviderType): React.ReactNode => {
     switch (type) {
-        case 'google': return <GeminiIcon size={16} />;
-        case 'openai': return <OpenAIIcon size={16} />;
-        case 'anthropic': return <AnthropicIcon size={16} />;
-        case 'xai': return <XAIIcon size={16} />;
-        case 'openrouter': return <OpenRouterIcon size={16} />;
-        case 'ollama': return <OllamaIcon size={16} />;
-        case 'kimi': return <KimiIcon size={16} />;
-        case 'qwen': return <QwenIcon size={16} />;
-        case 'deepseek': return <DeepSeekIcon size={16} />;
-        case 'mistral': return <MistralIcon size={16} />;
-        case 'groq': return <GroqIcon size={16} />;
-        case 'perplexity': return <PerplexityIcon size={16} />;
-        case 'cohere': return <CohereIcon size={16} />;
-        case 'together': return <TogetherIcon size={16} />;
-        case 'ai21': return <AI21Icon size={16} />;
-        case 'cerebras': return <CerebrasIcon size={16} />;
-        case 'sambanova': return <SambaNovaIcon size={16} />;
-        case 'fireworks': return <FireworksIcon size={16} />;
-        case 'custom': return <Server size={14} className="text-gray-400" />;
-        default: return <Server size={14} />;
+        case 'google':
+            return <GeminiIcon size={16} />;
+        case 'openai':
+            return <OpenAIIcon size={16} />;
+        case 'anthropic':
+            return <AnthropicIcon size={16} />;
+        case 'xai':
+            return <XAIIcon size={16} />;
+        case 'openrouter':
+            return <OpenRouterIcon size={16} />;
+        case 'ollama':
+            return <OllamaIcon size={16} />;
+        case 'kimi':
+            return <KimiIcon size={16} />;
+        case 'qwen':
+            return <QwenIcon size={16} />;
+        case 'deepseek':
+            return <DeepSeekIcon size={16} />;
+        case 'mistral':
+            return <MistralIcon size={16} />;
+        case 'groq':
+            return <GroqIcon size={16} />;
+        case 'perplexity':
+            return <PerplexityIcon size={16} />;
+        case 'cohere':
+            return <CohereIcon size={16} />;
+        case 'together':
+            return <TogetherIcon size={16} />;
+        case 'ai21':
+            return <AI21Icon size={16} />;
+        case 'cerebras':
+            return <CerebrasIcon size={16} />;
+        case 'sambanova':
+            return <SambaNovaIcon size={16} />;
+        case 'fireworks':
+            return <FireworksIcon size={16} />;
+        case 'custom':
+            return <Server size={14} className="text-gray-400" />;
+        default:
+            return <Server size={14} />;
     }
 };
 
@@ -87,7 +100,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
 
     // Auto-fill from registry when model name changes (new models only)
     const handleNameChange = (name: string) => {
-        setFormData(prev => {
+        setFormData((prev) => {
             const spec = lookupModelSpec(name);
             if (!spec || !isNew) return { ...prev, name };
             return {
@@ -108,7 +121,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
         if (!formData.name.trim()) return;
 
         const baseModel = {
-            ...(model || {}),  // preserve fields not in the form (toolCallQuality, bestFor, costs, etc.)
+            ...(model || {}), // preserve fields not in the form (toolCallQuality, bestFor, costs, etc.)
             id: model?.id || generateId(),
             providerId,
             name: formData.name.trim(),
@@ -122,7 +135,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
             isEnabled: formData.isEnabled,
             isDefault: model?.isDefault ?? false,
         };
-        onSave(isNew ? applyRegistryDefaults(baseModel) as AIModel : baseModel);
+        onSave(isNew ? (applyRegistryDefaults(baseModel) as AIModel) : baseModel);
     };
 
     return (
@@ -138,29 +151,14 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                     {/* Model Name */}
                     <div>
                         <label className="block text-sm text-gray-400 mb-1">{t('ai.settings.modelName')}</label>
-                        <input
-                            type="text"
-                            value={formData.name}
-                            onChange={e => handleNameChange(e.target.value)}
-                            placeholder={t('ai.settings.modelNamePlaceholder')}
-                            className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            autoFocus
-                        />
-                        {isNew && lookupModelSpec(formData.name) && (
-                            <span className="text-xs text-green-400 mt-1 block">{t('ai.settings.knownModelHint')}</span>
-                        )}
+                        <input type="text" value={formData.name} onChange={(e) => handleNameChange(e.target.value)} placeholder={t('ai.settings.modelNamePlaceholder')} className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" autoFocus />
+                        {isNew && lookupModelSpec(formData.name) && <span className="text-xs text-green-400 mt-1 block">{t('ai.settings.knownModelHint')}</span>}
                     </div>
 
                     {/* Display Name */}
                     <div>
                         <label className="block text-sm text-gray-400 mb-1">{t('ai.settings.displayName')}</label>
-                        <input
-                            type="text"
-                            value={formData.displayName}
-                            onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-                            placeholder={t('ai.settings.displayNamePlaceholder')}
-                            className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
+                        <input type="text" value={formData.displayName} onChange={(e) => setFormData({ ...formData, displayName: e.target.value })} placeholder={t('ai.settings.displayNamePlaceholder')} className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                     </div>
 
                     {/* Max Tokens */}
@@ -169,7 +167,12 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                         <input
                             type="number"
                             value={formData.maxTokens}
-                            onChange={e => setFormData({ ...formData, maxTokens: parseInt(e.target.value) || 4096 })}
+                            onChange={(e) =>
+                                setFormData({
+                                    ...formData,
+                                    maxTokens: parseInt(e.target.value) || 4096,
+                                })
+                            }
                             className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />
                     </div>
@@ -178,26 +181,10 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                     <div>
                         <label className="block text-sm text-gray-400 mb-2">{t('ai.settings.capabilities')}</label>
                         <div className="flex flex-wrap gap-3">
-                            <Checkbox
-                                checked={formData.supportsStreaming}
-                                onChange={(v) => setFormData({ ...formData, supportsStreaming: v })}
-                                label={<span className="text-sm">⚡ {t('ai.settings.streaming')}</span>}
-                            />
-                            <Checkbox
-                                checked={formData.supportsTools}
-                                onChange={(v) => setFormData({ ...formData, supportsTools: v })}
-                                label={<span className="text-sm">🔧 {t('ai.settings.tools')}</span>}
-                            />
-                            <Checkbox
-                                checked={formData.supportsVision}
-                                onChange={(v) => setFormData({ ...formData, supportsVision: v })}
-                                label={<span className="text-sm">👁 {t('ai.settings.vision')}</span>}
-                            />
-                            <Checkbox
-                                checked={formData.supportsThinking}
-                                onChange={(v) => setFormData({ ...formData, supportsThinking: v })}
-                                label={<span className="text-sm">💭 {t('ai.settings.thinking')}</span>}
-                            />
+                            <Checkbox checked={formData.supportsStreaming} onChange={(v) => setFormData({ ...formData, supportsStreaming: v })} label={<span className="text-sm">⚡ {t('ai.settings.streaming')}</span>} />
+                            <Checkbox checked={formData.supportsTools} onChange={(v) => setFormData({ ...formData, supportsTools: v })} label={<span className="text-sm">🔧 {t('ai.settings.tools')}</span>} />
+                            <Checkbox checked={formData.supportsVision} onChange={(v) => setFormData({ ...formData, supportsVision: v })} label={<span className="text-sm">👁 {t('ai.settings.vision')}</span>} />
+                            <Checkbox checked={formData.supportsThinking} onChange={(v) => setFormData({ ...formData, supportsThinking: v })} label={<span className="text-sm">💭 {t('ai.settings.thinking')}</span>} />
                         </div>
                     </div>
 
@@ -207,33 +194,27 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, isNe
                         <input
                             type="number"
                             value={formData.maxContextTokens || ''}
-                            onChange={e => setFormData({ ...formData, maxContextTokens: parseInt(e.target.value) || 0 })}
+                            onChange={(e) =>
+                                setFormData({
+                                    ...formData,
+                                    maxContextTokens: parseInt(e.target.value) || 0,
+                                })
+                            }
                             placeholder={t('ai.settings.contextWindowPlaceholder')}
                             className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />
                     </div>
 
                     {/* Enabled Toggle */}
-                    <Checkbox
-                        checked={formData.isEnabled}
-                        onChange={(v) => setFormData({ ...formData, isEnabled: v })}
-                        label={<span className="text-sm">{t('ai.settings.enabled')}</span>}
-                    />
+                    <Checkbox checked={formData.isEnabled} onChange={(v) => setFormData({ ...formData, isEnabled: v })} label={<span className="text-sm">{t('ai.settings.enabled')}</span>} />
                 </div>
 
                 {/* Actions */}
                 <div className="flex justify-end gap-3 mt-6">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
-                    >
+                    <button onClick={onClose} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
                         {t('ai.settings.cancel')}
                     </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={!formData.name.trim()}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors flex items-center gap-2"
-                    >
+                    <button onClick={handleSave} disabled={!formData.name.trim()} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors flex items-center gap-2">
                         <Check size={14} />
                         {isNew ? t('ai.settings.addModel') : t('ai.settings.saveChanges')}
                     </button>
@@ -258,15 +239,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const [selectedAgentMode, setSelectedAgentMode] = useState<string>(() => {
         try {
             return localStorage.getItem('aeroftp_ai_agent_mode') || 'normal';
-        } catch { return 'normal'; }
+        } catch {
+            return 'normal';
+        }
     });
-
-    // Clear debounced save on unmount
-    useEffect(() => {
-        return () => {
-            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        };
-    }, []);
 
     // Load plugins
     useEffect(() => {
@@ -280,7 +256,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const [testResults, setTestResults] = useState<Record<string, { status: 'success' | 'error'; message?: string } | null>>({});
     const [detectingModels, setDetectingModels] = useState<string | null>(null);
     const [fetchingModels, setFetchingModels] = useState<string | null>(null);
-    const [availableModels, setAvailableModels] = useState<{ providerId: string; models: string[] } | null>(null);
+    const [availableModels, setAvailableModels] = useState<{
+        providerId: string;
+        models: string[];
+    } | null>(null);
     const [addedModels, setAddedModels] = useState<Set<string>>(new Set());
     const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
     const [modelFilter, setModelFilter] = useState('');
@@ -288,9 +267,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     // Ollama pull model state
     const [pullModelName, setPullModelName] = useState('');
     const [isPulling, setIsPulling] = useState(false);
-    const [pullProgress, setPullProgress] = useState<{ status: string; percent: number } | null>(null);
+    const [pullProgress, setPullProgress] = useState<{
+        status: string;
+        percent: number;
+    } | null>(null);
+    const pullListenerCleanupRef = useRef<(() => void) | null>(null);
+    const pullResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const addedProviderTypesSet = useMemo(() => new Set(settings.providers.map(p => p.type)), [settings.providers]);
+    const addedProviderTypesSet = useMemo(() => new Set(settings.providers.map((p) => p.type)), [settings.providers]);
 
     // Model editing state
     const [editingModel, setEditingModel] = useState<{
@@ -298,6 +282,37 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         providerId: string;
         isNew: boolean;
     } | null>(null);
+
+    const clearPullListener = useCallback(() => {
+        if (pullListenerCleanupRef.current) {
+            pullListenerCleanupRef.current();
+            pullListenerCleanupRef.current = null;
+        }
+    }, []);
+
+    const clearPullResetTimer = useCallback(() => {
+        if (pullResetTimerRef.current) {
+            clearTimeout(pullResetTimerRef.current);
+            pullResetTimerRef.current = null;
+        }
+    }, []);
+
+    // Clear debounced save on unmount
+    useEffect(() => {
+        return () => {
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+            clearPullListener();
+            clearPullResetTimer();
+        };
+    }, [clearPullListener, clearPullResetTimer]);
+
+    useEffect(() => {
+        if (isOpen) return;
+        clearPullListener();
+        clearPullResetTimer();
+        setIsPulling(false);
+        setPullProgress(null);
+    }, [clearPullListener, clearPullResetTimer, isOpen]);
 
     // Load settings from localStorage (sync) + vault (async) + API keys from OS Keyring
     useEffect(() => {
@@ -312,7 +327,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 // Migration: if apiKey exists in localStorage copy, move it to keyring
                 if (provider.apiKey) {
                     try {
-                        await invoke('store_credential', { account: `ai_apikey_${provider.id}`, password: provider.apiKey });
+                        await invoke('store_credential', {
+                            account: `ai_apikey_${provider.id}`,
+                            password: provider.apiKey,
+                        });
                         migrated = true;
                     } catch (e) {
                         console.warn(`Failed to migrate API key for ${provider.name} to keyring:`, e);
@@ -320,7 +338,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 } else {
                     // Load from keyring
                     try {
-                        const key = await invoke<string>('get_credential', { account: `ai_apikey_${provider.id}` });
+                        const key = await invoke<string>('get_credential', {
+                            account: `ai_apikey_${provider.id}`,
+                        });
                         provider.apiKey = key;
                     } catch {
                         // Key not in keyring yet — leave empty
@@ -343,7 +363,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     if (migrated) {
                         const stripped = {
                             ...hydrated,
-                            providers: hydrated.providers.map((p: AIProvider) => ({ ...p, apiKey: undefined })),
+                            providers: hydrated.providers.map((p: AIProvider) => ({
+                                ...p,
+                                apiKey: undefined,
+                            })),
                         };
                         localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
                         logger.debug('[AI Settings] Migrated API keys from localStorage to OS Keyring');
@@ -379,7 +402,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             for (const provider of newSettings.providers) {
                 if (provider.apiKey) {
                     try {
-                        await invoke('store_credential', { account: `ai_apikey_${provider.id}`, password: provider.apiKey });
+                        await invoke('store_credential', {
+                            account: `ai_apikey_${provider.id}`,
+                            password: provider.apiKey,
+                        });
                     } catch (e) {
                         keyringErrors.push(`${provider.name}: ${e}`);
                     }
@@ -392,7 +418,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             // Strip API keys from localStorage copy
             const stripped = {
                 ...newSettings,
-                providers: newSettings.providers.map(p => ({ ...p, apiKey: undefined })),
+                providers: newSettings.providers.map((p) => ({
+                    ...p,
+                    apiKey: undefined,
+                })),
             };
             localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
 
@@ -407,7 +436,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     }, []);
 
     // Add provider from preset
-    const addProviderFromPreset = (preset: typeof PROVIDER_PRESETS[0]) => {
+    const addProviderFromPreset = (preset: (typeof PROVIDER_PRESETS)[0]) => {
         const now = new Date();
         const newProvider: AIProvider = {
             id: generateId(),
@@ -419,7 +448,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
         // Add default models for this provider
         const defaultModels = DEFAULT_MODELS[preset.type] || [];
-        const newModels: AIModel[] = defaultModels.map(m => ({
+        const newModels: AIModel[] = defaultModels.map((m) => ({
             id: generateId(),
             providerId: newProvider.id,
             ...m,
@@ -438,9 +467,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const updateProvider = (provider: AIProvider) => {
         saveSettings({
             ...settings,
-            providers: settings.providers.map(p =>
-                p.id === provider.id ? { ...provider, updatedAt: new Date() } : p
-            ),
+            providers: settings.providers.map((p) => (p.id === provider.id ? { ...provider, updatedAt: new Date() } : p)),
         });
         setEditingProvider(null);
     };
@@ -451,8 +478,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         invoke('delete_credential', { account: `ai_apikey_${providerId}` }).catch(() => {});
         saveSettings({
             ...settings,
-            providers: settings.providers.filter(p => p.id !== providerId),
-            models: settings.models.filter(m => m.providerId !== providerId),
+            providers: settings.providers.filter((p) => p.id !== providerId),
+            models: settings.models.filter((m) => m.providerId !== providerId),
         });
     };
 
@@ -460,9 +487,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const toggleProviderEnabled = (providerId: string) => {
         saveSettings({
             ...settings,
-            providers: settings.providers.map(p =>
-                p.id === providerId ? { ...p, isEnabled: !p.isEnabled, updatedAt: new Date() } : p
-            ),
+            providers: settings.providers.map((p) => (p.id === providerId ? { ...p, isEnabled: !p.isEnabled, updatedAt: new Date() } : p)),
         });
     };
 
@@ -470,7 +495,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const testProvider = async (provider: AIProvider) => {
         // B21: Use functional updater to avoid stale closure
         setTestingProvider(() => provider.id);
-        setTestResults(prev => ({ ...prev, [provider.id]: null }));
+        setTestResults((prev) => ({ ...prev, [provider.id]: null }));
 
         try {
             if (!provider.apiKey && provider.type !== 'ollama') {
@@ -484,13 +509,19 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             });
 
             if (result) {
-                setTestResults(prev => ({ ...prev, [provider.id]: { status: 'success' } }));
+                setTestResults((prev) => ({
+                    ...prev,
+                    [provider.id]: { status: 'success' },
+                }));
             } else {
                 throw new Error('Connection test returned false');
             }
         } catch (error: any) {
             const msg = typeof error === 'string' ? error : error?.message || 'Connection failed';
-            setTestResults(prev => ({ ...prev, [provider.id]: { status: 'error', message: msg } }));
+            setTestResults((prev) => ({
+                ...prev,
+                [provider.id]: { status: 'error', message: msg },
+            }));
         } finally {
             setTestingProvider(() => null);
         }
@@ -507,29 +538,36 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             });
 
             if (modelNames.length === 0) {
-                setTestResults(prev => ({ ...prev, [provider.id]: { status: 'error', message: 'No models found' } }));
+                setTestResults((prev) => ({
+                    ...prev,
+                    [provider.id]: { status: 'error', message: 'No models found' },
+                }));
                 return;
             }
 
-            const existingNames = settings.models
-                .filter(m => m.providerId === provider.id)
-                .map(m => m.name);
+            const existingNames = settings.models.filter((m) => m.providerId === provider.id).map((m) => m.name);
 
             const VISION_PATTERNS = /llava|bakllava|moondream|minicpm-v/i;
             const newModels = modelNames
                 .filter((name: string) => !existingNames.includes(name))
-                .map((name: string, index: number) => applyRegistryDefaults({
-                    id: generateId(),
-                    providerId: provider.id,
-                    name,
-                    displayName: name.split(':')[0].replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-                    maxTokens: 4096,
-                    supportsStreaming: true,
-                    supportsTools: true,
-                    supportsVision: VISION_PATTERNS.test(name),
-                    isEnabled: true,
-                    isDefault: existingNames.length === 0 && index === 0,
-                }) as AIModel);
+                .map(
+                    (name: string, index: number) =>
+                        applyRegistryDefaults({
+                            id: generateId(),
+                            providerId: provider.id,
+                            name,
+                            displayName: name
+                                .split(':')[0]
+                                .replace(/-/g, ' ')
+                                .replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                            maxTokens: 4096,
+                            supportsStreaming: true,
+                            supportsTools: true,
+                            supportsVision: VISION_PATTERNS.test(name),
+                            isEnabled: true,
+                            isDefault: existingNames.length === 0 && index === 0,
+                        }) as AIModel
+                );
 
             if (newModels.length > 0) {
                 saveSettings({
@@ -537,9 +575,15 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     models: [...settings.models, ...newModels],
                 });
             }
-            setTestResults(prev => ({ ...prev, [provider.id]: { status: 'success' } }));
+            setTestResults((prev) => ({
+                ...prev,
+                [provider.id]: { status: 'success' },
+            }));
         } catch {
-            setTestResults(prev => ({ ...prev, [provider.id]: { status: 'error', message: 'Ollama not reachable' } }));
+            setTestResults((prev) => ({
+                ...prev,
+                [provider.id]: { status: 'error', message: 'Ollama not reachable' },
+            }));
         } finally {
             setDetectingModels(null);
         }
@@ -548,32 +592,36 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     // Pull (download) a model from the Ollama registry
     const handlePullModel = async (provider: AIProvider) => {
         if (!pullModelName.trim() || isPulling) return;
+        clearPullListener();
+        clearPullResetTimer();
         setIsPulling(true);
         setPullProgress({ status: 'Starting...', percent: 0 });
 
         const streamId = `pull_${Date.now()}`;
 
-        // Listen for progress events from Tauri backend
-        const unlisten = await listen<{ status: string; total?: number; completed?: number; done: boolean }>(
-            `ollama-pull-${streamId}`,
-            (event) => {
-                const { status, total, completed, done } = event.payload;
-                if (done) {
-                    setPullProgress({ status: 'Complete!', percent: 100 });
-                    setTimeout(() => {
-                        setIsPulling(false);
-                        setPullProgress(null);
-                        setPullModelName('');
-                        // Refresh model list
-                        detectOllamaModels(provider);
-                    }, 1500);
-                    unlisten();
-                    return;
-                }
-                const percent = total && completed ? Math.round((completed / total) * 100) : 0;
-                setPullProgress({ status, percent });
+        pullListenerCleanupRef.current = createTauriListener<{
+            status: string;
+            total?: number;
+            completed?: number;
+            done: boolean;
+        }>(`ollama-pull-${streamId}`, (event) => {
+            const { status, total, completed, done } = event.payload;
+            if (done) {
+                setPullProgress({ status: 'Complete!', percent: 100 });
+                clearPullListener();
+                clearPullResetTimer();
+                pullResetTimerRef.current = setTimeout(() => {
+                    setIsPulling(false);
+                    setPullProgress(null);
+                    setPullModelName('');
+                    // Refresh model list
+                    detectOllamaModels(provider);
+                }, 1500);
+                return;
             }
-        );
+            const percent = total && completed ? Math.round((completed / total) * 100) : 0;
+            setPullProgress({ status, percent });
+        });
 
         try {
             await invoke('ollama_pull_model', {
@@ -583,11 +631,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             });
         } catch (error) {
             setPullProgress({ status: `Error: ${error}`, percent: 0 });
-            setTimeout(() => {
+            clearPullListener();
+            clearPullResetTimer();
+            pullResetTimerRef.current = setTimeout(() => {
                 setIsPulling(false);
                 setPullProgress(null);
             }, 3000);
-            unlisten();
         }
     };
 
@@ -604,7 +653,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             setAvailableModels({ providerId: provider.id, models });
         } catch (error: any) {
             const msg = typeof error === 'string' ? error : error?.message || 'Failed to fetch models';
-            setTestResults(prev => ({ ...prev, [provider.id]: { status: 'error', message: msg } }));
+            setTestResults((prev) => ({
+                ...prev,
+                [provider.id]: { status: 'error', message: msg },
+            }));
             setAvailableModels(null);
         } finally {
             setFetchingModels(null);
@@ -614,9 +666,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     // Add a model from the available models list
     const addModelFromList = (provider: AIProvider, modelName: string) => {
         const current = settingsRef.current;
-        const existingNames = current.models.filter(m => m.providerId === provider.id).map(m => m.name);
+        const existingNames = current.models.filter((m) => m.providerId === provider.id).map((m) => m.name);
         if (existingNames.includes(modelName)) {
-            setAddedModels(prev => new Set(prev).add(modelName));
+            setAddedModels((prev) => new Set(prev).add(modelName));
             return;
         }
         const noExisting = existingNames.length === 0;
@@ -624,7 +676,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             id: generateId(),
             providerId: provider.id,
             name: modelName,
-            displayName: modelName.split('/').pop()?.split(':')[0]?.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || modelName,
+            displayName:
+                modelName
+                    .split('/')
+                    .pop()
+                    ?.split(':')[0]
+                    ?.replace(/-/g, ' ')
+                    .replace(/\b\w/g, (c) => c.toUpperCase()) || modelName,
             maxTokens: 4096,
             supportsStreaming: true,
             supportsTools: true,
@@ -636,36 +694,33 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             ...current,
             models: [...current.models, newModel],
         });
-        setAddedModels(prev => new Set(prev).add(modelName));
+        setAddedModels((prev) => new Set(prev).add(modelName));
     };
 
     // Save model (create or update)
     const saveModel = (model: AIModel) => {
-        const existingIndex = settings.models.findIndex(m => m.id === model.id);
+        const existingIndex = settings.models.findIndex((m) => m.id === model.id);
         if (existingIndex >= 0) {
             // Update
             saveSettings({
                 ...settings,
-                models: settings.models.map(m => m.id === model.id ? model : m)
+                models: settings.models.map((m) => (m.id === model.id ? model : m)),
             });
         } else {
             // Create
             saveSettings({
                 ...settings,
-                models: [...settings.models, model]
+                models: [...settings.models, model],
             });
         }
         setEditingModel(null);
     };
 
     // Get models for a provider
-    const getProviderModels = (providerId: string) =>
-        settings.models.filter(m => m.providerId === providerId);
+    const getProviderModels = (providerId: string) => settings.models.filter((m) => m.providerId === providerId);
 
     // Get unused presets
-    const unusedPresets = PROVIDER_PRESETS.filter(
-        preset => !settings.providers.some(p => p.type === preset.type)
-    );
+    const unusedPresets = PROVIDER_PRESETS.filter((preset) => !settings.providers.some((p) => p.type === preset.type));
 
     if (!isOpen) return null;
 
@@ -680,10 +735,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         <Cpu className="text-purple-400" size={24} />
                         <h2 className="text-xl font-semibold">{t('ai.settings.title')}</h2>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                    >
+                    <button onClick={onClose} className="p-2 hover:bg-gray-700 rounded-lg transition-colors">
                         <X size={20} />
                     </button>
                 </div>
@@ -691,21 +743,38 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 {/* Tabs */}
                 <div className="flex border-b border-gray-700">
                     {[
-                        { id: 'providers', label: t('ai.settings.providers'), icon: <Server size={14} /> },
-                        { id: 'models', label: t('ai.settings.models'), icon: <Cpu size={14} /> },
-                        { id: 'advanced', label: t('ai.settings.advanced'), icon: <Sliders size={14} /> },
-                        { id: 'prompt', label: t('ai.settings.prompt'), icon: <MessageSquare size={14} /> },
-                        { id: 'plugins', label: t('ai.settings.plugins'), icon: <Puzzle size={14} /> },
-                        { id: 'macros', label: t('ai.settings.macros'), icon: <Layers size={14} /> },
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${activeTab === tab.id
-                                ? 'text-purple-400 border-b-2 border-purple-400 bg-gray-800/50'
-                                : 'text-gray-400 hover:text-white hover:bg-gray-800/30'
-                                }`}
-                        >
+                        {
+                            id: 'providers',
+                            label: t('ai.settings.providers'),
+                            icon: <Server size={14} />,
+                        },
+                        {
+                            id: 'models',
+                            label: t('ai.settings.models'),
+                            icon: <Cpu size={14} />,
+                        },
+                        {
+                            id: 'advanced',
+                            label: t('ai.settings.advanced'),
+                            icon: <Sliders size={14} />,
+                        },
+                        {
+                            id: 'prompt',
+                            label: t('ai.settings.prompt'),
+                            icon: <MessageSquare size={14} />,
+                        },
+                        {
+                            id: 'plugins',
+                            label: t('ai.settings.plugins'),
+                            icon: <Puzzle size={14} />,
+                        },
+                        {
+                            id: 'macros',
+                            label: t('ai.settings.macros'),
+                            icon: <Layers size={14} />,
+                        },
+                    ].map((tab) => (
+                        <button key={tab.id} onClick={() => setActiveTab(tab.id as typeof activeTab)} className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? 'text-purple-400 border-b-2 border-purple-400 bg-gray-800/50' : 'text-gray-400 hover:text-white hover:bg-gray-800/30'}`}>
                             {tab.icon}
                             {tab.label}
                         </button>
@@ -719,10 +788,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             {/* Add Provider — Marketplace Button */}
                             {unusedPresets.length > 0 && (
                                 <div className="flex items-center gap-3 mb-4">
-                                    <button
-                                        onClick={() => setShowMarketplace(true)}
-                                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium text-white transition-colors"
-                                    >
+                                    <button onClick={() => setShowMarketplace(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium text-white transition-colors">
                                         <Plus size={14} />
                                         {t('ai.marketplace.browseProviders')}
                                     </button>
@@ -741,11 +807,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {settings.providers.map(provider => (
-                                        <div
-                                            key={provider.id}
-                                            className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden"
-                                        >
+                                    {settings.providers.map((provider) => (
+                                        <div key={provider.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                                             {/* Provider Header */}
                                             <div className="flex items-center gap-3 px-4 py-3">
                                                 <button
@@ -760,10 +823,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     }}
                                                     className="p-1 hover:bg-gray-700 rounded"
                                                 >
-                                                    {expandedProviders.has(provider.id)
-                                                        ? <ChevronDown size={16} />
-                                                        : <ChevronRight size={16} />
-                                                    }
+                                                    {expandedProviders.has(provider.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                                 </button>
 
                                                 <div className="text-lg">{getProviderIcon(provider.type)}</div>
@@ -774,36 +834,15 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                 </div>
 
                                                 {/* Status indicator */}
-                                                <div className={`w-2 h-2 rounded-full ${provider.isEnabled && (provider.apiKey || provider.type === 'ollama')
-                                                    ? 'bg-green-500'
-                                                    : provider.isEnabled
-                                                        ? 'bg-yellow-500'
-                                                        : 'bg-gray-500'
-                                                    }`} title={
-                                                        provider.isEnabled && (provider.apiKey || provider.type === 'ollama')
-                                                            ? t('ai.settings.active')
-                                                            : provider.isEnabled
-                                                                ? t('ai.settings.missingApiKey')
-                                                                : t('ai.settings.disabled')
-                                                    } />
+                                                <div className={`w-2 h-2 rounded-full ${provider.isEnabled && (provider.apiKey || provider.type === 'ollama') ? 'bg-green-500' : provider.isEnabled ? 'bg-yellow-500' : 'bg-gray-500'}`} title={provider.isEnabled && (provider.apiKey || provider.type === 'ollama') ? t('ai.settings.active') : provider.isEnabled ? t('ai.settings.missingApiKey') : t('ai.settings.disabled')} />
 
                                                 {/* Toggle */}
-                                                <button
-                                                    onClick={() => toggleProviderEnabled(provider.id)}
-                                                    className={`px-3 py-1 text-xs rounded-full transition-colors ${provider.isEnabled
-                                                        ? 'bg-green-500/20 text-green-400'
-                                                        : 'bg-gray-700 text-gray-400'
-                                                        }`}
-                                                >
+                                                <button onClick={() => toggleProviderEnabled(provider.id)} className={`px-3 py-1 text-xs rounded-full transition-colors ${provider.isEnabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-400'}`}>
                                                     {provider.isEnabled ? t('ai.settings.enabled') : t('ai.settings.disabled')}
                                                 </button>
 
                                                 {/* Delete */}
-                                                <button
-                                                    onClick={() => deleteProvider(provider.id)}
-                                                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                    title={t('ai.settings.deleteProvider')}
-                                                >
+                                                <button onClick={() => deleteProvider(provider.id)} className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title={t('ai.settings.deleteProvider')}>
                                                     <Trash2 size={16} />
                                                 </button>
                                             </div>
@@ -821,10 +860,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             <div className="flex-1 relative">
                                                                 <input
                                                                     type={showApiKey[provider.id] ? 'text' : 'password'}
-                                                                    value={provider.type === 'ollama' ? 'ollama' : (provider.apiKey || '')}
-                                                                    onChange={e => {
+                                                                    value={provider.type === 'ollama' ? 'ollama' : provider.apiKey || ''}
+                                                                    onChange={(e) => {
                                                                         if (provider.type !== 'ollama') {
-                                                                            updateProvider({ ...provider, apiKey: e.target.value });
+                                                                            updateProvider({
+                                                                                ...provider,
+                                                                                apiKey: e.target.value,
+                                                                            });
                                                                         }
                                                                     }}
                                                                     disabled={provider.type === 'ollama'}
@@ -833,68 +875,52 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 />
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => setShowApiKey(prev => ({ ...prev, [provider.id]: !prev[provider.id] }))}
+                                                                    onClick={() =>
+                                                                        setShowApiKey((prev) => ({
+                                                                            ...prev,
+                                                                            [provider.id]: !prev[provider.id],
+                                                                        }))
+                                                                    }
                                                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
                                                                     title={showApiKey[provider.id] ? t('ai.settings.hideKey') : t('ai.settings.showKey')}
                                                                 >
                                                                     {showApiKey[provider.id] ? <EyeOff size={14} /> : <Eye size={14} />}
                                                                 </button>
                                                             </div>
-                                                            <button
-                                                                onClick={() => testProvider(provider)}
-                                                                disabled={testingProvider === provider.id}
-                                                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors"
-                                                            >
-                                                                {testingProvider === provider.id ? (
-                                                                    <span className="animate-spin">⏳</span>
-                                                                ) : (
-                                                                    <Zap size={14} />
-                                                                )}
+                                                            <button onClick={() => testProvider(provider)} disabled={testingProvider === provider.id} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors">
+                                                                {testingProvider === provider.id ? <span className="animate-spin">⏳</span> : <Zap size={14} />}
                                                                 {t('ai.settings.test')}
                                                             </button>
-                                                            <button
-                                                                onClick={() => fetchProviderModels(provider)}
-                                                                disabled={fetchingModels === provider.id || (!provider.apiKey && provider.type !== 'ollama')}
-                                                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap"
-                                                                title={t('ai.settings.browseModels')}
-                                                            >
-                                                                {fetchingModels === provider.id ? (
-                                                                    <span className="animate-spin">⏳</span>
-                                                                ) : (
-                                                                    <List size={14} />
-                                                                )}
+                                                            <button onClick={() => fetchProviderModels(provider)} disabled={fetchingModels === provider.id || (!provider.apiKey && provider.type !== 'ollama')} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap" title={t('ai.settings.browseModels')}>
+                                                                {fetchingModels === provider.id ? <span className="animate-spin">⏳</span> : <List size={14} />}
                                                                 {t('ai.settings.fetchModels')}
                                                             </button>
                                                             {provider.type === 'ollama' && (
-                                                                <button
-                                                                    onClick={() => detectOllamaModels(provider)}
-                                                                    disabled={detectingModels === provider.id}
-                                                                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap"
-                                                                    title="Auto-detect available Ollama models"
-                                                                >
-                                                                    {detectingModels === provider.id ? (
-                                                                        <span className="animate-spin">⏳</span>
-                                                                    ) : (
-                                                                        <span>🔍</span>
-                                                                    )}
+                                                                <button onClick={() => detectOllamaModels(provider)} disabled={detectingModels === provider.id} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap" title="Auto-detect available Ollama models">
+                                                                    {detectingModels === provider.id ? <span className="animate-spin">⏳</span> : <span>🔍</span>}
                                                                     {t('ai.settings.detectModels')}
                                                                 </button>
                                                             )}
                                                         </div>
                                                         {testResults[provider.id] && (
-                                                            <div className={`mt-2 text-xs flex items-center gap-1 ${testResults[provider.id]?.status === 'success'
-                                                                ? 'text-green-400'
-                                                                : 'text-red-400'
-                                                                }`}>
-                                                                {testResults[provider.id]?.status === 'success'
-                                                                    ? <><Check size={12} /> {t('ai.settings.testSuccess')}</>
-                                                                    : <><AlertCircle size={12} /> {t('ai.settings.testFailed')}{testResults[provider.id]?.message ? `: ${testResults[provider.id]!.message}` : ''}</>
-                                                                }
+                                                            <div className={`mt-2 text-xs flex items-center gap-1 ${testResults[provider.id]?.status === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                                                                {testResults[provider.id]?.status === 'success' ? (
+                                                                    <>
+                                                                        <Check size={12} /> {t('ai.settings.testSuccess')}
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <AlertCircle size={12} /> {t('ai.settings.testFailed')}
+                                                                        {testResults[provider.id]?.message ? `: ${testResults[provider.id]!.message}` : ''}
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         )}
                                                         {provider.type === 'ollama' && testResults[provider.id]?.status === 'success' && (
                                                             <div className="mt-1 text-xs text-cyan-400">
-                                                                {t('ai.settings.modelsAvailable', { count: getProviderModels(provider.id).length })}
+                                                                {t('ai.settings.modelsAvailable', {
+                                                                    count: getProviderModels(provider.id).length,
+                                                                })}
                                                             </div>
                                                         )}
 
@@ -910,24 +936,17 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                         placeholder={t('ai.settings.pullModelPlaceholder')}
                                                                         className="flex-1 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
                                                                         disabled={isPulling}
-                                                                        onKeyDown={(e) => { if (e.key === 'Enter') handlePullModel(provider); }}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === 'Enter') handlePullModel(provider);
+                                                                        }}
                                                                     />
-                                                                    <button
-                                                                        onClick={() => handlePullModel(provider)}
-                                                                        disabled={isPulling || !pullModelName.trim()}
-                                                                        className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded text-xs font-medium transition-colors flex items-center gap-1"
-                                                                    >
+                                                                    <button onClick={() => handlePullModel(provider)} disabled={isPulling || !pullModelName.trim()} className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded text-xs font-medium transition-colors flex items-center gap-1">
                                                                         {isPulling ? '...' : t('ai.settings.pullModel')}
                                                                     </button>
                                                                 </div>
                                                                 {pullProgress && (
                                                                     <div className="mt-2">
-                                                                        <TransferProgressBar
-                                                                            percentage={pullProgress.percent}
-                                                                            filename={pullProgress.status}
-                                                                            size="sm"
-                                                                            variant="gradient"
-                                                                        />
+                                                                        <TransferProgressBar percentage={pullProgress.percent} filename={pullProgress.status} size="sm" variant="gradient" />
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -936,10 +955,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         {/* GPU Monitor */}
                                                         {provider.type === 'ollama' && (
                                                             <div className="mt-3">
-                                                                <OllamaGpuMonitor
-                                                                    baseUrl={provider.baseUrl || 'http://localhost:11434'}
-                                                                    visible={true}
-                                                                />
+                                                                <OllamaGpuMonitor baseUrl={provider.baseUrl || 'http://localhost:11434'} visible={true} />
                                                             </div>
                                                         )}
 
@@ -950,9 +966,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                     <span className="text-cyan-400">{'\u26A1'}</span>
                                                                     <span className="font-medium text-gray-300">{t('ai.settings.contextCaching')}</span>
                                                                 </div>
-                                                                <p className="text-[11px] text-gray-500">
-                                                                    {t('ai.settings.contextCachingDesc')}
-                                                                </p>
+                                                                <p className="text-[11px] text-gray-500">{t('ai.settings.contextCachingDesc')}</p>
                                                             </div>
                                                         )}
                                                     </div>
@@ -966,10 +980,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         <input
                                                             type="text"
                                                             value={provider.baseUrl}
-                                                            onChange={e => updateProvider({
-                                                                ...provider,
-                                                                baseUrl: e.target.value
-                                                            })}
+                                                            onChange={(e) =>
+                                                                updateProvider({
+                                                                    ...provider,
+                                                                    baseUrl: e.target.value,
+                                                                })
+                                                            }
                                                             placeholder={t('ai.settings.baseUrlPlaceholder')}
                                                             className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
                                                         />
@@ -979,17 +995,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     <div>
                                                         <label className="block text-sm text-gray-400 mb-2">
                                                             <Cpu size={12} className="inline mr-1" />
-                                                            {t('ai.settings.modelsCount', { count: getProviderModels(provider.id).length })}
+                                                            {t('ai.settings.modelsCount', {
+                                                                count: getProviderModels(provider.id).length,
+                                                            })}
                                                         </label>
                                                         <div className="flex flex-wrap gap-2">
-                                                            {getProviderModels(provider.id).map(model => (
-                                                                <div
-                                                                    key={model.id}
-                                                                    className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-2 ${model.isEnabled
-                                                                        ? 'bg-gray-700 text-white'
-                                                                        : 'bg-gray-800 text-gray-500'
-                                                                        }`}
-                                                                >
+                                                            {getProviderModels(provider.id).map((model) => (
+                                                                <div key={model.id} className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-2 ${model.isEnabled ? 'bg-gray-700 text-white' : 'bg-gray-800 text-gray-500'}`}>
                                                                     {model.displayName}
                                                                     {model.supportsTools && <span title="Supports tools">🔧</span>}
                                                                     {model.supportsVision && <span title="Supports vision">👁</span>}
@@ -1017,36 +1029,34 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 </div>
                             ) : (
                                 <>
-                                    {settings.providers.map(provider => {
+                                    {settings.providers.map((provider) => {
                                         const providerModels = getProviderModels(provider.id);
                                         return (
                                             <div key={provider.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                                                 <div className="px-4 py-3 bg-gray-800/50 flex items-center gap-2 border-b border-gray-700">
                                                     {getProviderIcon(provider.type)}
                                                     <span className="font-medium">{provider.name}</span>
-                                                    <span className="text-xs text-gray-500">({t('ai.settings.modelsCountLabel', { count: providerModels.length })})</span>
+                                                    <span className="text-xs text-gray-500">
+                                                        (
+                                                        {t('ai.settings.modelsCountLabel', {
+                                                            count: providerModels.length,
+                                                        })}
+                                                        )
+                                                    </span>
                                                 </div>
 
                                                 <div className="p-3 space-y-2">
-                                                    {providerModels.map(model => (
-                                                        <div
-                                                            key={model.id}
-                                                            className="flex items-center gap-3 p-2 bg-gray-900/50 rounded-lg"
-                                                        >
+                                                    {providerModels.map((model) => (
+                                                        <div key={model.id} className="flex items-center gap-3 p-2 bg-gray-900/50 rounded-lg">
                                                             {/* Enable/Disable Toggle */}
                                                             <button
                                                                 onClick={() => {
                                                                     saveSettings({
                                                                         ...settings,
-                                                                        models: settings.models.map(m =>
-                                                                            m.id === model.id ? { ...m, isEnabled: !m.isEnabled } : m
-                                                                        )
+                                                                        models: settings.models.map((m) => (m.id === model.id ? { ...m, isEnabled: !m.isEnabled } : m)),
                                                                     });
                                                                 }}
-                                                                className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${model.isEnabled
-                                                                    ? 'bg-purple-600 border-purple-600'
-                                                                    : 'border-gray-500 hover:border-gray-400'
-                                                                    }`}
+                                                                className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${model.isEnabled ? 'bg-purple-600 border-purple-600' : 'border-gray-500 hover:border-gray-400'}`}
                                                             >
                                                                 {model.isEnabled && <Check size={10} />}
                                                             </button>
@@ -1060,34 +1070,48 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             {/* Capabilities */}
                                                             <div className="flex gap-1.5 text-xs flex-wrap">
                                                                 {model.supportsTools && (
-                                                                    <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded" title="Function Calling">🔧</span>
+                                                                    <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded" title="Function Calling">
+                                                                        🔧
+                                                                    </span>
                                                                 )}
                                                                 {model.supportsVision && (
-                                                                    <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded" title="Vision">👁</span>
+                                                                    <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded" title="Vision">
+                                                                        👁
+                                                                    </span>
                                                                 )}
                                                                 {model.supportsStreaming && (
-                                                                    <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded" title="Streaming">⚡</span>
+                                                                    <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded" title="Streaming">
+                                                                        ⚡
+                                                                    </span>
                                                                 )}
                                                                 {model.supportsThinking && (
-                                                                    <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded" title="Thinking/Reasoning">💭</span>
+                                                                    <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded" title="Thinking/Reasoning">
+                                                                        💭
+                                                                    </span>
                                                                 )}
                                                                 {model.toolCallQuality && (
                                                                     <span className="px-1.5 py-0.5 bg-yellow-500/10 text-yellow-400 rounded font-mono" title={`Tool quality: ${model.toolCallQuality}/5`}>
-                                                                        {'★'.repeat(model.toolCallQuality)}{'☆'.repeat(5 - model.toolCallQuality)}
+                                                                        {'★'.repeat(model.toolCallQuality)}
+                                                                        {'☆'.repeat(5 - model.toolCallQuality)}
                                                                     </span>
                                                                 )}
-                                                                {model.bestFor && model.bestFor.length > 0 && model.bestFor.map(tag => (
-                                                                    <span key={tag} className="px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded">{tag}</span>
-                                                                ))}
-                                                                {provider.type === 'ollama' && (() => {
-                                                                    const family = detectOllamaModelFamily(model.name);
-                                                                    if (!family) return null;
-                                                                    return (
-                                                                        <span className="text-[9px] px-1.5 py-0.5 bg-cyan-900/30 text-cyan-400 rounded border border-cyan-800/50" title={family.promptStyle}>
-                                                                            {family.family}
+                                                                {model.bestFor &&
+                                                                    model.bestFor.length > 0 &&
+                                                                    model.bestFor.map((tag) => (
+                                                                        <span key={tag} className="px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded">
+                                                                            {tag}
                                                                         </span>
-                                                                    );
-                                                                })()}
+                                                                    ))}
+                                                                {provider.type === 'ollama' &&
+                                                                    (() => {
+                                                                        const family = detectOllamaModelFamily(model.name);
+                                                                        if (!family) return null;
+                                                                        return (
+                                                                            <span className="text-[9px] px-1.5 py-0.5 bg-cyan-900/30 text-cyan-400 rounded border border-cyan-800/50" title={family.promptStyle}>
+                                                                                {family.family}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
                                                             </div>
 
                                                             {/* Default Toggle */}
@@ -1095,18 +1119,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 onClick={() => {
                                                                     saveSettings({
                                                                         ...settings,
-                                                                        models: settings.models.map(m => ({
+                                                                        models: settings.models.map((m) => ({
                                                                             ...m,
-                                                                            isDefault: m.providerId === model.providerId
-                                                                                ? m.id === model.id
-                                                                                : m.isDefault
-                                                                        }))
+                                                                            isDefault: m.providerId === model.providerId ? m.id === model.id : m.isDefault,
+                                                                        })),
                                                                     });
                                                                 }}
-                                                                className={`px-2 py-1 text-xs rounded transition-colors ${model.isDefault
-                                                                    ? 'bg-yellow-500/20 text-yellow-400'
-                                                                    : 'bg-gray-700 text-gray-500 hover:text-white'
-                                                                    }`}
+                                                                className={`px-2 py-1 text-xs rounded transition-colors ${model.isDefault ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-700 text-gray-500 hover:text-white'}`}
                                                                 title={t('ai.settings.setDefault')}
                                                             >
                                                                 {model.isDefault ? '★ ' + t('ai.settings.defaultBadge') : t('ai.settings.setDefault')}
@@ -1114,11 +1133,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
                                                             {/* Edit */}
                                                             <button
-                                                                onClick={() => setEditingModel({
-                                                                    model: model,
-                                                                    providerId: provider.id,
-                                                                    isNew: false
-                                                                })}
+                                                                onClick={() =>
+                                                                    setEditingModel({
+                                                                        model: model,
+                                                                        providerId: provider.id,
+                                                                        isNew: false,
+                                                                    })
+                                                                }
                                                                 className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
                                                                 title={t('ai.settings.editModelTooltip')}
                                                             >
@@ -1130,7 +1151,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                 onClick={() => {
                                                                     saveSettings({
                                                                         ...settings,
-                                                                        models: settings.models.filter(m => m.id !== model.id)
+                                                                        models: settings.models.filter((m) => m.id !== model.id),
                                                                     });
                                                                 }}
                                                                 className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
@@ -1143,11 +1164,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
                                                     {/* Add Custom Model */}
                                                     <button
-                                                        onClick={() => setEditingModel({
-                                                            model: null,
-                                                            providerId: provider.id,
-                                                            isNew: true
-                                                        })}
+                                                        onClick={() =>
+                                                            setEditingModel({
+                                                                model: null,
+                                                                providerId: provider.id,
+                                                                isNew: true,
+                                                            })
+                                                        }
                                                         className="w-full py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg flex items-center justify-center gap-2 transition-colors"
                                                     >
                                                         <Plus size={14} />
@@ -1164,18 +1187,22 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             <div className="mt-6 pt-4 border-t border-gray-700/50">
                                 <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
                                     <div>
-                                        <h3 className="font-medium flex items-center gap-2"><Zap size={14} className="text-purple-400" /> {t('ai.settings.autoRouting')}</h3>
+                                        <h3 className="font-medium flex items-center gap-2">
+                                            <Zap size={14} className="text-purple-400" /> {t('ai.settings.autoRouting')}
+                                        </h3>
                                         <p className="text-sm text-gray-400">{t('ai.settings.autoRoutingDescription')}</p>
                                     </div>
                                     <button
-                                        onClick={() => saveSettings({
-                                            ...settings,
-                                            autoRouting: { ...settings.autoRouting, enabled: !settings.autoRouting.enabled }
-                                        })}
-                                        className={`px-4 py-2 rounded-lg text-sm transition-colors ${settings.autoRouting.enabled
-                                            ? 'bg-purple-600 text-white'
-                                            : 'bg-gray-700 text-gray-400'
-                                            }`}
+                                        onClick={() =>
+                                            saveSettings({
+                                                ...settings,
+                                                autoRouting: {
+                                                    ...settings.autoRouting,
+                                                    enabled: !settings.autoRouting.enabled,
+                                                },
+                                            })
+                                        }
+                                        className={`px-4 py-2 rounded-lg text-sm transition-colors ${settings.autoRouting.enabled ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400'}`}
                                     >
                                         {settings.autoRouting.enabled ? t('ai.settings.enabled') : t('ai.settings.disabled')}
                                     </button>
@@ -1183,32 +1210,45 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
                                 {settings.autoRouting.enabled && (
                                     <div className="space-y-3 mt-3">
-                                        <p className="text-sm text-gray-400 mb-4">
-                                            {t('ai.settings.autoRoutingInstruction')}
-                                        </p>
+                                        <p className="text-sm text-gray-400 mb-4">{t('ai.settings.autoRoutingInstruction')}</p>
 
                                         {[
-                                            { type: 'code_generation' as const, label: t('ai.settings.codeGeneration'), desc: t('ai.settings.codeGenerationDesc') },
-                                            { type: 'code_review' as const, label: t('ai.settings.codeReview'), desc: t('ai.settings.codeReviewDesc') },
-                                            { type: 'quick_answer' as const, label: t('ai.settings.quickAnswer'), desc: t('ai.settings.quickAnswerDesc') },
-                                            { type: 'file_analysis' as const, label: t('ai.settings.fileAnalysis'), desc: t('ai.settings.fileAnalysisDesc') },
-                                            { type: 'terminal_command' as const, label: t('ai.settings.terminalCommands'), desc: t('ai.settings.terminalCommandsDesc') },
-                                            { type: 'general' as const, label: t('ai.settings.general'), desc: t('ai.settings.generalDesc') },
-                                        ].map(task => {
-                                            const rule = settings.autoRouting.rules.find(r => r.taskType === task.type);
-                                            const allModels = settings.providers
-                                                .filter(p => p.isEnabled && p.apiKey)
-                                                .flatMap(p =>
-                                                    settings.models
-                                                        .filter(m => m.providerId === p.id && m.isEnabled)
-                                                        .map(m => ({ ...m, providerName: p.name }))
-                                                );
+                                            {
+                                                type: 'code_generation' as const,
+                                                label: t('ai.settings.codeGeneration'),
+                                                desc: t('ai.settings.codeGenerationDesc'),
+                                            },
+                                            {
+                                                type: 'code_review' as const,
+                                                label: t('ai.settings.codeReview'),
+                                                desc: t('ai.settings.codeReviewDesc'),
+                                            },
+                                            {
+                                                type: 'quick_answer' as const,
+                                                label: t('ai.settings.quickAnswer'),
+                                                desc: t('ai.settings.quickAnswerDesc'),
+                                            },
+                                            {
+                                                type: 'file_analysis' as const,
+                                                label: t('ai.settings.fileAnalysis'),
+                                                desc: t('ai.settings.fileAnalysisDesc'),
+                                            },
+                                            {
+                                                type: 'terminal_command' as const,
+                                                label: t('ai.settings.terminalCommands'),
+                                                desc: t('ai.settings.terminalCommandsDesc'),
+                                            },
+                                            {
+                                                type: 'general' as const,
+                                                label: t('ai.settings.general'),
+                                                desc: t('ai.settings.generalDesc'),
+                                            },
+                                        ].map((task) => {
+                                            const rule = settings.autoRouting.rules.find((r) => r.taskType === task.type);
+                                            const allModels = settings.providers.filter((p) => p.isEnabled && p.apiKey).flatMap((p) => settings.models.filter((m) => m.providerId === p.id && m.isEnabled).map((m) => ({ ...m, providerName: p.name })));
 
                                             return (
-                                                <div
-                                                    key={task.type}
-                                                    className="flex items-center gap-4 p-3 bg-gray-800 rounded-lg"
-                                                >
+                                                <div key={task.type} className="flex items-center gap-4 p-3 bg-gray-800 rounded-lg">
                                                     <div className="flex-1">
                                                         <div className="font-medium text-sm">{task.label}</div>
                                                         <div className="text-xs text-gray-500">{task.desc}</div>
@@ -1216,19 +1256,25 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     <select
                                                         value={rule?.preferredModelId || ''}
                                                         onChange={(e) => {
-                                                            const newRules = settings.autoRouting.rules.filter(r => r.taskType !== task.type);
+                                                            const newRules = settings.autoRouting.rules.filter((r) => r.taskType !== task.type);
                                                             if (e.target.value) {
-                                                                newRules.push({ taskType: task.type, preferredModelId: e.target.value });
+                                                                newRules.push({
+                                                                    taskType: task.type,
+                                                                    preferredModelId: e.target.value,
+                                                                });
                                                             }
                                                             saveSettings({
                                                                 ...settings,
-                                                                autoRouting: { ...settings.autoRouting, rules: newRules }
+                                                                autoRouting: {
+                                                                    ...settings.autoRouting,
+                                                                    rules: newRules,
+                                                                },
                                                             });
                                                         }}
                                                         className="px-3 py-1.5 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[200px]"
                                                     >
                                                         <option value="">{t('ai.settings.autoDefault')}</option>
-                                                        {allModels.map(model => (
+                                                        {allModels.map((model) => (
                                                             <option key={model.id} value={model.id}>
                                                                 {model.displayName} ({model.providerName})
                                                             </option>
@@ -1238,9 +1284,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             );
                                         })}
 
-                                        <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded-lg text-xs text-blue-300">
-                                            {t('ai.settings.autoRoutingTip')}
-                                        </div>
+                                        <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded-lg text-xs text-blue-300">{t('ai.settings.autoRoutingTip')}</div>
                                     </div>
                                 )}
                             </div>
@@ -1250,23 +1294,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     {/* Advanced Settings Tab */}
                     {activeTab === 'advanced' && (
                         <div className="space-y-6">
-                            <div className="text-sm text-gray-400 mb-4">
-                                {t('ai.settings.advancedDescription')}
-                            </div>
+                            <div className="text-sm text-gray-400 mb-4">{t('ai.settings.advancedDescription')}</div>
 
                             {/* Agent Mode */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
-                                <h4 className="text-sm font-medium text-white mb-1">
-                                    {t('ai.agentMode.title')}
-                                </h4>
-                                <p className="text-xs text-gray-500 mb-3">
-                                    {t('ai.agentMode.description')}
-                                </p>
+                                <h4 className="text-sm font-medium text-white mb-1">{t('ai.agentMode.title')}</h4>
+                                <p className="text-xs text-gray-500 mb-3">{t('ai.agentMode.description')}</p>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {(document.documentElement.classList.contains('cyber')
-                                        ? (['safe', 'normal', 'expert', 'extreme'] as const)
-                                        : (['safe', 'normal', 'expert'] as const)
-                                    ).map((mode) => {
+                                    {(document.documentElement.classList.contains('cyber') ? (['safe', 'normal', 'expert', 'extreme'] as const) : (['safe', 'normal', 'expert'] as const)).map((mode) => {
                                         const isSelected = selectedAgentMode === mode;
                                         const icons: Record<string, React.ReactNode> = {
                                             safe: <ShieldCheck size={18} />,
@@ -1275,16 +1310,48 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             extreme: <Zap size={18} />,
                                         };
                                         const colors: Record<string, { icon: string; border: string; bg: string; ring: string }> = {
-                                            safe: { icon: 'text-teal-400', border: 'border-teal-400', bg: 'bg-teal-600/10', ring: 'ring-teal-500/30' },
-                                            normal: { icon: 'text-purple-400', border: 'border-purple-400', bg: 'bg-purple-600/10', ring: 'ring-purple-500/30' },
-                                            expert: { icon: 'text-amber-400', border: 'border-amber-400', bg: 'bg-amber-600/10', ring: 'ring-amber-500/30' },
-                                            extreme: { icon: 'text-red-400', border: 'border-red-400', bg: 'bg-red-600/10', ring: 'ring-red-500/30' },
+                                            safe: {
+                                                icon: 'text-teal-400',
+                                                border: 'border-teal-400',
+                                                bg: 'bg-teal-600/10',
+                                                ring: 'ring-teal-500/30',
+                                            },
+                                            normal: {
+                                                icon: 'text-purple-400',
+                                                border: 'border-purple-400',
+                                                bg: 'bg-purple-600/10',
+                                                ring: 'ring-purple-500/30',
+                                            },
+                                            expert: {
+                                                icon: 'text-amber-400',
+                                                border: 'border-amber-400',
+                                                bg: 'bg-amber-600/10',
+                                                ring: 'ring-amber-500/30',
+                                            },
+                                            extreme: {
+                                                icon: 'text-red-400',
+                                                border: 'border-red-400',
+                                                bg: 'bg-red-600/10',
+                                                ring: 'ring-red-500/30',
+                                            },
                                         };
                                         const labels: Record<string, { name: string; desc: string }> = {
-                                            safe: { name: t('ai.agentMode.safe'), desc: t('ai.agentMode.safeDesc') },
-                                            normal: { name: t('ai.agentMode.normal'), desc: t('ai.agentMode.normalDesc') },
-                                            expert: { name: t('ai.agentMode.expert'), desc: t('ai.agentMode.expertDesc') },
-                                            extreme: { name: t('ai.agentMode.extreme'), desc: t('ai.agentMode.extremeDesc') },
+                                            safe: {
+                                                name: t('ai.agentMode.safe'),
+                                                desc: t('ai.agentMode.safeDesc'),
+                                            },
+                                            normal: {
+                                                name: t('ai.agentMode.normal'),
+                                                desc: t('ai.agentMode.normalDesc'),
+                                            },
+                                            expert: {
+                                                name: t('ai.agentMode.expert'),
+                                                desc: t('ai.agentMode.expertDesc'),
+                                            },
+                                            extreme: {
+                                                name: t('ai.agentMode.extreme'),
+                                                desc: t('ai.agentMode.extremeDesc'),
+                                            },
                                         };
                                         const info = labels[mode];
                                         const col = colors[mode];
@@ -1296,13 +1363,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     localStorage.setItem('aeroftp_ai_agent_mode', mode);
                                                     localStorage.removeItem('aeroftp_ai_approval_profile');
                                                     localStorage.removeItem('aeroftp_ai_extreme_mode');
-                                                    window.dispatchEvent(new CustomEvent('agent-mode-changed', { detail: mode }));
+                                                    window.dispatchEvent(
+                                                        new CustomEvent('agent-mode-changed', {
+                                                            detail: mode,
+                                                        })
+                                                    );
                                                 }}
-                                                className={`agent-mode-card p-3 rounded-lg border text-left transition-all ${
-                                                    isSelected
-                                                        ? `${col.border} ${col.bg} ring-1 ${col.ring}`
-                                                        : 'border-gray-700 hover:border-gray-600'
-                                                }`}
+                                                className={`agent-mode-card p-3 rounded-lg border text-left transition-all ${isSelected ? `${col.border} ${col.bg} ring-1 ${col.ring}` : 'border-gray-700 hover:border-gray-600'}`}
                                                 data-mode={mode}
                                             >
                                                 <div className={`${col.icon} mb-1`}>{icons[mode]}</div>
@@ -1318,7 +1385,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <h4 className="text-sm font-medium text-white mb-3">{t('ai.settings.conversationStyle')}</h4>
                                 <div className="flex gap-2">
-                                    {(['precise', 'balanced', 'creative'] as const).map(style => (
+                                    {(['precise', 'balanced', 'creative'] as const).map((style) => (
                                         <button
                                             key={style}
                                             onClick={() => {
@@ -1328,34 +1395,27 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         ...settings.advancedSettings,
                                                         conversationStyle: style,
                                                         temperature: style === 'precise' ? 0.3 : style === 'creative' ? 1.2 : 0.7,
-                                                    }
+                                                    },
                                                 };
                                                 setSettings(newSettings);
                                                 saveSettings(newSettings);
                                             }}
-                                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${settings.advancedSettings?.conversationStyle === style
-                                                    ? 'bg-purple-600 text-white'
-                                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                                }`}
+                                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${settings.advancedSettings?.conversationStyle === style ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
                                         >
-                                            {style === 'precise' && ('🎯 ' + t('ai.settings.precise'))}
-                                            {style === 'balanced' && ('⚖️ ' + t('ai.settings.balanced'))}
-                                            {style === 'creative' && ('🎨 ' + t('ai.settings.creative'))}
+                                            {style === 'precise' && '🎯 ' + t('ai.settings.precise')}
+                                            {style === 'balanced' && '⚖️ ' + t('ai.settings.balanced')}
+                                            {style === 'creative' && '🎨 ' + t('ai.settings.creative')}
                                         </button>
                                     ))}
                                 </div>
-                                <p className="text-xs text-gray-500 mt-2">
-                                    {t('ai.settings.styleHelp')}
-                                </p>
+                                <p className="text-xs text-gray-500 mt-2">{t('ai.settings.styleHelp')}</p>
                             </div>
 
                             {/* Temperature */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <div className="flex items-center justify-between mb-2">
                                     <h4 className="text-sm font-medium text-white">{t('ai.settings.temperature')}</h4>
-                                    <span className="text-sm text-purple-400 font-mono">
-                                        {(settings.advancedSettings?.temperature ?? 0.7).toFixed(1)}
-                                    </span>
+                                    <span className="text-sm text-purple-400 font-mono">{(settings.advancedSettings?.temperature ?? 0.7).toFixed(1)}</span>
                                 </div>
                                 <input
                                     type="range"
@@ -1369,7 +1429,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             advancedSettings: {
                                                 ...settings.advancedSettings,
                                                 temperature: parseFloat(e.target.value),
-                                            }
+                                            },
                                         };
                                         setSettings(newSettings);
                                         saveSettings(newSettings);
@@ -1398,7 +1458,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                 advancedSettings: {
                                                     ...settings.advancedSettings,
                                                     maxTokens: parseInt(e.target.value) || 4096,
-                                                }
+                                                },
                                             };
                                             setSettings(newSettings);
                                             saveSettings(newSettings);
@@ -1407,17 +1467,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     />
                                     <span className="text-xs text-gray-500">{t('ai.settings.tokens')}</span>
                                 </div>
-                                <p className="text-xs text-gray-500 mt-2">
-                                    {t('ai.settings.maxResponseHelp')}
-                                </p>
+                                <p className="text-xs text-gray-500 mt-2">{t('ai.settings.maxResponseHelp')}</p>
                             </div>
 
                             {/* Thinking Budget */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <h4 className="text-sm font-medium text-white mb-1">{t('ai.settings.thinkingBudget')}</h4>
-                                <p className="text-[10px] text-gray-500 mb-3">
-                                    {t('ai.settings.thinkingBudgetDesc')}
-                                </p>
+                                <p className="text-[10px] text-gray-500 mb-3">{t('ai.settings.thinkingBudgetDesc')}</p>
                                 <div className="flex items-center gap-2 flex-wrap mb-3">
                                     {[
                                         { label: t('ai.settings.thinkingOff'), value: 0 },
@@ -1425,7 +1481,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         { label: t('ai.settings.balanced'), value: 10000 },
                                         { label: t('ai.settings.thinkingDeep'), value: 25000 },
                                         { label: t('ai.settings.thinkingMaximum'), value: 100000 },
-                                    ].map(preset => (
+                                    ].map((preset) => (
                                         <button
                                             key={preset.value}
                                             onClick={() => {
@@ -1434,18 +1490,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     advancedSettings: {
                                                         ...settings.advancedSettings,
                                                         thinkingBudget: preset.value,
-                                                    }
+                                                    },
                                                 };
                                                 setSettings(newSettings);
                                                 saveSettings(newSettings);
                                             }}
-                                            className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                                                settings.advancedSettings?.thinkingBudget === preset.value
-                                                    ? 'bg-purple-600/40 text-purple-300 border border-purple-500/50'
-                                                    : 'bg-gray-700 text-gray-400 hover:text-gray-200 border border-gray-600'
-                                            }`}
+                                            className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${settings.advancedSettings?.thinkingBudget === preset.value ? 'bg-purple-600/40 text-purple-300 border border-purple-500/50' : 'bg-gray-700 text-gray-400 hover:text-gray-200 border border-gray-600'}`}
                                         >
-                                            {preset.label} ({preset.value === 0 ? '0' : `${(preset.value / 1000)}K`})
+                                            {preset.label} ({preset.value === 0 ? '0' : `${preset.value / 1000}K`})
                                         </button>
                                     ))}
                                 </div>
@@ -1461,7 +1513,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             advancedSettings: {
                                                 ...settings.advancedSettings,
                                                 thinkingBudget: parseInt(e.target.value),
-                                            }
+                                            },
                                         };
                                         setSettings(newSettings);
                                         saveSettings(newSettings);
@@ -1470,9 +1522,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 />
                                 <div className="flex items-center justify-between text-[10px] text-gray-500 mt-1">
                                     <span>0 ({t('ai.settings.thinkingOff')})</span>
-                                    <span className="text-purple-400 font-mono">
-                                        {((settings.advancedSettings?.thinkingBudget || 0) / 1000).toFixed(0)}K tokens
-                                    </span>
+                                    <span className="text-purple-400 font-mono">{((settings.advancedSettings?.thinkingBudget || 0) / 1000).toFixed(0)}K tokens</span>
                                     <span>100K</span>
                                 </div>
                             </div>
@@ -1480,9 +1530,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             {/* Web Search (Kimi / Qwen only) */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <h4 className="text-sm font-medium text-white mb-1">{t('ai.webSearch.title')}</h4>
-                                <p className="text-[10px] text-gray-500 mb-3">
-                                    {t('ai.webSearch.description')}
-                                </p>
+                                <p className="text-[10px] text-gray-500 mb-3">{t('ai.webSearch.description')}</p>
                                 <Checkbox
                                     checked={settings.advancedSettings?.webSearchEnabled || false}
                                     onChange={(v) => {
@@ -1498,17 +1546,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     }}
                                     label={<span className="text-sm text-gray-300">{t('ai.webSearch.enable')}</span>}
                                 />
-                                <p className="text-[10px] text-gray-500 mt-2 italic">
-                                    {t('ai.webSearch.providerNote')}
-                                </p>
+                                <p className="text-[10px] text-gray-500 mt-2 italic">{t('ai.webSearch.providerNote')}</p>
                             </div>
 
                             {/* Streaming Timeout */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <h4 className="text-sm font-medium text-white mb-1">{t('ai.streamingTimeout.title')}</h4>
-                                <p className="text-[10px] text-gray-500 mb-3">
-                                    {t('ai.streamingTimeout.description')}
-                                </p>
+                                <p className="text-[10px] text-gray-500 mb-3">{t('ai.streamingTimeout.description')}</p>
                                 <div className="flex items-center gap-3">
                                     <input
                                         type="number"
@@ -1532,17 +1576,13 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     />
                                     <span className="text-sm text-gray-400">{t('ai.streamingTimeout.seconds')}</span>
                                 </div>
-                                <p className="text-[10px] text-gray-500 mt-2 italic">
-                                    {t('ai.streamingTimeout.hint')}
-                                </p>
+                                <p className="text-[10px] text-gray-500 mt-2 italic">{t('ai.streamingTimeout.hint')}</p>
                             </div>
 
                             {/* Chat History Retention */}
                             <div className="bg-gray-800/50 rounded-lg p-4">
                                 <h4 className="text-sm font-medium text-white mb-1">{t('ai.history.retention')}</h4>
-                                <p className="text-[10px] text-gray-500 mb-3">
-                                    {t('ai.history.retentionDesc')}
-                                </p>
+                                <p className="text-[10px] text-gray-500 mb-3">{t('ai.history.retentionDesc')}</p>
                                 <div className="flex items-center gap-3">
                                     <select
                                         value={settings.advancedSettings?.chatHistoryRetentionDays ?? 0}
@@ -1567,24 +1607,16 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         <option value={365}>365 {t('ai.history.days')}</option>
                                     </select>
                                 </div>
-                                <p className="text-[10px] text-gray-500 mt-2 italic">
-                                    {t('ai.history.retentionHint')}
-                                </p>
+                                <p className="text-[10px] text-gray-500 mt-2 italic">{t('ai.history.retentionHint')}</p>
                             </div>
-
                         </div>
                     )}
 
                     {activeTab === 'plugins' && (
                         <div className="space-y-4">
                             <div className="flex items-center justify-between mb-4">
-                                <div className="text-sm text-gray-400">
-                                    {t('ai.settings.pluginsDesc')}
-                                </div>
-                                <button
-                                    onClick={() => setShowPluginBrowser(true)}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded-lg transition-colors whitespace-nowrap"
-                                >
+                                <div className="text-sm text-gray-400">{t('ai.settings.pluginsDesc')}</div>
+                                <button onClick={() => setShowPluginBrowser(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded-lg transition-colors whitespace-nowrap">
                                     <Globe size={14} />
                                     {t('ai.plugins.browsePlugins')}
                                 </button>
@@ -1594,13 +1626,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 <div className="text-center py-12 text-gray-500">
                                     <Puzzle size={48} className="mx-auto mb-4 opacity-30" />
                                     <p className="text-lg font-medium">{t('ai.settings.noPlugins')}</p>
-                                    <p className="text-sm mt-2">
-                                        {t('ai.settings.pluginCreateHint')}
-                                    </p>
+                                    <p className="text-sm mt-2">{t('ai.settings.pluginCreateHint')}</p>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {plugins.map(plugin => (
+                                    {plugins.map((plugin) => (
                                         <div key={plugin.id} className="bg-gray-800 rounded-lg p-4">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
@@ -1608,19 +1638,26 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     <div>
                                                         <h3 className="font-medium text-white">{plugin.name}</h3>
                                                         <p className="text-xs text-gray-400">
-                                                            {'v' + plugin.version} {t('ai.settings.pluginBy', { author: plugin.author })} — {t('ai.settings.pluginTools', { count: plugin.tools.length })}
+                                                            {'v' + plugin.version}{' '}
+                                                            {t('ai.settings.pluginBy', {
+                                                                author: plugin.author,
+                                                            })}{' '}
+                                                            —{' '}
+                                                            {t('ai.settings.pluginTools', {
+                                                                count: plugin.tools.length,
+                                                            })}
                                                         </p>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <span className={`text-xs px-2 py-1 rounded ${plugin.enabled !== false ? 'bg-green-900/50 text-green-400' : 'bg-gray-700 text-gray-500'}`}>
-                                                        {plugin.enabled !== false ? t('ai.settings.pluginEnabled') : t('ai.settings.pluginDisabled')}
-                                                    </span>
+                                                    <span className={`text-xs px-2 py-1 rounded ${plugin.enabled !== false ? 'bg-green-900/50 text-green-400' : 'bg-gray-700 text-gray-500'}`}>{plugin.enabled !== false ? t('ai.settings.pluginEnabled') : t('ai.settings.pluginDisabled')}</span>
                                                     <button
                                                         onClick={async () => {
                                                             try {
-                                                                await invoke('remove_plugin', { pluginId: plugin.id });
-                                                                setPlugins(prev => prev.filter(p => p.id !== plugin.id));
+                                                                await invoke('remove_plugin', {
+                                                                    pluginId: plugin.id,
+                                                                });
+                                                                setPlugins((prev) => prev.filter((p) => p.id !== plugin.id));
                                                             } catch (e) {
                                                                 logger.error('Failed to remove plugin', e);
                                                             }
@@ -1634,14 +1671,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             </div>
                                             {plugin.tools.length > 0 && (
                                                 <div className="mt-3 flex flex-wrap gap-1.5">
-                                                    {plugin.tools.map(tool => (
+                                                    {plugin.tools.map((tool) => (
                                                         <span key={tool.name} className="inline-flex items-center gap-1 bg-gray-700/60 text-gray-300 text-xs px-2 py-0.5 rounded">
                                                             <span className="text-cyan-400">&#129513;</span>
                                                             {tool.name}
-                                                            <span className={`ml-1 w-1.5 h-1.5 rounded-full ${
-                                                                tool.dangerLevel === 'safe' ? 'bg-green-400' :
-                                                                tool.dangerLevel === 'high' ? 'bg-red-400' : 'bg-yellow-400'
-                                                            }`} />
+                                                            <span className={`ml-1 w-1.5 h-1.5 rounded-full ${tool.dangerLevel === 'safe' ? 'bg-green-400' : tool.dangerLevel === 'high' ? 'bg-red-400' : 'bg-yellow-400'}`} />
                                                         </span>
                                                     ))}
                                                 </div>
@@ -1655,9 +1689,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
                     {activeTab === 'prompt' && (
                         <div className="space-y-6">
-                            <div className="text-sm text-gray-400 mb-4">
-                                {t('ai.settings.promptDesc')}
-                            </div>
+                            <div className="text-sm text-gray-400 mb-4">{t('ai.settings.promptDesc')}</div>
 
                             {/* Toggle */}
                             <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
@@ -1672,14 +1704,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             advancedSettings: {
                                                 ...settings.advancedSettings,
                                                 useCustomPrompt: !settings.advancedSettings?.useCustomPrompt,
-                                            }
+                                            },
                                         };
                                         saveSettings(newSettings);
                                     }}
-                                    className={`px-4 py-2 rounded-lg text-sm transition-colors ${settings.advancedSettings?.useCustomPrompt
-                                        ? 'bg-purple-600 text-white'
-                                        : 'bg-gray-700 text-gray-400'
-                                        }`}
+                                    className={`px-4 py-2 rounded-lg text-sm transition-colors ${settings.advancedSettings?.useCustomPrompt ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400'}`}
                                 >
                                     {settings.advancedSettings?.useCustomPrompt ? t('ai.settings.enabled') : t('ai.settings.disabled')}
                                 </button>
@@ -1690,9 +1719,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 <div className="flex items-center justify-between mb-3">
                                     <h4 className="text-sm font-medium text-white">{t('ai.settings.promptContent')}</h4>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-xs text-gray-500">
-                                            ~{Math.round((settings.advancedSettings?.customSystemPrompt || '').length / 4)} tokens
-                                        </span>
+                                        <span className="text-xs text-gray-500">~{Math.round((settings.advancedSettings?.customSystemPrompt || '').length / 4)} tokens</span>
                                         <button
                                             onClick={() => {
                                                 const newSettings = {
@@ -1700,7 +1727,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                     advancedSettings: {
                                                         ...settings.advancedSettings,
                                                         customSystemPrompt: '',
-                                                    }
+                                                    },
                                                 };
                                                 saveSettings(newSettings);
                                             }}
@@ -1718,7 +1745,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                             advancedSettings: {
                                                 ...settings.advancedSettings,
                                                 customSystemPrompt: e.target.value,
-                                            }
+                                            },
                                         };
                                         saveSettings(newSettings);
                                     }}
@@ -1726,28 +1753,22 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     className="w-full h-64 px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-sm text-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-purple-500 resize-y"
                                     disabled={!settings.advancedSettings?.useCustomPrompt}
                                 />
-                                <p className="text-xs text-gray-500 mt-2">
-                                    {t('ai.settings.promptHint')}
-                                </p>
+                                <p className="text-xs text-gray-500 mt-2">{t('ai.settings.promptHint')}</p>
                             </div>
                         </div>
                     )}
 
                     {activeTab === 'macros' && (
                         <div className="space-y-4">
-                            <div className="text-sm text-gray-400 mb-4">
-                                {t('ai.settings.macrosDescription')}
-                            </div>
+                            <div className="text-sm text-gray-400 mb-4">{t('ai.settings.macrosDescription')}</div>
 
-                            {DEFAULT_MACROS.map(macro => (
+                            {DEFAULT_MACROS.map((macro) => (
                                 <div key={macro.id} className="bg-gray-800 rounded-lg p-4">
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center gap-2">
                                             <Layers size={16} className="text-purple-400" />
                                             <h3 className="font-medium text-white">{macro.displayName}</h3>
-                                            <span className="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-400 font-mono">
-                                                macro_{macro.name}
-                                            </span>
+                                            <span className="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-400 font-mono">macro_{macro.name}</span>
                                         </div>
                                     </div>
                                     <p className="text-sm text-gray-400 mb-3">{macro.description}</p>
@@ -1756,12 +1777,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         <span className="text-xs text-gray-500 font-medium">{t('ai.settings.macroSteps')}:</span>
                                         {macro.steps.map((step, idx) => (
                                             <div key={idx} className="flex items-center gap-2 text-xs">
-                                                <span className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 shrink-0">
-                                                    {idx + 1}
-                                                </span>
+                                                <span className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 shrink-0">{idx + 1}</span>
                                                 <span className="text-cyan-400 font-mono">{step.toolName}</span>
                                                 <span className="text-gray-500">
-                                                    {Object.entries(step.args).map(([k, v]) => `${k}=${v}`).join(', ')}
+                                                    {Object.entries(step.args)
+                                                        .map(([k, v]) => `${k}=${v}`)
+                                                        .join(', ')}
                                                 </span>
                                             </div>
                                         ))}
@@ -1771,9 +1792,10 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         <div className="mt-3 pt-3 border-t border-gray-700">
                                             <span className="text-xs text-gray-500 font-medium">{t('ai.settings.macroParameters')}:</span>
                                             <div className="flex flex-wrap gap-1.5 mt-1">
-                                                {macro.parameters.map(param => (
+                                                {macro.parameters.map((param) => (
                                                     <span key={param.name} className="text-xs bg-gray-700/60 text-gray-300 px-2 py-0.5 rounded">
-                                                        {param.name}{param.required ? '*' : ''}
+                                                        {param.name}
+                                                        {param.required ? '*' : ''}
                                                     </span>
                                                 ))}
                                             </div>
@@ -1782,9 +1804,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 </div>
                             ))}
 
-                            <div className="text-xs text-gray-600 mt-4 p-3 bg-gray-800/50 rounded-lg">
-                                {t('ai.settings.macrosCustomNote')}
-                            </div>
+                            <div className="text-xs text-gray-600 mt-4 p-3 bg-gray-800/50 rounded-lg">{t('ai.settings.macrosCustomNote')}</div>
                         </div>
                     )}
                 </div>
@@ -1792,102 +1812,96 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 {/* Footer */}
                 <div className="px-6 py-4 border-t border-gray-700 flex justify-between items-center">
                     <div className="text-sm text-gray-500">
-                        {t('ai.settings.providersEnabled', { count: settings.providers.filter(p => p.isEnabled).length })}
+                        {t('ai.settings.providersEnabled', {
+                            count: settings.providers.filter((p) => p.isEnabled).length,
+                        })}
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm transition-colors"
-                    >
+                    <button onClick={onClose} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm transition-colors">
                         {t('ai.settings.done')}
                     </button>
                 </div>
             </div>
 
             {/* Model Edit Modal */}
-            {editingModel && (
-                <ModelEditModal
-                    model={editingModel.model}
-                    providerId={editingModel.providerId}
-                    isNew={editingModel.isNew}
-                    onSave={saveModel}
-                    onClose={() => setEditingModel(null)}
-                />
-            )}
+            {editingModel && <ModelEditModal model={editingModel.model} providerId={editingModel.providerId} isNew={editingModel.isNew} onSave={saveModel} onClose={() => setEditingModel(null)} />}
 
             {/* Available Models Modal */}
-            {availableModels && (() => {
-                const provider = settings.providers.find(p => p.id === availableModels.providerId);
-                const existingNames = new Set(settings.models.filter(m => m.providerId === availableModels.providerId).map(m => m.name));
-                const filtered = availableModels.models.filter(m => !modelFilter || m.toLowerCase().includes(modelFilter.toLowerCase()));
+            {availableModels &&
+                (() => {
+                    const provider = settings.providers.find((p) => p.id === availableModels.providerId);
+                    const existingNames = new Set(settings.models.filter((m) => m.providerId === availableModels.providerId).map((m) => m.name));
+                    const filtered = availableModels.models.filter((m) => !modelFilter || m.toLowerCase().includes(modelFilter.toLowerCase()));
 
-                return (
-                    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center" onClick={() => { setAvailableModels(null); setModelFilter(''); }} role="dialog" aria-modal="true" aria-label="Available Models">
-                        <div className="bg-gray-800 rounded-lg border border-gray-600 w-full max-w-lg max-h-[70vh] flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-                                <div className="flex items-center gap-2">
-                                    <List size={16} className="text-indigo-400" />
-                                    <span className="font-medium text-sm">{t('ai.settings.fetchModelsTitle')}</span>
-                                    {provider && <span className="text-xs text-indigo-400">({provider.type})</span>}
+                    return (
+                        <div
+                            className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center"
+                            onClick={() => {
+                                setAvailableModels(null);
+                                setModelFilter('');
+                            }}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="Available Models"
+                        >
+                            <div className="bg-gray-800 rounded-lg border border-gray-600 w-full max-w-lg max-h-[70vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+                                    <div className="flex items-center gap-2">
+                                        <List size={16} className="text-indigo-400" />
+                                        <span className="font-medium text-sm">{t('ai.settings.fetchModelsTitle')}</span>
+                                        {provider && <span className="text-xs text-indigo-400">({provider.type})</span>}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setAvailableModels(null);
+                                            setModelFilter('');
+                                        }}
+                                        className="p-1 hover:bg-gray-700 rounded transition-colors"
+                                    >
+                                        <X size={16} />
+                                    </button>
                                 </div>
-                                <button onClick={() => { setAvailableModels(null); setModelFilter(''); }} className="p-1 hover:bg-gray-700 rounded transition-colors">
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            <div className="px-4 py-2 border-b border-gray-700/50">
-                                <input
-                                    type="text"
-                                    value={modelFilter}
-                                    onChange={e => setModelFilter(e.target.value)}
-                                    placeholder={t('ai.settings.fetchModelsFilter')}
-                                    className="w-full px-3 py-1.5 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="flex-1 overflow-auto px-2 py-1">
-                                {filtered.length === 0 ? (
-                                    <div className="text-center py-8 text-gray-500 text-sm">{t('ai.settings.fetchModelsEmpty')}</div>
-                                ) : (
-                                    filtered.map(modelName => {
-                                        const alreadyAdded = existingNames.has(modelName) || addedModels.has(modelName);
-                                        return (
-                                            <div key={modelName} className="flex items-center justify-between px-3 py-1.5 hover:bg-gray-700/40 rounded-lg group">
-                                                <span className="text-sm font-mono text-gray-200 truncate mr-2">{modelName}</span>
-                                                {alreadyAdded ? (
-                                                    <span className="text-xs text-green-400 flex items-center gap-1 shrink-0">
-                                                        <Check size={12} /> {t('ai.settings.fetchModelsAdded')}
-                                                    </span>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => provider && addModelFromList(provider, modelName)}
-                                                        className="text-xs px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 rounded text-white transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                                                    >
-                                                        {t('ai.settings.fetchModelsAdd')}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        );
-                                    })
-                                )}
-                            </div>
-                            <div className="px-4 py-2 border-t border-gray-700/50 text-xs text-indigo-400 font-medium">
-                                {t('ai.settings.modelsAvailable', { count: availableModels.models.length })}
+                                <div className="px-4 py-2 border-b border-gray-700/50">
+                                    <input type="text" value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} placeholder={t('ai.settings.fetchModelsFilter')} className="w-full px-3 py-1.5 bg-gray-900 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" autoFocus />
+                                </div>
+                                <div className="flex-1 overflow-auto px-2 py-1">
+                                    {filtered.length === 0 ? (
+                                        <div className="text-center py-8 text-gray-500 text-sm">{t('ai.settings.fetchModelsEmpty')}</div>
+                                    ) : (
+                                        filtered.map((modelName) => {
+                                            const alreadyAdded = existingNames.has(modelName) || addedModels.has(modelName);
+                                            return (
+                                                <div key={modelName} className="flex items-center justify-between px-3 py-1.5 hover:bg-gray-700/40 rounded-lg group">
+                                                    <span className="text-sm font-mono text-gray-200 truncate mr-2">{modelName}</span>
+                                                    {alreadyAdded ? (
+                                                        <span className="text-xs text-green-400 flex items-center gap-1 shrink-0">
+                                                            <Check size={12} /> {t('ai.settings.fetchModelsAdded')}
+                                                        </span>
+                                                    ) : (
+                                                        <button onClick={() => provider && addModelFromList(provider, modelName)} className="text-xs px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 rounded text-white transition-colors opacity-0 group-hover:opacity-100 shrink-0">
+                                                            {t('ai.settings.fetchModelsAdd')}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                                <div className="px-4 py-2 border-t border-gray-700/50 text-xs text-indigo-400 font-medium">
+                                    {t('ai.settings.modelsAvailable', {
+                                        count: availableModels.models.length,
+                                    })}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                );
-            })()}
+                    );
+                })()}
             {/* Provider Marketplace Modal */}
-            <ProviderMarketplace
-                isOpen={showMarketplace}
-                onClose={() => setShowMarketplace(false)}
-                onAddProvider={addProviderFromPreset}
-                addedProviderTypes={addedProviderTypesSet}
-            />
+            <ProviderMarketplace isOpen={showMarketplace} onClose={() => setShowMarketplace(false)} onAddProvider={addProviderFromPreset} addedProviderTypes={addedProviderTypesSet} />
             {/* Plugin Browser Modal */}
             <PluginBrowser
                 isOpen={showPluginBrowser}
                 onClose={() => setShowPluginBrowser(false)}
-                installedPluginIds={new Set(plugins.map(p => p.id))}
+                installedPluginIds={new Set(plugins.map((p) => p.id))}
                 onInstalled={async () => {
                     try {
                         const list = await invoke<PluginManifest[]>('list_plugins');

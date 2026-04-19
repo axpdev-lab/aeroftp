@@ -218,7 +218,11 @@ pub async fn infinicloud_discover(
 ) -> Result<UserInfo, String> {
     let secret = SecretString::from(password);
     let api_key = api_key.trim().to_string();
-    info!("InfiniCloud discover: user={}, api_key_len={}", username, api_key.len());
+    info!(
+        "InfiniCloud discover: user={}, api_key_len={}",
+        username,
+        api_key.len()
+    );
     discover(&username, &secret, &api_key).await
 }
 

@@ -50,10 +50,7 @@ pub enum FallbackVerdict {
 /// `committed` MUST be sourced from `NativeRsyncDriver::committed()`.
 /// The driver flips it `true` before the first outbound delta data
 /// frame — this function assumes that invariant.
-pub fn classify_fallback(
-    err: &NativeRsyncError,
-    committed: bool,
-) -> FallbackVerdict {
+pub fn classify_fallback(err: &NativeRsyncError, committed: bool) -> FallbackVerdict {
     // Cancelled always wins: the user asked for stop. No fallback, no
     // hard error — the caller renders nothing.
     if err.kind == NativeRsyncErrorKind::Cancelled {
@@ -83,9 +80,7 @@ pub fn classify_fallback(
         NativeRsyncErrorKind::UnsupportedVersion
         | NativeRsyncErrorKind::NegotiationFailed
         | NativeRsyncErrorKind::TransportFailure
-        | NativeRsyncErrorKind::RemoteError => {
-            FallbackVerdict::AttemptClassicSftpFallback
-        }
+        | NativeRsyncErrorKind::RemoteError => FallbackVerdict::AttemptClassicSftpFallback,
 
         // Security: never fall back after a host key mismatch — that's
         // exactly the condition where a silent retry would defeat the

@@ -33,3 +33,10 @@ export { useCloudSync } from './useCloudSync';
 // Component-specific hooks (used by individual components, not App.tsx)
 export { useOAuth2 } from './useOAuth2';
 export { useTraySync } from './useTraySync';
+
+// Tauri event listeners with synchronous disposable (StrictMode-safe)
+export { useTauriListener, createTauriListener, guardedUnlisten } from './useTauriListener';
+
+// Pointer drag with guaranteed cleanup on unmount
+export { usePointerDrag } from './usePointerDrag';
+export type { PointerDragHandlers } from './usePointerDrag';

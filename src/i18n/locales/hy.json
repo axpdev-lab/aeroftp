@@ -452,7 +452,7 @@
             "modeUnavailable": "Փոխանցման րեժիմի նախադրվածները ներկայումս հասանելի են միայն FTP/FTPS-ի համար",
             "crossProfile": {
                 "title": "Փոխանցում պրոֆիլների միջեվ",
-                "subtitle": "Լողացող վահանակ՝ հերթը, մատեանը և ընթացքը մնում են տեսանելի աշխատանքի ընթացքում:",
+                "subtitle": "Պատճենեք ֆայլերը ուղղակիորեն երկու պահված սերվերների միջև։",
                 "closeAria": "Փակել պրոֆիլների միջև փոխանցման վահանակը",
                 "source": "Աղբյուր",
                 "destination": "Նպատակակետ",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Չափ",
                 "executeTransfer": "Կատարել փոխանցումը",
                 "transferInProgress": "Փոխանցումը ընթացքում է",
-                "transferHint": "Հետևեք հերթին, գործողությունների մատեանին և ընթացքին ստորև: Այս վահանակը միտումնապես թեթև է:",
+                "transferHint": "Ուղիղ առաջընթացը ցույց է տրված ներքևում։ Մանրամասն պատմությունը մնում է Գործունեության մատյանում։",
                 "summary": "{transferred} փոխանցված, {skipped} բաց թողված, {failed} ձախողված",
                 "summaryMeta": "{size} {seconds}s-ում",
-                "newTransfer": "Նոր փոխանցում"
+                "newTransfer": "Նոր փոխանցում",
+                "preparing": "Փոխանցման նախապատրաստում…"
             }
         },
         "settings": {
@@ -1311,7 +1312,10 @@
             "release_asset_delete_success": "[{provider}] Asset հեռացվել է {filename}",
             "release_asset_download_start": "[{provider}] Release asset ներբեռնում {filename}...",
             "release_asset_download_success": "[{provider}] Release asset ներբեռնվել է {filename}",
-            "release_asset_download_error": "[{provider}] Չհաջողվեց ներբեռնել release asset {filename}"
+            "release_asset_download_error": "[{provider}] Չհաջողվեց ներբեռնել release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Մեկնարկում է {count}-ի փոխանցումը {source}-ից {dest}",
+            "crossprofile_file_success": "[Cross-profile] Պատճենվել է {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Սխալ {filename}-ում՝ {error}"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -1953,7 +1957,9 @@
             "bwSchedule": "Թողունակության գրաֆիկ",
             "bwScheduleOff": "Ձեռքով (օգտագործել վերևի սահմանները)",
             "bwScheduleOffice": "Աշխատանքային ժամեր (throttle 08-18)",
-            "bwScheduleNight": "Գիշերային ռեժիմ (throttle 18-08)"
+            "bwScheduleNight": "Գիշերային ռեժիմ (throttle 18-08)",
+            "allInSync": "Բոլոր ֆայլերը համաժամանակեցված են — ոչինչ չկա փոխանցելու",
+            "nothingInDirection": "Տարբերություններ գտնվեցին, բայց ոչ մեկը չի համապատասխանում ընտրված ուղղությանը։ Փորձեք Two-way՝ բոլոր փոփոխությունները տեսնելու համար։"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",

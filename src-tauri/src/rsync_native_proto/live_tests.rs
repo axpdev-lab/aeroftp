@@ -90,7 +90,9 @@ async fn live_probe_reports_protocol_31() {
     let transport = ssh_transport();
     let probe = transport.probe().await.unwrap();
     assert_eq!(probe.protocol.as_u32(), 31);
-    assert!(probe.remote_banner.contains("rsnp-proto server protocol 31"));
+    assert!(probe
+        .remote_banner
+        .contains("rsnp-proto server protocol 31"));
 }
 
 #[tokio::test]
@@ -275,11 +277,14 @@ async fn live_real_rsync_lane_emits_protocol_31_greeting() {
     // and read whatever the server puts on stdout within a small window.
     let tcp = StdTcpStream::connect((config.host.as_str(), config.port))
         .expect("tcp connect to real-rsync lane");
-    tcp.set_read_timeout(Some(StdDuration::from_secs(5))).unwrap();
-    tcp.set_write_timeout(Some(StdDuration::from_secs(5))).unwrap();
+    tcp.set_read_timeout(Some(StdDuration::from_secs(5)))
+        .unwrap();
+    tcp.set_write_timeout(Some(StdDuration::from_secs(5)))
+        .unwrap();
     let mut sess = ssh2::Session::new().unwrap();
     sess.set_tcp_stream(tcp);
-    sess.handshake().expect("ssh handshake against real-rsync lane");
+    sess.handshake()
+        .expect("ssh handshake against real-rsync lane");
 
     // Verify the Ed25519 fingerprint if one was pinned, so we fail fast if
     // the harness did not extract it for some reason.

@@ -88,6 +88,11 @@ pub struct FtpSessionPool {
 pub struct FtpSessionLease {
     inner: Arc<FtpSessionPoolInner>,
     session: Option<PooledSession>,
+    /// `true` once `release()` has completed — signals that the session was
+    /// returned through the async reset path. If `Drop` runs with this still
+    /// `false`, the pool must not trust the session state and must run an
+    /// async reset (or disconnect) before anyone else can acquire it.
+    released: bool,
 }
 
 impl FtpSessionPool {
@@ -161,6 +166,7 @@ impl FtpSessionPool {
                 let lease = FtpSessionLease {
                     inner: self.inner.clone(),
                     session: Some(session),
+                    released: false,
                 };
                 lease.ensure_healthy().await?;
                 lease.reset_state().await?;
@@ -209,7 +215,10 @@ impl FtpSessionPool {
             match session.manager.try_lock() {
                 Ok(mut manager) => {
                     manager.disconnect().await.map_err(|e| {
-                        format!("Failed to disconnect FTP pooled session {}: {}", session.id, e)
+                        format!(
+                            "Failed to disconnect FTP pooled session {}: {}",
+                            session.id, e
+                        )
                     })?;
                 }
                 Err(_) => {
@@ -297,46 +306,128 @@ impl FtpSessionLease {
 
     pub async fn release(mut self) -> Result<(), String> {
         let reset_result = self.reset_state().await;
-        self.return_to_pool();
+        if reset_result.is_ok() {
+            self.released = true;
+            self.return_to_pool_clean();
+        } else {
+            // Reset failed: drop the session so the pool reopens a fresh one
+            // next time rather than reusing a dirty session.
+            self.released = true;
+            self.disconnect_session().await;
+        }
         reset_result
     }
 
-    fn return_to_pool(&mut self) {
+    /// Push the session back into the available queue without resetting state.
+    /// Only safe to call after `reset_state()` succeeded.
+    fn return_to_pool_clean(&mut self) {
         if let Some(session) = self.session.take() {
             if self.inner.closed.load(Ordering::Relaxed) {
-                let manager = session.manager.clone();
-                let session_id = session.id;
-                if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                    handle.spawn(async move {
-                        let mut manager = manager.lock().await;
-                        if let Err(error) = manager.disconnect().await {
-                            tracing::warn!(
-                                "Failed to disconnect FTP pooled session {} during shutdown: {}",
-                                session_id,
-                                error
-                            );
-                        }
-                    });
-                } else {
-                    tracing::warn!(
-                        "Dropping FTP pooled session {} after shutdown without async runtime",
-                        session_id
-                    );
-                }
+                self.spawn_disconnect(session);
                 return;
             }
-
             if let Ok(mut queue) = self.inner.available.lock() {
                 queue.push_back(session);
                 self.inner.notify.notify_one();
             }
         }
     }
+
+    async fn disconnect_session(&mut self) {
+        if let Some(session) = self.session.take() {
+            let manager = session.manager.clone();
+            let mut manager = manager.lock().await;
+            if let Err(error) = manager.disconnect().await {
+                tracing::warn!(
+                    "FTP pooled session {} disconnect failed: {}",
+                    session.id,
+                    error
+                );
+            }
+        }
+    }
+
+    fn spawn_disconnect(&self, session: PooledSession) {
+        let manager = session.manager.clone();
+        let session_id = session.id;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let mut manager = manager.lock().await;
+                if let Err(error) = manager.disconnect().await {
+                    tracing::warn!(
+                        "Failed to disconnect FTP pooled session {} during shutdown: {}",
+                        session_id,
+                        error
+                    );
+                }
+            });
+        } else {
+            tracing::warn!(
+                "Dropping FTP pooled session {} after shutdown without async runtime",
+                session_id
+            );
+        }
+    }
 }
 
 impl Drop for FtpSessionLease {
+    /// If the lease was dropped without an explicit `release()` — panic,
+    /// `?` propagation, early return — run the async reset on a detached
+    /// task. If reset succeeds, return the session; otherwise disconnect.
+    /// This is the only way to avoid handing a dirty session to the next
+    /// caller without requiring every call site to be panic-safe.
     fn drop(&mut self) {
-        self.return_to_pool();
+        if self.released {
+            return;
+        }
+
+        let Some(session) = self.session.take() else {
+            return;
+        };
+
+        // Move ownership into an async cleanup task.
+        let inner = self.inner.clone();
+        let closed = inner.closed.load(Ordering::Relaxed);
+        let config = inner.config.clone();
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                if closed {
+                    let mut manager = session.manager.lock().await;
+                    let _ = manager.disconnect().await;
+                    return;
+                }
+
+                // Try reset first; if it works, return the session to the pool.
+                let reset_ok = {
+                    let mut manager = session.manager.lock().await;
+                    let target = if config.connection.initial_path.is_empty() {
+                        "/"
+                    } else {
+                        &config.connection.initial_path
+                    };
+                    manager.change_dir(target).await.is_ok()
+                };
+
+                if reset_ok {
+                    if let Ok(mut queue) = inner.available.lock() {
+                        queue.push_back(session);
+                        inner.notify.notify_one();
+                    }
+                } else {
+                    let mut manager = session.manager.lock().await;
+                    let _ = manager.disconnect().await;
+                }
+            });
+        } else {
+            // No runtime available — the process is tearing down. The
+            // PooledSession drops naturally; the FTP connection will be
+            // reset by the server on socket close.
+            tracing::warn!(
+                "FTP pool lease dropped without async runtime; session {} closed abruptly",
+                session.id,
+            );
+        }
     }
 }
 

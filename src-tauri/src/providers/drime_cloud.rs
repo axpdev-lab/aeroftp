@@ -466,8 +466,8 @@ impl DrimeCloudProvider {
                 }
 
                 let body = resp.text().await.unwrap_or_default();
-                let retryable = status.is_server_error()
-                    || matches!(status.as_u16(), 404 | 408 | 425 | 429);
+                let retryable =
+                    status.is_server_error() || matches!(status.as_u16(), 404 | 408 | 425 | 429);
                 attempt += 1;
                 if retryable && attempt < MAX_ATTEMPTS {
                     let delay = RETRY_DELAYS_MS[(attempt - 1) as usize];
@@ -1762,10 +1762,7 @@ impl StorageProvider for DrimeCloudProvider {
         }
     }
 
-    async fn list_share_links(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+    async fn list_share_links(&mut self, path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;

@@ -452,7 +452,7 @@
             "modeUnavailable": "Les préréglages de mode de transfert sont actuellement disponibles uniquement pour FTP/FTPS",
             "crossProfile": {
                 "title": "Transfert inter-profils",
-                "subtitle": "Panneau flottant : file d'attente, journal et progression restent visibles pendant l'execution.",
+                "subtitle": "Copiez des fichiers directement entre deux serveurs enregistrés.",
                 "closeAria": "Fermer le panneau de transfert inter-profils",
                 "source": "Source",
                 "destination": "Destination",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Taille",
                 "executeTransfer": "Executer le transfert",
                 "transferInProgress": "Transfert en cours",
-                "transferHint": "Gardez un oeil sur la file d'attente, le journal d'activite et la progression ci-dessous. Ce panneau reste volontairement leger.",
+                "transferHint": "La progression en direct s'affiche ci-dessous. L'historique détaillé reste dans le journal d'activité.",
                 "summary": "{transferred} transfere(s), {skipped} ignore(s), {failed} echoue(s)",
                 "summaryMeta": "{size} en {seconds}s",
-                "newTransfer": "Nouveau transfert"
+                "newTransfer": "Nouveau transfert",
+                "preparing": "Préparation du transfert…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} supprimé",
             "release_asset_download_start": "[{provider}] Téléchargement du release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} téléchargé",
-            "release_asset_download_error": "[{provider}] Échec du téléchargement du release asset {filename}"
+            "release_asset_download_error": "[{provider}] Échec du téléchargement du release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Démarrage du transfert de {count} depuis {source} vers {dest}",
+            "crossprofile_file_success": "[Cross-profile] Copié {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Échec sur {filename} : {error}"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Planification de la bande passante",
             "bwScheduleOff": "Manuel (utiliser les limites ci-dessus)",
             "bwScheduleOffice": "Heures de bureau (throttle 08-18)",
-            "bwScheduleNight": "Mode nuit (throttle 18-08)"
+            "bwScheduleNight": "Mode nuit (throttle 18-08)",
+            "allInSync": "Tous les fichiers sont synchronisés — rien à transférer",
+            "nothingInDirection": "Des différences ont été trouvées, mais aucune ne correspond à la direction sélectionnée. Essayez Two-way pour voir toutes les modifications."
         },
         "ui": {
             "syncing": "Synchronisation...",

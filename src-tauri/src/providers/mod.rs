@@ -75,9 +75,9 @@ pub use github::GitHubProvider;
 pub use gitlab::GitLabProvider;
 pub use google_drive::GoogleDriveProvider;
 pub use google_photos::GooglePhotosProvider;
-pub use immich::ImmichProvider;
 #[allow(unused_imports)]
 pub use http_retry::{send_with_retry, HttpRetryConfig};
+pub use immich::ImmichProvider;
 pub use internxt::InternxtProvider;
 pub use jottacloud::JottacloudProvider;
 pub use kdrive::KDriveProvider;
@@ -421,13 +421,8 @@ pub trait StorageProvider: Send + Sync {
 
     /// List existing share links for a file or folder.
     /// Returns all active share links for the given path.
-    async fn list_share_links(
-        &mut self,
-        _path: &str,
-    ) -> Result<Vec<ShareLinkInfo>, ProviderError> {
-        Err(ProviderError::NotSupported(
-            "list_share_links".to_string(),
-        ))
+    async fn list_share_links(&mut self, _path: &str) -> Result<Vec<ShareLinkInfo>, ProviderError> {
+        Err(ProviderError::NotSupported("list_share_links".to_string()))
     }
 
     /// Get storage quota information (used/total/free)
@@ -876,8 +871,7 @@ where
             // 206: server honored our Range — append to existing data
             let content_len = response.content_length().unwrap_or(0);
             let total_size = offset + content_len;
-            stream_response_to_resumable(response, &mut resumable, total_size, on_progress)
-                .await?;
+            stream_response_to_resumable(response, &mut resumable, total_size, on_progress).await?;
             resumable.commit().await.map_err(|e| {
                 ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
             })?;
@@ -892,8 +886,7 @@ where
                     .await
                     .map_err(ProviderError::IoError)?;
                 let total_size = response.content_length().unwrap_or(0);
-                stream_response_to_resumable(response, &mut fresh, total_size, on_progress)
-                    .await?;
+                stream_response_to_resumable(response, &mut fresh, total_size, on_progress).await?;
                 fresh.commit().await.map_err(|e| {
                     ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
                 })?;

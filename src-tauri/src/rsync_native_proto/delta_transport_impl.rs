@@ -57,9 +57,7 @@ use crate::rsync_native_proto::rsync_event_bridge::RsyncEventBridge;
 use crate::rsync_native_proto::ssh_transport::{
     SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
 };
-use crate::rsync_native_proto::transport::{
-    CancelHandle, RemoteExecRequest, RemoteShellTransport,
-};
+use crate::rsync_native_proto::transport::{CancelHandle, RemoteExecRequest, RemoteShellTransport};
 use crate::rsync_native_proto::types::{NativeRsyncError, SessionStats};
 use crate::rsync_output::RsyncEvent;
 use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
@@ -85,8 +83,7 @@ const NATIVE_MAX_IN_MEMORY_BYTES: u64 = 256 * 1024 * 1024;
 /// Counter used to salt the per-instance temp suffix so two concurrent
 /// AeroFTP processes (or two threads in the same app) downloading to the
 /// same path do not contend on the same `.aerotmp` filename.
-static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
+static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// `DeltaTransport` impl driven by the prototype native rsync driver.
 ///
@@ -190,11 +187,7 @@ impl DeltaTransport for NativeRsyncDeltaTransport {
         self.download_inner(remote_path, local_path).await
     }
 
-    async fn upload(
-        &self,
-        local_path: &Path,
-        remote_path: &str,
-    ) -> Result<RsyncStats, RsyncError> {
+    async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
         self.upload_inner(local_path, remote_path).await
     }
 }
@@ -392,11 +385,7 @@ impl NativeRsyncDeltaTransport {
 /// a shape that exercises the same encoder we pinned against the frozen
 /// oracle. `mtime` + `mode` are lifted from the source metadata so the
 /// native path preserves them same as classic rsync (U-07).
-fn build_source_entry(
-    local_path: &Path,
-    size: u64,
-    metadata: &std::fs::Metadata,
-) -> FileListEntry {
+fn build_source_entry(local_path: &Path, size: u64, metadata: &std::fs::Metadata) -> FileListEntry {
     // Flag values match `rsync 3.2.7 flist.c`: XMIT_LONG_NAME (0x0040),
     // XMIT_SAME_MODE (0x0002), XMIT_SAME_UID (0x0008), XMIT_SAME_GID
     // (0x0010), XMIT_SAME_TIME (0x0080). Cumulative = 0x00DA.
@@ -500,10 +489,7 @@ fn build_event_bridge(
 fn drain_warnings(handle: Arc<StdMutex<Vec<String>>>) -> Vec<String> {
     match Arc::try_unwrap(handle) {
         Ok(mutex) => mutex.into_inner().unwrap_or_default(),
-        Err(shared) => shared
-            .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or_default(),
+        Err(shared) => shared.lock().map(|guard| guard.clone()).unwrap_or_default(),
     }
 }
 
@@ -580,10 +566,9 @@ fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
                 ),
             }
         }
-        WriteAtomicError::PostOpen { stage, source } => RsyncError::HardRejection(format!(
-            "atomic write failed at {}: {}",
-            stage, source
-        )),
+        WriteAtomicError::PostOpen { stage, source } => {
+            RsyncError::HardRejection(format!("atomic write failed at {}: {}", stage, source))
+        }
     }
 }
 
@@ -598,7 +583,13 @@ fn temp_path_for(local: &Path) -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or_default();
-    let suffix = format!("{}.{}.{}.{}", TEMP_SUFFIX, std::process::id(), counter, nanos);
+    let suffix = format!(
+        "{}.{}.{}.{}",
+        TEMP_SUFFIX,
+        std::process::id(),
+        counter,
+        nanos
+    );
     let mut os = local.as_os_str().to_os_string();
     os.push(suffix);
     PathBuf::from(os)
@@ -692,12 +683,12 @@ pub async fn write_atomic_chunked(
         let mut offset = 0usize;
         while offset < data.len() {
             let end = (offset + chunk_size).min(data.len());
-            file.write_all(&data[offset..end]).await.map_err(|e| {
-                WriteAtomicError::PostOpen {
+            file.write_all(&data[offset..end])
+                .await
+                .map_err(|e| WriteAtomicError::PostOpen {
                     stage: "write",
                     source: e,
-                }
-            })?;
+                })?;
             offset = end;
             if let Some(d) = inter_chunk_delay {
                 if offset < data.len() {
@@ -705,12 +696,10 @@ pub async fn write_atomic_chunked(
                 }
             }
         }
-        file.flush()
-            .await
-            .map_err(|e| WriteAtomicError::PostOpen {
-                stage: "flush",
-                source: e,
-            })?;
+        file.flush().await.map_err(|e| WriteAtomicError::PostOpen {
+            stage: "flush",
+            source: e,
+        })?;
         file.sync_all()
             .await
             .map_err(|e| WriteAtomicError::PostOpen {
@@ -1007,11 +996,7 @@ mod tests {
         let entries = std::fs::read_dir(dir.path())
             .unwrap()
             .flatten()
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .contains(".aerotmp.")
-            })
+            .filter(|e| e.file_name().to_string_lossy().contains(".aerotmp."))
             .count();
         assert_eq!(entries, 0, "zero-chunk rejection must not open a temp");
     }
@@ -1050,7 +1035,10 @@ mod tests {
                 .unwrap();
 
             let after_mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
-            assert_eq!(after_mode, 0o640, "U-09: mode must be preserved across rename");
+            assert_eq!(
+                after_mode, 0o640,
+                "U-09: mode must be preserved across rename"
+            );
         }
     }
 

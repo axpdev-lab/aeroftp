@@ -6,7 +6,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, emit } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
+import { useTauriListener } from '../hooks/useTauriListener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { TransferProgressBar } from './TransferProgressBar';
 import {
@@ -1162,33 +1163,25 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         loadConfig();
     }, []);
 
-    // Listen for status changes
-    useEffect(() => {
-        const unlisten = listen<CloudSyncStatus>('cloud_status_change', (event) => {
-            setStatus(event.payload);
-        });
+    // Listen for status changes — useTauriListener handles late-resolution cleanup
+    useTauriListener<CloudSyncStatus>('cloud_status_change', (event) => {
+        setStatus(event.payload);
+    });
 
-        const unlistenComplete = listen<SyncResult>('cloud_sync_complete', (event) => {
-            const result = event.payload;
-            if (result.errors.length > 0) {
-                logger.debug(`Sync completed with ${result.errors.length} errors`);
-            } else {
-                logger.debug(
-                    `Synced: ↑${result.uploaded} ↓${result.downloaded} files`
-                );
-            }
-        });
+    useTauriListener<SyncResult>('cloud_sync_complete', (event) => {
+        const result = event.payload;
+        if (result.errors.length > 0) {
+            logger.debug(`Sync completed with ${result.errors.length} errors`);
+        } else {
+            logger.debug(
+                `Synced: ↑${result.uploaded} ↓${result.downloaded} files`
+            );
+        }
+    });
 
-        const unlistenReauth = listen<{ provider: string; reason: string; message: string }>('cloud-reauth-required', (event) => {
-            setReauthRequired({ provider: event.payload.provider, message: event.payload.message });
-        });
-
-        return () => {
-            unlisten.then((f) => f());
-            unlistenComplete.then((f) => f());
-            unlistenReauth.then((f) => f());
-        };
-    }, []);
+    useTauriListener<{ provider: string; reason: string; message: string }>('cloud-reauth-required', (event) => {
+        setReauthRequired({ provider: event.payload.provider, message: event.payload.message });
+    });
 
     const loadConfig = async () => {
         setIsLoading(true);

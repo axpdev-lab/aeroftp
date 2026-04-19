@@ -452,7 +452,7 @@
             "modeUnavailable": "Edastusrežiimi eelseaded on praegu saadaval ainult FTP/FTPS jaoks",
             "crossProfile": {
                 "title": "Ülekanne profiilide vahel",
-                "subtitle": "Hõljuv paneel: järjekord, logi ja edenemine jäävad töö ajal nähtavaks.",
+                "subtitle": "Kopeeri failid otse kahe salvestatud serveri vahel.",
                 "closeAria": "Sulge profiilidevahelise ülekande paneel",
                 "source": "Allikas",
                 "destination": "Sihtkoht",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Suurus",
                 "executeTransfer": "Käivita ülekanne",
                 "transferInProgress": "Ülekanne käib",
-                "transferHint": "Jälgige järjekorda, tegevuslogi ja edenemist allpool. See paneel on teadlikult kerge.",
+                "transferHint": "Reaalajas edenemine kuvatakse allpool. Üksikasjalik ajalugu jääb tegevuslogisse.",
                 "summary": "{transferred} üle kantud, {skipped} vahele jäetud, {failed} ebaõnnestunud",
                 "summaryMeta": "{size} {seconds}s jooksul",
-                "newTransfer": "Uus ülekanne"
+                "newTransfer": "Uus ülekanne",
+                "preparing": "Ülekande ettevalmistamine…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} eemaldatud",
             "release_asset_download_start": "[{provider}] Release asset {filename} allalaadimine...",
             "release_asset_download_success": "[{provider}] Release asset {filename} alla laaditud",
-            "release_asset_download_error": "[{provider}] Release asset {filename} allalaadimine ebaõnnestus"
+            "release_asset_download_error": "[{provider}] Release asset {filename} allalaadimine ebaõnnestus",
+            "crossprofile_start": "[Cross-profile] Alustan {count} ülekannet allikast {source} sihtkohta {dest}",
+            "crossprofile_file_success": "[Cross-profile] Kopeeritud {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Viga failiga {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Ribalaiuse ajakava",
             "bwScheduleOff": "Käsitsi (kasuta ülaltoodud piiranguid)",
             "bwScheduleOffice": "Tööaeg (throttle 08-18)",
-            "bwScheduleNight": "Öörežiim (throttle 18-08)"
+            "bwScheduleNight": "Öörežiim (throttle 18-08)",
+            "allInSync": "Kõik failid on sünkroonitud — midagi pole üle kanda",
+            "nothingInDirection": "Erinevusi leiti, kuid ükski ei vasta valitud suunale. Proovige Two-way, et näha kõiki muudatusi."
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

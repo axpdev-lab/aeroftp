@@ -79,12 +79,13 @@ pub fn resolve_transfer_settings(
         requested_max_concurrent,
         max_concurrent: requested_max_concurrent.clamp(
             MIN_MAX_CONCURRENT,
-            caps.max_concurrent_cap.clamp(MIN_MAX_CONCURRENT, MAX_MAX_CONCURRENT),
+            caps.max_concurrent_cap
+                .clamp(MIN_MAX_CONCURRENT, MAX_MAX_CONCURRENT),
         ),
-        retry_count: input
-            .retry_count
-            .unwrap_or(DEFAULT_RETRY_COUNT)
-            .clamp(MIN_RETRY_COUNT, caps.max_retry_cap.clamp(MIN_RETRY_COUNT, MAX_RETRY_COUNT)),
+        retry_count: input.retry_count.unwrap_or(DEFAULT_RETRY_COUNT).clamp(
+            MIN_RETRY_COUNT,
+            caps.max_retry_cap.clamp(MIN_RETRY_COUNT, MAX_RETRY_COUNT),
+        ),
         timeout_seconds: input
             .timeout_seconds
             .unwrap_or(DEFAULT_TIMEOUT_SECONDS)

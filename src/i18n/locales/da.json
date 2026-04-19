@@ -452,7 +452,7 @@
             "modeUnavailable": "Forudindstillinger for overførselstilstand er i øjeblikket kun tilgængelige for FTP/FTPS",
             "crossProfile": {
                 "title": "Overforsler mellem profiler",
-                "subtitle": "Flydende panel: ko, log og fremskridt forbliver synlige, mens den korer.",
+                "subtitle": "Kopiér filer direkte mellem to gemte servere.",
                 "closeAria": "Luk panelet for overforsel mellem profiler",
                 "source": "Kilde",
                 "destination": "Destination",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Storrelse",
                 "executeTransfer": "Udfore overforsel",
                 "transferInProgress": "Overforsel i gang",
-                "transferHint": "Hold oje med ko, aktivitetslog og fremskridt nedenfor. Dette panel er med vilje holdt let.",
+                "transferHint": "Forløbet i realtid vises nedenfor. Den detaljerede historik forbliver i aktivitetsloggen.",
                 "summary": "{transferred} overfort, {skipped} sprunget over, {failed} fejlet",
                 "summaryMeta": "{size} pa {seconds}s",
-                "newTransfer": "Ny overforsel"
+                "newTransfer": "Ny overforsel",
+                "preparing": "Forbereder overførsel…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} fjernet",
             "release_asset_download_start": "[{provider}] Downloader release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} downloadet",
-            "release_asset_download_error": "[{provider}] Kunne ikke downloade release asset {filename}"
+            "release_asset_download_error": "[{provider}] Kunne ikke downloade release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Starter overførsel af {count} fra {source} til {dest}",
+            "crossprofile_file_success": "[Cross-profile] Kopieret {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Fejl ved {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Båndbredde-tidsplan",
             "bwScheduleOff": "Manuel (brug grænser ovenfor)",
             "bwScheduleOffice": "Kontortid (begræns 08-18)",
-            "bwScheduleNight": "Nattilstand (begræns 18-08)"
+            "bwScheduleNight": "Nattilstand (begræns 18-08)",
+            "allInSync": "Alle filer er synkroniseret — intet at overføre",
+            "nothingInDirection": "Forskelle fundet, men ingen matcher den valgte retning. Prøv Two-way for at se alle ændringer."
         },
         "ui": {
             "syncing": "Synkroniserer...",

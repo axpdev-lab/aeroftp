@@ -4,7 +4,6 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
@@ -32,6 +31,7 @@ import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStora
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { maskCredential } from '../utils/maskCredential';
 import { DEFAULT_APP_FONT_FAMILY, MIN_APP_FONT_SIZE, MAX_APP_FONT_SIZE, clampAppFontSize, normalizeAppFontFamily } from '../hooks/useSettings';
+import { createTauriListener } from '../hooks/useTauriListener';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -56,10 +56,18 @@ const PROTOCOL_COLORS: Record<string, string> = {
 const getServerDisplayInfo = (server: ServerProfile, masked = false) => {
     const protocol = server.protocol || 'ftp';
     const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
-    const mu = (v: string) => masked ? maskCredential(v) : v;
+    const mu = (v: string) => (masked ? maskCredential(v) : v);
 
     if (isOAuth) {
-        const providerNames: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', fourshared: '4shared', zohoworkdrive: 'Zoho WorkDrive' };
+        const providerNames: Record<string, string> = {
+            googledrive: 'Google Drive',
+            dropbox: 'Dropbox',
+            onedrive: 'OneDrive',
+            box: 'Box',
+            pcloud: 'pCloud',
+            fourshared: '4shared',
+            zohoworkdrive: 'Zoho WorkDrive',
+        };
         return `OAuth - ${mu(server.username || providerNames[protocol] || protocol)}`;
     }
 
@@ -79,12 +87,7 @@ const getServerDisplayInfo = (server: ServerProfile, masked = false) => {
     if (protocol === 's3') {
         const bucket = server.options?.bucket || 'S3';
         const host = server.host?.replace(/^https?:\/\//, '') || '';
-        const provider = host.includes('cloudflarestorage') ? 'Cloudflare R2'
-            : host.includes('backblazeb2') ? 'Backblaze B2'
-                : host.includes('amazonaws') ? 'AWS S3'
-                    : host.includes('wasabisys') ? 'Wasabi'
-                        : host.includes('digitaloceanspaces') ? 'DigitalOcean'
-                            : host.split('.')[0];
+        const provider = host.includes('cloudflarestorage') ? 'Cloudflare R2' : host.includes('backblazeb2') ? 'Backblaze B2' : host.includes('amazonaws') ? 'AWS S3' : host.includes('wasabisys') ? 'Wasabi' : host.includes('digitaloceanspaces') ? 'DigitalOcean' : host.split('.')[0];
         return `${bucket} - ${provider}`;
     }
 
@@ -124,10 +127,18 @@ const CUSTOM_FONT_VALUE = '__custom__';
 
 const FONT_PRESETS = [
     { label: 'Inter (Default)', value: DEFAULT_APP_FONT_FAMILY, bundled: true },
-    { label: 'System Default', value: 'system-ui, -apple-system, sans-serif', bundled: true },
+    {
+        label: 'System Default',
+        value: 'system-ui, -apple-system, sans-serif',
+        bundled: true,
+    },
     { label: 'FiraGO', value: "'FiraGO', sans-serif", bundled: false },
     { label: 'Noto Sans', value: "'Noto Sans', sans-serif", bundled: false },
-    { label: 'JetBrains Mono', value: "'JetBrains Mono', monospace", bundled: false },
+    {
+        label: 'JetBrains Mono',
+        value: "'JetBrains Mono', monospace",
+        bundled: false,
+    },
 ];
 
 const getSelectedFontPreset = (fontFamily: string) => {
@@ -200,7 +211,7 @@ interface AppSettings {
 
 const defaultSettings: AppSettings = {
     defaultLocalPath: '',
-    showHiddenFiles: true,  // Developer-first: show all files by default
+    showHiddenFiles: true, // Developer-first: show all files by default
     confirmBeforeDelete: true,
     rememberLastFolder: true,
     doubleClickAction: 'preview',
@@ -223,7 +234,7 @@ const defaultSettings: AppSettings = {
     visibleColumns: ['name', 'size', 'type', 'permissions', 'modified'],
     sortFoldersFirst: true,
     showFileExtensions: true,
-    showToastNotifications: false,  // Default off - use Activity Log instead
+    showToastNotifications: false, // Default off - use Activity Log instead
     analyticsEnabled: false,
     launchOnStartup: false,
 };
@@ -253,33 +264,47 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
 
             if (info.has_update) {
                 // Log update available to Activity Log
-                onActivityLog?.logRaw('activity.update_available', 'UPDATE', {
-                    version: info.latest_version || 'unknown',
-                    format: info.install_format
-                }, 'success');
+                onActivityLog?.logRaw(
+                    'activity.update_available',
+                    'UPDATE',
+                    {
+                        version: info.latest_version || 'unknown',
+                        format: info.install_format,
+                    },
+                    'success'
+                );
 
                 try {
                     await sendNotification({
                         title: t('settings.updateAvailable'),
-                        body: `AeroFTP v${info.latest_version} is ready (.${info.install_format})`
+                        body: `AeroFTP v${info.latest_version} is ready (.${info.install_format})`,
                     });
                 } catch {
-                    alert(t('settings.updateAvailableAlert', {
-                        version: info.latest_version || '',
-                        format: info.install_format || '',
-                        url: info.download_url || 'https://github.com/axpdev-lab/aeroftp/releases/latest'
-                    }));
+                    alert(
+                        t('settings.updateAvailableAlert', {
+                            version: info.latest_version || '',
+                            format: info.install_format || '',
+                            url: info.download_url || 'https://github.com/axpdev-lab/aeroftp/releases/latest',
+                        })
+                    );
                 }
             } else {
                 // Log no update available to Activity Log
-                onActivityLog?.logRaw('activity.update_uptodate', 'UPDATE', {
-                    version: info.current_version
-                }, 'success');
+                onActivityLog?.logRaw(
+                    'activity.update_uptodate',
+                    'UPDATE',
+                    {
+                        version: info.current_version,
+                    },
+                    'success'
+                );
 
                 try {
                     await sendNotification({
                         title: t('settings.upToDate'),
-                        body: t('settings.runningLatest', { version: info.current_version })
+                        body: t('settings.runningLatest', {
+                            version: info.current_version,
+                        }),
                     });
                 } catch {
                     alert(t('settings.upToDateAlert', { version: info.current_version }));
@@ -296,12 +321,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
     };
 
     return (
-        <button
-            type="button"
-            onClick={handleCheck}
-            disabled={isChecking}
-            className="px-4 py-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg text-sm hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors flex items-center gap-2 disabled:opacity-50"
-        >
+        <button type="button" onClick={handleCheck} disabled={isChecking} className="px-4 py-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg text-sm hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors flex items-center gap-2 disabled:opacity-50">
             <svg className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
@@ -356,16 +376,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         if (!updatedOptions.endpoint) {
             let effectiveRegion = updatedOptions.region || provider.defaults?.region;
             if (!effectiveRegion && template && !template.includes('{accountId}')) {
-                const regionField = provider.fields?.find(f => f.key === 'region');
+                const regionField = provider.fields?.find((f) => f.key === 'region');
                 if (regionField?.type === 'select' && regionField.options?.length) {
                     effectiveRegion = regionField.options[0].value;
                     updatedOptions = { ...updatedOptions, region: effectiveRegion };
                 }
             }
             const extraParams = updatedOptions.accountId ? { accountId: updatedOptions.accountId } : undefined;
-            const resolved = provider.defaults?.endpoint
-                || resolveS3Endpoint(provider.id, effectiveRegion, extraParams)
-                || undefined;
+            const resolved = provider.defaults?.endpoint || resolveS3Endpoint(provider.id, effectiveRegion, extraParams) || undefined;
             if (resolved) {
                 updatedOptions = { ...updatedOptions, endpoint: resolved };
                 changed = true;
@@ -373,16 +391,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         }
 
         if (changed) {
-            setEditingServer(prev => prev && prev.id === editingServer.id
-                ? { ...prev, options: updatedOptions }
-                : prev);
+            setEditingServer((prev) => (prev && prev.id === editingServer.id ? { ...prev, options: updatedOptions } : prev));
         }
     }, [editingServer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         invoke<boolean>('native_rsync_feature_compiled')
             .then(setNativeRsyncCompiled)
-            .catch(error => {
+            .catch((error) => {
                 logger.error('Failed to probe native rsync feature:', error);
                 setNativeRsyncCompiled(false);
             });
@@ -396,9 +412,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         const serverId = editingServer.id;
         (async () => {
             try {
-                const storedPassword = await invoke<string>('get_credential', { account: `server_${serverId}` });
+                const storedPassword = await invoke<string>('get_credential', {
+                    account: `server_${serverId}`,
+                });
                 if (storedPassword) {
-                    setEditingServer(prev => prev && prev.id === serverId ? { ...prev, password: storedPassword } : prev);
+                    setEditingServer((prev) => (prev && prev.id === serverId ? { ...prev, password: storedPassword } : prev));
                 }
             } catch {
                 // No credential stored or vault locked — leave password field empty
@@ -413,7 +431,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
         invoke<boolean>('native_rsync_enabled_get')
             .then(setNativeRsyncEnabled)
-            .catch(error => {
+            .catch((error) => {
                 logger.error('Failed to load native rsync setting:', error);
             });
     }, [isOpen, nativeRsyncCompiled]);
@@ -469,10 +487,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         };
     } | null>(null);
     const [keystoreImportFilePath, setKeystoreImportFilePath] = useState<string | null>(null);
-    const [keystoreMessage, setKeystoreMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const [keystoreImportProgress, setKeystoreImportProgress] = useState<{ phase: string; current: number; total: number } | null>(null);
-    const [vaultCategories, setVaultCategories] = useState<{ serverCredentials: number; serverProfiles: number; aiKeys: number; oauthTokens: number; configEntries: number } | null>(null);
+    const [keystoreMessage, setKeystoreMessage] = useState<{
+        type: 'success' | 'error';
+        text: string;
+    } | null>(null);
+    const [keystoreImportProgress, setKeystoreImportProgress] = useState<{
+        phase: string;
+        current: number;
+        total: number;
+    } | null>(null);
+    const [vaultCategories, setVaultCategories] = useState<{
+        serverCredentials: number;
+        serverProfiles: number;
+        aiKeys: number;
+        oauthTokens: number;
+        configEntries: number;
+    } | null>(null);
     const [removePasswordConfirm, setRemovePasswordConfirm] = useState(false);
+    const keystoreImportProgressCleanupRef = React.useRef<(() => void) | null>(null);
+
+    const clearKeystoreImportProgressListener = useCallback(() => {
+        if (keystoreImportProgressCleanupRef.current) {
+            keystoreImportProgressCleanupRef.current();
+            keystoreImportProgressCleanupRef.current = null;
+        }
+    }, []);
 
     // i18n hook
     const { language, setLanguage, t, availableLanguages } = useI18n();
@@ -495,7 +534,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         };
                         setSettings(normalizedSettings);
                         // One-way idempotent migration to vault with plaintext cleanup
-                        secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, normalizedSettings).catch(() => { });
+                        secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, normalizedSettings).catch(() => {});
                     }
 
                     // Load servers: sync fallback first, then try vault
@@ -510,8 +549,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         const loaded = { ...defaultOAuthSettings };
                         for (const p of providers) {
                             try {
-                                const id = await invoke<string>('get_credential', { account: `oauth_${p}_client_id` });
-                                const secret = await invoke<string>('get_credential', { account: `oauth_${p}_client_secret` });
+                                const id = await invoke<string>('get_credential', {
+                                    account: `oauth_${p}_client_id`,
+                                });
+                                const secret = await invoke<string>('get_credential', {
+                                    account: `oauth_${p}_client_secret`,
+                                });
                                 loaded[p] = { clientId: id || '', clientSecret: secret || '' };
                             } catch {
                                 // SEC: No localStorage fallback — credentials must be in vault.
@@ -522,15 +565,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     };
                     await loadOAuthFromStore();
 
-
                     // Sync autostart state from OS (authoritative source)
                     isAutostartEnabled()
-                        .then(enabled => setSettings(prev => ({ ...prev, launchOnStartup: enabled })))
-                        .catch(e => logger.debug('Autostart status check failed:', e));
+                        .then((enabled) => setSettings((prev) => ({ ...prev, launchOnStartup: enabled })))
+                        .catch((e) => logger.debug('Autostart status check failed:', e));
 
                     // Load credential store status
-                    invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number; accounts_count?: number; categories?: { serverCredentials: number; serverProfiles: number; aiKeys: number; oauthTokens: number; configEntries: number } }>('get_credential_store_status')
-                        .then(status => {
+                    invoke<{
+                        master_mode: boolean;
+                        is_locked: boolean;
+                        timeout_seconds: number;
+                        accounts_count?: number;
+                        categories?: {
+                            serverCredentials: number;
+                            serverProfiles: number;
+                            aiKeys: number;
+                            oauthTokens: number;
+                            configEntries: number;
+                        };
+                    }>('get_credential_store_status')
+                        .then((status) => {
                             setMasterPasswordStatus({
                                 is_set: status.master_mode,
                                 is_locked: status.is_locked,
@@ -550,12 +604,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                     // Load TOTP 2FA status
                     invoke<boolean>('totp_status')
-                        .then(enabled => setTotpEnabled(enabled))
+                        .then((enabled) => setTotpEnabled(enabled))
                         .catch(() => setTotpEnabled(false));
-                } catch { }
+                } catch {}
             })();
         }
     }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen) return;
+        clearKeystoreImportProgressListener();
+        setKeystoreImporting(false);
+        setKeystoreImportProgress(null);
+    }, [clearKeystoreImportProgressListener, isOpen]);
+
+    useEffect(() => {
+        return () => {
+            clearKeystoreImportProgressListener();
+        };
+    }, [clearKeystoreImportProgressListener]);
 
     const flashSaved = () => {
         setSaveState('saving');
@@ -572,16 +639,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             settings.fontFamily = normalizeAppFontFamily(settings.fontFamily);
 
             await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
-            secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => { });
+            secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => {});
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
                 const creds = oauthSettings[p];
                 if (creds.clientId) {
-                    await invoke('store_credential', { account: `oauth_${p}_client_id`, password: creds.clientId }).catch(console.error);
+                    await invoke('store_credential', {
+                        account: `oauth_${p}_client_id`,
+                        password: creds.clientId,
+                    }).catch(console.error);
                 }
                 if (creds.clientSecret) {
-                    await invoke('store_credential', { account: `oauth_${p}_client_secret`, password: creds.clientSecret }).catch(console.error);
+                    await invoke('store_credential', {
+                        account: `oauth_${p}_client_secret`,
+                        password: creds.clientSecret,
+                    }).catch(console.error);
                 }
             }
             // Remove legacy OAuth settings from localStorage
@@ -599,7 +672,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 logger.debug('Autostart toggle failed:', e);
                 // Revert UI to actual OS state on next open
                 const actual = await isAutostartEnabled().catch(() => false);
-                setSettings(prev => ({ ...prev, launchOnStartup: actual }));
+                setSettings((prev) => ({ ...prev, launchOnStartup: actual }));
             }
             setSettings(settings);
             // Notify App.tsx of settings change with inline payload for immediate sync
@@ -618,12 +691,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     };
 
     const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
-        setSettings(prev => ({ ...prev, [key]: value }));
+        setSettings((prev) => ({ ...prev, [key]: value }));
         setHasChanges(true);
     };
 
     const deleteServer = (id: string) => {
-        setServers(prev => prev.filter(s => s.id !== id));
+        setServers((prev) => prev.filter((s) => s.id !== id));
         setHasChanges(true);
         // Clean up orphaned vault credential
         invoke('delete_credential', { account: `server_${id}` }).catch(() => {});
@@ -633,13 +706,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     if (!isOpen) return null;
 
     const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-        { id: 'general', label: t('settings.general'), icon: <Settings size={16} /> },
-        { id: 'connection', label: t('settings.connection'), icon: <Wifi size={16} /> },
+        {
+            id: 'general',
+            label: t('settings.general'),
+            icon: <Settings size={16} />,
+        },
+        {
+            id: 'connection',
+            label: t('settings.connection'),
+            icon: <Wifi size={16} />,
+        },
         { id: 'servers', label: t('settings.servers'), icon: <Server size={16} /> },
         { id: 'aerocloud', label: 'AeroCloud', icon: <Cloud size={16} /> },
-        { id: 'cloudproviders', label: t('settings.oauthProviders') || t('settings.cloudProviders'), icon: <Cloud size={16} /> },
-        { id: 'transfers', label: t('settings.transfers'), icon: <Upload size={16} /> },
-        { id: 'filehandling', label: t('settings.fileHandling'), icon: <FileCheck size={16} /> },
+        {
+            id: 'cloudproviders',
+            label: t('settings.oauthProviders') || t('settings.cloudProviders'),
+            icon: <Cloud size={16} />,
+        },
+        {
+            id: 'transfers',
+            label: t('settings.transfers'),
+            icon: <Upload size={16} />,
+        },
+        {
+            id: 'filehandling',
+            label: t('settings.fileHandling'),
+            icon: <FileCheck size={16} />,
+        },
         { id: 'ui', label: t('settings.appearance'), icon: <Palette size={16} /> },
         { id: 'security', label: t('settings.security'), icon: <Lock size={16} /> },
         { id: 'backup', label: t('settings.backup'), icon: <Key size={16} /> },
@@ -647,9 +740,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     ];
 
     const updateOAuthSetting = (provider: keyof OAuthSettings, field: 'clientId' | 'clientSecret', value: string) => {
-        setOauthSettings(prev => ({
+        setOauthSettings((prev) => ({
             ...prev,
-            [provider]: { ...prev[provider], [field]: value }
+            [provider]: { ...prev[provider], [field]: value },
         }));
         setHasChanges(true);
     };
@@ -677,15 +770,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     <div className="flex flex-1 overflow-hidden">
                         {/* Sidebar */}
                         <div className="w-48 border-r border-gray-200 dark:border-gray-700 p-2 space-y-1">
-                            {tabs.map(tab => (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`w-full flex items-start gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${activeTab === tab.id
-                                        ? 'bg-blue-500 text-white'
-                                        : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                                        }`}
-                                >
+                            {tabs.map((tab) => (
+                                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full flex items-start gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${activeTab === tab.id ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
                                     {tab.icon}
                                     {tab.label}
                                 </button>
@@ -702,21 +788,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.defaultLocalPath')}</label>
                                             <div className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={settings.defaultLocalPath}
-                                                    onChange={e => updateSetting('defaultLocalPath', e.target.value)}
-                                                    placeholder={t('settings.defaultLocalPathPlaceholder')}
-                                                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-                                                />
+                                                <input type="text" value={settings.defaultLocalPath} onChange={(e) => updateSetting('defaultLocalPath', e.target.value)} placeholder={t('settings.defaultLocalPathPlaceholder')} className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm" />
                                                 <button
                                                     onClick={async () => {
                                                         try {
-                                                            const selected = await open({ directory: true, multiple: false, title: t('settings.selectDefaultFolder') });
+                                                            const selected = await open({
+                                                                directory: true,
+                                                                multiple: false,
+                                                                title: t('settings.selectDefaultFolder'),
+                                                            });
                                                             if (selected && typeof selected === 'string') {
                                                                 updateSetting('defaultLocalPath', selected);
                                                             }
-                                                        } catch (e) { console.error('Folder picker error:', e); }
+                                                        } catch (e) {
+                                                            console.error('Folder picker error:', e);
+                                                        }
                                                     }}
                                                     className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
                                                     title={t('common.browse')}
@@ -726,17 +812,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                         </div>
 
-                                        <Checkbox
-                                            checked={settings.showHiddenFiles}
-                                            onChange={(v) => updateSetting('showHiddenFiles', v)}
-                                            label={<span className="text-sm">{t('settings.showHiddenFiles')}</span>}
-                                        />
+                                        <Checkbox checked={settings.showHiddenFiles} onChange={(v) => updateSetting('showHiddenFiles', v)} label={<span className="text-sm">{t('settings.showHiddenFiles')}</span>} />
 
-                                        <Checkbox
-                                            checked={settings.confirmBeforeDelete}
-                                            onChange={(v) => updateSetting('confirmBeforeDelete', v)}
-                                            label={<span className="text-sm">{t('settings.confirmBeforeDelete')}</span>}
-                                        />
+                                        <Checkbox checked={settings.confirmBeforeDelete} onChange={(v) => updateSetting('confirmBeforeDelete', v)} label={<span className="text-sm">{t('settings.confirmBeforeDelete')}</span>} />
 
                                         <Checkbox
                                             checked={settings.sortFoldersFirst !== false}
@@ -775,23 +853,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <label className="block text-sm font-medium mb-2">{t('settings.doubleClickAction')}</label>
                                             <div className="flex gap-4">
                                                 <label className="flex items-center gap-2 cursor-pointer">
-                                                    <input
-                                                        type="radio"
-                                                        name="doubleClickAction"
-                                                        checked={settings.doubleClickAction === 'preview'}
-                                                        onChange={() => updateSetting('doubleClickAction', 'preview')}
-                                                        className="w-4 h-4"
-                                                    />
+                                                    <input type="radio" name="doubleClickAction" checked={settings.doubleClickAction === 'preview'} onChange={() => updateSetting('doubleClickAction', 'preview')} className="w-4 h-4" />
                                                     <span className="text-sm">{t('settings.doubleClickPreview')}</span>
                                                 </label>
                                                 <label className="flex items-center gap-2 cursor-pointer">
-                                                    <input
-                                                        type="radio"
-                                                        name="doubleClickAction"
-                                                        checked={settings.doubleClickAction === 'download'}
-                                                        onChange={() => updateSetting('doubleClickAction', 'download')}
-                                                        className="w-4 h-4"
-                                                    />
+                                                    <input type="radio" name="doubleClickAction" checked={settings.doubleClickAction === 'download'} onChange={() => updateSetting('doubleClickAction', 'download')} className="w-4 h-4" />
                                                     <span className="text-sm">{t('settings.doubleClickDownload')}</span>
                                                 </label>
                                             </div>
@@ -833,14 +899,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.connectionTimeout')}</label>
                                             <div className="flex items-center gap-3">
-                                                <input
-                                                    type="range"
-                                                    min="10"
-                                                    max="120"
-                                                    value={settings.timeoutSeconds}
-                                                    onChange={e => updateSetting('timeoutSeconds', parseInt(e.target.value))}
-                                                    className="flex-1"
-                                                />
+                                                <input type="range" min="10" max="120" value={settings.timeoutSeconds} onChange={(e) => updateSetting('timeoutSeconds', parseInt(e.target.value))} className="flex-1" />
                                                 <span className="text-sm w-16 text-right">{settings.timeoutSeconds}s</span>
                                             </div>
                                             <p className="text-xs text-gray-500 mt-1">{t('settings.connectionTimeoutDesc')}</p>
@@ -848,11 +907,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.tlsVersion')}</label>
-                                            <select
-                                                value={settings.tlsVersion}
-                                                onChange={e => updateSetting('tlsVersion', e.target.value as 'auto' | '1.2' | '1.3')}
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                                            >
+                                            <select value={settings.tlsVersion} onChange={(e) => updateSetting('tlsVersion', e.target.value as 'auto' | '1.2' | '1.3')} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
                                                 <option value="auto">{t('settings.tlsAuto')}</option>
                                                 <option value="1.2">{t('settings.tls12')}</option>
                                                 <option value="1.3">{t('settings.tls13')}</option>
@@ -862,25 +917,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium mb-1">{t('settings.reconnectAttempts')}</label>
-                                                <select
-                                                    value={settings.reconnectAttempts}
-                                                    onChange={e => updateSetting('reconnectAttempts', parseInt(e.target.value))}
-                                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                                                >
-                                                    {[0, 1, 2, 3, 5, 10].map(n => (
-                                                        <option key={n} value={n}>{n === 0 ? t('settings.disabled') : t('settings.attemptsCount', { n })}</option>
+                                                <select value={settings.reconnectAttempts} onChange={(e) => updateSetting('reconnectAttempts', parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
+                                                    {[0, 1, 2, 3, 5, 10].map((n) => (
+                                                        <option key={n} value={n}>
+                                                            {n === 0 ? t('settings.disabled') : t('settings.attemptsCount', { n })}
+                                                        </option>
                                                     ))}
                                                 </select>
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium mb-1">{t('settings.reconnectDelay')}</label>
-                                                <select
-                                                    value={settings.reconnectDelay}
-                                                    onChange={e => updateSetting('reconnectDelay', parseInt(e.target.value))}
-                                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                                                >
-                                                    {[1, 3, 5, 10, 30].map(n => (
-                                                        <option key={n} value={n}>{t('settings.nSeconds', { n })}</option>
+                                                <select value={settings.reconnectDelay} onChange={(e) => updateSetting('reconnectDelay', parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
+                                                    {[1, 3, 5, 10, 30].map((n) => (
+                                                        <option key={n} value={n}>
+                                                            {t('settings.nSeconds', { n })}
+                                                        </option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -890,23 +941,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <label className="block text-sm font-medium mb-2">{t('settings.ftpMode')}</label>
                                             <div className="flex gap-4">
                                                 <label className="flex items-center gap-2 cursor-pointer">
-                                                    <input
-                                                        type="radio"
-                                                        name="ftpMode"
-                                                        checked={settings.ftpMode === 'passive'}
-                                                        onChange={() => updateSetting('ftpMode', 'passive')}
-                                                        className="w-4 h-4"
-                                                    />
+                                                    <input type="radio" name="ftpMode" checked={settings.ftpMode === 'passive'} onChange={() => updateSetting('ftpMode', 'passive')} className="w-4 h-4" />
                                                     <span className="text-sm">{t('settings.ftpPassive')}</span>
                                                 </label>
                                                 <label className="flex items-center gap-2 cursor-pointer">
-                                                    <input
-                                                        type="radio"
-                                                        name="ftpMode"
-                                                        checked={settings.ftpMode === 'active'}
-                                                        onChange={() => updateSetting('ftpMode', 'active')}
-                                                        className="w-4 h-4"
-                                                    />
+                                                    <input type="radio" name="ftpMode" checked={settings.ftpMode === 'active'} onChange={() => updateSetting('ftpMode', 'active')} className="w-4 h-4" />
                                                     <span className="text-sm">{t('settings.ftpActive')}</span>
                                                 </label>
                                             </div>
@@ -921,22 +960,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="flex items-center justify-between">
                                         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.savedServers')}</h3>
                                         <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => setCredentialsMasked(v => !v)}
-                                                className="p-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400 transition-colors"
-                                                title={credentialsMasked ? t('savedServers.showCredentials') : t('savedServers.hideCredentials')}
-                                            >
+                                            <button onClick={() => setCredentialsMasked((v) => !v)} className="p-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400 transition-colors" title={credentialsMasked ? t('savedServers.showCredentials') : t('savedServers.hideCredentials')}>
                                                 {credentialsMasked ? <EyeOff size={14} /> : <Eye size={14} />}
                                             </button>
-                                            <button
-                                                onClick={() => setShowExportImport(true)}
-                                                className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1.5"
-                                                title={t('settings.exportImport')}
-                                            >
+                                            <button onClick={() => setShowExportImport(true)} className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1.5" title={t('settings.exportImport')}>
                                                 <ImportExportIcon size={14} /> {t('settings.exportImport')}
                                             </button>
                                             <button
-                                                onClick={() => setEditingServer({ id: crypto.randomUUID(), name: '', host: '', port: 21, username: '', password: '' })}
+                                                onClick={() =>
+                                                    setEditingServer({
+                                                        id: crypto.randomUUID(),
+                                                        name: '',
+                                                        host: '',
+                                                        port: 21,
+                                                        username: '',
+                                                        password: '',
+                                                    })
+                                                }
                                                 className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1.5"
                                             >
                                                 <Plus size={14} /> {t('settings.addServer')}
@@ -952,15 +992,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                     ) : (
                                         <div className="space-y-2">
-                                            {servers.map(server => {
+                                            {servers.map((server) => {
                                                 const protocol = server.protocol || 'ftp';
                                                 const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
 
                                                 return (
-                                                    <div
-                                                        key={server.id}
-                                                        className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group"
-                                                    >
+                                                    <div key={server.id} className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group">
                                                         <div className="flex items-center gap-3">
                                                             {/* Protocol-colored avatar with favicon/custom icon support */}
                                                             {(() => {
@@ -973,10 +1010,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 return (
                                                                     <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${hasIcon || hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>
                                                                         {hasCustomIcon ? (
-                                                                            <img src={server.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                                                            <img
+                                                                                src={server.customIconUrl}
+                                                                                alt=""
+                                                                                className="w-6 h-6 rounded object-contain"
+                                                                                onError={(e) => {
+                                                                                    (e.target as HTMLImageElement).style.display = 'none';
+                                                                                }}
+                                                                            />
                                                                         ) : hasFavicon ? (
-                                                                            <img src={server.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                                                                        ) : hasLogo ? <LogoComponent size={20} /> : <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>}
+                                                                            <img
+                                                                                src={server.faviconUrl}
+                                                                                alt=""
+                                                                                className="w-6 h-6 rounded object-contain"
+                                                                                onError={(e) => {
+                                                                                    (e.target as HTMLImageElement).style.display = 'none';
+                                                                                }}
+                                                                            />
+                                                                        ) : hasLogo ? (
+                                                                            <LogoComponent size={20} />
+                                                                        ) : (
+                                                                            <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>
+                                                                        )}
                                                                     </div>
                                                                 );
                                                             })()}
@@ -984,31 +1039,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 <div className="font-medium flex items-center gap-2">
                                                                     {server.name || server.host}
                                                                     {/* Protocol badge */}
-                                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
-                                                                        {protocol}
-                                                                    </span>
+                                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">{protocol}</span>
                                                                     {/* GitHub auth mode badge */}
-                                                                    {protocol === 'github' && (() => {
-                                                                        const badge = getGitHubConnectionBadge(server.options);
-                                                                        if (!badge) return null;
-                                                                        return (
-                                                                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.className}`}>
-                                                                                {badge.label}
-                                                                            </span>
-                                                                        );
-                                                                    })()}
-                                                                    {protocol === 'mega' && (() => {
-                                                                        const badge = getMegaConnectionBadge(server.options);
-                                                                        return (
-                                                                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.className}`}>
-                                                                                {badge.label}
-                                                                            </span>
-                                                                        );
-                                                                    })()}
+                                                                    {protocol === 'github' &&
+                                                                        (() => {
+                                                                            const badge = getGitHubConnectionBadge(server.options);
+                                                                            if (!badge) return null;
+                                                                            return <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.className}`}>{badge.label}</span>;
+                                                                        })()}
+                                                                    {protocol === 'mega' &&
+                                                                        (() => {
+                                                                            const badge = getMegaConnectionBadge(server.options);
+                                                                            return <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.className}`}>{badge.label}</span>;
+                                                                        })()}
                                                                 </div>
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                                    {getServerDisplayInfo(server, credentialsMasked)}
-                                                                </div>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400">{getServerDisplayInfo(server, credentialsMasked)}</div>
                                                                 {(server.initialPath || server.localInitialPath) && (
                                                                     <p className="text-xs text-gray-400 mt-1">
                                                                         {server.initialPath && <span>📁 {server.initialPath}</span>}
@@ -1019,11 +1064,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button
-                                                                onClick={() => setEditingServer(server)}
-                                                                className="p-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
-                                                                title={t('common.edit')}
-                                                            >
+                                                            <button onClick={() => setEditingServer(server)} className="p-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title={t('common.edit')}>
                                                                 <Edit size={14} />
                                                             </button>
                                                             <button
@@ -1044,11 +1085,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             >
                                                                 <Copy size={14} />
                                                             </button>
-                                                            <button
-                                                                onClick={() => deleteServer(server.id)}
-                                                                className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                                                                title={t('common.delete')}
-                                                            >
+                                                            <button onClick={() => deleteServer(server.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title={t('common.delete')}>
                                                                 <Trash2 size={14} />
                                                             </button>
                                                         </div>
@@ -1059,984 +1096,1280 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     )}
 
                                     {/* Edit Server Modal */}
-                                    {editingServer && (() => {
-                                        const protocol = editingServer.protocol || 'ftp';
-                                        const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
-                                        const isMega = protocol === 'mega';
-                                        const isFilen = protocol === 'filen';
-                                        const isS3 = protocol === 's3';
-                                        const isAzure = protocol === 'azure';
-                                        const isSftp = protocol === 'sftp';
-                                        const isInternxt = protocol === 'internxt';
-                                        const isKDrive = protocol === 'kdrive';
-                                        const isJottacloud = protocol === 'jottacloud';
-                                        const isDrime = protocol === 'drime';
-                                        const isKoofr = protocol === 'koofr';
-                                        const isOpenDrive = protocol === 'opendrive';
-                                        const isYandexDisk = protocol === 'yandexdisk';
-                                        const isGitHub = protocol === 'github';
-                                        const megaMode = getMegaConnectionMode(editingServer.options);
-                                        const githubAuthMode = editingServer.options?.githubAuthMode || 'authorize';
-                                        const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isOpenDrive && !isYandexDisk && !isGitHub;
-                                        const needsPassword = !isOAuth && !isGitHub;
-                                        const isNewServer = !servers.some(s => s.id === editingServer.id);
-                                        const logoKey = editingServer.providerId || protocol;
-                                        const hasProviderLogo = !!PROVIDER_LOGOS[logoKey];
+                                    {editingServer &&
+                                        (() => {
+                                            const protocol = editingServer.protocol || 'ftp';
+                                            const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
+                                            const isMega = protocol === 'mega';
+                                            const isFilen = protocol === 'filen';
+                                            const isS3 = protocol === 's3';
+                                            const isAzure = protocol === 'azure';
+                                            const isSftp = protocol === 'sftp';
+                                            const isInternxt = protocol === 'internxt';
+                                            const isKDrive = protocol === 'kdrive';
+                                            const isJottacloud = protocol === 'jottacloud';
+                                            const isDrime = protocol === 'drime';
+                                            const isKoofr = protocol === 'koofr';
+                                            const isOpenDrive = protocol === 'opendrive';
+                                            const isYandexDisk = protocol === 'yandexdisk';
+                                            const isGitHub = protocol === 'github';
+                                            const megaMode = getMegaConnectionMode(editingServer.options);
+                                            const githubAuthMode = editingServer.options?.githubAuthMode || 'authorize';
+                                            const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isOpenDrive && !isYandexDisk && !isGitHub;
+                                            const needsPassword = !isOAuth && !isGitHub;
+                                            const isNewServer = !servers.some((s) => s.id === editingServer.id);
+                                            const logoKey = editingServer.providerId || protocol;
+                                            const hasProviderLogo = !!PROVIDER_LOGOS[logoKey];
 
-                                        // Protocol options for new server
-                                        const protocolOptions = [
-                                            { value: 'ftp', label: t('settings.protocolFtp'), port: 21 },
-                                            { value: 'ftps', label: t('settings.protocolFtps'), port: 990 },
-                                            { value: 'sftp', label: t('settings.protocolSftp'), port: 22 },
-                                            { value: 's3', label: t('settings.protocolS3'), port: 443 },
-                                            { value: 'webdav', label: t('settings.protocolWebdav'), port: 443 },
-                                            { value: 'mega', label: t('settings.protocolMega'), port: 443 },
-                                            { value: 'filen', label: t('settings.protocolFilen'), port: 443 },
-                                            { value: 'googledrive', label: t('settings.protocolGdrive'), port: 443 },
-                                            { value: 'dropbox', label: t('settings.protocolDropbox'), port: 443 },
-                                            { value: 'onedrive', label: t('settings.protocolOnedrive'), port: 443 },
-                                            { value: 'box', label: t('settings.protocolBox'), port: 443 },
-                                            { value: 'pcloud', label: t('settings.protocolPcloud'), port: 443 },
-                                            { value: 'fourshared', label: t('settings.protocolFourshared'), port: 443 },
-                                            { value: 'zohoworkdrive', label: t('settings.protocolZohoworkdrive'), port: 443 },
-                                            { value: 'internxt', label: 'Internxt Drive', port: 443 },
-                                            { value: 'kdrive', label: 'kDrive', port: 443 },
-                                            { value: 'jottacloud', label: 'Jottacloud', port: 443 },
-                                            { value: 'koofr', label: 'Koofr', port: 443 },
-                                            { value: 'opendrive', label: t('settings.protocolOpendrive'), port: 443 },
-                                            { value: 'yandexdisk', label: 'Yandex Disk', port: 443 },
-                                            { value: 'drime', label: 'Drime Cloud', port: 443 },
-                                            { value: 'azure', label: t('settings.protocolAzure'), port: 443 },
-                                            { value: 'github', label: 'GitHub', port: 443 },
-                                            { value: 'gitlab', label: 'GitLab', port: 443 },
-                                        ];
+                                            // Protocol options for new server
+                                            const protocolOptions = [
+                                                {
+                                                    value: 'ftp',
+                                                    label: t('settings.protocolFtp'),
+                                                    port: 21,
+                                                },
+                                                {
+                                                    value: 'ftps',
+                                                    label: t('settings.protocolFtps'),
+                                                    port: 990,
+                                                },
+                                                {
+                                                    value: 'sftp',
+                                                    label: t('settings.protocolSftp'),
+                                                    port: 22,
+                                                },
+                                                {
+                                                    value: 's3',
+                                                    label: t('settings.protocolS3'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'webdav',
+                                                    label: t('settings.protocolWebdav'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'mega',
+                                                    label: t('settings.protocolMega'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'filen',
+                                                    label: t('settings.protocolFilen'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'googledrive',
+                                                    label: t('settings.protocolGdrive'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'dropbox',
+                                                    label: t('settings.protocolDropbox'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'onedrive',
+                                                    label: t('settings.protocolOnedrive'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'box',
+                                                    label: t('settings.protocolBox'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'pcloud',
+                                                    label: t('settings.protocolPcloud'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'fourshared',
+                                                    label: t('settings.protocolFourshared'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'zohoworkdrive',
+                                                    label: t('settings.protocolZohoworkdrive'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'internxt',
+                                                    label: 'Internxt Drive',
+                                                    port: 443,
+                                                },
+                                                { value: 'kdrive', label: 'kDrive', port: 443 },
+                                                { value: 'jottacloud', label: 'Jottacloud', port: 443 },
+                                                { value: 'koofr', label: 'Koofr', port: 443 },
+                                                {
+                                                    value: 'opendrive',
+                                                    label: t('settings.protocolOpendrive'),
+                                                    port: 443,
+                                                },
+                                                {
+                                                    value: 'yandexdisk',
+                                                    label: 'Yandex Disk',
+                                                    port: 443,
+                                                },
+                                                { value: 'drime', label: 'Drime Cloud', port: 443 },
+                                                {
+                                                    value: 'azure',
+                                                    label: t('settings.protocolAzure'),
+                                                    port: 443,
+                                                },
+                                                { value: 'github', label: 'GitHub', port: 443 },
+                                                { value: 'gitlab', label: 'GitLab', port: 443 },
+                                            ];
 
-                                        const handleProtocolChange = (newProtocol: string) => {
-                                            const opt = protocolOptions.find(p => p.value === newProtocol);
-                                            setEditingServer({
-                                                ...editingServer,
-                                                protocol: newProtocol as ProviderType,
-                                                port: opt?.port || 21,
-                                                // Clear fields that don't apply
-                                                host: newProtocol === 'opendrive'
-                                                    ? 'dev.opendrive.com'
-                                                    : newProtocol === 'mega'
-                                                    ? 'mega.nz'
-                                                    : (isOAuthProvider(newProtocol as ProviderType) || isFourSharedProvider(newProtocol as ProviderType)) ? '' : editingServer.host,
-                                                username: '',
-                                                password: '',
-                                                options: newProtocol === 'mega'
-                                                    ? normalizeMegaOptions()
-                                                    : {}
-                                            });
-                                        };
+                                            const handleProtocolChange = (newProtocol: string) => {
+                                                const opt = protocolOptions.find((p) => p.value === newProtocol);
+                                                setEditingServer({
+                                                    ...editingServer,
+                                                    protocol: newProtocol as ProviderType,
+                                                    port: opt?.port || 21,
+                                                    // Clear fields that don't apply
+                                                    host: newProtocol === 'opendrive' ? 'dev.opendrive.com' : newProtocol === 'mega' ? 'mega.nz' : isOAuthProvider(newProtocol as ProviderType) || isFourSharedProvider(newProtocol as ProviderType) ? '' : editingServer.host,
+                                                    username: '',
+                                                    password: '',
+                                                    options: newProtocol === 'mega' ? normalizeMegaOptions() : {},
+                                                });
+                                            };
 
-                                        return (
-                                            <div className="fixed inset-0 z-60 flex items-center justify-center">
-                                                <div className="absolute inset-0 bg-black/30" onClick={() => setEditingServer(null)} />
-                                                <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
-                                                    <div className="flex items-center gap-3">
-                                                        {(() => {
-                                                            const logoKey = editingServer.providerId || protocol;
-                                                            const LogoComponent = PROVIDER_LOGOS[logoKey];
-                                                            const hasLogo = !!LogoComponent;
-                                                            return (
-                                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>
-                                                                    {hasLogo ? <LogoComponent size={20} /> : isOAuth ? <Cloud size={18} /> : <Server size={18} />}
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                        <div>
-                                                            <h3 className="text-lg font-semibold">{isNewServer ? t('settings.addServer') : t('settings.editServerTitle')}</h3>
-                                                            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">
-                                                                {protocol}
-                                                            </span>
+                                            return (
+                                                <div className="fixed inset-0 z-60 flex items-center justify-center">
+                                                    <div className="absolute inset-0 bg-black/30" onClick={() => setEditingServer(null)} />
+                                                    <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
+                                                        <div className="flex items-center gap-3">
+                                                            {(() => {
+                                                                const logoKey = editingServer.providerId || protocol;
+                                                                const LogoComponent = PROVIDER_LOGOS[logoKey];
+                                                                const hasLogo = !!LogoComponent;
+                                                                return <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>{hasLogo ? <LogoComponent size={20} /> : isOAuth ? <Cloud size={18} /> : <Server size={18} />}</div>;
+                                                            })()}
+                                                            <div>
+                                                                <h3 className="text-lg font-semibold">{isNewServer ? t('settings.addServer') : t('settings.editServerTitle')}</h3>
+                                                                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">{protocol}</span>
+                                                            </div>
                                                         </div>
-                                                    </div>
 
-                                                    <div className="space-y-3">
-                                                        {/* Protocol Selector - only for new servers */}
-                                                        {isNewServer && (
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.protocol')}</label>
-                                                                <select
-                                                                    value={protocol}
-                                                                    onChange={e => handleProtocolChange(e.target.value)}
-                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                                >
-                                                                    {protocolOptions.map(opt => (
-                                                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Server Name */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.displayName')}</label>
-                                                            <input
-                                                                type="text"
-                                                                placeholder={t('settings.serverNamePlaceholder')}
-                                                                value={editingServer.name}
-                                                                onChange={e => setEditingServer({ ...editingServer, name: e.target.value })}
-                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                            />
-                                                        </div>
-
-                                                        {/* Custom Icon picker — only for servers without a dedicated provider logo */}
-                                                        {!hasProviderLogo && (
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.serverIcon')}</label>
-                                                                <div className="flex items-start gap-3">
-                                                                    <div className="flex items-center gap-3 flex-1">
-                                                                        <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${editingServer.customIconUrl || editingServer.faviconUrl ? 'bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || PROTOCOL_COLORS.ftp} text-white`}`}>
-                                                                            {editingServer.customIconUrl ? (
-                                                                                <img src={editingServer.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" />
-                                                                            ) : editingServer.faviconUrl ? (
-                                                                                <img src={editingServer.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" />
-                                                                            ) : (
-                                                                                <span className="font-bold text-sm">{(editingServer.name || editingServer.host || '?').charAt(0).toUpperCase()}</span>
-                                                                            )}
-                                                                        </div>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={async () => {
-                                                                                try {
-                                                                                    const selected = await open({
-                                                                                        multiple: false,
-                                                                                        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'ico', 'webp', 'gif'] }],
-                                                                                    });
-                                                                                    if (!selected) return;
-                                                                                    const filePath = Array.isArray(selected) ? selected[0] : selected;
-                                                                                    const bytes = await readFile(filePath);
-                                                                                    const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-                                                                                    const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon' };
-                                                                                    const mime = mimeMap[ext] || 'image/png';
-                                                                                    // Resize to 128x128 via canvas
-                                                                                    const blob = new Blob([bytes], { type: mime });
-                                                                                    const url = URL.createObjectURL(blob);
-                                                                                    const img = new window.Image();
-                                                                                    const timeout = setTimeout(() => URL.revokeObjectURL(url), 10000);
-                                                                                    img.onload = () => {
-                                                                                        clearTimeout(timeout);
-                                                                                        const canvas = document.createElement('canvas');
-                                                                                        const size = 128;
-                                                                                        canvas.width = size;
-                                                                                        canvas.height = size;
-                                                                                        const ctx = canvas.getContext('2d');
-                                                                                        if (!ctx) { URL.revokeObjectURL(url); return; }
-                                                                                        const scale = Math.min(size / img.width, size / img.height);
-                                                                                        const w = img.width * scale;
-                                                                                        const h = img.height * scale;
-                                                                                        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-                                                                                        const dataUrl = canvas.toDataURL('image/png');
-                                                                                        URL.revokeObjectURL(url);
-                                                                                        setEditingServer(prev => prev ? { ...prev, customIconUrl: dataUrl } : prev);
-                                                                                    };
-                                                                                    img.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(url); };
-                                                                                    img.src = url;
-                                                                                } catch { /* user cancelled or read error */ }
-                                                                            }}
-                                                                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5"
-                                                                        >
-                                                                            <Image size={12} />
-                                                                            {t('settings.chooseIcon')}
-                                                                        </button>
-                                                                        {editingServer.customIconUrl && (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => setEditingServer(prev => prev ? { ...prev, customIconUrl: undefined } : prev)}
-                                                                                className="p-1.5 text-xs rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
-                                                                                title={t('settings.removeIcon')}
-                                                                            >
-                                                                                <X size={14} />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex items-start gap-1 text-gray-400 dark:text-gray-500 text-xs max-w-[180px] pt-1">
-                                                                        <Info size={12} className="shrink-0 mt-0.5" />
-                                                                        <span>{t('settings.iconAutoDetectHint')}</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* OAuth providers - read-only info */}
-                                                        {isOAuth && (
-                                                            <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
-                                                                <p className="text-sm text-blue-700 dark:text-blue-300">
-                                                                    <strong>{t('settings.oauthConnection')}</strong>
-                                                                </p>
-                                                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                                                    {t('settings.oauthConnectionDesc')}
-                                                                </p>
-                                                            </div>
-                                                        )}
-
-                                                        {/* MEGA - email, password, backend mode and session options */}
-                                                        {isMega && (
-                                                            <>
+                                                        <div className="space-y-3">
+                                                            {/* Protocol Selector - only for new servers */}
+                                                            {isNewServer && (
                                                                 <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.megaEmail')}</label>
-                                                                    <input
-                                                                        type="email"
-                                                                        placeholder={t('settings.megaEmailPlaceholder')}
-                                                                        value={editingServer.username}
-                                                                        onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'mega.nz', port: 443 })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.protocol')}</label>
+                                                                    <select value={protocol} onChange={(e) => handleProtocolChange(e.target.value)} className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm">
+                                                                        {protocolOptions.map((opt) => (
+                                                                            <option key={opt.value} value={opt.value}>
+                                                                                {opt.label}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
                                                                 </div>
+                                                            )}
 
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('connection.megaPasswordPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'mega.nz', port: 443 })}
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.megaConnectionMode')}</label>
-                                                                    <div className="grid grid-cols-2 gap-2">
-                                                                        {(['native', 'megacmd'] as const).map((mode) => {
-                                                                            const isActive = megaMode === mode;
-                                                                            return (
-                                                                                <button
-                                                                                    key={mode}
-                                                                                    type="button"
-                                                                                    onClick={() => setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        host: 'mega.nz',
-                                                                                        port: 443,
-                                                                                        options: {
-                                                                                            ...editingServer.options,
-                                                                                            mega_mode: mode,
-                                                                                        },
-                                                                                    })}
-                                                                                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                                                                                        isActive
-                                                                                            ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300'
-                                                                                            : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'
-                                                                                    }`}
-                                                                                >
-                                                                                    <div className="text-xs font-medium">
-                                                                                        {mode === 'native' ? t('connection.megaModeNative') : t('connection.megaModeCmd')}
-                                                                                    </div>
-                                                                                    <p className="mt-1 text-[11px] opacity-80 leading-snug">
-                                                                                        {mode === 'native' ? t('connection.megaModeNativeDesc') : t('connection.megaModeCmdDesc')}
-                                                                                    </p>
-                                                                                </button>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="p-3 rounded-lg border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 space-y-3">
-                                                                    <Checkbox
-                                                                        checked={editingServer.options?.save_session !== false}
-                                                                        onChange={(v) => setEditingServer({
-                                                                            ...editingServer,
-                                                                            options: { ...editingServer.options, save_session: v }
-                                                                        })}
-                                                                        label={
-                                                                            <div>
-                                                                                <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.rememberSession')}</span>
-                                                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.sessionKeysStored')}</p>
-                                                                            </div>
-                                                                        }
-                                                                    />
-
-                                                                    {megaMode === 'megacmd' && (
-                                                                        <div className="pt-3 border-t border-red-200 dark:border-red-900/30">
-                                                                            <Checkbox
-                                                                                checked={!!editingServer.options?.logout_on_disconnect}
-                                                                                onChange={(v) => setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    options: { ...editingServer.options, logout_on_disconnect: v }
-                                                                                })}
-                                                                                label={
-                                                                                    <div>
-                                                                                        <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
-                                                                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.logoutOnDisconnectDesc')}</p>
-                                                                                    </div>
-                                                                                }
-                                                                            />
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-
-                                                                <div className="p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 bg-blue-50 dark:bg-blue-900/10 text-xs text-blue-800 dark:text-blue-200">
-                                                                    <p className="font-medium mb-1">
-                                                                        {megaMode === 'megacmd' ? t('connection.megaRequirement') : t('connection.megaNativeNotice')}
-                                                                    </p>
-                                                                    <p className="opacity-80 leading-relaxed">
-                                                                        {megaMode === 'megacmd' ? t('connection.megaRequirementDesc') : t('connection.megaNativeNoticeDesc')}
-                                                                    </p>
-                                                                </div>
-                                                            </>
-                                                        )}
-
-                                                        {/* Filen - email + password, no host */}
-                                                        {isFilen && (
+                                                            {/* Server Name */}
                                                             <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.filenEmail')}</label>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.displayName')}</label>
                                                                 <input
-                                                                    type="email"
-                                                                    placeholder={t('settings.filenEmailPlaceholder')}
-                                                                    value={editingServer.username}
-                                                                    onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'filen.io', port: 443 })}
+                                                                    type="text"
+                                                                    placeholder={t('settings.serverNamePlaceholder')}
+                                                                    value={editingServer.name}
+                                                                    onChange={(e) =>
+                                                                        setEditingServer({
+                                                                            ...editingServer,
+                                                                            name: e.target.value,
+                                                                        })
+                                                                    }
                                                                     className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                                 />
                                                             </div>
-                                                        )}
 
-                                                        {/* Internxt - email + password + optional 2FA */}
-                                                        {isInternxt && (
-                                                            <>
+                                                            {/* Custom Icon picker — only for servers without a dedicated provider logo */}
+                                                            {!hasProviderLogo && (
                                                                 <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.emailAccount')}</label>
-                                                                    <input
-                                                                        type="email"
-                                                                        placeholder={t('connection.internxtEmailPlaceholder')}
-                                                                        value={editingServer.username}
-                                                                        onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'gateway.internxt.com', port: 443 })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('connection.internxtPasswordPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.twoFactorCode')}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder={t('connection.twoFactorOptional')}
-                                                                        value={editingServer.options?.two_factor_code || ''}
-                                                                        onChange={e => setEditingServer({
-                                                                            ...editingServer,
-                                                                            options: { ...editingServer.options, two_factor_code: e.target.value || undefined }
-                                                                        })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        maxLength={6}
-                                                                        inputMode="numeric"
-                                                                    />
-                                                                </div>
-                                                            </>
-                                                        )}
-
-                                                        {/* kDrive - API Token + Drive ID */}
-                                                        {isKDrive && (
-                                                            <>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.kdriveToken')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('connection.kdriveTokenPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'api.infomaniak.com', port: 443, username: 'api-token' })}
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.kdriveDriveId')}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder={t('connection.kdriveDriveIdPlaceholder')}
-                                                                        value={editingServer.options?.drive_id || editingServer.options?.bucket || ''}
-                                                                        onChange={e => setEditingServer({
-                                                                            ...editingServer,
-                                                                            options: { ...editingServer.options, bucket: e.target.value, drive_id: e.target.value }
-                                                                        })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        inputMode="numeric"
-                                                                    />
-                                                                </div>
-                                                                <p className="text-xs text-gray-400 select-text">{t('connection.kdriveTokenHelp')}</p>
-                                                            </>
-                                                        )}
-
-                                                        {/* Jottacloud - Login Token only */}
-                                                        {isJottacloud && (
-                                                            <>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.jottacloudToken')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('connection.jottacloudTokenPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'jfs.jottacloud.com', port: 443, username: 'token' })}
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                                <p className="text-xs text-gray-400">{t('connection.jottacloudTokenHelp')}</p>
-                                                            </>
-                                                        )}
-
-                                                        {/* Koofr - Email + App Password */}
-                                                        {isKoofr && (
-                                                            <>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.koofrEmail')}</label>
-                                                                    <input
-                                                                        type="email"
-                                                                        placeholder={t('connection.koofrEmailPlaceholder')}
-                                                                        value={editingServer.username || ''}
-                                                                        onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'app.koofr.net', port: 443 })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.koofrAppPassword')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('connection.koofrAppPasswordPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'app.koofr.net', port: 443 })}
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                                <p className="text-xs text-gray-400">{t('connection.koofrHelp')}</p>
-                                                            </>
-                                                        )}
-
-                                                        {/* OpenDrive - Username + Password */}
-                                                        {isOpenDrive && (
-                                                            <>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.username')}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder={t('protocol.opendriveUsernamePlaceholder')}
-                                                                        value={editingServer.username}
-                                                                        onChange={e => setEditingServer({ ...editingServer, username: e.target.value, host: 'dev.opendrive.com', port: 443 })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('settings.passwordPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'dev.opendrive.com', port: 443 })}
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                                <p className="text-xs text-gray-400">{t('protocol.opendriveAuthHelp')}</p>
-                                                            </>
-                                                        )}
-
-                                                        {/* Yandex Disk - OAuth Token */}
-                                                        {isYandexDisk && (
-                                                            <>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.yandexdiskToken')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('connection.yandexdiskTokenPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'cloud-api.yandex.net', port: 443, username: e.target.value ? 'oauth-token' : '' })}
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                                <p className="text-xs text-gray-400">{t('connection.yandexdiskHelp')}</p>
-                                                            </>
-                                                        )}
-
-                                                        {/* Drime Cloud - API Token only */}
-                                                        {isDrime && (
-                                                            <>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.drimeToken')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('connection.drimeTokenPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={e => setEditingServer({ ...editingServer, password: e.target.value, host: 'app.drime.cloud', port: 443, username: 'api-token' })}
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                                <p className="text-xs text-gray-400">{t('connection.drimeTokenHelp')}</p>
-                                                            </>
-                                                        )}
-
-                                                        {/* GitHub — Owner/Repo + 3 Auth Modes */}
-                                                        {isGitHub && (
-                                                            <>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.ownerRepo') || 'Owner / Repository'}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="owner/repository"
-                                                                        value={editingServer.host || ''}
-                                                                        onChange={e => setEditingServer({ ...editingServer, host: e.target.value, port: 443 })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                                {/* Auth Mode Selector */}
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.authMethod') || 'Authentication'}</label>
-                                                                    <div className="flex gap-1.5">
-                                                                        {(['authorize', 'pat', 'app'] as const).map((mode) => {
-                                                                            const isActive = githubAuthMode === mode;
-                                                                            return (
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.serverIcon')}</label>
+                                                                    <div className="flex items-start gap-3">
+                                                                        <div className="flex items-center gap-3 flex-1">
+                                                                            <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${editingServer.customIconUrl || editingServer.faviconUrl ? 'bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || PROTOCOL_COLORS.ftp} text-white`}`}>{editingServer.customIconUrl ? <img src={editingServer.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" /> : editingServer.faviconUrl ? <img src={editingServer.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" /> : <span className="font-bold text-sm">{(editingServer.name || editingServer.host || '?').charAt(0).toUpperCase()}</span>}</div>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={async () => {
+                                                                                    try {
+                                                                                        const selected = await open({
+                                                                                            multiple: false,
+                                                                                            filters: [
+                                                                                                {
+                                                                                                    name: 'Images',
+                                                                                                    extensions: ['png', 'jpg', 'jpeg', 'ico', 'webp', 'gif'],
+                                                                                                },
+                                                                                            ],
+                                                                                        });
+                                                                                        if (!selected) return;
+                                                                                        const filePath = Array.isArray(selected) ? selected[0] : selected;
+                                                                                        const bytes = await readFile(filePath);
+                                                                                        const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+                                                                                        const mimeMap: Record<string, string> = {
+                                                                                            jpg: 'image/jpeg',
+                                                                                            jpeg: 'image/jpeg',
+                                                                                            png: 'image/png',
+                                                                                            gif: 'image/gif',
+                                                                                            webp: 'image/webp',
+                                                                                            ico: 'image/x-icon',
+                                                                                        };
+                                                                                        const mime = mimeMap[ext] || 'image/png';
+                                                                                        // Resize to 128x128 via canvas
+                                                                                        const blob = new Blob([bytes], {
+                                                                                            type: mime,
+                                                                                        });
+                                                                                        const url = URL.createObjectURL(blob);
+                                                                                        const img = new window.Image();
+                                                                                        const timeout = setTimeout(() => URL.revokeObjectURL(url), 10000);
+                                                                                        img.onload = () => {
+                                                                                            clearTimeout(timeout);
+                                                                                            const canvas = document.createElement('canvas');
+                                                                                            const size = 128;
+                                                                                            canvas.width = size;
+                                                                                            canvas.height = size;
+                                                                                            const ctx = canvas.getContext('2d');
+                                                                                            if (!ctx) {
+                                                                                                URL.revokeObjectURL(url);
+                                                                                                return;
+                                                                                            }
+                                                                                            const scale = Math.min(size / img.width, size / img.height);
+                                                                                            const w = img.width * scale;
+                                                                                            const h = img.height * scale;
+                                                                                            ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+                                                                                            const dataUrl = canvas.toDataURL('image/png');
+                                                                                            URL.revokeObjectURL(url);
+                                                                                            setEditingServer((prev) =>
+                                                                                                prev
+                                                                                                    ? {
+                                                                                                          ...prev,
+                                                                                                          customIconUrl: dataUrl,
+                                                                                                      }
+                                                                                                    : prev
+                                                                                            );
+                                                                                        };
+                                                                                        img.onerror = () => {
+                                                                                            clearTimeout(timeout);
+                                                                                            URL.revokeObjectURL(url);
+                                                                                        };
+                                                                                        img.src = url;
+                                                                                    } catch {
+                                                                                        /* user cancelled or read error */
+                                                                                    }
+                                                                                }}
+                                                                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5"
+                                                                            >
+                                                                                <Image size={12} />
+                                                                                {t('settings.chooseIcon')}
+                                                                            </button>
+                                                                            {editingServer.customIconUrl && (
                                                                                 <button
-                                                                                    key={mode}
                                                                                     type="button"
-                                                                                    onClick={() => setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: '',
-                                                                                        options: { ...editingServer.options, githubAuthMode: mode },
-                                                                                    })}
-                                                                                    className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                                                                                        isActive
-                                                                                            ? 'border-blue-500 bg-blue-500/10 text-blue-500'
-                                                                                            : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'
-                                                                                    }`}
+                                                                                    onClick={() =>
+                                                                                        setEditingServer((prev) =>
+                                                                                            prev
+                                                                                                ? {
+                                                                                                      ...prev,
+                                                                                                      customIconUrl: undefined,
+                                                                                                  }
+                                                                                                : prev
+                                                                                        )
+                                                                                    }
+                                                                                    className="p-1.5 text-xs rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
+                                                                                    title={t('settings.removeIcon')}
                                                                                 >
-                                                                                    {mode === 'authorize' && (t('github.modeAuthorize') || 'OAuth')}
-                                                                                    {mode === 'pat' && (t('github.modePat') || 'Access Token')}
-                                                                                    {mode === 'app' && (t('github.modeApp') || 'App (.pem)')}
+                                                                                    <X size={14} />
                                                                                 </button>
-                                                                            );
-                                                                        })}
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-start gap-1 text-gray-400 dark:text-gray-500 text-xs max-w-[180px] pt-1">
+                                                                            <Info size={12} className="shrink-0 mt-0.5" />
+                                                                            <span>{t('settings.iconAutoDetectHint')}</span>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                                {/* Mode: OAuth (Device Flow) */}
-                                                                {githubAuthMode === 'authorize' && (
-                                                                    <div className="p-3 rounded-lg border border-blue-500/20 bg-blue-500/5 space-y-2">
-                                                                        <p className="text-xs text-gray-500">{t('github.oauthHint') || 'Use "Authorize with GitHub" on the connection screen to authenticate via Device Flow. The token is stored securely in the vault.'}</p>
-                                                                        {editingServer.password ? (
-                                                                            <p className="text-xs text-green-500 flex items-center gap-1">
-                                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                                                                                {t('github.alreadyAuthorized') || 'Already authorized — ready to connect'}
-                                                                            </p>
-                                                                        ) : (
-                                                                            <p className="text-xs text-amber-500">{t('github.notAuthorized') || 'Not yet authorized. Connect first to authorize.'}</p>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                                {/* Mode: PAT */}
-                                                                {githubAuthMode === 'pat' && (
+                                                            )}
+
+                                                            {/* OAuth providers - read-only info */}
+                                                            {isOAuth && (
+                                                                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
+                                                                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                                                                        <strong>{t('settings.oauthConnection')}</strong>
+                                                                    </p>
+                                                                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{t('settings.oauthConnectionDesc')}</p>
+                                                                </div>
+                                                            )}
+
+                                                            {/* MEGA - email, password, backend mode and session options */}
+                                                            {isMega && (
+                                                                <>
                                                                     <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.accessToken') || 'Personal Access Token'}</label>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.megaEmail')}</label>
+                                                                        <input
+                                                                            type="email"
+                                                                            placeholder={t('settings.megaEmailPlaceholder')}
+                                                                            value={editingServer.username}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    username: e.target.value,
+                                                                                    host: 'mega.nz',
+                                                                                    port: 443,
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
                                                                         <div className="relative">
                                                                             <input
                                                                                 type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                                                                                placeholder={t('connection.megaPasswordPlaceholder')}
                                                                                 value={editingServer.password || ''}
-                                                                                onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: e.target.value,
+                                                                                        host: 'mega.nz',
+                                                                                        port: 443,
+                                                                                    })
+                                                                                }
                                                                                 className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                                             />
                                                                             <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
                                                                                 {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                                             </button>
                                                                         </div>
-                                                                        <p className="text-xs text-gray-400 mt-1">{t('github.patHint') || 'Fine-grained PAT with repository access'}</p>
                                                                     </div>
-                                                                )}
-                                                                {/* Mode: App (.pem) */}
-                                                                {githubAuthMode === 'app' && (
-                                                                    <div className="space-y-2">
+
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.megaConnectionMode')}</label>
                                                                         <div className="grid grid-cols-2 gap-2">
-                                                                            <div>
-                                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.appId') || 'App ID'}</label>
-                                                                                <input
-                                                                                    type="text"
-                                                                                    placeholder="123456"
-                                                                                    value={editingServer.options?.githubAppId || ''}
-                                                                                    onChange={e => setEditingServer({ ...editingServer, options: { ...editingServer.options, githubAppId: e.target.value } })}
-                                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                                />
-                                                                            </div>
-                                                                            <div>
-                                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.installationId') || 'Installation ID'}</label>
-                                                                                <input
-                                                                                    type="text"
-                                                                                    placeholder="12345678"
-                                                                                    value={editingServer.options?.githubInstallationId || ''}
-                                                                                    onChange={e => setEditingServer({ ...editingServer, options: { ...editingServer.options, githubInstallationId: e.target.value } })}
-                                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                                />
-                                                                            </div>
+                                                                            {(['native', 'megacmd'] as const).map((mode) => {
+                                                                                const isActive = megaMode === mode;
+                                                                                return (
+                                                                                    <button
+                                                                                        key={mode}
+                                                                                        type="button"
+                                                                                        onClick={() =>
+                                                                                            setEditingServer({
+                                                                                                ...editingServer,
+                                                                                                host: 'mega.nz',
+                                                                                                port: 443,
+                                                                                                options: {
+                                                                                                    ...editingServer.options,
+                                                                                                    mega_mode: mode,
+                                                                                                },
+                                                                                            })
+                                                                                        }
+                                                                                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${isActive ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300' : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'}`}
+                                                                                    >
+                                                                                        <div className="text-xs font-medium">{mode === 'native' ? t('connection.megaModeNative') : t('connection.megaModeCmd')}</div>
+                                                                                        <p className="mt-1 text-[11px] opacity-80 leading-snug">{mode === 'native' ? t('connection.megaModeNativeDesc') : t('connection.megaModeCmdDesc')}</p>
+                                                                                    </button>
+                                                                                );
+                                                                            })}
                                                                         </div>
-                                                                        <p className="text-xs text-gray-400">{t('github.appHint') || 'PEM key is imported and stored in the vault from the connection screen.'}</p>
-                                                                        {editingServer.options?.githubPemStored && (
-                                                                            <p className="text-xs text-green-500 flex items-center gap-1">
-                                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                                                                                {t('github.pemStoredInVault') || 'PEM key stored in vault'}
-                                                                            </p>
+                                                                    </div>
+
+                                                                    <div className="p-3 rounded-lg border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 space-y-3">
+                                                                        <Checkbox
+                                                                            checked={editingServer.options?.save_session !== false}
+                                                                            onChange={(v) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    options: {
+                                                                                        ...editingServer.options,
+                                                                                        save_session: v,
+                                                                                    },
+                                                                                })
+                                                                            }
+                                                                            label={
+                                                                                <div>
+                                                                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.rememberSession')}</span>
+                                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.sessionKeysStored')}</p>
+                                                                                </div>
+                                                                            }
+                                                                        />
+
+                                                                        {megaMode === 'megacmd' && (
+                                                                            <div className="pt-3 border-t border-red-200 dark:border-red-900/30">
+                                                                                <Checkbox
+                                                                                    checked={!!editingServer.options?.logout_on_disconnect}
+                                                                                    onChange={(v) =>
+                                                                                        setEditingServer({
+                                                                                            ...editingServer,
+                                                                                            options: {
+                                                                                                ...editingServer.options,
+                                                                                                logout_on_disconnect: v,
+                                                                                            },
+                                                                                        })
+                                                                                    }
+                                                                                    label={
+                                                                                        <div>
+                                                                                            <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
+                                                                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.logoutOnDisconnectDesc')}</p>
+                                                                                        </div>
+                                                                                    }
+                                                                                />
+                                                                            </div>
                                                                         )}
                                                                     </div>
-                                                                )}
-                                                                {/* Optional branch override */}
+
+                                                                    <div className="p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 bg-blue-50 dark:bg-blue-900/10 text-xs text-blue-800 dark:text-blue-200">
+                                                                        <p className="font-medium mb-1">{megaMode === 'megacmd' ? t('connection.megaRequirement') : t('connection.megaNativeNotice')}</p>
+                                                                        <p className="opacity-80 leading-relaxed">{megaMode === 'megacmd' ? t('connection.megaRequirementDesc') : t('connection.megaNativeNoticeDesc')}</p>
+                                                                    </div>
+                                                                </>
+                                                            )}
+
+                                                            {/* Filen - email + password, no host */}
+                                                            {isFilen && (
                                                                 <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.branchOptional') || 'Branch (optional)'}</label>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.filenEmail')}</label>
                                                                     <input
-                                                                        type="text"
-                                                                        placeholder="main"
-                                                                        value={editingServer.options?.githubBranch || ''}
-                                                                        onChange={e => setEditingServer({ ...editingServer, options: { ...editingServer.options, githubBranch: e.target.value } })}
+                                                                        type="email"
+                                                                        placeholder={t('settings.filenEmailPlaceholder')}
+                                                                        value={editingServer.username}
+                                                                        onChange={(e) =>
+                                                                            setEditingServer({
+                                                                                ...editingServer,
+                                                                                username: e.target.value,
+                                                                                host: 'filen.io',
+                                                                                port: 443,
+                                                                            })
+                                                                        }
                                                                         className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                                     />
                                                                 </div>
-                                                            </>
-                                                        )}
+                                                            )}
 
-                                                        {/* Host and Port - for FTP/FTPS/SFTP/WebDAV/S3/Azure */}
-                                                        {needsHostPort && (
+                                                            {/* Internxt - email + password + optional 2FA */}
+                                                            {isInternxt && (
+                                                                <>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.emailAccount')}</label>
+                                                                        <input
+                                                                            type="email"
+                                                                            placeholder={t('connection.internxtEmailPlaceholder')}
+                                                                            value={editingServer.username}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    username: e.target.value,
+                                                                                    host: 'gateway.internxt.com',
+                                                                                    port: 443,
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type={showEditPassword ? 'text' : 'password'}
+                                                                                placeholder={t('connection.internxtPasswordPlaceholder')}
+                                                                                value={editingServer.password || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: e.target.value,
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.twoFactorCode')}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder={t('connection.twoFactorOptional')}
+                                                                            value={editingServer.options?.two_factor_code || ''}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    options: {
+                                                                                        ...editingServer.options,
+                                                                                        two_factor_code: e.target.value || undefined,
+                                                                                    },
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            maxLength={6}
+                                                                            inputMode="numeric"
+                                                                        />
+                                                                    </div>
+                                                                </>
+                                                            )}
+
+                                                            {/* kDrive - API Token + Drive ID */}
+                                                            {isKDrive && (
+                                                                <>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.kdriveToken')}</label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type={showEditPassword ? 'text' : 'password'}
+                                                                                placeholder={t('connection.kdriveTokenPlaceholder')}
+                                                                                value={editingServer.password || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: e.target.value,
+                                                                                        host: 'api.infomaniak.com',
+                                                                                        port: 443,
+                                                                                        username: 'api-token',
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.kdriveDriveId')}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder={t('connection.kdriveDriveIdPlaceholder')}
+                                                                            value={editingServer.options?.drive_id || editingServer.options?.bucket || ''}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    options: {
+                                                                                        ...editingServer.options,
+                                                                                        bucket: e.target.value,
+                                                                                        drive_id: e.target.value,
+                                                                                    },
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            inputMode="numeric"
+                                                                        />
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-400 select-text">{t('connection.kdriveTokenHelp')}</p>
+                                                                </>
+                                                            )}
+
+                                                            {/* Jottacloud - Login Token only */}
+                                                            {isJottacloud && (
+                                                                <>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.jottacloudToken')}</label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type={showEditPassword ? 'text' : 'password'}
+                                                                                placeholder={t('connection.jottacloudTokenPlaceholder')}
+                                                                                value={editingServer.password || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: e.target.value,
+                                                                                        host: 'jfs.jottacloud.com',
+                                                                                        port: 443,
+                                                                                        username: 'token',
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-400">{t('connection.jottacloudTokenHelp')}</p>
+                                                                </>
+                                                            )}
+
+                                                            {/* Koofr - Email + App Password */}
+                                                            {isKoofr && (
+                                                                <>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.koofrEmail')}</label>
+                                                                        <input
+                                                                            type="email"
+                                                                            placeholder={t('connection.koofrEmailPlaceholder')}
+                                                                            value={editingServer.username || ''}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    username: e.target.value,
+                                                                                    host: 'app.koofr.net',
+                                                                                    port: 443,
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.koofrAppPassword')}</label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type={showEditPassword ? 'text' : 'password'}
+                                                                                placeholder={t('connection.koofrAppPasswordPlaceholder')}
+                                                                                value={editingServer.password || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: e.target.value,
+                                                                                        host: 'app.koofr.net',
+                                                                                        port: 443,
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-400">{t('connection.koofrHelp')}</p>
+                                                                </>
+                                                            )}
+
+                                                            {/* OpenDrive - Username + Password */}
+                                                            {isOpenDrive && (
+                                                                <>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.username')}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder={t('protocol.opendriveUsernamePlaceholder')}
+                                                                            value={editingServer.username}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    username: e.target.value,
+                                                                                    host: 'dev.opendrive.com',
+                                                                                    port: 443,
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type={showEditPassword ? 'text' : 'password'}
+                                                                                placeholder={t('settings.passwordPlaceholder')}
+                                                                                value={editingServer.password || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: e.target.value,
+                                                                                        host: 'dev.opendrive.com',
+                                                                                        port: 443,
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-400">{t('protocol.opendriveAuthHelp')}</p>
+                                                                </>
+                                                            )}
+
+                                                            {/* Yandex Disk - OAuth Token */}
+                                                            {isYandexDisk && (
+                                                                <>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.yandexdiskToken')}</label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type={showEditPassword ? 'text' : 'password'}
+                                                                                placeholder={t('connection.yandexdiskTokenPlaceholder')}
+                                                                                value={editingServer.password || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: e.target.value,
+                                                                                        host: 'cloud-api.yandex.net',
+                                                                                        port: 443,
+                                                                                        username: e.target.value ? 'oauth-token' : '',
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-400">{t('connection.yandexdiskHelp')}</p>
+                                                                </>
+                                                            )}
+
+                                                            {/* Drime Cloud - API Token only */}
+                                                            {isDrime && (
+                                                                <>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.drimeToken')}</label>
+                                                                        <div className="relative">
+                                                                            <input
+                                                                                type={showEditPassword ? 'text' : 'password'}
+                                                                                placeholder={t('connection.drimeTokenPlaceholder')}
+                                                                                value={editingServer.password || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        password: e.target.value,
+                                                                                        host: 'app.drime.cloud',
+                                                                                        port: 443,
+                                                                                        username: 'api-token',
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-400">{t('connection.drimeTokenHelp')}</p>
+                                                                </>
+                                                            )}
+
+                                                            {/* GitHub — Owner/Repo + 3 Auth Modes */}
+                                                            {isGitHub && (
+                                                                <>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.ownerRepo') || 'Owner / Repository'}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="owner/repository"
+                                                                            value={editingServer.host || ''}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    host: e.target.value,
+                                                                                    port: 443,
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                    {/* Auth Mode Selector */}
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.authMethod') || 'Authentication'}</label>
+                                                                        <div className="flex gap-1.5">
+                                                                            {(['authorize', 'pat', 'app'] as const).map((mode) => {
+                                                                                const isActive = githubAuthMode === mode;
+                                                                                return (
+                                                                                    <button
+                                                                                        key={mode}
+                                                                                        type="button"
+                                                                                        onClick={() =>
+                                                                                            setEditingServer({
+                                                                                                ...editingServer,
+                                                                                                password: '',
+                                                                                                options: {
+                                                                                                    ...editingServer.options,
+                                                                                                    githubAuthMode: mode,
+                                                                                                },
+                                                                                            })
+                                                                                        }
+                                                                                        className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors ${isActive ? 'border-blue-500 bg-blue-500/10 text-blue-500' : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'}`}
+                                                                                    >
+                                                                                        {mode === 'authorize' && (t('github.modeAuthorize') || 'OAuth')}
+                                                                                        {mode === 'pat' && (t('github.modePat') || 'Access Token')}
+                                                                                        {mode === 'app' && (t('github.modeApp') || 'App (.pem)')}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                    {/* Mode: OAuth (Device Flow) */}
+                                                                    {githubAuthMode === 'authorize' && (
+                                                                        <div className="p-3 rounded-lg border border-blue-500/20 bg-blue-500/5 space-y-2">
+                                                                            <p className="text-xs text-gray-500">{t('github.oauthHint') || 'Use "Authorize with GitHub" on the connection screen to authenticate via Device Flow. The token is stored securely in the vault.'}</p>
+                                                                            {editingServer.password ? (
+                                                                                <p className="text-xs text-green-500 flex items-center gap-1">
+                                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                                                                        <polyline points="20 6 9 17 4 12" />
+                                                                                    </svg>
+                                                                                    {t('github.alreadyAuthorized') || 'Already authorized — ready to connect'}
+                                                                                </p>
+                                                                            ) : (
+                                                                                <p className="text-xs text-amber-500">{t('github.notAuthorized') || 'Not yet authorized. Connect first to authorize.'}</p>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {/* Mode: PAT */}
+                                                                    {githubAuthMode === 'pat' && (
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.accessToken') || 'Personal Access Token'}</label>
+                                                                            <div className="relative">
+                                                                                <input
+                                                                                    type={showEditPassword ? 'text' : 'password'}
+                                                                                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                                                                                    value={editingServer.password || ''}
+                                                                                    onChange={(e) =>
+                                                                                        setEditingServer({
+                                                                                            ...editingServer,
+                                                                                            password: e.target.value,
+                                                                                        })
+                                                                                    }
+                                                                                    className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                                />
+                                                                                <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                                    {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                                </button>
+                                                                            </div>
+                                                                            <p className="text-xs text-gray-400 mt-1">{t('github.patHint') || 'Fine-grained PAT with repository access'}</p>
+                                                                        </div>
+                                                                    )}
+                                                                    {/* Mode: App (.pem) */}
+                                                                    {githubAuthMode === 'app' && (
+                                                                        <div className="space-y-2">
+                                                                            <div className="grid grid-cols-2 gap-2">
+                                                                                <div>
+                                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.appId') || 'App ID'}</label>
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        placeholder="123456"
+                                                                                        value={editingServer.options?.githubAppId || ''}
+                                                                                        onChange={(e) =>
+                                                                                            setEditingServer({
+                                                                                                ...editingServer,
+                                                                                                options: {
+                                                                                                    ...editingServer.options,
+                                                                                                    githubAppId: e.target.value,
+                                                                                                },
+                                                                                            })
+                                                                                        }
+                                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                                    />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.installationId') || 'Installation ID'}</label>
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        placeholder="12345678"
+                                                                                        value={editingServer.options?.githubInstallationId || ''}
+                                                                                        onChange={(e) =>
+                                                                                            setEditingServer({
+                                                                                                ...editingServer,
+                                                                                                options: {
+                                                                                                    ...editingServer.options,
+                                                                                                    githubInstallationId: e.target.value,
+                                                                                                },
+                                                                                            })
+                                                                                        }
+                                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
+                                                                            <p className="text-xs text-gray-400">{t('github.appHint') || 'PEM key is imported and stored in the vault from the connection screen.'}</p>
+                                                                            {editingServer.options?.githubPemStored && (
+                                                                                <p className="text-xs text-green-500 flex items-center gap-1">
+                                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                                                                        <polyline points="20 6 9 17 4 12" />
+                                                                                    </svg>
+                                                                                    {t('github.pemStoredInVault') || 'PEM key stored in vault'}
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {/* Optional branch override */}
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.branchOptional') || 'Branch (optional)'}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="main"
+                                                                            value={editingServer.options?.githubBranch || ''}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    options: {
+                                                                                        ...editingServer.options,
+                                                                                        githubBranch: e.target.value,
+                                                                                    },
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                </>
+                                                            )}
+
+                                                            {/* Host and Port - for FTP/FTPS/SFTP/WebDAV/S3/Azure */}
+                                                            {needsHostPort && (
+                                                                <div className="flex gap-2">
+                                                                    <div className="flex-1">
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{isS3 ? t('settings.endpointUrl') : isAzure ? t('connection.azureEndpoint') : t('settings.host')}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder={isS3 ? 's3.amazonaws.com' : isAzure ? 'myaccount.blob.core.windows.net' : 'ftp.example.com'}
+                                                                            value={editingServer.host}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    host: e.target.value,
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="w-24">
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.port')}</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            placeholder={t('settings.portPlaceholder')}
+                                                                            value={editingServer.port}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    port: parseInt(e.target.value) || 21,
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Username - for non-OAuth, non-MEGA */}
+                                                            {needsHostPort && (
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{isS3 ? t('settings.accessKeyId') : isAzure ? t('connection.azureAccountName') : t('settings.username')}</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder={isS3 ? 'AKIAIOSFODNN7EXAMPLE' : isAzure ? 'aeroftp2026' : 'username'}
+                                                                        value={editingServer.username}
+                                                                        onChange={(e) =>
+                                                                            setEditingServer({
+                                                                                ...editingServer,
+                                                                                username: e.target.value,
+                                                                            })
+                                                                        }
+                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            {/* Password - for non-OAuth */}
+                                                            {needsPassword && !isMega && !isInternxt && !isKDrive && !isDrime && !isOpenDrive && (
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{isS3 ? t('settings.secretAccessKey') : isAzure ? t('connection.azureAccessKey') : t('settings.password')}</label>
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type={showEditPassword ? 'text' : 'password'}
+                                                                            placeholder={t('settings.passwordPlaceholder')}
+                                                                            value={editingServer.password || ''}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    password: e.target.value,
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* S3 Specific Fields */}
+                                                            {isS3 && (
+                                                                <>
+                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.bucket')}</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder={t('settings.s3BucketPlaceholder')}
+                                                                                value={editingServer.options?.bucket || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        options: {
+                                                                                            ...editingServer.options,
+                                                                                            bucket: e.target.value,
+                                                                                        },
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.region')}</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder={t('settings.s3RegionPlaceholder')}
+                                                                                value={editingServer.options?.region || ''}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        options: {
+                                                                                            ...editingServer.options,
+                                                                                            region: e.target.value,
+                                                                                        },
+                                                                                    })
+                                                                                }
+                                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.endpointUrl')}</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="s3.amazonaws.com"
+                                                                            value={editingServer.options?.endpoint || ''}
+                                                                            onChange={(e) =>
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    options: {
+                                                                                        ...editingServer.options,
+                                                                                        endpoint: e.target.value,
+                                                                                    },
+                                                                                })
+                                                                            }
+                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                        />
+                                                                    </div>
+                                                                </>
+                                                            )}
+
+                                                            {/* Azure Specific Fields */}
+                                                            {isAzure && (
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('protocol.azureContainerName')}</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder={t('protocol.azureContainerPlaceholder')}
+                                                                        value={editingServer.options?.bucket || ''}
+                                                                        onChange={(e) =>
+                                                                            setEditingServer({
+                                                                                ...editingServer,
+                                                                                options: {
+                                                                                    ...editingServer.options,
+                                                                                    bucket: e.target.value,
+                                                                                },
+                                                                            })
+                                                                        }
+                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            {/* Paths - common for all */}
+                                                            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.remotePath')}</label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder={t('settings.remotePathPlaceholder')}
+                                                                    value={editingServer.initialPath || ''}
+                                                                    onChange={(e) =>
+                                                                        setEditingServer({
+                                                                            ...editingServer,
+                                                                            initialPath: e.target.value,
+                                                                        })
+                                                                    }
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                            </div>
                                                             <div className="flex gap-2">
                                                                 <div className="flex-1">
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                        {isS3 ? t('settings.endpointUrl') : isAzure ? t('connection.azureEndpoint') : t('settings.host')}
-                                                                    </label>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.localPath')}</label>
                                                                     <input
                                                                         type="text"
-                                                                        placeholder={isS3 ? 's3.amazonaws.com' : isAzure ? 'myaccount.blob.core.windows.net' : 'ftp.example.com'}
-                                                                        value={editingServer.host}
-                                                                        onChange={e => setEditingServer({ ...editingServer, host: e.target.value })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                                <div className="w-24">
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.port')}</label>
-                                                                    <input
-                                                                        type="number"
-                                                                        placeholder={t('settings.portPlaceholder')}
-                                                                        value={editingServer.port}
-                                                                        onChange={e => setEditingServer({ ...editingServer, port: parseInt(e.target.value) || 21 })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Username - for non-OAuth, non-MEGA */}
-                                                        {needsHostPort && (
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                    {isS3 ? t('settings.accessKeyId') : isAzure ? t('connection.azureAccountName') : t('settings.username')}
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder={isS3 ? 'AKIAIOSFODNN7EXAMPLE' : isAzure ? 'aeroftp2026' : 'username'}
-                                                                    value={editingServer.username}
-                                                                    onChange={e => setEditingServer({ ...editingServer, username: e.target.value })}
-                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                />
-                                                            </div>
-                                                        )}
-
-                                                        {/* Password - for non-OAuth */}
-                                                        {needsPassword && !isMega && !isInternxt && !isKDrive && !isDrime && !isOpenDrive && (
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">
-                                                                    {isS3 ? t('settings.secretAccessKey') : isAzure ? t('connection.azureAccessKey') : t('settings.password')}
-                                                                </label>
-                                                                <div className="relative">
-                                                                    <input
-                                                                        type={showEditPassword ? 'text' : 'password'}
-                                                                        placeholder={t('settings.passwordPlaceholder')}
-                                                                        value={editingServer.password || ''}
-                                                                        onChange={e => setEditingServer({ ...editingServer, password: e.target.value })}
-                                                                        className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        tabIndex={-1}
-                                                                        onClick={() => setShowEditPassword(!showEditPassword)}
-                                                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-                                                                    >
-                                                                        {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* S3 Specific Fields */}
-                                                        {isS3 && (
-                                                            <>
-                                                                <div className="grid grid-cols-2 gap-2">
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.bucket')}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder={t('settings.s3BucketPlaceholder')}
-                                                                            value={editingServer.options?.bucket || ''}
-                                                                            onChange={e => setEditingServer({
+                                                                        placeholder={t('settings.localPathPlaceholder')}
+                                                                        value={editingServer.localInitialPath || ''}
+                                                                        onChange={(e) =>
+                                                                            setEditingServer({
                                                                                 ...editingServer,
-                                                                                options: { ...editingServer.options, bucket: e.target.value }
-                                                                            })}
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.region')}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder={t('settings.s3RegionPlaceholder')}
-                                                                            value={editingServer.options?.region || ''}
-                                                                            onChange={e => setEditingServer({
-                                                                                ...editingServer,
-                                                                                options: { ...editingServer.options, region: e.target.value }
-                                                                            })}
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.endpointUrl')}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="s3.amazonaws.com"
-                                                                        value={editingServer.options?.endpoint || ''}
-                                                                        onChange={e => setEditingServer({
-                                                                            ...editingServer,
-                                                                            options: { ...editingServer.options, endpoint: e.target.value }
-                                                                        })}
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                            </>
-                                                        )}
-
-                                                        {/* Azure Specific Fields */}
-                                                        {isAzure && (
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('protocol.azureContainerName')}</label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder={t('protocol.azureContainerPlaceholder')}
-                                                                    value={editingServer.options?.bucket || ''}
-                                                                    onChange={e => setEditingServer({
-                                                                        ...editingServer,
-                                                                        options: { ...editingServer.options, bucket: e.target.value }
-                                                                    })}
-                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                />
-                                                            </div>
-                                                        )}
-
-                                                        {/* Paths - common for all */}
-                                                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.remotePath')}</label>
-                                                            <input
-                                                                type="text"
-                                                                placeholder={t('settings.remotePathPlaceholder')}
-                                                                value={editingServer.initialPath || ''}
-                                                                onChange={e => setEditingServer({ ...editingServer, initialPath: e.target.value })}
-                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                            />
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <div className="flex-1">
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.localPath')}</label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder={t('settings.localPathPlaceholder')}
-                                                                    value={editingServer.localInitialPath || ''}
-                                                                    onChange={e => setEditingServer({ ...editingServer, localInitialPath: e.target.value })}
-                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                />
-                                                            </div>
-                                                            <button
-                                                                type="button"
-                                                                onClick={async () => {
-                                                                    try {
-                                                                        const selected = await open({ directory: true, multiple: false, title: t('settings.selectLocalFolder') });
-                                                                        if (selected && typeof selected === 'string') {
-                                                                            setEditingServer({ ...editingServer, localInitialPath: selected });
+                                                                                localInitialPath: e.target.value,
+                                                                            })
                                                                         }
-                                                                    } catch (e) { console.error('Folder picker error:', e); }
+                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            const selected = await open({
+                                                                                directory: true,
+                                                                                multiple: false,
+                                                                                title: t('settings.selectLocalFolder'),
+                                                                            });
+                                                                            if (selected && typeof selected === 'string') {
+                                                                                setEditingServer({
+                                                                                    ...editingServer,
+                                                                                    localInitialPath: selected,
+                                                                                });
+                                                                            }
+                                                                        } catch (e) {
+                                                                            console.error('Folder picker error:', e);
+                                                                        }
+                                                                    }}
+                                                                    className="mt-5 px-3 py-2 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
+                                                                    title={t('common.browse')}
+                                                                >
+                                                                    <FolderOpen size={16} />
+                                                                </button>
+                                                            </div>
+                                                            {/* Public URL Base for share links (FTP/SFTP/WebDAV) */}
+                                                            <div>
+                                                                <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1.5">
+                                                                    <Link2 size={12} />
+                                                                    {t('settings.publicUrlBase')}
+                                                                    <span className="text-gray-400 font-normal">({t('common.optional')})</span>
+                                                                </label>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="https://www.example.com/"
+                                                                    value={editingServer.publicUrlBase || ''}
+                                                                    onChange={(e) =>
+                                                                        setEditingServer({
+                                                                            ...editingServer,
+                                                                            publicUrlBase: e.target.value || undefined,
+                                                                        })
+                                                                    }
+                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                />
+                                                                <p className="text-xs text-gray-400 mt-1">{t('settings.publicUrlBaseDesc')}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2 justify-end">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingServer(null);
+                                                                    setShowEditPassword(false);
                                                                 }}
-                                                                className="mt-5 px-3 py-2 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                                title={t('common.browse')}
+                                                                className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
                                                             >
-                                                                <FolderOpen size={16} />
+                                                                {t('common.cancel')}
                                                             </button>
-                                                        </div>
-                                                        {/* Public URL Base for share links (FTP/SFTP/WebDAV) */}
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1.5">
-                                                                <Link2 size={12} />
-                                                                {t('settings.publicUrlBase')}
-                                                                <span className="text-gray-400 font-normal">({t('common.optional')})</span>
-                                                            </label>
-                                                            <input
-                                                                type="text"
-                                                                placeholder="https://www.example.com/"
-                                                                value={editingServer.publicUrlBase || ''}
-                                                                onChange={e => setEditingServer({ ...editingServer, publicUrlBase: e.target.value || undefined })}
-                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                            />
-                                                            <p className="text-xs text-gray-400 mt-1">{t('settings.publicUrlBaseDesc')}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-2 justify-end">
-                                                        <button
-                                                            onClick={() => { setEditingServer(null); setShowEditPassword(false); }}
-                                                            className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
-                                                        >
-                                                            {t('common.cancel')}
-                                                        </button>
-                                                        {servers.some(s => s.id === editingServer.id) && (
+                                                            {servers.some((s) => s.id === editingServer.id) && (
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                                                                        // Auto-rename if name unchanged
+                                                                        const original = servers.find((s) => s.id === editingServer.id);
+                                                                        const finalName = original && editingServer.name === original.name ? `${editingServer.name} (${t('common.copy')})` : editingServer.name;
+
+                                                                        let hasStoredCredential = false;
+                                                                        if (editingServer.password) {
+                                                                            try {
+                                                                                await invoke('store_credential', {
+                                                                                    account: `server_${newId}`,
+                                                                                    password: editingServer.password,
+                                                                                });
+                                                                                hasStoredCredential = true;
+                                                                            } catch {
+                                                                                /* re-enter later */
+                                                                            }
+                                                                        } else if (original?.hasStoredCredential) {
+                                                                            // Copy credential from vault
+                                                                            try {
+                                                                                const pwd = await invoke<string>('get_credential', { account: `server_${original.id}` });
+                                                                                if (pwd) {
+                                                                                    await invoke('store_credential', {
+                                                                                        account: `server_${newId}`,
+                                                                                        password: pwd,
+                                                                                    });
+                                                                                    hasStoredCredential = true;
+                                                                                }
+                                                                            } catch {
+                                                                                /* re-enter later */
+                                                                            }
+                                                                        }
+
+                                                                        const newServer = {
+                                                                            ...editingServer,
+                                                                            host: editingServer.protocol === 'mega' ? editingServer.host || 'mega.nz' : editingServer.host,
+                                                                            port: editingServer.protocol === 'mega' ? editingServer.port || 443 : editingServer.port,
+                                                                            options: editingServer.protocol === 'mega' ? normalizeMegaOptions(editingServer.options) : editingServer.options,
+                                                                            id: newId,
+                                                                            name: finalName,
+                                                                            password: undefined,
+                                                                            hasStoredCredential,
+                                                                            lastConnected: undefined,
+                                                                        };
+                                                                        const updatedServers = [...servers, newServer];
+                                                                        setServers(updatedServers);
+                                                                        secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => {});
+                                                                        setEditingServer(null);
+                                                                        setShowEditPassword(false);
+                                                                        setHasChanges(true);
+                                                                        onServersChanged?.();
+                                                                    }}
+                                                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-1.5"
+                                                                    title={t('connection.saveAsNew')}
+                                                                >
+                                                                    <Copy size={14} />
+                                                                    {t('connection.saveAsNew')}
+                                                                </button>
+                                                            )}
                                                             <button
                                                                 onClick={async () => {
-                                                                    const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                                                                    // Auto-rename if name unchanged
-                                                                    const original = servers.find(s => s.id === editingServer.id);
-                                                                    const finalName = (original && editingServer.name === original.name)
-                                                                        ? `${editingServer.name} (${t('common.copy')})`
-                                                                        : editingServer.name;
+                                                                    const exists = servers.some((s) => s.id === editingServer.id);
+                                                                    let updatedServers: ServerProfile[];
 
-                                                                    let hasStoredCredential = false;
+                                                                    // Store password in credential vault if provided
+                                                                    let hasStoredCredential = editingServer.hasStoredCredential || false;
                                                                     if (editingServer.password) {
                                                                         try {
-                                                                            await invoke('store_credential', { account: `server_${newId}`, password: editingServer.password });
+                                                                            await invoke('store_credential', {
+                                                                                account: `server_${editingServer.id}`,
+                                                                                password: editingServer.password,
+                                                                            });
                                                                             hasStoredCredential = true;
-                                                                        } catch { /* re-enter later */ }
-                                                                    } else if (original?.hasStoredCredential) {
-                                                                        // Copy credential from vault
-                                                                        try {
-                                                                            const pwd = await invoke<string>('get_credential', { account: `server_${original.id}` });
-                                                                            if (pwd) {
-                                                                                await invoke('store_credential', { account: `server_${newId}`, password: pwd });
-                                                                                hasStoredCredential = true;
-                                                                            }
-                                                                        } catch { /* re-enter later */ }
+                                                                        } catch (err) {
+                                                                            console.error('Failed to store credential:', err);
+                                                                        }
                                                                     }
 
-                                                                    const newServer = {
+                                                                    // Update server profile with hasStoredCredential flag, without storing password in localStorage
+                                                                    const serverToSave = {
                                                                         ...editingServer,
-                                                                        host: editingServer.protocol === 'mega' ? (editingServer.host || 'mega.nz') : editingServer.host,
-                                                                        port: editingServer.protocol === 'mega' ? (editingServer.port || 443) : editingServer.port,
-                                                                        options: editingServer.protocol === 'mega'
-                                                                            ? normalizeMegaOptions(editingServer.options)
-                                                                            : editingServer.options,
-                                                                        id: newId,
-                                                                        name: finalName,
-                                                                        password: undefined,
+                                                                        host: editingServer.protocol === 'mega' ? editingServer.host || 'mega.nz' : editingServer.host,
+                                                                        port: editingServer.protocol === 'mega' ? editingServer.port || 443 : editingServer.port,
+                                                                        options: editingServer.protocol === 'mega' ? normalizeMegaOptions(editingServer.options) : editingServer.options,
+                                                                        password: undefined, // Don't store password in localStorage
                                                                         hasStoredCredential,
-                                                                        lastConnected: undefined,
                                                                     };
-                                                                    const updatedServers = [...servers, newServer];
+
+                                                                    if (exists) {
+                                                                        updatedServers = servers.map((s) => (s.id === editingServer.id ? serverToSave : s));
+                                                                    } else {
+                                                                        updatedServers = [...servers, serverToSave];
+                                                                    }
                                                                     setServers(updatedServers);
-                                                                    secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => { });
+                                                                    // Persist immediately so changes aren't lost if user closes without Save Changes
+                                                                    secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => {});
                                                                     setEditingServer(null);
                                                                     setShowEditPassword(false);
                                                                     setHasChanges(true);
                                                                     onServersChanged?.();
                                                                 }}
-                                                                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-1.5"
-                                                                title={t('connection.saveAsNew')}
+                                                                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
                                                             >
-                                                                <Copy size={14} />
-                                                                {t('connection.saveAsNew')}
+                                                                {t('common.save')}
                                                             </button>
-                                                        )}
-                                                        <button
-                                                            onClick={async () => {
-                                                                const exists = servers.some(s => s.id === editingServer.id);
-                                                                let updatedServers: ServerProfile[];
-
-                                                                // Store password in credential vault if provided
-                                                                let hasStoredCredential = editingServer.hasStoredCredential || false;
-                                                                if (editingServer.password) {
-                                                                    try {
-                                                                        await invoke('store_credential', {
-                                                                            account: `server_${editingServer.id}`,
-                                                                            password: editingServer.password
-                                                                        });
-                                                                        hasStoredCredential = true;
-                                                                    } catch (err) {
-                                                                        console.error('Failed to store credential:', err);
-                                                                    }
-                                                                }
-
-                                                                // Update server profile with hasStoredCredential flag, without storing password in localStorage
-                                                                const serverToSave = {
-                                                                    ...editingServer,
-                                                                    host: editingServer.protocol === 'mega' ? (editingServer.host || 'mega.nz') : editingServer.host,
-                                                                    port: editingServer.protocol === 'mega' ? (editingServer.port || 443) : editingServer.port,
-                                                                    options: editingServer.protocol === 'mega'
-                                                                        ? normalizeMegaOptions(editingServer.options)
-                                                                        : editingServer.options,
-                                                                    password: undefined, // Don't store password in localStorage
-                                                                    hasStoredCredential,
-                                                                };
-
-                                                                if (exists) {
-                                                                    updatedServers = servers.map(s => s.id === editingServer.id ? serverToSave : s);
-                                                                } else {
-                                                                    updatedServers = [...servers, serverToSave];
-                                                                }
-                                                                setServers(updatedServers);
-                                                                // Persist immediately so changes aren't lost if user closes without Save Changes
-                                                                secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => { });
-                                                                setEditingServer(null);
-                                                                setShowEditPassword(false);
-                                                                setHasChanges(true);
-                                                                onServersChanged?.();
-                                                            }}
-                                                            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
-                                                        >
-                                                            {t('common.save')}
-                                                        </button>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    })()}
+                                            );
+                                        })()}
                                 </div>
                             )}
                             {activeTab === 'filehandling' && (
@@ -2046,11 +2379,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.whenFileExists')}</label>
-                                            <select
-                                                value={settings.fileExistsAction}
-                                                onChange={e => updateSetting('fileExistsAction', e.target.value as AppSettings['fileExistsAction'])}
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                                            >
+                                            <select value={settings.fileExistsAction} onChange={(e) => updateSetting('fileExistsAction', e.target.value as AppSettings['fileExistsAction'])} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
                                                 <option value="ask">{t('settings.fileExistsAsk')}</option>
                                                 <option value="overwrite">{t('settings.fileExistsOverwrite')}</option>
                                                 <option value="skip">{t('settings.fileExistsSkip')}</option>
@@ -2065,11 +2394,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.transferModeLabel')}</label>
-                                            <select
-                                                value={settings.transferMode}
-                                                onChange={e => updateSetting('transferMode', e.target.value as 'auto' | 'ascii' | 'binary')}
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                                            >
+                                            <select value={settings.transferMode} onChange={(e) => updateSetting('transferMode', e.target.value as 'auto' | 'ascii' | 'binary')} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
                                                 <option value="auto">{t('settings.transferModeAuto')}</option>
                                                 <option value="binary">{t('settings.transferModeBinary')}</option>
                                                 <option value="ascii">{t('settings.transferModeAscii')}</option>
@@ -2098,39 +2423,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.concurrentTransfers')}</label>
-                                            <select
-                                                value={settings.maxConcurrentTransfers}
-                                                onChange={e => updateSetting('maxConcurrentTransfers', parseInt(e.target.value))}
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                                            >
-                                                {[1, 2, 3, 4, 5, 6, 8].map(n => (
-                                                    <option key={n} value={n}>{n === 1 ? t('settings.oneFileAtATime') : t('settings.nFilesAtATime', { n })}</option>
+                                            <select value={settings.maxConcurrentTransfers} onChange={(e) => updateSetting('maxConcurrentTransfers', parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
+                                                {[1, 2, 3, 4, 5, 6, 8].map((n) => (
+                                                    <option key={n} value={n}>
+                                                        {n === 1 ? t('settings.oneFileAtATime') : t('settings.nFilesAtATime', { n })}
+                                                    </option>
                                                 ))}
                                             </select>
                                         </div>
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.retryCountOnError')}</label>
-                                            <select
-                                                value={settings.retryCount}
-                                                onChange={e => updateSetting('retryCount', parseInt(e.target.value))}
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                                            >
-                                                {[0, 1, 2, 3, 5].map(n => (
-                                                    <option key={n} value={n}>{n === 0 ? t('settings.noRetries') : t('settings.retriesCount', { n })}</option>
+                                            <select value={settings.retryCount} onChange={(e) => updateSetting('retryCount', parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
+                                                {[0, 1, 2, 3, 5].map((n) => (
+                                                    <option key={n} value={n}>
+                                                        {n === 0 ? t('settings.noRetries') : t('settings.retriesCount', { n })}
+                                                    </option>
                                                 ))}
                                             </select>
                                         </div>
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.connectionTimeout')}</label>
-                                            <select
-                                                value={settings.timeoutSeconds}
-                                                onChange={e => updateSetting('timeoutSeconds', parseInt(e.target.value))}
-                                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-                                            >
-                                                {[10, 30, 60, 120].map(n => (
-                                                    <option key={n} value={n}>{t('settings.nSeconds', { n })}</option>
+                                            <select value={settings.timeoutSeconds} onChange={(e) => updateSetting('timeoutSeconds', parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
+                                                {[10, 30, 60, 120].map((n) => (
+                                                    <option key={n} value={n}>
+                                                        {t('settings.nSeconds', { n })}
+                                                    </option>
                                                 ))}
                                             </select>
                                         </div>
@@ -2147,7 +2466,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         onChange={async (e) => {
                                                             const enabled = e.target.checked;
                                                             try {
-                                                                await invoke('native_rsync_enabled_set', { enabled });
+                                                                await invoke('native_rsync_enabled_set', {
+                                                                    enabled,
+                                                                });
                                                                 setNativeRsyncEnabled(enabled);
                                                                 flashSaved();
                                                             } catch (error) {
@@ -2157,29 +2478,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     />
                                                     <span className="text-sm">{t('settings.nativeRsync.enableToggle')}</span>
                                                 </label>
-                                                <p className="text-xs text-amber-600 mt-2">
-                                                    {t('settings.nativeRsync.experimental')}
-                                                </p>
+                                                <p className="text-xs text-amber-600 mt-2">{t('settings.nativeRsync.experimental')}</p>
                                             </div>
                                         )}
                                     </div>
                                 </div>
                             )}
 
-                            {activeTab === 'aerocloud' && (
-                                <SettingsAeroCloudTab onClose={onClose} onOpenCloudPanel={onOpenCloudPanel} />
-                            )}
+                            {activeTab === 'aerocloud' && <SettingsAeroCloudTab onClose={onClose} onOpenCloudPanel={onOpenCloudPanel} />}
 
                             {activeTab === 'cloudproviders' && (
                                 <div className="space-y-6">
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.cloudProviderSettings')}</h3>
                                     <div className="flex items-center justify-between">
                                         <p className="text-sm text-gray-500">{t('settings.cloudProviderDesc')}</p>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowOAuthSecrets(!showOAuthSecrets)}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
-                                        >
+                                        <button type="button" onClick={() => setShowOAuthSecrets(!showOAuthSecrets)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
                                             {showOAuthSecrets ? <EyeOff size={14} /> : <Eye size={14} />}
                                             {showOAuthSecrets ? t('settings.hideSecrets') : t('settings.showSecrets')}
                                         </button>
@@ -2191,41 +2504,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.googledrive ? <PROVIDER_LOGOS.googledrive size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.googledrive ? <PROVIDER_LOGOS.googledrive size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">Google API</h4>
                                                     <p className="text-xs text-gray-500">Google Drive, Google Photos</p>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => openUrl('https://console.cloud.google.com/apis/credentials')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                            >
+                                            <button onClick={() => openUrl('https://console.cloud.google.com/apis/credentials')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={oauthSettings.googledrive.clientId}
-                                                    onChange={e => updateOAuthSetting('googledrive', 'clientId', e.target.value)}
-                                                    placeholder={t('settings.googleClientIdPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type="text" value={oauthSettings.googledrive.clientId} onChange={(e) => updateOAuthSetting('googledrive', 'clientId', e.target.value)} placeholder={t('settings.googleClientIdPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
-                                                <input
-                                                    type={showOAuthSecrets ? 'text' : 'password'}
-                                                    value={oauthSettings.googledrive.clientSecret}
-                                                    onChange={e => updateOAuthSetting('googledrive', 'clientSecret', e.target.value)}
-                                                    placeholder={t('settings.googleClientSecretPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type={showOAuthSecrets ? 'text' : 'password'} value={oauthSettings.googledrive.clientSecret} onChange={(e) => updateOAuthSetting('googledrive', 'clientSecret', e.target.value)} placeholder={t('settings.googleClientSecretPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -2234,41 +2530,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.dropbox ? <PROVIDER_LOGOS.dropbox size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.dropbox ? <PROVIDER_LOGOS.dropbox size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">Dropbox</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.connectWithDropbox')}</p>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => openUrl('https://www.dropbox.com/developers/apps')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                            >
+                                            <button onClick={() => openUrl('https://www.dropbox.com/developers/apps')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.appKey')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={oauthSettings.dropbox.clientId}
-                                                    onChange={e => updateOAuthSetting('dropbox', 'clientId', e.target.value)}
-                                                    placeholder={t('settings.dropboxClientIdPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type="text" value={oauthSettings.dropbox.clientId} onChange={(e) => updateOAuthSetting('dropbox', 'clientId', e.target.value)} placeholder={t('settings.dropboxClientIdPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.appSecret')}</label>
-                                                <input
-                                                    type={showOAuthSecrets ? 'text' : 'password'}
-                                                    value={oauthSettings.dropbox.clientSecret}
-                                                    onChange={e => updateOAuthSetting('dropbox', 'clientSecret', e.target.value)}
-                                                    placeholder={t('settings.dropboxClientSecretPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type={showOAuthSecrets ? 'text' : 'password'} value={oauthSettings.dropbox.clientSecret} onChange={(e) => updateOAuthSetting('dropbox', 'clientSecret', e.target.value)} placeholder={t('settings.dropboxClientSecretPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -2277,41 +2556,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.onedrive ? <PROVIDER_LOGOS.onedrive size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.onedrive ? <PROVIDER_LOGOS.onedrive size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">OneDrive</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.connectWithMicrosoft')}</p>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => openUrl('https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                            >
+                                            <button onClick={() => openUrl('https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.applicationId')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={oauthSettings.onedrive.clientId}
-                                                    onChange={e => updateOAuthSetting('onedrive', 'clientId', e.target.value)}
-                                                    placeholder={t('settings.onedriveClientIdPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type="text" value={oauthSettings.onedrive.clientId} onChange={(e) => updateOAuthSetting('onedrive', 'clientId', e.target.value)} placeholder={t('settings.onedriveClientIdPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
-                                                <input
-                                                    type={showOAuthSecrets ? 'text' : 'password'}
-                                                    value={oauthSettings.onedrive.clientSecret}
-                                                    onChange={e => updateOAuthSetting('onedrive', 'clientSecret', e.target.value)}
-                                                    placeholder={t('settings.onedriveClientSecretPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type={showOAuthSecrets ? 'text' : 'password'} value={oauthSettings.onedrive.clientSecret} onChange={(e) => updateOAuthSetting('onedrive', 'clientSecret', e.target.value)} placeholder={t('settings.onedriveClientSecretPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -2320,41 +2582,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.box ? <PROVIDER_LOGOS.box size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.box ? <PROVIDER_LOGOS.box size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">Box</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.connectWithBox')}</p>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => openUrl('https://app.box.com/developers/console')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                            >
+                                            <button onClick={() => openUrl('https://app.box.com/developers/console')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={oauthSettings.box.clientId}
-                                                    onChange={e => updateOAuthSetting('box', 'clientId', e.target.value)}
-                                                    placeholder={t('settings.boxClientIdPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type="text" value={oauthSettings.box.clientId} onChange={(e) => updateOAuthSetting('box', 'clientId', e.target.value)} placeholder={t('settings.boxClientIdPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
-                                                <input
-                                                    type={showOAuthSecrets ? 'text' : 'password'}
-                                                    value={oauthSettings.box.clientSecret}
-                                                    onChange={e => updateOAuthSetting('box', 'clientSecret', e.target.value)}
-                                                    placeholder={t('settings.boxClientSecretPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type={showOAuthSecrets ? 'text' : 'password'} value={oauthSettings.box.clientSecret} onChange={(e) => updateOAuthSetting('box', 'clientSecret', e.target.value)} placeholder={t('settings.boxClientSecretPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -2363,41 +2608,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.pcloud ? <PROVIDER_LOGOS.pcloud size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.pcloud ? <PROVIDER_LOGOS.pcloud size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">pCloud</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.connectWithPcloud')}</p>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => openUrl('https://docs.pcloud.com/methods/oauth_2.0/authorize.html')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                            >
+                                            <button onClick={() => openUrl('https://docs.pcloud.com/methods/oauth_2.0/authorize.html')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={oauthSettings.pcloud.clientId}
-                                                    onChange={e => updateOAuthSetting('pcloud', 'clientId', e.target.value)}
-                                                    placeholder={t('settings.pcloudClientIdPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type="text" value={oauthSettings.pcloud.clientId} onChange={(e) => updateOAuthSetting('pcloud', 'clientId', e.target.value)} placeholder={t('settings.pcloudClientIdPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
-                                                <input
-                                                    type={showOAuthSecrets ? 'text' : 'password'}
-                                                    value={oauthSettings.pcloud.clientSecret}
-                                                    onChange={e => updateOAuthSetting('pcloud', 'clientSecret', e.target.value)}
-                                                    placeholder={t('settings.pcloudClientSecretPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type={showOAuthSecrets ? 'text' : 'password'} value={oauthSettings.pcloud.clientSecret} onChange={(e) => updateOAuthSetting('pcloud', 'clientSecret', e.target.value)} placeholder={t('settings.pcloudClientSecretPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -2406,41 +2634,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.fourshared ? <PROVIDER_LOGOS.fourshared size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.fourshared ? <PROVIDER_LOGOS.fourshared size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">4shared</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.foursharedDesc')}</p>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => openUrl('https://www.4shared.com/developer/')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                            >
+                                            <button onClick={() => openUrl('https://www.4shared.com/developer/')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.consumerKey')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={oauthSettings.fourshared.clientId}
-                                                    onChange={e => updateOAuthSetting('fourshared', 'clientId', e.target.value)}
-                                                    placeholder={t('settings.foursharedClientIdPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type="text" value={oauthSettings.fourshared.clientId} onChange={(e) => updateOAuthSetting('fourshared', 'clientId', e.target.value)} placeholder={t('settings.foursharedClientIdPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.consumerSecret')}</label>
-                                                <input
-                                                    type={showOAuthSecrets ? 'text' : 'password'}
-                                                    value={oauthSettings.fourshared.clientSecret}
-                                                    onChange={e => updateOAuthSetting('fourshared', 'clientSecret', e.target.value)}
-                                                    placeholder={t('settings.foursharedClientSecretPlaceholder')}
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type={showOAuthSecrets ? 'text' : 'password'} value={oauthSettings.fourshared.clientSecret} onChange={(e) => updateOAuthSetting('fourshared', 'clientSecret', e.target.value)} placeholder={t('settings.foursharedClientSecretPlaceholder')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -2449,41 +2660,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.zohoworkdrive ? <PROVIDER_LOGOS.zohoworkdrive size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.zohoworkdrive ? <PROVIDER_LOGOS.zohoworkdrive size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">Zoho WorkDrive</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.zohoWorkDriveDesc')}</p>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => openUrl('https://api-console.zoho.com/')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                            >
+                                            <button onClick={() => openUrl('https://api-console.zoho.com/')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={oauthSettings.zohoworkdrive.clientId}
-                                                    onChange={e => updateOAuthSetting('zohoworkdrive', 'clientId', e.target.value)}
-                                                    placeholder="1000.XXXXXXXXXXXXXXXXXXXX"
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type="text" value={oauthSettings.zohoworkdrive.clientId} onChange={(e) => updateOAuthSetting('zohoworkdrive', 'clientId', e.target.value)} placeholder="1000.XXXXXXXXXXXXXXXXXXXX" className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
-                                                <input
-                                                    type={showOAuthSecrets ? 'text' : 'password'}
-                                                    value={oauthSettings.zohoworkdrive.clientSecret}
-                                                    onChange={e => updateOAuthSetting('zohoworkdrive', 'clientSecret', e.target.value)}
-                                                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type={showOAuthSecrets ? 'text' : 'password'} value={oauthSettings.zohoworkdrive.clientSecret} onChange={(e) => updateOAuthSetting('zohoworkdrive', 'clientSecret', e.target.value)} placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -2492,41 +2686,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.yandexdisk ? <PROVIDER_LOGOS.yandexdisk size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.yandexdisk ? <PROVIDER_LOGOS.yandexdisk size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">Yandex Disk</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.yandexDiskDesc')}</p>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => openUrl('https://oauth.yandex.com/client/new')}
-                                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                                            >
+                                            <button onClick={() => openUrl('https://oauth.yandex.com/client/new')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                                                 {t('settings.getCredentials')} <ExternalLink size={12} />
                                             </button>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
-                                                <input
-                                                    type="text"
-                                                    value={oauthSettings.yandexdisk.clientId}
-                                                    onChange={e => updateOAuthSetting('yandexdisk', 'clientId', e.target.value)}
-                                                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type="text" value={oauthSettings.yandexdisk.clientId} onChange={(e) => updateOAuthSetting('yandexdisk', 'clientId', e.target.value)} placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
-                                                <input
-                                                    type={showOAuthSecrets ? 'text' : 'password'}
-                                                    value={oauthSettings.yandexdisk.clientSecret}
-                                                    onChange={e => updateOAuthSetting('yandexdisk', 'clientSecret', e.target.value)}
-                                                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                                                    className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                                                />
+                                                <input type={showOAuthSecrets ? 'text' : 'password'} value={oauthSettings.yandexdisk.clientSecret} onChange={(e) => updateOAuthSetting('yandexdisk', 'clientSecret', e.target.value)} placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -2535,28 +2712,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">
-                                                    {PROVIDER_LOGOS.github ? <PROVIDER_LOGOS.github size={18} /> : <Cloud size={16} />}
-                                                </div>
+                                                <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.github ? <PROVIDER_LOGOS.github size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">GitHub</h4>
                                                     <p className="text-xs text-gray-500">{t('settings.githubOauthDesc') || 'Device Flow OAuth — no Client ID needed'}</p>
                                                 </div>
                                             </div>
-                                            <span className="text-xs bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">
-                                                {t('settings.noApiKeysNeeded') || 'No API keys needed'}
-                                            </span>
+                                            <span className="text-xs bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">{t('settings.noApiKeysNeeded') || 'No API keys needed'}</span>
                                         </div>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                                            {t('settings.githubOauthInfo') || 'GitHub uses Device Flow OAuth with the built-in AeroFTP App. No client credentials are required. You can also use a Personal Access Token or a GitHub App .pem key from the connection screen.'}
-                                        </p>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">{t('settings.githubOauthInfo') || 'GitHub uses Device Flow OAuth with the built-in AeroFTP App. No client credentials are required. You can also use a Personal Access Token or a GitHub App .pem key from the connection screen.'}</p>
                                     </div>
 
                                     <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700 flex items-start gap-2">
                                         <Shield size={16} className="mt-0.5 flex-shrink-0 text-blue-500 dark:text-blue-400" />
-                                        <p className="text-sm text-blue-700 dark:text-blue-300">
-                                            {t('settings.oauthNote')}
-                                        </p>
+                                        <p className="text-sm text-blue-700 dark:text-blue-300">{t('settings.oauthNote')}</p>
                                     </div>
                                 </div>
                             )}
@@ -2565,20 +2734,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                 <div className="space-y-4">
                                     {/* Appearance Sub-tabs */}
                                     <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-                                        {([
-                                            { id: 'theme' as const, label: t('settings.themeTab'), icon: <Palette size={13} /> },
-                                            { id: 'icons' as const, label: t('settings.iconsTab'), icon: <Shapes size={13} /> },
-                                            { id: 'interface' as const, label: t('settings.interfaceTab'), icon: <Monitor size={13} /> },
-                                            { id: 'backgrounds' as const, label: t('settings.backgroundsTab'), icon: <Image size={13} /> },
-                                        ]).map(sub => (
-                                            <button
-                                                key={sub.id}
-                                                onClick={() => setAppearanceSubTab(sub.id)}
-                                                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors ${appearanceSubTab === sub.id
-                                                        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500'
-                                                        : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
-                                                    }`}
-                                            >
+                                        {[
+                                            {
+                                                id: 'theme' as const,
+                                                label: t('settings.themeTab'),
+                                                icon: <Palette size={13} />,
+                                            },
+                                            {
+                                                id: 'icons' as const,
+                                                label: t('settings.iconsTab'),
+                                                icon: <Shapes size={13} />,
+                                            },
+                                            {
+                                                id: 'interface' as const,
+                                                label: t('settings.interfaceTab'),
+                                                icon: <Monitor size={13} />,
+                                            },
+                                            {
+                                                id: 'backgrounds' as const,
+                                                label: t('settings.backgroundsTab'),
+                                                icon: <Image size={13} />,
+                                            },
+                                        ].map((sub) => (
+                                            <button key={sub.id} onClick={() => setAppearanceSubTab(sub.id)} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors ${appearanceSubTab === sub.id ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'}`}>
                                                 {sub.icon}
                                                 {sub.label}
                                             </button>
@@ -2590,12 +2768,57 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div className="space-y-4">
                                             <p className="text-xs text-gray-500">{t('settings.themeDesc')}</p>
                                             <div className="grid grid-cols-2 gap-3">
-                                                {([
-                                                    { id: 'light' as Theme, label: t('settings.themeLightLabel'), icon: <Sun size={20} />, colors: ['#ffffff', '#f3f4f6', '#3b82f6'], selectedBorder: 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5', selectedIcon: 'text-blue-500', checkBg: 'bg-blue-500', desc: t('settings.themeLightDesc') },
-                                                    { id: 'dark' as Theme, label: t('settings.themeDarkLabel'), icon: <Moon size={20} />, colors: ['#111827', '#1f2937', '#3b82f6'], selectedBorder: 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5', selectedIcon: 'text-blue-500', checkBg: 'bg-blue-500', desc: t('settings.themeDarkDesc') },
-                                                    { id: 'tokyo' as Theme, label: t('settings.themeTokyoLabel'), icon: <svg viewBox="0 0 32 32" width={20} height={20} fill="currentColor"><path d="M30.43,12.124c-0.441-1.356-1.289-2.518-2.454-3.358c-1.157-0.835-2.514-1.276-3.924-1.276c-0.44,0.001-0.898,0.055-1.368,0.158c-0.048-0.492-0.145-0.96-0.288-1.395c-0.442-1.345-1.287-2.498-2.442-3.335c-1.111-0.805-2.44-1.212-3.776-1.242C16.054,1.64,16,1.64,16,1.64s-0.105,0.014-0.151,0.036c-1.336,0.029-2.664,0.437-3.776,1.241c-1.155,0.837-2,1.991-2.442,3.335C9.488,6.686,9.392,7.154,9.343,7.648C8.859,7.542,8.415,7.462,7.926,7.491C6.511,7.496,5.153,7.942,4,8.783c-1.151,0.839-1.99,1.994-2.428,3.34s-0.437,2.774,0.001,4.129c0.439,1.358,1.275,2.518,2.417,3.353c0.369,0.271,0.785,0.507,1.239,0.706c-0.251,0.428-0.448,0.863-0.588,1.298c-0.432,1.349-0.427,2.778,0.016,4.135c0.443,1.354,1.282,2.51,2.427,3.341c1.145,0.832,2.503,1.272,3.927,1.275c1.422,0,2.78-0.437,3.926-1.263c0.371-0.268,0.724-0.589,1.053-0.96c0.319,0.36,0.659,0.673,1.013,0.932c1.145,0.839,2.509,1.285,3.946,1.291c1.428,0,2.789-0.441,3.938-1.275c1.153-0.838,1.995-2.004,2.435-3.37c0.439-1.368,0.438-2.804-0.007-4.152c-0.137-0.417-0.329-0.837-0.573-1.251c0.44-0.192,0.842-0.418,1.199-0.675c1.151-0.831,1.998-1.991,2.446-3.355C30.865,14.918,30.869,13.48,30.43,12.124z" /></svg>, colors: ['#1a1b26', '#16161e', '#9d7cd8'], selectedBorder: 'border-purple-500 ring-1 ring-purple-500/30 bg-purple-500/5', selectedIcon: 'text-purple-500', checkBg: 'bg-purple-500', desc: t('settings.themeTokyoDesc') },
-                                                    { id: 'cyber' as Theme, label: t('settings.themeCyberLabel'), icon: <svg viewBox="0 0 100 100" width={20} height={20} fill="currentColor"><path d="M73.142 41.007c0-.084.003-.166.003-.25 0-14.843-6.384-26.875-14.259-26.875-2.438 0-4.733 1.156-6.739 3.191a2.997 2.997 0 01-4.294 0c-2.007-2.035-4.301-3.191-6.739-3.191-7.875 0-14.26 12.032-14.26 26.875 0 .084.003.166.003.25C15.209 44.052 7.5 49.325 7.5 55.324 7.5 64.752 26.528 69.8 50 69.8s42.5-5.047 42.5-14.476c0-5.999-7.709-11.272-19.358-14.317z" /><path d="M76.908 69.209c-17.939 3.926-35.878 3.926-53.817 0-1.505 0-2.611 1.508-2.249 3.068l2.776 10.722c.256 1.104 1.184 1.88 2.249 1.88l12.475 1.185c.665.063 1.337.083 1.999-.011 2.005-.285 3.887-1.279 5.227-2.917 1.309-1.601 2.82-2.517 4.431-2.517s3.122.916 4.431 2.517c1.34 1.639 3.222 2.632 5.227 2.917.662.094 1.334.075 1.999.011l12.475-1.185c1.065 0 1.994-.776 2.249-1.88l2.776-10.722c.363-1.56-.742-3.068-2.248-3.068zM42.99 79.172c-.299 2.048-3.989 3.134-8.243 2.427-4.254-.707-7.461-2.94-7.162-4.988.299-2.048 3.989-3.135 8.243-2.427s7.461 2.94 7.162 4.988zm22.263 2.427c-4.254.707-7.945-.38-8.243-2.427-.299-2.048 2.908-4.281 7.162-4.988s7.945.38 8.243 2.427c.298 2.048-2.908 4.281-7.162 4.988z" /></svg>, colors: ['#0a0e17', '#0d1117', '#10b981'], selectedBorder: 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-500/5', selectedIcon: 'text-emerald-500', checkBg: 'bg-emerald-500', desc: t('settings.themeCyberDesc') },
-                                                ]).map(themeOption => {
+                                                {[
+                                                    {
+                                                        id: 'light' as Theme,
+                                                        label: t('settings.themeLightLabel'),
+                                                        icon: <Sun size={20} />,
+                                                        colors: ['#ffffff', '#f3f4f6', '#3b82f6'],
+                                                        selectedBorder: 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5',
+                                                        selectedIcon: 'text-blue-500',
+                                                        checkBg: 'bg-blue-500',
+                                                        desc: t('settings.themeLightDesc'),
+                                                    },
+                                                    {
+                                                        id: 'dark' as Theme,
+                                                        label: t('settings.themeDarkLabel'),
+                                                        icon: <Moon size={20} />,
+                                                        colors: ['#111827', '#1f2937', '#3b82f6'],
+                                                        selectedBorder: 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5',
+                                                        selectedIcon: 'text-blue-500',
+                                                        checkBg: 'bg-blue-500',
+                                                        desc: t('settings.themeDarkDesc'),
+                                                    },
+                                                    {
+                                                        id: 'tokyo' as Theme,
+                                                        label: t('settings.themeTokyoLabel'),
+                                                        icon: (
+                                                            <svg viewBox="0 0 32 32" width={20} height={20} fill="currentColor">
+                                                                <path d="M30.43,12.124c-0.441-1.356-1.289-2.518-2.454-3.358c-1.157-0.835-2.514-1.276-3.924-1.276c-0.44,0.001-0.898,0.055-1.368,0.158c-0.048-0.492-0.145-0.96-0.288-1.395c-0.442-1.345-1.287-2.498-2.442-3.335c-1.111-0.805-2.44-1.212-3.776-1.242C16.054,1.64,16,1.64,16,1.64s-0.105,0.014-0.151,0.036c-1.336,0.029-2.664,0.437-3.776,1.241c-1.155,0.837-2,1.991-2.442,3.335C9.488,6.686,9.392,7.154,9.343,7.648C8.859,7.542,8.415,7.462,7.926,7.491C6.511,7.496,5.153,7.942,4,8.783c-1.151,0.839-1.99,1.994-2.428,3.34s-0.437,2.774,0.001,4.129c0.439,1.358,1.275,2.518,2.417,3.353c0.369,0.271,0.785,0.507,1.239,0.706c-0.251,0.428-0.448,0.863-0.588,1.298c-0.432,1.349-0.427,2.778,0.016,4.135c0.443,1.354,1.282,2.51,2.427,3.341c1.145,0.832,2.503,1.272,3.927,1.275c1.422,0,2.78-0.437,3.926-1.263c0.371-0.268,0.724-0.589,1.053-0.96c0.319,0.36,0.659,0.673,1.013,0.932c1.145,0.839,2.509,1.285,3.946,1.291c1.428,0,2.789-0.441,3.938-1.275c1.153-0.838,1.995-2.004,2.435-3.37c0.439-1.368,0.438-2.804-0.007-4.152c-0.137-0.417-0.329-0.837-0.573-1.251c0.44-0.192,0.842-0.418,1.199-0.675c1.151-0.831,1.998-1.991,2.446-3.355C30.865,14.918,30.869,13.48,30.43,12.124z" />
+                                                            </svg>
+                                                        ),
+                                                        colors: ['#1a1b26', '#16161e', '#9d7cd8'],
+                                                        selectedBorder: 'border-purple-500 ring-1 ring-purple-500/30 bg-purple-500/5',
+                                                        selectedIcon: 'text-purple-500',
+                                                        checkBg: 'bg-purple-500',
+                                                        desc: t('settings.themeTokyoDesc'),
+                                                    },
+                                                    {
+                                                        id: 'cyber' as Theme,
+                                                        label: t('settings.themeCyberLabel'),
+                                                        icon: (
+                                                            <svg viewBox="0 0 100 100" width={20} height={20} fill="currentColor">
+                                                                <path d="M73.142 41.007c0-.084.003-.166.003-.25 0-14.843-6.384-26.875-14.259-26.875-2.438 0-4.733 1.156-6.739 3.191a2.997 2.997 0 01-4.294 0c-2.007-2.035-4.301-3.191-6.739-3.191-7.875 0-14.26 12.032-14.26 26.875 0 .084.003.166.003.25C15.209 44.052 7.5 49.325 7.5 55.324 7.5 64.752 26.528 69.8 50 69.8s42.5-5.047 42.5-14.476c0-5.999-7.709-11.272-19.358-14.317z" />
+                                                                <path d="M76.908 69.209c-17.939 3.926-35.878 3.926-53.817 0-1.505 0-2.611 1.508-2.249 3.068l2.776 10.722c.256 1.104 1.184 1.88 2.249 1.88l12.475 1.185c.665.063 1.337.083 1.999-.011 2.005-.285 3.887-1.279 5.227-2.917 1.309-1.601 2.82-2.517 4.431-2.517s3.122.916 4.431 2.517c1.34 1.639 3.222 2.632 5.227 2.917.662.094 1.334.075 1.999.011l12.475-1.185c1.065 0 1.994-.776 2.249-1.88l2.776-10.722c.363-1.56-.742-3.068-2.248-3.068zM42.99 79.172c-.299 2.048-3.989 3.134-8.243 2.427-4.254-.707-7.461-2.94-7.162-4.988.299-2.048 3.989-3.135 8.243-2.427s7.461 2.94 7.162 4.988zm22.263 2.427c-4.254.707-7.945-.38-8.243-2.427-.299-2.048 2.908-4.281 7.162-4.988s7.945.38 8.243 2.427c.298 2.048-2.908 4.281-7.162 4.988z" />
+                                                            </svg>
+                                                        ),
+                                                        colors: ['#0a0e17', '#0d1117', '#10b981'],
+                                                        selectedBorder: 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-500/5',
+                                                        selectedIcon: 'text-emerald-500',
+                                                        checkBg: 'bg-emerald-500',
+                                                        desc: t('settings.themeCyberDesc'),
+                                                    },
+                                                ].map((themeOption) => {
                                                     const isSelected = appThemeProp === themeOption.id;
                                                     return (
                                                         <button
@@ -2604,10 +2827,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 setAppTheme?.(themeOption.id);
                                                                 // Icon theme auto-syncs via useEffect in App.tsx
                                                             }}
-                                                            className={`relative flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${isSelected
-                                                                    ? themeOption.selectedBorder
-                                                                    : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-                                                                }`}
+                                                            className={`relative flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${isSelected ? themeOption.selectedBorder : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
                                                         >
                                                             {/* Color preview strip */}
                                                             <div className="flex w-full h-8 rounded-lg overflow-hidden shadow-inner">
@@ -2666,22 +2886,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         <div className="space-y-4">
                                             <p className="text-xs text-gray-500">{t('settings.iconThemeDesc')}</p>
                                             <div className="grid grid-cols-3 gap-3">
-                                                {([
-                                                    { id: 'outline' as IconTheme, label: t('settings.iconThemeOutline'), desc: t('settings.iconThemeOutlineDesc') },
-                                                    { id: 'filled' as IconTheme, label: t('settings.iconThemeFilled'), desc: t('settings.iconThemeFilledDesc') },
-                                                    { id: 'minimal' as IconTheme, label: t('settings.iconThemeMinimal'), desc: t('settings.iconThemeMinimalDesc') },
-                                                ]).map(option => {
+                                                {[
+                                                    {
+                                                        id: 'outline' as IconTheme,
+                                                        label: t('settings.iconThemeOutline'),
+                                                        desc: t('settings.iconThemeOutlineDesc'),
+                                                    },
+                                                    {
+                                                        id: 'filled' as IconTheme,
+                                                        label: t('settings.iconThemeFilled'),
+                                                        desc: t('settings.iconThemeFilledDesc'),
+                                                    },
+                                                    {
+                                                        id: 'minimal' as IconTheme,
+                                                        label: t('settings.iconThemeMinimal'),
+                                                        desc: t('settings.iconThemeMinimalDesc'),
+                                                    },
+                                                ].map((option) => {
                                                     const isDarkMode = appThemeProp === 'dark' || appThemeProp === 'tokyo' || appThemeProp === 'cyber' || (appThemeProp === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                                                     const effectiveTheme = getEffectiveTheme(appThemeProp, isDarkMode);
                                                     const isSelected = iconTheme === option.id;
                                                     const provider = getIconThemeProvider(option.id, effectiveTheme);
                                                     return (
-                                                        <button key={option.id}
-                                                            onClick={() => { setIconTheme(option.id); flashSaved(); }}
-                                                            className={`relative flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${isSelected
-                                                                    ? 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5'
-                                                                    : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-                                                                }`}
+                                                        <button
+                                                            key={option.id}
+                                                            onClick={() => {
+                                                                setIconTheme(option.id);
+                                                                flashSaved();
+                                                            }}
+                                                            className={`relative flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${isSelected ? 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-500/5' : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
                                                         >
                                                             <div className="flex gap-2 items-center">
                                                                 {provider.getFolderIcon(24).icon}
@@ -2742,23 +2975,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 >
                                                     {FONT_PRESETS.map((preset) => (
                                                         <option key={preset.value} value={preset.value}>
-                                                            {preset.label}{preset.bundled ? '' : ' • system install'}
+                                                            {preset.label}
+                                                            {preset.bundled ? '' : ' • system install'}
                                                         </option>
                                                     ))}
                                                     <option value={CUSTOM_FONT_VALUE}>Custom...</option>
                                                 </select>
-                                                {fontSelectValue === CUSTOM_FONT_VALUE && (
-                                                    <input
-                                                        type="text"
-                                                        value={settings.fontFamily}
-                                                        onChange={(e) => updateSetting('fontFamily', e.target.value)}
-                                                        placeholder={t('settings.fontCustomPlaceholder')}
-                                                        className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                                                    />
-                                                )}
-                                                {selectedFontPreset && !selectedFontPreset.bundled && (
-                                                    <p className="text-xs text-gray-500 mt-2">Requires system install. AeroFTP falls back automatically if unavailable.</p>
-                                                )}
+                                                {fontSelectValue === CUSTOM_FONT_VALUE && <input type="text" value={settings.fontFamily} onChange={(e) => updateSetting('fontFamily', e.target.value)} placeholder={t('settings.fontCustomPlaceholder')} className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />}
+                                                {selectedFontPreset && !selectedFontPreset.bundled && <p className="text-xs text-gray-500 mt-2">Requires system install. AeroFTP falls back automatically if unavailable.</p>}
                                             </div>
 
                                             <div>
@@ -2766,15 +2990,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <label className="block text-sm font-medium">{t('settings.fontSize')}</label>
                                                     <span className="text-sm font-medium text-blue-600 dark:text-blue-400">{settings.fontSize}px</span>
                                                 </div>
-                                                <input
-                                                    type="range"
-                                                    min={MIN_APP_FONT_SIZE}
-                                                    max={MAX_APP_FONT_SIZE}
-                                                    step={1}
-                                                    value={settings.fontSize}
-                                                    onChange={(e) => updateSetting('fontSize', clampAppFontSize(Number(e.target.value)))}
-                                                    className="w-full accent-blue-500"
-                                                />
+                                                <input type="range" min={MIN_APP_FONT_SIZE} max={MAX_APP_FONT_SIZE} step={1} value={settings.fontSize} onChange={(e) => updateSetting('fontSize', clampAppFontSize(Number(e.target.value)))} className="w-full accent-blue-500" />
                                                 <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
                                                     <span>{MIN_APP_FONT_SIZE}px</span>
                                                     <span>{MAX_APP_FONT_SIZE}px</span>
@@ -2786,7 +3002,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <label className="block text-sm font-medium mb-2">{t('settings.fontPreview')}</label>
                                                 <div
                                                     className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 px-4 py-3 text-gray-900 dark:text-gray-100"
-                                                    style={{ fontSize: `${settings.fontSize}px`, fontFamily: previewFontFamily }}
+                                                    style={{
+                                                        fontSize: `${settings.fontSize}px`,
+                                                        fontFamily: previewFontFamily,
+                                                    }}
                                                 >
                                                     {t('settings.fontPreview')} - AaBbCcDd 123
                                                 </div>
@@ -2868,21 +3087,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <p className="text-xs text-gray-500 mb-3">{t('settings.visibleColumnsDesc')}</p>
                                                 <div className="space-y-2">
                                                     {[
-                                                        { key: 'name', label: t('settings.columnName'), disabled: true },
-                                                        { key: 'size', label: t('settings.columnSize'), disabled: false },
-                                                        { key: 'type', label: t('settings.columnType'), disabled: false },
-                                                        { key: 'permissions', label: t('settings.columnPermissions'), disabled: false },
-                                                        { key: 'modified', label: t('settings.columnModified'), disabled: false },
-                                                    ].map(col => (
+                                                        {
+                                                            key: 'name',
+                                                            label: t('settings.columnName'),
+                                                            disabled: true,
+                                                        },
+                                                        {
+                                                            key: 'size',
+                                                            label: t('settings.columnSize'),
+                                                            disabled: false,
+                                                        },
+                                                        {
+                                                            key: 'type',
+                                                            label: t('settings.columnType'),
+                                                            disabled: false,
+                                                        },
+                                                        {
+                                                            key: 'permissions',
+                                                            label: t('settings.columnPermissions'),
+                                                            disabled: false,
+                                                        },
+                                                        {
+                                                            key: 'modified',
+                                                            label: t('settings.columnModified'),
+                                                            disabled: false,
+                                                        },
+                                                    ].map((col) => (
                                                         <div key={col.key} className={col.disabled ? 'opacity-60' : ''}>
                                                             <Checkbox
                                                                 checked={col.disabled || (settings.visibleColumns || []).includes(col.key)}
                                                                 disabled={col.disabled}
                                                                 onChange={() => {
                                                                     const current = settings.visibleColumns || ['name', 'size', 'type', 'permissions', 'modified'];
-                                                                    const updated = current.includes(col.key)
-                                                                        ? current.filter((c: string) => c !== col.key)
-                                                                        : [...current, col.key];
+                                                                    const updated = current.includes(col.key) ? current.filter((c: string) => c !== col.key) : [...current, col.key];
                                                                     updateSetting('visibleColumns', updated);
                                                                 }}
                                                                 label={<span className="text-sm">{col.label}</span>}
@@ -2908,7 +3145,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <div className="p-4">
                                                     <p className="text-xs text-gray-500 mb-3">{t('settings.appBackgroundPatternDesc')}</p>
                                                     <div className="grid grid-cols-4 gap-2">
-                                                        {APP_BACKGROUND_PATTERNS.map(pattern => {
+                                                        {APP_BACKGROUND_PATTERNS.map((pattern) => {
                                                             const currentId = localStorage.getItem(APP_BACKGROUND_KEY) || DEFAULT_APP_BACKGROUND;
                                                             const isSelected = currentId === pattern.id;
                                                             return (
@@ -2919,19 +3156,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         flashSaved();
                                                                         window.dispatchEvent(new CustomEvent('app-background-changed', { detail: pattern.id }));
                                                                     }}
-                                                                    className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${isSelected
-                                                                            ? 'border-blue-500 ring-1 ring-blue-500/30'
-                                                                            : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-                                                                        }`}
+                                                                    className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${isSelected ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
                                                                     title={t(pattern.nameKey)}
                                                                 >
                                                                     <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
-                                                                        {pattern.svg && (() => {
-                                                                            const lockPattern = LOCK_SCREEN_PATTERNS.find(p => p.id === pattern.id);
-                                                                            return lockPattern?.svg ? (
-                                                                                <div className="absolute inset-0 opacity-10 invert dark:invert-0" style={{ backgroundImage: lockPattern.svg }} />
-                                                                            ) : null;
-                                                                        })()}
+                                                                        {pattern.svg &&
+                                                                            (() => {
+                                                                                const lockPattern = LOCK_SCREEN_PATTERNS.find((p) => p.id === pattern.id);
+                                                                                return lockPattern?.svg ? (
+                                                                                    <div
+                                                                                        className="absolute inset-0 opacity-10 invert dark:invert-0"
+                                                                                        style={{
+                                                                                            backgroundImage: lockPattern.svg,
+                                                                                        }}
+                                                                                    />
+                                                                                ) : null;
+                                                                            })()}
                                                                     </div>
                                                                     <div className="absolute inset-0 flex items-end justify-center pb-1">
                                                                         <span className="text-[9px] text-gray-600 dark:text-gray-300 font-medium">{t(pattern.nameKey)}</span>
@@ -2960,7 +3200,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </div>
                                                 <div className="p-4">
                                                     <div className="grid grid-cols-4 gap-2">
-                                                        {LOCK_SCREEN_PATTERNS.map(pattern => {
+                                                        {LOCK_SCREEN_PATTERNS.map((pattern) => {
                                                             const currentId = localStorage.getItem('aeroftp_lock_pattern') || 'hexagon';
                                                             const isSelected = currentId === pattern.id;
                                                             return (
@@ -2970,17 +3210,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         localStorage.setItem('aeroftp_lock_pattern', pattern.id);
                                                                         flashSaved();
                                                                     }}
-                                                                    className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${isSelected
-                                                                            ? 'border-emerald-500 ring-1 ring-emerald-500/30'
-                                                                            : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-                                                                        }`}
+                                                                    className={`relative h-16 rounded-lg border-2 overflow-hidden transition-all ${isSelected ? 'border-emerald-500 ring-1 ring-emerald-500/30' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
                                                                     title={t(pattern.nameKey)}
                                                                 >
-                                                                    <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
-                                                                        {pattern.svg && (
-                                                                            <div className="absolute inset-0 opacity-10 invert dark:invert-0" style={{ backgroundImage: pattern.svg }} />
-                                                                        )}
-                                                                    </div>
+                                                                    <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">{pattern.svg && <div className="absolute inset-0 opacity-10 invert dark:invert-0" style={{ backgroundImage: pattern.svg }} />}</div>
                                                                     <div className="absolute inset-0 flex items-end justify-center pb-1">
                                                                         <span className="text-[9px] text-gray-600 dark:text-gray-300 font-medium">{t(pattern.nameKey)}</span>
                                                                     </div>
@@ -3020,10 +3253,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                         {/* Status Badge */}
                                         <div className="flex items-center gap-2">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${masterPasswordStatus?.is_set
-                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                                }`}>
+                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${masterPasswordStatus?.is_set ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                                                 {masterPasswordStatus?.is_set ? (
                                                     <>
                                                         <ShieldCheck size={12} />
@@ -3039,44 +3269,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             {masterPasswordStatus?.is_set && masterPasswordStatus.timeout_seconds > 0 && (
                                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                                                     <Clock size={12} />
-                                                    {t('settings.autoLockEnabled', { minutes: Math.floor(masterPasswordStatus.timeout_seconds / 60) })}
+                                                    {t('settings.autoLockEnabled', {
+                                                        minutes: Math.floor(masterPasswordStatus.timeout_seconds / 60),
+                                                    })}
                                                 </span>
                                             )}
                                         </div>
 
                                         {/* Error/Success Messages */}
-                                        {masterPasswordError && (
-                                            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
-                                                {masterPasswordError}
-                                            </div>
-                                        )}
-                                        {masterPasswordSuccess && (
-                                            <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-600 dark:text-emerald-400 text-sm">
-                                                {masterPasswordSuccess}
-                                            </div>
-                                        )}
+                                        {masterPasswordError && <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">{masterPasswordError}</div>}
+                                        {masterPasswordSuccess && <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-600 dark:text-emerald-400 text-sm">{masterPasswordSuccess}</div>}
 
                                         {/* Set/Change Master Password Form */}
                                         <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
                                             {masterPasswordStatus?.is_set && (
                                                 <div>
-                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                        {t('settings.currentPassword')}
-                                                    </label>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('settings.currentPassword')}</label>
                                                     <div className="relative">
-                                                        <input
-                                                            type={showMasterPassword ? 'text' : 'password'}
-                                                            value={currentMasterPassword}
-                                                            onChange={e => setCurrentMasterPassword(e.target.value)}
-                                                            className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                            placeholder={t('settings.passwordPlaceholder')}
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            tabIndex={-1}
-                                                            onClick={() => setShowMasterPassword(!showMasterPassword)}
-                                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                                        >
+                                                        <input type={showMasterPassword ? 'text' : 'password'} value={currentMasterPassword} onChange={(e) => setCurrentMasterPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" placeholder={t('settings.passwordPlaceholder')} />
+                                                        <button type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                             {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                         </button>
                                                     </div>
@@ -3084,23 +3295,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             )}
 
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                    {masterPasswordStatus?.is_set ? t('settings.newPassword') : t('settings.setPassword')}
-                                                </label>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{masterPasswordStatus?.is_set ? t('settings.newPassword') : t('settings.setPassword')}</label>
                                                 <div className="relative">
-                                                    <input
-                                                        type={showMasterPassword ? 'text' : 'password'}
-                                                        value={newMasterPassword}
-                                                        onChange={e => setNewMasterPassword(e.target.value)}
-                                                        className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('settings.passwordPlaceholder')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        tabIndex={-1}
-                                                        onClick={() => setShowMasterPassword(!showMasterPassword)}
-                                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                                    >
+                                                    <input type={showMasterPassword ? 'text' : 'password'} value={newMasterPassword} onChange={(e) => setNewMasterPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" placeholder={t('settings.passwordPlaceholder')} />
+                                                    <button type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                         {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                     </button>
                                                 </div>
@@ -3108,23 +3306,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
 
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                    {t('settings.confirmPassword')}
-                                                </label>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('settings.confirmPassword')}</label>
                                                 <div className="relative">
-                                                    <input
-                                                        type={showMasterPassword ? 'text' : 'password'}
-                                                        value={confirmMasterPassword}
-                                                        onChange={e => setConfirmMasterPassword(e.target.value)}
-                                                        className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('settings.confirmPasswordPlaceholder')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        tabIndex={-1}
-                                                        onClick={() => setShowMasterPassword(!showMasterPassword)}
-                                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                                    >
+                                                    <input type={showMasterPassword ? 'text' : 'password'} value={confirmMasterPassword} onChange={(e) => setConfirmMasterPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" placeholder={t('settings.confirmPasswordPlaceholder')} />
+                                                    <button type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                         {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                     </button>
                                                 </div>
@@ -3132,9 +3317,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                             {/* Auto-lock Timeout */}
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                    {t('settings.autoLockTimeout')}
-                                                </label>
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('settings.autoLockTimeout')}</label>
                                                 <div className="flex items-center gap-3">
                                                     <input
                                                         type="range"
@@ -3148,16 +3331,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             // Auto-save when master password is already set
                                                             if (masterPasswordStatus?.is_set) {
                                                                 try {
-                                                                    await invoke('set_auto_lock_timeout', { timeoutSeconds: mins * 60 });
-                                                                    setMasterPasswordStatus(prev => prev ? { ...prev, timeout_seconds: mins * 60 } : prev);
-                                                                } catch { /* best-effort */ }
+                                                                    await invoke('set_auto_lock_timeout', {
+                                                                        timeoutSeconds: mins * 60,
+                                                                    });
+                                                                    setMasterPasswordStatus((prev) => (prev ? { ...prev, timeout_seconds: mins * 60 } : prev));
+                                                                } catch {
+                                                                    /* best-effort */
+                                                                }
                                                             }
                                                         }}
                                                         className="flex-1 accent-emerald-500"
                                                     />
-                                                    <span className="w-20 text-sm font-medium text-gray-700 dark:text-gray-300 text-right">
-                                                        {autoLockTimeout === 0 ? t('settings.autoLockDisabled') : `${autoLockTimeout} min`}
-                                                    </span>
+                                                    <span className="w-20 text-sm font-medium text-gray-700 dark:text-gray-300 text-right">{autoLockTimeout === 0 ? t('settings.autoLockDisabled') : `${autoLockTimeout} min`}</span>
                                                 </div>
                                                 <p className="mt-1 text-xs text-gray-500">{t('settings.autoLockDesc')}</p>
                                             </div>
@@ -3189,18 +3374,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     oldPassword: currentMasterPassword,
                                                                     newPassword: newMasterPassword,
                                                                 });
-                                                                await invoke('set_auto_lock_timeout', { timeoutSeconds: timeoutSeconds });
+                                                                await invoke('set_auto_lock_timeout', {
+                                                                    timeoutSeconds: timeoutSeconds,
+                                                                });
                                                                 setMasterPasswordSuccess(t('settings.passwordChanged'));
                                                             } else {
                                                                 // Enable master password
                                                                 await invoke('enable_master_password', {
                                                                     password: newMasterPassword,
-                                                                    timeoutSeconds
+                                                                    timeoutSeconds,
                                                                 });
                                                                 setMasterPasswordSuccess(t('settings.passwordSet'));
                                                             }
                                                             // Refresh status
-                                                            const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
+                                                            const status = await invoke<{
+                                                                master_mode: boolean;
+                                                                is_locked: boolean;
+                                                                timeout_seconds: number;
+                                                            }>('get_credential_store_status');
                                                             setMasterPasswordStatus({
                                                                 is_set: status.master_mode,
                                                                 is_locked: status.is_locked,
@@ -3221,10 +3412,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         }
                                                     }}
                                                     disabled={isSettingPassword || passwordBtnState === 'done'}
-                                                    className={`px-4 py-2 min-w-[160px] rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${passwordBtnState === 'done'
-                                                            ? 'bg-emerald-500 text-white'
-                                                            : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white'
-                                                        }`}
+                                                    className={`px-4 py-2 min-w-[160px] rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${passwordBtnState === 'done' ? 'bg-emerald-500 text-white' : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white'}`}
                                                 >
                                                     {passwordBtnState === 'encrypting' ? (
                                                         <>
@@ -3243,11 +3431,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         </>
                                                     ) : passwordBtnState === 'done' ? (
                                                         <>
-                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                                            </svg>
                                                             {masterPasswordStatus?.is_set ? t('settings.passwordChanged') : t('settings.passwordSet')}
                                                         </>
+                                                    ) : masterPasswordStatus?.is_set ? (
+                                                        t('settings.changePassword')
                                                     ) : (
-                                                        masterPasswordStatus?.is_set ? t('settings.changePassword') : t('settings.setPassword')
+                                                        t('settings.setPassword')
                                                     )}
                                                 </button>
 
@@ -3273,8 +3465,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         onConfirm={async () => {
                                                             setRemovePasswordConfirm(false);
                                                             try {
-                                                                await invoke('disable_master_password', { password: currentMasterPassword });
-                                                                const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
+                                                                await invoke('disable_master_password', {
+                                                                    password: currentMasterPassword,
+                                                                });
+                                                                const status = await invoke<{
+                                                                    master_mode: boolean;
+                                                                    is_locked: boolean;
+                                                                    timeout_seconds: number;
+                                                                }>('get_credential_store_status');
                                                                 setMasterPasswordStatus({
                                                                     is_set: status.master_mode,
                                                                     is_locked: status.is_locked,
@@ -3345,21 +3543,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                             <div className="flex-1">
                                                 <h4 className="font-medium text-base">{t('security.totp.setup')}</h4>
-                                                <p className="text-sm text-gray-500 mt-1">
-                                                    {totpEnabled
-                                                        ? t('security.totp.enabled')
-                                                        : t('security.totp.enterCode').split('.')[0] + '.'
-                                                    }
-                                                </p>
+                                                <p className="text-sm text-gray-500 mt-1">{totpEnabled ? t('security.totp.enabled') : t('security.totp.enterCode').split('.')[0] + '.'}</p>
                                             </div>
                                         </div>
 
                                         {/* Status Badge */}
                                         <div className="flex items-center gap-2">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${totpEnabled
-                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                                    : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-                                                }`}>
+                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${totpEnabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
                                                 <Shield size={12} />
                                                 {totpEnabled ? '2FA Active' : '2FA Inactive'}
                                             </span>
@@ -3386,24 +3576,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     </button>
                                                 ) : (
                                                     <div className="space-y-2 p-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10">
-                                                        <p className="text-sm text-red-600 dark:text-red-400">
-                                                            {t('security.totp.disableConfirm')}
-                                                        </p>
+                                                        <p className="text-sm text-red-600 dark:text-red-400">{t('security.totp.disableConfirm')}</p>
                                                         <input
                                                             type="text"
                                                             value={totpDisableCode}
-                                                            onChange={e => setTotpDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                            onChange={(e) => setTotpDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                                             placeholder="000000"
                                                             maxLength={6}
                                                             className="w-full text-center text-xl font-mono tracking-[0.3em] py-2 rounded-lg
                                                             bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm"
                                                         />
-                                                        {totpDisableError && (
-                                                            <p className="text-xs text-red-500">{totpDisableError}</p>
-                                                        )}
+                                                        {totpDisableError && <p className="text-xs text-red-500">{totpDisableError}</p>}
                                                         <div className="flex gap-2">
                                                             <button
-                                                                onClick={() => { setShowTotpDisable(false); setTotpDisableCode(''); setTotpDisableError(''); }}
+                                                                onClick={() => {
+                                                                    setShowTotpDisable(false);
+                                                                    setTotpDisableCode('');
+                                                                    setTotpDisableError('');
+                                                                }}
                                                                 className="flex-1 py-1.5 rounded text-sm bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
                                                             >
                                                                 {t('security.totp.back')}
@@ -3414,8 +3604,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         const ok = await invoke<boolean>('totp_disable', { code: totpDisableCode });
                                                                         if (ok) {
                                                                             // Remove TOTP secret from credential vault
-                                                                            invoke('delete_credential', { account: 'totp_secret' })
-                                                                                .catch((err) => console.error('Failed to remove TOTP secret from vault:', err));
+                                                                            invoke('delete_credential', {
+                                                                                account: 'totp_secret',
+                                                                            }).catch((err) => console.error('Failed to remove TOTP secret from vault:', err));
                                                                             setTotpEnabled(false);
                                                                             setShowTotpDisable(false);
                                                                             setTotpDisableCode('');
@@ -3449,10 +3640,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     setTotpEnabled(true);
                                     setShowTotpSetup(false);
                                     // Store TOTP secret in credential vault for persistence across restarts
-                                    invoke('store_credential', { account: 'totp_secret', password: secret })
-                                        .catch((err) => {
-                                            console.error('Failed to persist TOTP secret to vault:', err);
-                                        });
+                                    invoke('store_credential', {
+                                        account: 'totp_secret',
+                                        password: secret,
+                                    }).catch((err) => {
+                                        console.error('Failed to persist TOTP secret to vault:', err);
+                                    });
                                 }}
                             />
 
@@ -3471,28 +3664,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <div className="text-right">
                                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                                                         <Key size={12} />
-                                                        {t('settings.entriesInVault', { count: vaultEntriesCount })}
+                                                        {t('settings.entriesInVault', {
+                                                            count: vaultEntriesCount,
+                                                        })}
                                                     </span>
-                                                    {vaultCategories && (
-                                                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 leading-tight">
-                                                            {[
-                                                                vaultCategories.serverCredentials > 0 && `${vaultCategories.serverCredentials} credentials`,
-                                                                vaultCategories.aiKeys > 0 && `${vaultCategories.aiKeys} AI keys`,
-                                                                vaultCategories.oauthTokens > 0 && `${vaultCategories.oauthTokens} OAuth`,
-                                                                vaultCategories.configEntries > 0 && `${vaultCategories.configEntries} config`,
-                                                            ].filter(Boolean).join(' · ')}
-                                                        </div>
-                                                    )}
+                                                    {vaultCategories && <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 leading-tight">{[vaultCategories.serverCredentials > 0 && `${vaultCategories.serverCredentials} credentials`, vaultCategories.aiKeys > 0 && `${vaultCategories.aiKeys} AI keys`, vaultCategories.oauthTokens > 0 && `${vaultCategories.oauthTokens} OAuth`, vaultCategories.configEntries > 0 && `${vaultCategories.configEntries} config`].filter(Boolean).join(' · ')}</div>}
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="p-4 space-y-4">
                                             {/* Keystore message */}
                                             {keystoreMessage && (
-                                                <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${keystoreMessage.type === 'success'
-                                                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400'
-                                                        : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'
-                                                    }`}>
+                                                <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${keystoreMessage.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'}`}>
                                                     {keystoreMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
                                                     {keystoreMessage.text}
                                                 </div>
@@ -3511,63 +3694,64 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <div className="relative flex-1">
-                                                        <input
-                                                            type={showKeystoreExportPassword ? 'text' : 'password'}
-                                                            placeholder={t('settings.keystorePassword')}
-                                                            value={keystoreExportPassword}
-                                                            onChange={e => setKeystoreExportPassword(e.target.value)}
-                                                            className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            tabIndex={-1}
-                                                            onClick={() => setShowKeystoreExportPassword(!showKeystoreExportPassword)}
-                                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                                        >
+                                                        <input type={showKeystoreExportPassword ? 'text' : 'password'} placeholder={t('settings.keystorePassword')} value={keystoreExportPassword} onChange={(e) => setKeystoreExportPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" />
+                                                        <button type="button" tabIndex={-1} onClick={() => setShowKeystoreExportPassword(!showKeystoreExportPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                             {showKeystoreExportPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                         </button>
                                                     </div>
                                                     <div className="relative flex-1">
-                                                        <input
-                                                            type={showKeystoreExportPassword ? 'text' : 'password'}
-                                                            placeholder={t('settings.confirmPassword')}
-                                                            value={keystoreExportConfirm}
-                                                            onChange={e => setKeystoreExportConfirm(e.target.value)}
-                                                            className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        />
+                                                        <input type={showKeystoreExportPassword ? 'text' : 'password'} placeholder={t('settings.confirmPassword')} value={keystoreExportConfirm} onChange={(e) => setKeystoreExportConfirm(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" />
                                                     </div>
                                                 </div>
                                                 <button
                                                     onClick={async () => {
                                                         setKeystoreMessage(null);
                                                         if (keystoreExportPassword.length < 8) {
-                                                            setKeystoreMessage({ type: 'error', text: t('settings.passwordTooShort') });
+                                                            setKeystoreMessage({
+                                                                type: 'error',
+                                                                text: t('settings.passwordTooShort'),
+                                                            });
                                                             return;
                                                         }
                                                         if (keystoreExportPassword !== keystoreExportConfirm) {
-                                                            setKeystoreMessage({ type: 'error', text: t('settings.passwordMismatch') });
+                                                            setKeystoreMessage({
+                                                                type: 'error',
+                                                                text: t('settings.passwordMismatch'),
+                                                            });
                                                             return;
                                                         }
                                                         const filePath = await save({
                                                             title: t('settings.exportKeystore'),
-                                                            filters: [{ name: 'AeroFTP Keystore', extensions: ['aeroftp-keystore'] }],
+                                                            filters: [
+                                                                {
+                                                                    name: 'AeroFTP Keystore',
+                                                                    extensions: ['aeroftp-keystore'],
+                                                                },
+                                                            ],
                                                             defaultPath: `aeroftp_keystore_${new Date().toISOString().slice(0, 10)}.aeroftp-keystore`,
                                                         });
                                                         if (!filePath) return;
                                                         setKeystoreExporting(true);
                                                         try {
-                                                            const result = await invoke<{ entriesCount: number }>('export_keystore', {
+                                                            const result = await invoke<{
+                                                                entriesCount: number;
+                                                            }>('export_keystore', {
                                                                 password: keystoreExportPassword,
                                                                 filePath,
                                                             });
                                                             setKeystoreMessage({
                                                                 type: 'success',
-                                                                text: t('settings.keystoreExported', { count: String(result.entriesCount) }),
+                                                                text: t('settings.keystoreExported', {
+                                                                    count: String(result.entriesCount),
+                                                                }),
                                                             });
                                                             setKeystoreExportPassword('');
                                                             setKeystoreExportConfirm('');
                                                         } catch (err) {
-                                                            setKeystoreMessage({ type: 'error', text: String(err) });
+                                                            setKeystoreMessage({
+                                                                type: 'error',
+                                                                text: String(err),
+                                                            });
                                                         } finally {
                                                             setKeystoreExporting(false);
                                                         }
@@ -3577,7 +3761,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 >
                                                     {keystoreExporting ? (
                                                         <>
-                                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                            </svg>
                                                             {t('common.loading')}
                                                         </>
                                                     ) : (
@@ -3611,7 +3798,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             setKeystoreMessage(null);
                                                             const filePath = await open({
                                                                 title: t('settings.importKeystore'),
-                                                                filters: [{ name: 'AeroFTP Keystore', extensions: ['aeroftp-keystore'] }],
+                                                                filters: [
+                                                                    {
+                                                                        name: 'AeroFTP Keystore',
+                                                                        extensions: ['aeroftp-keystore'],
+                                                                    },
+                                                                ],
                                                                 multiple: false,
                                                             });
                                                             if (!filePath) return;
@@ -3628,11 +3820,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         oauthTokens: number;
                                                                         configEntries: number;
                                                                     };
-                                                                }>('read_keystore_metadata', { filePath: path });
+                                                                }>('read_keystore_metadata', {
+                                                                    filePath: path,
+                                                                });
                                                                 setKeystoreMetadata(meta);
                                                                 setKeystoreImportFilePath(path);
                                                             } catch (err) {
-                                                                setKeystoreMessage({ type: 'error', text: String(err) });
+                                                                setKeystoreMessage({
+                                                                    type: 'error',
+                                                                    text: String(err),
+                                                                });
                                                             }
                                                         }}
                                                         className="w-full px-4 py-2 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
@@ -3646,72 +3843,59 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm space-y-1.5">
                                                             <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300 font-medium">
                                                                 <Shield size={14} />
-                                                                {t('settings.keystoreEntries', { count: keystoreMetadata.entriesCount })}
+                                                                {t('settings.keystoreEntries', {
+                                                                    count: keystoreMetadata.entriesCount,
+                                                                })}
                                                             </div>
                                                             <div className="text-xs text-blue-600/70 dark:text-blue-400/70 space-y-0.5">
                                                                 <div>AeroFTP {keystoreMetadata.aeroftpVersion}</div>
                                                                 <div>{new Date(keystoreMetadata.exportDate).toLocaleString()}</div>
                                                                 {keystoreMetadata.categories.serverCredentials > 0 && (
-                                                                    <div>{keystoreMetadata.categories.serverCredentials} {t('settings.serverCredentials')}</div>
+                                                                    <div>
+                                                                        {keystoreMetadata.categories.serverCredentials} {t('settings.serverCredentials')}
+                                                                    </div>
                                                                 )}
                                                                 {keystoreMetadata.categories.serverProfiles > 0 && (
-                                                                    <div>{keystoreMetadata.categories.serverProfiles} {t('settings.serverProfilesLabel')}</div>
+                                                                    <div>
+                                                                        {keystoreMetadata.categories.serverProfiles} {t('settings.serverProfilesLabel')}
+                                                                    </div>
                                                                 )}
                                                                 {keystoreMetadata.categories.aiKeys > 0 && (
-                                                                    <div>{keystoreMetadata.categories.aiKeys} {t('settings.aiKeysLabel')}</div>
+                                                                    <div>
+                                                                        {keystoreMetadata.categories.aiKeys} {t('settings.aiKeysLabel')}
+                                                                    </div>
                                                                 )}
                                                                 {keystoreMetadata.categories.oauthTokens > 0 && (
-                                                                    <div>{keystoreMetadata.categories.oauthTokens} {t('settings.oauthTokensLabel')}</div>
+                                                                    <div>
+                                                                        {keystoreMetadata.categories.oauthTokens} {t('settings.oauthTokensLabel')}
+                                                                    </div>
                                                                 )}
                                                                 {keystoreMetadata.categories.configEntries > 0 && (
-                                                                    <div>{keystoreMetadata.categories.configEntries} {t('settings.configEntriesLabel')}</div>
+                                                                    <div>
+                                                                        {keystoreMetadata.categories.configEntries} {t('settings.configEntriesLabel')}
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </div>
 
                                                         {/* Password input */}
                                                         <div className="relative">
-                                                            <input
-                                                                type={showKeystoreImportPassword ? 'text' : 'password'}
-                                                                placeholder={t('settings.keystorePassword')}
-                                                                value={keystoreImportPassword}
-                                                                onChange={e => setKeystoreImportPassword(e.target.value)}
-                                                                className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                tabIndex={-1}
-                                                                onClick={() => setShowKeystoreImportPassword(!showKeystoreImportPassword)}
-                                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                                            >
+                                                            <input type={showKeystoreImportPassword ? 'text' : 'password'} placeholder={t('settings.keystorePassword')} value={keystoreImportPassword} onChange={(e) => setKeystoreImportPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" />
+                                                            <button type="button" tabIndex={-1} onClick={() => setShowKeystoreImportPassword(!showKeystoreImportPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                                 {showKeystoreImportPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                             </button>
                                                         </div>
 
                                                         {/* Merge strategy */}
                                                         <div className="space-y-1.5">
-                                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                                                {t('settings.mergeStrategy')}
-                                                            </label>
+                                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{t('settings.mergeStrategy')}</label>
                                                             <div className="flex gap-3">
                                                                 <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                                                    <input
-                                                                        type="radio"
-                                                                        name="keystoreMerge"
-                                                                        checked={keystoreImportMerge === 'skip_existing'}
-                                                                        onChange={() => setKeystoreImportMerge('skip_existing')}
-                                                                        className="accent-blue-500"
-                                                                    />
+                                                                    <input type="radio" name="keystoreMerge" checked={keystoreImportMerge === 'skip_existing'} onChange={() => setKeystoreImportMerge('skip_existing')} className="accent-blue-500" />
                                                                     {t('settings.skipExisting')}
                                                                 </label>
                                                                 <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                                                    <input
-                                                                        type="radio"
-                                                                        name="keystoreMerge"
-                                                                        checked={keystoreImportMerge === 'overwrite'}
-                                                                        onChange={() => setKeystoreImportMerge('overwrite')}
-                                                                        className="accent-blue-500"
-                                                                    />
+                                                                    <input type="radio" name="keystoreMerge" checked={keystoreImportMerge === 'overwrite'} onChange={() => setKeystoreImportMerge('overwrite')} className="accent-blue-500" />
                                                                     {t('settings.overwriteAll')}
                                                                 </label>
                                                             </div>
@@ -3720,15 +3904,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         {/* Import progress bar (shown above buttons) */}
                                                         {keystoreImporting && keystoreImportProgress && (
                                                             <div className="space-y-1">
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                                                                    {keystoreImportProgress.phase === 'decrypting'
-                                                                        ? t('settings.decrypting')
-                                                                        : `${t('settings.importing')} ${keystoreImportProgress.current}/${keystoreImportProgress.total}`}
-                                                                </div>
+                                                                <div className="text-xs text-gray-500 dark:text-gray-400 text-center">{keystoreImportProgress.phase === 'decrypting' ? t('settings.decrypting') : `${t('settings.importing')} ${keystoreImportProgress.current}/${keystoreImportProgress.total}`}</div>
                                                                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
                                                                     <div
                                                                         className="bg-blue-500 rounded-full h-1.5 transition-all duration-150"
-                                                                        style={{ width: keystoreImportProgress.phase === 'decrypting' ? '0%' : `${Math.round((keystoreImportProgress.current / keystoreImportProgress.total) * 100)}%` }}
+                                                                        style={{
+                                                                            width: keystoreImportProgress.phase === 'decrypting' ? '0%' : `${Math.round((keystoreImportProgress.current / keystoreImportProgress.total) * 100)}%`,
+                                                                        }}
                                                                     />
                                                                 </div>
                                                             </div>
@@ -3741,19 +3923,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     if (!keystoreImportFilePath) return;
                                                                     setKeystoreMessage(null);
                                                                     if (keystoreImportPassword.length < 8) {
-                                                                        setKeystoreMessage({ type: 'error', text: t('settings.passwordTooShort') });
+                                                                        setKeystoreMessage({
+                                                                            type: 'error',
+                                                                            text: t('settings.passwordTooShort'),
+                                                                        });
                                                                         return;
                                                                     }
                                                                     setKeystoreImporting(true);
                                                                     setKeystoreImportProgress(null);
 
-                                                                    // Listen for progress events
-                                                                    let unlisten: UnlistenFn | null = null;
                                                                     try {
-                                                                        unlisten = await listen<{ phase: string; current: number; total: number }>('keystore-import-progress', (event) => {
+                                                                        clearKeystoreImportProgressListener();
+                                                                        keystoreImportProgressCleanupRef.current = createTauriListener<{
+                                                                            phase: string;
+                                                                            current: number;
+                                                                            total: number;
+                                                                        }>('keystore-import-progress', (event) => {
                                                                             setKeystoreImportProgress(event.payload);
                                                                         });
-                                                                    } catch { /* listener setup failed, proceed without progress */ }
+                                                                    } catch {
+                                                                        /* listener setup failed, proceed without progress */
+                                                                    }
 
                                                                     try {
                                                                         const result = await invoke<{
@@ -3775,10 +3965,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                                                         // Re-query actual vault count + categories (not optimistic)
                                                                         try {
-                                                                            const status = await invoke<{ accounts_count: number; categories?: { serverCredentials: number; serverProfiles: number; aiKeys: number; oauthTokens: number; configEntries: number } }>('get_credential_store_status');
+                                                                            const status = await invoke<{
+                                                                                accounts_count: number;
+                                                                                categories?: {
+                                                                                    serverCredentials: number;
+                                                                                    serverProfiles: number;
+                                                                                    aiKeys: number;
+                                                                                    oauthTokens: number;
+                                                                                    configEntries: number;
+                                                                                };
+                                                                            }>('get_credential_store_status');
                                                                             setVaultEntriesCount(status.accounts_count);
                                                                             if (status.categories) setVaultCategories(status.categories);
-                                                                        } catch { /* non-critical */ }
+                                                                        } catch {
+                                                                            /* non-critical */
+                                                                        }
 
                                                                         // Reload server profiles from vault into localStorage + state
                                                                         try {
@@ -3791,7 +3992,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                     onServersChanged?.();
                                                                                 }
                                                                             }
-                                                                        } catch { /* vault may not contain server profiles */ }
+                                                                        } catch {
+                                                                            /* vault may not contain server profiles */
+                                                                        }
 
                                                                         // Reset import state
                                                                         setKeystoreMetadata(null);
@@ -3800,12 +4003,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     } catch (err) {
                                                                         const errStr = String(err);
                                                                         if (errStr.includes('Invalid password') || errStr.includes('decrypt')) {
-                                                                            setKeystoreMessage({ type: 'error', text: t('settings.invalidPassword') });
+                                                                            setKeystoreMessage({
+                                                                                type: 'error',
+                                                                                text: t('settings.invalidPassword'),
+                                                                            });
                                                                         } else {
-                                                                            setKeystoreMessage({ type: 'error', text: errStr });
+                                                                            setKeystoreMessage({
+                                                                                type: 'error',
+                                                                                text: errStr,
+                                                                            });
                                                                         }
                                                                     } finally {
-                                                                        unlisten?.();
+                                                                        clearKeystoreImportProgressListener();
                                                                         setKeystoreImporting(false);
                                                                         setKeystoreImportProgress(null);
                                                                     }
@@ -3815,7 +4024,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             >
                                                                 {keystoreImporting ? (
                                                                     <>
-                                                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                                        </svg>
                                                                         {t('settings.importing')}
                                                                     </>
                                                                 ) : (
@@ -3907,32 +4119,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     </div>
                                 </div>
                             )}
-
                         </div>
                     </div>
 
-
-
                     {/* Footer */}
                     <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                        >
+                        <button onClick={onClose} className="px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                             {t('common.cancel')}
                         </button>
-                        <button
-                            onClick={handleSave}
-                            disabled={(!hasChanges && saveState === 'idle') || saveState === 'saving'}
-                            className={`px-4 py-2 text-sm rounded-lg transition-all duration-300 flex items-center gap-2 min-w-[140px] justify-center ${saveState === 'saving'
-                                    ? 'bg-blue-500 text-white'
-                                    : saveState === 'saved'
-                                        ? 'bg-emerald-500 text-white'
-                                        : hasChanges
-                                            ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                                            : 'bg-gray-200 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
-                                }`}
-                        >
+                        <button onClick={handleSave} disabled={(!hasChanges && saveState === 'idle') || saveState === 'saving'} className={`px-4 py-2 text-sm rounded-lg transition-all duration-300 flex items-center gap-2 min-w-[140px] justify-center ${saveState === 'saving' ? 'bg-blue-500 text-white' : saveState === 'saved' ? 'bg-emerald-500 text-white' : hasChanges ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
                             {saveState === 'saving' ? (
                                 <>
                                     <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -3966,11 +4161,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         try {
                             const stored = localStorage.getItem(SERVERS_KEY);
                             if (stored) currentServers = JSON.parse(stored);
-                        } catch { /* fallback */ }
+                        } catch {
+                            /* fallback */
+                        }
                         if (currentServers.length === 0) currentServers = servers;
                         const updated = [...currentServers, ...newServers];
                         setServers(updated);
-                        secureStoreAndClean('server_profiles', SERVERS_KEY, updated).catch(() => { });
+                        secureStoreAndClean('server_profiles', SERVERS_KEY, updated).catch(() => {});
                         setShowExportImport(false);
                         onServersChanged?.();
                     }}

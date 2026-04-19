@@ -18,6 +18,32 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::mpsc;
+
+/// A single progress sample sent to the notifier consumer task.
+/// Using a concrete type rather than a boxed future lets the consumer
+/// coalesce and throttle without allocating per event.
+type ProgressSample = (u64, Option<u64>, String);
+
+/// Drain progress samples from a bounded channel and forward them to the
+/// notifier. Runs until every sender drops — at which point the channel
+/// closes and the task exits naturally.
+fn spawn_progress_consumer(notifier: McpNotifier, mut rx: mpsc::Receiver<ProgressSample>) {
+    tokio::spawn(async move {
+        while let Some((sent, total_opt, msg)) = rx.recv().await {
+            notifier.send_progress(sent, total_opt, Some(msg)).await;
+        }
+    });
+}
+
+/// Drop-semantics helper for a `tokio::sync::mpsc::Sender` used as a
+/// progress sink. `try_send` is intentional: if the consumer is slow,
+/// samples are dropped (the notifier has its own throttle, so coalescing
+/// is safe). Never spawn one task per sample.
+#[inline]
+fn push_progress(tx: &mpsc::Sender<ProgressSample>, sample: ProgressSample) {
+    let _ = tx.try_send(sample);
+}
 
 /// Hard cap for in-memory read previews.
 const MAX_READ_PREVIEW_BYTES: u64 = 1_048_576;
@@ -332,8 +358,10 @@ fn finish(
 
 /// Build a transfer progress callback that forwards bytes sent / total to the
 /// MCP notifier. The callback is sync (invoked from inside provider I/O) while
-/// the notifier is async, so we schedule notifications on the Tokio runtime
-/// via `tokio::spawn`. Throttling (100 ms) is applied by the notifier itself.
+/// the notifier is async, so samples are funneled through a bounded mpsc to
+/// a single drain task. Previously this site spawned one task per call — a
+/// 1 GB upload at 4 KB chunks would leak ~262 000 no-op tasks before the
+/// throttle had a chance to filter them out.
 fn build_progress_callback(
     notifier: Option<&McpNotifier>,
     label: &'static str,
@@ -342,6 +370,11 @@ fn build_progress_callback(
     if !notifier.is_active() {
         return None;
     }
+    // Bounded channel coalesces bursts under backpressure. When the callback
+    // drops, the sender drops → rx.recv() returns None → consumer task exits.
+    let (tx, rx) = mpsc::channel::<ProgressSample>(32);
+    spawn_progress_consumer(notifier, rx);
+
     let start = Arc::new(Instant::now());
     let last_sent = Arc::new(AtomicU64::new(0));
     let last_elapsed_ms = Arc::new(AtomicU64::new(0));
@@ -361,16 +394,13 @@ fn build_progress_callback(
         } else {
             0
         };
-        let message = Some(format!(
+        let message = format!(
             "{}: {}",
             label,
             format_transfer_message(pct, sent, total, bps)
-        ));
-        let notifier = notifier.clone();
+        );
         let total_opt = if total > 0 { Some(total) } else { None };
-        tokio::spawn(async move {
-            notifier.send_progress(sent, total_opt, message).await;
-        });
+        push_progress(&tx, (sent, total_opt, message));
     }))
 }
 
@@ -678,9 +708,8 @@ pub async fn execute_tool(
                     match p.download(&remote_path, &local_path, cb).await {
                         Ok(()) => {
                             if let Some(n) = notifier {
-                                let bytes = std::fs::metadata(&local_path)
-                                    .map(|m| m.len())
-                                    .unwrap_or(0);
+                                let bytes =
+                                    std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
                                 n.send_progress_final(
                                     bytes,
                                     Some(bytes.max(1)),
@@ -1256,8 +1285,8 @@ pub async fn execute_tool(
                     let mut p = arc.lock().await;
                     let mut sink = NotifierSyncSink::new(notifier);
                     sink.emit_started(&direction_raw, dry_run).await;
-                    let report = sync_tree_core(&mut p, &local_dir, &remote_dir, &opts, &mut sink)
-                        .await;
+                    let report =
+                        sync_tree_core(&mut p, &local_dir, &remote_dir, &opts, &mut sink).await;
                     sink.emit_finished(&report).await;
                     let errors: Vec<Value> = report
                         .errors
@@ -1313,14 +1342,26 @@ struct NotifierSyncSink<'a> {
     notifier: Option<&'a McpNotifier>,
     processed: u32,
     failures: u32,
+    /// Single-consumer progress drain. Constructed lazily on first use so
+    /// sinks built without an active notifier pay no allocation cost.
+    /// Replaces per-event `tokio::spawn` — each spawned no-op future was a
+    /// task-level allocation plus scheduler entry; under a 500k-file sync
+    /// those dominated the runtime.
+    progress_tx: Option<mpsc::Sender<ProgressSample>>,
 }
 
 impl<'a> NotifierSyncSink<'a> {
     fn new(notifier: Option<&'a McpNotifier>) -> Self {
+        let progress_tx = notifier.cloned().map(|n| {
+            let (tx, rx) = mpsc::channel::<ProgressSample>(64);
+            spawn_progress_consumer(n, rx);
+            tx
+        });
         Self {
             notifier,
             processed: 0,
             failures: 0,
+            progress_tx,
         }
     }
 
@@ -1353,31 +1394,21 @@ impl<'a> NotifierSyncSink<'a> {
 
 impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
     fn on_phase(&mut self, phase: crate::sync_core::SyncPhase) {
-        if let Some(n) = self.notifier {
+        if let Some(tx) = self.progress_tx.as_ref() {
             let label = match phase {
                 crate::sync_core::SyncPhase::Scanning => "scanning",
                 crate::sync_core::SyncPhase::Planning => "planning",
                 crate::sync_core::SyncPhase::Executing => "executing",
                 crate::sync_core::SyncPhase::Done => "done",
             };
-            let notifier = n.clone();
-            let label = label.to_string();
-            tokio::spawn(async move {
-                notifier
-                    .send_progress(0, Some(100), Some(format!("phase: {}", label)))
-                    .await;
-            });
+            push_progress(tx, (0, Some(100), format!("phase: {}", label)));
         }
     }
 
     fn on_file_start(&mut self, rel: &str, _total: u64, op: &'static str) {
-        if let Some(n) = self.notifier {
-            let notifier = n.clone();
+        if let Some(tx) = self.progress_tx.as_ref() {
             let msg = format!("{}: {}", op, rel);
-            let processed = self.processed;
-            tokio::spawn(async move {
-                notifier.send_progress(processed.into(), None, Some(msg)).await;
-            });
+            push_progress(tx, (self.processed.into(), None, msg));
         }
     }
 
@@ -1391,8 +1422,7 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
         if matches!(outcome, crate::sync_core::FileOutcome::Failed { .. }) {
             self.failures = self.failures.saturating_add(1);
         }
-        if let Some(n) = self.notifier {
-            let notifier = n.clone();
+        if let Some(tx) = self.progress_tx.as_ref() {
             let processed = self.processed;
             let failures = self.failures;
             let msg = match outcome {
@@ -1410,10 +1440,13 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
                     format!("failed {}: {}", rel, error)
                 }
             };
-            let full_msg = format!("{} (ok={}, err={})", msg, processed.saturating_sub(failures), failures);
-            tokio::spawn(async move {
-                notifier.send_progress(processed.into(), None, Some(full_msg)).await;
-            });
+            let full_msg = format!(
+                "{} (ok={}, err={})",
+                msg,
+                processed.saturating_sub(failures),
+                failures
+            );
+            push_progress(tx, (processed.into(), None, full_msg));
         }
     }
 }
@@ -1493,7 +1526,10 @@ mod tests {
             .get("properties")
             .and_then(|p| p.get("direction"))
             .expect("direction property");
-        let en = direction.get("enum").and_then(|v| v.as_array()).expect("enum array");
+        let en = direction
+            .get("enum")
+            .and_then(|v| v.as_array())
+            .expect("enum array");
         let variants: Vec<&str> = en.iter().filter_map(|v| v.as_str()).collect();
         assert!(variants.contains(&"upload"));
         assert!(variants.contains(&"download"));

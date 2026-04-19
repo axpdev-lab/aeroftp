@@ -452,7 +452,7 @@
             "modeUnavailable": "ट्रांसफ़र मोड प्रीसेट वर्तमान में केवल FTP/FTPS के लिए उपलब्ध हैं",
             "crossProfile": {
                 "title": "क्रॉस-प्रोफाइल ट्रांसफर",
-                "subtitle": "फ्लोटिंग पैनल: क्वू, लॉग और प्रगति चलते समय दिखाई देते हैं।",
+                "subtitle": "दो सहेजे गए सर्वरों के बीच सीधे फ़ाइलें कॉपी करें।",
                 "closeAria": "क्रॉस-प्रोफाइल ट्रांसफर पैनल बंद करें",
                 "source": "स्रोत",
                 "destination": "गंतव्य",
@@ -474,10 +474,11 @@
                 "sizeColumn": "आकार",
                 "executeTransfer": "ट्रांसफर शुरू करें",
                 "transferInProgress": "ट्रांसफर जारी है",
-                "transferHint": "नीचे क्वू, गतिविधि लॉग और प्रगति पर नज़र रखें। यह पैनल जानबूझकर हल्का रखा गया है।",
+                "transferHint": "लाइव प्रगति नीचे दिखाई गई है। विस्तृत इतिहास गतिविधि लॉग में रहता है।",
                 "summary": "{transferred} स्थानांतरित, {skipped} छोड़े गए, {failed} विफल",
                 "summaryMeta": "{size} {seconds}s में",
-                "newTransfer": "नया ट्रांसफर"
+                "newTransfer": "नया ट्रांसफर",
+                "preparing": "स्थानांतरण की तैयारी की जा रही है…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} हटाया गया",
             "release_asset_download_start": "[{provider}] Release asset {filename} डाउनलोड हो रहा है...",
             "release_asset_download_success": "[{provider}] Release asset {filename} डाउनलोड हो गया",
-            "release_asset_download_error": "[{provider}] Release asset {filename} डाउनलोड विफल"
+            "release_asset_download_error": "[{provider}] Release asset {filename} डाउनलोड विफल",
+            "crossprofile_start": "[Cross-profile] {source} से {dest} में {count} का स्थानांतरण शुरू हो रहा है",
+            "crossprofile_file_success": "[Cross-profile] कॉपी किया गया {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] {filename} पर विफल: {error}"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "बैंडविड्थ शेड्यूल",
             "bwScheduleOff": "मैनुअल (ऊपर की सीमाएं उपयोग करें)",
             "bwScheduleOffice": "कार्यालय समय (throttle 08-18)",
-            "bwScheduleNight": "रात मोड (throttle 18-08)"
+            "bwScheduleNight": "रात मोड (throttle 18-08)",
+            "allInSync": "सभी फ़ाइलें सिंक में हैं — स्थानांतरित करने के लिए कुछ नहीं",
+            "nothingInDirection": "अंतर मिले, लेकिन कोई भी चयनित दिशा से मेल नहीं खाता। सभी बदलाव देखने के लिए Two-way आज़माएँ।"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",

@@ -203,9 +203,7 @@ impl NativeRsyncError {
     ///   exit code rendered into the detail string; code 0 and empty
     ///   payload are non-terminal by policy and land in the `Internal`
     ///   fallback branch.
-    pub fn from_oob_event(
-        event: &crate::rsync_native_proto::events::NativeRsyncEvent,
-    ) -> Self {
+    pub fn from_oob_event(event: &crate::rsync_native_proto::events::NativeRsyncEvent) -> Self {
         use crate::rsync_native_proto::events::NativeRsyncEvent;
         match event {
             NativeRsyncEvent::Error { message } => Self::new(

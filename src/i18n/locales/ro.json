@@ -452,7 +452,7 @@
             "modeUnavailable": "Presetările modului de transfer sunt disponibile momentan doar pentru FTP/FTPS",
             "crossProfile": {
                 "title": "Transfer intre profiluri",
-                "subtitle": "Panou plutitor: coada, jurnalul si progresul raman vizibile in timpul executiei.",
+                "subtitle": "Copiați fișiere direct între două servere salvate.",
                 "closeAria": "Inchide panoul de transfer intre profiluri",
                 "source": "Sursa",
                 "destination": "Destinatie",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Dimensiune",
                 "executeTransfer": "Executa transferul",
                 "transferInProgress": "Transfer in curs",
-                "transferHint": "Urmareste coada, jurnalul de activitate si progresul de mai jos. Acest panou este intentionat usor.",
+                "transferHint": "Progresul în timp real este afișat mai jos. Istoricul detaliat rămâne în Jurnalul de activitate.",
                 "summary": "{transferred} transferate, {skipped} omise, {failed} esuate",
                 "summaryMeta": "{size} in {seconds}s",
-                "newTransfer": "Transfer nou"
+                "newTransfer": "Transfer nou",
+                "preparing": "Se pregătește transferul…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} eliminat",
             "release_asset_download_start": "[{provider}] Se descarca release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} descarcat",
-            "release_asset_download_error": "[{provider}] Nu s-a putut descarca release asset {filename}"
+            "release_asset_download_error": "[{provider}] Nu s-a putut descarca release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Se începe transferul a {count} de la {source} la {dest}",
+            "crossprofile_file_success": "[Cross-profile] Copiat {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Eroare la {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Programare lățime de bandă",
             "bwScheduleOff": "Manual (folosește limitele de mai sus)",
             "bwScheduleOffice": "Program de birou (throttle 08-18)",
-            "bwScheduleNight": "Mod nocturn (throttle 18-08)"
+            "bwScheduleNight": "Mod nocturn (throttle 18-08)",
+            "allInSync": "Toate fișierele sunt sincronizate — nimic de transferat",
+            "nothingInDirection": "S-au găsit diferențe, dar niciuna nu se potrivește cu direcția selectată. Încercați Two-way pentru a vedea toate modificările."
         },
         "ui": {
             "syncing": "Se sincronizează...",

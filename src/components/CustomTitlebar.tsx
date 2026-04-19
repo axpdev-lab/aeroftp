@@ -8,6 +8,7 @@ import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { ThemeToggle } from '../hooks/useTheme';
 import type { Theme, EffectiveTheme } from '../hooks/useTheme';
+import { guardedUnlisten } from '../hooks/useTauriListener';
 
 const SourceForgeLogo = ({ size = 12 }: { size?: number }) => (
     <svg width={size} height={size} viewBox="0 0 117 103" fill="currentColor">
@@ -184,8 +185,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
             } catch { /* ignore */ }
         };
         updateMaximized();
-        const unlisten = getCurrentWindow().onResized(updateMaximized);
-        return () => { unlisten.then(fn => fn()); };
+        return guardedUnlisten(getCurrentWindow().onResized(updateMaximized));
     }, []);
 
     const handleMinimize = async (e: React.MouseEvent) => {

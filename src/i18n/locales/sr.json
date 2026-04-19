@@ -452,7 +452,7 @@
             "modeUnavailable": "Подешавања режима преноса су тренутно доступна само за FTP/FTPS",
             "crossProfile": {
                 "title": "Пренос између профила",
-                "subtitle": "Плутајући панел: ред, дневник и напредак остају видљиви док траје.",
+                "subtitle": "Копирајте датотеке директно између два сачувана сервера.",
                 "closeAria": "Затвори панел преноса између профила",
                 "source": "Извор",
                 "destination": "Одредиште",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Величина",
                 "executeTransfer": "Изврши пренос",
                 "transferInProgress": "Пренос у току",
-                "transferHint": "Пратите ред, дневник активности и напредак испод. Овај панел је намерно једноставан.",
+                "transferHint": "Напредак уживо приказан је испод. Детаљна историја остаје у Дневнику активности.",
                 "summary": "{transferred} пренето, {skipped} прескочено, {failed} неуспело",
                 "summaryMeta": "{size} за {seconds}s",
-                "newTransfer": "Нови пренос"
+                "newTransfer": "Нови пренос",
+                "preparing": "Припрема преноса…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} уклоњен",
             "release_asset_download_start": "[{provider}] Преузимање release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} преузет",
-            "release_asset_download_error": "[{provider}] Није успело преузимање release asset {filename}"
+            "release_asset_download_error": "[{provider}] Није успело преузимање release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Покретање преноса {count} са {source} на {dest}",
+            "crossprofile_file_success": "[Cross-profile] Копирано {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Грешка на {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Izaberi protokol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Распоред пропусног опсега",
             "bwScheduleOff": "Ручно (користи горња ограничења)",
             "bwScheduleOffice": "Радно време (throttle 08-18)",
-            "bwScheduleNight": "Ноћни режим (throttle 18-08)"
+            "bwScheduleNight": "Ноћни режим (throttle 18-08)",
+            "allInSync": "Све датотеке су синхронизоване — нема ничега за пренос",
+            "nothingInDirection": "Пронађене су разлике, али ниједна не одговара изабраном смеру. Покушајте Two-way да бисте видели све промене."
         },
         "ui": {
             "syncing": "Sinhronizacija...",

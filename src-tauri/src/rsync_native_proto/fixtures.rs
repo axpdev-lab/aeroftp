@@ -301,7 +301,8 @@ impl RealRsyncTranscriptPaths {
     /// upload_capture_out side — cheap sanity check the frozen transcript
     /// was produced by a successful run, not a partial one.
     pub fn appears_complete(&self) -> bool {
-        let meta_ok = |p: &Path| p.exists() && std::fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false);
+        let meta_ok =
+            |p: &Path| p.exists() && std::fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false);
         meta_ok(&self.summary_env)
             && self.upload_capture_in.exists()
             && meta_ok(&self.upload_capture_out)

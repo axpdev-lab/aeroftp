@@ -35,9 +35,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     const [submenuPos, setSubmenuPos] = useState({ left: 0, top: 0 });
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Smooth entrance animation
+    // Smooth entrance animation — cancel on unmount to avoid setState-after-unmount
     useEffect(() => {
-        requestAnimationFrame(() => setIsVisible(true));
+        const handle = requestAnimationFrame(() => setIsVisible(true));
+        return () => cancelAnimationFrame(handle);
     }, []);
 
     // Click outside / Escape handling - check both menu and submenu refs

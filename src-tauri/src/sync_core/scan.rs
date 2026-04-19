@@ -60,9 +60,7 @@ fn compile_matchers(patterns: &[String]) -> Vec<globset::GlobMatcher> {
 }
 
 fn matches_any(matchers: &[globset::GlobMatcher], rel: &str, name: &str) -> bool {
-    matchers
-        .iter()
-        .any(|m| m.is_match(rel) || m.is_match(name))
+    matchers.iter().any(|m| m.is_match(rel) || m.is_match(name))
 }
 
 /// Walk the local directory tree and return files matching the filter.
@@ -147,8 +145,7 @@ pub async fn scan_remote_tree(
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
 
     let mut results = Vec::new();
-    let mut queue: Vec<(String, String, usize)> =
-        vec![(remote_root.to_string(), String::new(), 0)];
+    let mut queue: Vec<(String, String, usize)> = vec![(remote_root.to_string(), String::new(), 0)];
     while let Some((abs_dir, rel_prefix, current_depth)) = queue.pop() {
         if current_depth >= depth {
             continue;
@@ -187,7 +184,10 @@ pub async fn scan_remote_tree(
                 }
             }
             Err(e) => {
-                eprintln!("[scan_remote_tree] warning: failed to list {}: {}", abs_dir, e);
+                eprintln!(
+                    "[scan_remote_tree] warning: failed to list {}: {}",
+                    abs_dir, e
+                );
             }
         }
     }

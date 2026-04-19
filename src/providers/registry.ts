@@ -979,6 +979,7 @@ export const PROVIDERS: ProviderConfig[] = [
         description: 'Popular Chinese cloud storage with WebDAV (3 GB free)',
         protocol: 'webdav',
         category: 'webdav',
+        contactVerified: true,
         icon: 'Cloud',
         color: '#3A9BDC',
         stable: true,

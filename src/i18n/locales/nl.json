@@ -452,7 +452,7 @@
             "modeUnavailable": "Voorinstellingen voor overdrachtmodus zijn momenteel alleen beschikbaar voor FTP/FTPS",
             "crossProfile": {
                 "title": "Overdracht tussen profielen",
-                "subtitle": "Zwevend paneel: wachtrij, logboek en voortgang blijven zichtbaar tijdens de uitvoering.",
+                "subtitle": "Kopieer bestanden rechtstreeks tussen twee opgeslagen servers.",
                 "closeAria": "Paneel voor overdracht tussen profielen sluiten",
                 "source": "Bron",
                 "destination": "Bestemming",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Grootte",
                 "executeTransfer": "Overdracht uitvoeren",
                 "transferInProgress": "Overdracht bezig",
-                "transferHint": "Houd de wachtrij, het activiteitenlogboek en de voortgang hieronder in de gaten. Dit paneel is bewust lichtgewicht gehouden.",
+                "transferHint": "De live voortgang wordt hieronder weergegeven. De gedetailleerde geschiedenis blijft in het activiteitenlogboek.",
                 "summary": "{transferred} overgedragen, {skipped} overgeslagen, {failed} mislukt",
                 "summaryMeta": "{size} in {seconds}s",
-                "newTransfer": "Nieuwe overdracht"
+                "newTransfer": "Nieuwe overdracht",
+                "preparing": "Overdracht voorbereiden…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset verwijderd {filename}",
             "release_asset_download_start": "[{provider}] Release asset downloaden {filename}...",
             "release_asset_download_success": "[{provider}] Release asset gedownload {filename}",
-            "release_asset_download_error": "[{provider}] Downloaden van release asset mislukt {filename}"
+            "release_asset_download_error": "[{provider}] Downloaden van release asset mislukt {filename}",
+            "crossprofile_start": "[Cross-profile] Overdracht van {count} starten van {source} naar {dest}",
+            "crossprofile_file_success": "[Cross-profile] Gekopieerd {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Mislukt bij {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Bandbreedteplanning",
             "bwScheduleOff": "Handmatig (bovenstaande limieten gebruiken)",
             "bwScheduleOffice": "Kantooruren (throttle 08-18)",
-            "bwScheduleNight": "Nachtmodus (throttle 18-08)"
+            "bwScheduleNight": "Nachtmodus (throttle 18-08)",
+            "allInSync": "Alle bestanden zijn gesynchroniseerd — niets te overdragen",
+            "nothingInDirection": "Verschillen gevonden, maar geen enkele komt overeen met de geselecteerde richting. Probeer Two-way om alle wijzigingen te zien."
         },
         "ui": {
             "syncing": "Synchroniseren...",

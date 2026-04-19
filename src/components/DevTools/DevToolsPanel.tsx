@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { Code, Terminal, Edit3, ChevronDown, ChevronUp, X, Maximize2, Minimize2, MessageSquare, FileX } from 'lucide-react';
 import { DevToolsTab, PreviewFile } from './types';
 import { FilePreview } from './FilePreview';
@@ -9,6 +9,7 @@ import { CodeEditor } from './CodeEditor';
 import { SSHTerminal } from './SSHTerminal';
 import { AIChat } from './AIChat';
 import { useTranslation } from '../../i18n';
+import { usePointerDrag } from '../../hooks/usePointerDrag';
 
 interface DevToolsPanelProps {
     isOpen: boolean;
@@ -40,31 +41,26 @@ export const DevToolsPanel: React.FC<DevToolsPanelProps> = ({
     const [height, setHeight] = useState(DEFAULT_HEIGHT);
     const [isMaximized, setIsMaximized] = useState(false);
     const resizeRef = useRef<HTMLDivElement>(null);
-    const isDragging = useRef(false);
 
-    // Handle resize drag
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Pointer-based resize drag. usePointerDrag captures on the resize handle
+    // so there are no `document.addEventListener('mousemove'...)` globals to
+    // leak on unmount mid-drag, and Pointer Events cover touch/stylus.
+    const dragStartRef = useRef<{ y: number; startHeight: number } | null>(null);
+    const { onPointerDown: onResizePointerDown } = usePointerDrag({
+        onPointerMove: (e) => {
+            const start = dragStartRef.current;
+            if (!start) return;
+            const delta = start.y - e.clientY;
+            setHeight(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, start.startHeight + delta)));
+        },
+        onPointerUp: () => { dragStartRef.current = null; },
+        onPointerCancel: () => { dragStartRef.current = null; },
+    });
+    const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
-        isDragging.current = true;
-        const startY = e.clientY;
-        const startHeight = height;
-
-        const handleMouseMove = (moveEvent: MouseEvent) => {
-            if (!isDragging.current) return;
-            const delta = startY - moveEvent.clientY;
-            const newHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + delta));
-            setHeight(newHeight);
-        };
-
-        const handleMouseUp = () => {
-            isDragging.current = false;
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-    }, [height]);
+        dragStartRef.current = { y: e.clientY, startHeight: height };
+        onResizePointerDown(e);
+    };
 
     const toggleMaximize = () => {
         if (isMaximized) {
@@ -95,7 +91,7 @@ export const DevToolsPanel: React.FC<DevToolsPanelProps> = ({
             {/* Resize handle */}
             <div
                 ref={resizeRef}
-                onMouseDown={handleMouseDown}
+                onPointerDown={handlePointerDown}
                 className="h-1 bg-gray-700 hover:bg-blue-500 cursor-ns-resize transition-colors"
             />
 

@@ -15,9 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     CredentialStore::init()?;
     let store = CredentialStore::from_cache().ok_or("vault not initialized")?;
 
-    let existing = store
-        .get(PROFILES_KEY)
-        .unwrap_or_else(|_| "[]".to_string());
+    let existing = store.get(PROFILES_KEY).unwrap_or_else(|_| "[]".to_string());
     let mut profiles: Vec<Value> = serde_json::from_str(&existing).unwrap_or_default();
 
     let seeds = vec![
@@ -97,7 +95,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for seed in seeds {
-        let new_id = seed.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let new_id = seed
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         // replace any existing profile with the same id
         profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(&new_id));
 

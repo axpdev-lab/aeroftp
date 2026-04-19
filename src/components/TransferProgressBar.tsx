@@ -119,11 +119,11 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const [mounted, setMounted] = useState(!slideAnimation);
 
-    // Slide animation on mount
+    // Slide animation on mount — cancel on unmount to avoid setState-after-unmount
     useEffect(() => {
-        if (slideAnimation) {
-            requestAnimationFrame(() => setMounted(true));
-        }
+        if (!slideAnimation) return;
+        const handle = requestAnimationFrame(() => setMounted(true));
+        return () => cancelAnimationFrame(handle);
     }, [slideAnimation]);
 
     const colors = getThemeGradient(resolvedTheme, tone);

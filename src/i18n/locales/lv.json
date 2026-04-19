@@ -452,7 +452,7 @@
             "modeUnavailable": "Pārsūtīšanas režīma iestatījumi pašlaik ir pieejami tikai FTP/FTPS",
             "crossProfile": {
                 "title": "Pārsūtīšana starp profiliem",
-                "subtitle": "Peldējošais panelis: rinda, žurnāls un norise paliek redzami izpildes laikā.",
+                "subtitle": "Kopējiet failus tieši starp diviem saglabātiem serveriem.",
                 "closeAria": "Aizvērt pārsūtīšanas starp profiliem paneli",
                 "source": "Avots",
                 "destination": "Mērķis",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Izmērs",
                 "executeTransfer": "Izpildīt pārsūtīšanu",
                 "transferInProgress": "Pārsūtīšana notiek",
-                "transferHint": "Sekojiet rindai, darbību žurnālam un norisei zemāk. Šis panelis ir apzināti viegls.",
+                "transferHint": "Reāllaika progress tiek parādīts zemāk. Detalizēta vēsture paliek darbības žurnālā.",
                 "summary": "{transferred} pārsūtīti, {skipped} izlaisti, {failed} neizdevās",
                 "summaryMeta": "{size} {seconds}s laikā",
-                "newTransfer": "Jauna pārsūtīšana"
+                "newTransfer": "Jauna pārsūtīšana",
+                "preparing": "Sagatavo pārsūtīšanu…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Noņemts asset {filename}",
             "release_asset_download_start": "[{provider}] Lejupielādē release asset {filename}...",
             "release_asset_download_success": "[{provider}] Lejupielādēts release asset {filename}",
-            "release_asset_download_error": "[{provider}] Neizdevās lejupielādēt release asset {filename}"
+            "release_asset_download_error": "[{provider}] Neizdevās lejupielādēt release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Uzsāk {count} pārsūtīšanu no {source} uz {dest}",
+            "crossprofile_file_success": "[Cross-profile] Kopēts {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Kļūda failā {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Joslas platuma grafiks",
             "bwScheduleOff": "Manuali (izmantot augstakos ierobezojumus)",
             "bwScheduleOffice": "Darba laiks (throttle 08-18)",
-            "bwScheduleNight": "Nakts rezims (throttle 18-08)"
+            "bwScheduleNight": "Nakts rezims (throttle 18-08)",
+            "allInSync": "Visi faili ir sinhronizēti — nekas nav jāpārsūta",
+            "nothingInDirection": "Atrastas atšķirības, bet neviena neatbilst izvēlētajam virzienam. Izmēģiniet Two-way, lai redzētu visas izmaiņas."
         },
         "ui": {
             "syncing": "Sinhronizē...",

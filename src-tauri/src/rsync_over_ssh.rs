@@ -158,11 +158,9 @@ impl std::fmt::Display for RsyncError {
                 "rsync protocol too old on remote ({}); need >= {}",
                 remote, required
             ),
-            Self::TooSmall { size, threshold } => write!(
-                f,
-                "file too small for delta ({} < {})",
-                size, threshold
-            ),
+            Self::TooSmall { size, threshold } => {
+                write!(f, "file too small for delta ({} < {})", size, threshold)
+            }
             Self::ProbeFailed(s) => write!(f, "rsync probe failed: {}", s),
             Self::SpawnFailed(s) => write!(f, "local rsync spawn failed: {}", s),
             Self::TransferFailed { exit, stderr } => {
@@ -281,10 +279,16 @@ fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
     parts.push("-i".into());
     parts.push(shell_escape(&key.display().to_string()));
     parts.push("-o".into());
-    parts.push(format!("StrictHostKeyChecking={}", cfg.strict_host_key_check));
+    parts.push(format!(
+        "StrictHostKeyChecking={}",
+        cfg.strict_host_key_check
+    ));
     if let Some(kh) = &cfg.known_hosts_path {
         parts.push("-o".into());
-        parts.push(format!("UserKnownHostsFile={}", shell_escape(&kh.display().to_string())));
+        parts.push(format!(
+            "UserKnownHostsFile={}",
+            shell_escape(&kh.display().to_string())
+        ));
     }
     parts.push("-o".into());
     parts.push("BatchMode=yes".into()); // never prompt
@@ -390,7 +394,9 @@ async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let start = Instant::now();
-    let mut child = cmd.spawn().map_err(|e| RsyncError::SpawnFailed(e.to_string()))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| RsyncError::SpawnFailed(e.to_string()))?;
 
     let stdout = child
         .stdout
@@ -500,7 +506,10 @@ mod tests {
 
     #[test]
     fn shell_escape_passes_safe_chars() {
-        assert_eq!(shell_escape("/home/user/.ssh/id_ed25519"), "/home/user/.ssh/id_ed25519");
+        assert_eq!(
+            shell_escape("/home/user/.ssh/id_ed25519"),
+            "/home/user/.ssh/id_ed25519"
+        );
     }
 
     #[test]

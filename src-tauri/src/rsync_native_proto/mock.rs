@@ -79,7 +79,9 @@ impl MockTransportConfig {
                 stdout: Vec::new(),
                 stderr: Vec::new(),
             },
-            stream_behavior: OpenStreamBehavior::Success { inbound: Vec::new() },
+            stream_behavior: OpenStreamBehavior::Success {
+                inbound: Vec::new(),
+            },
             read_exhausted: ReadExhaustedBehavior::Error,
             raw_stream_behavior: None,
         }
@@ -244,9 +246,7 @@ impl RemoteShellTransport for MockRemoteShellTransport {
                 *self.last_shutdown.lock().unwrap() = Some(shutdown);
                 Ok(stream)
             }
-            OpenStreamBehavior::Fail(reason) => {
-                Err(NativeRsyncError::transport(reason.clone()))
-            }
+            OpenStreamBehavior::Fail(reason) => Err(NativeRsyncError::transport(reason.clone())),
         }
     }
 

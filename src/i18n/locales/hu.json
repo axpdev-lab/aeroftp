@@ -452,7 +452,7 @@
             "modeUnavailable": "Az atviteli mod beallitasok jelenleg csak FTP/FTPS eseten erhetoek el",
             "crossProfile": {
                 "title": "Profilok kozotti atvitel",
-                "subtitle": "Lebegoablak: sor, naplo es haladasi jelzo lathatoak maradnak a futatas soran.",
+                "subtitle": "Másoljon fájlokat közvetlenül két mentett kiszolgáló között.",
                 "closeAria": "Profilok kozotti atviteli panel bezarasa",
                 "source": "Forras",
                 "destination": "Cel",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Meret",
                 "executeTransfer": "Atvitel vegrehajtasa",
                 "transferInProgress": "Atvitel folyamatban",
-                "transferHint": "Kovesd a sort, a tevekenyseginapolt es a haladast lent. Ez a panel szandekosan konnyusulyu.",
+                "transferHint": "Az élő folyamat alább látható. A részletes előzmények a tevékenységi naplóban maradnak.",
                 "summary": "{transferred} atvive, {skipped} kihagyva, {failed} sikertelen",
                 "summaryMeta": "{size} {seconds} masodperc alatt",
-                "newTransfer": "Uj atvitel"
+                "newTransfer": "Uj atvitel",
+                "preparing": "Átvitel előkészítése…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset eltávolítva {filename}",
             "release_asset_download_start": "[{provider}] Release asset letöltése {filename}...",
             "release_asset_download_success": "[{provider}] Release asset letöltve {filename}",
-            "release_asset_download_error": "[{provider}] Nem sikerült letölteni a release asset {filename}"
+            "release_asset_download_error": "[{provider}] Nem sikerült letölteni a release asset {filename}",
+            "crossprofile_start": "[Cross-profile] {count} átvitelének indítása innen: {source}, ide: {dest}",
+            "crossprofile_file_success": "[Cross-profile] Másolva: {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Hiba itt: {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Sávszélesség ütemezés",
             "bwScheduleOff": "Kézi (fenti korlátok használata)",
             "bwScheduleOffice": "Irodai órák (throttle 08-18)",
-            "bwScheduleNight": "Éjszakai mód (throttle 18-08)"
+            "bwScheduleNight": "Éjszakai mód (throttle 18-08)",
+            "allInSync": "Minden fájl szinkronban van — nincs mit átvinni",
+            "nothingInDirection": "Különbségek találhatók, de egyik sem egyezik a kiválasztott iránnyal. Próbálja a Two-way opciót az összes változás megtekintéséhez."
         },
         "ui": {
             "syncing": "Szinkronizálás...",

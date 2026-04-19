@@ -29,7 +29,9 @@ use tokio::sync::oneshot;
 
 use std::io::Write;
 
-use crate::rsync_native_proto::frame_io::{read_length_prefixed_frame, write_length_prefixed_frame};
+use crate::rsync_native_proto::frame_io::{
+    read_length_prefixed_frame, write_length_prefixed_frame,
+};
 use crate::rsync_native_proto::transport::{
     BidirectionalByteStream, CancelHandle, RawByteStream, RawRemoteShellTransport,
     RemoteCommandOutput, RemoteExecRequest, RemoteShellTransport, TransportProbe,
@@ -203,9 +205,9 @@ impl BidirectionalByteStream for SshProtoStream {
 
     async fn shutdown(&mut self) -> Result<(), NativeRsyncError> {
         let (tx, rx) = oneshot::channel();
-        self.sender
-            .send(WorkerCommand::Shutdown(tx))
-            .map_err(|_| NativeRsyncError::transport("ssh worker channel closed before shutdown"))?;
+        self.sender.send(WorkerCommand::Shutdown(tx)).map_err(|_| {
+            NativeRsyncError::transport("ssh worker channel closed before shutdown")
+        })?;
         let outcome = rx
             .await
             .map_err(|_| NativeRsyncError::transport("ssh worker dropped shutdown reply"))?;
@@ -309,9 +311,9 @@ fn exec_once(
     let mut channel = session
         .channel_session()
         .map_err(|e| NativeRsyncError::transport(format!("channel_session: {e}")))?;
-    channel
-        .exec(&request.full_command_line())
-        .map_err(|e| NativeRsyncError::transport(format!("exec {}: {e}", request.full_command_line())))?;
+    channel.exec(&request.full_command_line()).map_err(|e| {
+        NativeRsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
+    })?;
 
     let mut stdout = Vec::new();
     channel
@@ -346,9 +348,9 @@ fn spawn_worker(
     let mut channel = session
         .channel_session()
         .map_err(|e| NativeRsyncError::transport(format!("channel_session: {e}")))?;
-    channel
-        .exec(&request.full_command_line())
-        .map_err(|e| NativeRsyncError::transport(format!("exec {}: {e}", request.full_command_line())))?;
+    channel.exec(&request.full_command_line()).map_err(|e| {
+        NativeRsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
+    })?;
 
     let max_frame_size = config.max_frame_size;
     let idle_poll = Duration::from_millis(config.worker_idle_poll_ms.max(50));
@@ -411,8 +413,9 @@ fn spawn_worker(
 fn connect_and_auth(
     config: &SshTransportConfig,
 ) -> Result<(Session, Arc<TcpStream>), NativeRsyncError> {
-    let tcp = TcpStream::connect((config.host.as_str(), config.port))
-        .map_err(|e| NativeRsyncError::transport(format!("tcp connect {}:{}: {e}", config.host, config.port)))?;
+    let tcp = TcpStream::connect((config.host.as_str(), config.port)).map_err(|e| {
+        NativeRsyncError::transport(format!("tcp connect {}:{}: {e}", config.host, config.port))
+    })?;
     tcp.set_read_timeout(Some(Duration::from_millis(config.io_timeout_ms)))
         .map_err(|e| NativeRsyncError::transport(format!("set read timeout: {e}")))?;
     tcp.set_write_timeout(Some(Duration::from_millis(config.io_timeout_ms)))
@@ -438,13 +441,17 @@ fn connect_and_auth(
 
     session
         .userauth_pubkey_file(&config.username, None, &config.private_key_path, None)
-        .map_err(|e| NativeRsyncError::transport(format!(
-            "pubkey auth {} with {}: {e}",
-            config.username,
-            config.private_key_path.display()
-        )))?;
+        .map_err(|e| {
+            NativeRsyncError::transport(format!(
+                "pubkey auth {} with {}: {e}",
+                config.username,
+                config.private_key_path.display()
+            ))
+        })?;
     if !session.authenticated() {
-        return Err(NativeRsyncError::transport("ssh authentication did not complete"));
+        return Err(NativeRsyncError::transport(
+            "ssh authentication did not complete",
+        ));
     }
     Ok((session, tcp_arc))
 }
@@ -539,9 +546,9 @@ impl RawByteStream for SshRawStream {
             .map_err(|_| {
                 NativeRsyncError::transport("ssh raw worker channel closed before read")
             })?;
-        let outcome = rx.await.map_err(|_| {
-            NativeRsyncError::transport("ssh raw worker dropped read reply")
-        })?;
+        let outcome = rx
+            .await
+            .map_err(|_| NativeRsyncError::transport("ssh raw worker dropped read reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 
@@ -553,9 +560,9 @@ impl RawByteStream for SshRawStream {
             .map_err(|_| {
                 NativeRsyncError::transport("ssh raw worker channel closed before write")
             })?;
-        let outcome = rx.await.map_err(|_| {
-            NativeRsyncError::transport("ssh raw worker dropped write reply")
-        })?;
+        let outcome = rx
+            .await
+            .map_err(|_| NativeRsyncError::transport("ssh raw worker dropped write reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 
@@ -566,9 +573,9 @@ impl RawByteStream for SshRawStream {
             .map_err(|_| {
                 NativeRsyncError::transport("ssh raw worker channel closed before shutdown")
             })?;
-        let outcome = rx.await.map_err(|_| {
-            NativeRsyncError::transport("ssh raw worker dropped shutdown reply")
-        })?;
+        let outcome = rx
+            .await
+            .map_err(|_| NativeRsyncError::transport("ssh raw worker dropped shutdown reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 }
@@ -623,12 +630,9 @@ fn spawn_raw_worker(
     let mut channel = session
         .channel_session()
         .map_err(|e| NativeRsyncError::transport(format!("channel_session: {e}")))?;
-    channel
-        .exec(&request.full_command_line())
-        .map_err(|e| NativeRsyncError::transport(format!(
-            "exec {}: {e}",
-            request.full_command_line()
-        )))?;
+    channel.exec(&request.full_command_line()).map_err(|e| {
+        NativeRsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
+    })?;
 
     let idle_poll = Duration::from_millis(config.worker_idle_poll_ms.max(50));
     let tcp_for_worker = tcp.clone();
@@ -666,9 +670,7 @@ fn spawn_raw_worker(
                         .map_err(|e| format!("send_eof: {e}"))
                         .and_then(|_| channel.wait_eof().map_err(|e| format!("wait_eof: {e}")))
                         .and_then(|_| channel.close().map_err(|e| format!("close: {e}")))
-                        .and_then(|_| {
-                            channel.wait_close().map_err(|e| format!("wait_close: {e}"))
-                        });
+                        .and_then(|_| channel.wait_close().map_err(|e| format!("wait_close: {e}")));
                     let _ = reply.send(result.map(|_| ()));
                     break;
                 }
@@ -694,9 +696,9 @@ fn parse_probe_protocol(stdout: &str) -> Result<ProtocolVersion, NativeRsyncErro
         .split_whitespace()
         .last()
         .ok_or_else(|| NativeRsyncError::transport("probe output was empty"))?;
-    let version = suffix
-        .parse::<u32>()
-        .map_err(|e| NativeRsyncError::transport(format!("parse probe protocol from '{suffix}': {e}")))?;
+    let version = suffix.parse::<u32>().map_err(|e| {
+        NativeRsyncError::transport(format!("parse probe protocol from '{suffix}': {e}"))
+    })?;
     Ok(ProtocolVersion(version))
 }
 

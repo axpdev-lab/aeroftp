@@ -3,13 +3,13 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from '../../i18n';
-import { Terminal as XTerm } from '@xterm/xterm';
+import { Terminal as XTerm, type IDisposable } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal as TerminalIcon, Play, Square, RotateCcw, Plus, X, Palette, ZoomIn, ZoomOut, ChevronDown, Globe } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import '@xterm/xterm/css/xterm.css';
+import { createTauriListener } from '../../hooks/useTauriListener';
 
 // ============ Terminal Themes ============
 
@@ -408,7 +408,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     // Per-tab refs
     const xtermInstances = useRef<Map<string, XTerm>>(new Map());
     const fitAddons = useRef<Map<string, FitAddon>>(new Map());
-    const unlistenFns = useRef<Map<string, UnlistenFn>>(new Map());
+    const unlistenFns = useRef<Map<string, () => void>>(new Map());
+    const xtermDisposables = useRef<Map<string, IDisposable[]>>(new Map());
     const connectedTabs = useRef<Set<string>>(new Set());
     // Map tabId → pty session id (backend)
     const ptySessionIds = useRef<Map<string, string>>(new Map());
@@ -419,6 +420,21 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     const styleInjectedRef = useRef(false);
 
     const activeTab = tabs.find(t => t.id === activeTabId) || null;
+
+    const disposeTabListeners = useCallback((tabId: string) => {
+        const unlisten = unlistenFns.current.get(tabId);
+        if (unlisten) {
+            unlisten();
+            unlistenFns.current.delete(tabId);
+        }
+        const disposables = xtermDisposables.current.get(tabId);
+        if (disposables) {
+            for (const disposable of disposables) {
+                disposable.dispose();
+            }
+            xtermDisposables.current.delete(tabId);
+        }
+    }, []);
 
     // Persist settings
     const updateSettings = useCallback((patch: Partial<TerminalSettings>) => {
@@ -527,6 +543,8 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         }, 50);
         xtermInstances.current.set(tabId, xterm);
         fitAddons.current.set(tabId, fitAddon);
+        const terminalDisposables: IDisposable[] = [];
+        xtermDisposables.current.set(tabId, terminalDisposables);
 
         // Wait for container to have actual dimensions before fitting + writing welcome
         // On first tab the DevTools panel is still laying out, so setTimeout alone is unreliable
@@ -567,21 +585,23 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         }
 
         // Handle keystrokes — route to PTY or SSH shell based on tab type
-        xterm.onData(async (data) => {
-            if (connectedTabs.current.has(tabId)) {
-                try {
-                    const sessionId = ptySessionIds.current.get(tabId);
-                    const tab = tabs.find(t => t.id === tabId);
-                    if (tab?.type === 'ssh' && sessionId) {
-                        await invoke('ssh_shell_write', { sessionId, data });
-                    } else if (sessionId) {
-                        await invoke('pty_write', { data, sessionId });
+        terminalDisposables.push(
+            xterm.onData(async (data) => {
+                if (connectedTabs.current.has(tabId)) {
+                    try {
+                        const sessionId = ptySessionIds.current.get(tabId);
+                        const tab = tabs.find(t => t.id === tabId);
+                        if (tab?.type === 'ssh' && sessionId) {
+                            await invoke('ssh_shell_write', { sessionId, data });
+                        } else if (sessionId) {
+                            await invoke('pty_write', { data, sessionId });
+                        }
+                    } catch (e) {
+                        console.error('Terminal write error:', e);
                     }
-                } catch (e) {
-                    console.error('Terminal write error:', e);
                 }
-            }
-        });
+            })
+        );
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTabId]);
@@ -641,22 +661,21 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     }, [settings.fontSize, updateSettings]);
 
     // Setup PTY listener for a tab
-    const setupListener = useCallback(async (tabId: string) => {
+    const setupListener = useCallback((tabId: string) => {
         // Clean previous
-        const prev = unlistenFns.current.get(tabId);
-        if (prev) prev();
+        disposeTabListeners(tabId);
 
         const sessionId = ptySessionIds.current.get(tabId);
         const eventName = sessionId ? `pty-output-${sessionId}` : 'pty-output';
 
-        const unlisten = await listen<string>(eventName, (event) => {
+        const outputUnlisten = createTauriListener<string>(eventName, (event) => {
             const xterm = xtermInstances.current.get(tabId);
             if (xterm) xterm.write(event.payload);
         });
 
         // Listen for SSH shell close events
         if (sessionId?.startsWith('ssh-shell-')) {
-            const closeUnlisten = await listen<string>(`ssh-shell-closed-${sessionId}`, () => {
+            const closeUnlisten = createTauriListener<string>(`ssh-shell-closed-${sessionId}`, () => {
                 connectedTabs.current.delete(tabId);
                 ptySessionIds.current.delete(tabId);
                 setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isConnected: false, isConnecting: false } : t));
@@ -666,12 +685,14 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                     xterm.writeln('\x1b[33mSSH connection closed.\x1b[0m');
                 }
             });
-            const origUnlisten = unlisten;
-            unlistenFns.current.set(tabId, () => { origUnlisten(); closeUnlisten(); });
+            unlistenFns.current.set(tabId, () => {
+                outputUnlisten();
+                closeUnlisten();
+            });
         } else {
-            unlistenFns.current.set(tabId, unlisten);
+            unlistenFns.current.set(tabId, outputUnlisten);
         }
-    }, []);
+    }, [disposeTabListeners]);
 
     // Start shell for active tab (local PTY or SSH remote)
     const startShell = useCallback(async () => {
@@ -716,7 +737,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 ptySessionIds.current.set(tabId, sessionId);
             }
 
-            await setupListener(tabId);
+            setupListener(tabId);
 
             connectedTabs.current.add(tabId);
             setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isConnected: true, isConnecting: false } : t));
@@ -785,8 +806,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     const stopShell = useCallback(async () => {
         const tabId = activeTabId;
         const tab = tabs.find(t => t.id === tabId);
-        const unlisten = unlistenFns.current.get(tabId);
-        if (unlisten) { unlisten(); unlistenFns.current.delete(tabId); }
+        disposeTabListeners(tabId);
 
         try {
             const sessionId = ptySessionIds.current.get(tabId);
@@ -807,7 +827,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             xterm.writeln(`\x1b[33m${t('devtools.terminalPanel.closed')}\x1b[0m`);
             xterm.writeln(`\x1b[90m${t('devtools.terminalPanel.newShellPrompt')}\x1b[0m`);
         }
-    }, [activeTabId, tabs]);
+    }, [activeTabId, tabs, disposeTabListeners]);
 
     const restartShell = useCallback(async () => {
         await stopShell();
@@ -834,8 +854,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     // Close tab
     const closeTab = useCallback((tabId: string) => {
         // Clean up resources
-        const unlisten = unlistenFns.current.get(tabId);
-        if (unlisten) { unlisten(); unlistenFns.current.delete(tabId); }
+        disposeTabListeners(tabId);
         const sessionId = ptySessionIds.current.get(tabId);
         const tab = tabs.find(t => t.id === tabId);
         if (connectedTabs.current.has(tabId)) {
@@ -864,16 +883,16 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             }
             return remaining;
         });
-    }, [activeTabId]);
+    }, [activeTabId, disposeTabListeners, tabs]);
 
     // Cleanup on unmount — save scrollback for all tabs
     useEffect(() => {
         return () => {
             xtermInstances.current.forEach((xterm, tabId) => {
                 saveScrollback(tabId, xterm);
+                disposeTabListeners(tabId);
                 xterm.dispose();
             });
-            unlistenFns.current.forEach((fn) => fn());
             connectedTabs.current.forEach((tabId) => {
                 const sessionId = ptySessionIds.current.get(tabId);
                 if (sessionId) {
@@ -881,7 +900,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 }
             });
         };
-    }, []);
+    }, [disposeTabListeners]);
 
     // Listen for terminal-execute events from AeroAgent
     useEffect(() => {

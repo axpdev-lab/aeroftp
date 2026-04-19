@@ -1112,10 +1112,9 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
                 }
             }
         }
-        "clipboard_write"
-            if args.get("content").and_then(|v| v.as_str()).is_none() => {
-                errors.push("Missing 'content' parameter".to_string());
-            }
+        "clipboard_write" if args.get("content").and_then(|v| v.as_str()).is_none() => {
+            errors.push("Missing 'content' parameter".to_string());
+        }
         "set_theme" => match args.get("theme").and_then(|v| v.as_str()) {
             Some(t) if ["light", "dark", "tokyo", "cyber"].contains(&t) => {}
             Some(t) => errors.push(format!(
@@ -2792,38 +2791,46 @@ pub async fn execute_ai_tool(
                 return Err(format!("Path is not a directory: {}", path));
             }
 
-            // Inline calculation (same logic as filesystem.rs calculate_folder_size)
-            let mut total_bytes: u64 = 0;
-            let mut file_count: u64 = 0;
-            let mut dir_count: u64 = 0;
-            const MAX_ENTRIES: u64 = 500_000;
-            let mut entry_count: u64 = 0;
+            // walkdir is sync and can block the Tokio worker for minutes on
+            // deep trees — shove the walk onto spawn_blocking so other async
+            // tool calls keep progressing.
+            let path_for_walk = path.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut total_bytes: u64 = 0;
+                let mut file_count: u64 = 0;
+                let mut dir_count: u64 = 0;
+                const MAX_ENTRIES: u64 = 500_000;
+                let mut entry_count: u64 = 0;
+                let base = std::path::Path::new(&path_for_walk);
 
-            for entry in walkdir::WalkDir::new(&path)
-                .follow_links(false)
-                .max_depth(100)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                entry_count += 1;
-                if entry_count > MAX_ENTRIES {
-                    break;
+                for entry in walkdir::WalkDir::new(&path_for_walk)
+                    .follow_links(false)
+                    .max_depth(100)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    entry_count += 1;
+                    if entry_count > MAX_ENTRIES {
+                        break;
+                    }
+                    if entry.file_type().is_file() {
+                        total_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        file_count += 1;
+                    } else if entry.file_type().is_dir() && entry.path() != base {
+                        dir_count += 1;
+                    }
                 }
-                if entry.file_type().is_file() {
-                    total_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
-                    file_count += 1;
-                } else if entry.file_type().is_dir() && entry.path() != p {
-                    dir_count += 1;
-                }
-            }
 
-            Ok(json!({
-                "path": path,
-                "total_bytes": total_bytes,
-                "total_human": format!("{:.1} MB", total_bytes as f64 / 1_048_576.0),
-                "file_count": file_count,
-                "dir_count": dir_count,
-            }))
+                Ok(json!({
+                    "path": path_for_walk,
+                    "total_bytes": total_bytes,
+                    "total_human": format!("{:.1} MB", total_bytes as f64 / 1_048_576.0),
+                    "file_count": file_count,
+                    "dir_count": dir_count,
+                }))
+            })
+            .await
+            .map_err(|e| format!("local_disk_usage task failed: {}", e))?
         }
 
         "local_find_duplicates" => {
@@ -2839,94 +2846,101 @@ pub async fn execute_ai_tool(
                 return Err(format!("Path is not a directory: {}", path));
             }
 
-            // Phase 1: group files by size
-            let mut size_groups: std::collections::HashMap<u64, Vec<std::path::PathBuf>> =
-                std::collections::HashMap::new();
-            const MAX_SCAN: u64 = 50_000;
-            let mut scan_count: u64 = 0;
+            // walkdir + synchronous file hashing are CPU/disk-bound and would
+            // otherwise pin a Tokio worker for the duration of the scan.
+            let path_for_scan = path.clone();
+            tokio::task::spawn_blocking(move || -> Result<Value, String> {
+                // Phase 1: group files by size
+                let mut size_groups: std::collections::HashMap<u64, Vec<std::path::PathBuf>> =
+                    std::collections::HashMap::new();
+                const MAX_SCAN: u64 = 50_000;
+                let mut scan_count: u64 = 0;
 
-            for entry in walkdir::WalkDir::new(&path)
-                .follow_links(false)
-                .max_depth(50)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                if !entry.file_type().is_file() {
-                    continue;
+                for entry in walkdir::WalkDir::new(&path_for_scan)
+                    .follow_links(false)
+                    .max_depth(50)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    if !entry.file_type().is_file() {
+                        continue;
+                    }
+                    scan_count += 1;
+                    if scan_count > MAX_SCAN {
+                        break;
+                    }
+                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    if size < min_size {
+                        continue;
+                    }
+                    size_groups.entry(size).or_default().push(entry.into_path());
                 }
-                scan_count += 1;
-                if scan_count > MAX_SCAN {
-                    break;
-                }
-                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                if size < min_size {
-                    continue;
-                }
-                size_groups.entry(size).or_default().push(entry.into_path());
-            }
 
-            // Phase 2: hash files with matching sizes
-            use md5::{Digest, Md5};
-            use std::io::Read;
-            let mut hash_groups: std::collections::HashMap<String, (u64, Vec<String>)> =
-                std::collections::HashMap::new();
+                // Phase 2: hash files with matching sizes
+                use md5::{Digest, Md5};
+                use std::io::Read;
+                let mut hash_groups: std::collections::HashMap<String, (u64, Vec<String>)> =
+                    std::collections::HashMap::new();
 
-            for (size, files) in &size_groups {
-                if files.len() < 2 {
-                    continue;
-                }
-                for file_path in files {
-                    if let Ok(mut f) = std::fs::File::open(file_path) {
-                        let mut hasher = Md5::new();
-                        let mut buf = [0u8; 8192];
-                        loop {
-                            match f.read(&mut buf) {
-                                Ok(0) => break,
-                                Ok(n) => hasher.update(&buf[..n]),
-                                Err(_) => break,
+                for (size, files) in &size_groups {
+                    if files.len() < 2 {
+                        continue;
+                    }
+                    for file_path in files {
+                        if let Ok(mut f) = std::fs::File::open(file_path) {
+                            let mut hasher = Md5::new();
+                            let mut buf = [0u8; 8192];
+                            loop {
+                                match f.read(&mut buf) {
+                                    Ok(0) => break,
+                                    Ok(n) => hasher.update(&buf[..n]),
+                                    Err(_) => break,
+                                }
                             }
+                            let hash = format!("{:x}", hasher.finalize());
+                            let entry = hash_groups
+                                .entry(hash)
+                                .or_insert_with(|| (*size, Vec::new()));
+                            entry.1.push(file_path.to_string_lossy().to_string());
                         }
-                        let hash = format!("{:x}", hasher.finalize());
-                        let entry = hash_groups
-                            .entry(hash)
-                            .or_insert_with(|| (*size, Vec::new()));
-                        entry.1.push(file_path.to_string_lossy().to_string());
                     }
                 }
-            }
 
-            // Phase 3: collect duplicates
-            let mut duplicates: Vec<Value> = hash_groups
-                .into_iter()
-                .filter(|(_, (_, files))| files.len() >= 2)
-                .map(|(hash, (size, files))| {
-                    json!({
-                        "hash": hash,
-                        "size": size,
-                        "count": files.len(),
-                        "wasted_bytes": size * (files.len() as u64 - 1),
-                        "files": files,
+                // Phase 3: collect duplicates
+                let mut duplicates: Vec<Value> = hash_groups
+                    .into_iter()
+                    .filter(|(_, (_, files))| files.len() >= 2)
+                    .map(|(hash, (size, files))| {
+                        json!({
+                            "hash": hash,
+                            "size": size,
+                            "count": files.len(),
+                            "wasted_bytes": size * (files.len() as u64 - 1),
+                            "files": files,
+                        })
                     })
-                })
-                .collect();
+                    .collect();
 
-            duplicates.sort_by(|a, b| {
-                let wa = a["wasted_bytes"].as_u64().unwrap_or(0);
-                let wb = b["wasted_bytes"].as_u64().unwrap_or(0);
-                wb.cmp(&wa)
-            });
+                duplicates.sort_by(|a, b| {
+                    let wa = a["wasted_bytes"].as_u64().unwrap_or(0);
+                    let wb = b["wasted_bytes"].as_u64().unwrap_or(0);
+                    wb.cmp(&wa)
+                });
 
-            let total_wasted: u64 = duplicates
-                .iter()
-                .map(|d| d["wasted_bytes"].as_u64().unwrap_or(0))
-                .sum();
+                let total_wasted: u64 = duplicates
+                    .iter()
+                    .map(|d| d["wasted_bytes"].as_u64().unwrap_or(0))
+                    .sum();
 
-            Ok(json!({
-                "groups": duplicates.len(),
-                "total_wasted_bytes": total_wasted,
-                "total_wasted_human": format!("{:.1} MB", total_wasted as f64 / 1_048_576.0),
-                "duplicates": duplicates,
-            }))
+                Ok(json!({
+                    "groups": duplicates.len(),
+                    "total_wasted_bytes": total_wasted,
+                    "total_wasted_human": format!("{:.1} MB", total_wasted as f64 / 1_048_576.0),
+                    "duplicates": duplicates,
+                }))
+            })
+            .await
+            .map_err(|e| format!("local_find_duplicates task failed: {}", e))?
         }
 
         "local_edit" => {
@@ -4026,86 +4040,94 @@ pub async fn execute_ai_tool(
                 None
             };
 
-            let mut matches: Vec<Value> = Vec::new();
-            let mut files_searched: u32 = 0;
-            const MAX_FILE_SIZE: u64 = 10_485_760; // 10MB
+            // Move the entire blocking walk + per-file read+regex into
+            // spawn_blocking; on trees with many text files this otherwise
+            // blocks the Tokio worker for seconds.
+            let path_for_grep = path.clone();
+            let pattern_for_result = pattern.clone();
+            tokio::task::spawn_blocking(move || -> Result<Value, String> {
+                let base_path = std::path::Path::new(&path_for_grep);
+                let mut matches: Vec<Value> = Vec::new();
+                let mut files_searched: u32 = 0;
+                const MAX_FILE_SIZE: u64 = 10_485_760; // 10MB
 
-            for entry in walkdir::WalkDir::new(&path)
-                .follow_links(false)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                if matches.len() >= max_results {
-                    break;
-                }
-                let entry_path = entry.path();
-                let meta = match entry.metadata() {
-                    Ok(m) => m,
-                    Err(_) => continue,
-                };
-                if !meta.is_file() || meta.len() > MAX_FILE_SIZE {
-                    continue;
-                }
+                for entry in walkdir::WalkDir::new(&path_for_grep)
+                    .follow_links(false)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    if matches.len() >= max_results {
+                        break;
+                    }
+                    let entry_path = entry.path();
+                    let meta = match entry.metadata() {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
+                    if !meta.is_file() || meta.len() > MAX_FILE_SIZE {
+                        continue;
+                    }
 
-                // Apply glob filter on filename
-                if let Some(ref gre) = glob_re {
-                    if let Some(name) = entry_path.file_name().and_then(|n| n.to_str()) {
-                        if !gre.is_match(name) {
-                            continue;
+                    if let Some(ref gre) = glob_re {
+                        if let Some(name) = entry_path.file_name().and_then(|n| n.to_str()) {
+                            if !gre.is_match(name) {
+                                continue;
+                            }
+                        }
+                    }
+
+                    let bytes = match std::fs::read(entry_path) {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+                    let check_len = bytes.len().min(8192);
+                    if bytes[..check_len].contains(&0) {
+                        continue;
+                    }
+
+                    let content = match String::from_utf8(bytes) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+                    files_searched += 1;
+
+                    let lines: Vec<&str> = content.lines().collect();
+                    for (i, line) in lines.iter().enumerate() {
+                        if matches.len() >= max_results {
+                            break;
+                        }
+                        if re.is_match(line) {
+                            let rel = entry_path
+                                .strip_prefix(base_path)
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_else(|_| entry_path.to_string_lossy().to_string());
+
+                            let ctx_before: Vec<&str> =
+                                lines[i.saturating_sub(context_lines)..i].to_vec();
+                            let ctx_after: Vec<&str> =
+                                lines[(i + 1)..lines.len().min(i + 1 + context_lines)].to_vec();
+
+                            matches.push(json!({
+                                "file": rel,
+                                "line_number": i + 1,
+                                "line": line.chars().take(500).collect::<String>(),
+                                "context_before": ctx_before,
+                                "context_after": ctx_after,
+                            }));
                         }
                     }
                 }
 
-                // Skip binary files: check first 8KB for null bytes
-                let bytes = match std::fs::read(entry_path) {
-                    Ok(b) => b,
-                    Err(_) => continue,
-                };
-                let check_len = bytes.len().min(8192);
-                if bytes[..check_len].contains(&0) {
-                    continue;
-                }
-
-                let content = match String::from_utf8(bytes) {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
-                files_searched += 1;
-
-                let lines: Vec<&str> = content.lines().collect();
-                for (i, line) in lines.iter().enumerate() {
-                    if matches.len() >= max_results {
-                        break;
-                    }
-                    if re.is_match(line) {
-                        let rel = entry_path
-                            .strip_prefix(base_path)
-                            .map(|p| p.to_string_lossy().to_string())
-                            .unwrap_or_else(|_| entry_path.to_string_lossy().to_string());
-
-                        let ctx_before: Vec<&str> =
-                            lines[i.saturating_sub(context_lines)..i].to_vec();
-                        let ctx_after: Vec<&str> =
-                            lines[(i + 1)..lines.len().min(i + 1 + context_lines)].to_vec();
-
-                        matches.push(json!({
-                            "file": rel,
-                            "line_number": i + 1,
-                            "line": line.chars().take(500).collect::<String>(),
-                            "context_before": ctx_before,
-                            "context_after": ctx_after,
-                        }));
-                    }
-                }
-            }
-
-            Ok(json!({
-                "success": true,
-                "pattern": pattern,
-                "total_matches": matches.len(),
-                "files_searched": files_searched,
-                "matches": matches,
-            }))
+                Ok(json!({
+                    "success": true,
+                    "pattern": pattern_for_result,
+                    "total_matches": matches.len(),
+                    "files_searched": files_searched,
+                    "matches": matches,
+                }))
+            })
+            .await
+            .map_err(|e| format!("local_grep task failed: {}", e))?
         }
 
         "local_head" => {
@@ -4944,17 +4966,25 @@ pub async fn execute_ai_tool(
 
         "cross_profile_transfer" => {
             use crate::cross_profile_transfer::{
-                copy_one_file, plan_transfer, should_skip_existing,
-                CrossProfileTransferRequest,
+                copy_one_file, plan_transfer, should_skip_existing, CrossProfileTransferRequest,
             };
 
             let source_server_query = get_str(&args, "source_server")?;
             let dest_server_query = get_str(&args, "dest_server")?;
             let source_path = get_str(&args, "source_path")?;
             let dest_path = get_str(&args, "dest_path")?;
-            let recursive = args.get("recursive").and_then(|v| v.as_bool()).unwrap_or(false);
-            let skip_existing = args.get("skip_existing").and_then(|v| v.as_bool()).unwrap_or(false);
-            let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+            let recursive = args
+                .get("recursive")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let skip_existing = args
+                .get("skip_existing")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let dry_run = args
+                .get("dry_run")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             validate_remote_path(&source_path, "source_path")?;
             validate_remote_path(&dest_path, "dest_path")?;
@@ -4980,12 +5010,19 @@ pub async fn execute_ai_tool(
                 skip_existing,
             };
 
-            let plan_result = plan_transfer(source_provider.as_mut(), dest_provider.as_mut(), &request).await;
+            let plan_result =
+                plan_transfer(source_provider.as_mut(), dest_provider.as_mut(), &request).await;
             if let Err(err) = source_provider.disconnect().await {
-                eprintln!("ai_tools: failed to disconnect source provider after planning: {}", err);
+                eprintln!(
+                    "ai_tools: failed to disconnect source provider after planning: {}",
+                    err
+                );
             }
             if let Err(err) = dest_provider.disconnect().await {
-                eprintln!("ai_tools: failed to disconnect destination provider after planning: {}", err);
+                eprintln!(
+                    "ai_tools: failed to disconnect destination provider after planning: {}",
+                    err
+                );
             }
             let plan = plan_result.map_err(|e| format!("Planning failed: {}", e))?;
 
@@ -5042,7 +5079,10 @@ pub async fn execute_ai_tool(
             }
 
             if let Err(err) = source_provider.disconnect().await {
-                eprintln!("ai_tools: failed to disconnect source provider after execute: {}", err);
+                eprintln!(
+                    "ai_tools: failed to disconnect source provider after execute: {}",
+                    err
+                );
             }
             if let Err(err) = dest_provider.disconnect().await {
                 eprintln!(

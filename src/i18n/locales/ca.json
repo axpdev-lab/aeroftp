@@ -452,7 +452,7 @@
             "modeUnavailable": "Els perfils de mode de transferència només estan disponibles per a FTP/FTPS",
             "crossProfile": {
                 "title": "Transferencia entre perfils",
-                "subtitle": "Panell flotant: la cua, el registre i el progrés es mantenen visibles mentre s'executa.",
+                "subtitle": "Copia fitxers directament entre dos servidors desats.",
                 "closeAria": "Tanca el panell de transferencia entre perfils",
                 "source": "Origen",
                 "destination": "Destinacio",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Mida",
                 "executeTransfer": "Executa la Transferencia",
                 "transferInProgress": "Transferencia en curs",
-                "transferHint": "Vigila la cua, el registre d'activitat i el progres a continuacio. Aquest panell es lleuger a proposit.",
+                "transferHint": "El progrés en temps real es mostra a sota. L'historial detallat es manté al registre d'activitat.",
                 "summary": "{transferred} transferits, {skipped} omesos, {failed} fallits",
                 "summaryMeta": "{size} en {seconds}s",
-                "newTransfer": "Nova Transferencia"
+                "newTransfer": "Nova Transferencia",
+                "preparing": "Preparant la transferència…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Asset {filename} eliminat",
             "release_asset_download_start": "[{provider}] Descarregant release asset {filename}...",
             "release_asset_download_success": "[{provider}] Release asset {filename} descarregat",
-            "release_asset_download_error": "[{provider}] No s'ha pogut descarregar el release asset {filename}"
+            "release_asset_download_error": "[{provider}] No s'ha pogut descarregar el release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Iniciant transferència de {count} des de {source} a {dest}",
+            "crossprofile_file_success": "[Cross-profile] Copiat {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Error a {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Programacio d'ample de banda",
             "bwScheduleOff": "Manual (utilitzar limits superiors)",
             "bwScheduleOffice": "Horari d'oficina (throttle 08-18)",
-            "bwScheduleNight": "Mode nocturn (throttle 18-08)"
+            "bwScheduleNight": "Mode nocturn (throttle 18-08)",
+            "allInSync": "Tots els fitxers estan sincronitzats — res a transferir",
+            "nothingInDirection": "S'han trobat diferències, però cap coincideix amb la direcció seleccionada. Prova Two-way per veure tots els canvis."
         },
         "ui": {
             "syncing": "Sincronitzant...",

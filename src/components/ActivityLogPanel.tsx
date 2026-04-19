@@ -24,6 +24,7 @@ import {
     type LucideIcon
 } from 'lucide-react';
 import { useActivityLog, LogEntry, OperationType, getOperationIcon, formatTimestamp } from '../hooks/useActivityLog';
+import { usePointerDrag } from '../hooks/usePointerDrag';
 import { useTranslation } from '../i18n';
 
 // ============================================================================
@@ -497,27 +498,23 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
         setAutoScroll(isAtBottom);
     }, []);
 
-    // Resize handlers
-    const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    // Resize — pointer capture so unmount mid-drag cannot leave globals behind.
+    const resizeRef = useRef<{ y: number; startHeight: number } | null>(null);
+    const { onPointerDown: onResizePointerDown } = usePointerDrag({
+        onPointerMove: (e) => {
+            const s = resizeRef.current;
+            if (!s) return;
+            const deltaY = s.y - e.clientY;
+            setHeight(Math.min(maxHeight, Math.max(minHeight, s.startHeight + deltaY)));
+        },
+        onPointerUp: () => { resizeRef.current = null; },
+        onPointerCancel: () => { resizeRef.current = null; },
+    });
+    const handleResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
-
-        const startY = e.clientY;
-        const startHeight = height;
-
-        const handleMouseMove = (moveEvent: MouseEvent) => {
-            const deltaY = startY - moveEvent.clientY;
-            const newHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + deltaY));
-            setHeight(newHeight);
-        };
-
-        const handleMouseUp = () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-    }, [height, minHeight, maxHeight]);
+        resizeRef.current = { y: e.clientY, startHeight: height };
+        onResizePointerDown(e);
+    }, [height, onResizePointerDown]);
 
     // Filter entries
     const filteredEntries = useMemo(() => {
@@ -576,7 +573,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
 
             {/* Resize handle at top */}
             <div
-                onMouseDown={handleResizeStart}
+                onPointerDown={handleResizeStart}
                 className={`absolute top-0 left-0 right-0 h-2 cursor-ns-resize transition-colors flex items-center justify-center z-10 group ${themeConfig.resizeBase}`}
             >
                 <div className={`w-10 h-0.5 rounded-full ${themeConfig.resizeBar} transition-colors`} />

@@ -13,7 +13,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { createTauriListener } from './useTauriListener';
 
 export type HealthStatus = 'up' | 'slow' | 'down' | 'pending' | 'unknown';
 
@@ -39,21 +39,24 @@ const healthCache: Map<string, { state: ProviderHealthState; timestamp: number }
 /** Generation counter — increments each scan, used to ignore stale events */
 let scanGeneration = 0;
 let scanInProgress = false;
-let safetyTimer: ReturnType<typeof setTimeout> | null = null;
-
-function resetScanState() {
-    scanInProgress = false;
-    if (safetyTimer) {
-        clearTimeout(safetyTimer);
-        safetyTimer = null;
-    }
-}
 
 export function useProviderHealth() {
     const [results, setResults] = useState<Map<string, ProviderHealthState>>(new Map());
     const [scanning, setScanning] = useState(false);
-    const unlistenRef = useRef<UnlistenFn[]>([]);
+    // Per-hook-instance listener disposers — prevents cross-mount pollution.
+    const unlistenRef = useRef<Array<() => void>>([]);
+    // Per-instance safety timer — previously module-level, which meant two
+    // concurrent mounts would clobber each other's timer reference.
+    const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const mountedRef = useRef(true);
+
+    const resetScanState = useCallback(() => {
+        scanInProgress = false;
+        if (safetyTimerRef.current) {
+            clearTimeout(safetyTimerRef.current);
+            safetyTimerRef.current = null;
+        }
+    }, []);
 
     // Cleanup listeners on unmount + reset scan lock
     useEffect(() => {
@@ -65,7 +68,7 @@ export function useProviderHealth() {
             // Critical: reset the module-level lock so future mounts can scan
             resetScanState();
         };
-    }, []);
+    }, [resetScanState]);
 
     // Build current view from cache
     const syncFromCache = useCallback(() => {
@@ -119,19 +122,17 @@ export function useProviderHealth() {
         if (mountedRef.current) setScanning(true);
 
         // Safety timeout: auto-reset if scan hangs
-        safetyTimer = setTimeout(() => {
+        safetyTimerRef.current = setTimeout(() => {
             if (scanInProgress && scanGeneration === gen) {
                 resetScanState();
                 if (mountedRef.current) setScanning(false);
             }
         }, SCAN_SAFETY_TIMEOUT_MS);
 
-        // Cleanup previous listeners
-        unlistenRef.current.forEach(fn => fn());
-        unlistenRef.current = [];
-
-        // Listen for progressive results (only accept events from current generation)
-        const unlisten1 = await listen<{ id: string; status: string; latency_ms: number }>(
+        // Register listeners FIRST so no event can slip through the gap
+        // between the old cleanup and the new subscription. createTauriListener
+        // returns a synchronous disposer and handles late resolution safely.
+        const unlisten1 = createTauriListener<{ id: string; status: string; latency_ms: number }>(
             'health-scan-result',
             (event) => {
                 if (scanGeneration !== gen) return; // stale event
@@ -141,16 +142,19 @@ export function useProviderHealth() {
                     timestamp: Date.now(),
                 });
                 syncFromCache();
-            }
+            },
         );
 
-        const unlisten2 = await listen('health-scan-complete', () => {
+        const unlisten2 = createTauriListener<unknown>('health-scan-complete', () => {
             if (scanGeneration !== gen) return; // stale event
             resetScanState();
             if (mountedRef.current) setScanning(false);
         });
 
-        unlistenRef.current.push(unlisten1, unlisten2);
+        // Swap in the new listeners atomically after they are registered.
+        const previous = unlistenRef.current;
+        unlistenRef.current = [unlisten1, unlisten2];
+        previous.forEach(fn => fn());
 
         // Fire scan
         try {
@@ -163,7 +167,7 @@ export function useProviderHealth() {
                 if (mountedRef.current) setScanning(false);
             }
         }
-    }, [syncFromCache]);
+    }, [syncFromCache, resetScanState]);
 
     const getStatus = useCallback((id: string): ProviderHealthState => {
         return results.get(id) || { status: 'unknown', latencyMs: 0 };

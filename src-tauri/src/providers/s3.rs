@@ -698,13 +698,12 @@ impl S3Provider {
                         inside_target = true;
                     }
                 }
-                Ok(Event::Text(ref e))
-                    if inside_target => {
-                        let trimmed = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-                        if !trimmed.is_empty() {
-                            return Some(trimmed);
-                        }
+                Ok(Event::Text(ref e)) if inside_target => {
+                    let trimmed = String::from_utf8_lossy(e.as_ref()).trim().to_string();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed);
                     }
+                }
                 Ok(Event::End(ref e)) => {
                     let name = e.name();
                     let tag_name = String::from_utf8_lossy(name.as_ref());
@@ -968,22 +967,24 @@ impl S3Provider {
                 break;
             }
 
-            // Upload batch in parallel via tokio::spawn.
-            // S3Provider is Clone (reqwest::Client is Arc-based, clone is cheap).
-            let mut handles = Vec::with_capacity(batch.len());
+            // Upload batch in parallel via JoinSet so the first failure aborts
+            // every sibling instead of letting them continue burning bandwidth
+            // (and S3 request billing) against an upload we've already decided
+            // to abort.
+            let mut joinset = tokio::task::JoinSet::new();
             for (pn, data) in batch {
                 let provider = self.clone();
                 let key_owned = key.to_string();
                 let uid = upload_id.clone();
                 let data_len = data.len() as u64;
-                handles.push(tokio::spawn(async move {
+                joinset.spawn(async move {
                     let etag = provider.upload_part(&key_owned, &uid, pn, data).await?;
                     Ok::<(u32, String, u64), ProviderError>((pn, etag, data_len))
-                }));
+                });
             }
 
-            for handle in handles {
-                match handle.await {
+            while let Some(joined) = joinset.join_next().await {
+                match joined {
                     Ok(Ok((pn, etag, data_len))) => {
                         parts.push((pn, etag));
                         uploaded += data_len;
@@ -992,10 +993,16 @@ impl S3Provider {
                         }
                     }
                     Ok(Err(e)) => {
+                        joinset.abort_all();
+                        // Drain aborted futures so JoinSet drops cleanly before
+                        // we fire the S3 AbortMultipartUpload.
+                        while joinset.join_next().await.is_some() {}
                         let _ = self.abort_multipart_upload(key, &upload_id).await;
                         return Err(e);
                     }
                     Err(e) => {
+                        joinset.abort_all();
+                        while joinset.join_next().await.is_some() {}
                         let _ = self.abort_multipart_upload(key, &upload_id).await;
                         return Err(ProviderError::TransferFailed(format!(
                             "Upload task panicked: {e}"
@@ -1519,13 +1526,8 @@ impl StorageProvider for S3Provider {
                 let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
                     .await
                     .map_err(ProviderError::IoError)?;
-                super::stream_response_to_resumable(
-                    response,
-                    &mut fresh,
-                    total_size,
-                    on_progress,
-                )
-                .await?;
+                super::stream_response_to_resumable(response, &mut fresh, total_size, on_progress)
+                    .await?;
                 fresh.commit().await.map_err(|e| {
                     ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
                 })?;
@@ -1700,7 +1702,8 @@ impl StorageProvider for S3Provider {
         // Guard: refuse to wipe the entire bucket
         if path.trim_matches('/').is_empty() {
             return Err(ProviderError::InvalidPath(
-                "Refusing to recursively delete root '/'. This would erase the entire bucket.".into(),
+                "Refusing to recursively delete root '/'. This would erase the entire bucket."
+                    .into(),
             ));
         }
 
@@ -2994,10 +2997,7 @@ impl S3Provider {
     /// Uses ListObjectsV2 WITHOUT Delimiter, returning a flat list of all files.
     /// Much faster than BFS directory-by-directory listing for large datasets
     /// (reduces API calls from O(dirs) to O(files/1000)).
-    pub async fn list_recursive(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    pub async fn list_recursive(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -3019,8 +3019,7 @@ impl S3Provider {
 
         loop {
             // NO delimiter → recursive flat listing
-            let mut params: Vec<(&str, &str)> =
-                vec![("list-type", "2"), ("max-keys", "1000")];
+            let mut params: Vec<(&str, &str)> = vec![("list-type", "2"), ("max-keys", "1000")];
 
             if !prefix_with_slash.is_empty() {
                 params.push(("prefix", &prefix_with_slash));

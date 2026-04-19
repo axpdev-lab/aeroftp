@@ -19,9 +19,8 @@ use std::path::{Path, PathBuf};
 // This is NOT encryption — the key is public. We reveal it to store in our vault.
 
 const RCLONE_CRYPT_KEY: [u8; 32] = [
-    0x9c, 0x93, 0x5b, 0x48, 0x73, 0x0a, 0x55, 0x4d, 0x6b, 0xfd, 0x7c, 0x63, 0xc8, 0x86, 0xa9,
-    0x2b, 0xd3, 0x90, 0x19, 0x8e, 0xb8, 0x12, 0x8a, 0xfb, 0xf4, 0xde, 0x16, 0x2b, 0x8b, 0x95,
-    0xf6, 0x38,
+    0x9c, 0x93, 0x5b, 0x48, 0x73, 0x0a, 0x55, 0x4d, 0x6b, 0xfd, 0x7c, 0x63, 0xc8, 0x86, 0xa9, 0x2b,
+    0xd3, 0x90, 0x19, 0x8e, 0xb8, 0x12, 0x8a, 0xfb, 0xf4, 0xde, 0x16, 0x2b, 0x8b, 0x95, 0xf6, 0x38,
 ];
 
 /// Reveal an rclone-obscured password.
@@ -266,13 +265,13 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             let mut options = serde_json::Map::new();
             if let Some(bucket) = get_str("bucket") {
                 if !bucket.is_empty() {
-                    options.insert("bucket".into(), serde_json::Value::String(bucket.to_string()));
+                    options.insert(
+                        "bucket".into(),
+                        serde_json::Value::String(bucket.to_string()),
+                    );
                 }
             }
-            options.insert(
-                "region".into(),
-                serde_json::Value::String(region),
-            );
+            options.insert("region".into(), serde_json::Value::String(region));
             if let Some(ep) = get_str("endpoint") {
                 if !ep.is_empty() {
                     options.insert("endpoint".into(), serde_json::Value::String(ep.to_string()));
@@ -410,8 +409,10 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             }
             let mut options = serde_json::Map::new();
             if let Some(container) = get_str("container") {
-                options
-                    .insert("bucket".into(), serde_json::Value::String(container.to_string()));
+                options.insert(
+                    "bucket".into(),
+                    serde_json::Value::String(container.to_string()),
+                );
             }
 
             Some(MappedProfile {
@@ -446,22 +447,25 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
 
             let mut options = serde_json::Map::new();
             if let Some(container) = get_str("container") {
-                options
-                    .insert("bucket".into(), serde_json::Value::String(container.to_string()));
-            }
-            if !auth_url.is_empty() {
                 options.insert(
-                    "endpoint".into(),
-                    serde_json::Value::String(auth_url),
+                    "bucket".into(),
+                    serde_json::Value::String(container.to_string()),
                 );
             }
+            if !auth_url.is_empty() {
+                options.insert("endpoint".into(), serde_json::Value::String(auth_url));
+            }
             if let Some(region) = get_str("region") {
-                options
-                    .insert("region".into(), serde_json::Value::String(region.to_string()));
+                options.insert(
+                    "region".into(),
+                    serde_json::Value::String(region.to_string()),
+                );
             }
             if let Some(tenant) = get_str("tenant").or(get_str("tenant_id")) {
-                options
-                    .insert("tenant".into(), serde_json::Value::String(tenant.to_string()));
+                options.insert(
+                    "tenant".into(),
+                    serde_json::Value::String(tenant.to_string()),
+                );
             }
 
             Some(MappedProfile {
@@ -529,7 +533,10 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
 
             let mut options = serde_json::Map::new();
             if let Some(bucket) = get_str("bucket") {
-                options.insert("bucket".into(), serde_json::Value::String(bucket.to_string()));
+                options.insert(
+                    "bucket".into(),
+                    serde_json::Value::String(bucket.to_string()),
+                );
             }
             options.insert(
                 "endpoint".into(),
@@ -587,10 +594,7 @@ fn parse_webdav_url(url: &str) -> (String, String, u32) {
             let port = p.parse::<u32>().unwrap_or(if is_https { 443 } else { 80 });
             (h.to_string(), port)
         }
-        None => (
-            host_port.to_string(),
-            if is_https { 443 } else { 80 },
-        ),
+        None => (host_port.to_string(), if is_https { 443 } else { 80 }),
     };
 
     (host, path, port)
@@ -700,10 +704,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     let mut skipped = Vec::new();
 
     for (name, remote) in &sections {
-        let rclone_type = remote
-            .get("type")
-            .map(|s| s.as_str())
-            .unwrap_or("unknown");
+        let rclone_type = remote.get("type").map(|s| s.as_str()).unwrap_or("unknown");
 
         match map_remote(name, remote) {
             Some(mapped) => {
@@ -1051,8 +1052,7 @@ pub fn export_rclone(
     let tmp_path = file_path.with_extension("tmp");
     std::fs::write(&tmp_path, output.as_bytes())
         .map_err(|e| format!("Write rclone.conf: {}", e))?;
-    std::fs::rename(&tmp_path, file_path)
-        .map_err(|e| format!("Rename temp file: {}", e))?;
+    std::fs::rename(&tmp_path, file_path).map_err(|e| format!("Rename temp file: {}", e))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -1092,7 +1092,8 @@ region = eu-west-1
 
     #[test]
     fn test_parse_webdav_url() {
-        let (host, path, port) = parse_webdav_url("https://cloud.example.com/remote.php/dav/files/user/");
+        let (host, path, port) =
+            parse_webdav_url("https://cloud.example.com/remote.php/dav/files/user/");
         assert_eq!(host, "cloud.example.com");
         assert_eq!(path, "/remote.php/dav/files/user/");
         assert_eq!(port, 443);
@@ -1182,14 +1183,22 @@ type = fichier
         assert_eq!(result.skipped.len(), 1); // fichier
 
         // Verify SFTP mapping
-        let sftp = result.servers.iter().find(|s| s.protocol.as_deref() == Some("sftp")).unwrap();
+        let sftp = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("sftp"))
+            .unwrap();
         assert_eq!(sftp.host, "192.168.1.100");
         assert_eq!(sftp.port, 22);
         assert_eq!(sftp.username, "admin");
         assert_eq!(sftp.credential.as_deref(), Some("testpassword123"));
 
         // Verify Google Drive mapping (no credential, OAuth)
-        let gdrive = result.servers.iter().find(|s| s.protocol.as_deref() == Some("googledrive")).unwrap();
+        let gdrive = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("googledrive"))
+            .unwrap();
         assert!(gdrive.credential.is_none());
 
         // Verify skipped
@@ -1198,7 +1207,13 @@ type = fichier
 
     #[test]
     fn test_obscure_reveal_roundtrip() {
-        let passwords = ["hello", "p@ssw0rd!", "with spaces", "unicode: \u{00e9}\u{00f1}", ""];
+        let passwords = [
+            "hello",
+            "p@ssw0rd!",
+            "with spaces",
+            "unicode: \u{00e9}\u{00f1}",
+            "",
+        ];
         for pw in &passwords {
             if pw.is_empty() {
                 continue; // empty password has no meaningful obscure
@@ -1245,7 +1260,11 @@ type = fichier
 
         assert_eq!(result.servers.len(), 2);
 
-        let sftp = result.servers.iter().find(|s| s.name == "test-sftp").unwrap();
+        let sftp = result
+            .servers
+            .iter()
+            .find(|s| s.name == "test-sftp")
+            .unwrap();
         assert_eq!(sftp.protocol.as_deref(), Some("sftp"));
         assert_eq!(sftp.credential.as_deref(), Some("secret123"));
 

@@ -452,7 +452,7 @@
             "modeUnavailable": "Ang mga preset ng mode ng paglipat ay kasalukuyang available para sa FTP/FTPS lamang",
             "crossProfile": {
                 "title": "Cross-Profile na Paglipat",
-                "subtitle": "Lumulutang na panel: ang pila, log at progreso ay nananatiling nakikita habang tumatakbo.",
+                "subtitle": "Kopyahin ang mga file nang direkta sa pagitan ng dalawang nakaimbak na server.",
                 "closeAria": "Isara ang panel ng cross-profile na paglipat",
                 "source": "Pinagmulan",
                 "destination": "Destinasyon",
@@ -474,10 +474,11 @@
                 "sizeColumn": "Laki",
                 "executeTransfer": "Isagawa ang Paglipat",
                 "transferInProgress": "Isinasagawa ang paglipat",
-                "transferHint": "Subaybayan ang pila, log ng aktibidad at progreso sa ibaba. Ang panel na ito ay sadyang ginawang magaan.",
+                "transferHint": "Ang live na pag-usad ay ipinapakita sa ibaba. Ang detalyadong kasaysayan ay nananatili sa Activity Log.",
                 "summary": "{transferred} nailipat, {skipped} nilaktawan, {failed} nabigo",
                 "summaryMeta": "{size} sa {seconds}s",
-                "newTransfer": "Bagong Paglipat"
+                "newTransfer": "Bagong Paglipat",
+                "preparing": "Inihahanda ang paglilipat…"
             }
         },
         "settings": {
@@ -1318,7 +1319,10 @@
             "release_asset_delete_success": "[{provider}] Naalis na ang asset {filename}",
             "release_asset_download_start": "[{provider}] Dina-download ang release asset {filename}...",
             "release_asset_download_success": "[{provider}] Na-download na ang release asset {filename}",
-            "release_asset_download_error": "[{provider}] Hindi na-download ang release asset {filename}"
+            "release_asset_download_error": "[{provider}] Hindi na-download ang release asset {filename}",
+            "crossprofile_start": "[Cross-profile] Sinisimulan ang paglilipat ng {count} mula sa {source} patungo sa {dest}",
+            "crossprofile_file_success": "[Cross-profile] Kinopya {filename} ({index}/{total})",
+            "crossprofile_file_error": "[Cross-profile] Nabigo sa {filename}: {error}"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -1960,7 +1964,9 @@
             "bwSchedule": "Iskedyul ng bandwidth",
             "bwScheduleOff": "Manu-mano (gamitin ang mga limitasyon sa itaas)",
             "bwScheduleOffice": "Oras ng opisina (throttle 08-18)",
-            "bwScheduleNight": "Night mode (throttle 18-08)"
+            "bwScheduleNight": "Night mode (throttle 18-08)",
+            "allInSync": "Lahat ng file ay naka-sync — walang ililipat",
+            "nothingInDirection": "May nakitang pagkakaiba, ngunit wala sa napiling direksyon. Subukan ang Two-way upang makita ang lahat ng pagbabago."
         },
         "ui": {
             "syncing": "Sinsi-sync...",

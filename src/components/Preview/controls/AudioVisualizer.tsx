@@ -755,7 +755,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const ctx = canvas?.getContext('2d');
 
         if (!canvas || !ctx || !analyser || !dataArrayRef.current) {
-            animationRef.current = requestAnimationFrame(draw);
+            // Do NOT self-spin when the analyser is missing. The start/stop
+            // effect below re-arms `draw` when analyser becomes available,
+            // so bailing here releases the RAF budget cleanly.
             return;
         }
 

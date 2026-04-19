@@ -15,8 +15,7 @@ use tracing::info;
 
 use super::{
     sanitize_api_error, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider,
-    AEROFTP_USER_AGENT,
+    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider, AEROFTP_USER_AGENT,
 };
 
 const IMMICH_DEVICE_ID: &str = "aeroftp-desktop";
@@ -274,10 +273,7 @@ impl ImmichProvider {
     }
 
     /// Get all assets inside an album (GET /api/albums/{id}).
-    async fn get_album_assets(
-        &self,
-        album_id: &str,
-    ) -> Result<Vec<ImmichAsset>, ProviderError> {
+    async fn get_album_assets(&self, album_id: &str) -> Result<Vec<ImmichAsset>, ProviderError> {
         let url = self.api_url(&format!("/albums/{}", album_id));
         let response = self
             .client
@@ -322,10 +318,7 @@ impl ImmichProvider {
     }
 
     /// Find an asset by filename inside an album or virtual folder.
-    async fn resolve_asset(
-        &mut self,
-        path: &str,
-    ) -> Result<(String, ImmichAsset), ProviderError> {
+    async fn resolve_asset(&mut self, path: &str) -> Result<(String, ImmichAsset), ProviderError> {
         let (folder, filename) = Self::parse_path(path);
         let folder_name = folder.ok_or_else(|| {
             ProviderError::InvalidPath("Path must include an album/folder".to_string())
@@ -677,8 +670,7 @@ impl StorageProvider for ImmichProvider {
 
                     let mut metadata = HashMap::new();
                     metadata.insert("id".to_string(), album.id.clone());
-                    metadata
-                        .insert("assetCount".to_string(), album.asset_count.to_string());
+                    metadata.insert("assetCount".to_string(), album.asset_count.to_string());
                     if let Some(ref desc) = album.description {
                         metadata.insert("description".to_string(), desc.clone());
                     }
@@ -707,9 +699,7 @@ impl StorageProvider for ImmichProvider {
                 let path_prefix = format!("/{}", folder_name);
                 let items = match folder_name {
                     VIRTUAL_ALL_ASSETS => self.search_metadata(None, None, 1000).await?,
-                    VIRTUAL_FAVORITES => {
-                        self.search_metadata(None, Some(true), 1000).await?
-                    }
+                    VIRTUAL_FAVORITES => self.search_metadata(None, Some(true), 1000).await?,
                     album_title => {
                         let album_id = self.resolve_album_id(album_title).await?;
                         self.get_album_assets(&album_id).await?
@@ -748,11 +738,7 @@ impl StorageProvider for ImmichProvider {
                 format!("/{}", parts.join("/"))
             }
         } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                path
-            )
+            format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
 
         // Validate the path exists
@@ -826,8 +812,7 @@ impl StorageProvider for ImmichProvider {
 
         let mut downloaded: u64 = 0;
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -846,10 +831,7 @@ impl StorageProvider for ImmichProvider {
         Ok(())
     }
 
-    async fn download_to_bytes(
-        &mut self,
-        remote_path: &str,
-    ) -> Result<Vec<u8>, ProviderError> {
+    async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
         let (_album_id, asset) = self.resolve_asset(remote_path).await?;
 
         // GET /api/assets/{id}/original
@@ -1009,11 +991,7 @@ impl StorageProvider for ImmichProvider {
             if !add_resp.status().is_success() {
                 let status = add_resp.status();
                 let text = add_resp.text().await.unwrap_or_default();
-                return Err(Self::map_api_error(
-                    status,
-                    &text,
-                    "Add asset to album",
-                ));
+                return Err(Self::map_api_error(status, &text, "Add asset to album"));
             }
         }
 
@@ -1118,9 +1096,7 @@ impl StorageProvider for ImmichProvider {
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let trimmed = path.trim_matches('/');
         if trimmed.is_empty() {
-            return Err(ProviderError::InvalidPath(
-                "Cannot delete root".to_string(),
-            ));
+            return Err(ProviderError::InvalidPath("Cannot delete root".to_string()));
         }
 
         if trimmed == VIRTUAL_ALL_ASSETS || trimmed == VIRTUAL_FAVORITES {
@@ -1252,9 +1228,7 @@ impl StorageProvider for ImmichProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::ConnectionFailed(
-                "Ping failed".to_string(),
-            ));
+            return Err(ProviderError::ConnectionFailed("Ping failed".to_string()));
         }
         Ok(())
     }
@@ -1274,10 +1248,7 @@ impl StorageProvider for ImmichProvider {
         let (_album_id, asset) = self.resolve_asset(path).await?;
 
         // GET /api/assets/{id}/thumbnail?size=thumbnail
-        let url = self.api_url(&format!(
-            "/assets/{}/thumbnail?size=thumbnail",
-            asset.id
-        ));
+        let url = self.api_url(&format!("/assets/{}/thumbnail?size=thumbnail", asset.id));
 
         let response = self
             .client
@@ -1343,10 +1314,8 @@ impl StorageProvider for ImmichProvider {
                     obj["password"] = serde_json::Value::String(pw.clone());
                 }
                 if let Some(secs) = options.expires_in_secs {
-                    let expires_at = chrono::Utc::now()
-                        + chrono::Duration::seconds(secs as i64);
-                    obj["expiresAt"] =
-                        serde_json::Value::String(expires_at.to_rfc3339());
+                    let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+                    obj["expiresAt"] = serde_json::Value::String(expires_at.to_rfc3339());
                 }
                 obj
             }
@@ -1363,10 +1332,8 @@ impl StorageProvider for ImmichProvider {
                     obj["password"] = serde_json::Value::String(pw.clone());
                 }
                 if let Some(secs) = options.expires_in_secs {
-                    let expires_at = chrono::Utc::now()
-                        + chrono::Duration::seconds(secs as i64);
-                    obj["expiresAt"] =
-                        serde_json::Value::String(expires_at.to_rfc3339());
+                    let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+                    obj["expiresAt"] = serde_json::Value::String(expires_at.to_rfc3339());
                 }
                 obj
             }
@@ -1398,9 +1365,9 @@ impl StorageProvider for ImmichProvider {
             .await
             .map_err(|e| ProviderError::ParseError(format!("Parse share link: {}", e)))?;
 
-        let key = shared.key.unwrap_or_else(|| {
-            shared.id.unwrap_or_else(|| "unknown".to_string())
-        });
+        let key = shared
+            .key
+            .unwrap_or_else(|| shared.id.unwrap_or_else(|| "unknown".to_string()));
 
         let share_url = format!("{}/share/{}", self.config.base_url, key);
 
@@ -1408,8 +1375,7 @@ impl StorageProvider for ImmichProvider {
             url: share_url,
             password: options.password,
             expires_at: options.expires_in_secs.map(|secs| {
-                let expires_at =
-                    chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
+                let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
                 expires_at.to_rfc3339()
             }),
         })
@@ -1419,11 +1385,7 @@ impl StorageProvider for ImmichProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         // When searching from root, search [All Assets] which contains everything.
         let search_path = if path == "/" || path.is_empty() {
             &format!("/{}", VIRTUAL_ALL_ASSETS)
@@ -1446,10 +1408,7 @@ impl StorageProvider for ImmichProvider {
         true
     }
 
-    async fn checksum(
-        &mut self,
-        path: &str,
-    ) -> Result<HashMap<String, String>, ProviderError> {
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let (_album_id, asset) = self.resolve_asset(path).await?;
         let mut result = HashMap::new();
         if let Some(ref checksum) = asset.checksum {
