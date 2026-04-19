@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.5.7" date="2026-04-19">
+      <description>
+        <p>Emergency hotfix: v3.5.6 failed to launch on Linux and Windows. The cross-profile plan TTL sweeper introduced in v3.5.6 called tokio::spawn during the synchronous Tauri builder setup, before the async runtime was alive, and panicked with "no reactor running". The sweeper is now armed lazily on the first approved cross-profile transfer, guaranteed to run inside a runtime context. No other changes; all v3.5.6 improvements are preserved.</p>
+      </description>
+    </release>
     <release version="3.5.6" date="2026-04-19">
       <description>
         <p>Resource-Lifecycle Hardening. Orphan listener class eliminated via a typed useTauriListener hook; cancellable transfers and AI requests; clean CLI and FUSE shutdown on SIGINT and SIGTERM; MCP progress emitters no longer spawn per-sample; provider disconnect on reconnect and error paths; cross-profile plan TTL sweeper; RAII guard for the TRANSFER_IN_PROGRESS flag; MCP per-tool-call wall-clock timeout; CLI memory DB memoized; DebugPanel console interceptor now ref-counted and reversible. 60+ findings from a 5-auditor external and internal review closed; audit grade C to A- across tracks.</p>

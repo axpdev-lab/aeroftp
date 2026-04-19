@@ -230,9 +230,6 @@ fn extract_summary_u64(haystack: &str, prefix: &str, suffix: &str) -> Option<u64
     let start = haystack.find(prefix)? + prefix.len();
     let rest = &haystack[start..];
     let end = rest.find(suffix)?;
-    let digits: String = rest[..end]
-        .chars()
-        .filter(|c| c.is_ascii_digit())
-        .collect();
+    let digits: String = rest[..end].chars().filter(|c| c.is_ascii_digit()).collect();
     digits.parse().ok()
 }

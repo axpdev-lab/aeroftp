@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.7] - 2026-04-19
+
+### Hotfix: v3.5.6 failed to launch
+
+Emergency patch for the startup panic introduced by v3.5.6.
+
+### Fixed
+
+- **App failed to launch on Linux and Windows**: the cross-profile plan TTL sweeper added in v3.5.6 (Phase 4.2 of the resource-lifecycle audit) called `tokio::spawn` inside `CrossProfileState::new()`. That constructor runs from `builder.manage(...)` during the synchronous Tauri builder setup, before the async runtime is up. The spawn panicked with *"there is no reactor running, must be called from the context of a Tokio 1.x runtime"* and the binary exited immediately after `main`. The sweeper is now armed lazily by `ensure_sweeper_started()` on the first `store_plan` call — guaranteed to run inside an async Tauri command handler where the runtime is active. All other v3.5.6 improvements are preserved.
+
 ## [3.5.6] - 2026-04-19
 
 ### Resource-Lifecycle Hardening

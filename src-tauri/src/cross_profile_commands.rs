@@ -39,33 +39,40 @@ struct StoredCrossProfilePlan {
 pub struct CrossProfileState {
     approved_plans: Arc<Mutex<HashMap<String, StoredCrossProfilePlan>>>,
     cancel_tokens: Mutex<HashMap<String, CancellationToken>>,
-    // Background task that prunes expired plans on a fixed cadence. Retained so
-    // the sweeper dies when CrossProfileState is dropped (shutdown); relying
-    // only on opportunistic pruning leaks orphan plans for up to PLAN_TTL_MS
-    // when the user stops approving new transfers.
-    _sweeper: AbortOnDrop<()>,
+    // Background sweeper task. Spawned lazily by `ensure_sweeper_started`
+    // from inside an async Tauri command — `new()` runs during
+    // `builder.manage(...)` which is before the Tokio runtime is alive,
+    // and even the sync `setup` hook isn't inside a runtime context.
+    sweeper: std::sync::Mutex<Option<AbortOnDrop<()>>>,
 }
 
 impl CrossProfileState {
     pub fn new() -> Self {
-        let approved_plans: Arc<Mutex<HashMap<String, StoredCrossProfilePlan>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let sweeper_plans = Arc::clone(&approved_plans);
-        let sweeper = AbortOnDrop::spawn(async move {
+        Self {
+            approved_plans: Arc::new(Mutex::new(HashMap::new())),
+            cancel_tokens: Mutex::new(HashMap::new()),
+            sweeper: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// Idempotent: arm the periodic TTL sweeper on the first write. Safe to
+    /// call from any async context; a second call is a no-op.
+    fn ensure_sweeper_started(&self) {
+        let mut guard = self.sweeper.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_some() {
+            return;
+        }
+        let plans = Arc::clone(&self.approved_plans);
+        *guard = Some(AbortOnDrop::spawn(async move {
             let mut interval = tokio::time::interval(PLAN_SWEEP_INTERVAL);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 interval.tick().await;
                 let cutoff = now_ms().saturating_sub(PLAN_TTL_MS);
-                let mut plans = sweeper_plans.lock().await;
-                plans.retain(|_, item| item.created_at_ms >= cutoff);
+                let mut locked = plans.lock().await;
+                locked.retain(|_, item| item.created_at_ms >= cutoff);
             }
-        });
-        Self {
-            approved_plans,
-            cancel_tokens: Mutex::new(HashMap::new()),
-            _sweeper: sweeper,
-        }
+        }));
     }
 }
 
@@ -165,6 +172,7 @@ fn resolve_server_by_id(
 }
 
 async fn store_plan(state: &CrossProfileState, plan_id: String, stored: StoredCrossProfilePlan) {
+    state.ensure_sweeper_started();
     let mut plans = state.approved_plans.lock().await;
     let cutoff = now_ms().saturating_sub(PLAN_TTL_MS);
     plans.retain(|_, item| item.created_at_ms >= cutoff);
