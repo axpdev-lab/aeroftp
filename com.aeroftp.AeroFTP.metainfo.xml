@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.5.8" date="2026-04-20">
+      <description>
+        <p>MCP hardening and Appendix C closure. The MCP server now auto-recovers its pooled connections after transport-level failures (stale data channels, broken pipes, connection resets), gains a new aeroftp_delete_many batch tool with configurable inter-delete backoff, adds name_contains / protocol / limit / offset filters on aeroftp_list_servers, a configurable preview window on aeroftp_read_file up to 1 MB, optional create_parents on aeroftp_upload_file for idempotent recursive mkdir, a detailed plan[] array in aeroftp_sync_tree dry-run output so callers no longer need the CLI for planning, and a proper two-sided checksum comparison in aeroftp_check_tree that uses server-side hashes when the provider supports them and falls back to size-only otherwise. Includes the Appendix C CLI roadmap closure (FTP stale data-connection auto-recovery, reconcile plan loader coverage) and six Dependabot bumps.</p>
+      </description>
+    </release>
     <release version="3.5.7" date="2026-04-19">
       <description>
         <p>Emergency hotfix: v3.5.6 failed to launch on Linux and Windows. The cross-profile plan TTL sweeper introduced in v3.5.6 called tokio::spawn during the synchronous Tauri builder setup, before the async runtime was alive, and panicked with "no reactor running". The sweeper is now armed lazily on the first approved cross-profile transfer, guaranteed to run inside a runtime context. No other changes; all v3.5.6 improvements are preserved.</p>

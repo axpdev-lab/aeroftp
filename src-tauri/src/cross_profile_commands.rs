@@ -343,7 +343,8 @@ pub async fn cross_profile_execute(
             }
 
             if stored.request.skip_existing {
-                if let Ok(true) = should_skip_existing(dest.provider_mut(), &entry.dest_path, entry).await
+                if let Ok(true) =
+                    should_skip_existing(dest.provider_mut(), &entry.dest_path, entry).await
                 {
                     skipped += 1;
                     emit_transfer_event(

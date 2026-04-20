@@ -18,6 +18,15 @@ pub struct DiffEntry {
     pub local_size: Option<u64>,
     pub remote_size: Option<u64>,
     pub local_sha256: Option<String>,
+    /// The server-side checksum observed on the remote side (if any). Carried
+    /// through so MCP consumers can surface both hashes alongside `differ`
+    /// entries when `checksum=true` was requested.
+    pub remote_checksum_alg: Option<String>,
+    pub remote_checksum_hex: Option<String>,
+    /// How this entry was classified. `"checksum"` means the two checksums
+    /// disagree; `"size"` means only size-level evidence was available.
+    /// `None` for `missing_local` / `missing_remote`.
+    pub compare_method: Option<&'static str>,
 }
 
 /// Categorized diff report produced by [`compare_trees`].
@@ -64,13 +73,34 @@ pub fn compare_trees(local: &[LocalEntry], remote: &[RemoteEntry], one_way: bool
     for (rel, local_entry) in &local_map {
         match remote_map.get(rel) {
             Some(remote_entry) => {
+                // Checksum comparison only fires when both sides produced a
+                // hash using the SAME algorithm. Any mismatched algorithm
+                // (e.g. local SHA-256, remote MD5) is downgraded to size-only
+                // — comparing different hashes is a category error.
+                let checksum_method = match (
+                    local_entry.sha256.as_ref(),
+                    remote_entry.checksum_alg.as_deref(),
+                    remote_entry.checksum_hex.as_ref(),
+                ) {
+                    (Some(local_hex), Some("sha256"), Some(remote_hex)) => {
+                        Some((local_hex.eq_ignore_ascii_case(remote_hex), "checksum"))
+                    }
+                    _ => None,
+                };
+                let (is_match, method) = match checksum_method {
+                    Some((matches, m)) => (matches, m),
+                    None => (local_entry.size == remote_entry.size, "size"),
+                };
                 let entry = DiffEntry {
                     rel_path: (*rel).to_string(),
                     local_size: Some(local_entry.size),
                     remote_size: Some(remote_entry.size),
                     local_sha256: local_entry.sha256.clone(),
+                    remote_checksum_alg: remote_entry.checksum_alg.clone(),
+                    remote_checksum_hex: remote_entry.checksum_hex.clone(),
+                    compare_method: Some(method),
                 };
-                if local_entry.size == remote_entry.size {
+                if is_match {
                     report.matches.push(entry);
                 } else {
                     report.differ.push(entry);
@@ -82,6 +112,9 @@ pub fn compare_trees(local: &[LocalEntry], remote: &[RemoteEntry], one_way: bool
                     local_size: Some(local_entry.size),
                     remote_size: None,
                     local_sha256: local_entry.sha256.clone(),
+                    remote_checksum_alg: None,
+                    remote_checksum_hex: None,
+                    compare_method: None,
                 });
             }
         }
@@ -95,6 +128,9 @@ pub fn compare_trees(local: &[LocalEntry], remote: &[RemoteEntry], one_way: bool
                     local_size: None,
                     remote_size: Some(remote_entry.size),
                     local_sha256: None,
+                    remote_checksum_alg: remote_entry.checksum_alg.clone(),
+                    remote_checksum_hex: remote_entry.checksum_hex.clone(),
+                    compare_method: None,
                 });
             }
         }
@@ -121,7 +157,57 @@ mod tests {
             rel_path: rel.to_string(),
             size,
             mtime: None,
+            checksum_alg: None,
+            checksum_hex: None,
         }
+    }
+
+    fn remote_sha256(rel: &str, size: u64, hex: &str) -> RemoteEntry {
+        RemoteEntry {
+            rel_path: rel.to_string(),
+            size,
+            mtime: None,
+            checksum_alg: Some("sha256".to_string()),
+            checksum_hex: Some(hex.to_string()),
+        }
+    }
+
+    fn local_sha256(rel: &str, size: u64, hex: &str) -> LocalEntry {
+        LocalEntry {
+            rel_path: rel.to_string(),
+            size,
+            mtime: None,
+            sha256: Some(hex.to_string()),
+        }
+    }
+
+    #[test]
+    fn compare_trees_detects_checksum_mismatch_with_identical_size() {
+        // Same-size file with swapped content — the scenario Legacy CMS
+        // raised: one-byte change inside a config, size stays constant.
+        let locals = vec![local_sha256("conf.json", 100, "aa")];
+        let remotes = vec![remote_sha256("conf.json", 100, "bb")];
+        let report = compare_trees(&locals, &remotes, false);
+        assert_eq!(report.differ_count(), 1);
+        assert_eq!(report.differ[0].compare_method, Some("checksum"));
+    }
+
+    #[test]
+    fn compare_trees_matches_on_equal_checksum() {
+        let locals = vec![local_sha256("conf.json", 100, "aa")];
+        let remotes = vec![remote_sha256("conf.json", 100, "aa")];
+        let report = compare_trees(&locals, &remotes, false);
+        assert_eq!(report.match_count(), 1);
+        assert_eq!(report.matches[0].compare_method, Some("checksum"));
+    }
+
+    #[test]
+    fn compare_trees_falls_back_to_size_when_checksum_unavailable() {
+        let locals = vec![local("f.bin", 10)];
+        let remotes = vec![remote("f.bin", 10)];
+        let report = compare_trees(&locals, &remotes, false);
+        assert_eq!(report.match_count(), 1);
+        assert_eq!(report.matches[0].compare_method, Some("size"));
     }
 
     #[test]

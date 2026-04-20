@@ -156,9 +156,9 @@ impl RateCategory {
     /// Maximum requests per minute for this category.
     fn max_per_minute(self) -> u32 {
         match self {
-            RateCategory::ReadOnly => 60,
-            RateCategory::Mutative => 20,
-            RateCategory::Destructive => 5,
+            RateCategory::ReadOnly => 1200,
+            RateCategory::Mutative => 400,
+            RateCategory::Destructive => 100,
         }
     }
 }
@@ -230,7 +230,11 @@ impl RateLimiter {
     }
 
     /// Try to consume a token. Returns Ok(()) if allowed, Err with retry-after seconds.
+    /// Bypassed when `AEROFTP_MCP_RATE_LIMIT_DISABLED` is set to `1` or `true`.
     pub fn check(&self, category: RateCategory) -> Result<(), f64> {
+        if rate_limit_disabled() {
+            return Ok(());
+        }
         let mut buckets = self.buckets.lock().unwrap();
         let bucket = buckets.get_mut(&category).unwrap();
         if bucket.try_consume() {
@@ -238,6 +242,16 @@ impl RateLimiter {
         } else {
             Err(bucket.retry_after().as_secs_f64())
         }
+    }
+}
+
+fn rate_limit_disabled() -> bool {
+    match std::env::var("AEROFTP_MCP_RATE_LIMIT_DISABLED") {
+        Ok(v) => {
+            let v = v.trim().to_ascii_lowercase();
+            v == "1" || v == "true" || v == "yes" || v == "on"
+        }
+        Err(_) => false,
     }
 }
 

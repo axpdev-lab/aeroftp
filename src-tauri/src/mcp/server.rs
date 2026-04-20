@@ -443,31 +443,30 @@ async fn process_request(
 
             let exec_future =
                 tools::execute_tool(tool_name, &args, &pool, &rate_limiter, notifier.as_ref());
-            let (result, is_error) = match tokio::time::timeout(mcp_tool_timeout(), exec_future)
-                .await
-            {
-                Ok(pair) => pair,
-                Err(_) => {
-                    // Timeout: the dispatch task may still be running inside the
-                    // provider (we cannot cancel it mid-IO without risking half-
-                    // written state), but we release the caller's response slot
-                    // so stdin keeps flowing. The pool connection is left in
-                    // whatever state the provider produces; the pool eviction
-                    // task will reap it on the next idle sweep.
-                    return Some(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "error": {
-                            "code": -32000,
-                            "message": format!(
-                                "Tool call '{}' exceeded wall-clock timeout of {:?}",
-                                tool_name,
-                                mcp_tool_timeout()
-                            )
-                        }
-                    }));
-                }
-            };
+            let (result, is_error) =
+                match tokio::time::timeout(mcp_tool_timeout(), exec_future).await {
+                    Ok(pair) => pair,
+                    Err(_) => {
+                        // Timeout: the dispatch task may still be running inside the
+                        // provider (we cannot cancel it mid-IO without risking half-
+                        // written state), but we release the caller's response slot
+                        // so stdin keeps flowing. The pool connection is left in
+                        // whatever state the provider produces; the pool eviction
+                        // task will reap it on the next idle sweep.
+                        return Some(json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32000,
+                                "message": format!(
+                                    "Tool call '{}' exceeded wall-clock timeout of {:?}",
+                                    tool_name,
+                                    mcp_tool_timeout()
+                                )
+                            }
+                        }));
+                    }
+                };
 
             let text = serde_json::to_string_pretty(&result).unwrap_or_default();
             let content = json!([{

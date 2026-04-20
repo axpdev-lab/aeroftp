@@ -131,23 +131,68 @@ impl ConnectionPool {
         Ok(arc)
     }
 
+    /// Invalidate a pooled connection after a transport-level error without
+    /// blocking on its graceful disconnect.
+    ///
+    /// This is the recovery path for MCP tool calls that hit "Data connection
+    /// is already open", "broken pipe", `NotConnected`, etc. The pool entry
+    /// is removed synchronously so the next `get_provider()` call opens a
+    /// fresh connection, and the old provider's `disconnect()` is best-effort
+    /// in a detached task — we do not want a hung FTP socket to stall the
+    /// retry.
+    ///
+    /// Returns the profile name that was evicted, or `None` if nothing matched.
+    pub async fn invalidate(&self, server_query: &str) -> Option<String> {
+        let entry = {
+            let mut conns = self.connections.lock().await;
+            let matched_id = self.match_entry_id(&conns, server_query);
+            match matched_id {
+                Some(id) => conns.remove(&id),
+                None => None,
+            }
+        }?;
+        let name = entry.profile_name.clone();
+        // Fire-and-forget disconnect. A previously broken connection can take
+        // tens of seconds to error out on .disconnect(); awaiting it would
+        // defeat the purpose of fast recovery.
+        tokio::spawn(async move {
+            disconnect_outside_lock(entry).await;
+        });
+        Some(name)
+    }
+
+    /// Resolve `server_query` to the matching pool entry id, matching by id
+    /// (case-sensitive) then profile name (case-insensitive equal, then
+    /// case-insensitive substring). Shared between `close_one` and
+    /// `invalidate` so lookups stay consistent.
+    fn match_entry_id(
+        &self,
+        conns: &HashMap<String, PooledConnection>,
+        server_query: &str,
+    ) -> Option<String> {
+        let query_lower = server_query.to_lowercase();
+        conns
+            .iter()
+            .find(|(id, entry)| {
+                id.as_str() == server_query || entry.profile_name.to_lowercase() == query_lower
+            })
+            .map(|(id, _)| id.clone())
+            .or_else(|| {
+                conns
+                    .iter()
+                    .find(|(_, entry)| entry.profile_name.to_lowercase().contains(&query_lower))
+                    .map(|(id, _)| id.clone())
+            })
+    }
+
     /// Explicitly close a single pooled connection. Returns the profile name
     /// that was evicted, or `None` if no connection matched.
     ///
     /// Accepts either the profile id or the profile name (case-insensitive).
     pub async fn close_one(&self, server_query: &str) -> Option<String> {
-        let query_lower = server_query.to_lowercase();
         let entry = {
             let mut conns = self.connections.lock().await;
-            let matched_id: Option<String> = conns
-                .iter()
-                .find(|(id, entry)| {
-                    id.as_str() == server_query
-                        || entry.profile_name.to_lowercase() == query_lower
-                        || entry.profile_name.to_lowercase().contains(&query_lower)
-                })
-                .map(|(id, _)| id.clone());
-            let id = matched_id?;
+            let id = self.match_entry_id(&conns, server_query)?;
             conns.remove(&id)?
         };
         let name = entry.profile_name.clone();

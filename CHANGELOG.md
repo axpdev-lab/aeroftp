@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.8] - 2026-04-20
+
+### MCP Hardening + Appendix C Closure
+
+Hardening pass on the MCP server surface (connection pool recovery, batch operations, richer scan output) plus the final closure of the CLI Appendix C roadmap.
+
+### Fixed (MCP)
+
+- **Connection pool auto-reset on transport failure**: after a tool call fails with a transport-level error (stale data channel on FTP, broken pipe, `NotConnected`, `Timeout`, network errors, message patterns like *"Data connection is already open"*, *"connection reset"*, *"eof from server"*), the pool entry is now invalidated synchronously with a fire-and-forget disconnect and the operation transparently retried once on a freshly opened connection. Upload/download sites invalidate without retry — the caller decides whether to re-transfer, but the next call on the same profile starts clean. Business-level errors (`NotFound`, `AlreadyExists`, `PermissionDenied`, `AuthenticationFailed`) are intentionally kept out of the classifier so a harmless 404 never churns connections.
+- **`aeroftp_sync_tree` dry-run returns an actionable plan**: the previous response only carried aggregate `summary.uploaded=0 / downloaded=0` counters. The dispatch now captures every `on_file_start` → `on_file_done` pair from `sync_tree_core` and returns a `plan[]` array (`{op, path, reason, bytes}`) plus a `planned.{uploaded, downloaded, deleted, skipped}` block. Real (non-dry-run) runs are unchanged.
+- **`aeroftp_check_tree` compares server-side checksums when available**: with `checksum=true`, the tool now requests the remote hash via `provider.checksum()` whenever `supports_checksum()` returns true, picks a preferred algorithm (SHA-256 → SHA-1 → MD5), and compares algo-for-algo against the locally computed SHA-256. Cross-algorithm mismatches safely fall back to size-only comparison. A new `compare_method: "checksum" | "size"` field on each `DiffEntry` and a top-level `checksum_remote_supported` flag make the decision transparent to the caller. A one-byte swap in a same-size file now correctly lands in `differ` instead of silently showing as `match`.
+
+### Added (MCP)
+
+- **`aeroftp_delete_many`**: batch delete of up to 100 remote paths per call with a configurable inter-delete backoff (`delay_ms` default 200 ms, cap 2 000 ms). `recursive` and `continue_on_error` round out the surface; the response carries a per-item result (`path`, `deleted`, `is_dir`, `error?`) plus an aggregate summary (`planned`, `processed`, `deleted`, `errors`, `aborted_after`). Uses the same pool auto-reset wrapper as single-shot tools.
+- **`aeroftp_list_servers` filters**: optional `name_contains`, `protocol`, `limit` (default 200, cap 1 000), `offset`. Response adds `total_matched`, `offset`, `limit`, `truncated` for pagination. Lets callers work against large vaults without returning the full profile set on every invocation.
+- **`aeroftp_read_file` configurable preview window**: new `preview_kb` argument (default 5, hard cap 1 024). The preview-too-small error message now names the current window and the cap so the caller can raise it before falling back to `aeroftp_download_file`.
+- **`aeroftp_upload_file` auto-mkdir**: new `create_parents` boolean. When true, the tool recursively `mkdir`s every missing parent of the destination (idempotent — already-exists errors are swallowed; other mkdir errors fail fast with the exact missing segment).
+
+### Closed (Appendix C — CLI rclone parity)
+
+- **FTP stale data-connection recovery** on the CLI side: `parse_unix_listing` / `parse_dos_listing` path fix plus an auto-reconnect + retry wrapper. Same root cause as the MCP pool fix above, different recovery shape.
+- **Reconcile plan loader** round-trip coverage (2 new unit tests).
+- `#[allow(clippy::type_complexity)]` localized on the reconcile plan signature (the domain type is load-bearing, a type alias only obscured it).
+
+### Build & Dependencies
+
+- Six Dependabot PRs rolled in from main (`axum`, `tokio`, `uuid`, `postcss`, `autoprefixer`, `typescript` — patch/minor bumps).
+- `rustfmt` cleanup on `mcp/server.rs` and `cross_profile_commands.rs` (indentation only, no logic change).
+
+### Tests
+
+- `mcp::tools::tests`: 14 unit tests (was 6) — transport-error classifier (variant, message-pattern, business-negative), `parent_remote_dir`, `delete_many` registry, `list_servers` filter schema.
+- `sync_core::compare::tests`: 6 unit tests (was 3) — checksum mismatch with equal size, checksum match, size-only fallback.
+- CLI binary suite: 103/103 green.
+- `cargo clippy --all-targets -- -D warnings` clean.
+
 ## [3.5.7] - 2026-04-19
 
 ### Hotfix: v3.5.6 failed to launch

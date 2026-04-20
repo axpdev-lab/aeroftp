@@ -32,6 +32,11 @@ pub struct RemoteEntry {
     pub rel_path: String,
     pub size: u64,
     pub mtime: Option<String>,
+    /// Optional server-side hash. Populated when `ScanOptions::compute_remote_checksum`
+    /// is set AND the provider implements `checksum()`. Algorithm is chosen
+    /// by `pick_preferred_checksum` (SHA-256 preferred, then SHA-1, then MD5).
+    pub checksum_alg: Option<String>,
+    pub checksum_hex: Option<String>,
 }
 
 /// Shared scan tuning.
@@ -45,6 +50,11 @@ pub struct ScanOptions {
     pub files_from: Option<HashSet<String>>,
     /// Compute a streaming SHA-256 for each local file.
     pub compute_checksum: bool,
+    /// Request server-side checksums for each remote file.
+    ///
+    /// Gated at call-time by `provider.supports_checksum()` — on unsupported
+    /// providers the flag is silently ignored (comparison falls back to size).
+    pub compute_remote_checksum: bool,
     /// Override the 500 000 entry cap (None = use the default).
     pub max_entries: Option<usize>,
     /// Paths that should always be skipped regardless of excludes.
@@ -143,6 +153,11 @@ pub async fn scan_remote_tree(
     let matchers = compile_matchers(&opts.exclude_patterns);
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
+    // Server-side checksum is only worth requesting when both the caller
+    // asked for it AND the provider advertises the capability. This lets
+    // agents pass `compute_remote_checksum=true` unconditionally without
+    // paying a per-file `NotSupported` round trip on protocols like FTP.
+    let want_remote_checksum = opts.compute_remote_checksum && provider.supports_checksum();
 
     let mut results = Vec::new();
     let mut queue: Vec<(String, String, usize)> = vec![(remote_root.to_string(), String::new(), 0)];
@@ -155,6 +170,13 @@ pub async fn scan_remote_tree(
         }
         match provider.list(&abs_dir).await {
             Ok(entries) => {
+                // Collect files for this directory first so the per-file
+                // checksum loop below can yield without re-entering `list`
+                // on the same provider (some backends reuse a single
+                // connection for list + stat + checksum and do not tolerate
+                // interleaved calls).
+                let mut pending_files: Vec<(String, String, crate::providers::RemoteEntry)> =
+                    Vec::new();
                 for entry in entries {
                     let entry_rel = if rel_prefix.is_empty() {
                         entry.name.clone()
@@ -176,10 +198,26 @@ pub async fn scan_remote_tree(
                             continue;
                         }
                     }
+                    pending_files.push((entry_rel, entry.path.clone(), entry));
+                }
+                for (entry_rel, abs_path, provider_entry) in pending_files {
+                    if results.len() >= cap {
+                        break;
+                    }
+                    let (checksum_alg, checksum_hex) = if want_remote_checksum {
+                        match provider.checksum(&abs_path).await {
+                            Ok(map) => pick_preferred_checksum(&map),
+                            Err(_) => (None, None),
+                        }
+                    } else {
+                        (None, None)
+                    };
                     results.push(RemoteEntry {
                         rel_path: entry_rel,
-                        size: entry.size,
-                        mtime: entry.modified,
+                        size: provider_entry.size,
+                        mtime: provider_entry.modified,
+                        checksum_alg,
+                        checksum_hex,
                     });
                 }
             }
@@ -192,6 +230,43 @@ pub async fn scan_remote_tree(
         }
     }
     results
+}
+
+/// Pick a preferred hash from a provider checksum map. Returns `(algo, hex)`.
+///
+/// Order: SHA-256 → SHA-1 → MD5 → first available entry. Keys are matched
+/// case-insensitively against known aliases since providers spell them
+/// inconsistently (`"sha-256"`, `"SHA256"`, `"sha256Hex"`, etc.).
+fn pick_preferred_checksum(
+    checksums: &std::collections::HashMap<String, String>,
+) -> (Option<String>, Option<String>) {
+    if checksums.is_empty() {
+        return (None, None);
+    }
+    let preferred = [
+        ("sha-256", "sha256"),
+        ("sha256", "sha256"),
+        ("sha_256", "sha256"),
+        ("sha-1", "sha1"),
+        ("sha1", "sha1"),
+        ("md5", "md5"),
+    ];
+    let lower_map: std::collections::HashMap<String, &String> = checksums
+        .iter()
+        .map(|(k, v)| (k.to_ascii_lowercase(), v))
+        .collect();
+    for (key, canonical) in preferred {
+        if let Some(val) = lower_map.get(key) {
+            return (Some(canonical.to_string()), Some((*val).clone()));
+        }
+    }
+    // Fallback: any key. Stable ordering is not required — the consumer
+    // compares by both algo label and value.
+    checksums
+        .iter()
+        .next()
+        .map(|(k, v)| (Some(k.clone()), Some(v.clone())))
+        .unwrap_or((None, None))
 }
 
 fn compute_sha256(path: &Path) -> std::io::Result<String> {
