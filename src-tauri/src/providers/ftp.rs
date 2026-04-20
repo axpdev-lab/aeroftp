@@ -341,6 +341,116 @@ impl FtpProvider {
             ts.to_string()
         }
     }
+
+    fn is_stale_data_connection_error(err: &ProviderError) -> bool {
+        let message = match err {
+            ProviderError::ServerError(msg)
+            | ProviderError::TransferFailed(msg)
+            | ProviderError::ConnectionFailed(msg)
+            | ProviderError::Other(msg) => msg,
+            _ => return false,
+        };
+        let lower = message.to_lowercase();
+        lower.contains("data connection is already open")
+            || (lower.contains("425") && lower.contains("data connection"))
+    }
+
+    async fn reconnect_after_data_error(
+        &mut self,
+        operation: &str,
+        path: &str,
+        err: &ProviderError,
+    ) -> Result<(), ProviderError> {
+        tracing::warn!(
+            "[FTP] {} hit stale data connection on {}: {}. Reconnecting control session.",
+            operation,
+            path,
+            err
+        );
+        let _ = self.disconnect().await;
+        self.connect().await
+    }
+
+    async fn list_inner(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let list_path = if path.is_empty() || path == "." {
+            None
+        } else {
+            Some(path.to_string())
+        };
+
+        let base_path = list_path
+            .as_deref()
+            .unwrap_or(&self.current_path)
+            .to_string();
+
+        if self.mlsd_supported {
+            let stream = self.stream_mut()?;
+            match stream.mlsd(list_path.as_deref()).await {
+                Ok(lines) => {
+                    let entries: Vec<RemoteEntry> = lines
+                        .iter()
+                        .filter_map(|line| self.parse_mlsd_entry(line, &base_path))
+                        .collect();
+                    return Ok(entries);
+                }
+                Err(_) => {
+                    // Fall through to LIST
+                }
+            }
+        }
+
+        let stream = self.stream_mut()?;
+        let lines = stream
+            .list(list_path.as_deref())
+            .await
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+
+        Ok(lines
+            .iter()
+            .filter_map(|line| self.parse_listing(line, &base_path))
+            .collect())
+    }
+
+    async fn stat_inner(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        if self.mlsd_supported {
+            let stream = self.stream_mut()?;
+            if let Ok(mlst_line) = stream.mlst(Some(path)).await {
+                let parent = std::path::Path::new(path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "/".to_string());
+                if let Some(entry) = self.parse_mlsd_entry(mlst_line.trim(), &parent) {
+                    return Ok(entry);
+                }
+            }
+        }
+
+        let parent = std::path::Path::new(path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/".to_string());
+
+        let name = std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .ok_or_else(|| ProviderError::InvalidPath(path.to_string()))?;
+
+        let entries = self.list_inner(&parent).await?;
+
+        entries
+            .into_iter()
+            .find(|e| e.name == name)
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+    }
+
+    async fn size_inner(&mut self, path: &str) -> Result<u64, ProviderError> {
+        let stream = self.stream_mut()?;
+        let size = stream
+            .size(path)
+            .await
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        Ok(size as u64)
+    }
 }
 
 #[async_trait]
@@ -503,47 +613,14 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let list_path = if path.is_empty() || path == "." {
-            None
-        } else {
-            Some(path.to_string())
-        };
-
-        let base_path = list_path
-            .as_deref()
-            .unwrap_or(&self.current_path)
-            .to_string();
-
-        // Prefer MLSD when supported
-        if self.mlsd_supported {
-            let stream = self.stream_mut()?;
-            match stream.mlsd(list_path.as_deref()).await {
-                Ok(lines) => {
-                    let entries: Vec<RemoteEntry> = lines
-                        .iter()
-                        .filter_map(|line| self.parse_mlsd_entry(line, &base_path))
-                        .collect();
-                    return Ok(entries);
-                }
-                Err(_) => {
-                    // Fall through to LIST
-                }
+        match self.list_inner(path).await {
+            Ok(entries) => Ok(entries),
+            Err(err) if Self::is_stale_data_connection_error(&err) => {
+                self.reconnect_after_data_error("LIST", path, &err).await?;
+                self.list_inner(path).await
             }
+            Err(err) => Err(err),
         }
-
-        // Fallback to LIST
-        let stream = self.stream_mut()?;
-        let lines = stream
-            .list(list_path.as_deref())
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-
-        let entries: Vec<RemoteEntry> = lines
-            .iter()
-            .filter_map(|line| self.parse_listing(line, &base_path))
-            .collect();
-
-        Ok(entries)
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -865,46 +942,25 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-        // Use MLST when available for direct single-file info
-        if self.mlsd_supported {
-            let stream = self.stream_mut()?;
-            if let Ok(mlst_line) = stream.mlst(Some(path)).await {
-                let parent = std::path::Path::new(path)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "/".to_string());
-                if let Some(entry) = self.parse_mlsd_entry(mlst_line.trim(), &parent) {
-                    return Ok(entry);
-                }
+        match self.stat_inner(path).await {
+            Ok(entry) => Ok(entry),
+            Err(err) if Self::is_stale_data_connection_error(&err) => {
+                self.reconnect_after_data_error("STAT", path, &err).await?;
+                self.stat_inner(path).await
             }
+            Err(err) => Err(err),
         }
-
-        // Fallback: list parent and find the entry
-        let parent = std::path::Path::new(path)
-            .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| "/".to_string());
-
-        let name = std::path::Path::new(path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .ok_or_else(|| ProviderError::InvalidPath(path.to_string()))?;
-
-        let entries = self.list(&parent).await?;
-
-        entries
-            .into_iter()
-            .find(|e| e.name == name)
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
-        let stream = self.stream_mut()?;
-        let size = stream
-            .size(path)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        Ok(size as u64)
+        match self.size_inner(path).await {
+            Ok(size) => Ok(size),
+            Err(err) if Self::is_stale_data_connection_error(&err) => {
+                self.reconnect_after_data_error("SIZE", path, &err).await?;
+                self.size_inner(path).await
+            }
+            Err(err) => Err(err),
+        }
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
@@ -1344,6 +1400,18 @@ mod tests {
         assert_eq!(entry.name, "projects");
         assert!(entry.is_dir);
         assert_eq!(entry.path, "/projects");
+    }
+
+    #[test]
+    fn test_detects_stale_data_connection_error() {
+        let err = ProviderError::ServerError("425 Data connection is already open".to_string());
+        assert!(FtpProvider::is_stale_data_connection_error(&err));
+    }
+
+    #[test]
+    fn test_ignores_non_stale_ftp_errors() {
+        let err = ProviderError::ServerError("550 Permission denied".to_string());
+        assert!(!FtpProvider::is_stale_data_connection_error(&err));
     }
 
     #[test]

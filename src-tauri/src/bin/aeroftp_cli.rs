@@ -304,6 +304,12 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+enum ReconcileFormat {
+    Detailed,
+    Summary,
+}
+
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum HashAlgorithm {
     Md5,
@@ -572,6 +578,9 @@ enum Commands {
         /// Exclude patterns (can repeat: -e "*.tmp" -e ".git")
         #[arg(long, short)]
         exclude: Vec<String>,
+        /// Output verbosity: detailed (default) or summary
+        #[arg(long, value_enum, default_value_t = ReconcileFormat::Detailed)]
+        reconcile_format: ReconcileFormat,
     },
     /// Show file/directory metadata
     Stat {
@@ -697,9 +706,15 @@ enum Commands {
         /// Copy from this local directory instead of downloading if file matches size+mtime
         #[arg(long)]
         copy_dest: Option<String>,
+        /// Consume a reconcile JSON file instead of re-scanning local and remote trees
+        #[arg(long)]
+        from_reconcile: Option<String>,
         /// Conflict resolution for --direction both: newer, older, larger, smaller, rename, skip (default: newer)
         #[arg(long, default_value = "newer")]
         conflict_mode: String,
+        /// Trust size-only matches and skip transfers even when mtimes differ
+        #[arg(long)]
+        skip_matching: bool,
         /// Discard previous bisync snapshot and rebuild from scratch
         #[arg(long)]
         resync: bool,
@@ -1403,6 +1418,43 @@ struct CliReconcileResult {
     summary: serde_json::Value,
     groups: serde_json::Value,
     suggested_next_command: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoredReconcileEntry {
+    path: String,
+    #[serde(default)]
+    local_size: Option<u64>,
+    #[serde(default)]
+    remote_size: Option<u64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct StoredReconcileGroups {
+    #[serde(default, rename = "match")]
+    matches: Vec<StoredReconcileEntry>,
+    #[serde(default)]
+    differ: Vec<StoredReconcileEntry>,
+    #[serde(default)]
+    missing_remote: Vec<StoredReconcileEntry>,
+    #[serde(default)]
+    missing_local: Vec<StoredReconcileEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StoredReconcileResult {
+    groups: Option<StoredReconcileGroups>,
+}
+
+#[derive(Debug, Default)]
+struct ReconcileSyncPlan {
+    local_entries: Vec<(String, u64, Option<String>)>,
+    remote_entries: Vec<(String, u64, Option<String>)>,
+    to_upload: Vec<String>,
+    to_download: Vec<String>,
+    to_delete_remote: Vec<String>,
+    to_delete_local: Vec<String>,
+    skipped: u32,
 }
 
 #[derive(Serialize)]
@@ -2440,6 +2492,363 @@ fn effective_parallel_workers(cli: &Cli) -> usize {
 static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
 /// Print "Using profile: ..." only once per session (avoids noise from parallel workers).
 static PROFILE_INFO_PRINTED: AtomicBool = AtomicBool::new(false);
+
+fn print_profile_banner_once(name: &str, details: String, quiet: bool) {
+    if quiet {
+        return;
+    }
+    if !PROFILE_INFO_PRINTED.swap(true, Ordering::Relaxed) {
+        eprintln!("Using profile: {} ({})", name, details);
+    }
+}
+
+async fn maybe_hydrate_ftp_stat_size(
+    provider: &mut Box<dyn StorageProvider>,
+    path: &str,
+    entry: &mut RemoteEntry,
+) {
+    if entry.is_dir || entry.size > 0 {
+        return;
+    }
+    if !matches!(
+        provider.provider_type(),
+        ProviderType::Ftp | ProviderType::Ftps
+    ) {
+        return;
+    }
+    if let Ok(size) = provider.size(path).await {
+        entry.size = size;
+    }
+}
+
+fn maybe_create_scan_spinner(format: OutputFormat, cli: &Cli, msg: &str) -> Option<ProgressBar> {
+    if matches!(format, OutputFormat::Text) && !cli.quiet && use_color() {
+        Some(create_spinner(msg))
+    } else {
+        None
+    }
+}
+
+fn maybe_update_scan_spinner(
+    spinner: &Option<ProgressBar>,
+    last_update: &mut Instant,
+    message: String,
+) {
+    if let Some(pb) = spinner {
+        if last_update.elapsed() >= std::time::Duration::from_millis(500) {
+            pb.set_message(message);
+            *last_update = Instant::now();
+        }
+    }
+}
+
+fn hash_local_file_sha256(path: &Path) -> Option<String> {
+    use sha2::Digest;
+
+    let data = std::fs::read(path).ok()?;
+    Some(format!("{:x}", sha2::Sha256::digest(&data)))
+}
+
+fn scan_local_tree_with_progress(
+    root: &str,
+    opts: &ftp_client_gui_lib::sync_core::ScanOptions,
+    spinner: &Option<ProgressBar>,
+) -> Vec<ftp_client_gui_lib::sync_core::scan::LocalEntry> {
+    let matchers: Vec<globset::GlobMatcher> = opts
+        .exclude_patterns
+        .iter()
+        .filter_map(|pat| {
+            globset::Glob::new(pat)
+                .ok()
+                .map(|glob| glob.compile_matcher())
+        })
+        .collect();
+    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
+    let depth = opts.max_depth.unwrap_or(MAX_SCAN_DEPTH);
+    let mut last_update = Instant::now()
+        .checked_sub(std::time::Duration::from_millis(500))
+        .unwrap_or_else(Instant::now);
+    let mut entries = Vec::new();
+
+    for walk_entry in walkdir::WalkDir::new(root)
+        .follow_links(false)
+        .max_depth(depth)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+    {
+        if entries.len() >= cap {
+            break;
+        }
+        if !walk_entry.file_type().is_file() {
+            continue;
+        }
+        let relative = walk_entry
+            .path()
+            .strip_prefix(root)
+            .unwrap_or(walk_entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        if relative.is_empty() {
+            continue;
+        }
+        let fname = walk_entry.file_name().to_string_lossy().into_owned();
+        if opts.skip_filenames.iter().any(|name| name == &fname) {
+            continue;
+        }
+        if matchers
+            .iter()
+            .any(|matcher| matcher.is_match(&relative) || matcher.is_match(&fname))
+        {
+            continue;
+        }
+        if let Some(ref set) = opts.files_from {
+            if !set.contains(relative.as_str()) {
+                continue;
+            }
+        }
+
+        let meta = walk_entry.metadata().ok();
+        let size = meta.as_ref().map(|value| value.len()).unwrap_or(0);
+        let mtime = meta.and_then(|value| {
+            value.modified().ok().map(|timestamp| {
+                let dt: chrono::DateTime<chrono::Utc> = timestamp.into();
+                dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+            })
+        });
+        let sha256 = if opts.compute_checksum {
+            hash_local_file_sha256(walk_entry.path())
+        } else {
+            None
+        };
+
+        entries.push(ftp_client_gui_lib::sync_core::scan::LocalEntry {
+            rel_path: relative,
+            size,
+            mtime,
+            sha256,
+        });
+        maybe_update_scan_spinner(
+            spinner,
+            &mut last_update,
+            format!("Scanning local... {} files so far", entries.len()),
+        );
+    }
+
+    if let Some(pb) = spinner {
+        pb.set_message(format!("Scanning local... {} files", entries.len()));
+    }
+
+    entries
+}
+
+async fn scan_remote_tree_with_progress(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_root: &str,
+    opts: &ftp_client_gui_lib::sync_core::ScanOptions,
+    spinner: &Option<ProgressBar>,
+) -> Vec<ftp_client_gui_lib::sync_core::scan::RemoteEntry> {
+    let matchers: Vec<globset::GlobMatcher> = opts
+        .exclude_patterns
+        .iter()
+        .filter_map(|pat| {
+            globset::Glob::new(pat)
+                .ok()
+                .map(|glob| glob.compile_matcher())
+        })
+        .collect();
+    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
+    let depth = opts.max_depth.unwrap_or(MAX_SCAN_DEPTH);
+    let want_remote_checksum = opts.compute_remote_checksum && provider.supports_checksum();
+    let mut last_update = Instant::now()
+        .checked_sub(std::time::Duration::from_millis(500))
+        .unwrap_or_else(Instant::now);
+    let mut results = Vec::new();
+    let mut queue: Vec<(String, String, usize)> = vec![(remote_root.to_string(), String::new(), 0)];
+
+    while let Some((abs_dir, rel_prefix, current_depth)) = queue.pop() {
+        if current_depth >= depth || results.len() >= cap {
+            continue;
+        }
+        match provider.list(&abs_dir).await {
+            Ok(entries) => {
+                for entry in entries {
+                    let entry_rel = if rel_prefix.is_empty() {
+                        entry.name.clone()
+                    } else {
+                        format!("{}/{}", rel_prefix, entry.name)
+                    };
+                    if entry.is_dir {
+                        queue.push((entry.path.clone(), entry_rel, current_depth + 1));
+                        continue;
+                    }
+                    if opts.skip_filenames.iter().any(|name| name == &entry.name) {
+                        continue;
+                    }
+                    if matchers.iter().any(|matcher| {
+                        matcher.is_match(&entry_rel) || matcher.is_match(&entry.name)
+                    }) {
+                        continue;
+                    }
+                    if let Some(ref set) = opts.files_from {
+                        if !set.contains(entry_rel.as_str()) {
+                            continue;
+                        }
+                    }
+
+                    let (checksum_alg, checksum_hex) = if want_remote_checksum {
+                        match provider.checksum(&entry.path).await {
+                            Ok(map) => {
+                                if let Some(value) =
+                                    map.get("sha256").or_else(|| map.get("SHA-256"))
+                                {
+                                    (Some("sha256".to_string()), Some(value.clone()))
+                                } else {
+                                    (None, None)
+                                }
+                            }
+                            Err(_) => (None, None),
+                        }
+                    } else {
+                        (None, None)
+                    };
+
+                    results.push(ftp_client_gui_lib::sync_core::scan::RemoteEntry {
+                        rel_path: entry_rel,
+                        size: entry.size,
+                        mtime: entry.modified,
+                        checksum_alg,
+                        checksum_hex,
+                    });
+                    maybe_update_scan_spinner(
+                        spinner,
+                        &mut last_update,
+                        format!("Scanning remote... {} files so far", results.len()),
+                    );
+                    if results.len() >= cap {
+                        break;
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!(
+                    "[scan_remote_tree] warning: failed to list {}: {}",
+                    abs_dir, err
+                );
+            }
+        }
+    }
+
+    if let Some(pb) = spinner {
+        pb.set_message(format!("Scanning remote... {} files", results.len()));
+    }
+
+    results
+}
+
+fn load_sync_plan_from_reconcile(
+    path: &str,
+    direction: &str,
+    delete: bool,
+) -> Result<ReconcileSyncPlan, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|err| format!("Cannot read reconcile file '{}': {}", path, err))?;
+    let stored: StoredReconcileResult = serde_json::from_str(&raw)
+        .map_err(|err| format!("Invalid reconcile JSON '{}': {}", path, err))?;
+    let groups = stored.groups.ok_or_else(|| {
+        format!(
+            "Reconcile file '{}' does not contain detailed groups. Re-run reconcile without --format summary.",
+            path
+        )
+    })?;
+
+    if direction == "both" && (delete || !groups.differ.is_empty()) {
+        return Err(
+            "--from-reconcile supports --direction both only when there are no differ entries and --delete is off"
+                .to_string(),
+        );
+    }
+
+    let mut plan = ReconcileSyncPlan::default();
+
+    for entry in &groups.matches {
+        let local_size = entry.local_size.unwrap_or(0);
+        let remote_size = entry.remote_size.unwrap_or(local_size);
+        plan.local_entries
+            .push((entry.path.clone(), local_size, None));
+        plan.remote_entries
+            .push((entry.path.clone(), remote_size, None));
+    }
+    for entry in &groups.differ {
+        let local_size = entry.local_size.unwrap_or(0);
+        let remote_size = entry.remote_size.unwrap_or(0);
+        plan.local_entries
+            .push((entry.path.clone(), local_size, None));
+        plan.remote_entries
+            .push((entry.path.clone(), remote_size, None));
+    }
+    for entry in &groups.missing_remote {
+        plan.local_entries
+            .push((entry.path.clone(), entry.local_size.unwrap_or(0), None));
+    }
+    for entry in &groups.missing_local {
+        plan.remote_entries
+            .push((entry.path.clone(), entry.remote_size.unwrap_or(0), None));
+    }
+
+    match direction {
+        "upload" => {
+            plan.to_upload = groups
+                .differ
+                .iter()
+                .chain(groups.missing_remote.iter())
+                .map(|entry| entry.path.clone())
+                .collect();
+            if delete {
+                plan.to_delete_remote = groups
+                    .missing_local
+                    .iter()
+                    .map(|entry| entry.path.clone())
+                    .collect();
+            }
+        }
+        "download" => {
+            plan.to_download = groups
+                .differ
+                .iter()
+                .chain(groups.missing_local.iter())
+                .map(|entry| entry.path.clone())
+                .collect();
+            if delete {
+                plan.to_delete_local = groups
+                    .missing_remote
+                    .iter()
+                    .map(|entry| entry.path.clone())
+                    .collect();
+            }
+        }
+        "both" => {
+            plan.to_upload = groups
+                .missing_remote
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect();
+            plan.to_download = groups
+                .missing_local
+                .iter()
+                .map(|entry| entry.path.clone())
+                .collect();
+        }
+        other => {
+            return Err(format!(
+                "--from-reconcile does not support direction '{}'",
+                other
+            ))
+        }
+    }
+
+    plan.skipped = groups.matches.len() as u32;
+    Ok(plan)
+}
 
 /// Parse --max-transfer value, returning the byte limit (or None if unset).
 fn resolve_max_transfer(cli: &Cli) -> Option<u64> {
@@ -4510,14 +4919,11 @@ fn profile_to_provider_config(
         extra.insert("mega_mode".to_string(), "native".to_string());
     }
 
-    if !cli.quiet && !PROFILE_INFO_PRINTED.swap(true, Ordering::Relaxed) {
-        eprintln!(
-            "Using profile: {} ({} → {})",
-            name,
-            protocol.to_uppercase(),
-            host
-        );
-    }
+    print_profile_banner_once(
+        name,
+        format!("{} -> {}", protocol.to_uppercase(), host),
+        cli.quiet,
+    );
 
     let config = ProviderConfig {
         name: name.to_string(),
@@ -4900,9 +5306,7 @@ async fn try_create_oauth_provider(
                 eprintln!("Error: 4shared connection failed: {}", e);
                 return Some(Err(6));
             }
-            if !quiet {
-                eprintln!("Using profile: {} (4SHARED via OAuth1)", profile_name);
-            }
+            print_profile_banner_once(profile_name, "4SHARED via OAuth1".to_string(), quiet);
             return Some(Ok((
                 Box::new(provider) as Box<dyn StorageProvider>,
                 initial_path.to_string(),
@@ -4942,13 +5346,11 @@ async fn try_create_oauth_provider(
         }
     };
 
-    if !quiet {
-        eprintln!(
-            "Using profile: {} ({} via OAuth)",
-            profile_name,
-            protocol.to_uppercase()
-        );
-    }
+    print_profile_banner_once(
+        profile_name,
+        format!("{} via OAuth", protocol.to_uppercase()),
+        quiet,
+    );
 
     // Connect - if token expired, offer re-authorization
     if let Err(e) = provider.connect().await {
@@ -10422,7 +10824,8 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
 
     let path = &resolve_cli_remote_path(&initial_path, path);
     match provider.stat(path).await {
-        Ok(entry) => {
+        Ok(mut entry) => {
+            maybe_hydrate_ftp_stat_size(&mut provider, path, &mut entry).await;
             match format {
                 OutputFormat::Text => {
                     println!("  Name:        {}", entry.name);
@@ -11744,7 +12147,9 @@ async fn cmd_sync(
     suffix_keep_extension: bool,
     compare_dest: Option<&str>,
     copy_dest: Option<&str>,
+    from_reconcile: Option<&str>,
     conflict_mode: &str,
+    skip_matching: bool,
     resync: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -11761,12 +12166,16 @@ async fn cmd_sync(
     let start = Instant::now();
 
     if !quiet {
-        if precomputed_local.is_some() {
-            eprintln!("Scanning local: {} (incremental)", local);
+        if let Some(reconcile_path) = from_reconcile {
+            eprintln!("Using reconcile plan: {}", reconcile_path);
         } else {
-            eprintln!("Scanning local: {}", local);
+            if precomputed_local.is_some() {
+                eprintln!("Scanning local: {} (incremental)", local);
+            } else {
+                eprintln!("Scanning local: {}", local);
+            }
+            eprintln!("Scanning remote: {}", remote);
         }
-        eprintln!("Scanning remote: {}", remote);
     }
 
     // Pre-compile exclude matchers (avoids O(n*m) recompilation)
@@ -11778,222 +12187,228 @@ async fn cmd_sync(
     let files_from_set = load_files_from(cli);
     let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
 
-    // Scan local files (bounded: max depth, 500K entries)
-    // If precomputed_local is provided (incremental watch mode), skip walkdir entirely.
-    let local_entries: Vec<(String, u64, Option<String>)> = if let Some(pre) = precomputed_local {
-        pre
-    } else {
-        let walker = walkdir::WalkDir::new(local)
-            .follow_links(false)
-            .max_depth(scan_depth);
-        let mut entries = Vec::new();
-        for entry in walker {
-            if entries.len() >= 500_000 {
-                eprintln!("Warning: local scan capped at 500,000 entries");
-                break;
+    let mut reconcile_plan: Option<ReconcileSyncPlan> = None;
+    let (local_entries, remote_entries): (
+        Vec<(String, u64, Option<String>)>,
+        Vec<(String, u64, Option<String>)>,
+    ) = if let Some(reconcile_path) = from_reconcile {
+        match load_sync_plan_from_reconcile(reconcile_path, direction, delete) {
+            Ok(plan) => {
+                let local_entries = plan.local_entries.clone();
+                let remote_entries = plan.remote_entries.clone();
+                reconcile_plan = Some(plan);
+                (local_entries, remote_entries)
             }
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            // Skip directories and non-regular files (symlinks to dirs, etc.)
-            // to prevent "Is a directory" errors during upload.
-            if !entry.file_type().is_file() {
-                continue;
+            Err(err) => {
+                print_error(format, &err, 5);
+                let _ = provider.disconnect().await;
+                return 5.into();
             }
-            let relative = entry
-                .path()
-                .strip_prefix(local)
-                .unwrap_or(entry.path())
-                .to_string_lossy()
-                .replace('\\', "/");
-            if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                continue;
-            }
-
-            // Check excludes (pre-compiled matchers)
-            let fname = entry.file_name().to_string_lossy();
-            let fname_ref: &str = fname.as_ref();
-            if exclude_matchers
-                .iter()
-                .any(|m| m.is_match(&relative) || m.is_match(fname_ref))
-            {
-                continue;
-            }
-            // --files-from filter
-            if let Some(ref set) = files_from_set {
-                if !set.contains(relative.as_str()) {
-                    continue;
-                }
-            }
-
-            let meta = entry.metadata().ok();
-            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-            let mtime = meta.and_then(|m| {
-                m.modified().ok().map(|t| {
-                    let dt: chrono::DateTime<chrono::Utc> = t.into();
-                    dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-                })
-            });
-            entries.push((relative, size, mtime));
-        }
-        entries
-    };
-
-    // SAFETY: --no-check-dest + --delete is a dangerous combination that would delete all
-    // files on the destination since the remote listing is empty. Reject explicitly.
-    if cli.no_check_dest && delete {
-        print_error(format, "--no-check-dest cannot be used with --delete (would mark all destination files as orphans for deletion)", 5);
-        return 5.into();
-    }
-    // SAFETY: --immutable + --no-check-dest cannot work together: immutable needs the remote
-    // listing to detect existing files, but --no-check-dest skips it entirely.
-    if cli.immutable && cli.no_check_dest {
-        print_error(format, "--immutable cannot be used with --no-check-dest (immutable needs remote listing to detect existing files)", 5);
-        return 5.into();
-    }
-
-    // Scan remote files (recursive, depth and entry limited)
-    // --no-check-dest: skip remote listing entirely (assume dest is empty)
-    let mut remote_entries: Vec<(String, u64, Option<String>)> = Vec::new();
-    if cli.no_check_dest {
-        if !quiet {
-            eprintln!("Note: --no-check-dest skipping remote scan (assuming empty destination)");
         }
     } else {
-        // Try --fast-list first (S3 only), then fall back to BFS
-        let mut used_fast_list = false;
-        if cli.fast_list {
-            if let Some(s3) = provider
-                .as_any_mut()
-                .downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>()
-            {
-                if !quiet {
-                    eprintln!("Using --fast-list (S3 recursive listing)...");
-                }
-                match s3.list_recursive(remote).await {
-                    Ok(entries) => {
-                        let max_depth = cli.max_depth.map(|d| d as usize);
-                        for e in entries {
-                            if e.is_dir {
-                                continue;
-                            }
-                            // Cap entries like BFS path
-                            if remote_entries.len() >= MAX_SCAN_ENTRIES {
-                                if !quiet {
-                                    eprintln!(
-                                        "Warning: --fast-list capped at {} entries",
-                                        MAX_SCAN_ENTRIES
-                                    );
-                                }
-                                break;
-                            }
-                            let relative = e
-                                .path
-                                .strip_prefix(remote)
-                                .unwrap_or(&e.path)
-                                .trim_start_matches('/')
-                                .to_string();
-                            if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
-                                continue;
-                            }
-                            // Respect --max-depth by counting path separators
-                            if let Some(max_d) = max_depth {
-                                let depth = relative.matches('/').count();
-                                if depth >= max_d {
-                                    continue;
-                                }
-                            }
-                            if exclude_matchers
-                                .iter()
-                                .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                            {
-                                continue;
-                            }
-                            if let Some(ref set) = files_from_set {
-                                if !set.contains(relative.as_str()) {
-                                    continue;
-                                }
-                            }
-                            remote_entries.push((relative, e.size, e.modified));
-                        }
-                        used_fast_list = true;
-                    }
-                    Err(e) => {
-                        if !quiet {
-                            eprintln!(
-                                "Warning: --fast-list failed, falling back to BFS scan: {}",
-                                e
-                            );
-                        }
-                        // used_fast_list stays false → BFS will execute below
-                    }
-                }
-            } else if !quiet {
-                eprintln!("Note: --fast-list only supported for S3; using standard scan");
-            }
-        }
-
-        // BFS fallback (also the default when --fast-list is not used).
-        // C1/C2 canonicalization: track relative-from-root via queue
-        // state so provider-returned absolute paths (SFTP/S3) do not
-        // produce unstrippable keys. `entry.name` is the basename and
-        // is always relative; the queue carries the accumulated
-        // rel_prefix from the root down.
-        if !used_fast_list {
-            let remote_scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
-            let mut queue: Vec<(String, String, usize)> =
-                vec![(remote.to_string(), String::new(), 0)];
-            while let Some((abs_dir, rel_prefix, depth)) = queue.pop() {
-                if cancelled.load(Ordering::Relaxed) {
+        // Scan local files (bounded: max depth, 500K entries)
+        // If precomputed_local is provided (incremental watch mode), skip walkdir entirely.
+        let local_entries: Vec<(String, u64, Option<String>)> = if let Some(pre) = precomputed_local
+        {
+            pre
+        } else {
+            let walker = walkdir::WalkDir::new(local)
+                .follow_links(false)
+                .max_depth(scan_depth);
+            let mut entries = Vec::new();
+            for entry in walker {
+                if entries.len() >= 500_000 {
+                    eprintln!("Warning: local scan capped at 500,000 entries");
                     break;
                 }
-                if depth >= remote_scan_depth {
-                    if !quiet {
-                        eprintln!("Warning: max scan depth reached at {}", abs_dir);
-                    }
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                if !entry.file_type().is_file() {
                     continue;
                 }
-                if remote_entries.len() >= MAX_SCAN_ENTRIES {
-                    if !quiet {
-                        eprintln!("Warning: max entries reached during remote scan");
-                    }
-                    break;
+                let relative = entry
+                    .path()
+                    .strip_prefix(local)
+                    .unwrap_or(entry.path())
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                    continue;
                 }
-                match provider.list(&abs_dir).await {
-                    Ok(entries) => {
-                        for e in entries {
-                            let entry_rel = if rel_prefix.is_empty() {
-                                e.name.clone()
-                            } else {
-                                format!("{}/{}", rel_prefix, e.name)
-                            };
-                            if e.is_dir {
-                                queue.push((e.path.clone(), entry_rel, depth + 1));
-                            } else {
-                                let relative = entry_rel;
-                                if !relative.is_empty() && relative != BISYNC_SNAPSHOT_FILE {
-                                    // Apply exclude patterns to remote entries too
-                                    if exclude_matchers
-                                        .iter()
-                                        .any(|m| m.is_match(&relative) || m.is_match(&e.name))
-                                    {
+
+                let fname = entry.file_name().to_string_lossy();
+                let fname_ref: &str = fname.as_ref();
+                if exclude_matchers
+                    .iter()
+                    .any(|m| m.is_match(&relative) || m.is_match(fname_ref))
+                {
+                    continue;
+                }
+                if let Some(ref set) = files_from_set {
+                    if !set.contains(relative.as_str()) {
+                        continue;
+                    }
+                }
+
+                let meta = entry.metadata().ok();
+                let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                let mtime = meta.and_then(|m| {
+                    m.modified().ok().map(|t| {
+                        let dt: chrono::DateTime<chrono::Utc> = t.into();
+                        dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+                    })
+                });
+                entries.push((relative, size, mtime));
+            }
+            entries
+        };
+
+        if cli.no_check_dest && delete {
+            print_error(format, "--no-check-dest cannot be used with --delete (would mark all destination files as orphans for deletion)", 5);
+            let _ = provider.disconnect().await;
+            return 5.into();
+        }
+        if cli.immutable && cli.no_check_dest {
+            print_error(format, "--immutable cannot be used with --no-check-dest (immutable needs remote listing to detect existing files)", 5);
+            let _ = provider.disconnect().await;
+            return 5.into();
+        }
+
+        let mut remote_entries: Vec<(String, u64, Option<String>)> = Vec::new();
+        if cli.no_check_dest {
+            if !quiet {
+                eprintln!(
+                    "Note: --no-check-dest skipping remote scan (assuming empty destination)"
+                );
+            }
+        } else {
+            let mut used_fast_list = false;
+            if cli.fast_list {
+                if let Some(s3) = provider
+                    .as_any_mut()
+                    .downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>()
+                {
+                    if !quiet {
+                        eprintln!("Using --fast-list (S3 recursive listing)...");
+                    }
+                    match s3.list_recursive(remote).await {
+                        Ok(entries) => {
+                            let max_depth = cli.max_depth.map(|d| d as usize);
+                            for e in entries {
+                                if e.is_dir {
+                                    continue;
+                                }
+                                if remote_entries.len() >= MAX_SCAN_ENTRIES {
+                                    if !quiet {
+                                        eprintln!(
+                                            "Warning: --fast-list capped at {} entries",
+                                            MAX_SCAN_ENTRIES
+                                        );
+                                    }
+                                    break;
+                                }
+                                let relative = e
+                                    .path
+                                    .strip_prefix(remote)
+                                    .unwrap_or(&e.path)
+                                    .trim_start_matches('/')
+                                    .to_string();
+                                if relative.is_empty() || relative == BISYNC_SNAPSHOT_FILE {
+                                    continue;
+                                }
+                                if let Some(max_d) = max_depth {
+                                    let depth = relative.matches('/').count();
+                                    if depth >= max_d {
                                         continue;
                                     }
-                                    remote_entries.push((relative, e.size, e.modified));
                                 }
+                                if exclude_matchers
+                                    .iter()
+                                    .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                                {
+                                    continue;
+                                }
+                                if let Some(ref set) = files_from_set {
+                                    if !set.contains(relative.as_str()) {
+                                        continue;
+                                    }
+                                }
+                                remote_entries.push((relative, e.size, e.modified));
+                            }
+                            used_fast_list = true;
+                        }
+                        Err(e) => {
+                            if !quiet {
+                                eprintln!(
+                                    "Warning: --fast-list failed, falling back to BFS scan: {}",
+                                    e
+                                );
                             }
                         }
                     }
-                    Err(e) => {
+                } else if !quiet {
+                    eprintln!("Note: --fast-list only supported for S3; using standard scan");
+                }
+            }
+
+            if !used_fast_list {
+                let remote_scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+                let mut queue: Vec<(String, String, usize)> =
+                    vec![(remote.to_string(), String::new(), 0)];
+                while let Some((abs_dir, rel_prefix, depth)) = queue.pop() {
+                    if cancelled.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    if depth >= remote_scan_depth {
                         if !quiet {
-                            eprintln!("Warning: cannot scan {}: {}", abs_dir, e);
+                            eprintln!("Warning: max scan depth reached at {}", abs_dir);
+                        }
+                        continue;
+                    }
+                    if remote_entries.len() >= MAX_SCAN_ENTRIES {
+                        if !quiet {
+                            eprintln!("Warning: max entries reached during remote scan");
+                        }
+                        break;
+                    }
+                    match provider.list(&abs_dir).await {
+                        Ok(entries) => {
+                            for e in entries {
+                                let entry_rel = if rel_prefix.is_empty() {
+                                    e.name.clone()
+                                } else {
+                                    format!("{}/{}", rel_prefix, e.name)
+                                };
+                                if e.is_dir {
+                                    queue.push((e.path.clone(), entry_rel, depth + 1));
+                                } else {
+                                    let relative = entry_rel;
+                                    if !relative.is_empty() && relative != BISYNC_SNAPSHOT_FILE {
+                                        if exclude_matchers
+                                            .iter()
+                                            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                                        {
+                                            continue;
+                                        }
+                                        remote_entries.push((relative, e.size, e.modified));
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if !quiet {
+                                eprintln!("Warning: cannot scan {}: {}", abs_dir, e);
+                            }
                         }
                     }
                 }
             }
-        } // end if !used_fast_list
-    } // end if !no_check_dest
+        }
+
+        (local_entries, remote_entries)
+    };
 
     // Build comparison maps
     let local_map: HashMap<&str, (u64, Option<&str>)> = local_entries
@@ -12018,6 +12433,23 @@ async fn cmd_sync(
     let default_time_val = resolve_default_time(cli);
     let default_time_ref = default_time_val.as_deref();
 
+    let (
+        owned_to_upload,
+        owned_to_download,
+        owned_to_delete_remote,
+        owned_to_delete_local,
+        preplanned_skipped,
+    ) = if let Some(plan) = reconcile_plan.as_ref() {
+        (
+            plan.to_upload.clone(),
+            plan.to_download.clone(),
+            plan.to_delete_remote.clone(),
+            plan.to_delete_local.clone(),
+            plan.skipped,
+        )
+    } else {
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0)
+    };
     let mut to_upload: Vec<&str> = Vec::new();
     let mut to_download: Vec<&str> = Vec::new();
     let mut to_delete_remote: Vec<&str> = Vec::new();
@@ -12027,12 +12459,20 @@ async fn cmd_sync(
     let mut conflicts_resolved: u32 = 0;
     let mut skipped: u32 = 0;
 
-    if direction == "upload" || direction == "both" {
+    if reconcile_plan.is_some() {
+        to_upload = owned_to_upload.iter().map(String::as_str).collect();
+        to_download = owned_to_download.iter().map(String::as_str).collect();
+        to_delete_remote = owned_to_delete_remote.iter().map(String::as_str).collect();
+        to_delete_local = owned_to_delete_local.iter().map(String::as_str).collect();
+        skipped = preplanned_skipped;
+    } else if direction == "upload" || direction == "both" {
         for (path, (size, mtime)) in &local_map {
             if let Some((rsize, rmtime)) = remote_map.get(path) {
                 let lm = apply_default_time(*mtime, default_time_ref);
                 let rm = apply_default_time(*rmtime, default_time_ref);
-                if size == rsize && compare_mtime(lm, rm) == std::cmp::Ordering::Equal {
+                if size == rsize
+                    && (skip_matching || compare_mtime(lm, rm) == std::cmp::Ordering::Equal)
+                {
                     skipped += 1;
                 } else if direction == "both" {
                     // Conflict: file exists on both sides with different content
@@ -12090,12 +12530,14 @@ async fn cmd_sync(
         }
     }
 
-    if direction == "download" || direction == "both" {
+    if reconcile_plan.is_none() && (direction == "download" || direction == "both") {
         for (path, (size, mtime)) in &remote_map {
             if let Some((lsize, lmtime)) = local_map.get(path) {
                 let rm = apply_default_time(*mtime, default_time_ref);
                 let lm = apply_default_time(*lmtime, default_time_ref);
-                if size == lsize && compare_mtime(rm, lm) == std::cmp::Ordering::Equal {
+                if size == lsize
+                    && (skip_matching || compare_mtime(rm, lm) == std::cmp::Ordering::Equal)
+                {
                     if direction == "download" {
                         skipped += 1;
                     }
@@ -16199,7 +16641,9 @@ async fn cmd_sync_watch(
     suffix_keep_extension: bool,
     compare_dest: Option<&str>,
     copy_dest: Option<&str>,
+    from_reconcile: Option<&str>,
     conflict_mode: &str,
+    skip_matching: bool,
     resync: bool,
     watch_mode: &str,
     watch_debounce_ms: u64,
@@ -16211,6 +16655,14 @@ async fn cmd_sync_watch(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    if from_reconcile.is_some() {
+        print_error(
+            format,
+            "--from-reconcile cannot be combined with --watch",
+            5,
+        );
+        return 5;
+    }
     let local_path = std::path::Path::new(local);
     if !local_path.is_dir() {
         if matches!(format, OutputFormat::Json) {
@@ -16308,7 +16760,9 @@ async fn cmd_sync_watch(
                 suffix_keep_extension,
                 compare_dest,
                 copy_dest,
+                from_reconcile,
                 conflict_mode,
+                skip_matching,
                 resync && cycle == 1, // resync only on first cycle
                 cli,
                 format,
@@ -17101,6 +17555,7 @@ async fn cmd_reconcile(
     checksum: bool,
     one_way: bool,
     exclude: &[String],
+    reconcile_format: ReconcileFormat,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -17132,17 +17587,27 @@ async fn cmd_reconcile(
         }
     }
 
-    use ftp_client_gui_lib::sync_core::{
-        compare_trees, scan_local_tree, scan_remote_tree, ScanOptions,
-    };
+    use ftp_client_gui_lib::sync_core::{compare_trees, ScanOptions};
     let scan_opts = ScanOptions {
         exclude_patterns: all_exclude,
         compute_checksum: checksum,
+        compute_remote_checksum: checksum,
         max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
-    let locals = scan_local_tree(local_path, &scan_opts);
-    let remotes = scan_remote_tree(&mut provider, remote_path, &scan_opts).await;
+    let local_spinner = maybe_create_scan_spinner(format, cli, "Scanning local...");
+    let locals = scan_local_tree_with_progress(local_path, &scan_opts, &local_spinner);
+    if let Some(pb) = local_spinner {
+        pb.finish_and_clear();
+    }
+
+    let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
+    let remotes =
+        scan_remote_tree_with_progress(&mut provider, remote_path, &scan_opts, &remote_spinner)
+            .await;
+    if let Some(pb) = remote_spinner {
+        pb.finish_and_clear();
+    }
     let diff = compare_trees(&locals, &remotes, one_way);
 
     let matches_group: Vec<serde_json::Value> = diff
@@ -17153,6 +17618,7 @@ async fn cmd_reconcile(
                 "path": e.rel_path,
                 "local_size": e.local_size,
                 "remote_size": e.remote_size,
+                "compare_method": e.compare_method,
             })
         })
         .collect();
@@ -17164,6 +17630,7 @@ async fn cmd_reconcile(
                 "path": e.rel_path,
                 "local_size": e.local_size,
                 "remote_size": e.remote_size,
+                "compare_method": e.compare_method,
             })
         })
         .collect();
@@ -17224,7 +17691,19 @@ async fn cmd_reconcile(
     };
 
     match format {
-        OutputFormat::Json => print_json(&result),
+        OutputFormat::Json => {
+            if reconcile_format == ReconcileFormat::Summary {
+                print_json(&serde_json::json!({
+                    "status": result.status,
+                    "local_path": result.local_path,
+                    "remote_path": result.remote_path,
+                    "summary": result.summary,
+                    "suggested_next_command": result.suggested_next_command,
+                }));
+            } else {
+                print_json(&result);
+            }
+        }
         OutputFormat::Text => {
             println!("Reconcile summary:");
             println!("  Match: {}", result.summary["match_count"]);
@@ -17234,6 +17713,24 @@ async fn cmd_reconcile(
                 result.summary["missing_remote_count"]
             );
             println!("  Missing local: {}", result.summary["missing_local_count"]);
+            println!("  Elapsed: {:.2}s", elapsed);
+            if reconcile_format == ReconcileFormat::Detailed && !cli.quiet {
+                for group in &[
+                    ("Differ", &differ_group),
+                    ("Missing remote", &missing_remote_group),
+                    ("Missing local", &missing_local_group),
+                ] {
+                    if group.1.is_empty() {
+                        continue;
+                    }
+                    eprintln!("{}:", group.0);
+                    for entry in group.1 {
+                        if let Some(path) = entry.get("path").and_then(|value| value.as_str()) {
+                            eprintln!("  - {}", path);
+                        }
+                    }
+                }
+            }
             if !cli.quiet {
                 eprintln!("Next: {}", result.suggested_next_command);
             }
@@ -18406,7 +18903,9 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     false,
                     None,
                     None,
+                    None,
                     "newer",
+                    false,
                     false,
                     cli,
                     format,
@@ -22116,13 +22615,25 @@ async fn main() {
             checksum,
             one_way,
             exclude,
+            reconcile_format,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), local.as_str())
             } else {
                 (url.as_str(), local.as_str(), remote.as_str())
             };
-            cmd_reconcile(u, l, r, *checksum, *one_way, exclude, &cli, format).await
+            cmd_reconcile(
+                u,
+                l,
+                r,
+                *checksum,
+                *one_way,
+                exclude,
+                *reconcile_format,
+                &cli,
+                format,
+            )
+            .await
         }
         Commands::Stat { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -22215,7 +22726,9 @@ async fn main() {
             suffix_keep_extension,
             compare_dest,
             copy_dest,
+            from_reconcile,
             conflict_mode,
+            skip_matching,
             resync,
             watch,
             watch_mode,
@@ -22245,7 +22758,9 @@ async fn main() {
                     *suffix_keep_extension,
                     compare_dest.as_deref(),
                     copy_dest.as_deref(),
+                    from_reconcile.as_deref(),
                     conflict_mode,
+                    *skip_matching,
                     *resync,
                     watch_mode,
                     *watch_debounce_ms,
@@ -22278,7 +22793,9 @@ async fn main() {
                         *suffix_keep_extension,
                         compare_dest.as_deref(),
                         copy_dest.as_deref(),
+                        from_reconcile.as_deref(),
                         conflict_mode,
+                        *skip_matching,
                         *resync,
                         &cli,
                         format,
@@ -23676,6 +24193,60 @@ mod tests {
 
         assert_eq!(normal, to_download);
         assert!(gated.is_empty());
+    }
+
+    #[test]
+    fn test_load_sync_plan_from_reconcile_upload_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("diff.json");
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "groups": {
+                    "match": [
+                        {"path": "same.txt", "local_size": 10, "remote_size": 10}
+                    ],
+                    "differ": [
+                        {"path": "changed.txt", "local_size": 11, "remote_size": 9}
+                    ],
+                    "missing_remote": [
+                        {"path": "upload.txt", "local_size": 12}
+                    ],
+                    "missing_local": [
+                        {"path": "remote-only.txt", "remote_size": 13}
+                    ]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let plan = load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", true).unwrap();
+
+        assert_eq!(plan.skipped, 1);
+        assert_eq!(plan.to_upload, vec!["changed.txt", "upload.txt"]);
+        assert_eq!(plan.to_delete_remote, vec!["remote-only.txt"]);
+        assert!(plan.to_download.is_empty());
+    }
+
+    #[test]
+    fn test_load_sync_plan_from_reconcile_rejects_summary_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("summary.json");
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "status": "ok",
+                "summary": {"match_count": 3}
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let err =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", false).unwrap_err();
+
+        assert!(err.contains("does not contain detailed groups"));
     }
 
     // -----------------------------------------------------------------------

@@ -1,0 +1,98 @@
+name: CLI Smoke Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/bin/aeroftp_cli.rs'
+      - 'src-tauri/src/providers/**'
+      - 'src-tauri/Cargo.toml'
+      - '.github/workflows/cli-smoke.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/bin/aeroftp_cli.rs'
+      - 'src-tauri/src/providers/**'
+      - 'src-tauri/Cargo.toml'
+      - '.github/workflows/cli-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cli_bin: ./target/release/aeroftp-cli
+          - os: macos-latest
+            cli_bin: ./target/release/aeroftp-cli
+          - os: windows-latest
+            cli_bin: ./target/release/aeroftp-cli.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev
+
+      - name: Build CLI
+        working-directory: src-tauri
+        shell: bash
+        run: cargo build --release --bin aeroftp-cli
+
+      - name: Version and help smoke
+        working-directory: src-tauri
+        shell: bash
+        env:
+          CLI_BIN: ${{ matrix.cli_bin }}
+        run: |
+          "$CLI_BIN" --version
+          "$CLI_BIN" --help > /dev/null
+          "$CLI_BIN" sync --help > /dev/null
+          "$CLI_BIN" reconcile --help > /dev/null
+          "$CLI_BIN" agent-info --json > /dev/null
+          "$CLI_BIN" profiles --json > /dev/null || true
+
+      - name: Batch parser smoke
+        working-directory: src-tauri
+        shell: bash
+        env:
+          CLI_BIN: ${{ matrix.cli_bin }}
+        run: |
+          cat > smoke-test.aeroftp <<'EOF'
+          SET host = example.com
+          ECHO Host is $host
+          EOF
+          "$CLI_BIN" batch smoke-test.aeroftp > /dev/null
+
+      - name: Shell completions smoke
+        working-directory: src-tauri
+        shell: bash
+        env:
+          CLI_BIN: ${{ matrix.cli_bin }}
+        run: |
+          "$CLI_BIN" completions bash > /dev/null
+          "$CLI_BIN" completions zsh > /dev/null
+          "$CLI_BIN" completions fish > /dev/null
