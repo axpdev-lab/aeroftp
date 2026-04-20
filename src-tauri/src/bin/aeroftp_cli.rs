@@ -12188,6 +12188,7 @@ async fn cmd_sync(
     let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
 
     let mut reconcile_plan: Option<ReconcileSyncPlan> = None;
+    #[allow(clippy::type_complexity)]
     let (local_entries, remote_entries): (
         Vec<(String, u64, Option<String>)>,
         Vec<(String, u64, Option<String>)>,
