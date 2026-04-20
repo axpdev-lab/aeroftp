@@ -57,6 +57,16 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev
 
+      # Windows only: openssl-sys (vendored via ssh2) requires a working Perl
+      # with Params::Check to configure the OpenSSL build. The stock runner
+      # Perl on windows-latest lacks that module (fails with BEGIN failed /
+      # compilation aborted at Params/Check.pm), so we install Strawberry Perl
+      # which ships it. Without this the `cargo build --release --bin
+      # aeroftp-cli` step fails on Windows while Linux and macOS succeed.
+      - name: Install Strawberry Perl (Windows)
+        if: runner.os == 'Windows'
+        run: choco install strawberryperl -y --no-progress
+
       - name: Build CLI
         working-directory: src-tauri
         shell: bash

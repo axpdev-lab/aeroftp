@@ -1346,6 +1346,31 @@ struct CliSyncResult {
     skipped: u32,
     errors: Vec<String>,
     elapsed_secs: f64,
+    /// Per-file execution plan. Populated in `--dry-run` so agents can pilot
+    /// sync without having to parse the text-verbose output. Empty on real
+    /// runs — skipped at serialization time so the shape of historical JSON
+    /// output is unchanged for callers that never pass `--dry-run`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    plan: Vec<CliSyncPlanEntry>,
+}
+
+/// Single plan entry surfaced in `sync --dry-run --json`.
+///
+/// `local_size` / `remote_size` are both present when the file exists on
+/// both sides (`differ` class); either can be `None` for one-sided
+/// operations (e.g. upload to a missing path has no `remote_size`, a fresh
+/// download has no `local_size`). `reason` mirrors the decision label used
+/// in the text dry-run (`"new"`, `"size differs"`, `"newer local"`, etc.).
+#[derive(Serialize, Default)]
+struct CliSyncPlanEntry {
+    op: &'static str,
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remote_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    conflict_path: Option<String>,
 }
 
 /// Stats returned by cmd_sync for watch mode output enrichment.
@@ -4203,8 +4228,12 @@ fn profile_or_placeholder(cli: &Cli) -> String {
 }
 
 fn suggest_ls_followup(cli: &Cli, path: &str) -> String {
+    // Generic glob instead of the old `*.ext` placeholder. `*.ext` looked
+    // like a real pattern to agents copy-pasting the hint — they would fire
+    // it literally and get zero results. `*` matches anything on every
+    // backend and is the honest default.
     format!(
-        "aeroftp-cli find --profile \"{}\" \"{}\" \"*.ext\" --json",
+        "aeroftp-cli find --profile \"{}\" \"{}\" \"*\" --json",
         profile_or_placeholder(cli),
         shell_double_quote(path)
     )
@@ -9136,6 +9165,7 @@ async fn cmd_get_recursive(
                     .saturating_sub(errors.len() as u32),
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
+                plan: Vec::new(),
             });
         }
     }
@@ -9295,6 +9325,7 @@ async fn cmd_get_glob(
                 skipped: 0,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
+                plan: Vec::new(),
             });
         }
     }
@@ -9392,6 +9423,45 @@ async fn cmd_put(
             return 2;
         }
     };
+
+    // Pre-flight: check that the remote parent directory exists. If it does
+    // not, surface an explicit error pointing at the exact missing segment —
+    // some FTP hosters reply with a generic "553 Can't open that file: No
+    // such file or directory" that hides which parent segment is the
+    // culprit. Running three retries against a stable failure was pure noise.
+    // Any non-NotFound error from `stat` is ignored and the upload proceeds;
+    // the goal here is to replace a bad error message, not to add a second
+    // failure mode.
+    let parent = parent_remote_path(remote_path);
+    if !parent.is_empty() && parent != "/" {
+        match provider.stat(&parent).await {
+            Ok(entry) if !entry.is_dir => {
+                print_error(
+                    format,
+                    &format!(
+                        "Parent path '{}' exists but is not a directory — upload aborted.",
+                        parent
+                    ),
+                    2,
+                );
+                let _ = provider.disconnect().await;
+                return 2;
+            }
+            Err(ProviderError::NotFound(_)) => {
+                print_error(
+                    format,
+                    &format!(
+                        "Parent directory '{}' does not exist on the remote. Create it first with: aeroftp-cli mkdir -p '{}'",
+                        parent, parent
+                    ),
+                    2,
+                );
+                let _ = provider.disconnect().await;
+                return 2;
+            }
+            _ => {} // stat OK (dir) or non-definitive error — proceed.
+        }
+    }
 
     let start = Instant::now();
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
@@ -9678,6 +9748,7 @@ async fn cmd_put_recursive(
                 skipped,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
+                plan: Vec::new(),
             });
         }
     }
@@ -12803,6 +12874,63 @@ async fn cmd_sync(
                 println!("\n(dry run - no changes made)");
             }
             OutputFormat::Json => {
+                // Build the per-file plan so agents piloting `sync` via JSON
+                // no longer need to parse the text-verbose output. Sizes come
+                // from the comparison maps built above; entries where both
+                // sides have a known size expose both (useful to render
+                // "replace 12 MB with 14 MB" diffs in agent UIs).
+                let mut plan: Vec<CliSyncPlanEntry> = Vec::with_capacity(
+                    to_upload.len()
+                        + to_download.len()
+                        + to_delete_remote.len()
+                        + to_delete_local.len()
+                        + to_conflict_upload.len(),
+                );
+                for p in &to_upload {
+                    plan.push(CliSyncPlanEntry {
+                        op: "upload",
+                        path: (*p).to_string(),
+                        local_size: local_map.get(*p).map(|(s, _)| *s),
+                        remote_size: remote_map.get(*p).map(|(s, _)| *s),
+                        conflict_path: None,
+                    });
+                }
+                for p in &to_download {
+                    plan.push(CliSyncPlanEntry {
+                        op: "download",
+                        path: (*p).to_string(),
+                        local_size: local_map.get(*p).map(|(s, _)| *s),
+                        remote_size: remote_map.get(*p).map(|(s, _)| *s),
+                        conflict_path: None,
+                    });
+                }
+                for p in &to_delete_remote {
+                    plan.push(CliSyncPlanEntry {
+                        op: "delete_remote",
+                        path: (*p).to_string(),
+                        local_size: None,
+                        remote_size: remote_map.get(*p).map(|(s, _)| *s),
+                        conflict_path: None,
+                    });
+                }
+                for p in &to_delete_local {
+                    plan.push(CliSyncPlanEntry {
+                        op: "delete_local",
+                        path: (*p).to_string(),
+                        local_size: local_map.get(*p).map(|(s, _)| *s),
+                        remote_size: None,
+                        conflict_path: None,
+                    });
+                }
+                for (orig, conflict) in &to_conflict_upload {
+                    plan.push(CliSyncPlanEntry {
+                        op: "conflict_rename",
+                        path: orig.clone(),
+                        local_size: local_map.get(orig.as_str()).map(|(s, _)| *s),
+                        remote_size: remote_map.get(orig.as_str()).map(|(s, _)| *s),
+                        conflict_path: Some(conflict.clone()),
+                    });
+                }
                 print_json(&CliSyncResult {
                     status: "dry_run",
                     uploaded: to_upload.len() as u32,
@@ -12811,6 +12939,7 @@ async fn cmd_sync(
                     skipped,
                     errors: vec![],
                     elapsed_secs: start.elapsed().as_secs_f64(),
+                    plan,
                 });
             }
         }
@@ -13149,6 +13278,7 @@ async fn cmd_sync(
                 skipped,
                 errors: errors.clone(),
                 elapsed_secs: elapsed.as_secs_f64(),
+                plan: Vec::new(),
             });
         }
     }
@@ -16444,6 +16574,7 @@ async fn cmd_put_glob(
                 skipped: 0,
                 errors,
                 elapsed_secs: elapsed.as_secs_f64(),
+                plan: Vec::new(),
             });
         }
     }
@@ -23152,8 +23283,15 @@ async fn main() {
 /// Check if a failed exit code is retryable.
 /// NOT retryable: success (0), usage error (5), auth failure (6), not supported (7).
 fn is_retryable_exit(code: i32) -> bool {
-    // Non-retryable: success (0), invalid usage (5), auth (6), not supported (7), already exists (9)
-    code != 0 && code != 5 && code != 6 && code != 7 && code != 9
+    // Non-retryable categories (stable across retries, burning attempts is pure noise):
+    //   0  success
+    //   2  not found (missing path or missing parent — caught by the new 553
+    //      preflight in `cmd_put`)
+    //   5  invalid usage / config
+    //   6  authentication failed
+    //   7  operation not supported
+    //   9  already exists (--no-clobber short-circuit)
+    code != 0 && code != 2 && code != 5 && code != 6 && code != 7 && code != 9
 }
 
 // ── Tests ──────────────────────────────────────────────────────────

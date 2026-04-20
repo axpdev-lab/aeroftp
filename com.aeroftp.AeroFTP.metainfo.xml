@@ -137,6 +137,11 @@
   </languages>
 
   <releases>
+    <release version="3.5.9" date="2026-04-20">
+      <description>
+        <p>CLI agent experience polish. The CLI sync command now exposes a detailed plan[] array in --dry-run --json output (op, path, local_size, remote_size, conflict_path) so agents can pilot synchronizations from JSON without parsing the text-verbose fallback. Missing-parent uploads now surface an explicit "Parent directory X does not exist" error with a mkdir -p hint instead of three retries of a generic 553 message, and the retry loop no longer burns attempts on stable not-found failures. The sync remote scanner auto-reconnects once when it hits a transport-level failure (stale FTP data channel, broken pipe, connection reset) so sync no longer treats those as empty listings and silently duplicates already-synced files. The ls follow-up hint now uses a generic * glob instead of the confusing *.ext placeholder that agents sometimes copy-pasted literally. Finally the cli-smoke Windows runner now installs Strawberry Perl so the openssl-sys vendored build can configure OpenSSL.</p>
+      </description>
+    </release>
     <release version="3.5.8" date="2026-04-20">
       <description>
         <p>MCP hardening and Appendix C closure. The MCP server now auto-recovers its pooled connections after transport-level failures (stale data channels, broken pipes, connection resets), gains a new aeroftp_delete_many batch tool with configurable inter-delete backoff, adds name_contains / protocol / limit / offset filters on aeroftp_list_servers, a configurable preview window on aeroftp_read_file up to 1 MB, optional create_parents on aeroftp_upload_file for idempotent recursive mkdir, a detailed plan[] array in aeroftp_sync_tree dry-run output so callers no longer need the CLI for planning, and a proper two-sided checksum comparison in aeroftp_check_tree that uses server-side hashes when the provider supports them and falls back to size-only otherwise. Includes the Appendix C CLI roadmap closure (FTP stale data-connection auto-recovery, reconcile plan loader coverage) and six Dependabot bumps.</p>

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.9] - 2026-04-20
+
+### CLI Agent Experience Polish
+
+Follow-up patch to v3.5.8 focused entirely on the CLI surface. All items are small, independent, and addressed in one coherent pass so an agent using `aeroftp-cli` against a generic FTP hoster has the same UX quality the MCP server got in v3.5.8.
+
+### Added
+
+- **`plan[]` in `sync --dry-run --json`**: every candidate operation is now listed with `{op, path, local_size, remote_size, conflict_path}`. Real (non-dry-run) runs omit the field via `skip_serializing_if`, so legacy parsers that never asked for dry-run see the exact same shape. Agents no longer have to fall back to parsing the text-verbose output to build an execution plan.
+
+### Fixed
+
+- **Missing-parent uploads now explain the failure**: `put` runs a pre-flight `stat` on the remote parent directory. If the parent is missing the CLI errors out with *"Parent directory '/X/Y' does not exist on the remote. Create it first with: aeroftp-cli mkdir -p '/X/Y'"* — one crisp message instead of three retries of a generic `553 Can't open that file: No such file or directory` returned by the hoster. `is_retryable_exit` now excludes exit code `2` (not-found) so the retry loop stops burning attempts on stable failures.
+- **Sync remote scanner auto-reconnects on transport failure**: `sync_core::scan_remote_tree` now classifies `list()` errors against the same `is_transport_level` pattern used by the MCP pool (variant matches on `NotConnected`/`ConnectionFailed`/`Timeout`/`NetworkError`/`IoError` plus message patterns like *"Data connection is already open"*, *"broken pipe"*, *"connection reset"*). When it fires, the provider is disconnected and reconnected, then `list()` is retried once. Previously the scanner logged a warning and treated the failure as an empty directory — which let sync silently duplicate files that actually existed on the remote.
+- **`ls` follow-up hint no longer ships a literal `*.ext` placeholder**: `suggest_ls_followup` now renders `"*"` so agents copy-pasting the hint get real results. The `*.ext` string survives only in bootstrap playbook JSON where it is documented as a placeholder the user must substitute.
+
+### Build
+
+- **cli-smoke Windows runner installs Strawberry Perl**: the `openssl-sys` vendored build pulled in transitively by `ssh2 = "=0.9.5"` requires `Params::Check` to configure OpenSSL, and the stock `windows-latest` Perl no longer ships it. Added a `choco install strawberryperl` step gated by `runner.os == 'Windows'`. Linux and macOS jobs are unaffected.
+
 ## [3.5.8] - 2026-04-20
 
 ### MCP Hardening + Appendix C Closure

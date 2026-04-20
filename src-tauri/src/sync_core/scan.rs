@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use crate::providers::StorageProvider;
+use crate::providers::{ProviderError, StorageProvider};
 use sha2::Digest;
 use std::collections::HashSet;
 use std::path::Path;
@@ -168,7 +168,7 @@ pub async fn scan_remote_tree(
         if results.len() >= cap {
             break;
         }
-        match provider.list(&abs_dir).await {
+        match list_with_transport_retry(provider, &abs_dir).await {
             Ok(entries) => {
                 // Collect files for this directory first so the per-file
                 // checksum loop below can yield without re-entering `list`
@@ -230,6 +230,81 @@ pub async fn scan_remote_tree(
         }
     }
     results
+}
+
+/// Run `provider.list(dir)` with one automatic reconnect on transport-level
+/// failures.
+///
+/// Motivation: FTP control channels can land in a half-open state after a
+/// previous upload that failed mid-way (e.g. `553 No such file`). The
+/// subsequent `list` call then returns *"Data connection is already open"*
+/// or similar — symptoms of a dead session, not a missing directory. Left
+/// alone, `scan_remote_tree` was silently treating the failure as an empty
+/// listing, which let sync duplicate files that actually existed. We now
+/// detect transport-level errors, `disconnect()` + `connect()` the provider,
+/// and retry `list()` exactly once. Business-level errors (`NotFound`,
+/// `PermissionDenied`, `NotSupported`) bypass the reconnect.
+async fn list_with_transport_retry(
+    provider: &mut Box<dyn StorageProvider>,
+    abs_dir: &str,
+) -> Result<Vec<crate::providers::RemoteEntry>, ProviderError> {
+    match provider.list(abs_dir).await {
+        Ok(v) => Ok(v),
+        Err(e) if is_transport_level(&e) => {
+            eprintln!(
+                "[scan_remote_tree] transport error on {}: {} — reconnecting",
+                abs_dir, e
+            );
+            // Best-effort tear-down; we already know the session is dirty.
+            let _ = provider.disconnect().await;
+            provider.connect().await?;
+            provider.list(abs_dir).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Same classifier shape used by the MCP pool — keep the two in sync.
+///
+/// Any provider-level failure that leaves the underlying TCP/TLS/SSH session
+/// unusable qualifies. Pattern matching errs on the side of retrying: worst
+/// case we reconnect once on a spurious match; the correct case would have
+/// been a silently-skipped directory.
+fn is_transport_level(e: &ProviderError) -> bool {
+    match e {
+        ProviderError::NotConnected
+        | ProviderError::ConnectionFailed(_)
+        | ProviderError::Timeout
+        | ProviderError::NetworkError(_)
+        | ProviderError::IoError(_) => true,
+        ProviderError::TransferFailed(msg)
+        | ProviderError::ServerError(msg)
+        | ProviderError::Other(msg)
+        | ProviderError::Unknown(msg) => {
+            let lower = msg.to_ascii_lowercase();
+            const PATTERNS: &[&str] = &[
+                "data connection is already open",
+                "data connection already open",
+                "connection is already open",
+                "broken pipe",
+                "pipe closed",
+                "connection reset",
+                "connection closed",
+                "connection aborted",
+                "connection refused",
+                "not connected",
+                "eof from server",
+                "unexpected eof",
+                "channel closed",
+                "session closed",
+                "socket closed",
+                "stream closed",
+                "bad file descriptor",
+            ];
+            PATTERNS.iter().any(|p| lower.contains(p))
+        }
+        _ => false,
+    }
 }
 
 /// Pick a preferred hash from a provider checksum map. Returns `(algo, hex)`.
