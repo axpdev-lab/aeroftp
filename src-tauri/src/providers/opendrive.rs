@@ -9,6 +9,7 @@
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use flate2::{write::ZlibEncoder, Compression};
+use futures_util::future::BoxFuture;
 use md5::{Digest, Md5};
 use reqwest::multipart;
 use secrecy::{ExposeSecret, SecretString};
@@ -425,6 +426,31 @@ impl OpenDriveProvider {
             self.reauth().await?;
         }
         Ok(())
+    }
+
+    /// Execute an API operation with automatic session handling:
+    /// 1. Proactive refresh if idle > 50 min (covers the known ~60 min expiry window).
+    /// 2. Reactive retry-once if the server returns 401 AuthenticationFailed
+    ///    (covers early revocation, server-side invalidation, clock skew).
+    ///
+    /// The closure receives `&Self` and must return a `BoxFuture`. It may be invoked
+    /// up to twice, so any captured state must be cheap to reconstruct. Callers read
+    /// `self.session_id` inside the closure so the retry picks up the fresh session.
+    async fn with_reauth<T, F>(&mut self, mut op: F) -> Result<T, ProviderError>
+    where
+        F: for<'a> FnMut(&'a Self) -> BoxFuture<'a, Result<T, ProviderError>>,
+    {
+        self.ensure_session().await?;
+        match op(self).await {
+            Err(ProviderError::AuthenticationFailed(msg)) => {
+                tracing::warn!(
+                    "[OpenDrive] 401 during API call, re-authenticating and retrying (msg: {msg})"
+                );
+                self.reauth().await?;
+                op(self).await
+            }
+            other => other,
+        }
     }
 
     /// Re-authenticate: login again to get a fresh session_id, preserving current_path.
@@ -1123,31 +1149,20 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        self.ensure_session().await?;
-
         let resolved = self.resolve_path(path)?;
-        let folder_id = self.folder_id_by_path(&resolved).await?;
-        let result: Result<FolderListResponse, _> = self
-            .get_json(&self.endpoint(&format!(
-                "folder/list.json/{}/{}",
-                self.session_id, folder_id
-            )))
-            .await;
-
-        // Retry once on auth failure (session expired mid-operation)
-        let response = match result {
-            Err(ProviderError::AuthenticationFailed(_)) => {
-                tracing::warn!("[OpenDrive] Session expired during list, re-authenticating");
-                self.reauth().await?;
-                let folder_id = self.folder_id_by_path(&resolved).await?;
-                self.get_json(&self.endpoint(&format!(
-                    "folder/list.json/{}/{}",
-                    self.session_id, folder_id
-                )))
-                .await?
-            }
-            other => other?,
-        };
+        let response: FolderListResponse = self
+            .with_reauth(|this| {
+                let resolved = resolved.clone();
+                Box::pin(async move {
+                    let folder_id = this.folder_id_by_path(&resolved).await?;
+                    this.get_json(&this.endpoint(&format!(
+                        "folder/list.json/{}/{}",
+                        this.session_id, folder_id
+                    )))
+                    .await
+                })
+            })
+            .await?;
 
         self.last_activity = std::time::Instant::now();
         let mut entries = Vec::with_capacity(response.folders.len() + response.files.len());
@@ -1165,9 +1180,15 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.ensure_session().await?;
         let resolved = self.resolve_path(path)?;
-        let _ = self.folder_id_by_path(&resolved).await?;
+        self.with_reauth(|this| {
+            let resolved = resolved.clone();
+            Box::pin(async move {
+                this.folder_id_by_path(&resolved).await?;
+                Ok(())
+            })
+        })
+        .await?;
         self.current_path = resolved;
         Ok(())
     }
@@ -1191,27 +1212,36 @@ impl StorageProvider for OpenDriveProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        self.ensure_session().await?;
-
         let resolved = self.resolve_path(remote_path)?;
-        let file_id = self.resolve_file_id(&resolved).await?;
 
-        let mut url =
-            reqwest::Url::parse(&self.endpoint(&format!("download/file.json/{}", file_id)))
-                .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
-        url.query_pairs_mut()
-            .append_pair("session_id", &self.session_id);
+        // Resolve file_id with reauth protection; the actual stream is read once.
+        let (file_id, resp) = self
+            .with_reauth(|this| {
+                let resolved = resolved.clone();
+                Box::pin(async move {
+                    let file_id = this.resolve_file_id(&resolved).await?;
+                    let mut url = reqwest::Url::parse(
+                        &this.endpoint(&format!("download/file.json/{}", file_id)),
+                    )
+                    .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+                    url.query_pairs_mut()
+                        .append_pair("session_id", &this.session_id);
 
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let resp = this
+                        .client
+                        .get(url)
+                        .send()
+                        .await
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            return Err(self.parse_error(resp).await);
-        }
+                    if !resp.status().is_success() {
+                        return Err(this.parse_error(resp).await);
+                    }
+                    Ok((file_id, resp))
+                })
+            })
+            .await?;
+        let _ = file_id; // retained for potential future use (progress events)
 
         let total = resp.content_length().unwrap_or(0);
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
@@ -1249,18 +1279,23 @@ impl StorageProvider for OpenDriveProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        self.ensure_session().await?;
-
         let resolved = self.resolve_path(remote_path)?;
-        let file_id = self.resolve_file_id(&resolved).await?;
 
-        let mut url =
-            reqwest::Url::parse(&self.endpoint(&format!("download/file.json/{}", file_id)))
-                .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
-        url.query_pairs_mut()
-            .append_pair("session_id", &self.session_id);
-
-        let url_str = url.to_string();
+        let url_str = self
+            .with_reauth(|this| {
+                let resolved = resolved.clone();
+                Box::pin(async move {
+                    let file_id = this.resolve_file_id(&resolved).await?;
+                    let mut url = reqwest::Url::parse(
+                        &this.endpoint(&format!("download/file.json/{}", file_id)),
+                    )
+                    .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+                    url.query_pairs_mut()
+                        .append_pair("session_id", &this.session_id);
+                    Ok::<String, ProviderError>(url.to_string())
+                })
+            })
+            .await?;
 
         super::http_resumable_download(
             local_path,
@@ -1277,30 +1312,34 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        self.ensure_session().await?;
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-
         let resolved = self.resolve_path(remote_path)?;
-        let file_id = self.resolve_file_id(&resolved).await?;
-
-        let mut url =
-            reqwest::Url::parse(&self.endpoint(&format!("download/file.json/{}", file_id)))
-                .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
-        url.query_pairs_mut()
-            .append_pair("session_id", &self.session_id);
 
         let resp = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .with_reauth(|this| {
+                let resolved = resolved.clone();
+                Box::pin(async move {
+                    let file_id = this.resolve_file_id(&resolved).await?;
+                    let mut url = reqwest::Url::parse(
+                        &this.endpoint(&format!("download/file.json/{}", file_id)),
+                    )
+                    .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+                    url.query_pairs_mut()
+                        .append_pair("session_id", &this.session_id);
 
-        if !resp.status().is_success() {
-            return Err(self.parse_error(resp).await);
-        }
+                    let resp = this
+                        .client
+                        .get(url)
+                        .send()
+                        .await
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+                    if !resp.status().is_success() {
+                        return Err(this.parse_error(resp).await);
+                    }
+                    Ok(resp)
+                })
+            })
+            .await?;
 
         response_bytes_with_limit(resp, MAX_DOWNLOAD_TO_BYTES).await
     }
@@ -1311,15 +1350,19 @@ impl StorageProvider for OpenDriveProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        self.ensure_session().await?;
-
+        // Proactive/reactive session handling is done by each `with_reauth` call below.
         let resolved = self.resolve_path(remote_path)?;
         let (parent_path, file_name) = split_parent_child(&resolved);
         if file_name.is_empty() {
             return Err(ProviderError::InvalidPath("Missing file name".into()));
         }
 
-        let folder_id = self.folder_id_by_path(&parent_path).await?;
+        let folder_id = self
+            .with_reauth(|this| {
+                let parent_path = parent_path.clone();
+                Box::pin(async move { this.folder_id_by_path(&parent_path).await })
+            })
+            .await?;
         let metadata = tokio::fs::metadata(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -1331,17 +1374,25 @@ impl StorageProvider for OpenDriveProvider {
         }
 
         let created: CreateFileResponse = self
-            .post_form(
-                "upload/create_file.json",
-                &[
-                    ("session_id", self.session_id.clone()),
-                    ("folder_id", folder_id),
-                    ("file_name", file_name.clone()),
-                    ("file_size", file_size.to_string()),
-                    ("file_hash", file_hash.clone()),
-                    ("open_if_exists", "1".to_string()),
-                ],
-            )
+            .with_reauth(|this| {
+                let folder_id = folder_id.clone();
+                let file_name = file_name.clone();
+                let file_hash = file_hash.clone();
+                Box::pin(async move {
+                    this.post_form(
+                        "upload/create_file.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("folder_id", folder_id),
+                            ("file_name", file_name),
+                            ("file_size", file_size.to_string()),
+                            ("file_hash", file_hash),
+                            ("open_if_exists", "1".to_string()),
+                        ],
+                    )
+                    .await
+                })
+            })
             .await?;
 
         let file_id = created
@@ -1349,15 +1400,22 @@ impl StorageProvider for OpenDriveProvider {
             .ok_or_else(|| ProviderError::ParseError("Missing FileId from create_file".into()))?;
 
         let opened: OpenUploadResponse = self
-            .post_form(
-                "upload/open_file_upload.json",
-                &[
-                    ("session_id", self.session_id.clone()),
-                    ("file_id", file_id.clone()),
-                    ("file_size", file_size.to_string()),
-                    ("file_hash", file_hash.clone()),
-                ],
-            )
+            .with_reauth(|this| {
+                let file_id = file_id.clone();
+                let file_hash = file_hash.clone();
+                Box::pin(async move {
+                    this.post_form(
+                        "upload/open_file_upload.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("file_id", file_id),
+                            ("file_size", file_size.to_string()),
+                            ("file_hash", file_hash),
+                        ],
+                    )
+                    .await
+                })
+            })
             .await?;
 
         let require_compression = parse_boolish(
@@ -1399,21 +1457,30 @@ impl StorageProvider for OpenDriveProvider {
                     .unwrap_or_else(|_| "0".to_string())
             });
 
-        self.post_form_unit(
-            "upload/close_file_upload.json",
-            &[
-                ("session_id", self.session_id.clone()),
-                ("file_id", file_id),
-                ("file_size", file_size.to_string()),
-                ("temp_location", temp_location),
-                ("file_time", file_time),
-                ("file_hash", file_hash),
-                (
-                    "file_compressed",
-                    if file_compressed { "1" } else { "0" }.to_string(),
-                ),
-            ],
-        )
+        self.with_reauth(|this| {
+            let file_id = file_id.clone();
+            let temp_location = temp_location.clone();
+            let file_time = file_time.clone();
+            let file_hash = file_hash.clone();
+            Box::pin(async move {
+                this.post_form_unit(
+                    "upload/close_file_upload.json",
+                    &[
+                        ("session_id", this.session_id.clone()),
+                        ("file_id", file_id),
+                        ("file_size", file_size.to_string()),
+                        ("temp_location", temp_location),
+                        ("file_time", file_time),
+                        ("file_hash", file_hash),
+                        (
+                            "file_compressed",
+                            if file_compressed { "1" } else { "0" }.to_string(),
+                        ),
+                    ],
+                )
+                .await
+            })
+        })
         .await?;
 
         if let Some(ref cb) = on_progress {
@@ -1425,8 +1492,6 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.ensure_session().await?;
-
         let resolved = self.resolve_path(path)?;
         if resolved == "/" {
             return Ok(());
@@ -1435,33 +1500,45 @@ impl StorageProvider for OpenDriveProvider {
         if folder_name.is_empty() {
             return Err(ProviderError::InvalidPath("Missing folder name".into()));
         }
-        let parent_id = self.folder_id_by_path(&parent_path).await?;
 
-        let _: CreateFolderResponse = self
-            .post_form(
-                "folder.json",
-                &[
-                    ("session_id", self.session_id.clone()),
-                    ("folder_name", folder_name),
-                    ("folder_sub_parent", parent_id),
-                    ("folder_is_public", "0".to_string()),
-                ],
-            )
-            .await?;
-        Ok(())
+        self.with_reauth(|this| {
+            let parent_path = parent_path.clone();
+            let folder_name = folder_name.clone();
+            Box::pin(async move {
+                let parent_id = this.folder_id_by_path(&parent_path).await?;
+                let _: CreateFolderResponse = this
+                    .post_form(
+                        "folder.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("folder_name", folder_name),
+                            ("folder_sub_parent", parent_id),
+                            ("folder_is_public", "0".to_string()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+        .await
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.ensure_session().await?;
         let resolved = self.resolve_path(path)?;
-        let file_id = self.resolve_file_id(&resolved).await?;
-        self.post_form_unit(
-            "file/trash.json",
-            &[
-                ("session_id", self.session_id.clone()),
-                ("file_id", file_id),
-            ],
-        )
+        self.with_reauth(|this| {
+            let resolved = resolved.clone();
+            Box::pin(async move {
+                let file_id = this.resolve_file_id(&resolved).await?;
+                this.post_form_unit(
+                    "file/trash.json",
+                    &[
+                        ("session_id", this.session_id.clone()),
+                        ("file_id", file_id),
+                    ],
+                )
+                .await
+            })
+        })
         .await
     }
 
@@ -1470,27 +1547,30 @@ impl StorageProvider for OpenDriveProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.ensure_session().await?;
         let resolved = self.resolve_path(path)?;
         if resolved == "/" {
             return Err(ProviderError::InvalidPath(
                 "Cannot remove root folder".into(),
             ));
         }
-        let folder_id = self.folder_id_by_path(&resolved).await?;
-        self.post_form_unit(
-            "folder/trash.json",
-            &[
-                ("session_id", self.session_id.clone()),
-                ("folder_id", folder_id),
-            ],
-        )
+        self.with_reauth(|this| {
+            let resolved = resolved.clone();
+            Box::pin(async move {
+                let folder_id = this.folder_id_by_path(&resolved).await?;
+                this.post_form_unit(
+                    "folder/trash.json",
+                    &[
+                        ("session_id", this.session_id.clone()),
+                        ("folder_id", folder_id),
+                    ],
+                )
+                .await
+            })
+        })
         .await
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.ensure_session().await?;
-
         let from_resolved = self.resolve_path(from)?;
         let to_resolved = self.resolve_path(to)?;
         if from_resolved == "/" {
@@ -1505,65 +1585,92 @@ impl StorageProvider for OpenDriveProvider {
             return Err(ProviderError::InvalidPath("Missing target name".into()));
         }
 
-        if let Ok(folder_id) = self.folder_id_by_path(&from_resolved).await {
-            if from_parent_path == to_parent_path {
-                self.post_form_unit(
-                    "folder/rename.json",
-                    &[
-                        ("session_id", self.session_id.clone()),
-                        ("folder_id", folder_id),
-                        ("folder_name", to_name),
-                    ],
-                )
-                .await?;
-                return Ok(());
-            }
-
-            let to_parent_id = self.folder_id_by_path(&to_parent_path).await?;
-            self.post_form_unit(
-                "folder/move_copy.json",
-                &[
-                    ("session_id", self.session_id.clone()),
-                    ("folder_id", folder_id),
-                    ("dst_folder_id", to_parent_id),
-                    ("move", "true".to_string()),
-                    ("new_folder_name", to_name),
-                ],
-            )
+        // Folder rename/move path
+        let folder_result = self
+            .with_reauth(|this| {
+                let from_resolved = from_resolved.clone();
+                let to_parent_path = to_parent_path.clone();
+                let to_name = to_name.clone();
+                let from_parent_path = from_parent_path.clone();
+                Box::pin(async move {
+                    let folder_id = match this.folder_id_by_path(&from_resolved).await {
+                        Ok(id) => id,
+                        Err(_) => return Ok::<Option<()>, ProviderError>(None),
+                    };
+                    if from_parent_path == to_parent_path {
+                        this.post_form_unit(
+                            "folder/rename.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("folder_id", folder_id),
+                                ("folder_name", to_name),
+                            ],
+                        )
+                        .await?;
+                    } else {
+                        let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
+                        this.post_form_unit(
+                            "folder/move_copy.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("folder_id", folder_id),
+                                ("dst_folder_id", to_parent_id),
+                                ("move", "true".to_string()),
+                                ("new_folder_name", to_name),
+                            ],
+                        )
+                        .await?;
+                    }
+                    Ok(Some(()))
+                })
+            })
             .await?;
+
+        if folder_result.is_some() {
             return Ok(());
         }
 
-        let file_id = self.resolve_file_id(&from_resolved).await?;
+        // File rename/move path
+        let move_result: Result<(), ProviderError> = self
+            .with_reauth(|this| {
+                let from_resolved = from_resolved.clone();
+                let from_parent_path = from_parent_path.clone();
+                let to_parent_path = to_parent_path.clone();
+                let to_name = to_name.clone();
+                Box::pin(async move {
+                    let file_id = this.resolve_file_id(&from_resolved).await?;
 
-        if from_parent_path == to_parent_path {
-            self.post_form_unit(
-                "file/rename.json",
-                &[
-                    ("session_id", self.session_id.clone()),
-                    ("file_id", file_id),
-                    ("new_file_name", to_name),
-                ],
-            )
-            .await?;
-            return Ok(());
-        }
+                    if from_parent_path == to_parent_path {
+                        this.post_form_unit(
+                            "file/rename.json",
+                            &[
+                                ("session_id", this.session_id.clone()),
+                                ("file_id", file_id),
+                                ("new_file_name", to_name),
+                            ],
+                        )
+                        .await?;
+                        return Ok(());
+                    }
 
-        let to_parent_id = self.folder_id_by_path(&to_parent_path).await?;
-        match self
-            .post_form_unit(
-                "file/move_copy.json",
-                &[
-                    ("session_id", self.session_id.clone()),
-                    ("src_file_id", file_id),
-                    ("dst_folder_id", to_parent_id),
-                    ("move", "true".to_string()),
-                    ("overwrite_if_exists", "true".to_string()),
-                    ("new_file_name", to_name),
-                ],
-            )
-            .await
-        {
+                    let to_parent_id = this.folder_id_by_path(&to_parent_path).await?;
+                    this.post_form_unit(
+                        "file/move_copy.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("src_file_id", file_id),
+                            ("dst_folder_id", to_parent_id),
+                            ("move", "true".to_string()),
+                            ("overwrite_if_exists", "true".to_string()),
+                            ("new_file_name", to_name),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await;
+
+        match move_result {
             Ok(()) => Ok(()),
             Err(ProviderError::InvalidPath(message))
                 if message.contains("Invalid value specified for `move`") =>

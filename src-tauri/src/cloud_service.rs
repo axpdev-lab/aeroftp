@@ -152,6 +152,28 @@ impl CloudService {
         }
     }
 
+    /// Emit `cloud-reauth-required` when a provider error signals a revoked or
+    /// invalid OAuth token (4shared OAuth 1.0a cannot be refreshed silently).
+    ///
+    /// Returns `true` if the notification was emitted so callers can decide
+    /// whether to abort the current sync cycle. Returns `false` otherwise.
+    fn notify_reauth_if_token_revoked(&self, provider: &str, error_message: &str) -> bool {
+        if !error_message.contains("token_revoked") {
+            return false;
+        }
+        if let Some(app) = &self.app_handle {
+            let _ = app.emit(
+                "cloud-reauth-required",
+                serde_json::json!({
+                    "provider": provider,
+                    "reason": "token_revoked",
+                    "message": error_message,
+                }),
+            );
+        }
+        true
+    }
+
     /// Get pending conflicts
     pub async fn get_conflicts(&self) -> Vec<FileConflict> {
         self.conflicts.read().await.clone()
@@ -348,9 +370,19 @@ impl CloudService {
 
         // Get file listings
         let local_files = self.scan_local_folder(&config).await?;
-        let remote_files = self
+        let remote_files = match self
             .scan_remote_folder_with_provider(provider, &config)
-            .await?;
+            .await
+        {
+            Ok(files) => files,
+            Err(e) => {
+                // Propagate OAuth 1.0a token revocation to the UI before returning.
+                // Without this, 4shared failures during scan only surface as a generic
+                // sync error with no actionable recovery path.
+                self.notify_reauth_if_token_revoked(&config.protocol_type, &e);
+                return Err(e);
+            }
+        };
 
         // Enable checksum comparison when provider supplies content hashes (e.g. FileLu)
         let has_checksums = remote_files.values().any(|f| f.checksum.is_some());
@@ -440,17 +472,7 @@ impl CloudService {
 
                     // Detect token revocation (e.g. 4shared OAuth 1.0a) and notify frontend.
                     // OAuth 1.0a tokens cannot be refreshed — abort sync and prompt user.
-                    if e.contains("token_revoked") {
-                        if let Some(app) = &self.app_handle {
-                            let _ = app.emit(
-                                "cloud-reauth-required",
-                                serde_json::json!({
-                                    "provider": config.protocol_type,
-                                    "reason": "token_revoked",
-                                    "message": e,
-                                }),
-                            );
-                        }
+                    if self.notify_reauth_if_token_revoked(&config.protocol_type, &e) {
                         result
                             .errors
                             .push("Sync aborted: re-authorization required".to_string());

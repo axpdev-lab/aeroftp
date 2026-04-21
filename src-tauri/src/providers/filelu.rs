@@ -266,6 +266,9 @@ struct CacheEntry {
     file_code: String,         // Valid when is_dir = false
     size: u64,
     modified: Option<String>,
+    /// Content hash returned by FileLu — enables hash-based sync comparison
+    /// for files whose `modified` reflects upload time rather than original mtime.
+    hash: Option<String>,
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────
@@ -721,6 +724,7 @@ impl FileLuProvider {
                     file_code: String::new(),
                     size: 0,
                     modified: None,
+                    hash: None,
                 },
             );
 
@@ -762,6 +766,7 @@ impl FileLuProvider {
                     file_code: code,
                     size: file.size,
                     modified: file.uploaded.clone(),
+                    hash: file.hash.clone(),
                 },
             );
 
@@ -826,6 +831,7 @@ impl FileLuProvider {
                 file_code: String::new(),
                 size: 0,
                 modified: None,
+                hash: None,
             });
         }
 
@@ -1617,6 +1623,7 @@ impl StorageProvider for FileLuProvider {
                 file_code: String::new(),
                 size: 0,
                 modified: None,
+                hash: None,
             },
         );
         self.invalidate_cache_under(&parent_path);
@@ -1814,6 +1821,10 @@ impl StorageProvider for FileLuProvider {
                 .extension()
                 .and_then(|e| e.to_str())
                 .map(|ext| mime_from_ext(ext).to_string());
+            let mut metadata = HashMap::new();
+            if let Some(h) = entry.hash {
+                metadata.insert("content_hash".to_string(), h);
+            }
             Ok(RemoteEntry {
                 name,
                 path: norm,
@@ -1826,7 +1837,7 @@ impl StorageProvider for FileLuProvider {
                 is_symlink: false,
                 link_target: None,
                 mime_type: mime,
-                metadata: HashMap::new(),
+                metadata,
             })
         }
     }
