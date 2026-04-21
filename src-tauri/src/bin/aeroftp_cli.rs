@@ -8347,7 +8347,9 @@ async fn cmd_ls(
                     file_count,
                     format_size(total_bytes)
                 );
-                eprintln!("Next: {}", suggest_ls_followup(cli, effective_path));
+                // No `Next:` hint after `ls`: a re-ls or generic find is never
+                // actionable for an agent. Hints stay on transformative
+                // commands (put/rm/mv/sync) where the follow-up matters.
             }
         }
         OutputFormat::Json => {
@@ -11054,7 +11056,8 @@ async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: Outpu
             }
             if !cli.quiet {
                 eprintln!("\n{} matches", results.len());
-                eprintln!("Next: {}", suggest_find_followup(cli, path));
+                // No trailing `Next:` hint: read-only listing has no useful
+                // next step. See ls for the same reasoning.
             }
         }
         OutputFormat::Json => {

@@ -15,11 +15,10 @@
 
 pub mod compare;
 pub mod scan;
-pub mod sync;
 
 pub use compare::{compare_trees, DiffEntry, DiffReport};
 pub use scan::{scan_local_tree, scan_remote_tree, LocalEntry, RemoteEntry, ScanOptions};
-pub use sync::{
-    sync_tree_core, ConflictMode, FileOutcome, NoopProgressSink, SyncDirection, SyncError,
-    SyncOptions, SyncPhase, SyncProgressSink, SyncReport,
+pub use crate::sync::{
+    sync_tree_core, ConflictMode, DeltaPolicy, FileOutcome, NoopProgressSink, SyncDirection,
+    SyncError, SyncOptions, SyncPhase, SyncProgressSink, SyncReport,
 };

@@ -13,7 +13,7 @@ use crate::ftp::FtpManager;
 use crate::providers::{ProviderError, RemoteEntry as ProviderRemoteEntry, StorageProvider};
 use crate::sync::{
     build_comparison_results, validate_relative_path, CompareOptions, FileComparison, FileInfo,
-    SyncAction, SyncDirection, SyncStatus,
+    CompareDirection, SyncAction, SyncStatus,
 };
 // file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};
@@ -217,7 +217,7 @@ impl CloudService {
             compare_size: true,
             compare_checksum: false,
             exclude_patterns: config.exclude_patterns.clone(),
-            direction: SyncDirection::Bidirectional,
+            direction: CompareDirection::Bidirectional,
             ..Default::default()
         };
 
@@ -393,7 +393,7 @@ impl CloudService {
             compare_size: true,
             compare_checksum: has_checksums,
             exclude_patterns: config.exclude_patterns.clone(),
-            direction: SyncDirection::Bidirectional,
+            direction: CompareDirection::Bidirectional,
             ..Default::default()
         };
 

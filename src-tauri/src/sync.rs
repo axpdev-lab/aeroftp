@@ -4,10 +4,12 @@
 // AeroFTP Sync Module
 // File comparison and synchronization logic
 
+use crate::providers::{ProviderError, StorageProvider};
+use crate::sync_core::scan::{scan_local_tree, scan_remote_tree, ScanOptions};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// Mutex to prevent concurrent journal writes from corrupting the file (M38)
@@ -78,7 +80,7 @@ pub struct CompareOptions {
     /// Patterns to exclude (e.g., "node_modules", ".git")
     pub exclude_patterns: Vec<String>,
     /// Direction of comparison
-    pub direction: SyncDirection,
+    pub direction: CompareDirection,
     /// Minimum file size in bytes (skip smaller files)
     #[serde(default)]
     pub min_size: Option<u64>,
@@ -109,7 +111,7 @@ impl Default for CompareOptions {
                 ".env".to_string(),
                 "target".to_string(),
             ],
-            direction: SyncDirection::Bidirectional,
+            direction: CompareDirection::Bidirectional,
             min_size: None,
             max_size: None,
             min_age_secs: None,
@@ -119,15 +121,223 @@ impl Default for CompareOptions {
 }
 
 /// Direction of synchronization
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum SyncDirection {
+pub enum CompareDirection {
     /// Local -> Remote (upload changes)
     LocalToRemote,
     /// Remote -> Local (download changes)
     RemoteToLocal,
     /// Both directions (full sync)
     Bidirectional,
+}
+
+/// Canonical direction of a sync-tree execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncDirection {
+    Upload,
+    Download,
+    Both,
+}
+
+impl SyncDirection {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "upload" | "up" | "push" => Some(Self::Upload),
+            "download" | "down" | "pull" => Some(Self::Download),
+            "both" | "bidirectional" => Some(Self::Both),
+            _ => None,
+        }
+    }
+}
+
+/// Conflict resolution when both sides disagree on the same relative path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictMode {
+    /// Keep the larger file (default, matches the CLI).
+    Larger,
+    /// Keep the newer file.
+    Newer,
+    /// Skip the file when sizes differ.
+    Skip,
+}
+
+impl ConflictMode {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "larger" => Some(Self::Larger),
+            "newer" => Some(Self::Newer),
+            "skip" => Some(Self::Skip),
+            _ => None,
+        }
+    }
+}
+
+/// Explicit policy used to decide whether a file needs syncing and, later,
+/// which transfer strategy should be preferred.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DeltaPolicy {
+    Disabled,
+    SizeOnly,
+    #[default]
+    Mtime,
+    Hash,
+    Delta,
+}
+
+impl DeltaPolicy {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "disabled" => Some(Self::Disabled),
+            "size_only" | "size-only" | "size" => Some(Self::SizeOnly),
+            "mtime" => Some(Self::Mtime),
+            "hash" => Some(Self::Hash),
+            "delta" => Some(Self::Delta),
+            _ => None,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::SizeOnly => "size_only",
+            Self::Mtime => "mtime",
+            Self::Hash => "hash",
+            Self::Delta => "delta",
+        }
+    }
+
+    pub const fn wants_checksums(self) -> bool {
+        matches!(self, Self::Hash | Self::Delta)
+    }
+}
+
+/// Tunable options for the sync tree core.
+#[derive(Debug, Clone)]
+pub struct SyncOptions {
+    pub direction: SyncDirection,
+    pub delta_policy: DeltaPolicy,
+    pub dry_run: bool,
+    pub delete_orphans: bool,
+    pub conflict_mode: ConflictMode,
+    pub scan: ScanOptions,
+}
+
+impl Default for SyncOptions {
+    fn default() -> Self {
+        Self {
+            direction: SyncDirection::Upload,
+            delta_policy: DeltaPolicy::default(),
+            dry_run: false,
+            delete_orphans: false,
+            conflict_mode: ConflictMode::Larger,
+            scan: ScanOptions::default(),
+        }
+    }
+}
+
+/// High-level phase, emitted via [`SyncProgressSink::on_phase`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncPhase {
+    Scanning,
+    Planning,
+    Executing,
+    Done,
+}
+
+/// Per-file outcome delivered to the progress sink after each operation.
+#[derive(Debug, Clone)]
+pub enum FileOutcome {
+    Uploaded { bytes: u64 },
+    Downloaded { bytes: u64 },
+    Deleted,
+    Skipped { reason: String },
+    Failed { error: String },
+}
+
+/// Aggregated counters returned by [`sync_tree_core`].
+#[derive(Debug, Clone, Default)]
+pub struct SyncReport {
+    pub uploaded: u32,
+    pub downloaded: u32,
+    pub deleted: u32,
+    pub skipped: u32,
+    pub errors: Vec<SyncError>,
+    pub elapsed_secs: f64,
+    pub dry_run: bool,
+    pub direction: Option<SyncDirection>,
+    pub delta_policy: Option<DeltaPolicy>,
+}
+
+impl SyncReport {
+    pub fn error_count(&self) -> usize {
+        self.errors.len()
+    }
+}
+
+/// Single sync error with enough context for an agent to retry intelligently.
+#[derive(Debug, Clone)]
+pub struct SyncError {
+    pub rel_path: String,
+    pub operation: &'static str,
+    pub message: String,
+    pub decision_policy: DeltaPolicy,
+}
+
+/// Callback interface used to report sync progress.
+pub trait SyncProgressSink: Send {
+    fn on_phase(&mut self, phase: SyncPhase);
+    fn on_file_start(
+        &mut self,
+        rel: &str,
+        total: u64,
+        op: &'static str,
+        decision_policy: DeltaPolicy,
+    );
+    fn on_file_progress(&mut self, rel: &str, sent: u64, total: u64);
+    fn on_file_done(&mut self, rel: &str, outcome: &FileOutcome);
+}
+
+/// Drop-in no-op sink for callers that do not care about progress.
+pub struct NoopProgressSink;
+
+impl SyncProgressSink for NoopProgressSink {
+    fn on_phase(&mut self, _phase: SyncPhase) {}
+    fn on_file_start(
+        &mut self,
+        _rel: &str,
+        _total: u64,
+        _op: &'static str,
+        _decision_policy: DeltaPolicy,
+    ) {
+    }
+    fn on_file_progress(&mut self, _rel: &str, _sent: u64, _total: u64) {}
+    fn on_file_done(&mut self, _rel: &str, _outcome: &FileOutcome) {}
+}
+
+enum SyncTreeAction {
+    Copy,
+    Skip(String),
+}
+
+struct SyncTreeDecision {
+    action: SyncTreeAction,
+    decision_policy: DeltaPolicy,
+}
+
+#[derive(Clone, Copy)]
+struct SyncFileMeta<'a> {
+    size: u64,
+    mtime: Option<&'a str>,
+    hash: Option<&'a str>,
+}
+
+#[derive(Clone, Copy)]
+struct SyncTransferSpec<'a> {
+    rel: &'a str,
+    total: u64,
+    decision_policy: DeltaPolicy,
 }
 
 /// Action to perform during sync
@@ -562,30 +772,719 @@ pub fn build_comparison_results(
 
 /// Determine the recommended action based on comparison status and direction
 #[allow(dead_code)]
-pub fn get_recommended_action(status: &SyncStatus, direction: &SyncDirection) -> SyncAction {
+pub fn get_recommended_action(status: &SyncStatus, direction: &CompareDirection) -> SyncAction {
     match (status, direction) {
         // Bidirectional
-        (SyncStatus::LocalNewer, SyncDirection::Bidirectional) => SyncAction::Upload,
-        (SyncStatus::RemoteNewer, SyncDirection::Bidirectional) => SyncAction::Download,
-        (SyncStatus::LocalOnly, SyncDirection::Bidirectional) => SyncAction::Upload,
-        (SyncStatus::RemoteOnly, SyncDirection::Bidirectional) => SyncAction::Download,
+        (SyncStatus::LocalNewer, CompareDirection::Bidirectional) => SyncAction::Upload,
+        (SyncStatus::RemoteNewer, CompareDirection::Bidirectional) => SyncAction::Download,
+        (SyncStatus::LocalOnly, CompareDirection::Bidirectional) => SyncAction::Upload,
+        (SyncStatus::RemoteOnly, CompareDirection::Bidirectional) => SyncAction::Download,
         (SyncStatus::Conflict, _) => SyncAction::AskUser,
         (SyncStatus::SizeMismatch, _) => SyncAction::AskUser,
 
         // Local to Remote
-        (SyncStatus::LocalNewer, SyncDirection::LocalToRemote) => SyncAction::Upload,
-        (SyncStatus::LocalOnly, SyncDirection::LocalToRemote) => SyncAction::Upload,
-        (SyncStatus::RemoteNewer, SyncDirection::LocalToRemote) => SyncAction::Skip,
-        (SyncStatus::RemoteOnly, SyncDirection::LocalToRemote) => SyncAction::DeleteRemote,
+        (SyncStatus::LocalNewer, CompareDirection::LocalToRemote) => SyncAction::Upload,
+        (SyncStatus::LocalOnly, CompareDirection::LocalToRemote) => SyncAction::Upload,
+        (SyncStatus::RemoteNewer, CompareDirection::LocalToRemote) => SyncAction::Skip,
+        (SyncStatus::RemoteOnly, CompareDirection::LocalToRemote) => SyncAction::DeleteRemote,
 
         // Remote to Local
-        (SyncStatus::RemoteNewer, SyncDirection::RemoteToLocal) => SyncAction::Download,
-        (SyncStatus::RemoteOnly, SyncDirection::RemoteToLocal) => SyncAction::Download,
-        (SyncStatus::LocalNewer, SyncDirection::RemoteToLocal) => SyncAction::Skip,
-        (SyncStatus::LocalOnly, SyncDirection::RemoteToLocal) => SyncAction::DeleteLocal,
+        (SyncStatus::RemoteNewer, CompareDirection::RemoteToLocal) => SyncAction::Download,
+        (SyncStatus::RemoteOnly, CompareDirection::RemoteToLocal) => SyncAction::Download,
+        (SyncStatus::LocalNewer, CompareDirection::RemoteToLocal) => SyncAction::Skip,
+        (SyncStatus::LocalOnly, CompareDirection::RemoteToLocal) => SyncAction::DeleteLocal,
 
         // Identical - no action needed
         (SyncStatus::Identical, _) => SyncAction::Skip,
+    }
+}
+
+/// Run a sync between `local_root` and `remote_root` using `provider` and
+/// record progress via `sink`.
+pub async fn sync_tree_core(
+    provider: &mut Box<dyn StorageProvider>,
+    local_root: &str,
+    remote_root: &str,
+    opts: &SyncOptions,
+    sink: &mut dyn SyncProgressSink,
+) -> SyncReport {
+    let start = std::time::Instant::now();
+    sink.on_phase(SyncPhase::Scanning);
+    let locals = scan_local_tree(local_root, &opts.scan);
+
+    if !opts.dry_run
+        && !locals.is_empty()
+        && matches!(opts.direction, SyncDirection::Upload | SyncDirection::Both)
+    {
+        ensure_remote_dir(provider, remote_root).await;
+    }
+
+    let remotes = scan_remote_tree(provider, remote_root, &opts.scan).await;
+
+    sink.on_phase(SyncPhase::Planning);
+    let mut report = SyncReport {
+        dry_run: opts.dry_run,
+        direction: Some(opts.direction),
+        delta_policy: Some(opts.delta_policy),
+        ..SyncReport::default()
+    };
+
+    use std::collections::{HashMap as Map, HashSet};
+    let mut seen: HashSet<String> = HashSet::new();
+    let local_entries_by_path: Map<&str, &crate::sync_core::LocalEntry> = locals
+        .iter()
+        .map(|entry| (entry.rel_path.as_str(), entry))
+        .collect();
+    let remote_entries_by_path: Map<&str, &crate::sync_core::RemoteEntry> = remotes
+        .iter()
+        .map(|entry| (entry.rel_path.as_str(), entry))
+        .collect();
+
+    sink.on_phase(SyncPhase::Executing);
+
+    if matches!(opts.direction, SyncDirection::Upload | SyncDirection::Both) {
+        for local_entry in &locals {
+            if !seen.insert(local_entry.rel_path.clone()) {
+                continue;
+            }
+            let remote_entry = remote_entries_by_path
+                .get(local_entry.rel_path.as_str())
+                .copied();
+            let decision = decide_upload(
+                local_entry,
+                remote_entry,
+                opts.delta_policy,
+                opts.conflict_mode,
+            );
+            match decision.action {
+                SyncTreeAction::Copy => {
+                    let outcome = perform_upload(
+                        provider,
+                        local_root,
+                        remote_root,
+                        SyncTransferSpec {
+                            rel: &local_entry.rel_path,
+                            total: local_entry.size,
+                            decision_policy: decision.decision_policy,
+                        },
+                        opts.dry_run,
+                        sink,
+                    )
+                    .await;
+                    apply_sync_tree_outcome(
+                        &mut report,
+                        &local_entry.rel_path,
+                        "upload",
+                        outcome,
+                        decision.decision_policy,
+                        sink,
+                    );
+                }
+                SyncTreeAction::Skip(reason) => {
+                    sink.on_file_start(
+                        &local_entry.rel_path,
+                        0,
+                        "skip",
+                        decision.decision_policy,
+                    );
+                    let outcome = FileOutcome::Skipped { reason };
+                    apply_sync_tree_outcome(
+                        &mut report,
+                        &local_entry.rel_path,
+                        "upload",
+                        outcome,
+                        decision.decision_policy,
+                        sink,
+                    );
+                }
+            }
+        }
+    }
+
+    if matches!(opts.direction, SyncDirection::Download | SyncDirection::Both) {
+        for remote_entry in &remotes {
+            let already_seen = !seen.insert(remote_entry.rel_path.clone());
+            let decision = decide_download(
+                remote_entry,
+                local_entries_by_path.get(remote_entry.rel_path.as_str()).copied(),
+                opts.delta_policy,
+                opts.conflict_mode,
+                already_seen && matches!(opts.direction, SyncDirection::Both),
+            );
+            match decision.action {
+                SyncTreeAction::Copy => {
+                    let outcome = perform_download(
+                        provider,
+                        local_root,
+                        remote_root,
+                        SyncTransferSpec {
+                            rel: &remote_entry.rel_path,
+                            total: remote_entry.size,
+                            decision_policy: decision.decision_policy,
+                        },
+                        opts.dry_run,
+                        sink,
+                    )
+                    .await;
+                    apply_sync_tree_outcome(
+                        &mut report,
+                        &remote_entry.rel_path,
+                        "download",
+                        outcome,
+                        decision.decision_policy,
+                        sink,
+                    );
+                }
+                SyncTreeAction::Skip(reason) => {
+                    sink.on_file_start(
+                        &remote_entry.rel_path,
+                        0,
+                        "skip",
+                        decision.decision_policy,
+                    );
+                    let outcome = FileOutcome::Skipped { reason };
+                    apply_sync_tree_outcome(
+                        &mut report,
+                        &remote_entry.rel_path,
+                        "download",
+                        outcome,
+                        decision.decision_policy,
+                        sink,
+                    );
+                }
+            }
+        }
+    }
+
+    if opts.delete_orphans {
+        match opts.direction {
+            SyncDirection::Upload => {
+                for remote_entry in &remotes {
+                    if !local_entries_by_path.contains_key(remote_entry.rel_path.as_str()) {
+                        let outcome = perform_remote_delete(
+                            provider,
+                            remote_root,
+                            &remote_entry.rel_path,
+                            opts.delta_policy,
+                            opts.dry_run,
+                            sink,
+                        )
+                        .await;
+                        apply_sync_tree_outcome(
+                            &mut report,
+                            &remote_entry.rel_path,
+                            "delete_remote",
+                            outcome,
+                            opts.delta_policy,
+                            sink,
+                        );
+                    }
+                }
+            }
+            SyncDirection::Download => {
+                for local_entry in &locals {
+                    if !remote_entries_by_path.contains_key(local_entry.rel_path.as_str()) {
+                        let outcome = perform_local_delete(
+                            local_root,
+                            &local_entry.rel_path,
+                            opts.delta_policy,
+                            opts.dry_run,
+                            sink,
+                        );
+                        apply_sync_tree_outcome(
+                            &mut report,
+                            &local_entry.rel_path,
+                            "delete_local",
+                            outcome,
+                            opts.delta_policy,
+                            sink,
+                        );
+                    }
+                }
+            }
+            SyncDirection::Both => {}
+        }
+    }
+
+    report.elapsed_secs = start.elapsed().as_secs_f64();
+    sink.on_phase(SyncPhase::Done);
+    report
+}
+
+fn decide_upload(
+    local_entry: &crate::sync_core::LocalEntry,
+    remote_entry: Option<&crate::sync_core::RemoteEntry>,
+    policy: DeltaPolicy,
+    mode: ConflictMode,
+) -> SyncTreeDecision {
+    let Some(remote_entry) = remote_entry else {
+        return SyncTreeDecision {
+            action: SyncTreeAction::Copy,
+            decision_policy: policy,
+        };
+    };
+
+    match policy {
+        DeltaPolicy::SizeOnly => decide_upload_by_size(local_entry.size, remote_entry.size, mode),
+        DeltaPolicy::Mtime | DeltaPolicy::Disabled => decide_upload_by_mtime(
+            local_entry.size,
+            local_entry.mtime.as_deref(),
+            remote_entry.size,
+            remote_entry.mtime.as_deref(),
+            mode,
+            policy,
+        ),
+        DeltaPolicy::Hash | DeltaPolicy::Delta => decide_upload_by_hash(
+            SyncFileMeta {
+                size: local_entry.size,
+                mtime: local_entry.mtime.as_deref(),
+                hash: local_entry.sha256.as_deref(),
+            },
+            SyncFileMeta {
+                size: remote_entry.size,
+                mtime: remote_entry.mtime.as_deref(),
+                hash: remote_entry.checksum_hex.as_deref(),
+            },
+            mode,
+            policy,
+        ),
+    }
+}
+
+fn decide_download(
+    remote_entry: &crate::sync_core::RemoteEntry,
+    local_entry: Option<&crate::sync_core::LocalEntry>,
+    policy: DeltaPolicy,
+    mode: ConflictMode,
+    already_handled_by_upload: bool,
+) -> SyncTreeDecision {
+    if already_handled_by_upload {
+        return SyncTreeDecision {
+            action: SyncTreeAction::Skip("resolved by upload pass".to_string()),
+            decision_policy: policy,
+        };
+    }
+    let Some(local_entry) = local_entry else {
+        return SyncTreeDecision {
+            action: SyncTreeAction::Copy,
+            decision_policy: policy,
+        };
+    };
+
+    match policy {
+        DeltaPolicy::SizeOnly => decide_download_by_size(remote_entry.size, local_entry.size, mode),
+        DeltaPolicy::Mtime | DeltaPolicy::Disabled => decide_download_by_mtime(
+            remote_entry.size,
+            remote_entry.mtime.as_deref(),
+            local_entry.size,
+            local_entry.mtime.as_deref(),
+            mode,
+            policy,
+        ),
+        DeltaPolicy::Hash | DeltaPolicy::Delta => decide_download_by_hash(
+            SyncFileMeta {
+                size: remote_entry.size,
+                mtime: remote_entry.mtime.as_deref(),
+                hash: remote_entry.checksum_hex.as_deref(),
+            },
+            SyncFileMeta {
+                size: local_entry.size,
+                mtime: local_entry.mtime.as_deref(),
+                hash: local_entry.sha256.as_deref(),
+            },
+            mode,
+            policy,
+        ),
+    }
+}
+
+fn decide_upload_by_size(
+    local_size: u64,
+    remote_size: u64,
+    mode: ConflictMode,
+) -> SyncTreeDecision {
+    let action = if remote_size == local_size {
+        SyncTreeAction::Skip("identical size".to_string())
+    } else {
+        match mode {
+            ConflictMode::Larger if local_size > remote_size => SyncTreeAction::Copy,
+            ConflictMode::Larger => SyncTreeAction::Skip("remote is larger".to_string()),
+            ConflictMode::Newer => SyncTreeAction::Copy,
+            ConflictMode::Skip => SyncTreeAction::Skip("conflict skip".to_string()),
+        }
+    };
+    SyncTreeDecision {
+        action,
+        decision_policy: DeltaPolicy::SizeOnly,
+    }
+}
+
+fn decide_download_by_size(
+    remote_size: u64,
+    local_size: u64,
+    mode: ConflictMode,
+) -> SyncTreeDecision {
+    let action = if remote_size == local_size {
+        SyncTreeAction::Skip("identical size".to_string())
+    } else {
+        match mode {
+            ConflictMode::Larger if remote_size > local_size => SyncTreeAction::Copy,
+            ConflictMode::Larger => SyncTreeAction::Skip("local is larger".to_string()),
+            ConflictMode::Newer => {
+                SyncTreeAction::Skip("newer mode prefers existing local".to_string())
+            }
+            ConflictMode::Skip => SyncTreeAction::Skip("conflict skip".to_string()),
+        }
+    };
+    SyncTreeDecision {
+        action,
+        decision_policy: DeltaPolicy::SizeOnly,
+    }
+}
+
+fn decide_upload_by_mtime(
+    local_size: u64,
+    local_mtime: Option<&str>,
+    remote_size: u64,
+    remote_mtime: Option<&str>,
+    mode: ConflictMode,
+    requested_policy: DeltaPolicy,
+) -> SyncTreeDecision {
+    if let Some(ordering) = compare_scan_mtimes(local_mtime, remote_mtime) {
+        let action = match ordering {
+            std::cmp::Ordering::Greater => SyncTreeAction::Copy,
+            std::cmp::Ordering::Less => SyncTreeAction::Skip("remote is newer".to_string()),
+            std::cmp::Ordering::Equal if local_size == remote_size => {
+                SyncTreeAction::Skip("identical mtime and size".to_string())
+            }
+            std::cmp::Ordering::Equal => return decide_upload_by_size(local_size, remote_size, mode),
+        };
+        return SyncTreeDecision {
+            action,
+            decision_policy: if matches!(requested_policy, DeltaPolicy::Disabled) {
+                DeltaPolicy::Disabled
+            } else {
+                DeltaPolicy::Mtime
+            },
+        };
+    }
+
+    decide_upload_by_size(local_size, remote_size, mode)
+}
+
+fn decide_download_by_mtime(
+    remote_size: u64,
+    remote_mtime: Option<&str>,
+    local_size: u64,
+    local_mtime: Option<&str>,
+    mode: ConflictMode,
+    requested_policy: DeltaPolicy,
+) -> SyncTreeDecision {
+    if let Some(ordering) = compare_scan_mtimes(remote_mtime, local_mtime) {
+        let action = match ordering {
+            std::cmp::Ordering::Greater => SyncTreeAction::Copy,
+            std::cmp::Ordering::Less => SyncTreeAction::Skip("local is newer".to_string()),
+            std::cmp::Ordering::Equal if remote_size == local_size => {
+                SyncTreeAction::Skip("identical mtime and size".to_string())
+            }
+            std::cmp::Ordering::Equal => return decide_download_by_size(remote_size, local_size, mode),
+        };
+        return SyncTreeDecision {
+            action,
+            decision_policy: if matches!(requested_policy, DeltaPolicy::Disabled) {
+                DeltaPolicy::Disabled
+            } else {
+                DeltaPolicy::Mtime
+            },
+        };
+    }
+
+    decide_download_by_size(remote_size, local_size, mode)
+}
+
+fn decide_upload_by_hash(
+    local: SyncFileMeta<'_>,
+    remote: SyncFileMeta<'_>,
+    mode: ConflictMode,
+    requested_policy: DeltaPolicy,
+) -> SyncTreeDecision {
+    if let (Some(local_hash), Some(remote_hash)) = (local.hash, remote.hash) {
+        if local_hash.eq_ignore_ascii_case(remote_hash) {
+            return SyncTreeDecision {
+                action: SyncTreeAction::Skip("identical hash".to_string()),
+                decision_policy: DeltaPolicy::Hash,
+            };
+        }
+    }
+
+    decide_upload_by_mtime(
+        local.size,
+        local.mtime,
+        remote.size,
+        remote.mtime,
+        mode,
+        requested_policy,
+    )
+}
+
+fn decide_download_by_hash(
+    remote: SyncFileMeta<'_>,
+    local: SyncFileMeta<'_>,
+    mode: ConflictMode,
+    requested_policy: DeltaPolicy,
+) -> SyncTreeDecision {
+    if let (Some(remote_hash), Some(local_hash)) = (remote.hash, local.hash) {
+        if remote_hash.eq_ignore_ascii_case(local_hash) {
+            return SyncTreeDecision {
+                action: SyncTreeAction::Skip("identical hash".to_string()),
+                decision_policy: DeltaPolicy::Hash,
+            };
+        }
+    }
+
+    decide_download_by_mtime(
+        remote.size,
+        remote.mtime,
+        local.size,
+        local.mtime,
+        mode,
+        requested_policy,
+    )
+}
+
+fn compare_scan_mtimes(left: Option<&str>, right: Option<&str>) -> Option<std::cmp::Ordering> {
+    let left = left.and_then(parse_scan_mtime)?;
+    let right = right.and_then(parse_scan_mtime)?;
+    Some(left.cmp(&right))
+}
+
+fn parse_scan_mtime(raw: &str) -> Option<chrono::DateTime<Utc>> {
+    chrono::DateTime::parse_from_rfc3339(raw)
+        .map(|dt| dt.with_timezone(&Utc))
+        .ok()
+        .or_else(|| {
+            let trimmed = raw.strip_suffix('Z').unwrap_or(raw);
+            chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%dT%H:%M:%S")
+                .or_else(|_| chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S"))
+                .or_else(|_| chrono::NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M"))
+                .ok()
+                .map(|naive| chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
+        })
+}
+
+fn apply_sync_tree_outcome(
+    report: &mut SyncReport,
+    rel: &str,
+    operation: &'static str,
+    outcome: FileOutcome,
+    decision_policy: DeltaPolicy,
+    sink: &mut dyn SyncProgressSink,
+) {
+    match &outcome {
+        FileOutcome::Uploaded { .. } => report.uploaded += 1,
+        FileOutcome::Downloaded { .. } => report.downloaded += 1,
+        FileOutcome::Deleted => report.deleted += 1,
+        FileOutcome::Skipped { .. } => report.skipped += 1,
+        FileOutcome::Failed { error } => {
+            report.errors.push(SyncError {
+                rel_path: rel.to_string(),
+                operation,
+                message: error.clone(),
+                decision_policy,
+            });
+        }
+    }
+    sink.on_file_done(rel, &outcome);
+}
+
+async fn perform_upload(
+    provider: &mut Box<dyn StorageProvider>,
+    local_root: &str,
+    remote_root: &str,
+    transfer: SyncTransferSpec<'_>,
+    dry_run: bool,
+    sink: &mut dyn SyncProgressSink,
+) -> FileOutcome {
+    sink.on_file_start(
+        transfer.rel,
+        transfer.total,
+        "upload",
+        transfer.decision_policy,
+    );
+    if dry_run {
+        return FileOutcome::Skipped {
+            reason: "dry-run".to_string(),
+        };
+    }
+    let local_path = join_clean(local_root, transfer.rel);
+    let remote_path = join_clean_remote(remote_root, transfer.rel);
+    ensure_remote_parent(provider, &remote_path).await;
+
+    match provider.upload(&local_path, &remote_path, None).await {
+        Ok(()) => FileOutcome::Uploaded {
+            bytes: transfer.total,
+        },
+        Err(e) => FileOutcome::Failed {
+            error: format!("upload failed: {}", e),
+        },
+    }
+}
+
+async fn perform_download(
+    provider: &mut Box<dyn StorageProvider>,
+    local_root: &str,
+    remote_root: &str,
+    transfer: SyncTransferSpec<'_>,
+    dry_run: bool,
+    sink: &mut dyn SyncProgressSink,
+) -> FileOutcome {
+    sink.on_file_start(
+        transfer.rel,
+        transfer.total,
+        "download",
+        transfer.decision_policy,
+    );
+    if dry_run {
+        return FileOutcome::Skipped {
+            reason: "dry-run".to_string(),
+        };
+    }
+    let remote_path = join_clean_remote(remote_root, transfer.rel);
+    let local_path = join_clean(local_root, transfer.rel);
+    if let Some(parent) = Path::new(&local_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match provider.download(&remote_path, &local_path, None).await {
+        Ok(()) => FileOutcome::Downloaded {
+            bytes: transfer.total,
+        },
+        Err(e) => FileOutcome::Failed {
+            error: format!("download failed: {}", e),
+        },
+    }
+}
+
+async fn perform_remote_delete(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_root: &str,
+    rel: &str,
+    decision_policy: DeltaPolicy,
+    dry_run: bool,
+    sink: &mut dyn SyncProgressSink,
+) -> FileOutcome {
+    sink.on_file_start(rel, 0, "delete_remote", decision_policy);
+    if dry_run {
+        return FileOutcome::Skipped {
+            reason: "dry-run".to_string(),
+        };
+    }
+    let remote_path = join_clean_remote(remote_root, rel);
+    match provider.delete(&remote_path).await {
+        Ok(()) => FileOutcome::Deleted,
+        Err(e) => FileOutcome::Failed {
+            error: format!("delete failed: {}", e),
+        },
+    }
+}
+
+fn perform_local_delete(
+    local_root: &str,
+    rel: &str,
+    decision_policy: DeltaPolicy,
+    dry_run: bool,
+    sink: &mut dyn SyncProgressSink,
+) -> FileOutcome {
+    sink.on_file_start(rel, 0, "delete_local", decision_policy);
+    if dry_run {
+        return FileOutcome::Skipped {
+            reason: "dry-run".to_string(),
+        };
+    }
+    let path = join_clean(local_root, rel);
+    match std::fs::remove_file(&path) {
+        Ok(()) => FileOutcome::Deleted,
+        Err(e) => FileOutcome::Failed {
+            error: format!("delete failed: {}", e),
+        },
+    }
+}
+
+async fn ensure_remote_parent(provider: &mut Box<dyn StorageProvider>, remote_path: &str) {
+    if let Some(idx) = remote_path.rfind('/') {
+        let parent = &remote_path[..idx];
+        if !parent.is_empty() {
+            ensure_remote_dir(provider, parent).await;
+        }
+    }
+}
+
+fn remote_dir_chain(dir: &str) -> Vec<String> {
+    let trimmed = dir.trim_end_matches('/');
+    if trimmed.is_empty() || trimmed == "/" {
+        return Vec::new();
+    }
+
+    let leading_slash = trimmed.starts_with('/');
+    let mut accumulated = String::new();
+    let mut chain = Vec::new();
+
+    for part in trimmed.split('/') {
+        if part.is_empty() {
+            continue;
+        }
+        if leading_slash || !accumulated.is_empty() {
+            accumulated.push('/');
+        }
+        accumulated.push_str(part);
+        chain.push(accumulated.clone());
+    }
+
+    chain
+}
+
+fn mkdir_error_is_idempotent(err: &ProviderError) -> bool {
+    match err {
+        ProviderError::AlreadyExists(_) => true,
+        ProviderError::ServerError(msg) | ProviderError::Other(msg) => {
+            let lower = msg.to_ascii_lowercase();
+            lower.contains("already exists")
+                || lower.contains("file exists")
+                || lower.contains("eexist")
+                || lower.contains("550")
+        }
+        _ => false,
+    }
+}
+
+async fn ensure_remote_dir(provider: &mut Box<dyn StorageProvider>, dir: &str) {
+    for path in remote_dir_chain(dir) {
+        match provider.mkdir(&path).await {
+            Ok(()) => {}
+            Err(err) if mkdir_error_is_idempotent(&err) => {}
+            Err(_) => return,
+        }
+    }
+}
+
+fn join_clean(root: &str, rel: &str) -> String {
+    let rel = rel.trim_start_matches('/');
+    if root.is_empty() {
+        rel.to_string()
+    } else if root.ends_with('/') || root.ends_with('\\') {
+        format!("{}{}", root, rel)
+    } else {
+        format!("{}/{}", root, rel)
+    }
+}
+
+fn join_clean_remote(root: &str, rel: &str) -> String {
+    let rel = rel.trim_start_matches('/');
+    if root.is_empty() || root == "/" {
+        format!("/{}", rel)
+    } else if root.ends_with('/') {
+        format!("{}{}", root, rel)
+    } else {
+        format!("{}/{}", root, rel)
     }
 }
 
@@ -1124,7 +2023,7 @@ pub struct SyncJournal {
     /// Remote root path
     pub remote_path: String,
     /// Sync direction
-    pub direction: SyncDirection,
+    pub direction: CompareDirection,
     /// Retry policy used
     pub retry_policy: RetryPolicy,
     /// Verify policy used
@@ -1140,7 +2039,7 @@ impl SyncJournal {
     pub fn new(
         local_path: String,
         remote_path: String,
-        direction: SyncDirection,
+        direction: CompareDirection,
         retry_policy: RetryPolicy,
         verify_policy: VerifyPolicy,
     ) -> Self {
@@ -1333,7 +2232,7 @@ pub struct SyncProfile {
     pub id: String,
     pub name: String,
     pub builtin: bool,
-    pub direction: SyncDirection,
+    pub direction: CompareDirection,
     pub compare_timestamp: bool,
     pub compare_size: bool,
     pub compare_checksum: bool,
@@ -1360,7 +2259,7 @@ impl SyncProfile {
             id: "mirror".to_string(),
             name: "Mirror".to_string(),
             builtin: true,
-            direction: SyncDirection::LocalToRemote,
+            direction: CompareDirection::LocalToRemote,
             compare_timestamp: true,
             compare_size: true,
             compare_checksum: false,
@@ -1386,7 +2285,7 @@ impl SyncProfile {
             id: "two_way".to_string(),
             name: "Two-way".to_string(),
             builtin: true,
-            direction: SyncDirection::Bidirectional,
+            direction: CompareDirection::Bidirectional,
             compare_timestamp: true,
             compare_size: true,
             compare_checksum: false,
@@ -1412,7 +2311,7 @@ impl SyncProfile {
             id: "backup".to_string(),
             name: "Backup".to_string(),
             builtin: true,
-            direction: SyncDirection::LocalToRemote,
+            direction: CompareDirection::LocalToRemote,
             compare_timestamp: false,
             compare_size: true,
             compare_checksum: true,
@@ -1441,7 +2340,7 @@ impl SyncProfile {
             id: "pull".to_string(),
             name: "Pull".to_string(),
             builtin: true,
-            direction: SyncDirection::RemoteToLocal,
+            direction: CompareDirection::RemoteToLocal,
             compare_timestamp: true,
             compare_size: true,
             compare_checksum: false,
@@ -1467,7 +2366,7 @@ impl SyncProfile {
             id: "remote_backup".to_string(),
             name: "Remote Backup".to_string(),
             builtin: true,
-            direction: SyncDirection::RemoteToLocal,
+            direction: CompareDirection::RemoteToLocal,
             compare_timestamp: false,
             compare_size: true,
             compare_checksum: true,
@@ -1652,7 +2551,7 @@ pub struct TemplatePathPattern {
 /// Profile settings embedded in a template (no credentials, no id)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncTemplateProfile {
-    pub direction: SyncDirection,
+    pub direction: CompareDirection,
     pub compare_timestamp: bool,
     pub compare_size: bool,
     pub compare_checksum: bool,
@@ -1686,7 +2585,7 @@ pub fn export_sync_template(
             remote: remote_path.to_string(),
         }],
         profile: SyncTemplateProfile {
-            direction: profile.direction.clone(),
+            direction: profile.direction,
             compare_timestamp: profile.compare_timestamp,
             compare_size: profile.compare_size,
             compare_checksum: profile.compare_checksum,
@@ -2069,7 +2968,7 @@ mod tests {
         let mut journal = SyncJournal::new(
             "/local".to_string(),
             "/remote".to_string(),
-            SyncDirection::Bidirectional,
+            CompareDirection::Bidirectional,
             RetryPolicy::default(),
             VerifyPolicy::default(),
         );
@@ -2094,7 +2993,7 @@ mod tests {
         let mut journal = SyncJournal::new(
             "/a".to_string(),
             "/b".to_string(),
-            SyncDirection::LocalToRemote,
+            CompareDirection::LocalToRemote,
             RetryPolicy::default(),
             VerifyPolicy::default(),
         );
@@ -2208,5 +3107,180 @@ mod tests {
         assert_eq!(template.path_patterns.len(), 1);
         assert!(template.schedule.is_none());
         assert!(template.created_by.contains("AeroFTP"));
+    }
+
+    #[test]
+    fn test_parse_sync_tree_direction_accepts_common_aliases() {
+        assert_eq!(SyncDirection::parse("upload"), Some(SyncDirection::Upload));
+        assert_eq!(SyncDirection::parse("push"), Some(SyncDirection::Upload));
+        assert_eq!(SyncDirection::parse("pull"), Some(SyncDirection::Download));
+        assert_eq!(SyncDirection::parse("both"), Some(SyncDirection::Both));
+        assert_eq!(SyncDirection::parse("wat"), None);
+    }
+
+    #[test]
+    fn test_parse_sync_tree_conflict_mode() {
+        assert_eq!(ConflictMode::parse("larger"), Some(ConflictMode::Larger));
+        assert_eq!(ConflictMode::parse("skip"), Some(ConflictMode::Skip));
+        assert_eq!(ConflictMode::parse("newer"), Some(ConflictMode::Newer));
+        assert_eq!(ConflictMode::parse("foo"), None);
+    }
+
+    #[test]
+    fn test_join_clean_handles_trailing_slash_and_leading_slash_on_rel() {
+        assert_eq!(join_clean("/base", "/rel.txt"), "/base/rel.txt");
+        assert_eq!(join_clean("/base/", "rel.txt"), "/base/rel.txt");
+        assert_eq!(join_clean("", "rel.txt"), "rel.txt");
+    }
+
+    #[test]
+    fn test_join_clean_remote_keeps_leading_slash() {
+        assert_eq!(join_clean_remote("/", "rel.txt"), "/rel.txt");
+        assert_eq!(join_clean_remote("/foo", "rel.txt"), "/foo/rel.txt");
+        assert_eq!(join_clean_remote("/foo/", "/rel.txt"), "/foo/rel.txt");
+    }
+
+    #[test]
+    fn test_remote_dir_chain_builds_absolute_segments() {
+        assert_eq!(
+            remote_dir_chain("/www.aeroftp.app/playground/run"),
+            vec![
+                "/www.aeroftp.app".to_string(),
+                "/www.aeroftp.app/playground".to_string(),
+                "/www.aeroftp.app/playground/run".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_remote_dir_chain_ignores_root_and_trailing_slash() {
+        assert!(remote_dir_chain("/").is_empty());
+        assert_eq!(
+            remote_dir_chain("/foo/bar/"),
+            vec!["/foo".to_string(), "/foo/bar".to_string()]
+        );
+    }
+
+    fn local_entry(size: u64, mtime: Option<&str>, sha256: Option<&str>) -> crate::sync_core::LocalEntry {
+        crate::sync_core::LocalEntry {
+            rel_path: "file.txt".to_string(),
+            size,
+            mtime: mtime.map(str::to_string),
+            sha256: sha256.map(str::to_string),
+        }
+    }
+
+    fn remote_entry(
+        size: u64,
+        mtime: Option<&str>,
+        checksum_hex: Option<&str>,
+    ) -> crate::sync_core::RemoteEntry {
+        crate::sync_core::RemoteEntry {
+            rel_path: "file.txt".to_string(),
+            size,
+            mtime: mtime.map(str::to_string),
+            checksum_alg: checksum_hex.map(|_| "sha256".to_string()),
+            checksum_hex: checksum_hex.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn test_decide_upload_copies_missing_remote() {
+        let local = local_entry(10, Some("2026-04-21T10:00:00"), None);
+        let decision = decide_upload(&local, None, DeltaPolicy::Mtime, ConflictMode::Larger);
+        assert!(matches!(decision.action, SyncTreeAction::Copy));
+        assert_eq!(decision.decision_policy, DeltaPolicy::Mtime);
+    }
+
+    #[test]
+    fn test_decide_upload_skips_same_size() {
+        let local = local_entry(10, Some("2026-04-21T10:00:00"), None);
+        let remote = remote_entry(10, None, None);
+        let decision = decide_upload(&local, Some(&remote), DeltaPolicy::SizeOnly, ConflictMode::Larger);
+        assert!(matches!(decision.action, SyncTreeAction::Skip(_)));
+        assert_eq!(decision.decision_policy, DeltaPolicy::SizeOnly);
+    }
+
+    #[test]
+    fn test_decide_upload_larger_mode_picks_larger_side() {
+        let larger_local = local_entry(20, None, None);
+        let smaller_local = local_entry(5, None, None);
+        let remote = remote_entry(10, None, None);
+
+        assert!(matches!(
+            decide_upload(&larger_local, Some(&remote), DeltaPolicy::SizeOnly, ConflictMode::Larger)
+                .action,
+            SyncTreeAction::Copy
+        ));
+        assert!(matches!(
+            decide_upload(&smaller_local, Some(&remote), DeltaPolicy::SizeOnly, ConflictMode::Larger)
+                .action,
+            SyncTreeAction::Skip(_)
+        ));
+    }
+
+    #[test]
+    fn test_decide_download_respects_both_direction_dedup() {
+        let local = local_entry(10, None, None);
+        let remote = remote_entry(10, None, None);
+        let decision = decide_download(
+            &remote,
+            Some(&local),
+            DeltaPolicy::Mtime,
+            ConflictMode::Larger,
+            true,
+        );
+        assert!(matches!(decision.action, SyncTreeAction::Skip(_)));
+    }
+
+    #[test]
+    fn test_parse_delta_policy() {
+        assert_eq!(DeltaPolicy::parse("size_only"), Some(DeltaPolicy::SizeOnly));
+        assert_eq!(DeltaPolicy::parse("mtime"), Some(DeltaPolicy::Mtime));
+        assert_eq!(DeltaPolicy::parse("hash"), Some(DeltaPolicy::Hash));
+        assert_eq!(DeltaPolicy::parse("delta"), Some(DeltaPolicy::Delta));
+        assert_eq!(DeltaPolicy::parse("wat"), None);
+    }
+
+    #[test]
+    fn test_decide_upload_mtime_prefers_newer_local_even_if_size_matches() {
+        let local = local_entry(10, Some("2026-04-22T10:00:00"), None);
+        let remote = remote_entry(10, Some("2026-04-21T10:00:00"), None);
+
+        let mtime_decision = decide_upload(&local, Some(&remote), DeltaPolicy::Mtime, ConflictMode::Larger);
+        let size_decision = decide_upload(&local, Some(&remote), DeltaPolicy::SizeOnly, ConflictMode::Larger);
+
+        assert!(matches!(mtime_decision.action, SyncTreeAction::Copy));
+        assert_eq!(mtime_decision.decision_policy, DeltaPolicy::Mtime);
+        assert!(matches!(size_decision.action, SyncTreeAction::Skip(_)));
+        assert_eq!(size_decision.decision_policy, DeltaPolicy::SizeOnly);
+    }
+
+    #[test]
+    fn test_decide_upload_hash_skips_identical_checksum_even_if_mtime_differs() {
+        let local = local_entry(
+            10,
+            Some("2026-04-22T10:00:00"),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        );
+        let remote = remote_entry(
+            10,
+            Some("2026-04-21T10:00:00"),
+            Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        );
+
+        let decision = decide_upload(&local, Some(&remote), DeltaPolicy::Hash, ConflictMode::Larger);
+        assert!(matches!(decision.action, SyncTreeAction::Skip(_)));
+        assert_eq!(decision.decision_policy, DeltaPolicy::Hash);
+    }
+
+    #[test]
+    fn test_decide_upload_hash_falls_back_to_mtime_without_checksums() {
+        let local = local_entry(10, Some("2026-04-22 10:00:00"), None);
+        let remote = remote_entry(10, Some("2026-04-21T10:00:00Z"), None);
+
+        let decision = decide_upload(&local, Some(&remote), DeltaPolicy::Hash, ConflictMode::Larger);
+        assert!(matches!(decision.action, SyncTreeAction::Copy));
+        assert_eq!(decision.decision_policy, DeltaPolicy::Mtime);
     }
 }
