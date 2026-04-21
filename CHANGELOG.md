@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] — targeting 3.6.0
+
+### MCP Refinements
+
+- **`aeroftp_read_file` soft-truncate dentro hard cap**: oversized file (oltre `preview_kb` ma entro il cap 1 MB) ritornano contenuto troncato con `truncated:true` invece di errore duro. Il validator rifiuta solo oltre il hard cap 1 MB. Elimina i retry forzati che gli agent facevano quando incontravano file appena oltre la finestra di preview richiesta. `src-tauri/src/mcp/tools.rs::validate_read_preview_target`.
+- **`aeroftp_check_tree` espone `compare_method` anche sul gruppo `match`**: il JSON di ritorno ora include `groups.match` dettagliato alla pari di `differ`/`missing_local`/`missing_remote`. Ogni entry porta `compare_method: "checksum" | "size"` così l'agent sa se il match è stato crittograficamente verificato o è fallback dimensionale (tipicamente su FTP che non ha checksum server-side). Description del tool aggiornata. Il flag `truncated` copre anche `match_count > cap`.
+
+### Altro
+
+*Aggiungere qui man mano che il ciclo v3.6.0 prosegue.*
 
 ## [3.5.9] - 2026-04-20
 

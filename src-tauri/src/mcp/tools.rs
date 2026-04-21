@@ -357,7 +357,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_check_tree",
-            description: "Compare a local directory against a remote directory and report differences (match, differ, missing_local, missing_remote). When checksum=true, SHA-256 is computed on local files AND on the remote when the provider supports server-side checksums; otherwise comparison falls back to size. Supports glob excludes and one-way mode.",
+            description: "Compare a local directory against a remote directory and report differences grouped as match, differ, missing_local, missing_remote. Each entry carries compare_method ('checksum' or 'size') so agents can tell how the decision was made. When checksum=true, SHA-256 is computed on local files AND on the remote when the provider supports server-side checksums; otherwise comparison falls back to size. Supports glob excludes and one-way mode.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "local_dir": { "type": "string", "description": "Local directory to compare" },
@@ -426,20 +426,19 @@ fn get_bool_opt(args: &Value, key: &str) -> Option<bool> {
 
 /// Gate `aeroftp_read_file` against directories and oversized files.
 ///
-/// `preview_bytes` is the caller-requested preview window after clamping; it
-/// is always ≤ `MAX_READ_PREVIEW_BYTES`. The error message intentionally
-/// mentions both the requested window and the hard cap so the agent knows
-/// how high it can push `preview_kb` before having to switch to
-/// `aeroftp_download_file`.
-fn validate_read_preview_target(is_dir: bool, size: u64, preview_bytes: u64) -> Result<(), String> {
+/// Only rejects files that exceed the hard in-memory cap
+/// (`MAX_READ_PREVIEW_BYTES`). Files larger than the caller's `preview_bytes`
+/// window but within the hard cap are accepted here and truncated downstream
+/// with `truncated:true` so agents can get a tail-free preview without having
+/// to retry.
+fn validate_read_preview_target(is_dir: bool, size: u64, _preview_bytes: u64) -> Result<(), String> {
     if is_dir {
         return Err("Cannot read a directory. Use aeroftp_list_files instead.".into());
     }
-    if size > preview_bytes {
+    if size > MAX_READ_PREVIEW_BYTES {
         return Err(format!(
-            "File too large for preview ({:.1} KB). Preview window: {} KB. Raise preview_kb (cap {}) or use aeroftp_download_file.",
+            "File too large for preview ({:.1} KB). Hard cap: {} KB. Use aeroftp_download_file for larger files.",
             size as f64 / 1024.0,
-            preview_bytes / 1024,
             MAX_READ_PREVIEW_BYTES / 1024,
         ));
     }
@@ -1608,12 +1607,14 @@ pub async fn execute_tool(
                             "missing_remote": diff.missing_remote_count(),
                         },
                         "groups": {
+                            "match": entries_to_json(&diff.matches),
                             "differ": entries_to_json(&diff.differ),
                             "missing_local": entries_to_json(&diff.missing_local),
                             "missing_remote": entries_to_json(&diff.missing_remote),
                         },
                         "has_differences": diff.has_differences(),
-                        "truncated": diff.differ_count() > cap
+                        "truncated": diff.match_count() > cap
+                            || diff.differ_count() > cap
                             || diff.missing_local_count() > cap
                             || diff.missing_remote_count() > cap,
                     }))
@@ -2039,18 +2040,25 @@ mod tests {
     }
 
     #[test]
-    fn read_preview_rejects_file_larger_than_window() {
-        // File bigger than caller-requested preview window → rejection tells
-        // the agent the exact window used so preview_kb can be raised.
-        let err = validate_read_preview_target(false, 32 * 1024, 16 * 1024).unwrap_err();
+    fn read_preview_rejects_file_larger_than_hard_cap() {
+        // Only files above the absolute hard cap are rejected; smaller files
+        // are truncated silently downstream.
+        let err = validate_read_preview_target(false, MAX_READ_PREVIEW_BYTES + 1, 16 * 1024)
+            .unwrap_err();
         assert!(err.contains("File too large for preview"));
-        assert!(err.contains("Preview window: 16 KB"));
-        assert!(err.contains(&format!("cap {}", MAX_READ_PREVIEW_BYTES / 1024)));
+        assert!(err.contains(&format!("Hard cap: {} KB", MAX_READ_PREVIEW_BYTES / 1024)));
     }
 
     #[test]
     fn read_preview_accepts_file_inside_window() {
         assert!(validate_read_preview_target(false, 4096, 5 * 1024).is_ok());
+    }
+
+    #[test]
+    fn read_preview_accepts_file_over_window_but_under_hard_cap() {
+        // 32 KB file with a 16 KB caller window is now accepted — callers
+        // get a truncated preview instead of a hard error.
+        assert!(validate_read_preview_target(false, 32 * 1024, 16 * 1024).is_ok());
     }
 
     #[test]
