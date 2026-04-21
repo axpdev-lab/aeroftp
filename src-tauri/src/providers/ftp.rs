@@ -22,6 +22,8 @@ pub struct FtpProvider {
     current_path: String,
     /// Whether server supports MLSD/MLST (RFC 3659)
     mlsd_supported: bool,
+    /// Once MLSD proves unreliable, keep using LIST for the lifetime of this provider.
+    mlsd_broken: bool,
     /// Whether server supports MFMT (RFC 3659) for setting remote file mtime
     mfmt_supported: bool,
     /// Whether server supports HASH, XMD5, XCRC, or XSHA1 for remote checksums
@@ -40,6 +42,7 @@ impl FtpProvider {
             stream: None,
             current_path: "/".to_string(),
             mlsd_supported: false,
+            mlsd_broken: false,
             mfmt_supported: false,
             hash_supported: None,
             tls_downgraded: false,
@@ -384,8 +387,12 @@ impl FtpProvider {
             .to_string();
 
         if self.mlsd_supported {
-            let stream = self.stream_mut()?;
-            match stream.mlsd(list_path.as_deref()).await {
+            let mlsd_result = {
+                let stream = self.stream_mut()?;
+                stream.mlsd(list_path.as_deref()).await
+            };
+
+            match mlsd_result {
                 Ok(lines) => {
                     let entries: Vec<RemoteEntry> = lines
                         .iter()
@@ -393,8 +400,21 @@ impl FtpProvider {
                         .collect();
                     return Ok(entries);
                 }
-                Err(_) => {
-                    // Fall through to LIST
+                Err(err) => {
+                    let provider_err = ProviderError::ServerError(err.to_string());
+                    tracing::debug!(
+                        "[FTP] MLSD failed for {}: {}. Disabling MLSD fallback for this session.",
+                        base_path,
+                        provider_err
+                    );
+
+                    self.mlsd_broken = true;
+                    self.mlsd_supported = false;
+
+                    if Self::is_stale_data_connection_error(&provider_err) {
+                        self.reconnect_after_data_error("MLSD", &base_path, &provider_err)
+                            .await?;
+                    }
                 }
             }
         }
@@ -561,8 +581,9 @@ impl StorageProvider for FtpProvider {
         // Check FEAT for MLSD and MFMT support (RFC 3659)
         match stream.feat().await {
             Ok(features) => {
-                self.mlsd_supported =
+                let server_supports_mlsd =
                     features.contains_key("MLST") || features.contains_key("MLSD");
+                self.mlsd_supported = server_supports_mlsd && !self.mlsd_broken;
                 self.mfmt_supported = features.contains_key("MFMT");
                 // B3: Detect hash/checksum commands (prefer HASH > XMD5 > XCRC > XSHA1)
                 self.hash_supported = if features.contains_key("HASH") {
