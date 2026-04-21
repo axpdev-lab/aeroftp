@@ -120,3 +120,57 @@ jobs:
           "$CLI_BIN" completions bash > /dev/null
           "$CLI_BIN" completions zsh > /dev/null
           "$CLI_BIN" completions fish > /dev/null
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: smoke
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate coverage
+        working-directory: src-tauri
+        shell: bash
+        # Baseline at T8 Fase A (2026-04-21): 11.73% lines, 9.59% functions.
+        # Gate is set below baseline so CI passes today; raise per T8 Fase B/C/D
+        # as new tests land. Target after Fase C (16 zero-coverage providers): 25%.
+        run: |
+          cargo llvm-cov --no-report --all-targets
+          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov report --summary-only --fail-under-lines 10 | tee coverage-summary.txt
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-linux
+          path: |
+            src-tauri/lcov.info
+            src-tauri/coverage-summary.txt
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: src-tauri/lcov.info
+          fail_ci_if_error: false
