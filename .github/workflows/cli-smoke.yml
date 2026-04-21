@@ -76,7 +76,15 @@ jobs:
       - name: Build CLI
         working-directory: src-tauri
         shell: bash
-        run: cargo build --release --bin aeroftp-cli
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            # Force Strawberry Perl ahead of Git-for-Windows /usr/bin/perl so
+            # openssl-src's Configure script finds Locale::Maketext::Simple.
+            export PATH="/c/Strawberry/perl/bin:/c/Strawberry/perl/site/bin:/c/Strawberry/c/bin:$PATH"
+            which perl
+            perl -e 'use Locale::Maketext::Simple; print "OK\n"'
+          fi
+          cargo build --release --bin aeroftp-cli
 
       - name: Version and help smoke
         working-directory: src-tauri
