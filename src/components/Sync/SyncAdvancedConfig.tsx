@@ -143,6 +143,7 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
     const t = useTranslation();
     const isProvider = !!protocol && !isFtpProtocol(protocol);
     const isSftp = protocol === 'sftp';
+    const deltaToggleDisabled = disabled || !hints?.delta_sync_active;
     const dirDesc = getDirectionDescription(options.direction, t);
     const [openSection, setOpenSection] = useState<'direction' | 'compare' | 'filters' | 'transfer' | 'automation'>('direction');
 
@@ -525,17 +526,22 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                                 </label>
                             )}
                             {isSftp && (
-                                <span className="flex items-center gap-1.5 text-xs">
+                                <span className={`flex items-center gap-1.5 text-xs ${deltaToggleDisabled ? 'text-gray-500' : ''}`}>
                                     <Checkbox
-                                        checked={deltaSyncEnabled}
+                                        checked={deltaSyncEnabled && !!hints?.delta_sync_active}
                                         onChange={onDeltaSyncEnabledChange}
-                                        disabled={disabled}
+                                        disabled={deltaToggleDisabled}
                                     />
                                     <HardDrive size={12} className="text-indigo-400" />
                                     {t('syncPanel.deltaSync')}
                                 </span>
                             )}
                         </div>
+                        {isSftp && hints?.supports_delta_sync && hints.delta_sync_note && (
+                            <div className="mt-2 text-[11px] leading-relaxed text-amber-300/90">
+                                {hints.delta_sync_note}
+                            </div>
+                        )}
                     </>
                 )}
 

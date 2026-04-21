@@ -7169,16 +7169,12 @@ fn get_watcher_status_cmd(watch_path: Option<String>) -> Result<serde_json::Valu
 }
 
 /// Get transfer optimization hints for the current cloud provider
-#[tauri::command]
-fn get_transfer_optimization_hints(
-    provider_type: Option<String>,
-) -> Result<providers::TransferOptimizationHints, String> {
-    // Provider type is passed from frontend based on the connected server profile
-    let ptype = provider_type.unwrap_or_default();
-    let hints = match ptype.to_lowercase().as_str() {
+fn default_transfer_optimization_hints(
+    provider_type: &str,
+) -> providers::TransferOptimizationHints {
+    match provider_type {
         "sftp" => providers::TransferOptimizationHints {
-            supports_resume_download: true,
-            supports_resume_upload: true,
+            supports_range_download: true,
             supports_compression: true,
             supports_delta_sync: true,
             ..Default::default()
@@ -7202,7 +7198,96 @@ fn get_transfer_optimization_hints(
             ..Default::default()
         },
         _ => providers::TransferOptimizationHints::default(),
+    }
+}
+
+fn native_rsync_runtime_enabled() -> bool {
+    if !crate::settings::native_rsync_feature_compiled() {
+        return false;
+    }
+
+    #[cfg(feature = "proto_native_rsync")]
+    {
+        crate::settings::load_native_rsync_enabled()
+    }
+
+    #[cfg(not(feature = "proto_native_rsync"))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
+async fn get_transfer_optimization_hints(
+    state: State<'_, provider_commands::ProviderState>,
+    provider_type: Option<String>,
+) -> Result<providers::TransferOptimizationHints, String> {
+    let requested = provider_type.unwrap_or_default().to_lowercase();
+    let active_protocol = {
+        let provider_lock = state.provider.lock().await;
+        provider_lock
+            .as_ref()
+            .map(|provider| format!("{:?}", provider.provider_type()).to_lowercase())
     };
+
+    let mut hints = if let Some(active) = active_protocol.as_deref() {
+        if requested.is_empty() || requested == active {
+            let provider_lock = state.provider.lock().await;
+            provider_lock
+                .as_ref()
+                .map(|provider| provider.transfer_optimization_hints())
+                .unwrap_or_else(|| default_transfer_optimization_hints(active))
+        } else {
+            default_transfer_optimization_hints(&requested)
+        }
+    } else {
+        default_transfer_optimization_hints(&requested)
+    };
+
+    let inspect_sftp =
+        requested == "sftp" || (requested.is_empty() && active_protocol.as_deref() == Some("sftp"));
+    if inspect_sftp {
+        let (active_session_is_sftp, private_key_configured) = {
+            let config_lock = state.config.lock().await;
+            let active_session_is_sftp = config_lock
+                .as_ref()
+                .map(|config| config.provider_type == providers::ProviderType::Sftp)
+                .unwrap_or(false);
+            let private_key_configured = config_lock
+                .as_ref()
+                .and_then(|config| config.extra.get("private_key_path"))
+                .map(|path| !path.trim().is_empty())
+                .unwrap_or(false);
+            (active_session_is_sftp, private_key_configured)
+        };
+
+        let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
+        let native_feature_enabled = native_rsync_runtime_enabled();
+        let delta_eligible =
+            active_session_is_sftp && private_key_configured && native_feature_enabled;
+
+        hints.supports_resume_download = false;
+        hints.supports_resume_upload = false;
+        hints.supports_range_download = true;
+        hints.supports_compression = true;
+        hints.supports_delta_sync = true;
+        hints.delta_sync_eligible = delta_eligible;
+        hints.delta_sync_active = false;
+        hints.delta_sync_note = Some(if !active_session_is_sftp {
+            "Connect an SFTP session to evaluate delta eligibility.".to_string()
+        } else if !native_feature_compiled {
+            "This build was compiled without native rsync support.".to_string()
+        } else if !native_feature_enabled {
+            "Enable Native Rsync in Settings to make SFTP delta eligible.".to_string()
+        } else if !private_key_configured {
+            "Requires an SSH key-based SFTP session; password auth stays on the classic path."
+                .to_string()
+        } else {
+            "Session is delta-eligible, but Sync Panel still runs the classic transfer path."
+                .to_string()
+        });
+    }
+
     Ok(hints)
 }
 

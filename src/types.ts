@@ -437,6 +437,9 @@ export interface TransferOptimizationHints {
   preferred_checksum_algo: string | null;
   supports_compression: boolean;
   supports_delta_sync: boolean;
+  delta_sync_eligible: boolean;
+  delta_sync_active: boolean;
+  delta_sync_note: string | null;
 }
 
 // Multi-Path Sync (#52)

@@ -172,6 +172,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
     // Provider optimization hints
     const { hints: optimizationHints } = useSyncOptimization(protocol);
 
+    useEffect(() => {
+        if (optimizationHints && !optimizationHints.delta_sync_active && deltaSyncEnabled) {
+            setDeltaSyncEnabled(false);
+        }
+    }, [optimizationHints, deltaSyncEnabled]);
+
     // Conflict resolution: maps relative_path → resolution action
     type ConflictResolution = 'upload' | 'download' | 'skip';
     const [conflictResolutions, setConflictResolutions] = useState<Map<string, ConflictResolution>>(new Map());

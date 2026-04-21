@@ -190,6 +190,9 @@ pub struct TransferOptimizationHints {
     pub preferred_checksum_algo: Option<String>,
     pub supports_compression: bool,
     pub supports_delta_sync: bool,
+    pub delta_sync_eligible: bool,
+    pub delta_sync_active: bool,
+    pub delta_sync_note: Option<String>,
 }
 
 impl Default for TransferOptimizationHints {
@@ -206,6 +209,9 @@ impl Default for TransferOptimizationHints {
             preferred_checksum_algo: None,
             supports_compression: false,
             supports_delta_sync: false,
+            delta_sync_eligible: false,
+            delta_sync_active: false,
+            delta_sync_note: None,
         }
     }
 }

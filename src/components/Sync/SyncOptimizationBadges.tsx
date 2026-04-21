@@ -21,9 +21,10 @@ interface SyncOptimizationBadgesProps {
 
 interface Badge {
     label: string;
-    supported: boolean;
+    visible: boolean;
     Icon: typeof Zap;
     detail?: string;
+    tone?: 'active' | 'eligible' | 'available';
 }
 
 export const SyncOptimizationBadges: React.FC<SyncOptimizationBadgesProps> = React.memo(({
@@ -35,47 +36,71 @@ export const SyncOptimizationBadges: React.FC<SyncOptimizationBadgesProps> = Rea
 
     if (loading || !hints) return null;
 
+    const deltaTone: Badge['tone'] = hints.delta_sync_active
+        ? 'active'
+        : hints.delta_sync_eligible
+            ? 'eligible'
+            : 'available';
+
     const badges: Badge[] = [
         {
             label: t('syncPanel.optimizationMultipart'),
-            supported: hints.supports_multipart,
+            visible: hints.supports_multipart,
             Icon: Layers,
             detail: hints.supports_multipart
                 ? `>${Math.round(hints.multipart_threshold / 1_048_576)}MB, ${hints.multipart_max_parallel}x`
                 : undefined,
+            tone: 'active',
         },
         {
             label: t('syncPanel.optimizationResume'),
-            supported: hints.supports_resume_download || hints.supports_resume_upload,
+            visible: hints.supports_resume_download || hints.supports_resume_upload,
             Icon: ArrowUpDown,
+            tone: 'active',
         },
         {
             label: t('syncPanel.optimizationChecksum'),
-            supported: hints.supports_server_checksum,
+            visible: hints.supports_server_checksum,
             Icon: FileCheck,
             detail: hints.preferred_checksum_algo || undefined,
+            tone: 'active',
         },
         {
             label: t('syncPanel.optimizationCompression'),
-            supported: hints.supports_compression,
+            visible: hints.supports_compression,
             Icon: Shrink,
+            tone: 'active',
         },
         {
-            label: t('syncPanel.optimizationDelta'),
-            supported: hints.supports_delta_sync,
+            label: `${t('syncPanel.optimizationDelta')} · ${deltaTone}`,
+            visible: hints.supports_delta_sync,
             Icon: HardDrive,
+            detail: hints.delta_sync_note || undefined,
+            tone: deltaTone,
         },
     ];
 
-    const activeBadges = badges.filter(b => b.supported);
+    const activeBadges = badges.filter(b => b.visible);
     if (activeBadges.length === 0) return null;
+
+    const toneClass = (tone: Badge['tone']) => {
+        switch (tone) {
+            case 'eligible':
+                return 'bg-amber-500/15 text-amber-300 border border-amber-500/20';
+            case 'available':
+                return 'bg-slate-500/15 text-slate-300 border border-slate-500/20';
+            case 'active':
+            default:
+                return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20';
+        }
+    };
 
     return (
         <div className={`flex flex-wrap gap-1.5 ${compact ? '' : 'mt-2'}`}>
             {activeBadges.map(badge => (
                 <span
                     key={badge.label}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${toneClass(badge.tone)}`}
                     title={badge.detail}
                 >
                     <badge.Icon size={10} />
