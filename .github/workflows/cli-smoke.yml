@@ -57,15 +57,21 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev
 
-      # Windows only: openssl-sys (vendored via ssh2) requires a working Perl
-      # with Params::Check to configure the OpenSSL build. The stock runner
-      # Perl on windows-latest lacks that module (fails with BEGIN failed /
-      # compilation aborted at Params/Check.pm), so we install Strawberry Perl
-      # which ships it. Without this the `cargo build --release --bin
-      # aeroftp-cli` step fails on Windows while Linux and macOS succeed.
+      # Windows only: openssl-sys (vendored via ssh2) needs a Perl with the
+      # Locale::Maketext::Simple / Params::Check modules to configure OpenSSL.
+      # The Git-for-Windows Perl that `shell: bash` picks up is missing those
+      # modules (BEGIN failed at Params/Check.pm). Strawberry Perl ships them,
+      # but after `choco install` the Strawberry bin dirs only hit the PATH of
+      # newly-spawned steps — we also have to prepend them to GITHUB_PATH so
+      # they actually win against Git Bash's Perl on the next step's lookup.
       - name: Install Strawberry Perl (Windows)
         if: runner.os == 'Windows'
-        run: choco install strawberryperl -y --no-progress
+        shell: pwsh
+        run: |
+          choco install strawberryperl -y --no-progress
+          "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\Strawberry\perl\site\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\Strawberry\c\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Build CLI
         working-directory: src-tauri
