@@ -294,6 +294,7 @@ pub struct DeltaFileEntry {
     pub speedup: f64,
 }
 
+#[cfg(unix)]
 impl DeltaTransferStats {
     pub(crate) fn from_rsync(stats: &crate::rsync_over_ssh::RsyncStats) -> Self {
         Self {
