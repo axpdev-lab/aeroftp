@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Waktu pejabat (had 08-18)",
             "bwScheduleNight": "Mod malam (had 18-08)",
             "allInSync": "Semua fail telah disegerakkan — tiada apa untuk dipindahkan",
-            "nothingInDirection": "Perbezaan ditemui, tetapi tiada yang sepadan dengan arah yang dipilih. Cuba Two-way untuk melihat semua perubahan."
+            "nothingInDirection": "Perbezaan ditemui, tetapi tiada yang sepadan dengan arah yang dipilih. Cuba Two-way untuk melihat semua perubahan.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} dihantar daripada {total} (pecutan {speedup}x)",
+            "deltaSummary": "{files} fail · {bytes} dijimatkan · pecutan {speedup}x",
+            "deltaTitle": "Penjimatan Delta",
+            "deltaSummaryOptimized": "{files} fail melalui pemindahan dioptimumkan",
+            "deltaTitleOptimized": "Pemindahan dioptimumkan"
         },
         "ui": {
             "syncing": "Menyegerak...",

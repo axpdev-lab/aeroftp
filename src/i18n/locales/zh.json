@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "工作时间（限制 08-18）",
             "bwScheduleNight": "夜间模式（限制 18-08）",
             "allInSync": "所有文件已同步 — 无需传输",
-            "nothingInDirection": "发现差异,但没有符合所选方向的项。请尝试 Two-way 查看所有更改。"
+            "nothingInDirection": "发现差异,但没有符合所选方向的项。请尝试 Two-way 查看所有更改。",
+            "deltaBadge": "增量",
+            "deltaBadgeTooltip": "rsync delta：已发送 {sent} / {total}（加速 {speedup}x）",
+            "deltaSummary": "{files} 个文件 · 节省 {bytes} · 加速 {speedup}x",
+            "deltaTitle": "增量节省",
+            "deltaSummaryOptimized": "{files} 个文件通过优化传输处理",
+            "deltaTitleOptimized": "优化传输"
         },
         "ui": {
             "syncing": "正在同步...",

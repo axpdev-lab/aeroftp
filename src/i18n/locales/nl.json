@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Kantooruren (throttle 08-18)",
             "bwScheduleNight": "Nachtmodus (throttle 18-08)",
             "allInSync": "Alle bestanden zijn gesynchroniseerd — niets te overdragen",
-            "nothingInDirection": "Verschillen gevonden, maar geen enkele komt overeen met de geselecteerde richting. Probeer Two-way om alle wijzigingen te zien."
+            "nothingInDirection": "Verschillen gevonden, maar geen enkele komt overeen met de geselecteerde richting. Probeer Two-way om alle wijzigingen te zien.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} verzonden van {total} ({speedup}x versnelling)",
+            "deltaSummary": "{files} bestanden · {bytes} bespaard · {speedup}x versnelling",
+            "deltaTitle": "Delta besparingen",
+            "deltaSummaryOptimized": "{files} bestanden via geoptimaliseerde overdracht",
+            "deltaTitleOptimized": "Geoptimaliseerde overdracht"
         },
         "ui": {
             "syncing": "Synchroniseren...",

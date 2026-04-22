@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Skrifstofutími (throttle 08-18)",
             "bwScheduleNight": "Næturstilling (throttle 18-08)",
             "allInSync": "Allar skrár eru samstilltar — ekkert að flytja",
-            "nothingInDirection": "Munur fannst, en enginn passar við valda stefnu. Prófaðu Two-way til að sjá allar breytingar."
+            "nothingInDirection": "Munur fannst, en enginn passar við valda stefnu. Prófaðu Two-way til að sjá allar breytingar.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} send af {total} ({speedup}x hröðun)",
+            "deltaSummary": "{files} skrár · {bytes} sparað · {speedup}x hröðun",
+            "deltaTitle": "Delta sparnaður",
+            "deltaSummaryOptimized": "{files} skrár með bjartsýnri flutningi",
+            "deltaTitleOptimized": "Bjartsýnn flutningur"
         },
         "ui": {
             "syncing": "Samstillir...",

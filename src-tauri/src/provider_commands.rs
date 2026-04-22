@@ -701,6 +701,7 @@ pub async fn provider_download_file(
             message: Some(format!("Starting download: {}", filename)),
             progress: None,
             path: None,
+            delta_stats: None,
         },
     );
 
@@ -754,12 +755,86 @@ pub async fn provider_download_file(
                         path: None,
                     }),
                     path: None,
+                    delta_stats: None,
                 },
             );
         }))
     } else {
         None
     };
+
+    // Delta path (SFTP + key-auth + rsync on remote): tried before the
+    // classic download. Self-gated inside `try_delta_transfer` — returns
+    // `None` for non-SFTP providers, password-only auth, or when the SSH
+    // handle is not available. A `hard_error` (host-key mismatch, permission
+    // denied) surfaces as a transfer error without the silent classic
+    // fallback — security failures must not be masked. Same contract as
+    // `sync::perform_download` in the sync_tree path.
+    #[cfg(unix)]
+    {
+        let local_path_buf = std::path::PathBuf::from(&local_path);
+        if let Some(result) = crate::delta_sync_rsync::try_delta_transfer(
+            provider.as_mut(),
+            crate::delta_sync_rsync::SyncDirection::Download,
+            &local_path_buf,
+            &remote_path,
+        )
+        .await
+        {
+            if result.used_delta {
+                let delta_stats = result
+                    .stats
+                    .as_ref()
+                    .map(crate::sync::DeltaTransferStats::from_rsync);
+                crate::preserve_remote_mtime(&local_path, modified.as_deref());
+                let actual_size = tokio::fs::metadata(&local_path)
+                    .await
+                    .map(|m| m.len())
+                    .unwrap_or(file_size);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "complete".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!(
+                            "({} via delta)",
+                            if actual_size > 1_048_576 {
+                                format!("{:.1} MB", actual_size as f64 / 1_048_576.0)
+                            } else {
+                                format!("{:.1} KB", actual_size as f64 / 1024.0)
+                            }
+                        )),
+                        progress: None,
+                        path: None,
+                        delta_stats,
+                    },
+                );
+                info!("Download completed via delta path: {}", filename);
+                return Ok(format!("Downloaded: {}", filename));
+            }
+            if let Some(hard_err) = result.hard_error {
+                let err_msg = format!("delta hard rejection: {}", hard_err);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "download".to_string(),
+                        message: Some(err_msg.clone()),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                    },
+                );
+                return Err(err_msg);
+            }
+            // Silent fallback: result.fallback_reason populated but we continue
+            // with the classic provider path below.
+        }
+    }
 
     // Resume-aware download: if provider supports resume and a partial .aerotmp exists,
     // use resume_download to continue from where we left off. This avoids re-downloading
@@ -814,6 +889,7 @@ pub async fn provider_download_file(
                     )),
                     progress: None,
                     path: None,
+                    delta_stats: None,
                 },
             );
             info!("Download completed: {}", filename);
@@ -830,6 +906,7 @@ pub async fn provider_download_file(
                     message: Some(format!("Download failed: {}", e)),
                     progress: None,
                     path: None,
+                    delta_stats: None,
                 },
             );
             Err(format!("Download failed: {}", e))
@@ -1070,6 +1147,7 @@ async fn provider_download_folder_inner(
             message: Some(format!("Starting folder download: {}", folder_name)),
             progress: None,
             path: Some(remote_path.to_string()),
+            delta_stats: None,
         },
     );
 
@@ -1121,6 +1199,7 @@ async fn provider_download_folder_inner(
                     )),
                     progress: None,
                     path: None,
+                    delta_stats: None,
                 },
             );
             return Ok(format!(
@@ -1209,6 +1288,7 @@ async fn provider_download_folder_inner(
                     )),
                     progress: None,
                     path: None,
+                    delta_stats: None,
                 },
             );
             last_scan_emit = std::time::Instant::now();
@@ -1235,6 +1315,7 @@ async fn provider_download_folder_inner(
                         )),
                         progress: None,
                         path: None,
+                        delta_stats: None,
                     },
                 );
                 return Ok(format!(
@@ -1279,6 +1360,7 @@ async fn provider_download_folder_inner(
                                     message: Some(format!("Skipped (identical): {}", entry.name)),
                                     progress: None,
                                     path: Some(entry.remote_path.clone()),
+                                    delta_stats: None,
                                 },
                             );
                             continue;
@@ -1350,6 +1432,7 @@ async fn provider_download_folder_inner(
                     path: Some(progress_remote_path.clone()),
                 }),
                 path: Some(progress_remote_path.clone()),
+                delta_stats: None,
             },
         );
     });
@@ -1405,6 +1488,7 @@ async fn provider_download_folder_inner(
             message: Some(result_message.clone()),
             progress: None,
             path: None,
+            delta_stats: None,
         },
     );
 
@@ -1447,6 +1531,7 @@ async fn provider_upload_folder_inner(
             message: Some(format!("Starting folder upload: {}", folder_name)),
             progress: None,
             path: Some(remote_path.to_string()),
+            delta_stats: None,
         },
     );
 
@@ -1510,6 +1595,7 @@ async fn provider_upload_folder_inner(
                     )),
                     progress: None,
                     path: Some(remote_path.to_string()),
+                    delta_stats: None,
                 },
             );
             return Ok(format!(
@@ -1549,6 +1635,7 @@ async fn provider_upload_folder_inner(
                         message: Some(format!("Skipped symlink: {}", name)),
                         progress: None,
                         path: Some(remote_entry_path.clone()),
+                        delta_stats: None,
                     },
                 );
                 continue;
@@ -1588,6 +1675,7 @@ async fn provider_upload_folder_inner(
                     )),
                     progress: None,
                     path: Some(remote_path.to_string()),
+                    delta_stats: None,
                 },
             );
             last_scan_emit = std::time::Instant::now();
@@ -1674,6 +1762,7 @@ async fn provider_upload_folder_inner(
                     path: Some(progress_remote_path.clone()),
                 }),
                 path: Some(progress_remote_path.clone()),
+                delta_stats: None,
             },
         );
     });
@@ -1724,6 +1813,7 @@ async fn provider_upload_folder_inner(
             message: Some(result_message.clone()),
             progress: None,
             path: None,
+            delta_stats: None,
         },
     );
 
@@ -1769,6 +1859,7 @@ pub async fn provider_upload_file(
             message: Some(format!("Starting upload: {}", filename)),
             progress: None,
             path: None,
+            delta_stats: None,
         },
     );
 
@@ -1816,12 +1907,77 @@ pub async fn provider_upload_file(
                         path: None,
                     }),
                     path: None,
+                    delta_stats: None,
                 },
             );
         }))
     } else {
         None
     };
+
+    // Delta path (SFTP + key-auth + rsync on remote): same contract as
+    // `sync::perform_upload`. Skipped automatically for GitHub / non-SFTP
+    // / password-only auth (self-gated inside `try_delta_transfer`).
+    // `hard_error` must not silently fall back to the classic path.
+    #[cfg(unix)]
+    {
+        let local_path_buf = std::path::PathBuf::from(&local_path);
+        if let Some(delta_result) = crate::delta_sync_rsync::try_delta_transfer(
+            provider.as_mut(),
+            crate::delta_sync_rsync::SyncDirection::Upload,
+            &local_path_buf,
+            &remote_path,
+        )
+        .await
+        {
+            if delta_result.used_delta {
+                let delta_stats = delta_result
+                    .stats
+                    .as_ref()
+                    .map(crate::sync::DeltaTransferStats::from_rsync);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "complete".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(format!(
+                            "({} via delta)",
+                            if file_size > 1_048_576 {
+                                format!("{:.1} MB", file_size as f64 / 1_048_576.0)
+                            } else {
+                                format!("{:.1} KB", file_size as f64 / 1024.0)
+                            }
+                        )),
+                        progress: None,
+                        path: None,
+                        delta_stats,
+                    },
+                );
+                info!("Upload completed via delta path: {}", filename);
+                return Ok(format!("Uploaded: {}", filename));
+            }
+            if let Some(hard_err) = delta_result.hard_error {
+                let err_msg = format!("delta hard rejection: {}", hard_err);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(err_msg.clone()),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                    },
+                );
+                return Err(err_msg);
+            }
+            // Silent fallback to classic provider upload below.
+        }
+    }
 
     let result = if provider.provider_type() == ProviderType::GitHub {
         let github = provider
@@ -1858,6 +2014,7 @@ pub async fn provider_upload_file(
                     )),
                     progress: None,
                     path: None,
+                    delta_stats: None,
                 },
             );
             info!("Upload completed: {}", filename);
@@ -1874,6 +2031,7 @@ pub async fn provider_upload_file(
                     message: Some(e.clone()),
                     progress: None,
                     path: None,
+                    delta_stats: None,
                 },
             );
             Err(e.clone())
@@ -1982,6 +2140,7 @@ pub async fn provider_delete_dir(
                 message: Some("Scanning folder for deletion...".to_string()),
                 progress: None,
                 path: Some(path.clone()),
+                delta_stats: None,
             },
         );
     }
@@ -2024,6 +2183,7 @@ pub async fn provider_delete_dir(
                 message: Some("Directory deleted".to_string()),
                 progress: None,
                 path: Some(path),
+                delta_stats: None,
             },
         );
     }

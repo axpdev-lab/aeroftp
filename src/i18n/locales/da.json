@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Kontortid (begræns 08-18)",
             "bwScheduleNight": "Nattilstand (begræns 18-08)",
             "allInSync": "Alle filer er synkroniseret — intet at overføre",
-            "nothingInDirection": "Forskelle fundet, men ingen matcher den valgte retning. Prøv Two-way for at se alle ændringer."
+            "nothingInDirection": "Forskelle fundet, men ingen matcher den valgte retning. Prøv Two-way for at se alle ændringer.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} sendt af {total} ({speedup}x hastighedsforøgelse)",
+            "deltaSummary": "{files} filer · {bytes} sparet · {speedup}x hastighedsforøgelse",
+            "deltaTitle": "Delta-besparelser",
+            "deltaSummaryOptimized": "{files} filer via optimeret overførsel",
+            "deltaTitleOptimized": "Optimeret overførsel"
         },
         "ui": {
             "syncing": "Synkroniserer...",

@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Úradné hodiny (throttle 08-18)",
             "bwScheduleNight": "Nočný režim (throttle 18-08)",
             "allInSync": "Všetky súbory sú synchronizované — nie je čo prenášať",
-            "nothingInDirection": "Nájdené rozdiely, ale žiadny nezodpovedá zvolenému smeru. Skúste Two-way, aby ste videli všetky zmeny."
+            "nothingInDirection": "Nájdené rozdiely, ale žiadny nezodpovedá zvolenému smeru. Skúste Two-way, aby ste videli všetky zmeny.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: odoslaných {sent} z {total} (zrýchlenie {speedup}x)",
+            "deltaSummary": "{files} súborov · ušetrených {bytes} · zrýchlenie {speedup}x",
+            "deltaTitle": "Úspora delta",
+            "deltaSummaryOptimized": "{files} súborov cez optimalizovaný prenos",
+            "deltaTitleOptimized": "Optimalizovaný prenos"
         },
         "ui": {
             "syncing": "Synchronizacia...",

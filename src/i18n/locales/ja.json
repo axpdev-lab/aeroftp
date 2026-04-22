@@ -1931,7 +1931,13 @@
             "bwScheduleOffice": "営業時間 (制限 08-18)",
             "bwScheduleNight": "ナイトモード (制限 18-08)",
             "allInSync": "すべてのファイルが同期済み — 転送するものはありません",
-            "nothingInDirection": "差分が見つかりましたが、選択した方向に一致するものはありません。すべての変更を確認するには Two-way をお試しください。"
+            "nothingInDirection": "差分が見つかりましたが、選択した方向に一致するものはありません。すべての変更を確認するには Two-way をお試しください。",
+            "deltaBadge": "差分",
+            "deltaBadgeTooltip": "rsync 差分: {total} 中 {sent} 送信 ({speedup}x 高速化)",
+            "deltaSummary": "{files} ファイル · {bytes} 節約 · {speedup}x 高速化",
+            "deltaTitle": "差分による節約",
+            "deltaSummaryOptimized": "{files}件のファイルを最適化転送で処理",
+            "deltaTitleOptimized": "最適化された転送"
         },
         "ui": {
             "syncing": "同期中...",

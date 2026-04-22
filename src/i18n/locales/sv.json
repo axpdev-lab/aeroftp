@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Kontorstid (begränsa 08-18)",
             "bwScheduleNight": "Nattläge (begränsa 18-08)",
             "allInSync": "Alla filer är synkroniserade — inget att överföra",
-            "nothingInDirection": "Skillnader hittades, men ingen matchar den valda riktningen. Prova Two-way för att se alla ändringar."
+            "nothingInDirection": "Skillnader hittades, men ingen matchar den valda riktningen. Prova Two-way för att se alla ändringar.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} skickade av {total} ({speedup}x snabbare)",
+            "deltaSummary": "{files} filer · {bytes} sparade · {speedup}x snabbare",
+            "deltaTitle": "Delta-besparingar",
+            "deltaSummaryOptimized": "{files} filer via optimerad överföring",
+            "deltaTitleOptimized": "Optimerad överföring"
         },
         "ui": {
             "syncing": "Synkroniserar...",

@@ -169,6 +169,29 @@ export interface TransferProgress {
   path?: string;        // Full path for context
 }
 
+// Per-file delta stats emitted on `event_type === 'complete'` when the
+// rsync delta path serviced the transfer (SFTP + key-auth + rsync on
+// the remote). Absent for classic transfers, non-SFTP providers, and
+// Windows. `speedup` is rsync's per-file ratio; the directory-wide
+// aggregate lives in `DeltaSavingsSummary`.
+export interface DeltaTransferStats {
+  bytes_sent: number;
+  total_size: number;
+  speedup: number;
+}
+
+// Aggregated delta savings across a sync run, accumulated client-side
+// from the stream of `DeltaTransferStats` carried on TransferEvent.
+// `average_speedup` is recomputed as `total_size / total_bytes_sent`.
+// Absent (summary never built) when no file used the delta path.
+export interface DeltaSavingsSummary {
+  files_using_delta: number;
+  total_bytes_sent: number;
+  total_size: number;
+  bytes_saved: number;      // total_size - total_bytes_sent (can be negative on overhead)
+  average_speedup: number | null;
+}
+
 // Transfer event from backend (includes transfers and deletes)
 export interface TransferEvent {
   event_type:
@@ -185,6 +208,7 @@ export interface TransferEvent {
   message?: string;
   progress?: TransferProgress;
   path?: string; // Full path for context (file or folder)
+  delta_stats?: DeltaTransferStats; // Present only when rsync delta serviced this transfer
 }
 
 // Server profile for saved connections

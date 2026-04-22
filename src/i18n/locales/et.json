@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Tööaeg (throttle 08-18)",
             "bwScheduleNight": "Öörežiim (throttle 18-08)",
             "allInSync": "Kõik failid on sünkroonitud — midagi pole üle kanda",
-            "nothingInDirection": "Erinevusi leiti, kuid ükski ei vasta valitud suunale. Proovige Two-way, et näha kõiki muudatusi."
+            "nothingInDirection": "Erinevusi leiti, kuid ükski ei vasta valitud suunale. Proovige Two-way, et näha kõiki muudatusi.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: saadetud {sent} / {total} ({speedup}x kiirendus)",
+            "deltaSummary": "{files} faili · {bytes} kokku hoitud · {speedup}x kiirendus",
+            "deltaTitle": "Delta kokkuhoid",
+            "deltaSummaryOptimized": "{files} faili optimeeritud ülekande kaudu",
+            "deltaTitleOptimized": "Optimeeritud ülekanne"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

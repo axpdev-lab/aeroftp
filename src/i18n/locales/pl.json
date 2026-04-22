@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Godziny biurowe (throttle 08-18)",
             "bwScheduleNight": "Tryb nocny (throttle 18-08)",
             "allInSync": "Wszystkie pliki są zsynchronizowane — nie ma nic do przesłania",
-            "nothingInDirection": "Znaleziono różnice, ale żadna nie pasuje do wybranego kierunku. Wypróbuj Two-way, aby zobaczyć wszystkie zmiany."
+            "nothingInDirection": "Znaleziono różnice, ale żadna nie pasuje do wybranego kierunku. Wypróbuj Two-way, aby zobaczyć wszystkie zmiany.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: wysłano {sent} z {total} (przyspieszenie {speedup}x)",
+            "deltaSummary": "{files} plików · zaoszczędzono {bytes} · przyspieszenie {speedup}x",
+            "deltaTitle": "Oszczędności delta",
+            "deltaSummaryOptimized": "{files} plików przez zoptymalizowany transfer",
+            "deltaTitleOptimized": "Zoptymalizowany transfer"
         },
         "ui": {
             "syncing": "Synchronizacja...",

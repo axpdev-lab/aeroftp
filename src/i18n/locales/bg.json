@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Работно време (throttle 08-18)",
             "bwScheduleNight": "Нощен режим (throttle 18-08)",
             "allInSync": "Всички файлове са синхронизирани — няма нищо за прехвърляне",
-            "nothingInDirection": "Открити са разлики, но нито една не съответства на избраната посока. Опитайте Two-way, за да видите всички промени."
+            "nothingInDirection": "Открити са разлики, но нито една не съответства на избраната посока. Опитайте Two-way, за да видите всички промени.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} изпратени от {total} ({speedup}x ускорение)",
+            "deltaSummary": "{files} файла · {bytes} спестени · {speedup}x ускорение",
+            "deltaTitle": "Delta спестявания",
+            "deltaSummaryOptimized": "{files} файла чрез оптимизиран трансфер",
+            "deltaTitleOptimized": "Оптимизиран трансфер"
         },
         "ui": {
             "syncing": "Синхронизиране...",

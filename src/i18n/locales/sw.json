@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Masaa ya ofisi (throttle 08-18)",
             "bwScheduleNight": "Hali ya usiku (throttle 18-08)",
             "allInSync": "Faili zote zimesawazishwa — hakuna chochote cha kuhamisha",
-            "nothingInDirection": "Tofauti zimepatikana, lakini hakuna inayolingana na mwelekeo uliochaguliwa. Jaribu Two-way ili kuona mabadiliko yote."
+            "nothingInDirection": "Tofauti zimepatikana, lakini hakuna inayolingana na mwelekeo uliochaguliwa. Jaribu Two-way ili kuona mabadiliko yote.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} zimetumwa kati ya {total} (kasi ya {speedup}x)",
+            "deltaSummary": "faili {files} · {bytes} zimehifadhiwa · kasi ya {speedup}x",
+            "deltaTitle": "Akiba ya delta",
+            "deltaSummaryOptimized": "Faili {files} kupitia uhamisho ulioboreshwa",
+            "deltaTitleOptimized": "Uhamisho ulioboreshwa"
         },
         "ui": {
             "syncing": "Inasawazisha...",

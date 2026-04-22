@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "कार्यालय समय (throttle 08-18)",
             "bwScheduleNight": "रात मोड (throttle 18-08)",
             "allInSync": "सभी फ़ाइलें सिंक में हैं — स्थानांतरित करने के लिए कुछ नहीं",
-            "nothingInDirection": "अंतर मिले, लेकिन कोई भी चयनित दिशा से मेल नहीं खाता। सभी बदलाव देखने के लिए Two-way आज़माएँ।"
+            "nothingInDirection": "अंतर मिले, लेकिन कोई भी चयनित दिशा से मेल नहीं खाता। सभी बदलाव देखने के लिए Two-way आज़माएँ।",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {total} में से {sent} भेजे गए ({speedup}x तेज़)",
+            "deltaSummary": "{files} फ़ाइलें · {bytes} बचाए · {speedup}x तेज़",
+            "deltaTitle": "Delta बचत",
+            "deltaSummaryOptimized": "{files} फ़ाइलें अनुकूलित स्थानांतरण से",
+            "deltaTitleOptimized": "अनुकूलित स्थानांतरण"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",

@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Horario de oficina (throttle 08-18)",
             "bwScheduleNight": "Modo nocturno (throttle 18-08)",
             "allInSync": "Todos os ficheiros están sincronizados — nada que transferir",
-            "nothingInDirection": "Atopáronse diferenzas, pero ningunha coincide coa dirección seleccionada. Proba Two-way para ver todos os cambios."
+            "nothingInDirection": "Atopáronse diferenzas, pero ningunha coincide coa dirección seleccionada. Proba Two-way para ver todos os cambios.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} enviados de {total} ({speedup}x de aceleración)",
+            "deltaSummary": "{files} ficheiros · {bytes} aforrados · {speedup}x de aceleración",
+            "deltaTitle": "Aforro delta",
+            "deltaSummaryOptimized": "{files} ficheiros con transferencia optimizada",
+            "deltaTitleOptimized": "Transferencia optimizada"
         },
         "ui": {
             "syncing": "Sincronizando...",

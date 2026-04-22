@@ -92,6 +92,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                     path: None,
                 }),
                 path: Some(entry.remote_path.clone()),
+                delta_stats: None,
             },
         );
 
@@ -194,6 +195,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                                                 path: None,
                                             }),
                                             path: Some(remote_path_for_progress.clone()),
+                                            delta_stats: None,
                                         },
                                     );
 
@@ -236,6 +238,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                             message: Some(format!("Downloaded: {}", entry.display_name)),
                             progress: None,
                             path: Some(entry.remote_path.clone()),
+                            delta_stats: None,
                         },
                     );
                     return TransferOutcome::Success;
@@ -292,6 +295,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                 message: Some(failure.message.clone()),
                 progress: None,
                 path: Some(entry.remote_path.clone()),
+                delta_stats: None,
             },
         );
 
@@ -333,6 +337,7 @@ impl TransferExecutor for FtpUploadExecutor {
                     path: None,
                 }),
                 path: Some(entry.remote_path.clone()),
+                delta_stats: None,
             },
         );
 
@@ -432,6 +437,7 @@ impl TransferExecutor for FtpUploadExecutor {
                                                 path: None,
                                             }),
                                             path: Some(remote_path_for_progress.clone()),
+                                            delta_stats: None,
                                         },
                                     );
 
@@ -470,6 +476,7 @@ impl TransferExecutor for FtpUploadExecutor {
                             message: Some(format!("Uploaded: {}", entry.display_name)),
                             progress: None,
                             path: Some(entry.remote_path.clone()),
+                            delta_stats: None,
                         },
                     );
                     return TransferOutcome::Success;
@@ -525,6 +532,7 @@ impl TransferExecutor for FtpUploadExecutor {
                 message: Some(failure.message.clone()),
                 progress: None,
                 path: Some(entry.remote_path.clone()),
+                delta_stats: None,
             },
         );
 

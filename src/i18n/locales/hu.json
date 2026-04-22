@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Irodai órák (throttle 08-18)",
             "bwScheduleNight": "Éjszakai mód (throttle 18-08)",
             "allInSync": "Minden fájl szinkronban van — nincs mit átvinni",
-            "nothingInDirection": "Különbségek találhatók, de egyik sem egyezik a kiválasztott iránnyal. Próbálja a Two-way opciót az összes változás megtekintéséhez."
+            "nothingInDirection": "Különbségek találhatók, de egyik sem egyezik a kiválasztott iránnyal. Próbálja a Two-way opciót az összes változás megtekintéséhez.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} elküldve a {total}-ból ({speedup}x gyorsulás)",
+            "deltaSummary": "{files} fájl · {bytes} megtakarítva · {speedup}x gyorsulás",
+            "deltaTitle": "Delta megtakarítás",
+            "deltaSummaryOptimized": "{files} fájl optimalizált átvitellel",
+            "deltaTitleOptimized": "Optimalizált átvitel"
         },
         "ui": {
             "syncing": "Szinkronizálás...",

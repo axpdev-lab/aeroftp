@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Darbo valandos (throttle 08-18)",
             "bwScheduleNight": "Naktinis rezimas (throttle 18-08)",
             "allInSync": "Visi failai sinchronizuoti — nėra ko perkelti",
-            "nothingInDirection": "Rasta skirtumų, bet nė vienas neatitinka pasirinktos krypties. Išbandykite Two-way, kad pamatytumėte visus pakeitimus."
+            "nothingInDirection": "Rasta skirtumų, bet nė vienas neatitinka pasirinktos krypties. Išbandykite Two-way, kad pamatytumėte visus pakeitimus.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: išsiųsta {sent} iš {total} ({speedup}x pagreitėjimas)",
+            "deltaSummary": "{files} failų · sutaupyta {bytes} · {speedup}x pagreitėjimas",
+            "deltaTitle": "Delta sutaupymas",
+            "deltaSummaryOptimized": "{files} failų optimizuotu perdavimu",
+            "deltaTitleOptimized": "Optimizuotas perdavimas"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

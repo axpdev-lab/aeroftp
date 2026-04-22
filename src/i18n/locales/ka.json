@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "სამუშაო საათები (throttle 08-18)",
             "bwScheduleNight": "ღამის რეჟიმი (throttle 18-08)",
             "allInSync": "ყველა ფაილი სინქრონიზებულია — გადასატანი არაფერია",
-            "nothingInDirection": "განსხვავებები ნაპოვნია, მაგრამ არცერთი არ შეესაბამება არჩეულ მიმართულებას. სცადეთ Two-way ყველა ცვლილების სანახავად."
+            "nothingInDirection": "განსხვავებები ნაპოვნია, მაგრამ არცერთი არ შეესაბამება არჩეულ მიმართულებას. სცადეთ Two-way ყველა ცვლილების სანახავად.",
+            "deltaBadge": "დელტა",
+            "deltaBadgeTooltip": "rsync დელტა: {sent} გაგზავნილი {total}-დან ({speedup}x აჩქარება)",
+            "deltaSummary": "{files} ფაილი · {bytes} დაზოგილი · {speedup}x აჩქარება",
+            "deltaTitle": "დელტა დაზოგვა",
+            "deltaSummaryOptimized": "{files} ფაილი ოპტიმიზებული გადაცემით",
+            "deltaTitleOptimized": "ოპტიმიზებული გადაცემა"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",

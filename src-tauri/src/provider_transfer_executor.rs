@@ -95,6 +95,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
                     path: None,
                 }),
                 path: Some(entry.remote_path.clone()),
+                delta_stats: None,
             },
         );
 
@@ -190,6 +191,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
                                             path: None,
                                         }),
                                         path: Some(remote_path_for_progress.clone()),
+                                        delta_stats: None,
                                     },
                                 );
                             }));
@@ -248,6 +250,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
                             message: Some(format!("Downloaded: {}", entry.display_name)),
                             progress: None,
                             path: Some(entry.remote_path.clone()),
+                            delta_stats: None,
                         },
                     );
                     return TransferOutcome::Success;
@@ -300,6 +303,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
                 message: Some(failure.message.clone()),
                 progress: None,
                 path: Some(entry.remote_path.clone()),
+                delta_stats: None,
             },
         );
 
@@ -341,6 +345,7 @@ impl TransferExecutor for ProviderUploadExecutor {
                     path: None,
                 }),
                 path: Some(entry.remote_path.clone()),
+                delta_stats: None,
             },
         );
 
@@ -469,6 +474,7 @@ impl TransferExecutor for ProviderUploadExecutor {
                                                     path: None,
                                                 }),
                                                 path: Some(remote_path_for_progress.clone()),
+                                                delta_stats: None,
                                             },
                                         );
                                     })),
@@ -499,6 +505,7 @@ impl TransferExecutor for ProviderUploadExecutor {
                             message: Some(format!("Uploaded: {}", entry.display_name)),
                             progress: None,
                             path: Some(entry.remote_path.clone()),
+                            delta_stats: None,
                         },
                     );
                     return TransferOutcome::Success;
@@ -550,6 +557,7 @@ impl TransferExecutor for ProviderUploadExecutor {
                 message: Some(failure.message.clone()),
                 progress: None,
                 path: Some(entry.remote_path.clone()),
+                delta_stats: None,
             },
         );
 

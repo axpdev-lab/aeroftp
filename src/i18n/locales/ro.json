@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Program de birou (throttle 08-18)",
             "bwScheduleNight": "Mod nocturn (throttle 18-08)",
             "allInSync": "Toate fișierele sunt sincronizate — nimic de transferat",
-            "nothingInDirection": "S-au găsit diferențe, dar niciuna nu se potrivește cu direcția selectată. Încercați Two-way pentru a vedea toate modificările."
+            "nothingInDirection": "S-au găsit diferențe, dar niciuna nu se potrivește cu direcția selectată. Încercați Two-way pentru a vedea toate modificările.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} trimiși din {total} (accelerare {speedup}x)",
+            "deltaSummary": "{files} fișiere · {bytes} economisiți · accelerare {speedup}x",
+            "deltaTitle": "Economii delta",
+            "deltaSummaryOptimized": "{files} fișiere prin transfer optimizat",
+            "deltaTitleOptimized": "Transfer optimizat"
         },
         "ui": {
             "syncing": "Se sincronizează...",

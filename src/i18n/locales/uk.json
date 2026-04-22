@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Робочі години (обмеження 08-18)",
             "bwScheduleNight": "Нічний режим (обмеження 18-08)",
             "allInSync": "Усі файли синхронізовані — немає чого передавати",
-            "nothingInDirection": "Знайдено відмінності, але жодна не відповідає обраному напрямку. Спробуйте Two-way, щоб побачити всі зміни."
+            "nothingInDirection": "Знайдено відмінності, але жодна не відповідає обраному напрямку. Спробуйте Two-way, щоб побачити всі зміни.",
+            "deltaBadge": "дельта",
+            "deltaBadgeTooltip": "rsync delta: надіслано {sent} з {total} (прискорення {speedup}x)",
+            "deltaSummary": "{files} файлів · заощаджено {bytes} · прискорення {speedup}x",
+            "deltaTitle": "Економія дельти",
+            "deltaSummaryOptimized": "{files} файлів через оптимізовану передачу",
+            "deltaTitleOptimized": "Оптимізована передача"
         },
         "ui": {
             "syncing": "Синхронізація...",

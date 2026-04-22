@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "অফিস সময় (throttle 08-18)",
             "bwScheduleNight": "রাত মোড (throttle 18-08)",
             "allInSync": "সমস্ত ফাইল সিঙ্কে রয়েছে — স্থানান্তর করার কিছু নেই",
-            "nothingInDirection": "পার্থক্য পাওয়া গেছে, কিন্তু কোনোটিই নির্বাচিত দিকের সাথে মেলে না। সব পরিবর্তন দেখতে Two-way চেষ্টা করুন।"
+            "nothingInDirection": "পার্থক্য পাওয়া গেছে, কিন্তু কোনোটিই নির্বাচিত দিকের সাথে মেলে না। সব পরিবর্তন দেখতে Two-way চেষ্টা করুন।",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {total}-এর মধ্যে {sent} পাঠানো হয়েছে ({speedup}x গতিবৃদ্ধি)",
+            "deltaSummary": "{files} ফাইল · {bytes} সাশ্রয় · {speedup}x গতিবৃদ্ধি",
+            "deltaTitle": "Delta সাশ্রয়",
+            "deltaSummaryOptimized": "{files}টি ফাইল অপ্টিমাইজড ট্রান্সফারে পরিবেশিত",
+            "deltaTitleOptimized": "অপ্টিমাইজড ট্রান্সফার"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",

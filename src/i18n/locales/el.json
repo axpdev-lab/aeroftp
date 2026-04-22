@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Ώρες γραφείου (περιορισμός 08-18)",
             "bwScheduleNight": "Νυχτερινή λειτουργία (περιορισμός 18-08)",
             "allInSync": "Όλα τα αρχεία είναι συγχρονισμένα — τίποτα για μεταφορά",
-            "nothingInDirection": "Βρέθηκαν διαφορές, αλλά καμία δεν ταιριάζει με την επιλεγμένη κατεύθυνση. Δοκιμάστε Two-way για να δείτε όλες τις αλλαγές."
+            "nothingInDirection": "Βρέθηκαν διαφορές, αλλά καμία δεν ταιριάζει με την επιλεγμένη κατεύθυνση. Δοκιμάστε Two-way για να δείτε όλες τις αλλαγές.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} στάλθηκαν από {total} ({speedup}x επιτάχυνση)",
+            "deltaSummary": "{files} αρχεία · {bytes} εξοικονόμηση · {speedup}x επιτάχυνση",
+            "deltaTitle": "Εξοικονόμηση delta",
+            "deltaSummaryOptimized": "{files} αρχεία μέσω βελτιστοποιημένης μεταφοράς",
+            "deltaTitleOptimized": "Βελτιστοποιημένη μεταφορά"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",

@@ -1959,7 +1959,13 @@
             "bwScheduleOffice": "Աշխատանքային ժամեր (throttle 08-18)",
             "bwScheduleNight": "Գիշերային ռեժիմ (throttle 18-08)",
             "allInSync": "Բոլոր ֆայլերը համաժամանակեցված են — ոչինչ չկա փոխանցելու",
-            "nothingInDirection": "Տարբերություններ գտնվեցին, բայց ոչ մեկը չի համապատասխանում ընտրված ուղղությանը։ Փորձեք Two-way՝ բոլոր փոփոխությունները տեսնելու համար։"
+            "nothingInDirection": "Տարբերություններ գտնվեցին, բայց ոչ մեկը չի համապատասխանում ընտրված ուղղությանը։ Փորձեք Two-way՝ բոլոր փոփոխությունները տեսնելու համար։",
+            "deltaBadge": "դելտա",
+            "deltaBadgeTooltip": "rsync դելտա՝ {sent} ուղարկված {total}-ից ({speedup}x արագացում)",
+            "deltaSummary": "{files} ֆայլ · {bytes} խնայված · {speedup}x արագացում",
+            "deltaTitle": "Դելտա խնայողություն",
+            "deltaSummaryOptimized": "{files} ֆայլ օպտիմիզացված փոխանցմամբ",
+            "deltaTitleOptimized": "Օպտիմիզացված փոխանցում"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",

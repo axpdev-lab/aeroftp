@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Jam kantor (throttle 08-18)",
             "bwScheduleNight": "Mode malam (throttle 18-08)",
             "allInSync": "Semua file sudah sinkron — tidak ada yang perlu ditransfer",
-            "nothingInDirection": "Perbedaan ditemukan, tetapi tidak ada yang sesuai dengan arah yang dipilih. Coba Two-way untuk melihat semua perubahan."
+            "nothingInDirection": "Perbedaan ditemukan, tetapi tidak ada yang sesuai dengan arah yang dipilih. Coba Two-way untuk melihat semua perubahan.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} terkirim dari {total} (percepatan {speedup}x)",
+            "deltaSummary": "{files} file · {bytes} dihemat · percepatan {speedup}x",
+            "deltaTitle": "Penghematan Delta",
+            "deltaSummaryOptimized": "{files} file melalui transfer teroptimasi",
+            "deltaTitleOptimized": "Transfer teroptimasi"
         },
         "ui": {
             "syncing": "Menyinkronkan...",

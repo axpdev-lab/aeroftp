@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Darba laiks (throttle 08-18)",
             "bwScheduleNight": "Nakts rezims (throttle 18-08)",
             "allInSync": "Visi faili ir sinhronizēti — nekas nav jāpārsūta",
-            "nothingInDirection": "Atrastas atšķirības, bet neviena neatbilst izvēlētajam virzienam. Izmēģiniet Two-way, lai redzētu visas izmaiņas."
+            "nothingInDirection": "Atrastas atšķirības, bet neviena neatbilst izvēlētajam virzienam. Izmēģiniet Two-way, lai redzētu visas izmaiņas.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: nosūtīts {sent} no {total} ({speedup}x paātrinājums)",
+            "deltaSummary": "{files} faili · ietaupīti {bytes} · {speedup}x paātrinājums",
+            "deltaTitle": "Delta ietaupījumi",
+            "deltaSummaryOptimized": "{files} faili ar optimizētu pārsūtīšanu",
+            "deltaTitleOptimized": "Optimizēta pārsūtīšana"
         },
         "ui": {
             "syncing": "Sinhronizē...",

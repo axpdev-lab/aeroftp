@@ -2033,7 +2033,13 @@
             "bwSchedule": "Pianificazione banda",
             "bwScheduleOff": "Manuale (usa i limiti sopra)",
             "bwScheduleOffice": "Orario ufficio (throttle 08-18)",
-            "bwScheduleNight": "Modalità notturna (throttle 18-08)"
+            "bwScheduleNight": "Modalità notturna (throttle 18-08)",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "Delta rsync: {sent} inviati su {total} ({speedup}x di velocità)",
+            "deltaSummary": "{files} file · {bytes} risparmiati · {speedup}x di velocità",
+            "deltaTitle": "Risparmio delta",
+            "deltaSummaryOptimized": "{files} file trasferiti con ottimizzazione",
+            "deltaTitleOptimized": "Trasferimento ottimizzato"
         },
         "ui": {
             "syncing": "Sincronizzazione...",

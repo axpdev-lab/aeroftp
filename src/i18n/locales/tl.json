@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Oras ng opisina (throttle 08-18)",
             "bwScheduleNight": "Night mode (throttle 18-08)",
             "allInSync": "Lahat ng file ay naka-sync — walang ililipat",
-            "nothingInDirection": "May nakitang pagkakaiba, ngunit wala sa napiling direksyon. Subukan ang Two-way upang makita ang lahat ng pagbabago."
+            "nothingInDirection": "May nakitang pagkakaiba, ngunit wala sa napiling direksyon. Subukan ang Two-way upang makita ang lahat ng pagbabago.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} ipinadala mula sa {total} ({speedup}x na bilis)",
+            "deltaSummary": "{files} na file · {bytes} natipid · {speedup}x na bilis",
+            "deltaTitle": "Natipid sa delta",
+            "deltaSummaryOptimized": "{files} file sa pamamagitan ng optimized na paglilipat",
+            "deltaTitleOptimized": "Optimized na paglilipat"
         },
         "ui": {
             "syncing": "Sinsi-sync...",

@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Horari d'oficina (throttle 08-18)",
             "bwScheduleNight": "Mode nocturn (throttle 18-08)",
             "allInSync": "Tots els fitxers estan sincronitzats — res a transferir",
-            "nothingInDirection": "S'han trobat diferències, però cap coincideix amb la direcció seleccionada. Prova Two-way per veure tots els canvis."
+            "nothingInDirection": "S'han trobat diferències, però cap coincideix amb la direcció seleccionada. Prova Two-way per veure tots els canvis.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} enviats de {total} ({speedup}x d'acceleració)",
+            "deltaSummary": "{files} fitxers · {bytes} estalviats · {speedup}x d'acceleració",
+            "deltaTitle": "Estalvi delta",
+            "deltaSummaryOptimized": "{files} fitxers per transferència optimitzada",
+            "deltaTitleOptimized": "Transferència optimitzada"
         },
         "ui": {
             "syncing": "Sincronitzant...",

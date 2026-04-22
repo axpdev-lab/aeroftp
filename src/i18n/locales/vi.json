@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Giờ làm việc (hạn chế 08-18)",
             "bwScheduleNight": "Chế độ ban đêm (hạn chế 18-08)",
             "allInSync": "Tất cả tệp đã được đồng bộ — không có gì để chuyển",
-            "nothingInDirection": "Đã tìm thấy khác biệt, nhưng không có gì khớp với hướng đã chọn. Hãy thử Two-way để xem tất cả các thay đổi."
+            "nothingInDirection": "Đã tìm thấy khác biệt, nhưng không có gì khớp với hướng đã chọn. Hãy thử Two-way để xem tất cả các thay đổi.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: đã gửi {sent} trong {total} (tăng tốc {speedup}x)",
+            "deltaSummary": "{files} tệp · tiết kiệm {bytes} · tăng tốc {speedup}x",
+            "deltaTitle": "Tiết kiệm delta",
+            "deltaSummaryOptimized": "{files} tệp qua chuyển tối ưu hóa",
+            "deltaTitleOptimized": "Chuyển tối ưu hóa"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",

@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { FileComparison, CompareOptions, SyncStatus, SyncDirection, ProviderType, isFtpProtocol, TransferProgress, TransferEvent, SyncIndex, RetryPolicy, VerifyPolicy, SyncJournal, SyncJournalEntry, SyncErrorInfo, SyncErrorKind, VerifyResult, JournalEntryStatus, CompressionMode, SyncTransferEntry, ParallelSyncResult, JournalSummary } from '../types';
+import { FileComparison, CompareOptions, SyncStatus, SyncDirection, ProviderType, isFtpProtocol, TransferProgress, TransferEvent, SyncIndex, RetryPolicy, VerifyPolicy, SyncJournal, SyncJournalEntry, SyncErrorInfo, SyncErrorKind, VerifyResult, JournalEntryStatus, CompressionMode, SyncTransferEntry, ParallelSyncResult, JournalSummary, DeltaSavingsSummary, DeltaTransferStats } from '../types';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
 import { TRANSFER_EVENT_BRIDGE } from '../hooks/useTransferEvents';
@@ -45,6 +45,9 @@ interface SyncReport {
     retried: number;
     totalBytes: number;
     durationMs: number;
+    // Absent when no file traveled through the rsync delta path in this
+    // run — same absence-vs-null contract as the backend MCP response.
+    delta_savings?: DeltaSavingsSummary;
 }
 
 // Per-file sync result tracking
@@ -139,6 +142,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
     const [error, setError] = useState<string | null>(null);
     const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
     const [fileResults, setFileResults] = useState<Map<string, FileSyncResult>>(new Map());
+    // Per-file delta stats (only files that went through the rsync delta
+    // path — SFTP + key-auth + rsync on the remote). Used to render the
+    // per-row "delta" badge and to feed the end-of-sync savings card.
+    // `useRef` instead of `useState` to avoid re-rendering the whole
+    // list on every transfer_event (can fire hundreds of times per sync).
+    const deltaStatsRef = useRef<Map<string, DeltaTransferStats>>(new Map());
+    const [deltaStatsVersion, setDeltaStatsVersion] = useState(0);
     const [hasIndex, setHasIndex] = useState(false);
     const [hasJournal, setHasJournal] = useState(false);
     const [pendingJournal, setPendingJournal] = useState<SyncJournal | null>(null);
@@ -1080,10 +1090,43 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
         setFileResults(initialResults);
         speedHistoryRef.current = [];
 
+        // Reset per-file delta stats for this sync run
+        deltaStatsRef.current = new Map();
+        setDeltaStatsVersion(0);
+
+        // Re-key the entry that the TransferEvent listener captured under
+        // `basename` (all the bridge knows is the filename) to the full
+        // `relative_path` used by the file list. Called after each
+        // `await executeTransferWithRetry` so collisions on duplicate
+        // basenames across different directories can't occur inside a
+        // sequential loop. When `basename === relative_path` (flat layout)
+        // the swap is a no-op.
+        const captureDeltaForPath = (relativePath: string) => {
+            const basename =
+                relativePath.split('/').pop() || relativePath;
+            if (basename === relativePath) return;
+            const s = deltaStatsRef.current.get(basename);
+            if (!s) return;
+            deltaStatsRef.current.delete(basename);
+            deltaStatsRef.current.set(relativePath, s);
+            setDeltaStatsVersion((v) => v + 1);
+        };
+
         // Listen for bridged transfer progress events (throttled to prevent UI flood)
         let lastProgressUpdate = 0;
         const onTransferEvent = (event: Event) => {
             const payload = (event as CustomEvent<TransferEvent>).detail;
+            // Capture per-file delta stats from `complete` events that
+            // carry `delta_stats` (rsync delta path serviced the transfer).
+            // Key by filename: the bridge doesn't expose the relative_path
+            // but filename is unique within a sync loop iteration
+            // (selectedComparisons are processed one-at-a-time).
+            if (payload?.event_type === 'complete' && payload.delta_stats) {
+                deltaStatsRef.current.set(payload.filename, payload.delta_stats);
+                // Bump version so the row using this filename re-renders
+                // with its badge. Debounced by React batching.
+                setDeltaStatsVersion((v) => v + 1);
+            }
             if (payload?.progress && payload.progress.percentage !== undefined) {
                 // Accumulate speed samples regardless of throttle
                 if (payload.progress.speed_bps > 0) {
@@ -1352,6 +1395,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
                         journalEntry.bytes_transferred = bytes;
                         journalEntry.verified = true; // Uploads verified by server acceptance
                     }
+                    captureDeltaForPath(item.relative_path);
                     updateFileResult(item.relative_path, 'success');
                 } else {
                     if (journalEntry) {
@@ -1454,6 +1498,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
                             journalEntry.bytes_transferred = bytes;
                             journalEntry.verified = true;
                         }
+                        captureDeltaForPath(item.relative_path);
                         updateFileResult(item.relative_path, 'success');
                     }
                 } else {
@@ -1587,6 +1632,35 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
         setHasJournal(!journal.completed);
         setPendingJournal(!journal.completed ? journal : null);
 
+        // Aggregate delta savings from the per-file map accumulated during
+        // the run. Missing / empty map → `delta_savings` stays `undefined`
+        // so the UI knows no file used the delta path (absence-vs-null:
+        // same contract as the backend `SyncReport.delta_savings`).
+        let delta_savings: DeltaSavingsSummary | undefined;
+        if (deltaStatsRef.current.size > 0) {
+            let files_using_delta = 0;
+            let total_bytes_sent = 0;
+            let total_size = 0;
+            for (const s of deltaStatsRef.current.values()) {
+                files_using_delta += 1;
+                total_bytes_sent += s.bytes_sent;
+                total_size += s.total_size;
+            }
+            // Effective directory-wide speedup = total_size / total_bytes_sent
+            // (recomputed here instead of averaging per-file ratios, which
+            // would over-weight tiny fully-cached files — matches the
+            // Rust-side aggregation in `apply_sync_tree_outcome`).
+            const average_speedup =
+                total_bytes_sent > 0 ? total_size / total_bytes_sent : null;
+            delta_savings = {
+                files_using_delta,
+                total_bytes_sent,
+                total_size,
+                bytes_saved: total_size - total_bytes_sent,
+                average_speedup,
+            };
+        }
+
         // Show completion report
         setSyncReport({
             uploaded,
@@ -1599,6 +1673,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
             retried,
             totalBytes,
             durationMs: Date.now() - startTime,
+            delta_savings,
         });
 
         // Save sync index for faster future comparisons
@@ -2037,6 +2112,43 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
                                 </span>
                             </div>
                         </div>
+                        {/* Delta Savings card — rendered only when at least
+                            one file traveled through the rsync delta path.
+                            Absent otherwise (no "0 files" noise). Tailwind
+                            `dark:` + a light/tokyo/cyber-tolerant palette
+                            so the widget reads correctly across all four
+                            themes via the `html.<theme>` cascade. */}
+                        {syncReport.delta_savings && (() => {
+                            // Roadmap mitigation: below 1.5x the "speedup"
+                            // framing is misleading (rsync handshake
+                            // overhead dominates). Show the compact
+                            // "optimized transfer" variant in that range.
+                            const avg = syncReport.delta_savings.average_speedup;
+                            const lowSpeedup = avg !== null && avg < 1.5;
+                            return (
+                                <div className="mt-3 rounded-md border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-2.5">
+                                    <div className="flex items-center gap-1.5 mb-1">
+                                        <Zap size={14} className="text-emerald-600 dark:text-emerald-400" />
+                                        <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                                            {lowSpeedup
+                                                ? t('syncPanel.deltaTitleOptimized')
+                                                : t('syncPanel.deltaTitle')}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-gray-700 dark:text-gray-300">
+                                        {lowSpeedup
+                                            ? t('syncPanel.deltaSummaryOptimized', {
+                                                  files: syncReport.delta_savings.files_using_delta,
+                                              })
+                                            : t('syncPanel.deltaSummary', {
+                                                  files: syncReport.delta_savings.files_using_delta,
+                                                  bytes: formatSize(Math.max(0, syncReport.delta_savings.bytes_saved)),
+                                                  speedup: avg ? avg.toFixed(1) : '—',
+                                              })}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                         {/* Classified error breakdown */}
                         {syncReport.errors.length > 0 && (
                             <div className="mt-3 border-t border-gray-200 dark:border-gray-600 pt-2">
@@ -2228,6 +2340,11 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
                                             const StatusIcon = statusCfg.Icon;
                                             const resultIcon = getFileResultIcon(comparison.relative_path);
                                             const result = fileResults.get(comparison.relative_path);
+                                            // `deltaStatsVersion` read to ensure the list
+                                            // re-renders when the listener populates a new
+                                            // entry (React doesn't track Ref mutations).
+                                            void deltaStatsVersion;
+                                            const deltaEntry = deltaStatsRef.current.get(comparison.relative_path);
                                             return (
                                                 <div
                                                     key={comparison.relative_path}
@@ -2261,7 +2378,22 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ isOpen, onClose, localPath
                                                             {comparison.sync_reason && comparison.status !== 'identical' && <span className="sync-reason-text">{comparison.sync_reason}</span>}
                                                         </div>
                                                     </div>
-                                                    <div className="sync-col-result">{resultIcon}</div>
+                                                    <div className="sync-col-result flex items-center gap-1">
+                                                        {resultIcon}
+                                                        {deltaEntry && (
+                                                            <span
+                                                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
+                                                                title={t('syncPanel.deltaBadgeTooltip', {
+                                                                    speedup: deltaEntry.speedup ? deltaEntry.speedup.toFixed(1) : '—',
+                                                                    sent: formatSize(deltaEntry.bytes_sent),
+                                                                    total: formatSize(deltaEntry.total_size),
+                                                                })}
+                                                            >
+                                                                <Zap size={9} />
+                                                                {t('syncPanel.deltaBadge')}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="sync-col-local">{comparison.local_info ? formatSize(comparison.local_info.size) : '\u2014'}</div>
                                                     <div className="sync-col-remote">{comparison.remote_info ? formatSize(comparison.remote_info.size) : '\u2014'}</div>
                                                 </div>

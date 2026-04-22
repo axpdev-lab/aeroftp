@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "업무 시간 (제한 08-18)",
             "bwScheduleNight": "야간 모드 (제한 18-08)",
             "allInSync": "모든 파일이 동기화됨 — 전송할 항목 없음",
-            "nothingInDirection": "차이점이 발견되었지만 선택한 방향과 일치하는 항목이 없습니다. 모든 변경 사항을 보려면 Two-way를 시도하세요."
+            "nothingInDirection": "차이점이 발견되었지만 선택한 방향과 일치하는 항목이 없습니다. 모든 변경 사항을 보려면 Two-way를 시도하세요.",
+            "deltaBadge": "델타",
+            "deltaBadgeTooltip": "rsync 델타: {total} 중 {sent} 전송됨 ({speedup}배 속도 향상)",
+            "deltaSummary": "{files}개 파일 · {bytes} 절약 · {speedup}배 속도 향상",
+            "deltaTitle": "델타 절약",
+            "deltaSummaryOptimized": "{files}개 파일을 최적화된 전송으로 처리",
+            "deltaTitleOptimized": "최적화된 전송"
         },
         "ui": {
             "syncing": "동기화 중...",

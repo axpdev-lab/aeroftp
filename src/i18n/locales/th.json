@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "เวลาทำงาน (จำกัด 08-18)",
             "bwScheduleNight": "โหมดกลางคืน (จำกัด 18-08)",
             "allInSync": "ไฟล์ทั้งหมดซิงค์แล้ว — ไม่มีอะไรต้องถ่ายโอน",
-            "nothingInDirection": "พบความแตกต่าง แต่ไม่มีรายการใดตรงกับทิศทางที่เลือก ลองใช้ Two-way เพื่อดูการเปลี่ยนแปลงทั้งหมด"
+            "nothingInDirection": "พบความแตกต่าง แต่ไม่มีรายการใดตรงกับทิศทางที่เลือก ลองใช้ Two-way เพื่อดูการเปลี่ยนแปลงทั้งหมด",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: ส่งแล้ว {sent} จาก {total} (เร็วขึ้น {speedup}x)",
+            "deltaSummary": "{files} ไฟล์ · ประหยัด {bytes} · เร็วขึ้น {speedup}x",
+            "deltaTitle": "การประหยัดจาก delta",
+            "deltaSummaryOptimized": "{files} ไฟล์ผ่านการถ่ายโอนที่ปรับให้เหมาะสม",
+            "deltaTitleOptimized": "การถ่ายโอนที่ปรับให้เหมาะสม"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",

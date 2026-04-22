@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Toimistoaika (rajoitus 08-18)",
             "bwScheduleNight": "Yötila (rajoitus 18-08)",
             "allInSync": "Kaikki tiedostot ovat synkronoituja — ei mitään siirrettävää",
-            "nothingInDirection": "Eroja löytyi, mutta mikään ei vastaa valittua suuntaa. Kokeile Two-way nähdäksesi kaikki muutokset."
+            "nothingInDirection": "Eroja löytyi, mutta mikään ei vastaa valittua suuntaa. Kokeile Two-way nähdäksesi kaikki muutokset.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: lähetetty {sent} / {total} ({speedup}x nopeutus)",
+            "deltaSummary": "{files} tiedostoa · {bytes} säästetty · {speedup}x nopeutus",
+            "deltaTitle": "Delta-säästöt",
+            "deltaSummaryOptimized": "{files} tiedostoa optimoidulla siirrolla",
+            "deltaTitleOptimized": "Optimoitu siirto"
         },
         "ui": {
             "syncing": "Synkronoidaan...",

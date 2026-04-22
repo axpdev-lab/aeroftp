@@ -312,6 +312,7 @@ pub async fn cross_profile_execute(
                 )),
                 progress: None,
                 path: None,
+                delta_stats: None,
             },
         );
 
@@ -337,6 +338,7 @@ pub async fn cross_profile_execute(
                         message: Some("Transfer cancelled by user".to_string()),
                         progress: None,
                         path: None,
+                        delta_stats: None,
                     },
                 );
                 break;
@@ -371,6 +373,7 @@ pub async fn cross_profile_execute(
                                 path: Some(event_path.clone()),
                             }),
                             path: Some(event_path.clone()),
+                            delta_stats: None,
                         },
                     );
                     continue;
@@ -399,6 +402,7 @@ pub async fn cross_profile_execute(
                         path: Some(event_path.clone()),
                     }),
                     path: Some(event_path.clone()),
+                    delta_stats: None,
                 },
             );
 
@@ -431,6 +435,7 @@ pub async fn cross_profile_execute(
                                     message: Some(e.to_string()),
                                     progress: None,
                                     path: Some(event_path.clone()),
+                                    delta_stats: None,
                                 },
                             );
                         } else {
@@ -457,6 +462,7 @@ pub async fn cross_profile_execute(
                         message: Some("Transfer cancelled by user".to_string()),
                         progress: None,
                         path: None,
+                        delta_stats: None,
                     },
                 );
                 break;
@@ -492,6 +498,7 @@ pub async fn cross_profile_execute(
                             path: Some(event_path.clone()),
                         }),
                         path: Some(event_path.clone()),
+                        delta_stats: None,
                     },
                 );
             }
@@ -526,6 +533,7 @@ pub async fn cross_profile_execute(
                         path: None,
                     }),
                     path: None,
+                    delta_stats: None,
                 },
             );
         }

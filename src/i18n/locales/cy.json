@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Oriau swyddfa (arafu 08-18)",
             "bwScheduleNight": "Modd nos (arafu 18-08)",
             "allInSync": "Mae'r holl ffeiliau wedi'u cysoni — dim i'w drosglwyddo",
-            "nothingInDirection": "Cafwyd gwahaniaethau, ond nid oes yr un yn cyd-fynd â'r cyfeiriad a ddewiswyd. Rhowch gynnig ar Two-way i weld pob newid."
+            "nothingInDirection": "Cafwyd gwahaniaethau, ond nid oes yr un yn cyd-fynd â'r cyfeiriad a ddewiswyd. Rhowch gynnig ar Two-way i weld pob newid.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {sent} wedi'u hanfon o {total} ({speedup}x cyflymiad)",
+            "deltaSummary": "{files} ffeil · {bytes} wedi'u harbed · {speedup}x cyflymiad",
+            "deltaTitle": "Arbedion delta",
+            "deltaSummaryOptimized": "{files} ffeil trwy drosglwyddiad optimaidd",
+            "deltaTitleOptimized": "Trosglwyddiad optimaidd"
         },
         "ui": {
             "syncing": "Yn cysoni...",

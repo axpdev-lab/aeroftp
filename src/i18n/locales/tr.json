@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Mesai saatleri (kisitlama 08-18)",
             "bwScheduleNight": "Gece modu (kisitlama 18-08)",
             "allInSync": "Tüm dosyalar senkronize — aktarılacak bir şey yok",
-            "nothingInDirection": "Farklılıklar bulundu, ancak hiçbiri seçilen yönle eşleşmiyor. Tüm değişiklikleri görmek için Two-way seçeneğini deneyin."
+            "nothingInDirection": "Farklılıklar bulundu, ancak hiçbiri seçilen yönle eşleşmiyor. Tüm değişiklikleri görmek için Two-way seçeneğini deneyin.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: {total} içinden {sent} gönderildi ({speedup}x hızlanma)",
+            "deltaSummary": "{files} dosya · {bytes} tasarruf · {speedup}x hızlanma",
+            "deltaTitle": "Delta tasarrufu",
+            "deltaSummaryOptimized": "{files} dosya optimize aktarımla taşındı",
+            "deltaTitleOptimized": "Optimize aktarım"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",

@@ -1966,7 +1966,13 @@
             "bwScheduleOffice": "Pisarniški čas (throttle 08-18)",
             "bwScheduleNight": "Nočni način (throttle 18-08)",
             "allInSync": "Vse datoteke so sinhronizirane — ničesar ni treba prenesti",
-            "nothingInDirection": "Najdene so razlike, vendar nobena ne ustreza izbrani smeri. Poskusite Two-way, da vidite vse spremembe."
+            "nothingInDirection": "Najdene so razlike, vendar nobena ne ustreza izbrani smeri. Poskusite Two-way, da vidite vse spremembe.",
+            "deltaBadge": "delta",
+            "deltaBadgeTooltip": "rsync delta: poslanih {sent} od {total} (pospešek {speedup}x)",
+            "deltaSummary": "{files} datotek · prihranjenih {bytes} · pospešek {speedup}x",
+            "deltaTitle": "Prihranek delta",
+            "deltaSummaryOptimized": "{files} datotek prek optimiziranega prenosa",
+            "deltaTitleOptimized": "Optimiziran prenos"
         },
         "ui": {
             "syncing": "Sinhronizacija...",
