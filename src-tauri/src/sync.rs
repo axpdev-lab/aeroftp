@@ -338,6 +338,14 @@ struct SyncTransferSpec<'a> {
     rel: &'a str,
     total: u64,
     decision_policy: DeltaPolicy,
+    /// Policy originally requested by the caller. Kept distinct from
+    /// `decision_policy` because the decide layer may downgrade the policy
+    /// when required data is missing (e.g. `Hash` falls back to `Mtime` if
+    /// the remote provider has no checksum). The native delta wrapper
+    /// (P1-T01) is consulted on this field, not on `decision_policy`, so
+    /// the native attempt fires if and only if the user explicitly asked
+    /// for `Delta`.
+    requested_policy: DeltaPolicy,
 }
 
 /// Action to perform during sync
@@ -866,6 +874,7 @@ pub async fn sync_tree_core(
                             rel: &local_entry.rel_path,
                             total: local_entry.size,
                             decision_policy: decision.decision_policy,
+                            requested_policy: opts.delta_policy,
                         },
                         opts.dry_run,
                         sink,
@@ -921,6 +930,7 @@ pub async fn sync_tree_core(
                             rel: &remote_entry.rel_path,
                             total: remote_entry.size,
                             decision_policy: decision.decision_policy,
+                            requested_policy: opts.delta_policy,
                         },
                         opts.dry_run,
                         sink,
@@ -1320,6 +1330,52 @@ async fn perform_upload(
     let remote_path = join_clean_remote(remote_root, transfer.rel);
     ensure_remote_parent(provider, &remote_path).await;
 
+    // P1-T01: try the native delta wrapper before the classic provider path.
+    // The wrapper gates eligibility internally (SFTP downcast + active SSH
+    // handle + rsync availability). `None` means the session is not delta
+    // eligible (non-SFTP provider, password-only auth, no handle): fall
+    // through silently to the classic upload. A `hard_error` (e.g. SSH
+    // host-key mismatch) surfaces as `FileOutcome::Failed` without falling
+    // back, so security failures never get masked by the classic path.
+    #[cfg(unix)]
+    if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
+        let local_path_buf = std::path::PathBuf::from(&local_path);
+        match crate::delta_sync_rsync::try_delta_transfer(
+            &mut **provider,
+            crate::delta_sync_rsync::SyncDirection::Upload,
+            &local_path_buf,
+            &remote_path,
+        )
+        .await
+        {
+            Some(result) if result.used_delta => {
+                tracing::info!(
+                    "sync.delta: used delta path (direction=Upload, remote={})",
+                    remote_path
+                );
+                return FileOutcome::Uploaded {
+                    bytes: transfer.total,
+                };
+            }
+            Some(result) if result.hard_error.is_some() => {
+                let msg = result.hard_error.unwrap_or_default();
+                return FileOutcome::Failed {
+                    error: format!("delta hard rejection: {}", msg),
+                };
+            }
+            Some(result) => {
+                if let Some(reason) = result.fallback_reason {
+                    tracing::info!(
+                        "sync.delta: fallback to classic (direction=Upload, remote={}, reason={})",
+                        remote_path,
+                        reason
+                    );
+                }
+            }
+            None => {}
+        }
+    }
+
     match provider.upload(&local_path, &remote_path, None).await {
         Ok(()) => FileOutcome::Uploaded {
             bytes: transfer.total,
@@ -1354,6 +1410,47 @@ async fn perform_download(
     if let Some(parent) = Path::new(&local_path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+
+    // P1-T01: see `perform_upload` above. Same contract, direction=Download.
+    #[cfg(unix)]
+    if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
+        let local_path_buf = std::path::PathBuf::from(&local_path);
+        match crate::delta_sync_rsync::try_delta_transfer(
+            &mut **provider,
+            crate::delta_sync_rsync::SyncDirection::Download,
+            &local_path_buf,
+            &remote_path,
+        )
+        .await
+        {
+            Some(result) if result.used_delta => {
+                tracing::info!(
+                    "sync.delta: used delta path (direction=Download, remote={})",
+                    remote_path
+                );
+                return FileOutcome::Downloaded {
+                    bytes: transfer.total,
+                };
+            }
+            Some(result) if result.hard_error.is_some() => {
+                let msg = result.hard_error.unwrap_or_default();
+                return FileOutcome::Failed {
+                    error: format!("delta hard rejection: {}", msg),
+                };
+            }
+            Some(result) => {
+                if let Some(reason) = result.fallback_reason {
+                    tracing::info!(
+                        "sync.delta: fallback to classic (direction=Download, remote={}, reason={})",
+                        remote_path,
+                        reason
+                    );
+                }
+            }
+            None => {}
+        }
+    }
+
     match provider.download(&remote_path, &local_path, None).await {
         Ok(()) => FileOutcome::Downloaded {
             bytes: transfer.total,
@@ -1457,11 +1554,24 @@ fn mkdir_error_is_idempotent(err: &ProviderError) -> bool {
 }
 
 async fn ensure_remote_dir(provider: &mut Box<dyn StorageProvider>, dir: &str) {
+    // Walk the parent chain top-down. A failure on an intermediate level
+    // (e.g. mkdir on `/mnt` denied because the user has no write access on
+    // the SFTP root) must NOT short-circuit the chain: the leaf mkdir may
+    // still succeed if the caller is authorized only on the target subtree.
+    // Any genuine permission/path error will surface naturally on the
+    // following `provider.upload`/`download` call. Idempotent errors (the
+    // directory already exists) are silently absorbed at every level.
     for path in remote_dir_chain(dir) {
         match provider.mkdir(&path).await {
             Ok(()) => {}
             Err(err) if mkdir_error_is_idempotent(&err) => {}
-            Err(_) => return,
+            Err(err) => {
+                tracing::debug!(
+                    "ensure_remote_dir: non-idempotent mkdir error on '{}': {}; continuing chain",
+                    path,
+                    err
+                );
+            }
         }
     }
 }
@@ -3282,5 +3392,24 @@ mod tests {
         let decision = decide_upload(&local, Some(&remote), DeltaPolicy::Hash, ConflictMode::Larger);
         assert!(matches!(decision.action, SyncTreeAction::Copy));
         assert_eq!(decision.decision_policy, DeltaPolicy::Mtime);
+    }
+
+    #[test]
+    fn sync_transfer_spec_separates_requested_and_decision_policy() {
+        // P1-T01 invariant: `requested_policy` (caller intent) and
+        // `decision_policy` (decide layer outcome) are independent fields.
+        // The native delta wrapper consults `requested_policy`; the sync
+        // report and progress sink consume `decision_policy`. Without this
+        // separation a `Hash`-requested transfer that the decide layer
+        // downgrades to `Mtime` would silently bypass the native path.
+        let spec = SyncTransferSpec {
+            rel: "alpha.txt",
+            total: 1234,
+            decision_policy: DeltaPolicy::Mtime,
+            requested_policy: DeltaPolicy::Delta,
+        };
+        assert_eq!(spec.requested_policy, DeltaPolicy::Delta);
+        assert_eq!(spec.decision_policy, DeltaPolicy::Mtime);
+        assert_ne!(spec.requested_policy, spec.decision_policy);
     }
 }
