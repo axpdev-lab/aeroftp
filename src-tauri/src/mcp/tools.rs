@@ -464,7 +464,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_sync_tree",
-            description: "Synchronize a local directory with a remote directory. Direction: upload, download, or both. Supports dry_run, delete_orphans (upload/download only), conflict resolution (larger/newer/skip), explicit delta_policy (disabled/size_only/mtime/hash/delta), and glob excludes. Emits progress notifications when the caller supplies a progressToken. Output shape: dry_run=true returns {plan, plan_by_op, plan_by_op_totals, plan_total, planned, scan_stats, errors}; dry_run=false returns {summary (with summary.totals), errors}. The two fields never coexist. Each plan/error entry reports the per-file `decision_policy` actually used by the core. `plan_by_op` groups the plan per operation (upload/download/delete/skip) with per-bucket caps of 250 so an agent can see every candidate of a given type even when the total plan is huge. Set summary_only=true to drop the per-entry plan/plan_by_op/errors arrays when the response would otherwise exceed MCP size limits. When at least one file traveled through the rsync delta path, `summary.delta_savings` is added with {files_using_delta, total_bytes_sent, total_size, bytes_saved, average_speedup}; the block is OMITTED entirely when no file used the delta path. `bytes_saved` can be negative when rsync overhead exceeds the savings on small-file runs. `average_speedup` is omitted when `total_bytes_sent==0`.",
+            description: "Synchronize a local directory with a remote directory. Direction: upload, download, or both. Supports dry_run, delete_orphans (upload/download only), conflict resolution (larger/newer/skip), explicit delta_policy (disabled/size_only/mtime/hash/delta), and glob excludes. Emits progress notifications when the caller supplies a progressToken. Output shape: dry_run=true returns {plan, plan_by_op, plan_by_op_totals, plan_total, planned, scan_stats, errors}; dry_run=false returns {summary (with summary.totals), errors}. The two fields never coexist. Each plan/error entry reports the per-file `decision_policy` actually used by the core. `plan_by_op` groups the plan per operation (upload/download/delete/skip) with per-bucket caps of 250 so an agent can see every candidate of a given type even when the total plan is huge. Set summary_only=true to drop the per-entry plan/plan_by_op/errors arrays when the response would otherwise exceed MCP size limits. When at least one file traveled through the rsync delta path, `summary.delta_savings` is added with {files_using_delta, total_bytes_sent, total_size, bytes_saved, average_speedup}; the block is OMITTED entirely when no file used the delta path. `bytes_saved` can be negative when rsync overhead exceeds the savings on small-file runs. `average_speedup` is omitted when `total_bytes_sent==0`. Alongside `delta_savings`, `summary.delta_files` carries a per-file breakdown as an array of `{path, bytes_sent, total_size, speedup}`, capped at 500 entries; on runs above the cap, `summary.delta_files_truncated: true` is added and the `delta_savings` aggregate keeps counting past the cap. Both keys are OMITTED on classic-only runs.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "local_dir": { "type": "string", "description": "Local root directory" },
@@ -3119,6 +3119,37 @@ pub async fn execute_tool(
                             }
                             summary.insert("delta_savings".into(), Value::Object(block));
                         }
+                        // PR-T03: per-file breakdown, capped at
+                        // DELTA_FILES_CAP (500) so large syncs don't
+                        // explode the response. Presence mirrors
+                        // `delta_savings` — both driven by the same
+                        // accumulator. Emit nothing when the classic
+                        // path served every file, keeping the
+                        // absence-vs-null contract consistent.
+                        if !report.delta_files.is_empty() {
+                            let files_json: Vec<Value> = report
+                                .delta_files
+                                .iter()
+                                .map(|f| {
+                                    json!({
+                                        "path": f.path,
+                                        "bytes_sent": f.bytes_sent,
+                                        "total_size": f.total_size,
+                                        "speedup": f.speedup,
+                                    })
+                                })
+                                .collect();
+                            summary.insert(
+                                "delta_files".into(),
+                                Value::Array(files_json),
+                            );
+                            if report.delta_files_truncated {
+                                summary.insert(
+                                    "delta_files_truncated".into(),
+                                    Value::Bool(true),
+                                );
+                            }
+                        }
                         json!({
                             "server": server,
                             "local_dir": local_dir,
@@ -3885,6 +3916,32 @@ mod tests {
         assert_eq!(
             variants,
             vec!["disabled", "size_only", "mtime", "hash", "delta"]
+        );
+    }
+
+    #[test]
+    fn sync_tree_description_documents_delta_files_breakdown() {
+        // PR-T03 contract: the tool description must tell consuming
+        // agents about `summary.delta_files[]`, its 500-entry cap, and
+        // the `summary.delta_files_truncated` flag. This is the MCP
+        // surface that downstream tooling (ultrareview, mcp-inspector,
+        // future UIs) reads to decide whether to parse the breakdown.
+        let t = tool_definitions()
+            .into_iter()
+            .find(|t| t.name == "aeroftp_sync_tree")
+            .expect("aeroftp_sync_tree registered");
+        let desc = t.description;
+        assert!(
+            desc.contains("delta_files"),
+            "description must mention delta_files breakdown; was: {desc}"
+        );
+        assert!(
+            desc.contains("500"),
+            "description must mention the 500-entry cap; was: {desc}"
+        );
+        assert!(
+            desc.contains("delta_files_truncated"),
+            "description must mention the truncation flag; was: {desc}"
         );
     }
 

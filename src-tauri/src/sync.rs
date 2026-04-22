@@ -273,6 +273,27 @@ pub struct DeltaSavingsSummary {
     pub average_speedup: Option<f64>,
 }
 
+/// Maximum number of per-file delta entries carried in a single
+/// `SyncReport`. Large syncs (thousands of files) would otherwise bloat
+/// MCP responses into the megabyte range. Once the cap is hit the
+/// aggregate `DeltaSavingsSummary` keeps accumulating across all files —
+/// only the per-file breakdown is truncated, and `delta_files_truncated`
+/// surfaces the fact to the consumer.
+pub const DELTA_FILES_CAP: usize = 500;
+
+/// Per-file entry of [`SyncReport::delta_files`]. Populated for every
+/// file serviced by the rsync delta path, up to [`DELTA_FILES_CAP`].
+/// `path` is the relative path passed to the sync core (identical to the
+/// entry used by the `on_file_done` progress hook), `speedup` mirrors the
+/// per-file rsync ratio carried on [`DeltaTransferStats`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeltaFileEntry {
+    pub path: String,
+    pub bytes_sent: u64,
+    pub total_size: u64,
+    pub speedup: f64,
+}
+
 impl DeltaTransferStats {
     pub(crate) fn from_rsync(stats: &crate::rsync_over_ssh::RsyncStats) -> Self {
         Self {
@@ -322,6 +343,19 @@ pub struct SyncReport {
     /// path, so serialized responses can drop the block unambiguously instead
     /// of emitting `"delta_savings": {"files_using_delta": 0, …}`.
     pub delta_savings: Option<DeltaSavingsSummary>,
+    /// Per-file breakdown capped at [`DELTA_FILES_CAP`]. Empty when no
+    /// file used the delta path. Contract: semantically equivalent to
+    /// `delta_savings.is_none()` — both driven by the same hook so they
+    /// can't drift. Consumers that need the full list on >500-file runs
+    /// should aggregate client-side from the per-file `delta_stats` on
+    /// `FileOutcome::{Uploaded,Downloaded}` (UI already does this in
+    /// SyncPanel).
+    pub delta_files: Vec<DeltaFileEntry>,
+    /// `true` when at least one delta hit occurred after the cap was
+    /// reached. Absent (false) when every delta hit is present in
+    /// `delta_files`. `delta_savings` aggregates keep counting past the
+    /// cap, so `files_using_delta > delta_files.len()` iff truncated.
+    pub delta_files_truncated: bool,
 }
 
 impl SyncReport {
@@ -1385,6 +1419,21 @@ fn apply_sync_tree_outcome(
         } else {
             None
         };
+
+        // Per-file breakdown (PR-T03). Cap at DELTA_FILES_CAP so a
+        // thousand-file run can't bloat the MCP response into the
+        // megabyte range. Aggregates above keep counting past the cap;
+        // `delta_files_truncated` surfaces the fact to the consumer.
+        if report.delta_files.len() < DELTA_FILES_CAP {
+            report.delta_files.push(DeltaFileEntry {
+                path: rel.to_string(),
+                bytes_sent: s.bytes_sent,
+                total_size: s.total_size,
+                speedup: s.speedup,
+            });
+        } else {
+            report.delta_files_truncated = true;
+        }
     }
 
     sink.on_file_done(rel, &outcome);
@@ -3258,6 +3307,115 @@ mod tests {
             "average_speedup must be populated once bytes_sent transitions >0",
         );
         assert!((avg - 200.0).abs() < 1e-9, "expected 20_000/100=200, got {}", avg);
+    }
+
+    // --- PR-T03: per-file delta breakdown + cap ---------------------------
+
+    #[test]
+    fn delta_files_stays_empty_on_classic_only_run() {
+        // Pin the absence-vs-null contract: a run where no file used the
+        // delta path must leave both `delta_savings` None AND `delta_files`
+        // empty. MCP consumers rely on both keys being omitted.
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        apply_sync_tree_outcome(
+            &mut report,
+            "a.txt",
+            "upload",
+            uploaded_classic(1024),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        assert!(report.delta_savings.is_none());
+        assert!(report.delta_files.is_empty());
+        assert!(!report.delta_files_truncated);
+    }
+
+    #[test]
+    fn delta_files_records_path_bytes_and_speedup() {
+        // Pin the payload shape: each entry carries the `rel` path passed
+        // to `apply_sync_tree_outcome` and the rsync per-file values
+        // verbatim from `DeltaTransferStats`.
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        apply_sync_tree_outcome(
+            &mut report,
+            "subdir/big.bin",
+            "upload",
+            uploaded_with_delta(42, 10_000, 238.1),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        assert_eq!(report.delta_files.len(), 1);
+        let entry = &report.delta_files[0];
+        assert_eq!(entry.path, "subdir/big.bin");
+        assert_eq!(entry.bytes_sent, 42);
+        assert_eq!(entry.total_size, 10_000);
+        assert!((entry.speedup - 238.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn delta_files_caps_at_threshold_and_sets_truncated_flag() {
+        // Pin the cap: exactly DELTA_FILES_CAP entries + every extra hit
+        // sets `delta_files_truncated=true`. The aggregate savings must
+        // keep counting past the cap (so `files_using_delta >
+        // delta_files.len()` is the telltale).
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        // Push exactly CAP + 2 delta hits
+        for i in 0..(DELTA_FILES_CAP + 2) {
+            let path = format!("file-{i:04}.bin");
+            apply_sync_tree_outcome(
+                &mut report,
+                &path,
+                "upload",
+                uploaded_with_delta(1, 100, 100.0),
+                DeltaPolicy::default(),
+                &mut sink,
+            );
+        }
+        assert_eq!(
+            report.delta_files.len(),
+            DELTA_FILES_CAP,
+            "breakdown must not exceed DELTA_FILES_CAP"
+        );
+        assert!(
+            report.delta_files_truncated,
+            "crossing the cap must set delta_files_truncated"
+        );
+        let savings = report
+            .delta_savings
+            .as_ref()
+            .expect("aggregate savings must exist after delta hits");
+        assert_eq!(
+            savings.files_using_delta as usize,
+            DELTA_FILES_CAP + 2,
+            "aggregate counts every file, past the cap"
+        );
+    }
+
+    #[test]
+    fn delta_files_exactly_at_cap_does_not_set_truncated_flag() {
+        // Pin the boundary: CAP-exact hits fill the vec without flipping
+        // the flag. Regression guard for an off-by-one in the cap check.
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        for i in 0..DELTA_FILES_CAP {
+            let path = format!("file-{i:04}.bin");
+            apply_sync_tree_outcome(
+                &mut report,
+                &path,
+                "upload",
+                uploaded_with_delta(1, 100, 100.0),
+                DeltaPolicy::default(),
+                &mut sink,
+            );
+        }
+        assert_eq!(report.delta_files.len(), DELTA_FILES_CAP);
+        assert!(
+            !report.delta_files_truncated,
+            "exactly CAP hits must keep delta_files_truncated=false"
+        );
     }
 
     #[test]
