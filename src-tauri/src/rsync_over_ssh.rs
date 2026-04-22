@@ -187,16 +187,43 @@ impl std::error::Error for RsyncError {}
 pub async fn probe_rsync(handle: SharedSshHandle) -> Result<RsyncCapability, RsyncError> {
     const MAX_OUTPUT: usize = 8 * 1024;
 
-    let (stdout, _stderr, exit) =
-        ssh_exec_collect(handle, "command -v rsync && rsync --version", MAX_OUTPUT)
-            .await
-            .map_err(RsyncError::ProbeFailed)?;
+    // `ssh_exec_collect` runs a direct SSH exec command. Use an absolute path
+    // so remote PATH differences do not falsely report "rsync unavailable".
+    let (stdout, stderr, exit) = ssh_exec_collect(handle, "/usr/bin/rsync --version", MAX_OUTPUT)
+        .await
+        .map_err(RsyncError::ProbeFailed)?;
 
-    if exit != 0 || stdout.is_empty() {
+    let stdout_len = stdout.len();
+    let stderr_len = stderr.len();
+
+    // Some remote/server combinations emit the version banner on stderr when
+    // no PTY is allocated. Accept that shape for capability probing.
+    let output = if stdout.is_empty() && !stderr.is_empty() {
+        stderr
+    } else {
+        stdout
+    };
+
+    if output.is_empty() {
+        tracing::warn!(
+            "delta probe: remote rsync unavailable (exit={}, stdout_len={}, stderr_len={})",
+            exit,
+            stdout_len,
+            stderr_len
+        );
         return Err(RsyncError::RemoteNotAvailable);
     }
 
-    let text = String::from_utf8_lossy(&stdout);
+    if exit != 0 {
+        tracing::debug!(
+            "delta probe: non-zero exit with non-empty output (exit={}, stdout_len={}, stderr_len={})",
+            exit,
+            stdout_len,
+            stderr_len
+        );
+    }
+
+    let text = String::from_utf8_lossy(&output);
     // First line is the `command -v rsync` output (path to binary). Subsequent lines
     // are rsync --version banner. We look for something like:
     //   rsync  version 3.2.7  protocol version 31
