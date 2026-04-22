@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aeroftp"
-version = "3.5.9"
+version = "3.6.0"
 dependencies = [
  "aerovault",
  "aes",
