@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   integration:
-    name: SFTP rsync fixture + live test
+    name: SFTP rsync fixture + live test (key-auth)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -119,3 +119,104 @@ jobs:
         if: always()
         working-directory: src-tauri/tests/fixtures/sftp-rsync
         run: docker compose down -v
+
+  fallback-fixture:
+    # PR-T02: covers the silent-fallback branch when the SFTP session
+    # is password-only (delta path returns `None`, classic upload takes
+    # over) and the offline hard-rejection contract. Runs in parallel
+    # with the key-auth integration job so a regression in either lane
+    # blocks the PR independently.
+    name: SFTP password-only fixture + fallback contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: delta-sync-fallback
+
+      - name: Install system dependencies
+        # sshpass needed to poll the password-auth fixture readiness
+        # (the integration test itself uses russh via SftpProvider —
+        # sshpass is just a scripting convenience).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            rsync \
+            openssh-client \
+            sshpass \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev
+
+      - name: Build & start password-auth docker fixture
+        uses: nick-fields/retry@7152eba30c6575329ac0576536151aca5a72780e # v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_wait_seconds: 10
+          command: |
+            cd src-tauri/tests/fixtures/sftp-rsync
+            docker compose -f docker-compose.password.yml up -d --build
+
+      - name: Wait for password fixture SSH
+        run: |
+          for i in $(seq 1 20); do
+            if sshpass -p testpass ssh \
+                   -o StrictHostKeyChecking=no \
+                   -o UserKnownHostsFile=/dev/null \
+                   -o BatchMode=no \
+                   -o PreferredAuthentications=password \
+                   -o PubkeyAuthentication=no \
+                   -o ConnectTimeout=2 \
+                   -p 2223 testuser@127.0.0.1 'true' 2>/dev/null; then
+              echo "Password fixture SSH ready after $((i * 2))s"
+              exit 0
+            fi
+            echo "Waiting for password fixture SSH... ($i/20)"
+            sleep 2
+          done
+          echo "Password fixture did not come up within 40s; dumping logs" >&2
+          docker logs aeroftp-delta-sync-fixture-password >&2 || true
+          exit 1
+
+      - name: Offline hard-rejection contract
+        working-directory: src-tauri
+        # Non-ignored offline pins — no fixture needed but we run them
+        # here too so a change that breaks the string contract without
+        # touching the key-auth lane's paths is still caught.
+        run: |
+          cargo test --test integration_delta_sync -- \
+            hard_rejection_string_contract_is_pinned_offline \
+            hard_error_branch_runs_before_classic_fallback_in_bivio \
+            --nocapture
+
+      - name: Fallback integration test — password-only fixture
+        working-directory: src-tauri
+        run: |
+          cargo test --test integration_delta_sync -- \
+            --ignored \
+            product_path_falls_through_silently_when_session_not_eligible \
+            --nocapture
+
+      - name: Dump fixture logs on failure
+        if: failure()
+        working-directory: src-tauri/tests/fixtures/sftp-rsync
+        run: |
+          docker logs aeroftp-delta-sync-fixture-password || true
+          docker compose -f docker-compose.password.yml ps
+
+      - name: Teardown fixture
+        if: always()
+        working-directory: src-tauri/tests/fixtures/sftp-rsync
+        run: docker compose -f docker-compose.password.yml down -v
