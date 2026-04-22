@@ -111,7 +111,9 @@ pub struct RsyncStats {
     pub speedup: f64,
     pub duration_ms: u64,
     /// Warnings collected during transfer (non-fatal). Empty on a clean run.
-    pub warnings: Vec<String>,
+    /// `pub(crate)` because entries may contain remote file paths and must
+    /// not flow to logs, UI, or MCP responses without sanitization.
+    pub(crate) warnings: Vec<String>,
 }
 
 /// Error conditions. Every variant maps to a fallback-to-classic signal.

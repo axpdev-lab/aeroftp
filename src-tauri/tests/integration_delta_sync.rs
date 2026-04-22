@@ -538,3 +538,295 @@ fn hard_rejection_string_contract_is_pinned_offline() {
         "hard rejection contract must remain mutually exclusive with fallback_reason"
     );
 }
+
+/// Structural pin of the match-arm ordering inside `perform_upload` and
+/// `perform_download`: the `hard_error.is_some()` branch MUST sit between
+/// the `used_delta` branch and the fallback-to-classic branch, so that a
+/// hard rejection produces `FileOutcome::Failed` BEFORE control can fall
+/// through to `provider.upload(...)`/`provider.download(...)`.
+///
+/// Covers the acceptance criterion of P1-T03 ("provider.upload() NOT called
+/// on hard rejection") at the structural level — a runtime FakeProvider test
+/// would require stubbing 40+ StorageProvider trait methods, which is
+/// disproportionate for pinning an ordering invariant that is preserved by
+/// source layout and enforced by the language's match-arm evaluation order.
+#[test]
+fn hard_error_branch_runs_before_classic_fallback_in_bivio() {
+    let src = include_str!("../src/sync.rs");
+
+    // Both perform_upload and perform_download must contain, in order:
+    //   1. `Some(result) if result.used_delta => ... return FileOutcome::Uploaded|Downloaded`
+    //   2. `Some(result) if result.hard_error.is_some() => ... return FileOutcome::Failed`
+    //   3. `Some(result) => ...` (fallback reason log)
+    //   4. `provider.upload(...)` or `provider.download(...)` (classic path)
+    //
+    // The indices below prove the arms appear in the required order.
+    for (direction, classic_call) in
+        [("Upload", "provider.upload("), ("Download", "provider.download(")]
+    {
+        let tag = format!("sync.delta: used delta path (direction={}", direction);
+        let used_at = src
+            .find(&tag)
+            .unwrap_or_else(|| panic!("`used delta path` log for {} missing", direction));
+        let hard_at = src[used_at..]
+            .find("result.hard_error.is_some()")
+            .map(|o| o + used_at)
+            .unwrap_or_else(|| {
+                panic!(
+                    "hard_error match arm missing after used_delta for {}",
+                    direction
+                )
+            });
+        let failed_at = src[hard_at..]
+            .find("delta hard rejection: {}")
+            .map(|o| o + hard_at)
+            .unwrap_or_else(|| panic!("FileOutcome::Failed emit missing for {}", direction));
+        let classic_at = src[failed_at..]
+            .find(classic_call)
+            .map(|o| o + failed_at)
+            .unwrap_or_else(|| panic!("classic call `{}` missing for {}", classic_call, direction));
+
+        assert!(
+            used_at < hard_at,
+            "used_delta arm must come before hard_error arm for {direction}"
+        );
+        assert!(
+            hard_at < failed_at,
+            "hard_error arm must emit Failed before any classic path runs for {direction}"
+        );
+        assert!(
+            failed_at < classic_at,
+            "FileOutcome::Failed emit must precede the classic provider call for {direction}"
+        );
+    }
+}
+
+// =============================================================================
+// Mock-driven offline coverage of `try_delta_transfer_with_transport`.
+// Pins the mutually-exclusive `hard_error` ↔ `fallback_reason` contract at
+// runtime (not just via source-include) and exercises the happy-path stats
+// propagation without Docker fixtures.
+// =============================================================================
+
+mod mock_transport_coverage {
+    use async_trait::async_trait;
+    use ftp_client_gui_lib::delta_sync_rsync::{
+        clear_probe_cache, try_delta_transfer_with_transport, SyncDirection,
+    };
+    use ftp_client_gui_lib::delta_transport::DeltaTransport;
+    use ftp_client_gui_lib::rsync_over_ssh::{RsyncCapability, RsyncError, RsyncStats};
+    use std::path::Path;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// Behavior knob for [`MockDeltaTransport`]. Each variant maps to a
+    /// terminal result of the upload/download surface.
+    enum MockBehavior {
+        /// Delta path succeeds; stats are returned unchanged.
+        OkStats(RsyncStats),
+        /// Native rsync refused for a security-class reason (e.g. host-key
+        /// mismatch). Must surface as `hard_error`, never as
+        /// `fallback_reason`.
+        HardRejection(String),
+        /// Local or remote probe failed (rsync missing, SSH transient).
+        /// Must surface as `fallback_reason`, never as `hard_error`.
+        ProbeFailed(String),
+    }
+
+    struct MockDeltaTransport {
+        behavior: MockBehavior,
+        /// Atomic counter incremented every time `upload` or `download` is
+        /// dispatched. Probe calls are NOT counted; only the terminal transfer
+        /// operations, which is what the bivio actually invokes on the
+        /// classic-fallback decision boundary.
+        transfer_calls: Arc<AtomicUsize>,
+    }
+
+    impl MockDeltaTransport {
+        fn new(behavior: MockBehavior) -> (Self, Arc<AtomicUsize>) {
+            let counter = Arc::new(AtomicUsize::new(0));
+            (
+                Self {
+                    behavior,
+                    transfer_calls: counter.clone(),
+                },
+                counter,
+            )
+        }
+
+        fn emit(&self) -> Result<RsyncStats, RsyncError> {
+            self.transfer_calls.fetch_add(1, Ordering::SeqCst);
+            match &self.behavior {
+                MockBehavior::OkStats(s) => Ok(s.clone()),
+                MockBehavior::HardRejection(msg) => {
+                    Err(RsyncError::HardRejection(msg.clone()))
+                }
+                MockBehavior::ProbeFailed(msg) => Err(RsyncError::ProbeFailed(msg.clone())),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl DeltaTransport for MockDeltaTransport {
+        fn name(&self) -> &'static str {
+            "mock-delta-transport"
+        }
+        async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+            // Probe succeeds unconditionally: the three variants diverge on
+            // the terminal upload/download call, not on probe. ProbeFailed as
+            // a `MockBehavior` variant is modeled at the transfer layer so we
+            // can still observe that `probe_remote` returned OK yet the
+            // adapter mapped the transfer error correctly.
+            Ok(RsyncCapability {
+                version: "mock-3.2.7".into(),
+                protocol: 31,
+            })
+        }
+        async fn probe_local(&self) -> Result<(), RsyncError> {
+            Ok(())
+        }
+        async fn download(
+            &self,
+            _remote: &str,
+            _local: &Path,
+        ) -> Result<RsyncStats, RsyncError> {
+            self.emit()
+        }
+        async fn upload(
+            &self,
+            _local: &Path,
+            _remote: &str,
+        ) -> Result<RsyncStats, RsyncError> {
+            self.emit()
+        }
+    }
+
+    #[tokio::test]
+    async fn hard_rejection_surfaces_on_hard_error_channel_exclusively() {
+        clear_probe_cache().await;
+        let (transport, calls) = MockDeltaTransport::new(MockBehavior::HardRejection(
+            "ssh: host key verification failed".into(),
+        ));
+
+        let result = try_delta_transfer_with_transport(
+            &transport,
+            SyncDirection::Upload,
+            Path::new("/tmp/never-touched"),
+            "/remote/never-touched",
+            "mock-session-hard",
+        )
+        .await
+        .expect("wrapper must always return Some()");
+
+        assert!(
+            !result.used_delta,
+            "hard rejection must not flag used_delta=true"
+        );
+        assert!(
+            result.stats.is_none(),
+            "hard rejection must not carry rsync stats"
+        );
+        assert!(
+            result.fallback_reason.is_none(),
+            "mutually exclusive contract: hard_error => fallback_reason is None"
+        );
+        let hard = result
+            .hard_error
+            .as_deref()
+            .expect("hard_error must be populated on RsyncError::HardRejection");
+        assert!(
+            hard.contains("ssh: host key verification failed"),
+            "hard_error must preserve the original rsync error message, got: {hard}"
+        );
+
+        // Probe succeeded -> the transfer method WAS invoked once. That's the
+        // distinguishing observable of "the wrapper actually reached the
+        // transport" (as opposed to short-circuiting at the probe stage).
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "upload() must have been dispatched exactly once before hard rejection"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_failure_falls_back_without_promoting_to_hard_error() {
+        clear_probe_cache().await;
+        let (transport, calls) = MockDeltaTransport::new(MockBehavior::ProbeFailed(
+            "remote rsync binary not found".into(),
+        ));
+
+        let result = try_delta_transfer_with_transport(
+            &transport,
+            SyncDirection::Upload,
+            Path::new("/tmp/never-touched"),
+            "/remote/never-touched",
+            "mock-session-probe-fail",
+        )
+        .await
+        .expect("wrapper must always return Some()");
+
+        assert!(
+            !result.used_delta,
+            "probe failure must not flag used_delta=true"
+        );
+        assert!(result.stats.is_none());
+        assert!(
+            result.hard_error.is_none(),
+            "transport-level probe failure MUST NOT be promoted to hard_error; \
+             that channel is reserved for security-class rejections"
+        );
+        let fb = result
+            .fallback_reason
+            .as_deref()
+            .expect("fallback_reason must be populated on RsyncError::ProbeFailed");
+        assert!(
+            fb.contains("rsync failed") || fb.contains("rsync probe failed"),
+            "fallback_reason must include the rsync error description, got: {fb}"
+        );
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "upload() is invoked even when it returns ProbeFailed (our mock \
+             routes probe-failure through the transfer method on purpose)"
+        );
+    }
+
+    #[tokio::test]
+    async fn used_delta_propagates_rsync_stats_verbatim() {
+        clear_probe_cache().await;
+        // `warnings` is pub(crate); build via Default() and assign the
+        // public scalar fields individually so the struct stays valid.
+        let mut stats: RsyncStats = Default::default();
+        stats.bytes_sent = 12_345;
+        stats.bytes_received = 4_321;
+        stats.total_size = 1_000_000;
+        stats.speedup = 81.0;
+        stats.duration_ms = 57;
+        let (transport, calls) = MockDeltaTransport::new(MockBehavior::OkStats(stats.clone()));
+
+        let result = try_delta_transfer_with_transport(
+            &transport,
+            SyncDirection::Download,
+            Path::new("/tmp/irrelevant"),
+            "/remote/irrelevant",
+            "mock-session-happy",
+        )
+        .await
+        .expect("wrapper must always return Some()");
+
+        assert!(result.used_delta, "happy path must set used_delta=true");
+        assert!(result.fallback_reason.is_none());
+        assert!(result.hard_error.is_none());
+        let carried = result.stats.as_ref().expect("stats must be Some");
+        assert_eq!(carried.bytes_sent, 12_345);
+        assert_eq!(carried.total_size, 1_000_000);
+        assert!((carried.speedup - 81.0).abs() < 1e-9);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "download() dispatched exactly once"
+        );
+    }
+}

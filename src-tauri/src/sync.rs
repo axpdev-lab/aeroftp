@@ -246,14 +246,63 @@ pub enum SyncPhase {
     Done,
 }
 
+/// Serializable subset of [`RsyncStats`](crate::rsync_over_ssh::RsyncStats)
+/// carried alongside `FileOutcome` when the delta path actually serviced the
+/// transfer. `bytes_sent` below `total_size` is the savings signal.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DeltaTransferStats {
+    pub bytes_sent: u64,
+    pub total_size: u64,
+    /// Per-file ratio from rsync (`total_size / bytes_sent`). Zero when rsync
+    /// didn't compute one (tiny or empty transfer) — the directory-wide
+    /// average in [`DeltaSavingsSummary`] is recomputed independently.
+    pub speedup: f64,
+}
+
+/// Aggregate savings across a single sync run. `None` (never initialised)
+/// means no file used the delta path in this run — distinguishable from a
+/// fully-cached run that did use the path but saved zero bytes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeltaSavingsSummary {
+    pub files_using_delta: u32,
+    pub total_bytes_sent: u64,
+    pub total_size: u64,
+    /// Effective directory-wide speedup, recomputed as
+    /// `total_size / total_bytes_sent`. `None` when `total_bytes_sent==0`
+    /// (divide-by-zero guard; also the legitimate value for a fully-cached run).
+    pub average_speedup: Option<f64>,
+}
+
+impl DeltaTransferStats {
+    pub(crate) fn from_rsync(stats: &crate::rsync_over_ssh::RsyncStats) -> Self {
+        Self {
+            bytes_sent: stats.bytes_sent,
+            total_size: stats.total_size,
+            speedup: stats.speedup,
+        }
+    }
+}
+
 /// Per-file outcome delivered to the progress sink after each operation.
+/// `delta_stats` is populated only when the rsync delta path carried the
+/// transfer; the classic provider path leaves it `None`.
 #[derive(Debug, Clone)]
 pub enum FileOutcome {
-    Uploaded { bytes: u64 },
-    Downloaded { bytes: u64 },
+    Uploaded {
+        bytes: u64,
+        delta_stats: Option<DeltaTransferStats>,
+    },
+    Downloaded {
+        bytes: u64,
+        delta_stats: Option<DeltaTransferStats>,
+    },
     Deleted,
-    Skipped { reason: String },
-    Failed { error: String },
+    Skipped {
+        reason: String,
+    },
+    Failed {
+        error: String,
+    },
 }
 
 /// Aggregated counters returned by [`sync_tree_core`].
@@ -268,6 +317,11 @@ pub struct SyncReport {
     pub dry_run: bool,
     pub direction: Option<SyncDirection>,
     pub delta_policy: Option<DeltaPolicy>,
+    /// Cumulative delta savings across every file that used the rsync path in
+    /// this run. `None` (never even constructed) when no file used the delta
+    /// path, so serialized responses can drop the block unambiguously instead
+    /// of emitting `"delta_savings": {"files_using_delta": 0, …}`.
+    pub delta_savings: Option<DeltaSavingsSummary>,
 }
 
 impl SyncReport {
@@ -1290,6 +1344,8 @@ fn apply_sync_tree_outcome(
     decision_policy: DeltaPolicy,
     sink: &mut dyn SyncProgressSink,
 ) {
+    // Counter match stays exhaustive so the compiler catches a missing
+    // variant; delta accumulation uses a narrow if-let.
     match &outcome {
         FileOutcome::Uploaded { .. } => report.uploaded += 1,
         FileOutcome::Downloaded { .. } => report.downloaded += 1,
@@ -1304,6 +1360,33 @@ fn apply_sync_tree_outcome(
             });
         }
     }
+
+    // Lazily initialise `delta_savings` on the first delta-using outcome so
+    // the `None` discriminant keeps its "no file used the delta path"
+    // meaning. Zero-byte savings would also be a valid populated state.
+    if let FileOutcome::Uploaded {
+        delta_stats: Some(s),
+        ..
+    }
+    | FileOutcome::Downloaded {
+        delta_stats: Some(s),
+        ..
+    } = &outcome
+    {
+        let summary = report.delta_savings.get_or_insert_with(Default::default);
+        summary.files_using_delta = summary.files_using_delta.saturating_add(1);
+        summary.total_bytes_sent = summary.total_bytes_sent.saturating_add(s.bytes_sent);
+        summary.total_size = summary.total_size.saturating_add(s.total_size);
+        // Effective speedup recomputed as total_size / total_bytes_sent.
+        // An arithmetic mean of per-file ratios would over-weight tiny
+        // fully-cached files and under-report the real traffic saved.
+        summary.average_speedup = if summary.total_bytes_sent > 0 {
+            Some(summary.total_size as f64 / summary.total_bytes_sent as f64)
+        } else {
+            None
+        };
+    }
+
     sink.on_file_done(rel, &outcome);
 }
 
@@ -1353,8 +1436,10 @@ async fn perform_upload(
                     "sync.delta: used delta path (direction=Upload, remote={})",
                     remote_path
                 );
+                let delta_stats = result.stats.as_ref().map(DeltaTransferStats::from_rsync);
                 return FileOutcome::Uploaded {
                     bytes: transfer.total,
+                    delta_stats,
                 };
             }
             Some(result) if result.hard_error.is_some() => {
@@ -1379,6 +1464,7 @@ async fn perform_upload(
     match provider.upload(&local_path, &remote_path, None).await {
         Ok(()) => FileOutcome::Uploaded {
             bytes: transfer.total,
+            delta_stats: None,
         },
         Err(e) => FileOutcome::Failed {
             error: format!("upload failed: {}", e),
@@ -1428,8 +1514,10 @@ async fn perform_download(
                     "sync.delta: used delta path (direction=Download, remote={})",
                     remote_path
                 );
+                let delta_stats = result.stats.as_ref().map(DeltaTransferStats::from_rsync);
                 return FileOutcome::Downloaded {
                     bytes: transfer.total,
+                    delta_stats,
                 };
             }
             Some(result) if result.hard_error.is_some() => {
@@ -1454,6 +1542,7 @@ async fn perform_download(
     match provider.download(&remote_path, &local_path, None).await {
         Ok(()) => FileOutcome::Downloaded {
             bytes: transfer.total,
+            delta_stats: None,
         },
         Err(e) => FileOutcome::Failed {
             error: format!("download failed: {}", e),
@@ -2977,6 +3066,199 @@ pub fn journal_sig_filename(local_path: &str, remote_path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- P1-T03: delta savings aggregation in apply_sync_tree_outcome -------
+
+    fn uploaded_with_delta(bytes_sent: u64, total: u64, speedup: f64) -> FileOutcome {
+        FileOutcome::Uploaded {
+            bytes: total,
+            delta_stats: Some(DeltaTransferStats {
+                bytes_sent,
+                total_size: total,
+                speedup,
+            }),
+        }
+    }
+
+    fn downloaded_with_delta(bytes_sent: u64, total: u64, speedup: f64) -> FileOutcome {
+        FileOutcome::Downloaded {
+            bytes: total,
+            delta_stats: Some(DeltaTransferStats {
+                bytes_sent,
+                total_size: total,
+                speedup,
+            }),
+        }
+    }
+
+    fn uploaded_classic(total: u64) -> FileOutcome {
+        FileOutcome::Uploaded {
+            bytes: total,
+            delta_stats: None,
+        }
+    }
+
+    #[test]
+    fn delta_savings_stays_none_when_no_file_used_delta() {
+        // Pin: an entire classic run must leave `delta_savings` unset (not a
+        // zero-valued struct). MCP consumers rely on absence-vs-null to know
+        // whether to render the savings block at all.
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        apply_sync_tree_outcome(
+            &mut report,
+            "a.txt",
+            "upload",
+            uploaded_classic(1024),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        apply_sync_tree_outcome(
+            &mut report,
+            "b.txt",
+            "upload",
+            FileOutcome::Skipped {
+                reason: "identical".into(),
+            },
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        assert_eq!(report.uploaded, 1);
+        assert_eq!(report.skipped, 1);
+        assert!(
+            report.delta_savings.is_none(),
+            "classic-only run must leave delta_savings as None"
+        );
+    }
+
+    #[test]
+    fn delta_savings_accumulates_across_files_and_directions() {
+        // Pin: first delta hit lazily initialises the summary, subsequent
+        // hits (upload or download) accumulate monotonically. Classic hits
+        // and failures in between do NOT perturb the summary.
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+
+        // file 1 — uploaded via delta, 100 KB out of 1000 KB (10x speedup)
+        apply_sync_tree_outcome(
+            &mut report,
+            "one.bin",
+            "upload",
+            uploaded_with_delta(100_000, 1_000_000, 10.0),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        // classic upload interleaved — must NOT touch the summary.
+        apply_sync_tree_outcome(
+            &mut report,
+            "two.bin",
+            "upload",
+            uploaded_classic(500),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        // file 3 — downloaded via delta, 200 KB out of 400 KB (2x)
+        apply_sync_tree_outcome(
+            &mut report,
+            "three.bin",
+            "download",
+            downloaded_with_delta(200_000, 400_000, 2.0),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        // file 4 — failed — also must not touch the summary
+        apply_sync_tree_outcome(
+            &mut report,
+            "four.bin",
+            "upload",
+            FileOutcome::Failed {
+                error: "provider down".into(),
+            },
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+
+        let savings = report
+            .delta_savings
+            .as_ref()
+            .expect("delta_savings must be Some after two delta hits");
+        assert_eq!(savings.files_using_delta, 2);
+        assert_eq!(savings.total_bytes_sent, 300_000);
+        assert_eq!(savings.total_size, 1_400_000);
+        // Directory-wide effective speedup = total_size / total_bytes_sent
+        // = 1_400_000 / 300_000 ≈ 4.666…
+        let avg = savings.average_speedup.expect("average_speedup is Some");
+        assert!(
+            (avg - (1_400_000.0f64 / 300_000.0f64)).abs() < 1e-9,
+            "average_speedup recomputed as total_size/total_bytes_sent, got {}",
+            avg
+        );
+        // Counters reflect every outcome observed, not just delta ones.
+        assert_eq!(report.uploaded, 2);
+        assert_eq!(report.downloaded, 1);
+        assert_eq!(report.errors.len(), 1);
+    }
+
+    #[test]
+    fn delta_savings_handles_zero_bytes_sent_without_divide_by_zero() {
+        // Edge case: the delta path reported `bytes_sent=0` for a fully
+        // unchanged file. Aggregator must not panic on f64 division and
+        // surface `average_speedup=None` while still recording total_size.
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        apply_sync_tree_outcome(
+            &mut report,
+            "zero.bin",
+            "upload",
+            uploaded_with_delta(0, 10_000, 0.0),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        let savings = report.delta_savings.as_ref().unwrap();
+        assert_eq!(savings.files_using_delta, 1);
+        assert_eq!(savings.total_bytes_sent, 0);
+        assert_eq!(savings.total_size, 10_000);
+        assert!(
+            savings.average_speedup.is_none(),
+            "bytes_sent==0 must surface as average_speedup=None"
+        );
+    }
+
+    #[test]
+    fn delta_savings_average_speedup_recovers_after_zero_to_nonzero_transition() {
+        // Pin the "transition from None to Some" path: first delta hit has
+        // bytes_sent=0 (None); second hit carries bytes_sent>0 (Some(…)).
+        // Regression guard for a future refactor that forgets to recompute
+        // average_speedup after the lazy init.
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        apply_sync_tree_outcome(
+            &mut report,
+            "first.bin",
+            "upload",
+            uploaded_with_delta(0, 10_000, 0.0),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        assert!(report.delta_savings.as_ref().unwrap().average_speedup.is_none());
+
+        apply_sync_tree_outcome(
+            &mut report,
+            "second.bin",
+            "upload",
+            uploaded_with_delta(100, 10_000, 100.0),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        let savings = report.delta_savings.as_ref().unwrap();
+        assert_eq!(savings.files_using_delta, 2);
+        assert_eq!(savings.total_bytes_sent, 100);
+        assert_eq!(savings.total_size, 20_000);
+        let avg = savings.average_speedup.expect(
+            "average_speedup must be populated once bytes_sent transitions >0",
+        );
+        assert!((avg - 200.0).abs() < 1e-9, "expected 20_000/100=200, got {}", avg);
+    }
 
     #[test]
     fn test_should_exclude() {

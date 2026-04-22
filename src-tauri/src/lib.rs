@@ -42,15 +42,21 @@ mod crypto;
 mod cryptomator;
 mod cyber_tools;
 mod delta_sync;
+// `pub` only so `tests/integration_delta_sync.rs` (separate crate) can
+// inject a MockDeltaTransport. Everything but the hidden inner helper
+// remains semver-stable; a future `#[cfg(feature = "test-hooks")]` gate
+// is backlogged (see P1-T03 audit, accepted debt).
 #[cfg(unix)]
-mod delta_sync_rsync;
+pub mod delta_sync_rsync;
 #[cfg(unix)]
-mod delta_transport;
+pub mod delta_transport;
 mod number_parsing;
 pub mod profile_loader;
 mod rsync_output;
+// `pub` transitively so integration tests can construct `RsyncStats`
+// fixtures for MockDeltaTransport. Same accepted-debt note as above.
 #[cfg(unix)]
-mod rsync_over_ssh;
+pub mod rsync_over_ssh;
 mod ssh_exec;
 pub mod util;
 // Strada C — native rsync prototype (dev-only, gitignored, feature-gated).

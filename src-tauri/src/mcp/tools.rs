@@ -464,7 +464,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_sync_tree",
-            description: "Synchronize a local directory with a remote directory. Direction: upload, download, or both. Supports dry_run, delete_orphans (upload/download only), conflict resolution (larger/newer/skip), explicit delta_policy (disabled/size_only/mtime/hash/delta), and glob excludes. Emits progress notifications when the caller supplies a progressToken. Output shape: dry_run=true returns {plan, plan_by_op, plan_by_op_totals, plan_total, planned, scan_stats, errors}; dry_run=false returns {summary (with summary.totals), errors}. The two fields never coexist. Each plan/error entry reports the per-file `decision_policy` actually used by the core. `plan_by_op` groups the plan per operation (upload/download/delete/skip) with per-bucket caps of 250 so an agent can see every candidate of a given type even when the total plan is huge. Set summary_only=true to drop the per-entry plan/plan_by_op/errors arrays when the response would otherwise exceed MCP size limits.",
+            description: "Synchronize a local directory with a remote directory. Direction: upload, download, or both. Supports dry_run, delete_orphans (upload/download only), conflict resolution (larger/newer/skip), explicit delta_policy (disabled/size_only/mtime/hash/delta), and glob excludes. Emits progress notifications when the caller supplies a progressToken. Output shape: dry_run=true returns {plan, plan_by_op, plan_by_op_totals, plan_total, planned, scan_stats, errors}; dry_run=false returns {summary (with summary.totals), errors}. The two fields never coexist. Each plan/error entry reports the per-file `decision_policy` actually used by the core. `plan_by_op` groups the plan per operation (upload/download/delete/skip) with per-bucket caps of 250 so an agent can see every candidate of a given type even when the total plan is huge. Set summary_only=true to drop the per-entry plan/plan_by_op/errors arrays when the response would otherwise exceed MCP size limits. When at least one file traveled through the rsync delta path, `summary.delta_savings` is added with {files_using_delta, total_bytes_sent, total_size, bytes_saved, average_speedup}; the block is OMITTED entirely when no file used the delta path. `bytes_saved` can be negative when rsync overhead exceeds the savings on small-file runs. `average_speedup` is omitted when `total_bytes_sent==0`.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "local_dir": { "type": "string", "description": "Local root directory" },
@@ -3069,6 +3069,56 @@ pub async fn execute_tool(
                             report.uploaded + report.downloaded + report.deleted + report.skipped;
                         let total_errors = report.error_count();
                         let succeeded = report.uploaded + report.downloaded + report.deleted;
+                        // Build the summary as a Map so `delta_savings` can be
+                        // OMITTED (not emitted as `null`) when no file used the
+                        // delta path. `serde_json::json!({…})` with an
+                        // Option::None field serialises to `null`, which is
+                        // noise that an MCP agent has to filter; absence is
+                        // the cleaner signal.
+                        let mut summary = serde_json::Map::new();
+                        summary.insert("uploaded".into(), report.uploaded.into());
+                        summary.insert("downloaded".into(), report.downloaded.into());
+                        summary.insert("deleted".into(), report.deleted.into());
+                        summary.insert("skipped".into(), report.skipped.into());
+                        summary.insert("errors".into(), total_errors.into());
+                        summary.insert("elapsed_secs".into(), report.elapsed_secs.into());
+                        summary.insert(
+                            "totals".into(),
+                            json!({
+                                "requested": total_processed + total_errors as u32,
+                                "succeeded": succeeded,
+                                "failed": total_errors as u32,
+                                "skipped": report.skipped,
+                                "elapsed_secs": report.elapsed_secs,
+                            }),
+                        );
+                        if let Some(savings) = report.delta_savings.as_ref() {
+                            // bytes_saved surfaced as a signed integer so
+                            // rsync overhead (total_bytes_sent > total_size,
+                            // rare but real on tiny files with inefficient
+                            // delta) shows up as negative instead of being
+                            // clipped to zero. Caller can still display
+                            // max(0, bytes_saved) if desired.
+                            let bytes_saved: i64 = savings.total_size as i64
+                                - savings.total_bytes_sent as i64;
+                            let mut block = serde_json::Map::new();
+                            block.insert(
+                                "files_using_delta".into(),
+                                savings.files_using_delta.into(),
+                            );
+                            block.insert(
+                                "total_bytes_sent".into(),
+                                savings.total_bytes_sent.into(),
+                            );
+                            block.insert("total_size".into(), savings.total_size.into());
+                            block.insert("bytes_saved".into(), bytes_saved.into());
+                            // Omit `average_speedup` entirely when None — same
+                            // absence-vs-null contract as the parent block.
+                            if let Some(avg) = savings.average_speedup {
+                                block.insert("average_speedup".into(), avg.into());
+                            }
+                            summary.insert("delta_savings".into(), Value::Object(block));
+                        }
                         json!({
                             "server": server,
                             "local_dir": local_dir,
@@ -3077,21 +3127,7 @@ pub async fn execute_tool(
                             "delta_policy": delta_policy.as_str(),
                             "dry_run": false,
                             "summary_only": summary_only,
-                            "summary": {
-                                "uploaded": report.uploaded,
-                                "downloaded": report.downloaded,
-                                "deleted": report.deleted,
-                                "skipped": report.skipped,
-                                "errors": total_errors,
-                                "elapsed_secs": report.elapsed_secs,
-                                "totals": {
-                                    "requested": total_processed + total_errors as u32,
-                                    "succeeded": succeeded,
-                                    "failed": total_errors as u32,
-                                    "skipped": report.skipped,
-                                    "elapsed_secs": report.elapsed_secs,
-                                },
-                            },
+                            "summary": Value::Object(summary),
                             "errors": errors,
                             "errors_truncated": total_errors > 50,
                         })
@@ -3297,10 +3333,10 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
             let processed = self.processed;
             let failures = self.failures;
             let msg = match outcome {
-                crate::sync_core::FileOutcome::Uploaded { bytes } => {
+                crate::sync_core::FileOutcome::Uploaded { bytes, .. } => {
                     format!("uploaded {} ({} bytes)", rel, bytes)
                 }
-                crate::sync_core::FileOutcome::Downloaded { bytes } => {
+                crate::sync_core::FileOutcome::Downloaded { bytes, .. } => {
                     format!("downloaded {} ({} bytes)", rel, bytes)
                 }
                 crate::sync_core::FileOutcome::Deleted => format!("deleted {}", rel),

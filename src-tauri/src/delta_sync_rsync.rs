@@ -27,11 +27,45 @@
 
 use crate::delta_transport::DeltaTransport;
 use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
+use regex::Regex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as TokioMutex;
+
+/// Max length of a fallback/hard-error message surfaced outside the adapter.
+/// rsync stderr can be verbose (thousands of chars for repeated warnings);
+/// a generous but bounded cap keeps the MCP `errors[]` array manageable.
+const MAX_REASON_LEN: usize = 512;
+
+/// Redacts obvious user-path segments (`/home/<user>`, `/Users/<user>`,
+/// `C:\Users\<user>`) and SSH key path hints from rsync stderr before it
+/// flows to `DeltaSyncResult.fallback_reason`, `.hard_error`, UI, logs, and
+/// MCP responses. Not a substitute for not logging paths at all, but avoids
+/// the most common PII leaks without changing operator debuggability.
+static USER_PATH_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        // POSIX user home (`/home/alice/...` or `/Users/alice/...`)
+        Regex::new(r"(?i)/(?:home|users|root)/[^/\s]+").unwrap(),
+        // Windows user home (`C:\Users\alice\...`)
+        Regex::new(r"(?i)[A-Z]:\\\\?Users\\\\?[^\\\s]+").unwrap(),
+        // `known_hosts` file path hint (rsync sometimes prints absolute path)
+        Regex::new(r"(?i)\S*\.ssh[/\\][^\s)]+").unwrap(),
+    ]
+});
+
+fn sanitize_rsync_message(raw: &str) -> String {
+    let mut s = raw.to_string();
+    for re in USER_PATH_PATTERNS.iter() {
+        s = re.replace_all(&s, "<redacted>").to_string();
+    }
+    if s.len() > MAX_REASON_LEN {
+        s.truncate(MAX_REASON_LEN);
+        s.push_str("…[truncated]");
+    }
+    s
+}
 
 /// Direction of the file operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -274,14 +308,45 @@ pub async fn transfer_with_delta(
                 direction,
                 msg
             );
-            Ok(DeltaSyncResult::hard_error(msg))
+            Ok(DeltaSyncResult::hard_error(sanitize_rsync_message(&msg)))
         }
         Err(e) => {
             // TransferFailed, SpawnFailed, Io, Cancelled, VersionTooOld, ProbeFailed →
             // all map to fallback with the error message. Caller decides whether to
             // retry the classic transfer or surface the error.
             tracing::warn!("delta sync {:?} failed: {}", direction, e);
-            Ok(DeltaSyncResult::fallback(format!("rsync failed: {}", e)))
+            Ok(DeltaSyncResult::fallback(sanitize_rsync_message(&format!(
+                "rsync failed: {}",
+                e
+            ))))
+        }
+    }
+}
+
+/// Post-downcast delta lifecycle, decoupled from [`try_delta_transfer`] so
+/// integration tests can drive it with a synthetic [`DeltaTransport`].
+/// Product code must keep going through [`try_delta_transfer`] to preserve
+/// the SFTP handle downcast and session-key derivation. Result shape is
+/// documented on [`DeltaSyncResult`].
+#[doc(hidden)]
+pub async fn try_delta_transfer_with_transport(
+    transport: &dyn DeltaTransport,
+    direction: SyncDirection,
+    local_path: &Path,
+    remote_path: &str,
+    session_key: &str,
+) -> Option<DeltaSyncResult> {
+    let result = transfer_with_delta(transport, direction, local_path, remote_path, session_key)
+        .await;
+
+    match result {
+        Ok(r) => Some(r),
+        Err(reason) => {
+            tracing::warn!("delta transfer adapter error: {}", reason);
+            Some(DeltaSyncResult::fallback(sanitize_rsync_message(&format!(
+                "adapter error: {}",
+                reason
+            ))))
         }
     }
 }
@@ -302,6 +367,11 @@ pub async fn transfer_with_delta(
 /// as an optimization layer. It never panics, never blocks on I/O outside of
 /// the transfer itself, and downcasts using the existing `as_any_mut()` entry
 /// point on `StorageProvider` — no new trait methods are introduced.
+///
+/// The post-downcast lifecycle (probe + transfer + typed-result translation)
+/// lives in [`try_delta_transfer_with_transport`] so integration tests can
+/// exercise it with a mock transport. Product code keeps a single public
+/// surface via this wrapper.
 pub async fn try_delta_transfer(
     provider: &mut dyn crate::providers::StorageProvider,
     direction: SyncDirection,
@@ -327,25 +397,14 @@ pub async fn try_delta_transfer(
         .unwrap_or(0);
     let session_key = format!("sftp#{:x}", handle_ptr);
 
-    let result = transfer_with_delta(
+    try_delta_transfer_with_transport(
         transport.as_ref(),
         direction,
         local_path,
         remote_path,
         &session_key,
     )
-    .await;
-
-    match result {
-        Ok(r) => Some(r),
-        Err(reason) => {
-            tracing::warn!("delta transfer adapter error: {}", reason);
-            Some(DeltaSyncResult::fallback(format!(
-                "adapter error: {}",
-                reason
-            )))
-        }
-    }
+    .await
 }
 
 /// Clear the probe cache. Called on disconnect or explicit user action.
