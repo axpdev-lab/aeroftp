@@ -1013,6 +1013,43 @@ impl StorageProvider for SftpProvider {
             );
         }
 
+        // Keep remote mtime aligned with the local source so repeated sync
+        // scans don't re-upload unchanged files just because the server stamped
+        // the file with upload time.
+        match tokio::fs::metadata(local_path).await {
+            Ok(local_meta) => {
+                if let Ok(modified) = local_meta.modified() {
+                    if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+                        match u32::try_from(duration.as_secs()) {
+                            Ok(epoch_secs) => {
+                                let mut attrs = russh_sftp::protocol::FileAttributes::empty();
+                                // SFTP's ACMODTIME attribute serializes both fields together;
+                                // reuse the source mtime for atime to avoid sending a zero atime.
+                                attrs.atime = Some(epoch_secs);
+                                attrs.mtime = Some(epoch_secs);
+                                if let Err(error) = sftp.set_metadata(&full_path, attrs).await {
+                                    tracing::warn!(
+                                        "SFTP: Failed to preserve remote mtime for {}: {}",
+                                        full_path,
+                                        error
+                                    );
+                                }
+                            }
+                            Err(_) => tracing::warn!(
+                                "SFTP: Skipping mtime preservation for {} because source mtime is out of range",
+                                full_path
+                            ),
+                        }
+                    }
+                }
+            }
+            Err(error) => tracing::warn!(
+                "SFTP: Could not read local metadata for mtime preservation ({}): {}",
+                local_path,
+                error
+            ),
+        }
+
         tracing::info!(
             "SFTP: Upload complete via russh_sftp: {} bytes",
             transferred
