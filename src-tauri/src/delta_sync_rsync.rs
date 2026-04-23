@@ -12,17 +12,20 @@
 //! a success with real stats or a `used_delta = false` with a reason to use the
 //! classic download/upload path.
 //!
-//! # Fase 1a / 1b scope
-//! This module is `#[cfg(unix)]` in Fase 1a. Fase 1b removes the guard and enables
-//! the Windows rsync bundle (see `T1.8` in the execution plan).
+//! # Cross-OS status (PR-T11)
+//! The adapter itself is cross-platform. The only Unix-only reachability
+//! condition is the provider returning `None` from `delta_transport()` on
+//! Windows when the `proto_native_rsync` feature is disabled — in that
+//! case `try_delta_transfer` short-circuits to `None` silently and the
+//! caller proceeds with classic SFTP, identical to the behavior on Unix
+//! for non-SFTP providers.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-#![cfg(unix)]
-// Foundations module for Fase 1 delta sync. Adapter between the sync loop
-// and the rsync orchestrator. Items appear "never used" until T1.5 Part B
-// wires `transfer_with_delta` into `sync.rs` — remove this allow then.
+// Cross-platform. Binary-rsync code paths live behind `RsyncBinaryTransport`
+// which is itself `#[cfg(unix)]`; the downcast/probe logic here works
+// identically for the native prototype transport on Windows.
 #![allow(dead_code)]
 
 use crate::delta_transport::DeltaTransport;
@@ -667,6 +670,7 @@ mod tests {
         clear_probe_cache().await; // idempotent
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn transfer_returns_fallback_when_transport_has_no_remote() {
         // A binary transport with no handle cannot probe the remote; verify

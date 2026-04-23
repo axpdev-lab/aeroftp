@@ -228,7 +228,18 @@ impl SftpProvider {
     /// `dyn DeltaTransport`. The adapter layer (`delta_sync_rsync`) never reaches
     /// into provider internals, preserving the forward compatibility promise for
     /// the strada C native transport.
-    #[cfg(unix)]
+    ///
+    /// ## Cross-OS (PR-T11)
+    ///
+    /// - **Unix + any build**: returns `RsyncBinaryTransport` as the classic
+    ///   fallback when the native feature is off or refuses.
+    /// - **Unix + `proto_native_rsync`**: attempts `NativeRsyncDeltaTransport`
+    ///   first (if the runtime toggle and host-key pinning allow), otherwise
+    ///   falls back to `RsyncBinaryTransport`.
+    /// - **Windows + `proto_native_rsync`**: uses the native transport only.
+    ///   Without the feature compiled in, this method returns `None` so the
+    ///   consumer transparently drops to classic SFTP (same shape the adapter
+    ///   already accepts for non-SFTP providers).
     pub fn delta_transport(&self) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
         let handle = self.ssh_handle.clone()?;
         let key_path_str = self.config.private_key_path.as_ref()?;
@@ -278,10 +289,7 @@ impl SftpProvider {
                              SFTP handshake did not capture a host key fingerprint (possible \
                              password-only auth or early error); falling back to classic"
                         );
-                        return Some(Box::new(crate::delta_transport::RsyncBinaryTransport::new(
-                            rsync_config,
-                            Some(handle),
-                        )));
+                        return classic_binary_fallback(rsync_config, handle);
                     }
                 };
 
@@ -301,10 +309,7 @@ impl SftpProvider {
             }
         }
 
-        Some(Box::new(crate::delta_transport::RsyncBinaryTransport::new(
-            rsync_config,
-            Some(handle),
-        )))
+        classic_binary_fallback(rsync_config, handle)
     }
 
     fn expand_home_path(path: &str) -> String {
@@ -316,7 +321,35 @@ impl SftpProvider {
 
         path.to_string()
     }
+}
 
+/// PR-T11 cross-OS helper. On Unix this constructs the classic
+/// `RsyncBinaryTransport` that drives the system `rsync` binary; on Windows
+/// the binary is not available, so we silently return `None` and let the
+/// consumer fall through to standard SFTP (identical shape to the
+/// "non-SFTP provider" branch already handled upstream).
+fn classic_binary_fallback(
+    rsync_config: crate::rsync_over_ssh::RsyncConfig,
+    handle: SharedSshHandle,
+) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
+    #[cfg(unix)]
+    {
+        Some(Box::new(
+            crate::delta_transport::RsyncBinaryTransport::new(rsync_config, Some(handle)),
+        ))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (rsync_config, handle);
+        tracing::debug!(
+            "providers::sftp: no binary rsync on this platform; classic fallback returns None \
+             (caller transparently drops to plain SFTP)"
+        );
+        None
+    }
+}
+
+impl SftpProvider {
     /// Normalize path (ensure absolute)
     fn normalize_path(&self, path: &str) -> String {
         if path.starts_with('/') {

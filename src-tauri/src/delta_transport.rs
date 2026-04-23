@@ -19,16 +19,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-#![cfg(unix)]
-// Foundations: implementations are wired up once the sync loop branches through
-// `delta_sync_rsync`. Remove this allow when T1.5 Part B lands.
+// The trait and the abstract contract are cross-platform. Only the binary-rsync
+// implementation is Unix-only, and is gated surgically below.
 #![allow(dead_code)]
 
+#[cfg(unix)]
 use crate::providers::sftp::SharedSshHandle;
-use crate::rsync_over_ssh::{
-    probe_local_rsync, probe_rsync, rsync_download, rsync_upload, RsyncCapability, RsyncConfig,
-    RsyncError, RsyncStats,
-};
+#[cfg(unix)]
+use crate::rsync_over_ssh::{probe_local_rsync, probe_rsync, rsync_download, rsync_upload};
+use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
 use async_trait::async_trait;
 use std::path::Path;
 
@@ -70,6 +69,13 @@ pub trait DeltaTransport: Send + Sync {
 /// Construction is zero-cost: the handle is an `Arc` clone, the config is a
 /// small struct. Reuse one instance per sync session and pass it to the
 /// adapter layer as `&dyn DeltaTransport`.
+///
+/// **Platform:** Unix-only. The implementation spawns the system `rsync`
+/// binary, which is not available on Windows as a first-class dependency.
+/// Windows delivers delta sync through the native prototype transport
+/// (`NativeRsyncDeltaTransport`) gated behind the `proto_native_rsync`
+/// cargo feature.
+#[cfg(unix)]
 pub struct RsyncBinaryTransport {
     config: RsyncConfig,
     /// Only required for `probe_remote` (runs a command on the existing SSH
@@ -78,12 +84,14 @@ pub struct RsyncBinaryTransport {
     handle: Option<SharedSshHandle>,
 }
 
+#[cfg(unix)]
 impl RsyncBinaryTransport {
     pub fn new(config: RsyncConfig, handle: Option<SharedSshHandle>) -> Self {
         Self { config, handle }
     }
 }
 
+#[cfg(unix)]
 #[async_trait]
 impl DeltaTransport for RsyncBinaryTransport {
     fn name(&self) -> &'static str {
@@ -112,7 +120,7 @@ impl DeltaTransport for RsyncBinaryTransport {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::path::PathBuf;

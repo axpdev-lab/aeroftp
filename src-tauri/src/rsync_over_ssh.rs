@@ -27,20 +27,30 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-#![cfg(unix)]
-// Foundations module for Fase 1 delta sync. Orchestrator for the local rsync
-// process + SSH transport. Consumed by `delta_sync_rsync::transfer_with_delta`.
-// Items appear "never used" until T1.5 Part B wires the delta branch in the
-// sync loop — remove this allow then.
+// PR-T11 cross-OS surgical removal: the shared types (`RsyncCapability`,
+// `RsyncConfig`, `RsyncError`, `RsyncStats`, `DEFAULT_MIN_FILE_SIZE`) are
+// consumed by both the Unix-only binary transport and the cross-platform
+// native prototype, so they must compile on Windows. The operations that
+// actually spawn the system `rsync` binary stay gated with
+// `#[cfg(unix)]` below.
 #![allow(dead_code)]
 
+#[cfg(unix)]
 use crate::providers::sftp::SharedSshHandle;
+#[cfg(unix)]
 use crate::rsync_output::{parse_line, RsyncEvent};
+#[cfg(unix)]
 use crate::ssh_exec::ssh_exec_collect;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::Stdio;
+#[cfg(unix)]
 use std::time::Instant;
+#[cfg(unix)]
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+#[cfg(unix)]
 use tokio::process::Command;
 
 /// Minimum rsync protocol version required; 30 corresponds to rsync 3.0+ which all
@@ -181,11 +191,19 @@ impl std::fmt::Display for RsyncError {
 
 impl std::error::Error for RsyncError {}
 
+// ===== Unix-only orchestration =====
+//
+// The helpers below drive the system `rsync` binary over an SSH pipe. They
+// exist exclusively for the `RsyncBinaryTransport` Unix path; Windows
+// delivers delta sync through the cross-platform native prototype transport
+// in `rsync_native_proto`, which does not need any of these helpers.
+
 /// Probe the remote for rsync availability and version.
 ///
 /// Runs `rsync --version` over the shared SSH handle via [`ssh_exec_collect`]. Output
 /// is capped at 8 KiB to prevent runaway servers. Cached by the caller (typically
 /// keyed on session id) to avoid re-probing on every file.
+#[cfg(unix)]
 pub async fn probe_rsync(handle: SharedSshHandle) -> Result<RsyncCapability, RsyncError> {
     const MAX_OUTPUT: usize = 8 * 1024;
 
@@ -248,6 +266,7 @@ pub async fn probe_rsync(handle: SharedSshHandle) -> Result<RsyncCapability, Rsy
     Ok(RsyncCapability { version, protocol })
 }
 
+#[cfg(unix)]
 fn extract_version(line: &str) -> Option<String> {
     // "rsync  version 3.2.7  protocol version 31" → "3.2.7"
     let marker = "version ";
@@ -257,6 +276,7 @@ fn extract_version(line: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
+#[cfg(unix)]
 fn extract_protocol(line: &str) -> Option<u32> {
     let marker = "protocol version ";
     let idx = line.find(marker)?;
@@ -269,6 +289,7 @@ fn extract_protocol(line: &str) -> Option<u32> {
 
 /// Verify that `rsync` is on the local PATH. Cheap — synchronous which2 crate would
 /// be overkill; we just probe with `rsync --version` through tokio.
+#[cfg(unix)]
 pub async fn probe_local_rsync() -> Result<String, RsyncError> {
     let output = Command::new("rsync")
         .arg("--version")
@@ -287,6 +308,7 @@ pub async fn probe_local_rsync() -> Result<String, RsyncError> {
 
 /// Build the `-e ssh …` argument that instructs local rsync how to open its
 /// transport. Covers: port, identity file, known_hosts, StrictHostKeyChecking.
+#[cfg(unix)]
 fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
     let key = cfg
         .ssh_key_path
@@ -324,6 +346,7 @@ fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
     Ok(parts.join(" "))
 }
 
+#[cfg(unix)]
 fn shell_escape(s: &str) -> String {
     if s.chars().all(|c| c.is_alphanumeric() || "/._-".contains(c)) {
         s.to_string()
@@ -337,6 +360,7 @@ fn shell_escape(s: &str) -> String {
 /// Pre-conditions enforced: rsync present locally, local file (if any) larger than
 /// threshold. Remote presence is the caller's responsibility (probe once per
 /// session, cache).
+#[cfg(unix)]
 pub async fn rsync_download(
     remote_path: &str,
     local_path: &Path,
@@ -375,6 +399,7 @@ pub async fn rsync_download(
 }
 
 /// Upload `local_path` to `remote_path` using delta sync.
+#[cfg(unix)]
 pub async fn rsync_upload(
     local_path: &Path,
     remote_path: &str,
@@ -413,6 +438,7 @@ pub async fn rsync_upload(
 
 /// Execute a configured rsync [`Command`], streaming stdout through the parser
 /// and collecting stats.
+#[cfg(unix)]
 async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
     // The rsync output parser (`rsync_output`) uses locale-tolerant number
     // parsing (`number_parsing`) that accepts both en_US ("1,048,576" / "1.00")
@@ -510,7 +536,7 @@ async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
     Ok(stats)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
