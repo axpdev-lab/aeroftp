@@ -88,11 +88,13 @@ pub fn set_native_rsync_enabled(enabled: bool) -> Result<(), String> {
 
 #[tauri::command]
 pub fn native_rsync_feature_compiled() -> bool {
-    // Toggle must surface only where the native dispatch branch can
-    // actually execute. `SftpProvider::delta_transport()` is
-    // `#[cfg(unix)]`, so feature-on Windows / non-Unix builds would
-    // otherwise advertise a toggle that has no runtime effect.
-    cfg!(all(feature = "proto_native_rsync", unix))
+    // Post PR-T11: the native dispatch in `SftpProvider::delta_transport()`
+    // is cross-platform. The toggle is eligible on any OS that compiled
+    // with the `proto_native_rsync` cargo feature, Windows included.
+    // The binary-rsync classic fallback is still Unix-only; Windows
+    // without the feature drops to plain SFTP silently (handled inside
+    // `classic_binary_fallback`).
+    cfg!(feature = "proto_native_rsync")
 }
 
 #[cfg(feature = "proto_native_rsync")]
