@@ -147,7 +147,12 @@ fn seed_known_host(port: u16) {
     let host = format!("[127.0.0.1]:{}", port);
 
     let _ = StdCommand::new("ssh-keygen")
-        .args(["-R", &host, "-f", known_hosts.to_str().expect("utf8 known_hosts")])
+        .args([
+            "-R",
+            &host,
+            "-f",
+            known_hosts.to_str().expect("utf8 known_hosts"),
+        ])
         .output();
 
     let scan = StdCommand::new("ssh-keyscan")
@@ -339,7 +344,10 @@ fn capture_tracing_logs() -> (Arc<Mutex<Vec<u8>>>, tracing::subscriber::DefaultG
 
     impl std::io::Write for VecWriter {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("lock tracing buffer").extend_from_slice(bytes);
+            self.0
+                .lock()
+                .expect("lock tracing buffer")
+                .extend_from_slice(bytes);
             Ok(bytes.len())
         }
 
@@ -561,9 +569,10 @@ fn hard_error_branch_runs_before_classic_fallback_in_bivio() {
     //   4. `provider.upload(...)` or `provider.download(...)` (classic path)
     //
     // The indices below prove the arms appear in the required order.
-    for (direction, classic_call) in
-        [("Upload", "provider.upload("), ("Download", "provider.download(")]
-    {
+    for (direction, classic_call) in [
+        ("Upload", "provider.upload("),
+        ("Download", "provider.download("),
+    ] {
         let tag = format!("sync.delta: used delta path (direction={}", direction);
         let used_at = src
             .find(&tag)
@@ -658,9 +667,7 @@ mod mock_transport_coverage {
             self.transfer_calls.fetch_add(1, Ordering::SeqCst);
             match &self.behavior {
                 MockBehavior::OkStats(s) => Ok(s.clone()),
-                MockBehavior::HardRejection(msg) => {
-                    Err(RsyncError::HardRejection(msg.clone()))
-                }
+                MockBehavior::HardRejection(msg) => Err(RsyncError::HardRejection(msg.clone())),
                 MockBehavior::ProbeFailed(msg) => Err(RsyncError::ProbeFailed(msg.clone())),
             }
         }
@@ -685,18 +692,10 @@ mod mock_transport_coverage {
         async fn probe_local(&self) -> Result<(), RsyncError> {
             Ok(())
         }
-        async fn download(
-            &self,
-            _remote: &str,
-            _local: &Path,
-        ) -> Result<RsyncStats, RsyncError> {
+        async fn download(&self, _remote: &str, _local: &Path) -> Result<RsyncStats, RsyncError> {
             self.emit()
         }
-        async fn upload(
-            &self,
-            _local: &Path,
-            _remote: &str,
-        ) -> Result<RsyncStats, RsyncError> {
+        async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
             self.emit()
         }
     }

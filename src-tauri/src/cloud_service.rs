@@ -12,8 +12,8 @@ use crate::cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
 use crate::ftp::FtpManager;
 use crate::providers::{ProviderError, RemoteEntry as ProviderRemoteEntry, StorageProvider};
 use crate::sync::{
-    build_comparison_results, validate_relative_path, CompareOptions, FileComparison, FileInfo,
-    CompareDirection, SyncAction, SyncStatus,
+    build_comparison_results, validate_relative_path, CompareDirection, CompareOptions,
+    FileComparison, FileInfo, SyncAction, SyncStatus,
 };
 // file_watcher module available for Phase 3A+ watcher integration
 use chrono::{DateTime, Utc};

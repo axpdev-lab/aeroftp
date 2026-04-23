@@ -2775,8 +2775,7 @@ pub async fn execute_tool(
 
         "aeroftp_sync_tree" => {
             use crate::sync_core::{
-                sync_tree_core, ConflictMode, DeltaPolicy, ScanOptions, SyncDirection,
-                SyncOptions,
+                sync_tree_core, ConflictMode, DeltaPolicy, ScanOptions, SyncDirection, SyncOptions,
             };
 
             let server = match get_str(args, "server") {
@@ -3099,17 +3098,15 @@ pub async fn execute_tool(
                             // delta) shows up as negative instead of being
                             // clipped to zero. Caller can still display
                             // max(0, bytes_saved) if desired.
-                            let bytes_saved: i64 = savings.total_size as i64
-                                - savings.total_bytes_sent as i64;
+                            let bytes_saved: i64 =
+                                savings.total_size as i64 - savings.total_bytes_sent as i64;
                             let mut block = serde_json::Map::new();
                             block.insert(
                                 "files_using_delta".into(),
                                 savings.files_using_delta.into(),
                             );
-                            block.insert(
-                                "total_bytes_sent".into(),
-                                savings.total_bytes_sent.into(),
-                            );
+                            block
+                                .insert("total_bytes_sent".into(), savings.total_bytes_sent.into());
                             block.insert("total_size".into(), savings.total_size.into());
                             block.insert("bytes_saved".into(), bytes_saved.into());
                             // Omit `average_speedup` entirely when None — same
@@ -3139,15 +3136,9 @@ pub async fn execute_tool(
                                     })
                                 })
                                 .collect();
-                            summary.insert(
-                                "delta_files".into(),
-                                Value::Array(files_json),
-                            );
+                            summary.insert("delta_files".into(), Value::Array(files_json));
                             if report.delta_files_truncated {
-                                summary.insert(
-                                    "delta_files_truncated".into(),
-                                    Value::Bool(true),
-                                );
+                                summary.insert("delta_files_truncated".into(), Value::Bool(true));
                             }
                         }
                         json!({
@@ -3346,7 +3337,9 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
                     None => (
                         "skip".to_string(),
                         0,
-                        crate::sync_core::DeltaPolicy::default().as_str().to_string(),
+                        crate::sync_core::DeltaPolicy::default()
+                            .as_str()
+                            .to_string(),
                     ),
                 };
                 self.plan.push(PlanEntry {
@@ -3872,9 +3865,7 @@ mod tests {
             Some(false)
         );
         assert_eq!(
-            uploads[0]
-                .get("decision_policy")
-                .and_then(|v| v.as_str()),
+            uploads[0].get("decision_policy").and_then(|v| v.as_str()),
             Some("mtime")
         );
         // `skip` bucket gets the unknown-op entry.

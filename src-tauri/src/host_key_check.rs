@@ -254,9 +254,7 @@ fn rewrite_known_hosts_removing(
     pending_alg: Option<&str>,
 ) -> Result<(String, usize), String> {
     if russh_line == 0 {
-        return Err(
-            "Invalid line 0 (russh KeyChanged uses 1-based line numbering)".to_string(),
-        );
+        return Err("Invalid line 0 (russh KeyChanged uses 1-based line numbering)".to_string());
     }
     let target_idx = russh_line - 1;
     let lines: Vec<&str> = content.lines().collect();
@@ -348,13 +346,8 @@ pub async fn sftp_remove_host_key(host: String, port: u16, line: usize) -> Resul
             .map(|(k, _)| k.algorithm().as_str().to_string())
     };
 
-    let (new_content, removed) = rewrite_known_hosts_removing(
-        &content,
-        &host,
-        port,
-        line,
-        pending_alg.as_deref(),
-    )?;
+    let (new_content, removed) =
+        rewrite_known_hosts_removing(&content, &host, port, line, pending_alg.as_deref())?;
 
     // Atomic write: temp + rename on the same filesystem.
     let temp_path = known_hosts_path.with_extension("tmp");
@@ -413,11 +406,9 @@ mod tests {
     fn rewrite_uses_one_based_indexing() {
         // Regression pin for the off-by-one bug: russh's `KeyChanged
         // { line: 1 }` must remove the FIRST line, not the second.
-        let content = format!(
-            "[localhost]:2222 ssh-ed25519 {KEY_OLD}\n[other.com] ssh-rsa AAAAB\n"
-        );
-        let (out, n) =
-            rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None).unwrap();
+        let content =
+            format!("[localhost]:2222 ssh-ed25519 {KEY_OLD}\n[other.com] ssh-rsa AAAAB\n");
+        let (out, n) = rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None).unwrap();
         assert_eq!(n, 1);
         assert!(
             !out.contains(KEY_OLD),
@@ -443,14 +434,9 @@ mod tests {
              [localhost]:2222 ssh-ed25519 {KEY_NEW}\n\
              [localhost]:2222 ssh-ed25519 {KEY_NEW}\n"
         );
-        let (out, n) = rewrite_known_hosts_removing(
-            &content,
-            "localhost",
-            2222,
-            1,
-            Some("ssh-ed25519"),
-        )
-        .unwrap();
+        let (out, n) =
+            rewrite_known_hosts_removing(&content, "localhost", 2222, 1, Some("ssh-ed25519"))
+                .unwrap();
         assert_eq!(n, 3, "russh-pointed line + 2 stale dups = 3 removed");
         // Every `[localhost]:2222 ssh-ed25519` entry is gone:
         assert!(
@@ -474,14 +460,9 @@ mod tests {
             "[localhost]:2222 ssh-ed25519 {KEY_OLD}\n\
              [localhost]:2222 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB\n"
         );
-        let (out, n) = rewrite_known_hosts_removing(
-            &content,
-            "localhost",
-            2222,
-            1,
-            Some("ssh-ed25519"),
-        )
-        .unwrap();
+        let (out, n) =
+            rewrite_known_hosts_removing(&content, "localhost", 2222, 1, Some("ssh-ed25519"))
+                .unwrap();
         assert_eq!(n, 1);
         assert!(!out.contains(KEY_OLD));
         assert!(out.contains("ssh-rsa"));
@@ -495,8 +476,7 @@ mod tests {
         let content = format!(
             "[other.com]:22 ssh-ed25519 {KEY_OLD}\n[localhost]:2222 ssh-ed25519 {KEY_NEW}\n"
         );
-        let err =
-            rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None);
+        let err = rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None);
         assert!(err.is_err(), "wrong-host line must be rejected");
     }
 
@@ -507,8 +487,7 @@ mod tests {
         // resolved the salt internally and already confirmed the match.
         let content =
             "|1|salt=|hash= ssh-ed25519 AAAAC3Nz\n[other.com] ssh-rsa AAAAB\n".to_string();
-        let (out, n) =
-            rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None).unwrap();
+        let (out, n) = rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None).unwrap();
         assert_eq!(n, 1);
         assert!(!out.contains("|1|salt="));
         assert!(out.contains("[other.com]"));
@@ -517,18 +496,15 @@ mod tests {
     #[test]
     fn rewrite_out_of_range_line_rejected() {
         let content = "[localhost]:2222 ssh-ed25519 AAAA\n".to_string();
-        let err =
-            rewrite_known_hosts_removing(&content, "localhost", 2222, 999, None);
+        let err = rewrite_known_hosts_removing(&content, "localhost", 2222, 999, None);
         assert!(err.is_err(), "out-of-range line must be rejected");
     }
 
     #[test]
     fn rewrite_keeps_trailing_newline_when_non_empty() {
-        let content = format!(
-            "[localhost]:2222 ssh-ed25519 {KEY_OLD}\n[other.com] ssh-rsa AAAAB\n"
-        );
-        let (out, _) =
-            rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None).unwrap();
+        let content =
+            format!("[localhost]:2222 ssh-ed25519 {KEY_OLD}\n[other.com] ssh-rsa AAAAB\n");
+        let (out, _) = rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None).unwrap();
         assert!(
             out.ends_with('\n'),
             "non-empty known_hosts must keep a trailing newline; got {out:?}"
@@ -538,8 +514,7 @@ mod tests {
     #[test]
     fn rewrite_produces_empty_content_when_file_had_single_entry() {
         let content = format!("[localhost]:2222 ssh-ed25519 {KEY_OLD}\n");
-        let (out, n) =
-            rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None).unwrap();
+        let (out, n) = rewrite_known_hosts_removing(&content, "localhost", 2222, 1, None).unwrap();
         assert_eq!(n, 1);
         assert!(
             out.is_empty(),
