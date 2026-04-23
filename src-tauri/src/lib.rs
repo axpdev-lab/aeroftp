@@ -46,16 +46,19 @@ mod delta_sync;
 // inject a MockDeltaTransport. Everything but the hidden inner helper
 // remains semver-stable; a future `#[cfg(feature = "test-hooks")]` gate
 // is backlogged (see P1-T03 audit, accepted debt).
-#[cfg(unix)]
+//
+// PR-T11 cross-OS: these modules are now compiled on every platform.
+// Their internal Unix-only primitives (binary rsync spawn, SSH exec
+// helpers) carry granular `#[cfg(unix)]` gates; the type surface and
+// the `DeltaTransport` trait are cross-platform so the provider
+// `delta_transport()` method can stay cross-OS.
 pub mod delta_sync_rsync;
-#[cfg(unix)]
 pub mod delta_transport;
 mod number_parsing;
 pub mod profile_loader;
 mod rsync_output;
 // `pub` transitively so integration tests can construct `RsyncStats`
 // fixtures for MockDeltaTransport. Same accepted-debt note as above.
-#[cfg(unix)]
 pub mod rsync_over_ssh;
 mod ssh_exec;
 pub mod util;
