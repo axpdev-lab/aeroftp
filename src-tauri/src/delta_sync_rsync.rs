@@ -33,6 +33,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as TokioMutex;
+use tokio::time::timeout;
 
 /// Max length of a fallback/hard-error message surfaced outside the adapter.
 /// rsync stderr can be verbose (thousands of chars for repeated warnings);
@@ -121,6 +122,18 @@ pub struct DeltaSyncResult {
     /// transparently retry via the classic-SFTP path. Mutually exclusive with
     /// `fallback_reason`.
     pub hard_error: Option<String>,
+}
+
+/// Verdict returned by the preventive eligibility gate.
+///
+/// This is intentionally smaller than [`DeltaSyncResult`]: the UI gate only
+/// needs to know whether the current SFTP session can use delta sync right now
+/// and, when it cannot, the sanitized reason that should be surfaced to the
+/// user before the classic transfer starts.
+#[derive(Debug, Clone)]
+pub struct DeltaEligibilityStatus {
+    pub eligible: bool,
+    pub reason: Option<String>,
 }
 
 impl DeltaSyncResult {
@@ -336,8 +349,8 @@ pub async fn try_delta_transfer_with_transport(
     remote_path: &str,
     session_key: &str,
 ) -> Option<DeltaSyncResult> {
-    let result = transfer_with_delta(transport, direction, local_path, remote_path, session_key)
-        .await;
+    let result =
+        transfer_with_delta(transport, direction, local_path, remote_path, session_key).await;
 
     match result {
         Ok(r) => Some(r),
@@ -348,6 +361,63 @@ pub async fn try_delta_transfer_with_transport(
                 reason
             ))))
         }
+    }
+}
+
+/// Check delta eligibility without transferring any file.
+///
+/// Uses the same cached remote probe that powers real transfers, but adds a
+/// 5-second timeout because this path runs on the sync-start UX gate and must
+/// not stall the UI indefinitely.
+#[doc(hidden)]
+pub async fn check_delta_eligibility_with_transport(
+    transport: &dyn DeltaTransport,
+    session_key: &str,
+) -> DeltaEligibilityStatus {
+    let remote_capability = timeout(
+        Duration::from_secs(5),
+        probe_capability_cached(transport, session_key),
+    )
+    .await;
+
+    let capability = match remote_capability {
+        Ok(Ok(capability)) => capability,
+        Ok(Err(reason)) => {
+            return DeltaEligibilityStatus {
+                eligible: false,
+                reason: Some(sanitize_rsync_message(&format!(
+                    "remote delta unavailable: {}",
+                    reason
+                ))),
+            };
+        }
+        Err(_) => {
+            return DeltaEligibilityStatus {
+                eligible: false,
+                reason: Some("remote delta probe timed out after 5s".to_string()),
+            };
+        }
+    };
+
+    if let Err(error) = transport.probe_local().await {
+        return DeltaEligibilityStatus {
+            eligible: false,
+            reason: Some(sanitize_rsync_message(&format!(
+                "local delta unavailable: {}",
+                error
+            ))),
+        };
+    }
+
+    tracing::debug!(
+        "delta eligibility ok: transport={}, remote_version={}",
+        transport.name(),
+        capability.version
+    );
+
+    DeltaEligibilityStatus {
+        eligible: true,
+        reason: None,
     }
 }
 
@@ -405,6 +475,45 @@ pub async fn try_delta_transfer(
         &session_key,
     )
     .await
+}
+
+/// Probe the current provider session and report whether delta sync is
+/// currently available, without transferring any data.
+///
+/// Returns `None` when the connected provider is not an eligible SFTP session
+/// (wrong provider type, no SSH handle, missing SSH key).
+pub async fn check_delta_eligibility(
+    provider: &mut dyn crate::providers::StorageProvider,
+) -> Option<DeltaEligibilityStatus> {
+    let sftp = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::sftp::SftpProvider>()?;
+
+    if sftp.handle_shared().is_none() {
+        return Some(DeltaEligibilityStatus {
+            eligible: false,
+            reason: Some("Reconnect the SFTP session to evaluate delta sync.".to_string()),
+        });
+    }
+
+    let transport = match sftp.delta_transport() {
+        Some(transport) => transport,
+        None => {
+            return Some(DeltaEligibilityStatus {
+                eligible: false,
+                reason: Some("Delta sync requires an SSH key-based SFTP session.".to_string()),
+            });
+        }
+    };
+
+    let handle_ptr = sftp
+        .handle_shared()
+        .as_ref()
+        .map(|h| std::sync::Arc::as_ptr(h) as usize)
+        .unwrap_or(0);
+    let session_key = format!("sftp#{:x}", handle_ptr);
+
+    Some(check_delta_eligibility_with_transport(transport.as_ref(), &session_key).await)
 }
 
 /// Clear the probe cache. Called on disconnect or explicit user action.
@@ -588,5 +697,90 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("remote delta unavailable"));
+    }
+
+    #[tokio::test]
+    async fn eligibility_probe_reports_success_for_ready_transport() {
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+
+        struct ReadyTransport;
+
+        #[async_trait]
+        impl DeltaTransport for ReadyTransport {
+            fn name(&self) -> &'static str {
+                "ready-test-transport"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                Ok(RsyncCapability {
+                    version: "3.4.1".into(),
+                    protocol: 31,
+                })
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                unreachable!("eligibility probe must not transfer data")
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                unreachable!("eligibility probe must not transfer data")
+            }
+        }
+
+        clear_probe_cache().await;
+        let status =
+            check_delta_eligibility_with_transport(&ReadyTransport, "test-eligibility-ready").await;
+        assert!(status.eligible);
+        assert!(status.reason.is_none());
+    }
+
+    #[tokio::test]
+    async fn eligibility_probe_sanitizes_remote_failure_reason() {
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+
+        struct MissingRemoteTransport;
+
+        #[async_trait]
+        impl DeltaTransport for MissingRemoteTransport {
+            fn name(&self) -> &'static str {
+                "missing-remote-test-transport"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                Err(RsyncError::ProbeFailed(
+                    "rsync not found under /home/alice/.ssh/custom".into(),
+                ))
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                unreachable!("eligibility probe must not transfer data")
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                unreachable!("eligibility probe must not transfer data")
+            }
+        }
+
+        clear_probe_cache().await;
+        let status = check_delta_eligibility_with_transport(
+            &MissingRemoteTransport,
+            "test-eligibility-missing-remote",
+        )
+        .await;
+        assert!(!status.eligible);
+        let reason = status.reason.expect("reason expected");
+        assert!(reason.contains("remote delta unavailable"));
+        assert!(!reason.contains("/home/alice"));
+        assert!(reason.contains("<redacted>"));
     }
 }

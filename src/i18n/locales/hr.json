@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} datoteka · {bytes} ušteđeno · {speedup}x ubrzanje",
             "deltaTitle": "Delta uštede",
             "deltaSummaryOptimized": "{files} datoteka putem optimiziranog prijenosa",
-            "deltaTitleOptimized": "Optimizirani prijenos"
+            "deltaTitleOptimized": "Optimizirani prijenos",
+            "classicBadge": "klasični",
+            "classicBadgeTooltip": "Pokušana je delta sinkronizacija, zatim se nastavilo s klasičnim prijenosom: {reason}",
+            "deltaEligibilityTitle": "Delta Sync nije dostupan za ovaj poslužitelj",
+            "deltaEligibilityBody": "Ova sesija trenutno ne može koristiti rsync delta put. Možete nastaviti s klasičnim prijenosom ili prvo pročitati zahtjeve.",
+            "deltaEligibilityProceed": "Nastavi klasično",
+            "deltaEligibilitySkip": "Više ne prikazuj za ovaj poslužitelj",
+            "deltaEligibilityLearnMore": "Saznaj više"
         },
         "ui": {
             "syncing": "Sinkronizacija...",

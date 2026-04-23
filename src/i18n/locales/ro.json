@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} fișiere · {bytes} economisiți · accelerare {speedup}x",
             "deltaTitle": "Economii delta",
             "deltaSummaryOptimized": "{files} fișiere prin transfer optimizat",
-            "deltaTitleOptimized": "Transfer optimizat"
+            "deltaTitleOptimized": "Transfer optimizat",
+            "classicBadge": "clasic",
+            "classicBadgeTooltip": "Sincronizarea delta a fost încercată, apoi s-a continuat cu transferul clasic: {reason}",
+            "deltaEligibilityTitle": "Delta Sync nu este disponibil pentru acest server",
+            "deltaEligibilityBody": "Această sesiune nu poate folosi calea delta rsync în acest moment. Puteți continua cu calea de transfer clasică sau citiți mai întâi cerințele.",
+            "deltaEligibilityProceed": "Continuați cu clasic",
+            "deltaEligibilitySkip": "Nu mai afișa pentru acest server",
+            "deltaEligibilityLearnMore": "Aflați mai multe"
         },
         "ui": {
             "syncing": "Se sincronizează...",

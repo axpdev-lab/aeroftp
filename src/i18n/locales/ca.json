@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} fitxers · {bytes} estalviats · {speedup}x d'acceleració",
             "deltaTitle": "Estalvi delta",
             "deltaSummaryOptimized": "{files} fitxers per transferència optimitzada",
-            "deltaTitleOptimized": "Transferència optimitzada"
+            "deltaTitleOptimized": "Transferència optimitzada",
+            "classicBadge": "clàssic",
+            "classicBadgeTooltip": "S'ha provat la sincronització delta i s'ha continuat amb transferència clàssica: {reason}",
+            "deltaEligibilityTitle": "Delta Sync no està disponible per a aquest servidor",
+            "deltaEligibilityBody": "Aquesta sessió no pot utilitzar el camí delta de rsync ara mateix. Podeu continuar amb la transferència clàssica o llegir primer els requisits.",
+            "deltaEligibilityProceed": "Continua amb clàssic",
+            "deltaEligibilitySkip": "No tornis a mostrar-ho per a aquest servidor",
+            "deltaEligibilityLearnMore": "Més informació"
         },
         "ui": {
             "syncing": "Sincronitzant...",

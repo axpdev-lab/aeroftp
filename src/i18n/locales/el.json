@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} αρχεία · {bytes} εξοικονόμηση · {speedup}x επιτάχυνση",
             "deltaTitle": "Εξοικονόμηση delta",
             "deltaSummaryOptimized": "{files} αρχεία μέσω βελτιστοποιημένης μεταφοράς",
-            "deltaTitleOptimized": "Βελτιστοποιημένη μεταφορά"
+            "deltaTitleOptimized": "Βελτιστοποιημένη μεταφορά",
+            "classicBadge": "κλασικό",
+            "classicBadgeTooltip": "Έγινε προσπάθεια delta συγχρονισμού, στη συνέχεια συνεχίστηκε με κλασική μεταφορά: {reason}",
+            "deltaEligibilityTitle": "Το Delta Sync δεν είναι διαθέσιμο για αυτόν τον διακομιστή",
+            "deltaEligibilityBody": "Αυτή η συνεδρία δεν μπορεί να χρησιμοποιήσει τη διαδρομή rsync delta αυτή τη στιγμή. Μπορείτε να συνεχίσετε με την κλασική διαδρομή μεταφοράς ή να διαβάσετε πρώτα τις απαιτήσεις.",
+            "deltaEligibilityProceed": "Συνέχεια με κλασικό",
+            "deltaEligibilitySkip": "Να μην εμφανιστεί ξανά για αυτόν τον διακομιστή",
+            "deltaEligibilityLearnMore": "Μάθετε περισσότερα"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",

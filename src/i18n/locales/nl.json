@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} bestanden · {bytes} bespaard · {speedup}x versnelling",
             "deltaTitle": "Delta besparingen",
             "deltaSummaryOptimized": "{files} bestanden via geoptimaliseerde overdracht",
-            "deltaTitleOptimized": "Geoptimaliseerde overdracht"
+            "deltaTitleOptimized": "Geoptimaliseerde overdracht",
+            "classicBadge": "klassiek",
+            "classicBadgeTooltip": "Delta-synchronisatie geprobeerd, daarna voortgezet met klassieke overdracht: {reason}",
+            "deltaEligibilityTitle": "Delta Sync is niet beschikbaar voor deze server",
+            "deltaEligibilityBody": "Deze sessie kan nu het rsync delta-pad niet gebruiken. Je kunt doorgaan met het klassieke overdrachtspad, of eerst de vereisten lezen.",
+            "deltaEligibilityProceed": "Doorgaan met klassiek",
+            "deltaEligibilitySkip": "Dit niet meer tonen voor deze server",
+            "deltaEligibilityLearnMore": "Meer informatie"
         },
         "ui": {
             "syncing": "Synchroniseren...",

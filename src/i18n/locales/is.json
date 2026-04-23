@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} skrár · {bytes} sparað · {speedup}x hröðun",
             "deltaTitle": "Delta sparnaður",
             "deltaSummaryOptimized": "{files} skrár með bjartsýnri flutningi",
-            "deltaTitleOptimized": "Bjartsýnn flutningur"
+            "deltaTitleOptimized": "Bjartsýnn flutningur",
+            "classicBadge": "klassískt",
+            "classicBadgeTooltip": "Delta-samstilling reynd, síðan haldið áfram með klassískri flutningi: {reason}",
+            "deltaEligibilityTitle": "Delta Sync er ekki í boði fyrir þennan netþjón",
+            "deltaEligibilityBody": "Þessi lota getur ekki notað rsync delta-leiðina eins og er. Þú getur haldið áfram með klassískri flutningsleið eða lesið kröfurnar fyrst.",
+            "deltaEligibilityProceed": "Halda áfram klassískt",
+            "deltaEligibilitySkip": "Ekki sýna aftur fyrir þennan netþjón",
+            "deltaEligibilityLearnMore": "Nánar"
         },
         "ui": {
             "syncing": "Samstillir...",

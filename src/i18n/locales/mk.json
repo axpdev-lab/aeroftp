@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} датотеки · {bytes} заштедени · {speedup}x забрзување",
             "deltaTitle": "Делта заштеди",
             "deltaSummaryOptimized": "{files} датотеки преку оптимизиран пренос",
-            "deltaTitleOptimized": "Оптимизиран пренос"
+            "deltaTitleOptimized": "Оптимизиран пренос",
+            "classicBadge": "класичен",
+            "classicBadgeTooltip": "Обидена е делта синхронизација, потоа продолжено со класичен трансфер: {reason}",
+            "deltaEligibilityTitle": "Delta Sync не е достапен за овој сервер",
+            "deltaEligibilityBody": "Оваа сесија не може да го користи rsync делта патот во моментов. Можете да продолжите со класичниот пат за трансфер или прво да ги прочитате барањата.",
+            "deltaEligibilityProceed": "Продолжи со класичен",
+            "deltaEligibilitySkip": "Не прикажувај повторно за овој сервер",
+            "deltaEligibilityLearnMore": "Дознај повеќе"
         },
         "ui": {
             "syncing": "Синхронизирање...",

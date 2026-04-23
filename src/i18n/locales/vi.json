@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} tệp · tiết kiệm {bytes} · tăng tốc {speedup}x",
             "deltaTitle": "Tiết kiệm delta",
             "deltaSummaryOptimized": "{files} tệp qua chuyển tối ưu hóa",
-            "deltaTitleOptimized": "Chuyển tối ưu hóa"
+            "deltaTitleOptimized": "Chuyển tối ưu hóa",
+            "classicBadge": "cổ điển",
+            "classicBadgeTooltip": "Đã thử đồng bộ delta, sau đó tiếp tục bằng truyền tải cổ điển: {reason}",
+            "deltaEligibilityTitle": "Delta Sync không khả dụng cho máy chủ này",
+            "deltaEligibilityBody": "Phiên này hiện không thể sử dụng đường dẫn delta của rsync. Bạn có thể tiếp tục với đường dẫn truyền tải cổ điển hoặc đọc các yêu cầu trước.",
+            "deltaEligibilityProceed": "Tiếp tục với cổ điển",
+            "deltaEligibilitySkip": "Không hiển thị lại cho máy chủ này",
+            "deltaEligibilityLearnMore": "Tìm hiểu thêm"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",

@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} fájl · {bytes} megtakarítva · {speedup}x gyorsulás",
             "deltaTitle": "Delta megtakarítás",
             "deltaSummaryOptimized": "{files} fájl optimalizált átvitellel",
-            "deltaTitleOptimized": "Optimalizált átvitel"
+            "deltaTitleOptimized": "Optimalizált átvitel",
+            "classicBadge": "klasszikus",
+            "classicBadgeTooltip": "Delta szinkronizációs kísérlet, majd folytatás klasszikus átvitellel: {reason}",
+            "deltaEligibilityTitle": "A Delta Sync nem érhető el ehhez a kiszolgálóhoz",
+            "deltaEligibilityBody": "Ez a munkamenet jelenleg nem használhatja az rsync delta útvonalat. Folytathatja a klasszikus átviteli útvonallal, vagy először olvassa el a követelményeket.",
+            "deltaEligibilityProceed": "Folytatás klasszikusan",
+            "deltaEligibilitySkip": "Ne mutassa újra ehhez a kiszolgálóhoz",
+            "deltaEligibilityLearnMore": "Tudjon meg többet"
         },
         "ui": {
             "syncing": "Szinkronizálás...",

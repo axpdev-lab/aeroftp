@@ -1937,7 +1937,14 @@
             "deltaSummary": "{files} ファイル · {bytes} 節約 · {speedup}x 高速化",
             "deltaTitle": "差分による節約",
             "deltaSummaryOptimized": "{files}件のファイルを最適化転送で処理",
-            "deltaTitleOptimized": "最適化された転送"
+            "deltaTitleOptimized": "最適化された転送",
+            "classicBadge": "クラシック",
+            "classicBadgeTooltip": "デルタ同期を試行した後、クラシック転送で続行しました: {reason}",
+            "deltaEligibilityTitle": "このサーバーでは Delta Sync を利用できません",
+            "deltaEligibilityBody": "このセッションでは現在 rsync デルタパスを使用できません。クラシック転送で続行するか、先に要件をお読みください。",
+            "deltaEligibilityProceed": "クラシックで続行",
+            "deltaEligibilitySkip": "このサーバーでは今後表示しない",
+            "deltaEligibilityLearnMore": "詳細"
         },
         "ui": {
             "syncing": "同期中...",

@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} tiedostoa · {bytes} säästetty · {speedup}x nopeutus",
             "deltaTitle": "Delta-säästöt",
             "deltaSummaryOptimized": "{files} tiedostoa optimoidulla siirrolla",
-            "deltaTitleOptimized": "Optimoitu siirto"
+            "deltaTitleOptimized": "Optimoitu siirto",
+            "classicBadge": "klassinen",
+            "classicBadgeTooltip": "Delta-synkronointia yritettiin, jatkettiin sitten klassisella siirrolla: {reason}",
+            "deltaEligibilityTitle": "Delta Sync ei ole käytettävissä tälle palvelimelle",
+            "deltaEligibilityBody": "Tämä istunto ei voi juuri nyt käyttää rsync-delta-polkua. Voit jatkaa klassisella siirrolla tai lukea ensin vaatimukset.",
+            "deltaEligibilityProceed": "Jatka klassisella",
+            "deltaEligibilitySkip": "Älä näytä tätä uudelleen tälle palvelimelle",
+            "deltaEligibilityLearnMore": "Lue lisää"
         },
         "ui": {
             "syncing": "Synkronoidaan...",

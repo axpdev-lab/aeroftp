@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} faili · {bytes} kokku hoitud · {speedup}x kiirendus",
             "deltaTitle": "Delta kokkuhoid",
             "deltaSummaryOptimized": "{files} faili optimeeritud ülekande kaudu",
-            "deltaTitleOptimized": "Optimeeritud ülekanne"
+            "deltaTitleOptimized": "Optimeeritud ülekanne",
+            "classicBadge": "klassikaline",
+            "classicBadgeTooltip": "Delta-sünkroonimist prooviti, seejärel jätkati klassikalise ülekandega: {reason}",
+            "deltaEligibilityTitle": "Delta Sync pole selle serveri jaoks saadaval",
+            "deltaEligibilityBody": "See seanss ei saa praegu kasutada rsync delta-teed. Võite jätkata klassikalise ülekandega või lugeda esmalt nõudeid.",
+            "deltaEligibilityProceed": "Jätka klassikalisega",
+            "deltaEligibilitySkip": "Ära näita seda selle serveri kohta uuesti",
+            "deltaEligibilityLearnMore": "Lisateave"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

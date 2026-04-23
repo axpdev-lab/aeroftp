@@ -1965,7 +1965,14 @@
             "deltaSummary": "{files} ֆայլ · {bytes} խնայված · {speedup}x արագացում",
             "deltaTitle": "Դելտա խնայողություն",
             "deltaSummaryOptimized": "{files} ֆայլ օպտիմիզացված փոխանցմամբ",
-            "deltaTitleOptimized": "Օպտիմիզացված փոխանցում"
+            "deltaTitleOptimized": "Օպտիմիզացված փոխանցում",
+            "classicBadge": "դասական",
+            "classicBadgeTooltip": "Դելտա համաժամացումը փորձվեց, ապա շարունակվեց դասական փոխանցմամբ՝ {reason}",
+            "deltaEligibilityTitle": "Delta Sync-ը հասանելի չէ այս սերվերի համար",
+            "deltaEligibilityBody": "Այս աշխատաշրջանն այս պահին չի կարող օգտագործել rsync դելտա ուղին։ Կարող եք շարունակել դասական փոխանցման ուղով կամ նախ կարդալ պահանջները։",
+            "deltaEligibilityProceed": "Շարունակել դասականով",
+            "deltaEligibilitySkip": "Այս սերվերի համար այլևս չցուցադրել",
+            "deltaEligibilityLearnMore": "Իմանալ ավելին"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",

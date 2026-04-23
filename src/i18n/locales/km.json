@@ -1972,7 +1972,14 @@
             "deltaSummary": "ឯកសារ {files} · សន្សំបាន {bytes} · ល្បឿន {speedup}x",
             "deltaTitle": "ការសន្សំ Delta",
             "deltaSummaryOptimized": "ឯកសារ {files} តាមរយៈការផ្ទេរប្រសើរឡើង",
-            "deltaTitleOptimized": "ការផ្ទេរប្រសើរឡើង"
+            "deltaTitleOptimized": "ការផ្ទេរប្រសើរឡើង",
+            "classicBadge": "បែបចាស់",
+            "classicBadgeTooltip": "បានព្យាយាម delta sync រួចបន្តជាមួយការផ្ទេរបែបចាស់៖ {reason}",
+            "deltaEligibilityTitle": "Delta Sync មិនអាចប្រើបានសម្រាប់ម៉ាស៊ីនមេនេះទេ",
+            "deltaEligibilityBody": "វគ្គនេះមិនអាចប្រើផ្លូវ rsync delta ឥឡូវនេះទេ។ អ្នកអាចបន្តជាមួយផ្លូវផ្ទេរបែបចាស់ ឬអានតម្រូវការជាមុនសិន។",
+            "deltaEligibilityProceed": "បន្តជាមួយបែបចាស់",
+            "deltaEligibilitySkip": "កុំបង្ហាញម្តងទៀតសម្រាប់ម៉ាស៊ីនមេនេះ",
+            "deltaEligibilityLearnMore": "ស្វែងយល់បន្ថែម"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",

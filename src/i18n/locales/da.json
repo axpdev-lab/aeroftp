@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} filer · {bytes} sparet · {speedup}x hastighedsforøgelse",
             "deltaTitle": "Delta-besparelser",
             "deltaSummaryOptimized": "{files} filer via optimeret overførsel",
-            "deltaTitleOptimized": "Optimeret overførsel"
+            "deltaTitleOptimized": "Optimeret overførsel",
+            "classicBadge": "klassisk",
+            "classicBadgeTooltip": "Delta-synkronisering forsøgt, fortsatte derefter med klassisk overførsel: {reason}",
+            "deltaEligibilityTitle": "Delta Sync er ikke tilgængelig for denne server",
+            "deltaEligibilityBody": "Denne session kan ikke bruge rsync delta-stien lige nu. Du kan fortsætte med den klassiske overførselssti eller læse kravene først.",
+            "deltaEligibilityProceed": "Fortsæt med klassisk",
+            "deltaEligibilitySkip": "Vis ikke dette igen for denne server",
+            "deltaEligibilityLearnMore": "Læs mere"
         },
         "ui": {
             "syncing": "Synkroniserer...",

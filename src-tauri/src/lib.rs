@@ -267,12 +267,20 @@ pub struct DownloadParams {
     /// Remote file modification timestamp (ISO 8601) for mtime preservation
     #[serde(default)]
     modified: Option<String>,
+    #[serde(default = "default_true")]
+    use_delta: bool,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct UploadParams {
     local_path: String,
     remote_path: String,
+    #[serde(default = "default_true")]
+    use_delta: bool,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize)]
@@ -350,11 +358,17 @@ pub struct TransferEvent {
     pub path: Option<String>, // Full path for context (file or folder)
     /// Populated only on `event_type == "complete"` when the rsync delta
     /// path actually serviced the transfer (SFTP + key-auth + rsync on the
-    /// remote). Absent for classic transfers, for providers that don't
-    /// support delta, and on Windows. Frontend uses this to render the
-    /// per-file delta badge and accumulate the end-of-sync savings card.
+    /// remote). Absent for classic transfers and for providers that don't
+    /// support delta. Frontend uses this to render the per-file delta badge
+    /// and accumulate the end-of-sync savings card.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delta_stats: Option<sync::DeltaTransferStats>,
+    /// Populated only on `event_type == "complete"` when delta sync was
+    /// attempted for this file but declined to the classic path
+    /// transparently. Pure classic transfers keep this absent so the UI can
+    /// distinguish "classic by design" from "classic after delta attempt".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
 }
 
 // ============ Local File Info ============
@@ -1587,6 +1601,7 @@ async fn download_file(
             progress: None,
             path: None,
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -1651,6 +1666,7 @@ async fn download_file(
                         }),
                         path: None,
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
             }
@@ -1674,6 +1690,7 @@ async fn download_file(
                     progress: None,
                     path: None,
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
             Ok(format!("Downloaded: {}", filename))
@@ -1691,6 +1708,7 @@ async fn download_file(
                     progress: None,
                     path: None,
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
             Err(format!("Download failed: {}", e))
@@ -1736,6 +1754,7 @@ async fn upload_file(
             progress: None,
             path: None,
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -1748,6 +1767,7 @@ async fn upload_file(
         if provider_connected {
             let mut guard = provider_state.provider.lock().await;
             if let Some(provider) = guard.as_mut() {
+                let mut delta_fallback_reason: Option<String> = None;
                 // Delta path (SFTP + key-auth + rsync on remote): attempted
                 // before the classic provider upload. `try_delta_transfer`
                 // is self-gated: `None` for non-SFTP / password-only /
@@ -1759,57 +1779,61 @@ async fn upload_file(
                 #[cfg(unix)]
                 {
                     let local_path_buf = std::path::PathBuf::from(&params.local_path);
-                    if let Some(result) = delta_sync_rsync::try_delta_transfer(
-                        provider.as_mut(),
-                        delta_sync_rsync::SyncDirection::Upload,
-                        &local_path_buf,
-                        &params.remote_path,
-                    )
-                    .await
-                    {
-                        if result.used_delta {
-                            let delta_stats = result
-                                .stats
-                                .as_ref()
-                                .map(sync::DeltaTransferStats::from_rsync);
-                            let _ = app.emit(
-                                "transfer_event",
-                                TransferEvent {
-                                    event_type: "complete".to_string(),
-                                    transfer_id: transfer_id.clone(),
-                                    filename: filename.clone(),
-                                    direction: "upload".to_string(),
-                                    message: Some(format!(
-                                        "Uploaded: {} (via delta)",
-                                        filename
-                                    )),
-                                    progress: None,
-                                    path: None,
-                                    delta_stats,
-                                },
-                            );
-                            return Ok(format!("Uploaded: {}", filename));
+                    if params.use_delta {
+                        if let Some(result) = delta_sync_rsync::try_delta_transfer(
+                            provider.as_mut(),
+                            delta_sync_rsync::SyncDirection::Upload,
+                            &local_path_buf,
+                            &params.remote_path,
+                        )
+                        .await
+                        {
+                            if result.used_delta {
+                                let delta_stats = result
+                                    .stats
+                                    .as_ref()
+                                    .map(sync::DeltaTransferStats::from_rsync);
+                                let _ = app.emit(
+                                    "transfer_event",
+                                    TransferEvent {
+                                        event_type: "complete".to_string(),
+                                        transfer_id: transfer_id.clone(),
+                                        filename: filename.clone(),
+                                        direction: "upload".to_string(),
+                                        message: Some(format!(
+                                            "Uploaded: {} (via delta)",
+                                            filename
+                                        )),
+                                        progress: None,
+                                        path: None,
+                                        delta_stats,
+                                        fallback_reason: None,
+                                    },
+                                );
+                                return Ok(format!("Uploaded: {}", filename));
+                            }
+                            if let Some(hard_err) = result.hard_error {
+                                let err_msg = format!("delta hard rejection: {}", hard_err);
+                                let _ = app.emit(
+                                    "transfer_event",
+                                    TransferEvent {
+                                        event_type: "error".to_string(),
+                                        transfer_id: transfer_id.clone(),
+                                        filename: filename.clone(),
+                                        direction: "upload".to_string(),
+                                        message: Some(err_msg.clone()),
+                                        progress: None,
+                                        path: None,
+                                        delta_stats: None,
+                                        fallback_reason: None,
+                                    },
+                                );
+                                return Err(err_msg);
+                            }
+                            // fallback_reason populated: fall through to the
+                            // classic provider upload below.
+                            delta_fallback_reason = result.fallback_reason;
                         }
-                        if let Some(hard_err) = result.hard_error {
-                            let err_msg =
-                                format!("delta hard rejection: {}", hard_err);
-                            let _ = app.emit(
-                                "transfer_event",
-                                TransferEvent {
-                                    event_type: "error".to_string(),
-                                    transfer_id: transfer_id.clone(),
-                                    filename: filename.clone(),
-                                    direction: "upload".to_string(),
-                                    message: Some(err_msg.clone()),
-                                    progress: None,
-                                    path: None,
-                                    delta_stats: None,
-                                },
-                            );
-                            return Err(err_msg);
-                        }
-                        // fallback_reason populated: fall through to the
-                        // classic provider upload below.
                     }
                 }
 
@@ -1819,7 +1843,11 @@ async fn upload_file(
                 let _ = app.emit(
                     "transfer_event",
                     TransferEvent {
-                        event_type: "complete".to_string(),
+                        event_type: if result.is_ok() {
+                            "complete".to_string()
+                        } else {
+                            "error".to_string()
+                        },
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
                         direction: "upload".to_string(),
@@ -1831,6 +1859,11 @@ async fn upload_file(
                         progress: None,
                         path: None,
                         delta_stats: None,
+                        fallback_reason: if result.is_ok() {
+                            delta_fallback_reason
+                        } else {
+                            None
+                        },
                     },
                 );
                 return result
@@ -1898,6 +1931,7 @@ async fn upload_file(
                             }),
                             path: None,
                             delta_stats: None,
+                            fallback_reason: None,
                         },
                     );
                 }
@@ -1919,6 +1953,7 @@ async fn upload_file(
                     progress: None,
                     path: None,
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
             Ok(format!("Uploaded: {}", filename))
@@ -1936,6 +1971,7 @@ async fn upload_file(
                     progress: None,
                     path: None,
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
             Err(format!("Upload failed: {}", e))
@@ -2006,6 +2042,7 @@ async fn download_files_batch(
             }),
             path: Some(batch_path.clone()),
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -2100,6 +2137,7 @@ async fn download_files_batch(
                 }),
                 path: Some(progress_batch_path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
     });
@@ -2156,6 +2194,7 @@ async fn download_files_batch(
             progress: None,
             path: Some(batch_path),
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -2225,6 +2264,7 @@ async fn upload_files_batch(
             }),
             path: Some(batch_path.clone()),
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -2307,6 +2347,7 @@ async fn upload_files_batch(
                 }),
                 path: Some(progress_batch_path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
     });
@@ -2363,6 +2404,7 @@ async fn upload_files_batch(
             progress: None,
             path: Some(batch_path),
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -2536,6 +2578,7 @@ async fn scan_ftp_download_entries(
                     progress: None,
                     path: Some(remote_path.to_string()),
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
             return Ok(result);
@@ -2637,6 +2680,7 @@ async fn scan_ftp_download_entries(
                                 progress: None,
                                 path: Some(remote_file_path.clone()),
                                 delta_stats: None,
+                                fallback_reason: None,
                             },
                         );
                         continue;
@@ -2674,6 +2718,7 @@ async fn scan_ftp_download_entries(
                     progress: None,
                     path: Some(remote_path.to_string()),
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
             last_scan_emit = std::time::Instant::now();
@@ -2725,6 +2770,7 @@ async fn download_folder(
             progress: None,
             path: Some(params.remote_path.clone()),
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -2741,6 +2787,7 @@ async fn download_folder(
                 progress: None,
                 path: None,
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
         return Err(format!("Failed to create local directory: {}", e));
@@ -2844,6 +2891,7 @@ async fn download_folder(
                 }),
                 path: Some(progress_remote_path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
     });
@@ -2897,6 +2945,7 @@ async fn download_folder(
             progress: None,
             path: None,
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -2957,6 +3006,7 @@ async fn prepare_ftp_upload_entries(
                     progress: None,
                     path: Some(remote_base_path.to_string()),
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
             return Ok(result);
@@ -2998,6 +3048,7 @@ async fn prepare_ftp_upload_entries(
                         progress: None,
                         path: Some(remote_path.clone()),
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 continue;
@@ -3035,6 +3086,7 @@ async fn prepare_ftp_upload_entries(
                         progress: None,
                         path: Some(remote_base_path.to_string()),
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 last_scan_emit = std::time::Instant::now();
@@ -3057,6 +3109,7 @@ async fn prepare_ftp_upload_entries(
             progress: None,
             path: Some(remote_base_path.to_string()),
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -3093,6 +3146,7 @@ async fn prepare_ftp_upload_entries(
                 progress: None,
                 path: Some(remote_base_path.to_string()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
         return Ok(result);
@@ -3141,6 +3195,7 @@ async fn prepare_ftp_upload_entries(
                 progress: None,
                 path: Some(remote_base_path.to_string()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
         return Ok(result);
@@ -3174,6 +3229,7 @@ async fn prepare_ftp_upload_entries(
                                 progress: None,
                                 path: Some(item.remote_path.clone()),
                                 delta_stats: None,
+                                fallback_reason: None,
                             },
                         );
                         continue;
@@ -3238,6 +3294,7 @@ async fn upload_folder(
             progress: None,
             path: Some(params.remote_path.clone()),
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -3254,6 +3311,7 @@ async fn upload_folder(
                 progress: None,
                 path: None,
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
         return Err("Source is not a directory".to_string());
@@ -3359,6 +3417,7 @@ async fn upload_folder(
                 }),
                 path: Some(progress_remote_path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
     });
@@ -3415,6 +3474,7 @@ async fn upload_folder(
             progress: None,
             path: None,
             delta_stats: None,
+            fallback_reason: None,
         },
     );
 
@@ -4060,6 +4120,7 @@ async fn delete_remote_file(
                 progress: None,
                 path: Some(path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -4076,6 +4137,7 @@ async fn delete_remote_file(
                         progress: None,
                         path: Some(path.clone()),
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 Ok(format!("Deleted: {}", file_name))
@@ -4092,6 +4154,7 @@ async fn delete_remote_file(
                         progress: None,
                         path: Some(path.clone()),
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 Err(format!("Failed to delete file: {}", e))
@@ -4110,6 +4173,7 @@ async fn delete_remote_file(
                 progress: None,
                 path: Some(path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -4178,6 +4242,7 @@ async fn delete_remote_file(
                         progress: None,
                         path: None,
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 last_scan_emit = std::time::Instant::now();
@@ -4206,6 +4271,7 @@ async fn delete_remote_file(
                 progress: None,
                 path: None,
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -4237,6 +4303,7 @@ async fn delete_remote_file(
                     progress: None,
                     path: Some(item.path.clone()),
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
 
@@ -4254,6 +4321,7 @@ async fn delete_remote_file(
                             progress: None,
                             path: Some(item.path.clone()),
                             delta_stats: None,
+                            fallback_reason: None,
                         },
                     );
                 }
@@ -4271,6 +4339,7 @@ async fn delete_remote_file(
                             progress: None,
                             path: Some(item.path.clone()),
                             delta_stats: None,
+                            fallback_reason: None,
                         },
                     );
                 }
@@ -4300,6 +4369,7 @@ async fn delete_remote_file(
                             progress: None,
                             path: Some(dir_path.to_string()),
                             delta_stats: None,
+                            fallback_reason: None,
                         },
                     );
                 }
@@ -4343,6 +4413,7 @@ async fn delete_remote_file(
                 progress: None,
                 path: Some(path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -4380,6 +4451,7 @@ async fn delete_local_file(
                 progress: None,
                 path: Some(path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -4396,6 +4468,7 @@ async fn delete_local_file(
                         progress: None,
                         path: Some(path.clone()),
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 Ok(format!("Deleted: {}", file_name))
@@ -4412,6 +4485,7 @@ async fn delete_local_file(
                         progress: None,
                         path: Some(path.clone()),
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 Err(format!("Failed to delete file: {}", e))
@@ -4430,6 +4504,7 @@ async fn delete_local_file(
                 progress: None,
                 path: Some(path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -4504,6 +4579,7 @@ async fn delete_local_file(
                 progress: None,
                 path: None,
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -4545,6 +4621,7 @@ async fn delete_local_file(
                                 progress: None,
                                 path: Some(item.path.display().to_string()),
                                 delta_stats: None,
+                                fallback_reason: None,
                             },
                         );
                         last_emit = std::time::Instant::now();
@@ -4563,6 +4640,7 @@ async fn delete_local_file(
                             progress: None,
                             path: Some(item.path.display().to_string()),
                             delta_stats: None,
+                            fallback_reason: None,
                         },
                     );
                 }
@@ -4596,6 +4674,7 @@ async fn delete_local_file(
                             progress: None,
                             path: Some(dir_path.display().to_string()),
                             delta_stats: None,
+                            fallback_reason: None,
                         },
                     );
                 }
@@ -4636,6 +4715,7 @@ async fn delete_local_file(
                 progress: None,
                 path: Some(path.clone()),
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -7348,6 +7428,21 @@ fn native_rsync_runtime_enabled() -> bool {
     }
 }
 
+#[derive(Serialize, Clone)]
+struct DeltaServerIdentity {
+    protocol: String,
+    host: String,
+    port: u16,
+    username: String,
+}
+
+#[derive(Serialize, Clone)]
+struct DeltaEligibilityProbeResult {
+    eligible: bool,
+    reason: Option<String>,
+    server_identity: Option<DeltaServerIdentity>,
+}
+
 #[tauri::command]
 async fn get_transfer_optimization_hints(
     state: State<'_, provider_commands::ProviderState>,
@@ -7403,7 +7498,7 @@ async fn get_transfer_optimization_hints(
         hints.supports_compression = true;
         hints.supports_delta_sync = true;
         hints.delta_sync_eligible = delta_eligible;
-        hints.delta_sync_active = false;
+        hints.delta_sync_active = delta_eligible;
         hints.delta_sync_note = Some(if !active_session_is_sftp {
             "Connect an SFTP session to evaluate delta eligibility.".to_string()
         } else if !native_feature_compiled {
@@ -7414,12 +7509,109 @@ async fn get_transfer_optimization_hints(
             "Requires an SSH key-based SFTP session; password auth stays on the classic path."
                 .to_string()
         } else {
-            "Session is delta-eligible, but Sync Panel still runs the classic transfer path."
-                .to_string()
+            "Session is ready for Delta Sync.".to_string()
         });
     }
 
     Ok(hints)
+}
+
+#[tauri::command]
+async fn sftp_probe_delta_eligibility(
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<DeltaEligibilityProbeResult, String> {
+    let (active_session_is_sftp, private_key_configured, server_identity) = {
+        let config_lock = provider_state.config.lock().await;
+        let config = config_lock.as_ref();
+        let active_session_is_sftp = config
+            .map(|cfg| cfg.provider_type == providers::ProviderType::Sftp)
+            .unwrap_or(false);
+        let private_key_configured = config
+            .and_then(|cfg| cfg.extra.get("private_key_path"))
+            .map(|path| !path.trim().is_empty())
+            .unwrap_or(false);
+        let server_identity = config.and_then(|cfg| {
+            (cfg.provider_type == providers::ProviderType::Sftp).then(|| DeltaServerIdentity {
+                protocol: "sftp".to_string(),
+                host: cfg.host.clone(),
+                port: cfg.effective_port(),
+                username: cfg.username.clone().unwrap_or_default(),
+            })
+        });
+        (
+            active_session_is_sftp,
+            private_key_configured,
+            server_identity,
+        )
+    };
+
+    if !active_session_is_sftp {
+        return Ok(DeltaEligibilityProbeResult {
+            eligible: false,
+            reason: Some("Connect an SFTP session to evaluate delta eligibility.".to_string()),
+            server_identity,
+        });
+    }
+
+    #[cfg(not(unix))]
+    {
+        return Ok(DeltaEligibilityProbeResult {
+            eligible: false,
+            reason: Some("Delta Sync is currently available only on Unix builds.".to_string()),
+            server_identity,
+        });
+    }
+
+    #[cfg(unix)]
+    {
+        let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
+        if !native_feature_compiled {
+            return Ok(DeltaEligibilityProbeResult {
+                eligible: false,
+                reason: Some("This build was compiled without native rsync support.".to_string()),
+                server_identity,
+            });
+        }
+
+        if !native_rsync_runtime_enabled() {
+            return Ok(DeltaEligibilityProbeResult {
+                eligible: false,
+                reason: Some(
+                    "Enable Native Rsync in Settings to make SFTP delta eligible.".to_string(),
+                ),
+                server_identity,
+            });
+        }
+
+        if !private_key_configured {
+            return Ok(DeltaEligibilityProbeResult {
+                eligible: false,
+                reason: Some(
+                    "Requires an SSH key-based SFTP session; password auth stays on the classic path."
+                        .to_string(),
+                ),
+                server_identity,
+            });
+        }
+
+        let mut provider_lock = provider_state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+        let verdict = crate::delta_sync_rsync::check_delta_eligibility(provider.as_mut())
+            .await
+            .unwrap_or(crate::delta_sync_rsync::DeltaEligibilityStatus {
+                eligible: false,
+                reason: Some("Reconnect the SFTP session to evaluate delta sync.".to_string()),
+            });
+
+        Ok(DeltaEligibilityProbeResult {
+            eligible: verdict.eligible,
+            reason: verdict.reason,
+            server_identity,
+        })
+    }
 }
 
 // =============================
@@ -8900,6 +9092,7 @@ async fn ai_execute_tool(
                     remote_path: remote_path.to_string(),
                     local_path: local_path.to_string(),
                     modified: None,
+                    use_delta: true,
                 },
             )
             .await
@@ -11587,6 +11780,7 @@ pub fn run() {
             save_sync_schedule_cmd,
             get_watcher_status_cmd,
             get_transfer_optimization_hints,
+            sftp_probe_delta_eligibility,
             get_multi_path_config,
             save_multi_path_config_cmd,
             add_path_pair,

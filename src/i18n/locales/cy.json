@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} ffeil · {bytes} wedi'u harbed · {speedup}x cyflymiad",
             "deltaTitle": "Arbedion delta",
             "deltaSummaryOptimized": "{files} ffeil trwy drosglwyddiad optimaidd",
-            "deltaTitleOptimized": "Trosglwyddiad optimaidd"
+            "deltaTitleOptimized": "Trosglwyddiad optimaidd",
+            "classicBadge": "clasurol",
+            "classicBadgeTooltip": "Ceisiwyd cysoni delta, yna parhawyd â throsglwyddiad clasurol: {reason}",
+            "deltaEligibilityTitle": "Nid yw Delta Sync ar gael ar gyfer y gweinydd hwn",
+            "deltaEligibilityBody": "Ni all y sesiwn hon ddefnyddio'r llwybr delta rsync ar hyn o bryd. Gallwch barhau â'r llwybr trosglwyddo clasurol, neu ddarllen y gofynion yn gyntaf.",
+            "deltaEligibilityProceed": "Parhau'n glasurol",
+            "deltaEligibilitySkip": "Peidiwch â dangos eto ar gyfer y gweinydd hwn",
+            "deltaEligibilityLearnMore": "Dysgu mwy"
         },
         "ui": {
             "syncing": "Yn cysoni...",

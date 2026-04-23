@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} failų · sutaupyta {bytes} · {speedup}x pagreitėjimas",
             "deltaTitle": "Delta sutaupymas",
             "deltaSummaryOptimized": "{files} failų optimizuotu perdavimu",
-            "deltaTitleOptimized": "Optimizuotas perdavimas"
+            "deltaTitleOptimized": "Optimizuotas perdavimas",
+            "classicBadge": "klasikinis",
+            "classicBadgeTooltip": "Bandyta delta sinchronizacija, tada tęsta klasikiniu perdavimu: {reason}",
+            "deltaEligibilityTitle": "Delta Sync negalimas šiam serveriui",
+            "deltaEligibilityBody": "Šis seansas šiuo metu negali naudoti rsync delta kelio. Galite tęsti klasikiniu perdavimo keliu arba pirmiausia perskaityti reikalavimus.",
+            "deltaEligibilityProceed": "Tęsti klasikiniu",
+            "deltaEligibilitySkip": "Daugiau nerodyti šiam serveriui",
+            "deltaEligibilityLearnMore": "Sužinokite daugiau"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} फ़ाइलें · {bytes} बचाए · {speedup}x तेज़",
             "deltaTitle": "Delta बचत",
             "deltaSummaryOptimized": "{files} फ़ाइलें अनुकूलित स्थानांतरण से",
-            "deltaTitleOptimized": "अनुकूलित स्थानांतरण"
+            "deltaTitleOptimized": "अनुकूलित स्थानांतरण",
+            "classicBadge": "क्लासिक",
+            "classicBadgeTooltip": "डेल्टा सिंक का प्रयास किया गया, फिर क्लासिक ट्रांसफर के साथ जारी रखा: {reason}",
+            "deltaEligibilityTitle": "इस सर्वर के लिए Delta Sync उपलब्ध नहीं है",
+            "deltaEligibilityBody": "यह सत्र अभी rsync डेल्टा पथ का उपयोग नहीं कर सकता। आप क्लासिक ट्रांसफर पथ के साथ जारी रख सकते हैं, या पहले आवश्यकताएँ पढ़ सकते हैं।",
+            "deltaEligibilityProceed": "क्लासिक के साथ जारी रखें",
+            "deltaEligibilitySkip": "इस सर्वर के लिए फिर से न दिखाएँ",
+            "deltaEligibilityLearnMore": "और जानें"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",

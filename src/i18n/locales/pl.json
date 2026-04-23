@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} plików · zaoszczędzono {bytes} · przyspieszenie {speedup}x",
             "deltaTitle": "Oszczędności delta",
             "deltaSummaryOptimized": "{files} plików przez zoptymalizowany transfer",
-            "deltaTitleOptimized": "Zoptymalizowany transfer"
+            "deltaTitleOptimized": "Zoptymalizowany transfer",
+            "classicBadge": "klasyczny",
+            "classicBadgeTooltip": "Próba synchronizacji delta, następnie kontynuowano klasycznym transferem: {reason}",
+            "deltaEligibilityTitle": "Delta Sync nie jest dostępny dla tego serwera",
+            "deltaEligibilityBody": "Ta sesja nie może obecnie użyć ścieżki delta rsync. Możesz kontynuować klasyczną ścieżką transferu lub najpierw przeczytać wymagania.",
+            "deltaEligibilityProceed": "Kontynuuj klasycznie",
+            "deltaEligibilitySkip": "Nie pokazuj ponownie dla tego serwera",
+            "deltaEligibilityLearnMore": "Dowiedz się więcej"
         },
         "ui": {
             "syncing": "Synchronizacja...",

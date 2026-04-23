@@ -1972,7 +1972,14 @@
             "deltaSummary": "faili {files} · {bytes} zimehifadhiwa · kasi ya {speedup}x",
             "deltaTitle": "Akiba ya delta",
             "deltaSummaryOptimized": "Faili {files} kupitia uhamisho ulioboreshwa",
-            "deltaTitleOptimized": "Uhamisho ulioboreshwa"
+            "deltaTitleOptimized": "Uhamisho ulioboreshwa",
+            "classicBadge": "kawaida",
+            "classicBadgeTooltip": "Usawazishaji wa delta ulijaribiwa, kisha iliendelea na uhamisho wa kawaida: {reason}",
+            "deltaEligibilityTitle": "Delta Sync haipatikani kwa seva hii",
+            "deltaEligibilityBody": "Kipindi hiki hakiwezi kutumia njia ya delta ya rsync kwa sasa. Unaweza kuendelea na njia ya uhamisho wa kawaida, au usome mahitaji kwanza.",
+            "deltaEligibilityProceed": "Endelea na kawaida",
+            "deltaEligibilitySkip": "Usionyeshe tena kwa seva hii",
+            "deltaEligibilityLearnMore": "Jifunze zaidi"
         },
         "ui": {
             "syncing": "Inasawazisha...",

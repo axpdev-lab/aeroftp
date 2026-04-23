@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files}개 파일 · {bytes} 절약 · {speedup}배 속도 향상",
             "deltaTitle": "델타 절약",
             "deltaSummaryOptimized": "{files}개 파일을 최적화된 전송으로 처리",
-            "deltaTitleOptimized": "최적화된 전송"
+            "deltaTitleOptimized": "최적화된 전송",
+            "classicBadge": "클래식",
+            "classicBadgeTooltip": "델타 동기화를 시도한 후 클래식 전송으로 계속되었습니다: {reason}",
+            "deltaEligibilityTitle": "이 서버에서는 Delta Sync를 사용할 수 없습니다",
+            "deltaEligibilityBody": "이 세션은 현재 rsync 델타 경로를 사용할 수 없습니다. 클래식 전송 경로로 계속하거나 먼저 요구 사항을 읽어보세요.",
+            "deltaEligibilityProceed": "클래식으로 계속",
+            "deltaEligibilitySkip": "이 서버에서 다시 표시 안 함",
+            "deltaEligibilityLearnMore": "자세히 알아보기"
         },
         "ui": {
             "syncing": "동기화 중...",

@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} souborů · {bytes} ušetřeno · {speedup}x zrychlení",
             "deltaTitle": "Úspora delta",
             "deltaSummaryOptimized": "{files} souborů přes optimalizovaný přenos",
-            "deltaTitleOptimized": "Optimalizovaný přenos"
+            "deltaTitleOptimized": "Optimalizovaný přenos",
+            "classicBadge": "klasický",
+            "classicBadgeTooltip": "Pokus o delta synchronizaci, poté pokračováno klasickým přenosem: {reason}",
+            "deltaEligibilityTitle": "Delta Sync není pro tento server k dispozici",
+            "deltaEligibilityBody": "Tato relace momentálně nemůže použít rsync delta cestu. Můžete pokračovat klasickou cestou přenosu nebo si nejprve přečíst požadavky.",
+            "deltaEligibilityProceed": "Pokračovat klasicky",
+            "deltaEligibilitySkip": "Již nezobrazovat pro tento server",
+            "deltaEligibilityLearnMore": "Dozvědět se více"
         },
         "ui": {
             "syncing": "Synchronizace...",

@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} filer · {bytes} sparade · {speedup}x snabbare",
             "deltaTitle": "Delta-besparingar",
             "deltaSummaryOptimized": "{files} filer via optimerad överföring",
-            "deltaTitleOptimized": "Optimerad överföring"
+            "deltaTitleOptimized": "Optimerad överföring",
+            "classicBadge": "klassisk",
+            "classicBadgeTooltip": "Delta-synkronisering försöktes, fortsatte sedan med klassisk överföring: {reason}",
+            "deltaEligibilityTitle": "Delta Sync är inte tillgängligt för denna server",
+            "deltaEligibilityBody": "Den här sessionen kan inte använda rsync delta-vägen just nu. Du kan fortsätta med den klassiska överföringsvägen eller läsa kraven först.",
+            "deltaEligibilityProceed": "Fortsätt med klassisk",
+            "deltaEligibilitySkip": "Visa inte detta igen för denna server",
+            "deltaEligibilityLearnMore": "Läs mer"
         },
         "ui": {
             "syncing": "Synkroniserar...",

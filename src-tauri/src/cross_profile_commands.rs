@@ -313,6 +313,7 @@ pub async fn cross_profile_execute(
                 progress: None,
                 path: None,
                 delta_stats: None,
+                fallback_reason: None,
             },
         );
 
@@ -339,6 +340,7 @@ pub async fn cross_profile_execute(
                         progress: None,
                         path: None,
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 break;
@@ -374,6 +376,7 @@ pub async fn cross_profile_execute(
                             }),
                             path: Some(event_path.clone()),
                             delta_stats: None,
+                            fallback_reason: None,
                         },
                     );
                     continue;
@@ -403,6 +406,7 @@ pub async fn cross_profile_execute(
                     }),
                     path: Some(event_path.clone()),
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
 
@@ -436,6 +440,7 @@ pub async fn cross_profile_execute(
                                     progress: None,
                                     path: Some(event_path.clone()),
                                     delta_stats: None,
+                                    fallback_reason: None,
                                 },
                             );
                         } else {
@@ -463,6 +468,7 @@ pub async fn cross_profile_execute(
                         progress: None,
                         path: None,
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
                 break;
@@ -499,6 +505,7 @@ pub async fn cross_profile_execute(
                         }),
                         path: Some(event_path.clone()),
                         delta_stats: None,
+                        fallback_reason: None,
                     },
                 );
             }
@@ -534,6 +541,7 @@ pub async fn cross_profile_execute(
                     }),
                     path: None,
                     delta_stats: None,
+                    fallback_reason: None,
                 },
             );
         }

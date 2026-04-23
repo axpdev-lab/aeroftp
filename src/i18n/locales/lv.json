@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} faili · ietaupīti {bytes} · {speedup}x paātrinājums",
             "deltaTitle": "Delta ietaupījumi",
             "deltaSummaryOptimized": "{files} faili ar optimizētu pārsūtīšanu",
-            "deltaTitleOptimized": "Optimizēta pārsūtīšana"
+            "deltaTitleOptimized": "Optimizēta pārsūtīšana",
+            "classicBadge": "klasisks",
+            "classicBadgeTooltip": "Mēģināta delta sinhronizācija, pēc tam turpināts ar klasisko pārsūtīšanu: {reason}",
+            "deltaEligibilityTitle": "Delta Sync nav pieejams šim serverim",
+            "deltaEligibilityBody": "Šī sesija pašlaik nevar izmantot rsync delta ceļu. Varat turpināt ar klasisko pārsūtīšanas ceļu vai vispirms izlasīt prasības.",
+            "deltaEligibilityProceed": "Turpināt klasiski",
+            "deltaEligibilitySkip": "Vairs nerādīt šim serverim",
+            "deltaEligibilityLearnMore": "Uzzināt vairāk"
         },
         "ui": {
             "syncing": "Sinhronizē...",

@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} ไฟล์ · ประหยัด {bytes} · เร็วขึ้น {speedup}x",
             "deltaTitle": "การประหยัดจาก delta",
             "deltaSummaryOptimized": "{files} ไฟล์ผ่านการถ่ายโอนที่ปรับให้เหมาะสม",
-            "deltaTitleOptimized": "การถ่ายโอนที่ปรับให้เหมาะสม"
+            "deltaTitleOptimized": "การถ่ายโอนที่ปรับให้เหมาะสม",
+            "classicBadge": "แบบคลาสสิก",
+            "classicBadgeTooltip": "พยายามซิงก์แบบเดลต้า จากนั้นดำเนินการต่อด้วยการถ่ายโอนแบบคลาสสิก: {reason}",
+            "deltaEligibilityTitle": "Delta Sync ไม่พร้อมใช้งานสำหรับเซิร์ฟเวอร์นี้",
+            "deltaEligibilityBody": "เซสชันนี้ไม่สามารถใช้เส้นทางเดลต้าของ rsync ได้ในขณะนี้ คุณสามารถดำเนินการต่อด้วยเส้นทางการถ่ายโอนแบบคลาสสิก หรืออ่านข้อกำหนดก่อน",
+            "deltaEligibilityProceed": "ดำเนินการต่อแบบคลาสสิก",
+            "deltaEligibilitySkip": "ไม่ต้องแสดงอีกสำหรับเซิร์ฟเวอร์นี้",
+            "deltaEligibilityLearnMore": "เรียนรู้เพิ่มเติม"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",

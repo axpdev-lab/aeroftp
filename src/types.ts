@@ -18,69 +18,181 @@ export interface FileListResponse {
 }
 
 // Supported storage provider types
-export type ProviderType = 'ftp' | 'ftps' | 'sftp' | 'webdav' | 's3' | 'aerocloud' | 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'mega' | 'box' | 'pcloud' | 'azure' | 'filen' | 'fourshared' | 'zohoworkdrive' | 'internxt' | 'kdrive' | 'jottacloud' | 'drime' | 'filelu' | 'koofr' | 'opendrive' | 'yandexdisk' | 'github' | 'gitlab' | 'swift' | 'immich';
+export type ProviderType =
+  | "ftp"
+  | "ftps"
+  | "sftp"
+  | "webdav"
+  | "s3"
+  | "aerocloud"
+  | "googledrive"
+  | "googlephotos"
+  | "dropbox"
+  | "onedrive"
+  | "mega"
+  | "box"
+  | "pcloud"
+  | "azure"
+  | "filen"
+  | "fourshared"
+  | "zohoworkdrive"
+  | "internxt"
+  | "kdrive"
+  | "jottacloud"
+  | "drime"
+  | "filelu"
+  | "koofr"
+  | "opendrive"
+  | "yandexdisk"
+  | "github"
+  | "gitlab"
+  | "swift"
+  | "immich";
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
-  return type === 'googledrive' || type === 'googlephotos' || type === 'dropbox' || type === 'onedrive' || type === 'box' || type === 'pcloud' || type === 'zohoworkdrive' || type === 'yandexdisk';
+  return (
+    type === "googledrive" ||
+    type === "googlephotos" ||
+    type === "dropbox" ||
+    type === "onedrive" ||
+    type === "box" ||
+    type === "pcloud" ||
+    type === "zohoworkdrive" ||
+    type === "yandexdisk"
+  );
 };
 
 // Check if a provider type requires OAuth 1.0 authentication (4shared)
 export const isFourSharedProvider = (type: ProviderType): boolean => {
-  return type === 'fourshared';
+  return type === "fourshared";
 };
 
 // Check if a provider type is AeroCloud
 export const isAeroCloudProvider = (type: ProviderType): boolean => {
-  return type === 'aerocloud';
+  return type === "aerocloud";
 };
 
 // Check if a provider uses non-FTP backend (provider_* Tauri commands)
 export const isNonFtpProvider = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'webdav', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab', 'swift', 'immich'].includes(type);
+  return [
+    "googledrive",
+    "dropbox",
+    "onedrive",
+    "s3",
+    "webdav",
+    "mega",
+    "sftp",
+    "box",
+    "pcloud",
+    "azure",
+    "filen",
+    "fourshared",
+    "zohoworkdrive",
+    "internxt",
+    "kdrive",
+    "jottacloud",
+    "drime",
+    "filelu",
+    "koofr",
+    "opendrive",
+    "yandexdisk",
+    "github",
+    "gitlab",
+    "swift",
+    "immich",
+  ].includes(type);
 };
 
 // Check if a provider is a traditional FTP/FTPS connection (uses ftp_* Tauri commands)
 export const isFtpProtocol = (type: ProviderType): boolean => {
-  return type === 'ftp' || type === 'ftps';
+  return type === "ftp" || type === "ftps";
 };
 
 // Check if a provider supports storage quota queries
 export const supportsStorageQuota = (type: ProviderType): boolean => {
-  return ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'filen', 'sftp', 'webdav', 'fourshared', 'zohoworkdrive', 'azure', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab', 'swift'].includes(type);
+  return [
+    "mega",
+    "googledrive",
+    "dropbox",
+    "onedrive",
+    "box",
+    "pcloud",
+    "filen",
+    "sftp",
+    "webdav",
+    "fourshared",
+    "zohoworkdrive",
+    "azure",
+    "internxt",
+    "kdrive",
+    "jottacloud",
+    "drime",
+    "filelu",
+    "koofr",
+    "opendrive",
+    "yandexdisk",
+    "github",
+    "gitlab",
+    "swift",
+  ].includes(type);
 };
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
-  return ['googledrive', 'dropbox', 'onedrive', 's3', 'mega', 'box', 'pcloud', 'filen', 'zohoworkdrive', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'webdav', 'azure', 'kdrive', 'drime', 'immich'].includes(type);
+  return [
+    "googledrive",
+    "dropbox",
+    "onedrive",
+    "s3",
+    "mega",
+    "box",
+    "pcloud",
+    "filen",
+    "zohoworkdrive",
+    "filelu",
+    "koofr",
+    "opendrive",
+    "yandexdisk",
+    "github",
+    "webdav",
+    "azure",
+    "kdrive",
+    "drime",
+    "immich",
+  ].includes(type);
 };
 
 // FTP/FTPS TLS encryption mode
-export type FtpTlsMode = 'none' | 'explicit' | 'implicit' | 'explicit_if_available';
+export type FtpTlsMode =
+  | "none"
+  | "explicit"
+  | "implicit"
+  | "explicit_if_available";
 
 // Provider-specific configuration options
 export interface ProviderOptions {
   // S3-specific
   bucket?: string;
   region?: string;
-  endpoint?: string;  // For S3-compatible (MinIO, etc.)
+  endpoint?: string; // For S3-compatible (MinIO, etc.)
   accountId?: string; // Cloudflare R2 account ID (used to compute endpoint)
   pathStyle?: boolean;
-  storage_class?: string;   // S3 default storage class for uploads
-  sse_mode?: string;        // S3 server-side encryption (AES256, aws:kms)
-  sse_kms_key_id?: string;  // S3 KMS key ARN for SSE-KMS
+  storage_class?: string; // S3 default storage class for uploads
+  sse_mode?: string; // S3 server-side encryption (AES256, aws:kms)
+  sse_kms_key_id?: string; // S3 KMS key ARN for SSE-KMS
 
   // WebDAV-specific
   // (no extra options needed, uses standard auth)
 
   // FTP/FTPS-specific
-  tlsMode?: FtpTlsMode;      // TLS encryption mode
-  verifyCert?: boolean;       // Verify server certificate (default: true)
+  tlsMode?: FtpTlsMode; // TLS encryption mode
+  verifyCert?: boolean; // Verify server certificate (default: true)
 
   // SFTP-specific
-  private_key_path?: string;  // Path to SSH private key
-  key_passphrase?: string;    // Passphrase for encrypted keys
-  timeout?: number;           // Connection timeout in seconds
+  private_key_path?: string; // Path to SSH private key
+  key_passphrase?: string; // Passphrase for encrypted keys
+  timeout?: number; // Connection timeout in seconds
 
   // OAuth-specific (for Google Drive, Dropbox, OneDrive)
   clientId?: string;
@@ -88,7 +200,7 @@ export interface ProviderOptions {
 
   // MEGA-specific
   save_session?: boolean;
-  mega_mode?: 'native' | 'megacmd';
+  mega_mode?: "native" | "megacmd";
   session_expires_at?: number; // Timestamp (ms)
   logout_on_disconnect?: boolean;
 
@@ -99,28 +211,28 @@ export interface ProviderOptions {
   sasToken?: string;
 
   // pCloud-specific
-  pcloudRegion?: 'us' | 'eu';
+  pcloudRegion?: "us" | "eu";
 
   // Filen-specific
-  two_factor_code?: string;  // Optional TOTP 2FA code
+  two_factor_code?: string; // Optional TOTP 2FA code
 
   // kDrive-specific
-  drive_id?: string;  // Infomaniak kDrive numeric ID
+  drive_id?: string; // Infomaniak kDrive numeric ID
 
   // GitHub-specific
-  githubAuthMode?: 'authorize' | 'pat' | 'app';
-  githubAppId?: string;          // GitHub App ID (for bot mode)
+  githubAuthMode?: "authorize" | "pat" | "app";
+  githubAppId?: string; // GitHub App ID (for bot mode)
   githubInstallationId?: string; // GitHub App Installation ID (for bot mode)
-  githubPemPath?: string;        // Local PEM path used to refresh installation tokens
-  githubPemStored?: boolean;     // true = PEM content is stored in vault (no file needed)
+  githubPemPath?: string; // Local PEM path used to refresh installation tokens
+  githubPemStored?: boolean; // true = PEM content is stored in vault (no file needed)
   githubTokenExpiresAt?: string; // ISO timestamp returned by GitHub for installation token expiry
-  githubBranch?: string;         // Optional branch override for repository browsing
+  githubBranch?: string; // Optional branch override for repository browsing
 
   // InfiniCloud-specific
-  infinicloud_mode?: 'webdav' | 'api'; // Connection mode: standard WebDAV or REST API with auto-discovery
-  apiKey?: string;                  // InfiniCloud developer API key (128-bit hex)
-  infinicloudNode?: string;        // Discovered node server FQDN (set by discovery)
-  infinicloudCapacityGb?: number;  // Contract capacity in GB (set by discovery)
+  infinicloud_mode?: "webdav" | "api"; // Connection mode: standard WebDAV or REST API with auto-discovery
+  apiKey?: string; // InfiniCloud developer API key (128-bit hex)
+  infinicloudNode?: string; // Discovered node server FQDN (set by discovery)
+  infinicloudCapacityGb?: number; // Contract capacity in GB (set by discovery)
   infinicloudIntroduceCode?: string; // Referral code (set by discovery)
 }
 
@@ -128,22 +240,24 @@ export interface ConnectionParams {
   server: string;
   username: string;
   password: string;
-  protocol?: ProviderType;  // Default: 'ftp'
-  port?: number;            // Default based on protocol
+  protocol?: ProviderType; // Default: 'ftp'
+  port?: number; // Default based on protocol
   options?: ProviderOptions;
-  displayName?: string;     // Custom name for tab display
-  providerId?: string;      // Registry provider ID for logo display
+  displayName?: string; // Custom name for tab display
+  providerId?: string; // Registry provider ID for logo display
 }
 
 export interface DownloadParams {
   remote_path: string;
   local_path: string;
   modified?: string;
+  use_delta?: boolean;
 }
 
 export interface UploadParams {
   local_path: string;
   remote_path: string;
+  use_delta?: boolean;
 }
 
 // Local file from filesystem (from backend)
@@ -164,15 +278,15 @@ export interface TransferProgress {
   percentage: number;
   speed_bps: number;
   eta_seconds: number;
-  direction: 'download' | 'upload';
+  direction: "download" | "upload";
   total_files?: number; // When set, transferred/total are file counts (folder transfer)
-  path?: string;        // Full path for context
+  path?: string; // Full path for context
 }
 
 // Per-file delta stats emitted on `event_type === 'complete'` when the
 // rsync delta path serviced the transfer (SFTP + key-auth + rsync on
-// the remote). Absent for classic transfers, non-SFTP providers, and
-// Windows. `speedup` is rsync's per-file ratio; the directory-wide
+// the remote). Absent for classic transfers and non-SFTP providers.
+// `speedup` is rsync's per-file ratio; the directory-wide
 // aggregate lives in `DeltaSavingsSummary`.
 export interface DeltaTransferStats {
   bytes_sent: number;
@@ -188,27 +302,40 @@ export interface DeltaSavingsSummary {
   files_using_delta: number;
   total_bytes_sent: number;
   total_size: number;
-  bytes_saved: number;      // total_size - total_bytes_sent (can be negative on overhead)
+  bytes_saved: number; // total_size - total_bytes_sent (can be negative on overhead)
   average_speedup: number | null;
 }
 
 // Transfer event from backend (includes transfers and deletes)
 export interface TransferEvent {
-  event_type:
-  // Transfer events
-  | 'start' | 'scanning' | 'progress' | 'complete' | 'error' | 'cancelled'
-  | 'file_start' | 'file_complete' | 'file_error' | 'file_skip'
-  // Delete events
-  | 'delete_start' | 'delete_complete' | 'delete_cancelled' | 'delete_error'
-  | 'delete_file_start' | 'delete_file_complete' | 'delete_file_error'
-  | 'delete_dir_complete';
+  event_type: // Transfer events
+  | "start"
+    | "scanning"
+    | "progress"
+    | "complete"
+    | "error"
+    | "cancelled"
+    | "file_start"
+    | "file_complete"
+    | "file_error"
+    | "file_skip"
+    // Delete events
+    | "delete_start"
+    | "delete_complete"
+    | "delete_cancelled"
+    | "delete_error"
+    | "delete_file_start"
+    | "delete_file_complete"
+    | "delete_file_error"
+    | "delete_dir_complete";
   transfer_id: string;
   filename: string;
-  direction: 'download' | 'upload' | 'local' | 'remote' | 'cross-profile';
+  direction: "download" | "upload" | "local" | "remote" | "cross-profile";
   message?: string;
   progress?: TransferProgress;
   path?: string; // Full path for context (file or folder)
   delta_stats?: DeltaTransferStats; // Present only when rsync delta serviced this transfer
+  fallback_reason?: string; // Present only when delta was attempted, then fell back to classic
 }
 
 // Server profile for saved connections
@@ -218,39 +345,44 @@ export interface ServerProfile {
   host: string;
   port: number;
   username: string;
-  password?: string;            // DEPRECATED: migrated to secure credential store
+  password?: string; // DEPRECATED: migrated to secure credential store
   hasStoredCredential?: boolean; // true if password stored in OS keyring/vault
-  protocol?: ProviderType;    // Default: 'ftp'
-  initialPath?: string;       // Initial remote directory to navigate after connection
-  localInitialPath?: string;  // Initial local directory for this project/server
+  protocol?: ProviderType; // Default: 'ftp'
+  initialPath?: string; // Initial remote directory to navigate after connection
+  localInitialPath?: string; // Initial local directory for this project/server
   color?: string;
   lastConnected?: string;
-  options?: ProviderOptions;  // Provider-specific options (S3 bucket, etc.)
-  providerId?: string;        // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
-  faviconUrl?: string;        // Base64 data URL of detected project favicon
-  customIconUrl?: string;     // User-chosen custom icon (base64 data URL, highest priority)
-  publicUrlBase?: string;     // HTTP base URL for share link generation (e.g. https://www.example.com/)
+  options?: ProviderOptions; // Provider-specific options (S3 bucket, etc.)
+  providerId?: string; // Registry provider ID (e.g. 'cloudflare-r2', 'koofr')
+  faviconUrl?: string; // Base64 data URL of detected project favicon
+  customIconUrl?: string; // User-chosen custom icon (base64 data URL, highest priority)
+  publicUrlBase?: string; // HTTP base URL for share link generation (e.g. https://www.example.com/)
+  skipDeltaEligibilityPrompt?: boolean; // Suppress the classic fallback modal for this saved server
 }
 
 // Session status for multi-tab management
-export type SessionStatus = 'connected' | 'disconnected' | 'connecting' | 'cached';
+export type SessionStatus =
+  | "connected"
+  | "disconnected"
+  | "connecting"
+  | "cached";
 
 // FTP Session for multi-session tabs (Hybrid Cache Architecture)
 export interface FtpSession {
   id: string;
-  serverId: string;              // Reference to ServerProfile.id
-  serverName: string;            // Display name for tab
+  serverId: string; // Reference to ServerProfile.id
+  serverName: string; // Display name for tab
   status: SessionStatus;
   remotePath: string;
   localPath: string;
-  remoteFiles: RemoteFile[];     // Cached file list
-  localFiles: LocalFile[];       // Cached local files
+  remoteFiles: RemoteFile[]; // Cached file list
+  localFiles: LocalFile[]; // Cached local files
   lastActivity: Date;
   connectionParams: ConnectionParams;
-  providerId?: string;        // Registry provider ID for logo display
-  faviconUrl?: string;        // Inherited from ServerProfile on connection
-  customIconUrl?: string;     // Inherited from ServerProfile on connection
-  publicUrlBase?: string;     // Inherited from ServerProfile for share link generation
+  providerId?: string; // Registry provider ID for logo display
+  faviconUrl?: string; // Inherited from ServerProfile on connection
+  customIconUrl?: string; // Inherited from ServerProfile on connection
+  publicUrlBase?: string; // Inherited from ServerProfile for share link generation
   serverInitialPath?: string; // Inherited from ServerProfile for share link path resolution
   // Per-session navigation sync state
   isSyncNavigation?: boolean;
@@ -266,27 +398,27 @@ export interface TabsState {
 // ============ Sync Types ============
 
 export type SyncStatus =
-  | 'identical'
-  | 'local_newer'
-  | 'remote_newer'
-  | 'local_only'
-  | 'remote_only'
-  | 'conflict'
-  | 'size_mismatch';
+  | "identical"
+  | "local_newer"
+  | "remote_newer"
+  | "local_only"
+  | "remote_only"
+  | "conflict"
+  | "size_mismatch";
 
 export type SyncDirection =
-  | 'local_to_remote'
-  | 'remote_to_local'
-  | 'bidirectional';
+  | "local_to_remote"
+  | "remote_to_local"
+  | "bidirectional";
 
 export type SyncAction =
-  | 'upload'
-  | 'download'
-  | 'delete_local'
-  | 'delete_remote'
-  | 'skip'
-  | 'ask_user'
-  | 'keep_both';
+  | "upload"
+  | "download"
+  | "delete_local"
+  | "delete_remote"
+  | "skip"
+  | "ask_user"
+  | "keep_both";
 
 export interface FileInfo {
   name: string;
@@ -308,7 +440,13 @@ export interface FileComparison {
   previously_synced?: boolean;
 }
 
-export type ConflictStrategy = 'ask' | 'newer' | 'older' | 'larger' | 'smaller' | 'skip';
+export type ConflictStrategy =
+  | "ask"
+  | "newer"
+  | "older"
+  | "larger"
+  | "smaller"
+  | "skip";
 
 export interface CompareOptions {
   compare_timestamp: boolean;
@@ -322,9 +460,9 @@ export interface CompareOptions {
   max_size?: number;
   min_age_secs?: number;
   max_age_secs?: number;
-  versioning_strategy?: 'disabled' | 'trash_can' | 'simple' | 'staggered';
+  versioning_strategy?: "disabled" | "trash_can" | "simple" | "staggered";
   /** Bandwidth schedule preset: off = manual limits, office = throttle 08-18, night = throttle 18-08 */
-  bw_schedule?: 'off' | 'office' | 'night';
+  bw_schedule?: "off" | "office" | "night";
 }
 
 export interface SyncIndexEntry {
@@ -344,16 +482,16 @@ export interface SyncIndex {
 // ============ Sync Phase 2: Reliability Types ============
 
 export type SyncErrorKind =
-  | 'network'
-  | 'auth'
-  | 'path_not_found'
-  | 'permission_denied'
-  | 'quota_exceeded'
-  | 'rate_limit'
-  | 'timeout'
-  | 'file_locked'
-  | 'disk_error'
-  | 'unknown';
+  | "network"
+  | "auth"
+  | "path_not_found"
+  | "permission_denied"
+  | "quota_exceeded"
+  | "rate_limit"
+  | "timeout"
+  | "file_locked"
+  | "disk_error"
+  | "unknown";
 
 export interface SyncErrorInfo {
   kind: SyncErrorKind;
@@ -370,9 +508,9 @@ export interface RetryPolicy {
   backoff_multiplier: number;
 }
 
-export type VerifyPolicy = 'none' | 'size_only' | 'size_and_mtime' | 'full';
+export type VerifyPolicy = "none" | "size_only" | "size_and_mtime" | "full";
 
-export type CompressionMode = 'auto' | 'on' | 'off';
+export type CompressionMode = "auto" | "on" | "off";
 
 export interface SyncProfile {
   id: string;
@@ -391,7 +529,7 @@ export interface SyncProfile {
 }
 
 // Phase 3A+: Sync Scheduler
-export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
 
 export interface TimeWindow {
   start_hour: number;
@@ -410,7 +548,7 @@ export interface SyncSchedule {
 }
 
 // Phase 3A+: Parallel Transfer
-export type TransferAction = 'upload' | 'download' | 'mkdir' | 'delete';
+export type TransferAction = "upload" | "download" | "mkdir" | "delete";
 
 export interface SyncTransferEntry {
   relative_path: string;
@@ -464,6 +602,19 @@ export interface TransferOptimizationHints {
   delta_sync_eligible: boolean;
   delta_sync_active: boolean;
   delta_sync_note: string | null;
+}
+
+export interface DeltaServerIdentity {
+  protocol: ProviderType;
+  host: string;
+  port: number;
+  username: string;
+}
+
+export interface DeltaEligibilityProbeResult {
+  eligible: boolean;
+  reason: string | null;
+  server_identity: DeltaServerIdentity | null;
 }
 
 // Multi-Path Sync (#52)
@@ -549,12 +700,12 @@ export interface VerifyResult {
 }
 
 export type JournalEntryStatus =
-  | 'pending'
-  | 'in_progress'
-  | 'completed'
-  | 'failed'
-  | 'skipped'
-  | 'verify_failed';
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "verify_failed";
 
 export interface SyncJournalEntry {
   relative_path: string;
@@ -599,7 +750,7 @@ export interface ArchiveEntry {
   modified: string | null;
 }
 
-export type ArchiveType = 'zip' | '7z' | 'tar' | 'rar';
+export type ArchiveType = "zip" | "7z" | "tar" | "rar";
 
 export interface AeroVaultMeta {
   version: number;

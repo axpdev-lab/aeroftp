@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} ficheiros · {bytes} poupados · aceleração de {speedup}x",
             "deltaTitle": "Poupança delta",
             "deltaSummaryOptimized": "{files} ficheiros por transferência otimizada",
-            "deltaTitleOptimized": "Transferência otimizada"
+            "deltaTitleOptimized": "Transferência otimizada",
+            "classicBadge": "clássico",
+            "classicBadgeTooltip": "Sincronização delta tentada, depois continuou com transferência clássica: {reason}",
+            "deltaEligibilityTitle": "Delta Sync não está disponível para este servidor",
+            "deltaEligibilityBody": "Esta sessão não pode usar o caminho delta do rsync agora. Pode continuar com o caminho de transferência clássico ou ler primeiro os requisitos.",
+            "deltaEligibilityProceed": "Continuar com clássico",
+            "deltaEligibilitySkip": "Não mostrar novamente para este servidor",
+            "deltaEligibilityLearnMore": "Saiba mais"
         },
         "ui": {
             "syncing": "Sincronizando...",

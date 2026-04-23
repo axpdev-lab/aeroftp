@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} файла · {bytes} спестени · {speedup}x ускорение",
             "deltaTitle": "Delta спестявания",
             "deltaSummaryOptimized": "{files} файла чрез оптимизиран трансфер",
-            "deltaTitleOptimized": "Оптимизиран трансфер"
+            "deltaTitleOptimized": "Оптимизиран трансфер",
+            "classicBadge": "класически",
+            "classicBadgeTooltip": "Опитана е delta синхронизация, след което се продължи с класически трансфер: {reason}",
+            "deltaEligibilityTitle": "Delta Sync не е наличен за този сървър",
+            "deltaEligibilityBody": "Тази сесия не може да използва rsync delta пътя в момента. Можете да продължите с класическия трансфер или първо да прочетете изискванията.",
+            "deltaEligibilityProceed": "Продължи с класически",
+            "deltaEligibilitySkip": "Не показвай отново за този сървър",
+            "deltaEligibilityLearnMore": "Научи повече"
         },
         "ui": {
             "syncing": "Синхронизиране...",

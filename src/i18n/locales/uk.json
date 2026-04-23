@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} файлів · заощаджено {bytes} · прискорення {speedup}x",
             "deltaTitle": "Економія дельти",
             "deltaSummaryOptimized": "{files} файлів через оптимізовану передачу",
-            "deltaTitleOptimized": "Оптимізована передача"
+            "deltaTitleOptimized": "Оптимізована передача",
+            "classicBadge": "класичний",
+            "classicBadgeTooltip": "Спроба дельта-синхронізації, потім продовжено класичним передаванням: {reason}",
+            "deltaEligibilityTitle": "Delta Sync недоступний для цього сервера",
+            "deltaEligibilityBody": "Цей сеанс зараз не може використовувати дельта-шлях rsync. Ви можете продовжити класичним шляхом передавання або спочатку прочитати вимоги.",
+            "deltaEligibilityProceed": "Продовжити класично",
+            "deltaEligibilitySkip": "Більше не показувати для цього сервера",
+            "deltaEligibilityLearnMore": "Дізнатися більше"
         },
         "ui": {
             "syncing": "Синхронізація...",

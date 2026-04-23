@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} file · {bytes} dihemat · percepatan {speedup}x",
             "deltaTitle": "Penghematan Delta",
             "deltaSummaryOptimized": "{files} file melalui transfer teroptimasi",
-            "deltaTitleOptimized": "Transfer teroptimasi"
+            "deltaTitleOptimized": "Transfer teroptimasi",
+            "classicBadge": "klasik",
+            "classicBadgeTooltip": "Sinkronisasi delta dicoba, kemudian dilanjutkan dengan transfer klasik: {reason}",
+            "deltaEligibilityTitle": "Delta Sync tidak tersedia untuk server ini",
+            "deltaEligibilityBody": "Sesi ini tidak dapat menggunakan jalur delta rsync saat ini. Anda dapat melanjutkan dengan jalur transfer klasik, atau baca persyaratannya terlebih dahulu.",
+            "deltaEligibilityProceed": "Lanjutkan dengan klasik",
+            "deltaEligibilitySkip": "Jangan tampilkan lagi untuk server ini",
+            "deltaEligibilityLearnMore": "Pelajari lebih lanjut"
         },
         "ui": {
             "syncing": "Menyinkronkan...",

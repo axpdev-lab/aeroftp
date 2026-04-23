@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} ფაილი · {bytes} დაზოგილი · {speedup}x აჩქარება",
             "deltaTitle": "დელტა დაზოგვა",
             "deltaSummaryOptimized": "{files} ფაილი ოპტიმიზებული გადაცემით",
-            "deltaTitleOptimized": "ოპტიმიზებული გადაცემა"
+            "deltaTitleOptimized": "ოპტიმიზებული გადაცემა",
+            "classicBadge": "კლასიკური",
+            "classicBadgeTooltip": "სცადეს დელტა სინქრონიზაცია, შემდეგ გაგრძელდა კლასიკური გადაცემით: {reason}",
+            "deltaEligibilityTitle": "Delta Sync არ არის ხელმისაწვდომი ამ სერვერისთვის",
+            "deltaEligibilityBody": "ამ სესიას ამჟამად არ შეუძლია rsync-ის დელტა გზის გამოყენება. შეგიძლიათ გააგრძელოთ კლასიკური გადაცემის გზით, ან ჯერ წაიკითხოთ მოთხოვნები.",
+            "deltaEligibilityProceed": "გაგრძელება კლასიკურით",
+            "deltaEligibilitySkip": "ამ სერვერისთვის აღარ მაჩვენო",
+            "deltaEligibilityLearnMore": "მეტის ცოდნა"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",

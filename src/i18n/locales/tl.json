@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} na file · {bytes} natipid · {speedup}x na bilis",
             "deltaTitle": "Natipid sa delta",
             "deltaSummaryOptimized": "{files} file sa pamamagitan ng optimized na paglilipat",
-            "deltaTitleOptimized": "Optimized na paglilipat"
+            "deltaTitleOptimized": "Optimized na paglilipat",
+            "classicBadge": "klasiko",
+            "classicBadgeTooltip": "Sinubukan ang delta sync, pagkatapos ay nagpatuloy sa klasikong paglilipat: {reason}",
+            "deltaEligibilityTitle": "Hindi available ang Delta Sync para sa server na ito",
+            "deltaEligibilityBody": "Hindi magagamit ng session na ito ang rsync delta path sa ngayon. Maaari kang magpatuloy sa klasikong paglilipat, o basahin muna ang mga kinakailangan.",
+            "deltaEligibilityProceed": "Magpatuloy nang klasiko",
+            "deltaEligibilitySkip": "Huwag ipakita muli para sa server na ito",
+            "deltaEligibilityLearnMore": "Matuto pa"
         },
         "ui": {
             "syncing": "Sinsi-sync...",

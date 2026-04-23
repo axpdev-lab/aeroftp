@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} fail · {bytes} dijimatkan · pecutan {speedup}x",
             "deltaTitle": "Penjimatan Delta",
             "deltaSummaryOptimized": "{files} fail melalui pemindahan dioptimumkan",
-            "deltaTitleOptimized": "Pemindahan dioptimumkan"
+            "deltaTitleOptimized": "Pemindahan dioptimumkan",
+            "classicBadge": "klasik",
+            "classicBadgeTooltip": "Penyegerakan delta dicuba, kemudian diteruskan dengan pemindahan klasik: {reason}",
+            "deltaEligibilityTitle": "Delta Sync tidak tersedia untuk pelayan ini",
+            "deltaEligibilityBody": "Sesi ini tidak boleh menggunakan laluan delta rsync sekarang. Anda boleh meneruskan dengan laluan pemindahan klasik, atau baca keperluan terlebih dahulu.",
+            "deltaEligibilityProceed": "Teruskan dengan klasik",
+            "deltaEligibilitySkip": "Jangan tunjukkan lagi untuk pelayan ini",
+            "deltaEligibilityLearnMore": "Ketahui lebih lanjut"
         },
         "ui": {
             "syncing": "Menyegerak...",

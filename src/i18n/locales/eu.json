@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} fitxategi · {bytes} aurreztuta · {speedup}x azkarrago",
             "deltaTitle": "Delta aurrezpenak",
             "deltaSummaryOptimized": "{files} fitxategi transferentzia optimizatuaren bidez",
-            "deltaTitleOptimized": "Transferentzia optimizatua"
+            "deltaTitleOptimized": "Transferentzia optimizatua",
+            "classicBadge": "klasikoa",
+            "classicBadgeTooltip": "Delta sinkronizazioa saiatu da, gero transferentzia klasikoarekin jarraitu da: {reason}",
+            "deltaEligibilityTitle": "Delta Sync ez dago erabilgarri zerbitzari honetarako",
+            "deltaEligibilityBody": "Saio honek ezin du rsync delta-bidea erabili oraintxe. Transferentzia klasikoarekin jarrai dezakezu, edo lehenik eskakizunak irakurri.",
+            "deltaEligibilityProceed": "Jarraitu klasikoarekin",
+            "deltaEligibilitySkip": "Ez erakutsi berriro zerbitzari honetarako",
+            "deltaEligibilityLearnMore": "Gehiago jakin"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",

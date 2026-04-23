@@ -313,10 +313,12 @@ pub enum FileOutcome {
     Uploaded {
         bytes: u64,
         delta_stats: Option<DeltaTransferStats>,
+        fallback_reason: Option<String>,
     },
     Downloaded {
         bytes: u64,
         delta_stats: Option<DeltaTransferStats>,
+        fallback_reason: Option<String>,
     },
     Deleted,
     Skipped {
@@ -979,12 +981,7 @@ pub async fn sync_tree_core(
                     );
                 }
                 SyncTreeAction::Skip(reason) => {
-                    sink.on_file_start(
-                        &local_entry.rel_path,
-                        0,
-                        "skip",
-                        decision.decision_policy,
-                    );
+                    sink.on_file_start(&local_entry.rel_path, 0, "skip", decision.decision_policy);
                     let outcome = FileOutcome::Skipped { reason };
                     apply_sync_tree_outcome(
                         &mut report,
@@ -999,12 +996,17 @@ pub async fn sync_tree_core(
         }
     }
 
-    if matches!(opts.direction, SyncDirection::Download | SyncDirection::Both) {
+    if matches!(
+        opts.direction,
+        SyncDirection::Download | SyncDirection::Both
+    ) {
         for remote_entry in &remotes {
             let already_seen = !seen.insert(remote_entry.rel_path.clone());
             let decision = decide_download(
                 remote_entry,
-                local_entries_by_path.get(remote_entry.rel_path.as_str()).copied(),
+                local_entries_by_path
+                    .get(remote_entry.rel_path.as_str())
+                    .copied(),
                 opts.delta_policy,
                 opts.conflict_mode,
                 already_seen && matches!(opts.direction, SyncDirection::Both),
@@ -1035,12 +1037,7 @@ pub async fn sync_tree_core(
                     );
                 }
                 SyncTreeAction::Skip(reason) => {
-                    sink.on_file_start(
-                        &remote_entry.rel_path,
-                        0,
-                        "skip",
-                        decision.decision_policy,
-                    );
+                    sink.on_file_start(&remote_entry.rel_path, 0, "skip", decision.decision_policy);
                     let outcome = FileOutcome::Skipped { reason };
                     apply_sync_tree_outcome(
                         &mut report,
@@ -1256,7 +1253,9 @@ fn decide_upload_by_mtime(
             std::cmp::Ordering::Equal if local_size == remote_size => {
                 SyncTreeAction::Skip("identical mtime and size".to_string())
             }
-            std::cmp::Ordering::Equal => return decide_upload_by_size(local_size, remote_size, mode),
+            std::cmp::Ordering::Equal => {
+                return decide_upload_by_size(local_size, remote_size, mode)
+            }
         };
         return SyncTreeDecision {
             action,
@@ -1286,7 +1285,9 @@ fn decide_download_by_mtime(
             std::cmp::Ordering::Equal if remote_size == local_size => {
                 SyncTreeAction::Skip("identical mtime and size".to_string())
             }
-            std::cmp::Ordering::Equal => return decide_download_by_size(remote_size, local_size, mode),
+            std::cmp::Ordering::Equal => {
+                return decide_download_by_size(remote_size, local_size, mode)
+            }
         };
         return SyncTreeDecision {
             action,
@@ -1490,6 +1491,7 @@ async fn perform_upload(
                 return FileOutcome::Uploaded {
                     bytes: transfer.total,
                     delta_stats,
+                    fallback_reason: None,
                 };
             }
             Some(result) if result.hard_error.is_some() => {
@@ -1505,6 +1507,16 @@ async fn perform_upload(
                         remote_path,
                         reason
                     );
+                    return match provider.upload(&local_path, &remote_path, None).await {
+                        Ok(()) => FileOutcome::Uploaded {
+                            bytes: transfer.total,
+                            delta_stats: None,
+                            fallback_reason: Some(reason),
+                        },
+                        Err(e) => FileOutcome::Failed {
+                            error: format!("upload failed: {}", e),
+                        },
+                    };
                 }
             }
             None => {}
@@ -1515,6 +1527,7 @@ async fn perform_upload(
         Ok(()) => FileOutcome::Uploaded {
             bytes: transfer.total,
             delta_stats: None,
+            fallback_reason: None,
         },
         Err(e) => FileOutcome::Failed {
             error: format!("upload failed: {}", e),
@@ -1568,6 +1581,7 @@ async fn perform_download(
                 return FileOutcome::Downloaded {
                     bytes: transfer.total,
                     delta_stats,
+                    fallback_reason: None,
                 };
             }
             Some(result) if result.hard_error.is_some() => {
@@ -1583,6 +1597,16 @@ async fn perform_download(
                         remote_path,
                         reason
                     );
+                    return match provider.download(&remote_path, &local_path, None).await {
+                        Ok(()) => FileOutcome::Downloaded {
+                            bytes: transfer.total,
+                            delta_stats: None,
+                            fallback_reason: Some(reason),
+                        },
+                        Err(e) => FileOutcome::Failed {
+                            error: format!("download failed: {}", e),
+                        },
+                    };
                 }
             }
             None => {}
@@ -1593,6 +1617,7 @@ async fn perform_download(
         Ok(()) => FileOutcome::Downloaded {
             bytes: transfer.total,
             delta_stats: None,
+            fallback_reason: None,
         },
         Err(e) => FileOutcome::Failed {
             error: format!("download failed: {}", e),
@@ -3127,6 +3152,7 @@ mod tests {
                 total_size: total,
                 speedup,
             }),
+            fallback_reason: None,
         }
     }
 
@@ -3138,6 +3164,7 @@ mod tests {
                 total_size: total,
                 speedup,
             }),
+            fallback_reason: None,
         }
     }
 
@@ -3145,6 +3172,15 @@ mod tests {
         FileOutcome::Uploaded {
             bytes: total,
             delta_stats: None,
+            fallback_reason: None,
+        }
+    }
+
+    fn uploaded_fallback(total: u64, reason: &str) -> FileOutcome {
+        FileOutcome::Uploaded {
+            bytes: total,
+            delta_stats: None,
+            fallback_reason: Some(reason.to_string()),
         }
     }
 
@@ -3290,7 +3326,12 @@ mod tests {
             DeltaPolicy::default(),
             &mut sink,
         );
-        assert!(report.delta_savings.as_ref().unwrap().average_speedup.is_none());
+        assert!(report
+            .delta_savings
+            .as_ref()
+            .unwrap()
+            .average_speedup
+            .is_none());
 
         apply_sync_tree_outcome(
             &mut report,
@@ -3304,10 +3345,14 @@ mod tests {
         assert_eq!(savings.files_using_delta, 2);
         assert_eq!(savings.total_bytes_sent, 100);
         assert_eq!(savings.total_size, 20_000);
-        let avg = savings.average_speedup.expect(
-            "average_speedup must be populated once bytes_sent transitions >0",
+        let avg = savings
+            .average_speedup
+            .expect("average_speedup must be populated once bytes_sent transitions >0");
+        assert!(
+            (avg - 200.0).abs() < 1e-9,
+            "expected 20_000/100=200, got {}",
+            avg
         );
-        assert!((avg - 200.0).abs() < 1e-9, "expected 20_000/100=200, got {}", avg);
     }
 
     // --- PR-T03: per-file delta breakdown + cap ---------------------------
@@ -3330,6 +3375,39 @@ mod tests {
         assert!(report.delta_savings.is_none());
         assert!(report.delta_files.is_empty());
         assert!(!report.delta_files_truncated);
+    }
+
+    #[test]
+    fn classic_fallback_reason_does_not_create_delta_summary() {
+        // PR-T05: a file that attempted delta but completed through the
+        // classic path must preserve the fallback reason without
+        // polluting delta_savings/delta_files. The UI badge reads this
+        // field while the report stays classic-only.
+        let mut report = SyncReport::default();
+        let mut sink = NoopProgressSink;
+        let outcome = uploaded_fallback(
+            4096,
+            "remote delta unavailable: rsync not installed on remote",
+        );
+        apply_sync_tree_outcome(
+            &mut report,
+            "fallback.bin",
+            "upload",
+            outcome.clone(),
+            DeltaPolicy::default(),
+            &mut sink,
+        );
+        assert!(report.delta_savings.is_none());
+        assert!(report.delta_files.is_empty());
+        match outcome {
+            FileOutcome::Uploaded {
+                fallback_reason, ..
+            } => assert_eq!(
+                fallback_reason.as_deref(),
+                Some("remote delta unavailable: rsync not installed on remote")
+            ),
+            other => panic!("expected Uploaded outcome, got {other:?}"),
+        }
     }
 
     #[test]
@@ -3712,7 +3790,11 @@ mod tests {
         );
     }
 
-    fn local_entry(size: u64, mtime: Option<&str>, sha256: Option<&str>) -> crate::sync_core::LocalEntry {
+    fn local_entry(
+        size: u64,
+        mtime: Option<&str>,
+        sha256: Option<&str>,
+    ) -> crate::sync_core::LocalEntry {
         crate::sync_core::LocalEntry {
             rel_path: "file.txt".to_string(),
             size,
@@ -3747,7 +3829,12 @@ mod tests {
     fn test_decide_upload_skips_same_size() {
         let local = local_entry(10, Some("2026-04-21T10:00:00"), None);
         let remote = remote_entry(10, None, None);
-        let decision = decide_upload(&local, Some(&remote), DeltaPolicy::SizeOnly, ConflictMode::Larger);
+        let decision = decide_upload(
+            &local,
+            Some(&remote),
+            DeltaPolicy::SizeOnly,
+            ConflictMode::Larger,
+        );
         assert!(matches!(decision.action, SyncTreeAction::Skip(_)));
         assert_eq!(decision.decision_policy, DeltaPolicy::SizeOnly);
     }
@@ -3759,13 +3846,23 @@ mod tests {
         let remote = remote_entry(10, None, None);
 
         assert!(matches!(
-            decide_upload(&larger_local, Some(&remote), DeltaPolicy::SizeOnly, ConflictMode::Larger)
-                .action,
+            decide_upload(
+                &larger_local,
+                Some(&remote),
+                DeltaPolicy::SizeOnly,
+                ConflictMode::Larger
+            )
+            .action,
             SyncTreeAction::Copy
         ));
         assert!(matches!(
-            decide_upload(&smaller_local, Some(&remote), DeltaPolicy::SizeOnly, ConflictMode::Larger)
-                .action,
+            decide_upload(
+                &smaller_local,
+                Some(&remote),
+                DeltaPolicy::SizeOnly,
+                ConflictMode::Larger
+            )
+            .action,
             SyncTreeAction::Skip(_)
         ));
     }
@@ -3798,8 +3895,18 @@ mod tests {
         let local = local_entry(10, Some("2026-04-22T10:00:00"), None);
         let remote = remote_entry(10, Some("2026-04-21T10:00:00"), None);
 
-        let mtime_decision = decide_upload(&local, Some(&remote), DeltaPolicy::Mtime, ConflictMode::Larger);
-        let size_decision = decide_upload(&local, Some(&remote), DeltaPolicy::SizeOnly, ConflictMode::Larger);
+        let mtime_decision = decide_upload(
+            &local,
+            Some(&remote),
+            DeltaPolicy::Mtime,
+            ConflictMode::Larger,
+        );
+        let size_decision = decide_upload(
+            &local,
+            Some(&remote),
+            DeltaPolicy::SizeOnly,
+            ConflictMode::Larger,
+        );
 
         assert!(matches!(mtime_decision.action, SyncTreeAction::Copy));
         assert_eq!(mtime_decision.decision_policy, DeltaPolicy::Mtime);
@@ -3820,7 +3927,12 @@ mod tests {
             Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
         );
 
-        let decision = decide_upload(&local, Some(&remote), DeltaPolicy::Hash, ConflictMode::Larger);
+        let decision = decide_upload(
+            &local,
+            Some(&remote),
+            DeltaPolicy::Hash,
+            ConflictMode::Larger,
+        );
         assert!(matches!(decision.action, SyncTreeAction::Skip(_)));
         assert_eq!(decision.decision_policy, DeltaPolicy::Hash);
     }
@@ -3830,7 +3942,12 @@ mod tests {
         let local = local_entry(10, Some("2026-04-22 10:00:00"), None);
         let remote = remote_entry(10, Some("2026-04-21T10:00:00Z"), None);
 
-        let decision = decide_upload(&local, Some(&remote), DeltaPolicy::Hash, ConflictMode::Larger);
+        let decision = decide_upload(
+            &local,
+            Some(&remote),
+            DeltaPolicy::Hash,
+            ConflictMode::Larger,
+        );
         assert!(matches!(decision.action, SyncTreeAction::Copy));
         assert_eq!(decision.decision_policy, DeltaPolicy::Mtime);
     }

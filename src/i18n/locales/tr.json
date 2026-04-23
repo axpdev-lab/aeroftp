@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} dosya · {bytes} tasarruf · {speedup}x hızlanma",
             "deltaTitle": "Delta tasarrufu",
             "deltaSummaryOptimized": "{files} dosya optimize aktarımla taşındı",
-            "deltaTitleOptimized": "Optimize aktarım"
+            "deltaTitleOptimized": "Optimize aktarım",
+            "classicBadge": "klasik",
+            "classicBadgeTooltip": "Delta senkronizasyonu denendi, ardından klasik aktarımla devam edildi: {reason}",
+            "deltaEligibilityTitle": "Delta Sync bu sunucu için kullanılamıyor",
+            "deltaEligibilityBody": "Bu oturum şu anda rsync delta yolunu kullanamaz. Klasik aktarım yoluyla devam edebilir veya önce gereksinimleri okuyabilirsiniz.",
+            "deltaEligibilityProceed": "Klasik ile devam et",
+            "deltaEligibilitySkip": "Bu sunucu için tekrar gösterme",
+            "deltaEligibilityLearnMore": "Daha fazla bilgi"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",

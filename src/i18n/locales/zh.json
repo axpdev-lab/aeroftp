@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} 个文件 · 节省 {bytes} · 加速 {speedup}x",
             "deltaTitle": "增量节省",
             "deltaSummaryOptimized": "{files} 个文件通过优化传输处理",
-            "deltaTitleOptimized": "优化传输"
+            "deltaTitleOptimized": "优化传输",
+            "classicBadge": "经典",
+            "classicBadgeTooltip": "已尝试增量同步，随后继续使用经典传输：{reason}",
+            "deltaEligibilityTitle": "此服务器不支持 Delta Sync",
+            "deltaEligibilityBody": "此会话目前无法使用 rsync 增量路径。您可以继续使用经典传输路径，或先查看要求。",
+            "deltaEligibilityProceed": "继续使用经典模式",
+            "deltaEligibilitySkip": "不再为此服务器显示",
+            "deltaEligibilityLearnMore": "了解更多"
         },
         "ui": {
             "syncing": "正在同步...",

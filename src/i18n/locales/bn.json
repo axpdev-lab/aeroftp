@@ -1972,7 +1972,14 @@
             "deltaSummary": "{files} ফাইল · {bytes} সাশ্রয় · {speedup}x গতিবৃদ্ধি",
             "deltaTitle": "Delta সাশ্রয়",
             "deltaSummaryOptimized": "{files}টি ফাইল অপ্টিমাইজড ট্রান্সফারে পরিবেশিত",
-            "deltaTitleOptimized": "অপ্টিমাইজড ট্রান্সফার"
+            "deltaTitleOptimized": "অপ্টিমাইজড ট্রান্সফার",
+            "classicBadge": "ক্লাসিক",
+            "classicBadgeTooltip": "ডেল্টা সিঙ্কের চেষ্টা করা হয়েছে, তারপর ক্লাসিক ট্রান্সফার দিয়ে চালিয়ে যাওয়া হয়েছে: {reason}",
+            "deltaEligibilityTitle": "এই সার্ভারের জন্য Delta Sync উপলব্ধ নয়",
+            "deltaEligibilityBody": "এই সেশনটি এখন rsync ডেল্টা পাথ ব্যবহার করতে পারবে না। আপনি ক্লাসিক ট্রান্সফার পাথ দিয়ে চালিয়ে যেতে পারেন, বা প্রথমে প্রয়োজনীয়তা পড়তে পারেন।",
+            "deltaEligibilityProceed": "ক্লাসিক দিয়ে চালিয়ে যান",
+            "deltaEligibilitySkip": "এই সার্ভারের জন্য আর দেখাবেন না",
+            "deltaEligibilityLearnMore": "আরও জানুন"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
