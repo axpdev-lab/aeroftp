@@ -66,8 +66,13 @@ snapcraft.login
 docs/dev/
 CLAUDE.md
 
-# Prototype-only native rsync architecture scaffold
-src-tauri/src/rsync_native_proto/
+# Native rsync protocol sources live in tree now. Only the
+# multi-hundred-MB capture harness stays out of git (Docker images,
+# rsync reference binaries, fixture transcripts too large to ship).
+src-tauri/src/rsync_native_proto/capture/bin/
+src-tauri/src/rsync_native_proto/capture/artifacts/
+src-tauri/src/rsync_native_proto/capture/artifacts_real/
+src-tauri/src/rsync_native_proto/capture/workspace/
 
 # Local dev scripts (hardcoded paths)
 run-clean.sh

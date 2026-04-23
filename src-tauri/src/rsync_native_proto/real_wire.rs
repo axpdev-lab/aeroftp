@@ -38,9 +38,11 @@
 //! rsync app protocol. Every subsequent feature (signature blocks,
 //! delta instructions, summary frame) piggybacks on these primitives.
 //!
-//! The module is still decode-only; writer paths are deferred to
-//! S8c-bis / S8e. All functions are `pub` so the driver layer can wire
-//! them into the state machine in a later sinergia.
+//! Both decoder and encoder paths are wired: the module now powers the
+//! production native rsync transport (proto 31, S8j closed) via the
+//! `delta_transport_impl` driver. All functions stay `pub` because the
+//! driver and the live-wire test lane both reach into this primitive
+//! layer directly.
 
 #![allow(dead_code)]
 
@@ -1903,8 +1905,9 @@ fn decode_ndx_body(
 }
 
 /// Encode an ndx value against the caller's rolling state. Mirrors
-/// `io.c::write_ndx`. Exposed for unit-test round-trips — production
-/// drivers should not use it until a full writer path lands.
+/// `io.c::write_ndx`. Used by the production driver
+/// (`delta_transport_impl`) to frame outgoing ndx values and by the
+/// test lane for round-trip assertions.
 pub fn encode_ndx(ndx: i32, state: &mut NdxState) -> Vec<u8> {
     // NDX_DONE is always a single zero byte, no baseline mutation.
     if ndx == NDX_DONE {
@@ -2095,11 +2098,12 @@ pub fn encode_file_checksum(bytes: &[u8]) -> Vec<u8> {
 // The decoder below deals with the **compressed outer framing** only —
 // appropriate for the Strada C frozen oracle (proto 31 + zstd negotiated via
 // `CF_VARINT_FLIST_FLAGS + negotiate_the_strings`). The payload inside each
-// `Literal` is returned as opaque `compressed_payload: Vec<u8>`; actual zstd
-// decompression is deferred to a future sinergia where we wire the driver
-// against a real engine. The simple_send_token (uncompressed) shape is NOT
-// yet implemented — it's unreachable via the frozen oracle and would be a
-// separate decode primitive once we ship a matching capture lane.
+// `Literal` is returned as opaque `compressed_payload: Vec<u8>`; real zstd
+// decoding is performed downstream in the driver (`delta_transport_impl`)
+// where the decompressor owns window state across frames. The
+// `simple_send_token` (uncompressed) shape is intentionally not implemented
+// here — it is unreachable via the frozen oracle and would require a
+// separate capture lane before we can wire it.
 //
 // After the tag stream a single `END_FLAG=0x00` marks end-of-tokens for the
 // current file. Immediately after the END_FLAG the sender writes the

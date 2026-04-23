@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.1] - 2026-04-23
+
+### Windows First-Class Delta Sync + PR-T08 Eligibility Gate + Dependency Security
+
+The "historical step" release: byte-level delta sync becomes a first-class citizen on Windows, with no bundled `rsync.exe`, no WSL requirement, and no reliance on any external binary. Windows rides the native rsync 31/32 wire protocol re-implemented in pure Rust (clean-room, GPL-3.0-or-later) that previously lived behind an opt-in cargo feature; from this release the feature is default-on and the protocol module is part of the mainline tree.
+
+### Added
+
+- **Windows cross-OS delta sync**: `SftpProvider::delta_transport()` dispatches cross-platform. When the `proto_native_rsync` feature is compiled in (default from this release) and a session has SFTP + SSH key auth, Windows uses the native Rust rsync implementation end-to-end; the binary-rsync classic fallback stays available on Unix through the same `DeltaTransport` trait surface. No binary shipping, no WSL dependency.
+- **Delta Sync eligibility gate (PR-T08)**: before starting an AeroSync run, a cached Tauri probe (`sftp_probe_delta_eligibility`, 5 s timeout) verifies that the current session can actually exercise the delta path. When it can't, a modal surfaces the sanitized reason, a "Don't show again for this server" persistent preference on the saved profile, and a "Learn more" link to the public docs page. The modal fires only when the delta toggle is on and the server is SFTP — classic-only sessions are never interrupted.
+- **Fallback reason surfacing (PR-T05)**: `FileOutcome` and `TransferEvent` carry an optional `fallback_reason` populated only when the delta path was *attempted* for the file and fell through transparently. SyncPanel renders a grey `classic` badge (with the sanitized reason as tooltip) next to affected files — distinguishing "classic by design" from "classic after delta attempt". 7 new i18n keys translated in all 47 supported languages.
+- **CI Windows native build lane**: new `windows-native` job in `delta-sync-integration.yml` — `cargo check` with and without feature, unit tests with and without feature on `windows-latest`. Catches cross-OS regressions at PR time.
+
+### Fixed
+
+- **SFTP upload mtime preservation**: `SftpProvider::upload()` now sets remote `atime+mtime` to the local source's mtime after a successful upload, using SFTP `ACMODTIME`. Before this fix, every sync after an upload saw `remote_mtime > local_mtime` and spuriously re-uploaded unchanged files. Observed live on `SSH MyCloud HD`: second sync after a single-file change now reports `uploaded=1 / skipped=1` where the pre-fix behavior was `uploaded=2`.
+- **Versioning archive name collision**: `SyncVersioning::archive_file` now produces `-1`, `-2`, ... suffixed names when a second version lands with the same filename (`unique_archive_path` helper). Retention windows no longer silently clobber archived copies of the same file.
+- **CloudPanel `versioning_strategy` type round-trip**: the field is now a tagged union that mirrors the Rust `CloudVersioningStrategy` shape (`disabled` / `trash_can` / `simple` / `staggered`) instead of a stringly-typed sentinel, so the select round-trips without downstream parsing.
+
+### Security
+
+- **openssl crate bumped 0.10.77 → 0.10.78**: closes 5 of 6 open Dependabot alerts — CVE-2026-41676 (high), GHSA-xmgf-hq76-4vx2 (low), CVE-2026-41678 (high), GHSA-hppc-g8h3-xhp3 (high), CVE-2026-41681 (high). `openssl-sys 0.9.113 → 0.9.114` bumped transitively. The sixth alert (`rand 0.10.0` soundness) is not applicable — our lockfile carries `rand 0.7.3` / `0.8.5` / `0.9.4`.
+
+### Changed
+
+- **`proto_native_rsync` feature is default-on**: the native rsync protocol implementation is now compiled by default. Build with `--no-default-features` if you want a leaner binary without native delta support (classic binary rsync stays available on Unix regardless).
+- **`rsync_native_proto/` module moved into the tree**: the native implementation, previously gitignored as a scaffold, is now versioned mainline source. Large capture harnesses (Docker images, rsync reference binaries, frozen transcripts) stay out of git via targeted `.gitignore` patterns on their specific subdirectories.
+- **Native rsync toggle eligible on Windows**: `native_rsync_feature_compiled()` no longer requires `cfg(unix)` — the dispatch is now cross-platform, so the runtime toggle surfaces on any OS where the feature is compiled in.
+- **CI retrigger surface widened**: `delta-sync-integration.yml` `paths:` filter now includes `lib.rs`, `settings.rs`, and `Cargo.lock`, so future changes that affect the delta stack transitively retrigger the lane automatically.
+
+### Licensing note
+
+The native rsync module (`src-tauri/src/rsync_native_proto/`) is an **independent clean-room Rust re-implementation** of the rsync wire protocol. No rsync source code was copied; dependencies are permissively-licensed Rust crates (`russh`, `ssh2`, `zstd`, `xxhash-rust`). The rsync project itself is GPL-3.0-or-later and AeroFTP is GPL-3.0-or-later as well, so licence compatibility is unconditional. See `src-tauri/src/rsync_native_proto/README.md` for full details.
+
 ## [3.6.0] - 2026-04-22
 
 ### AeroSync UX Upgrade + Critical SSH Host-Key Fix

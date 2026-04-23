@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "3.6.0"
+version = "3.6.1"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -203,13 +203,16 @@ fuser = "0.16"
 [dev-dependencies]
 
 [features]
+default = ["proto_native_rsync"]
 custom-protocol = ["tauri/custom-protocol"]
 
-# Strada C — native rsync prototype (dev-only).
-# Off by default; production builds must not enable this.
-# The backing module lives under `src/rsync_native_proto/` and is gitignored.
-# Enable with: `cargo check --features proto_native_rsync`
-# or `cargo test --features proto_native_rsync rsync_native_proto`.
+# Native rsync protocol 31/32 (in-tree since PR-T11, default-on).
+# Turns on the cross-platform Rust implementation under
+# `src/rsync_native_proto/`, enabling byte-level delta sync on Windows
+# (first-class) and as the preferred path on Unix when
+# `settings::load_native_rsync_enabled()` returns true.
+# Disable with `--no-default-features` for leaner builds or when
+# debugging the classic binary-rsync path on Unix.
 proto_native_rsync = ["dep:zstd", "dep:xxhash-rust"]
 
 # Strada C — Docker-harness lane cfg flags. Declared here so
