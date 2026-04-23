@@ -44,7 +44,62 @@ interface CloudConfig {
     protocol_type: string;
     connection_params: Record<string, unknown>;
     excluded_folders: string[];
-    versioning_strategy: string;
+    versioning_strategy: CloudVersioningStrategy;
+}
+
+type CloudVersioningStrategy =
+    | { type: 'disabled' }
+    | { type: 'trash_can'; max_age_days?: number }
+    | { type: 'simple'; max_copies?: number }
+    | { type: 'staggered' };
+
+type CloudVersioningSelectValue =
+    | 'disabled'
+    | 'trash_can_7'
+    | 'trash_can_30'
+    | 'trash_can_90'
+    | 'simple_5'
+    | 'staggered';
+
+function toVersioningSelectValue(strategy?: CloudVersioningStrategy | null): CloudVersioningSelectValue {
+    if (!strategy) {
+        return 'trash_can_30';
+    }
+
+    switch (strategy.type) {
+        case 'disabled':
+            return 'disabled';
+        case 'simple':
+            return 'simple_5';
+        case 'staggered':
+            return 'staggered';
+        case 'trash_can': {
+            const days = strategy.max_age_days ?? 30;
+            if (days === 7) return 'trash_can_7';
+            if (days === 90) return 'trash_can_90';
+            return 'trash_can_30';
+        }
+        default:
+            return 'trash_can_30';
+    }
+}
+
+function fromVersioningSelectValue(value: CloudVersioningSelectValue): CloudVersioningStrategy {
+    switch (value) {
+        case 'disabled':
+            return { type: 'disabled' };
+        case 'simple_5':
+            return { type: 'simple', max_copies: 5 };
+        case 'staggered':
+            return { type: 'staggered' };
+        case 'trash_can_7':
+            return { type: 'trash_can', max_age_days: 7 };
+        case 'trash_can_90':
+            return { type: 'trash_can', max_age_days: 90 };
+        case 'trash_can_30':
+        default:
+            return { type: 'trash_can', max_age_days: 30 };
+    }
 }
 
 // Protocol categories for the selector grid
@@ -101,7 +156,7 @@ const PROTOCOL_MATURITY: Record<string, 'stable' | 'beta' | 'alpha'> = {
     ftp: 'beta', ftps: 'beta', box: 'beta', pcloud: 'beta',
     zohoworkdrive: 'beta', yandexdisk: 'beta', mega: 'beta',
     filen: 'beta', internxt: 'beta',
-    filelu: 'stable', fourshared: 'alpha',
+    filelu: 'beta', fourshared: 'alpha',
 };
 
 /** One-line sync limitation shown on hover */
@@ -1448,8 +1503,13 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                             <label className="block text-sm font-medium mb-2">{t('cloud.versioningStrategy') || 'File Versioning'}</label>
                             <select
                                 className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                                value={config?.versioning_strategy || 'trash_can_30'}
-                                onChange={(e) => setConfig(prev => prev ? { ...prev, versioning_strategy: e.target.value } : null)}
+                                value={toVersioningSelectValue(config?.versioning_strategy)}
+                                onChange={(e) => {
+                                    const nextStrategy = fromVersioningSelectValue(
+                                        e.target.value as CloudVersioningSelectValue
+                                    );
+                                    setConfig(prev => prev ? { ...prev, versioning_strategy: nextStrategy } : null);
+                                }}
                             >
                                 <option value="disabled">{t('cloud.versioningDisabled') || 'Disabled'}</option>
                                 <option value="trash_can_30">{t('cloud.versioningTrashCan') || 'Trash Can (30 days)'}</option>
