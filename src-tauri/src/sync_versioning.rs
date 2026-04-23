@@ -131,7 +131,7 @@ impl SyncVersioning {
         std::fs::create_dir_all(&archive_dir)
             .map_err(|e| format!("Failed to create versions dir: {}", e))?;
 
-        let archive_path = archive_dir.join(&archive_name);
+        let archive_path = self.unique_archive_path(&archive_dir, &archive_name);
         std::fs::copy(file_path, &archive_path)
             .map_err(|e| format!("Failed to archive file: {}", e))?;
 
@@ -142,6 +142,32 @@ impl SyncVersioning {
         );
 
         Ok(archive_path)
+    }
+
+    fn unique_archive_path(&self, archive_dir: &Path, archive_name: &str) -> PathBuf {
+        let candidate = archive_dir.join(archive_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+
+        let path = Path::new(archive_name);
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| archive_name.to_string());
+        let ext = path
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
+
+        for suffix in 1..=u16::MAX {
+            let alternative = archive_dir.join(format!("{}-{}{}", stem, suffix, ext));
+            if !alternative.exists() {
+                return alternative;
+            }
+        }
+
+        archive_dir.join(format!("{}-overflow{}", stem, ext))
     }
 
     /// List all archived versions of a specific file.
@@ -493,5 +519,64 @@ impl SyncVersioning {
         })
         .ok();
         total
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn write_file(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn archive_and_list_versions_round_trip() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let file_path = root.join("docs/report.txt");
+        write_file(&file_path, "v1");
+
+        let versioning =
+            SyncVersioning::new(root, VersioningStrategy::TrashCan { max_age_days: 30 });
+        let archived = versioning.archive(&file_path).unwrap();
+        assert!(archived.exists());
+
+        let versions = versioning.list_versions("docs/report.txt").unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].original_relative, "docs/report.txt");
+        assert_eq!(versions[0].size, 2);
+        assert!(versioning.disk_usage() >= 2);
+    }
+
+    #[test]
+    fn restore_archives_current_file_without_overwriting_previous_archive() {
+        let tmp = tempdir().unwrap();
+        let root = tmp.path();
+        let file_path = root.join("docs/report.txt");
+        write_file(&file_path, "remote-version");
+
+        let versioning =
+            SyncVersioning::new(root, VersioningStrategy::TrashCan { max_age_days: 30 });
+        let archived = versioning.archive(&file_path).unwrap();
+
+        write_file(&file_path, "local-version");
+        let entry = VersionEntry {
+            archive_path: archived,
+            original_relative: "docs/report.txt".to_string(),
+            archived_at: String::new(),
+            size: 0,
+        };
+        versioning.restore(&entry).unwrap();
+
+        let restored = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(restored, "remote-version");
+
+        let versions = versioning.list_versions("docs/report.txt").unwrap();
+        assert_eq!(versions.len(), 2);
     }
 }
