@@ -220,3 +220,61 @@ jobs:
         if: always()
         working-directory: src-tauri/tests/fixtures/sftp-rsync
         run: docker compose -f docker-compose.password.yml down -v
+
+  windows-native:
+    # PR-T11: validate the cross-OS surgical gate on Windows.
+    # - Build with default features (binary-rsync path gated off on Windows)
+    # - Build with `--features proto_native_rsync` (native prototype wired)
+    # - Unit tests for the cross-platform modules
+    # No live fixture on Windows — the CI image cannot reach a Linux rsync
+    # server and the native prototype's live probe is covered by the
+    # strada-c-prototype.yml lane against the Linux fixture.
+    name: Windows cross-OS build + native unit tests
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust (stable, msvc)
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: delta-sync-windows
+
+      # PR-T11 G1: `cargo check` without the native feature. The binary
+      # transport is Unix-only; on Windows the consumer must compile
+      # against `Option<Box<dyn DeltaTransport>> = None` and drop to
+      # plain SFTP silently. If this breaks, the surgical gate has
+      # leaked a Unix-only symbol back into the cross-OS surface.
+      - name: cargo check (default features, no native)
+        working-directory: src-tauri
+        run: cargo check --locked
+
+      # PR-T11 G1: `cargo check` with the native prototype feature on.
+      # Validates that `NativeRsyncDeltaTransport` construction and the
+      # `SftpProvider::delta_transport()` wiring compile on MSVC.
+      - name: cargo check (proto_native_rsync)
+        working-directory: src-tauri
+        run: cargo check --locked --features proto_native_rsync
+
+      # Unit tests for the cross-platform primitives. Unix-only tests
+      # are gated via `#[cfg(all(test, unix))]` and simply do not exist
+      # in the Windows build — no filter required. What must pass on
+      # Windows: delta_sync_rsync eligibility probes, rsync_output
+      # parsing, the native prototype encoders, ndx round-trips, and
+      # every cross-platform primitive under `rsync_native_proto`.
+      - name: Unit tests (default features)
+        working-directory: src-tauri
+        run: cargo test --lib --no-fail-fast
+
+      - name: Unit tests (proto_native_rsync)
+        working-directory: src-tauri
+        run: cargo test --lib --no-fail-fast --features proto_native_rsync
