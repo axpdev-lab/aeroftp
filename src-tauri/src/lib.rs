@@ -9404,6 +9404,10 @@ fn get_cloud_status() -> CloudSyncStatus {
         return CloudSyncStatus::NotConfigured;
     }
 
+    if config.paused {
+        return CloudSyncStatus::Paused;
+    }
+
     CloudSyncStatus::Idle {
         last_sync: config.last_sync,
         next_sync: None, // Will be calculated by sync service
@@ -9421,11 +9425,91 @@ fn enable_aerocloud(enabled: bool) -> Result<CloudConfig, String> {
     }
 
     config.enabled = enabled;
+    // Always clear the paused flag on explicit enable/disable so the two
+    // state machines (enable vs pause) never conflict on re-enable.
+    config.paused = false;
     cloud_config::save_cloud_config(&config)?;
 
     info!("AeroCloud {}", if enabled { "enabled" } else { "disabled" });
 
     Ok(config)
+}
+
+/// Pause AeroCloud without removing its configuration.
+/// Stops the background sync worker and persists `paused = true`.
+/// The auto-start effect in the frontend respects this flag on next launch.
+#[tauri::command]
+async fn pause_aerocloud(app: AppHandle) -> Result<CloudConfig, String> {
+    let mut config = cloud_config::load_cloud_config();
+    if !config.enabled {
+        return Err("AeroCloud is not configured".to_string());
+    }
+
+    // Stop the worker if running. stop_background_sync emits "idle"; we override
+    // with "paused" below so the frontend can distinguish the two states.
+    if BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst) {
+        let _ = stop_background_sync(app.clone()).await;
+    }
+
+    config.paused = true;
+    cloud_config::save_cloud_config(&config)?;
+
+    let _ = app.emit(
+        "cloud-sync-status",
+        serde_json::json!({
+            "status": "paused",
+            "message": "AeroCloud paused"
+        }),
+    );
+
+    info!("AeroCloud paused");
+    Ok(config)
+}
+
+/// Resume AeroCloud after a pause. Clears the `paused` flag and starts the
+/// background sync worker if the config is enabled.
+#[tauri::command]
+async fn resume_aerocloud(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<CloudConfig, String> {
+    let mut config = cloud_config::load_cloud_config();
+    if !config.enabled {
+        return Err("AeroCloud is not configured".to_string());
+    }
+
+    config.paused = false;
+    cloud_config::save_cloud_config(&config)?;
+
+    // Best-effort start. If a worker is already running start_background_sync
+    // returns Ok early. If the config is invalid we surface the error so the
+    // caller can show it to the user.
+    start_background_sync(app.clone(), state).await?;
+
+    info!("AeroCloud resumed");
+    Ok(config)
+}
+
+/// Fully disable AeroCloud: stop the worker and reset the configuration to
+/// defaults. Re-enabling requires going through the setup wizard again.
+#[tauri::command]
+async fn disable_aerocloud(app: AppHandle) -> Result<(), String> {
+    if BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst) {
+        let _ = stop_background_sync(app.clone()).await;
+    }
+
+    cloud_config::save_cloud_config(&CloudConfig::default())?;
+
+    let _ = app.emit(
+        "cloud-sync-status",
+        serde_json::json!({
+            "status": "disabled",
+            "message": "AeroCloud disabled"
+        }),
+    );
+
+    info!("AeroCloud disabled and configuration reset");
+    Ok(())
 }
 
 /// Generate a shareable link for a file in AeroCloud
@@ -10043,6 +10127,9 @@ async fn start_background_sync(
     let config = cloud_config::load_cloud_config();
     if !config.enabled {
         return Err("AeroCloud not configured".to_string());
+    }
+    if config.paused {
+        return Ok("Background sync paused".to_string());
     }
 
     reset_background_sync_cancel_token();
@@ -11840,6 +11927,9 @@ pub fn run() {
             setup_aerocloud,
             get_cloud_status,
             enable_aerocloud,
+            pause_aerocloud,
+            resume_aerocloud,
+            disable_aerocloud,
             update_excluded_folders,
             list_remote_folders_tree,
             list_file_versions,

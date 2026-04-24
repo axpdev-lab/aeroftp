@@ -30,6 +30,7 @@ import './CloudPanel.css';
 // TypeScript interfaces matching Rust structs
 interface CloudConfig {
     enabled: boolean;
+    paused?: boolean;
     cloud_name: string;
     local_folder: string;
     remote_folder: string;
@@ -1169,13 +1170,14 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     const [showVersionBrowser, setShowVersionBrowser] = useState(false);
     const [reauthRequired, setReauthRequired] = useState<{ provider: string; message: string } | null>(null);
 
-    // Use modular tray sync hook
+    // Use modular tray sync hook. Pause/Resume/Disable now go through the
+    // dedicated aerocloud commands (pause_aerocloud/resume_aerocloud/disable_aerocloud)
+    // so only the start command is still needed here for Sync Now.
     const {
         trayState,
         isRunning: isBackgroundSyncRunning,
         startBackgroundSync,
-        stopBackgroundSync,
-        toggleBackgroundSync
+        toggleBackgroundSync,
     } = useTraySync();
 
     // Load saved servers from vault (with localStorage fallback for pre-migration installs)
@@ -1285,7 +1287,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
 
     const handlePause = async () => {
         try {
-            await stopBackgroundSync();
+            const updated = await invoke<CloudConfig>('pause_aerocloud');
+            setConfig(updated);
             setStatus({ type: 'paused' });
             logger.debug('Sync paused');
         } catch (error) {
@@ -1295,7 +1298,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
 
     const handleResume = async () => {
         try {
-            await startBackgroundSync();
+            const updated = await invoke<CloudConfig>('resume_aerocloud');
+            setConfig(updated);
             setStatus({ type: 'idle', last_sync: config?.last_sync || undefined });
             logger.debug('Sync resumed');
         } catch (error) {
@@ -1304,13 +1308,17 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
     };
 
     const handleDisable = async () => {
+        // Disable is destructive: it wipes the AeroCloud configuration and
+        // forces the user to run the setup wizard again. Confirm before acting.
+        const confirmed = window.confirm(
+            t('cloud.disableConfirm')
+                || 'Disable AeroCloud? This removes the current configuration. You will need to configure it again to use it.'
+        );
+        if (!confirmed) return;
         try {
-            await stopBackgroundSync();
-            await invoke('enable_aerocloud', { enabled: false });
-            setConfig(prev => prev ? { ...prev, enabled: false } : null);
+            await invoke('disable_aerocloud');
+            setConfig(null);
             setStatus({ type: 'not_configured' });
-            // Notify parent that cloud is now disabled
-            emit('cloud-sync-status', { status: 'disabled', message: 'AeroCloud disabled' });
             logger.debug('AeroCloud disabled');
         } catch (error) {
             logger.error('Failed to disable:', error);
@@ -1364,214 +1372,213 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
 
     // Show settings panel
     if (showSettings) {
+        const syncSecs = config?.sync_interval_secs || 300;
+        const isHours = syncSecs >= 3600;
+        const syncIntervalValue = isHours ? Math.round(syncSecs / 3600) : Math.round(syncSecs / 60);
+
         return (
-            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Settings">
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 max-w-md w-full mx-4" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-between mb-4">
+            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-start justify-center backdrop-blur-sm overflow-y-auto py-6" onClick={onClose} role="dialog" aria-modal="true" aria-label="Cloud Sync Settings">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full mx-4 my-auto flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                         <h2 className="text-xl font-semibold flex items-center gap-2"><Settings className="text-cyan-500" /> {t('cloud.title')} {t('common.settings')}</h2>
                         <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={20} /></button>
                     </div>
 
-                    <div className="space-y-4">
-                        {/* Cloud Name - Custom tab display name */}
-                        <div>
-                            <label className="block text-sm font-medium mb-1">{t('cloud.cloudName')}</label>
-                            <input
-                                type="text"
-                                value={config?.cloud_name || ''}
-                                onChange={e => setConfig(prev => prev ? { ...prev, cloud_name: e.target.value } : null)}
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                placeholder={t('cloud.cloudNamePlaceholder')}
-                            />
-                            <p className="text-xs text-gray-400 mt-1">{t('cloud.cloudNameDesc')}</p>
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 overflow-y-auto">
+                        {/* LEFT COLUMN — Connection & Location */}
+                        <section className="space-y-4">
+                            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('cloud.sectionConnection')}</h3>
 
-                        <div>
-                            <label className="block text-sm font-medium mb-1">{t('cloud.localFolder')}</label>
-                            <input
-                                type="text"
-                                value={config?.local_folder || ''}
-                                readOnly
-                                className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
-                            <input
-                                type="text"
-                                value={config?.remote_folder || '/cloud/'}
-                                onChange={e => setConfig(prev => prev ? { ...prev, remote_folder: e.target.value } : null)}
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                placeholder="/cloud/"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium mb-1">{t('cloud.serverProfile')}</label>
-                            <input
-                                type="text"
-                                value={config?.server_profile || ''}
-                                readOnly
-                                className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium mb-1">{t('cloud.syncInterval')}</label>
-                            <div className="flex items-center gap-2">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">{t('cloud.cloudName')}</label>
                                 <input
-                                    type="number"
-                                    min="1"
-                                    max={(() => {
-                                        const secs = config?.sync_interval_secs || 300;
-                                        return secs >= 3600 ? 168 : 1440;
-                                    })()}
-                                    value={(() => {
-                                        const secs = config?.sync_interval_secs || 300;
-                                        return secs >= 3600 ? Math.round(secs / 3600) : Math.round(secs / 60);
-                                    })()}
-                                    onChange={e => {
-                                        const val = Math.max(1, parseInt(e.target.value) || 1);
-                                        const secs = config?.sync_interval_secs || 300;
-                                        const isHours = secs >= 3600;
-                                        setConfig(prev => prev ? {
-                                            ...prev,
-                                            sync_interval_secs: isHours ? val * 3600 : val * 60
-                                        } : null);
-                                    }}
-                                    className="w-20 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
+                                    type="text"
+                                    value={config?.cloud_name || ''}
+                                    onChange={e => setConfig(prev => prev ? { ...prev, cloud_name: e.target.value } : null)}
+                                    className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                    placeholder={t('cloud.cloudNamePlaceholder')}
                                 />
-                                <select
-                                    value={config && config.sync_interval_secs >= 3600 ? 'hours' : 'minutes'}
-                                    onChange={e => {
-                                        const currentSecs = config?.sync_interval_secs || 300;
-                                        const currentVal = currentSecs >= 3600 ? Math.round(currentSecs / 3600) : Math.round(currentSecs / 60);
-                                        setConfig(prev => prev ? {
-                                            ...prev,
-                                            sync_interval_secs: e.target.value === 'hours' ? currentVal * 3600 : currentVal * 60
-                                        } : null);
-                                    }}
-                                    className="px-2 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                >
-                                    <option value="minutes">{t('settings.minutes')}</option>
-                                    <option value="hours">{t('cloud.hours') || 'ore'}</option>
-                                </select>
+                                <p className="text-xs text-gray-400 mt-1">{t('cloud.cloudNameDesc')}</p>
                             </div>
-                            <p className="text-xs text-gray-400 mt-1">{t('cloud.syncIntervalDesc')}</p>
-                        </div>
 
-                        {/* Public URL for sharing */}
-                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                            <label className="block text-sm font-medium mb-1 flex items-center gap-2">
-                                <Link2 size={14} /> {t('cloud.publicUrlBase')}
-                                <span className="text-xs text-gray-400 font-normal">({t('cloud.forSharing')})</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={config?.public_url_base || ''}
-                                onChange={e => setConfig(prev => prev ? {
-                                    ...prev,
-                                    public_url_base: e.target.value || null
-                                } : null)}
-                                className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                placeholder="https://cloud.yourdomain.com/"
-                            />
-                            <p className="text-xs text-gray-400 mt-1">
-                                {t('cloud.publicUrlDesc')}
-                            </p>
-                        </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">{t('cloud.localFolder')}</label>
+                                <input
+                                    type="text"
+                                    value={config?.local_folder || ''}
+                                    readOnly
+                                    className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm"
+                                />
+                            </div>
 
-                        {/* Selective Sync */}
-                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                            <label className="block text-sm font-medium mb-2">{t('cloud.selectiveSync') || 'Selective Sync'}</label>
-                            <SelectiveSyncTree
-                                excludedFolders={config?.excluded_folders || []}
-                                onSave={async (folders) => {
-                                    try {
-                                        await invoke('update_excluded_folders', { excludedFolders: folders });
-                                        setConfig(prev => prev ? { ...prev, excluded_folders: folders } : null);
-                                    } catch (e) {
-                                        console.error('Failed to update excluded folders:', e);
-                                    }
-                                }}
-                            />
-                        </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                                <input
+                                    type="text"
+                                    value={config?.remote_folder || '/cloud/'}
+                                    onChange={e => setConfig(prev => prev ? { ...prev, remote_folder: e.target.value } : null)}
+                                    className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                    placeholder="/cloud/"
+                                />
+                            </div>
 
-                        {/* Versioning Strategy */}
-                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                            <label className="block text-sm font-medium mb-2">{t('cloud.versioningStrategy') || 'File Versioning'}</label>
-                            <select
-                                className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
-                                value={toVersioningSelectValue(config?.versioning_strategy)}
-                                onChange={(e) => {
-                                    const nextStrategy = fromVersioningSelectValue(
-                                        e.target.value as CloudVersioningSelectValue
-                                    );
-                                    setConfig(prev => prev ? { ...prev, versioning_strategy: nextStrategy } : null);
-                                }}
-                            >
-                                <option value="disabled">{t('cloud.versioningDisabled') || 'Disabled'}</option>
-                                <option value="trash_can_30">{t('cloud.versioningTrashCan') || 'Trash Can (30 days)'}</option>
-                                <option value="trash_can_7">{t('cloud.versioningTrashCan7') || 'Trash Can (7 days)'}</option>
-                                <option value="trash_can_90">{t('cloud.versioningTrashCan90') || 'Trash Can (90 days)'}</option>
-                                <option value="simple_5">{t('cloud.versioningSimple') || 'Simple (keep 5 versions)'}</option>
-                                <option value="staggered">{t('cloud.versioningStaggered') || 'Staggered (1/hour, 1/day, 1/week)'}</option>
-                            </select>
-                            <p className="text-xs text-gray-400 mt-1">
-                                {t('cloud.versioningDesc') || 'Keeps previous versions of files in .aeroversions/ before overwrite'}
-                            </p>
-                            <button
-                                className="mt-2 text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1"
-                                onClick={() => setShowVersionBrowser(true)}
-                            >
-                                <History size={12} /> {t('cloud.browseVersions') || 'Browse archived versions'}
-                            </button>
-                        </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">{t('cloud.serverProfile')}</label>
+                                <input
+                                    type="text"
+                                    value={config?.server_profile || ''}
+                                    readOnly
+                                    className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm"
+                                />
+                            </div>
 
-                        {/* Sync Scheduler (Phase 3A+) */}
-                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                            <SyncScheduler />
-                        </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1 flex items-center gap-2">
+                                    <Link2 size={14} /> {t('cloud.publicUrlBase')}
+                                    <span className="text-xs text-gray-400 font-normal">({t('cloud.forSharing')})</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={config?.public_url_base || ''}
+                                    onChange={e => setConfig(prev => prev ? {
+                                        ...prev,
+                                        public_url_base: e.target.value || null
+                                    } : null)}
+                                    className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                    placeholder="https://cloud.yourdomain.com/"
+                                />
+                                <p className="text-xs text-gray-400 mt-1">
+                                    {t('cloud.publicUrlDesc')}
+                                </p>
+                            </div>
+                        </section>
 
-                        {/* Watcher Status (Phase 3A+) */}
-                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                            <WatcherStatus watchPath={config?.local_folder} />
-                        </div>
+                        {/* RIGHT COLUMN — Sync & Versioning */}
+                        <section className="space-y-4">
+                            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('cloud.sectionSync')}</h3>
 
-                        <div className="flex gap-3 pt-4">
-                            <button
-                                onClick={async () => {
-                                    if (config) {
+                            <div>
+                                <label className="block text-sm font-medium mb-1">{t('cloud.syncInterval')}</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max={isHours ? 168 : 1440}
+                                        value={syncIntervalValue}
+                                        onChange={e => {
+                                            const val = Math.max(1, parseInt(e.target.value) || 1);
+                                            setConfig(prev => prev ? {
+                                                ...prev,
+                                                sync_interval_secs: isHours ? val * 3600 : val * 60
+                                            } : null);
+                                        }}
+                                        className="w-20 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
+                                    />
+                                    <select
+                                        value={isHours ? 'hours' : 'minutes'}
+                                        onChange={e => {
+                                            setConfig(prev => prev ? {
+                                                ...prev,
+                                                sync_interval_secs: e.target.value === 'hours' ? syncIntervalValue * 3600 : syncIntervalValue * 60
+                                            } : null);
+                                        }}
+                                        className="px-2 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                    >
+                                        <option value="minutes">{t('settings.minutes')}</option>
+                                        <option value="hours">{t('cloud.hours')}</option>
+                                    </select>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">{t('cloud.syncIntervalDesc')}</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-2">{t('cloud.selectiveSync')}</label>
+                                <SelectiveSyncTree
+                                    excludedFolders={config?.excluded_folders || []}
+                                    onSave={async (folders) => {
                                         try {
-                                            await invoke('save_cloud_config_cmd', { config });
-                                            // Sync interval to SyncSchedule so the background worker uses the correct value
-                                            try {
-                                                const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');
-                                                if (schedule) {
-                                                    await invoke('save_sync_schedule_cmd', {
-                                                        schedule: { ...schedule, interval_secs: config.sync_interval_secs }
-                                                    });
-                                                }
-                                            } catch { /* scheduler may not be initialized yet */ }
-                                            setShowSettings(false);
-                                            logger.debug('Settings saved!');
+                                            await invoke('update_excluded_folders', { excludedFolders: folders });
+                                            setConfig(prev => prev ? { ...prev, excluded_folders: folders } : null);
                                         } catch (e) {
-                                            console.error('Failed to save settings:', e);
+                                            console.error('Failed to update excluded folders:', e);
                                         }
+                                    }}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-2">{t('cloud.versioningStrategy')}</label>
+                                <select
+                                    className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                                    value={toVersioningSelectValue(config?.versioning_strategy)}
+                                    onChange={(e) => {
+                                        const nextStrategy = fromVersioningSelectValue(
+                                            e.target.value as CloudVersioningSelectValue
+                                        );
+                                        setConfig(prev => prev ? { ...prev, versioning_strategy: nextStrategy } : null);
+                                    }}
+                                >
+                                    <option value="disabled">{t('cloud.versioningDisabled')}</option>
+                                    <option value="trash_can_30">{t('cloud.versioningTrashCan')}</option>
+                                    <option value="trash_can_7">{t('cloud.versioningTrashCan7')}</option>
+                                    <option value="trash_can_90">{t('cloud.versioningTrashCan90')}</option>
+                                    <option value="simple_5">{t('cloud.versioningSimple')}</option>
+                                    <option value="staggered">{t('cloud.versioningStaggered')}</option>
+                                </select>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    {t('cloud.versioningDesc')}
+                                </p>
+                                <button
+                                    className="mt-2 text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1"
+                                    onClick={() => setShowVersionBrowser(true)}
+                                >
+                                    <History size={12} /> {t('cloud.browseVersions')}
+                                </button>
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <SyncScheduler />
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <WatcherStatus watchPath={config?.local_folder} />
+                            </div>
+                        </section>
+                    </div>
+
+                    {/* Footer — full width */}
+                    <div className="flex gap-3 p-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <button
+                            onClick={async () => {
+                                if (config) {
+                                    try {
+                                        await invoke('save_cloud_config_cmd', { config });
+                                        // Sync interval to SyncSchedule so the background worker uses the correct value
+                                        try {
+                                            const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');
+                                            if (schedule) {
+                                                await invoke('save_sync_schedule_cmd', {
+                                                    schedule: { ...schedule, interval_secs: config.sync_interval_secs }
+                                                });
+                                            }
+                                        } catch { /* scheduler may not be initialized yet */ }
+                                        setShowSettings(false);
+                                        logger.debug('Settings saved!');
+                                    } catch (e) {
+                                        console.error('Failed to save settings:', e);
                                     }
-                                }}
-                                className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium"
-                            >
-                                {t('common.save')} {t('common.settings')}
-                            </button>
-                            <button
-                                onClick={() => setShowSettings(false)}
-                                className="flex-1 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium"
-                            >
-                                {t('common.cancel')}
-                            </button>
-                        </div>
+                                }
+                            }}
+                            className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium"
+                        >
+                            {t('common.save')} {t('common.settings')}
+                        </button>
+                        <button
+                            onClick={() => setShowSettings(false)}
+                            className="flex-1 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium"
+                        >
+                            {t('common.cancel')}
+                        </button>
                     </div>
                 </div>
             </div>

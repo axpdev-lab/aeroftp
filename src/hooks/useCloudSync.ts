@@ -36,6 +36,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   const [showCloudPanel, setShowCloudPanel] = useState(false);
   const [cloudSyncing, setCloudSyncing] = useState(false);
   const [isCloudActive, setIsCloudActive] = useState(false);
+  const [isCloudPaused, setIsCloudPaused] = useState(false);
   const [cloudServerName, setCloudServerName] = useState<string>('');
   const [cloudLastSync, setCloudLastSync] = useState<string | null>(null);
   const [cloudLocalFolder, setCloudLocalFolder] = useState<string>('');
@@ -61,6 +62,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       try {
         const config = await invoke<{
           enabled: boolean;
+          paused?: boolean;
           cloud_name?: string;
           server_profile?: string;
           last_sync?: string;
@@ -70,6 +72,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
           protocol_type?: string;
         }>('get_cloud_config');
         setIsCloudActive(config.enabled);
+        setIsCloudPaused(Boolean(config.paused));
         if (config.cloud_name) {
           setCloudServerName(config.cloud_name);
         } else if (config.server_profile) {
@@ -106,15 +109,21 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       if (status === 'active') {
         setCloudSyncing(false);
         setIsCloudActive(true);
+        setIsCloudPaused(false);
         setCloudLastSync(new Date().toISOString());
         // Don't update log here — cloud_sync_complete handles the summary log
         // to avoid duplicate entries. Just clear syncing state.
       } else if (status === 'idle') {
         setCloudSyncing(false);
         setIsCloudActive(true);
+      } else if (status === 'paused') {
+        setCloudSyncing(false);
+        setIsCloudActive(true);
+        setIsCloudPaused(true);
       } else if (status === 'syncing') {
         setCloudSyncing(true);
         setIsCloudActive(true);
+        setIsCloudPaused(false);
         if (!cloudSyncLogId) {
           cloudSyncLogId = hl.logRaw('activity.sync_start', 'INFO', { server: csn }, 'running');
         } else {
@@ -138,6 +147,12 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       } else if (status === 'disabled') {
         setCloudSyncing(false);
         setIsCloudActive(false);
+        setIsCloudPaused(false);
+        setCloudServerName('');
+        setCloudLastSync(null);
+        setCloudLocalFolder('');
+        setCloudRemoteFolder('');
+        setCloudPublicUrlBase('');
       }
     });
 
@@ -236,9 +251,9 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     };
   }, []);
 
-  // Auto-start background sync only after vault is unlocked
+  // Auto-start background sync only after vault is unlocked and not paused
   useEffect(() => {
-    if (isAppLocked || !isCloudActive) return;
+    if (isAppLocked || !isCloudActive || isCloudPaused) return;
 
     const startSync = async () => {
       logger.debug('Vault unlocked and cloud enabled, starting background sync...');
@@ -250,7 +265,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       }
     };
     startSync();
-  }, [isAppLocked, isCloudActive]);
+  }, [isAppLocked, isCloudActive, isCloudPaused]);
 
   return {
     showCloudPanel,
@@ -258,6 +273,8 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     cloudSyncing,
     isCloudActive,
     setIsCloudActive,
+    isCloudPaused,
+    setIsCloudPaused,
     cloudServerName,
     setCloudServerName,
     cloudLastSync,

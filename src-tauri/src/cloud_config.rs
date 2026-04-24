@@ -17,8 +17,11 @@ static CONFIG_WRITE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()))
 /// Cloud sync configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudConfig {
-    /// Is cloud sync enabled
+    /// Is cloud sync enabled (config valid and user opted-in)
     pub enabled: bool,
+    /// Paused by user. Config is retained but background sync is stopped until resumed.
+    #[serde(default)]
+    pub paused: bool,
     /// Custom display name for this cloud connection
     #[serde(default)]
     pub cloud_name: String,
@@ -93,6 +96,7 @@ impl Default for CloudConfig {
 
         Self {
             enabled: false,
+            paused: false,
             cloud_name: String::new(),
             local_folder,
             remote_folder: "/cloud/".to_string(),

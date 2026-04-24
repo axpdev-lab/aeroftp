@@ -20,6 +20,7 @@ import { WatcherStatus } from '../WatcherStatus';
 
 interface CloudConfig {
   enabled: boolean;
+  paused?: boolean;
   cloud_name: string;
   local_folder: string;
   remote_folder: string;
@@ -120,12 +121,15 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
     }
   }, []);
 
-  const handleToggleEnabled = useCallback(async (enabled: boolean) => {
+  // Toggle acts as Pause/Resume — preserves config on OFF. Use CloudPanel's
+  // Disable button to fully remove the configuration.
+  const handleTogglePaused = useCallback(async (running: boolean) => {
     try {
-      const result = await invoke<CloudConfig>('enable_aerocloud', { enabled });
+      const cmd = running ? 'resume_aerocloud' : 'pause_aerocloud';
+      const result = await invoke<CloudConfig>(cmd);
       setConfig(result);
     } catch (e) {
-      console.error('Failed to toggle AeroCloud:', e);
+      console.error('Failed to toggle AeroCloud pause:', e);
     }
   }, []);
 
@@ -157,14 +161,15 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
     );
   }
 
+  const isPaused = Boolean(config.paused);
   const syncStateLabel = status?.state === 'syncing' ? t('cloud.syncing') || 'Syncing...'
-    : status?.state === 'paused' ? t('cloud.paused') || 'Paused'
+    : isPaused || status?.state === 'paused' ? t('cloud.paused') || 'Paused'
     : status?.state === 'error' ? t('cloud.error') || 'Error'
     : t('cloud.idle') || 'Idle';
 
   const syncStateColor = status?.state === 'syncing' ? 'text-cyan-500'
     : status?.state === 'error' ? 'text-red-500'
-    : status?.state === 'paused' ? 'text-amber-500'
+    : isPaused || status?.state === 'paused' ? 'text-amber-500'
     : 'text-green-500';
 
   const isHours = config.sync_interval_secs >= 3600;
@@ -179,12 +184,13 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
         <div className="flex items-center gap-2">
           {/* Status badge */}
           <span className={`text-xs font-medium ${syncStateColor}`}>{syncStateLabel}</span>
-          {/* Enable/Disable toggle */}
+          {/* Pause / Resume toggle. ON = running, OFF = paused (config retained). */}
           <button
-            onClick={() => handleToggleEnabled(!config.enabled)}
-            className={`relative w-10 h-5 rounded-full transition-colors ${config.enabled ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+            onClick={() => handleTogglePaused(isPaused)}
+            title={isPaused ? (t('cloud.resume') || 'Resume') : (t('cloud.pause') || 'Pause')}
+            className={`relative w-10 h-5 rounded-full transition-colors ${!isPaused ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'}`}
           >
-            <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow ${config.enabled ? 'translate-x-5' : ''}`} />
+            <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow ${!isPaused ? 'translate-x-5' : ''}`} />
           </button>
         </div>
       </div>
@@ -323,7 +329,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
 
       {/* Sync Scheduler */}
       <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-        <SyncScheduler disabled={!config.enabled} />
+        <SyncScheduler disabled={!config.enabled || isPaused} />
       </div>
 
       {/* Watcher Status */}
@@ -344,7 +350,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
           <div className="flex gap-2">
             <button
               onClick={handleTriggerSync}
-              disabled={syncing || !config.enabled}
+              disabled={syncing || !config.enabled || isPaused}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg disabled:opacity-50 transition-colors"
             >
               {syncing ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}

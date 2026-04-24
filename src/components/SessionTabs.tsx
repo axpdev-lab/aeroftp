@@ -14,6 +14,7 @@ interface CloudTabState {
     enabled: boolean;
     syncing: boolean;
     active: boolean;  // background sync running
+    paused?: boolean; // user paused — config retained, worker stopped
     serverName?: string;
 }
 
@@ -276,19 +277,25 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
             {/* Cloud Tab - Special tab for AeroCloud */}
             {cloudTab?.enabled && (
                 <div
-                    className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all min-w-0 max-w-[200px] ${cloudTab.active || cloudTab.syncing
+                    className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all min-w-0 max-w-[200px] ${cloudTab.syncing
                         ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 dark:from-cyan-900/40 dark:to-blue-900/40 border border-cyan-400/30'
-                        : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
+                        : cloudTab.paused
+                            ? 'bg-amber-500/10 dark:bg-amber-900/30 border border-amber-400/30'
+                            : cloudTab.active
+                                ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 dark:from-cyan-900/40 dark:to-blue-900/40 border border-cyan-400/30'
+                                : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
                         }`}
                     onClick={onCloudTabClick}
-                    title={cloudTab.syncing ? t('ui.session.syncing') : cloudTab.active ? t('ui.session.backgroundSyncActive') : t('ui.session.aerocloudClickToOpen')}
+                    title={cloudTab.syncing ? t('ui.session.syncing') : cloudTab.paused ? t('cloud.paused') : cloudTab.active ? t('ui.session.backgroundSyncActive') : t('ui.session.aerocloudClickToOpen')}
                 >
                     {/* Cloud status indicator */}
                     <span className={`shrink-0 ${cloudTab.syncing
                         ? 'text-cyan-500 animate-pulse'
-                        : cloudTab.active
-                            ? 'text-cyan-500'
-                            : 'text-gray-400'
+                        : cloudTab.paused
+                            ? 'text-amber-500'
+                            : cloudTab.active
+                                ? 'text-cyan-500'
+                                : 'text-gray-400'
                         }`}>
                         {cloudTab.active || cloudTab.syncing ? (
                             <Cloud size={14} className={cloudTab.syncing ? 'animate-bounce' : ''} />
@@ -298,9 +305,13 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                     </span>
 
                     {/* Cloud name */}
-                    <span className={`truncate text-sm ${cloudTab.active || cloudTab.syncing
+                    <span className={`truncate text-sm ${cloudTab.syncing
                         ? 'font-medium text-cyan-700 dark:text-cyan-300'
-                        : 'text-gray-500 dark:text-gray-400'
+                        : cloudTab.paused
+                            ? 'font-medium text-amber-700 dark:text-amber-300'
+                            : cloudTab.active
+                                ? 'font-medium text-cyan-700 dark:text-cyan-300'
+                                : 'text-gray-500 dark:text-gray-400'
                         }`}>
                         {cloudTab.serverName || t('statusBar.aerofile')}
                     </span>

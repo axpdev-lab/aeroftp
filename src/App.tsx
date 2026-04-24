@@ -889,6 +889,7 @@ interface UpdateVerificationInfo {
   const {
     showCloudPanel, setShowCloudPanel,
     cloudSyncing, isCloudActive, setIsCloudActive,
+    isCloudPaused,
     cloudServerName, setCloudServerName,
     cloudLastSync, setCloudLastSync,
     cloudLocalFolder, setCloudLocalFolder,
@@ -7923,6 +7924,7 @@ interface UpdateVerificationInfo {
               }}
               isAeroCloudConfigured={true}
               isAeroCloudConnected={isCloudActive}
+              isAeroCloudPaused={isCloudPaused}
               onAeroFile={handleToggleAeroFile}
               onOpenCrossProfile={() => setShowCrossProfilePanel(true)}
               onSavedServerConnect={async (params, initialPath, localInitialPath) => {
@@ -8162,6 +8164,7 @@ interface UpdateVerificationInfo {
                   enabled: true,
                   syncing: cloudSyncing,
                   active: isCloudActive,
+                  paused: isCloudPaused,
                   serverName: cloudServerName || 'AeroCloud'
                 } : undefined}
                 onCloudTabClick={handleCloudTabClick}
@@ -9382,6 +9385,7 @@ interface UpdateVerificationInfo {
             onToggleSync={() => setShowSyncPanel(true)}
             onToggleCloud={() => setShowCloudPanel(true)}
             cloudEnabled={isCloudActive}
+            cloudPaused={isCloudPaused}
             cloudSyncing={cloudSyncing}
             transferQueueActive={transferQueue.hasActiveTransfers}
             transferQueueCount={transferQueue.items.length}

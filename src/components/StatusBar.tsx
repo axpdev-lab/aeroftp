@@ -27,6 +27,7 @@ interface StatusBarProps {
     activePanel: 'remote' | 'local';
     devToolsOpen?: boolean;
     cloudEnabled?: boolean;
+    cloudPaused?: boolean;
     cloudSyncing?: boolean;
     transferQueueActive?: boolean;
     transferQueueCount?: number;
@@ -64,6 +65,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     activePanel,
     devToolsOpen = false,
     cloudEnabled = false,
+    cloudPaused = false,
     cloudSyncing = false,
     transferQueueActive = false,
     transferQueueCount = 0,
@@ -290,14 +292,16 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         onClick={onToggleCloud}
                         className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-colors ${cloudSyncing
                             ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-500'
-                            : cloudEnabled
-                                ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400'
-                                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                            : cloudEnabled && cloudPaused
+                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400'
+                                : cloudEnabled
+                                    ? 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400'
+                                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                             }`}
-                        title={t('statusbar.aerocloudTitle')}
+                        title={cloudPaused ? t('cloud.paused') : t('statusbar.aerocloudTitle')}
                     >
                         <Cloud size={12} className={cloudSyncing ? 'animate-pulse' : ''} />
-                        <span>{cloudSyncing ? t('statusBar.syncing') : t('cloud.title')}</span>
+                        <span>{cloudSyncing ? t('statusBar.syncing') : cloudEnabled && cloudPaused ? t('cloud.paused') : t('cloud.title')}</span>
                         {cloudSyncing && <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />}
                     </button>
                 )}

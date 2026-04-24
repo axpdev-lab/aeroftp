@@ -30,6 +30,7 @@ interface IntroHubHeaderProps {
     onAeroFile?: () => void;
     onCrossProfileTransfer?: () => void;
     isAeroCloudConnected?: boolean;
+    isAeroCloudPaused?: boolean;
     isAeroCloudConfigured?: boolean;
     serverCount?: number;
     serviceCount?: number;
@@ -62,6 +63,7 @@ export function IntroHubHeader({
     onAeroFile,
     onCrossProfileTransfer,
     isAeroCloudConnected,
+    isAeroCloudPaused,
     isAeroCloudConfigured,
     serverCount = 0,
     serviceCount = 0,
@@ -168,14 +170,22 @@ export function IntroHubHeader({
                     <button
                         onClick={onAeroCloud}
                         className={`flex items-center gap-1.5 p-1.5 rounded-lg transition-colors ${
-                            isAeroCloudConnected
-                                ? 'bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-100 dark:hover:bg-sky-800/40 text-sky-600 dark:text-sky-400'
-                                : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-400 dark:text-gray-500'
+                            isAeroCloudConnected && isAeroCloudPaused
+                                ? 'bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-800/40 text-amber-600 dark:text-amber-400'
+                                : isAeroCloudConnected
+                                    ? 'bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-100 dark:hover:bg-sky-800/40 text-sky-600 dark:text-sky-400'
+                                    : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-400 dark:text-gray-500'
                         }`}
-                        title={isAeroCloudConfigured ? 'AeroCloud' : 'Configure AeroCloud'}
+                        title={
+                            isAeroCloudConnected && isAeroCloudPaused
+                                ? t('cloud.paused')
+                                : isAeroCloudConfigured ? 'AeroCloud' : 'Configure AeroCloud'
+                        }
                     >
                         <Cloud size={16} />
-                        {isAeroCloudConnected && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
+                        {isAeroCloudConnected && (
+                            <span className={`w-1.5 h-1.5 rounded-full ${isAeroCloudPaused ? 'bg-amber-500' : 'bg-green-500'}`} />
+                        )}
                     </button>
                 )}
 

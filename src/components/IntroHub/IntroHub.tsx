@@ -43,6 +43,7 @@ export interface IntroHubProps {
     onAeroCloud?: () => void;
     isAeroCloudConfigured?: boolean;
     isAeroCloudConnected?: boolean;
+    isAeroCloudPaused?: boolean;
     onOpenCloudPanel?: () => void;
     onOpenCrossProfile?: () => void;
     hasExistingSessions?: boolean;
@@ -68,6 +69,7 @@ export function IntroHub(props: IntroHubProps) {
         onAeroCloud,
         isAeroCloudConfigured,
         isAeroCloudConnected,
+        isAeroCloudPaused,
         onOpenCloudPanel,
         onOpenCrossProfile,
         hasExistingSessions,
@@ -308,6 +310,7 @@ export function IntroHub(props: IntroHubProps) {
                 onAeroFile={onAeroFile}
                 onCrossProfileTransfer={onOpenCrossProfile}
                 isAeroCloudConnected={isAeroCloudConnected}
+                isAeroCloudPaused={isAeroCloudPaused}
                 isAeroCloudConfigured={isAeroCloudConfigured}
                 serverCount={paletteServers.length}
                 serviceCount={getTotalServiceCount()}
