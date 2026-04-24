@@ -34,21 +34,26 @@ pub fn load_native_rsync_enabled() -> bool {
         Ok(path) => path,
         Err(error) => {
             tracing::warn!("native rsync settings path unavailable: {}", error);
-            // PR-T11 follow-up (F5): when the feature itself is compiled
-            // in, "no settings file yet" is a fresh-install signal, not
-            // an explicit opt-out. The user-facing Cargo feature is
-            // default-on since v3.6.1 and the reasonable expectation
-            // matches — delta sync should be ready to probe without a
-            // manual toggle in Settings after the first install.
-            return true;
+            return false;
         }
     };
 
     if !path.exists() {
-        // Same reasoning: fresh install, no TOML written yet → default
-        // to enabled so Windows (where the desktop binary is the first
-        // touchpoint) does not greet the user with a disabled checkbox.
-        return true;
+        // Fresh-install default: OFF. The previous attempt to flip this
+        // to ON broke the Linux integration test lane because CI runs
+        // without the TOML present — the test expects the classic
+        // binary-rsync delta path, but default-on made the native
+        // prototype the preferred backend, and the native prototype's
+        // host-key pinning then rejected the Docker SFTP fixture (the
+        // fixture exposes multiple host-key algorithms and the two
+        // SSH libraries — `ssh2` for classic SFTP, `russh` for the
+        // native probe — negotiated different ones, producing a
+        // fingerprint mismatch). Until the native prototype tolerates
+        // that negotiation asymmetry, the default stays OFF and the
+        // Windows first-run UX relies on the Settings page toggle to
+        // flip it on once. See CI run `24865225219` for the regression
+        // fingerprint.
+        return false;
     }
 
     match fs::read_to_string(&path) {
