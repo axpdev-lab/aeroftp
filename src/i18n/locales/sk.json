@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Vypnúť AeroCloud? Toto odstráni aktuálnu konfiguráciu. Na ďalšie použitie ho budete musieť znova nakonfigurovať.",
+            "selectiveSync": "Selektívna synchronizácia",
+            "selectiveSyncDesc": "Zrušte začiarknutie priečinkov, aby ste ich vylúčili zo synchronizácie.",
+            "versioningStrategy": "Verzionovanie súborov",
+            "versioningDesc": "Uchováva predchádzajúce verzie súborov v .aeroversions/ pred prepísaním.",
+            "versioningDisabled": "Vypnuté",
+            "versioningTrashCan": "Kôš (30 dní)",
+            "versioningTrashCan7": "Kôš (7 dní)",
+            "versioningTrashCan90": "Kôš (90 dní)",
+            "versioningSimple": "Jednoduché (uchovať 5 verzií)",
+            "versioningStaggered": "Odstupňované (1/hod., 1/deň, 1/týždeň)",
+            "browseVersions": "Prehliadať archivované verzie",
+            "sectionConnection": "Pripojenie a umiestnenie",
+            "sectionSync": "Synchronizácia a verzionovanie"
         },
         "statusBar": {
             "connected": "Pripojený",

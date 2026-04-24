@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Tắt AeroCloud? Thao tác này sẽ xóa cấu hình hiện tại. Bạn sẽ cần cấu hình lại để sử dụng.",
+            "selectiveSync": "Đồng bộ có chọn lọc",
+            "selectiveSyncDesc": "Bỏ chọn các thư mục để loại khỏi đồng bộ.",
+            "versioningStrategy": "Phiên bản tệp",
+            "versioningDesc": "Giữ các phiên bản trước của tệp trong .aeroversions/ trước khi ghi đè.",
+            "versioningDisabled": "Đã tắt",
+            "versioningTrashCan": "Thùng rác (30 ngày)",
+            "versioningTrashCan7": "Thùng rác (7 ngày)",
+            "versioningTrashCan90": "Thùng rác (90 ngày)",
+            "versioningSimple": "Đơn giản (giữ 5 phiên bản)",
+            "versioningStaggered": "Phân tầng (1/giờ, 1/ngày, 1/tuần)",
+            "browseVersions": "Duyệt các phiên bản đã lưu trữ",
+            "sectionConnection": "Kết nối và vị trí",
+            "sectionSync": "Đồng bộ và phiên bản"
         },
         "statusBar": {
             "connected": "Đã kết nối",

@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "AeroCloud desgaitu? Honek uneko konfigurazioa kentzen du. Erabiltzeko berriro konfiguratu beharko duzu.",
+            "selectiveSync": "Sinkronizazio hautakorra",
+            "selectiveSyncDesc": "Desmarkatu karpetak sinkronizaziotik kanpo uzteko.",
+            "versioningStrategy": "Fitxategien bertsioak",
+            "versioningDesc": "Fitxategien aurreko bertsioak .aeroversions/ karpetan gordetzen ditu gainidatzi aurretik.",
+            "versioningDisabled": "Desgaituta",
+            "versioningTrashCan": "Zakarrontzia (30 egun)",
+            "versioningTrashCan7": "Zakarrontzia (7 egun)",
+            "versioningTrashCan90": "Zakarrontzia (90 egun)",
+            "versioningSimple": "Sinplea (gorde 5 bertsio)",
+            "versioningStaggered": "Mailakatua (1/ordu, 1/egun, 1/aste)",
+            "browseVersions": "Arakatu artxibatutako bertsioak",
+            "sectionConnection": "Konexioa eta kokalekua",
+            "sectionSync": "Sinkronizazioa eta bertsioak"
         },
         "statusBar": {
             "connected": "Konektatuta",

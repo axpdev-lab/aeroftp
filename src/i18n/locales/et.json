@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Kas keelata AeroCloud? See eemaldab praeguse konfiguratsiooni. Selle kasutamiseks peate selle uuesti konfigureerima.",
+            "selectiveSync": "Valikuline sünkroonimine",
+            "selectiveSyncDesc": "Tühistage kaustade valik, et need sünkroonimisest välja jätta.",
+            "versioningStrategy": "Failide versioonimine",
+            "versioningDesc": "Säilitab failide eelmised versioonid kataloogis .aeroversions/ enne ülekirjutamist.",
+            "versioningDisabled": "Keelatud",
+            "versioningTrashCan": "Prügikast (30 päeva)",
+            "versioningTrashCan7": "Prügikast (7 päeva)",
+            "versioningTrashCan90": "Prügikast (90 päeva)",
+            "versioningSimple": "Lihtne (säilita 5 versiooni)",
+            "versioningStaggered": "Astmeline (1/tund, 1/päev, 1/nädal)",
+            "browseVersions": "Sirvi arhiveeritud versioone",
+            "sectionConnection": "Ühendus ja asukoht",
+            "sectionSync": "Sünkroonimine ja versioonimine"
         },
         "statusBar": {
             "connected": "Ühendatud",

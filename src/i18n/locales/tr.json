@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "AeroCloud devre dışı bırakılsın mı? Bu işlem mevcut yapılandırmayı kaldırır. Yeniden kullanmak için tekrar yapılandırmanız gerekecek.",
+            "selectiveSync": "Seçmeli Eşitleme",
+            "selectiveSyncDesc": "Klasörleri eşitleme dışında bırakmak için işaretlerini kaldırın.",
+            "versioningStrategy": "Dosya Sürümleme",
+            "versioningDesc": "Üzerine yazmadan önce dosyaların önceki sürümlerini .aeroversions/ içinde saklar.",
+            "versioningDisabled": "Devre Dışı",
+            "versioningTrashCan": "Çöp Kutusu (30 gün)",
+            "versioningTrashCan7": "Çöp Kutusu (7 gün)",
+            "versioningTrashCan90": "Çöp Kutusu (90 gün)",
+            "versioningSimple": "Basit (5 sürüm sakla)",
+            "versioningStaggered": "Kademeli (1/saat, 1/gün, 1/hafta)",
+            "browseVersions": "Arşivlenmiş sürümlere göz at",
+            "sectionConnection": "Bağlantı ve Konum",
+            "sectionSync": "Eşitleme ve Sürümleme"
         },
         "statusBar": {
             "connected": "Bağlı",

@@ -1039,7 +1039,21 @@
             "protocol": "プロトコル",
             "idle": "アイドル",
             "neverSynced": "未同期",
-            "openDashboard": "ダッシュボード"
+            "openDashboard": "ダッシュボード",
+            "disableConfirm": "AeroCloud を無効にしますか?現在の構成が削除されます。再度使用するには構成し直す必要があります。",
+            "selectiveSync": "選択的同期",
+            "selectiveSyncDesc": "同期から除外するフォルダのチェックを外してください。",
+            "versioningStrategy": "ファイルバージョン管理",
+            "versioningDesc": "上書きの前に .aeroversions/ にファイルの以前のバージョンを保持します。",
+            "versioningDisabled": "無効",
+            "versioningTrashCan": "ゴミ箱 (30日)",
+            "versioningTrashCan7": "ゴミ箱 (7日)",
+            "versioningTrashCan90": "ゴミ箱 (90日)",
+            "versioningSimple": "シンプル (5 バージョンを保持)",
+            "versioningStaggered": "段階的 (1/時間、1/日、1/週)",
+            "browseVersions": "アーカイブされたバージョンを参照",
+            "sectionConnection": "接続と場所",
+            "sectionSync": "同期とバージョン管理"
         },
         "statusBar": {
             "connected": "接続済み",

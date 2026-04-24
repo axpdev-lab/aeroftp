@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Desactivar AeroCloud? Isto elimina a configuración actual. Necesitarás configuralo de novo para usalo.",
+            "selectiveSync": "Sincronización selectiva",
+            "selectiveSyncDesc": "Desmarca os cartafoles para excluílos da sincronización.",
+            "versioningStrategy": "Versións de ficheiros",
+            "versioningDesc": "Conserva as versións anteriores dos ficheiros en .aeroversions/ antes de sobrescribilas.",
+            "versioningDisabled": "Desactivado",
+            "versioningTrashCan": "Papeleira (30 días)",
+            "versioningTrashCan7": "Papeleira (7 días)",
+            "versioningTrashCan90": "Papeleira (90 días)",
+            "versioningSimple": "Simple (conservar 5 versións)",
+            "versioningStaggered": "Escalonado (1/hora, 1/día, 1/semana)",
+            "browseVersions": "Explorar versións arquivadas",
+            "sectionConnection": "Conexión e localización",
+            "sectionSync": "Sincronización e versións"
         },
         "statusBar": {
             "connected": "Conectado",

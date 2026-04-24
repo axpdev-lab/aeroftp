@@ -1039,7 +1039,21 @@
             "protocol": "Протокол",
             "idle": "Ожидание",
             "neverSynced": "Не синхронизировано",
-            "openDashboard": "Панель"
+            "openDashboard": "Панель",
+            "disableConfirm": "Отключить AeroCloud? Это удалит текущую конфигурацию. Для повторного использования потребуется настроить заново.",
+            "selectiveSync": "Выборочная синхронизация",
+            "selectiveSyncDesc": "Снимите флажки с папок, чтобы исключить их из синхронизации.",
+            "versioningStrategy": "Версионирование файлов",
+            "versioningDesc": "Сохраняет предыдущие версии файлов в .aeroversions/ перед перезаписью.",
+            "versioningDisabled": "Отключено",
+            "versioningTrashCan": "Корзина (30 дней)",
+            "versioningTrashCan7": "Корзина (7 дней)",
+            "versioningTrashCan90": "Корзина (90 дней)",
+            "versioningSimple": "Простое (хранить 5 версий)",
+            "versioningStaggered": "Ступенчатое (1/час, 1/день, 1/неделя)",
+            "browseVersions": "Просмотр архивных версий",
+            "sectionConnection": "Подключение и расположение",
+            "sectionSync": "Синхронизация и версионирование"
         },
         "statusBar": {
             "connected": "Подключено",

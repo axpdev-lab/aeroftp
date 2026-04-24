@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Απενεργοποίηση του AeroCloud; Αυτό θα καταργήσει την τρέχουσα διαμόρφωση. Θα χρειαστεί να το ρυθμίσετε ξανά για να το χρησιμοποιήσετε.",
+            "selectiveSync": "Επιλεκτικός συγχρονισμός",
+            "selectiveSyncDesc": "Αποεπιλέξτε φακέλους για να τους εξαιρέσετε από τον συγχρονισμό.",
+            "versioningStrategy": "Εκδόσεις αρχείων",
+            "versioningDesc": "Διατηρεί προηγούμενες εκδόσεις αρχείων στον φάκελο .aeroversions/ πριν την αντικατάσταση.",
+            "versioningDisabled": "Απενεργοποιημένο",
+            "versioningTrashCan": "Κάδος (30 ημέρες)",
+            "versioningTrashCan7": "Κάδος (7 ημέρες)",
+            "versioningTrashCan90": "Κάδος (90 ημέρες)",
+            "versioningSimple": "Απλό (διατήρηση 5 εκδόσεων)",
+            "versioningStaggered": "Κλιμακωτό (1/ώρα, 1/ημέρα, 1/εβδομάδα)",
+            "browseVersions": "Περιήγηση αρχειοθετημένων εκδόσεων",
+            "sectionConnection": "Σύνδεση και τοποθεσία",
+            "sectionSync": "Συγχρονισμός και εκδόσεις"
         },
         "statusBar": {
             "connected": "Συνδεδεμένο",

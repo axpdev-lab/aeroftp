@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.2] - 2026-04-24
+
+### AeroCloud UX Fixes + AI Provider Marketplace Expansion + Windows Delta Sync Follow-Up
+
+Incremental hardening release bundling two AeroCloud UX fixes, five new AeroAgent providers, and two Windows-side follow-ups to the v3.6.1 delta sync activation.
+
+### Added
+
+- **AeroAgent Provider Marketplace — 5 new providers** (19 → 24 total): **NVIDIA NIM** (`integrate.api.nvidia.com/v1`, DGX-grade hosted inference for Llama 3.3 Nemotron / DeepSeek / Mixtral, 1000-request free tier), **Z.AI (Zhipu GLM)** (`api.z.ai/api/paas/v4`, GLM-4.6 flagship + GLM-4-Plus + GLM-4V-Plus, bilingual reasoning with strong tool-use), **Yi (01.AI)** (`api.lingyiwanwu.com/v1`, Yi-Large + Yi-Vision from Kai-Fu Lee's lab, 200K context), **Hyperbolic** (`api.hyperbolic.xyz/v1`, affordable hosted Llama 3.3 70B / DeepSeek V3 / Qwen), **Novita AI** (`api.novita.ai/v3/openai`, serverless aggregator with 100+ open models). All five are OpenAI-compatible at `/chat/completions` and ride the existing `openai_compat::call` dispatch arm — no new adapter code. Branded SVG icons ship in the marketplace, settings list, and chat header.
+- **AeroCloud pause-with-preserved-config**: the AeroCloud toggle in Settings now invokes the new `pause_aerocloud` / `resume_aerocloud` Tauri commands. Pausing stops the background worker but keeps the full configuration on disk and emits a dedicated `"paused"` status event. The top-right titlebar button, the session tab, and the status-bar button all render amber when paused (visually distinct from both "syncing" cyan and "inactive" grey). The `paused` flag persists across app restarts via a new field on `CloudConfig`.
+- **CloudPanel Disable action with confirmation**: a new `disable_aerocloud` command wipes the configuration entirely after a `window.confirm()` prompt, so re-enabling requires running the setup wizard again — matching the user-expected Disable semantics where Pause preserves config and Disable does not.
+- **AeroCloud Settings modal — responsive two-column layout**: the gear-icon panel inside CloudPanel has been rewritten from a single `max-w-md` column to a `max-w-4xl` `grid md:grid-cols-2` with a sticky header and footer and scrollable middle. Left column groups Connection & Location (cloud name, local folder, remote folder, server profile, public URL); right column groups Sync & Versioning (interval, selective sync, versioning strategy, scheduler, watcher). Mobile collapses to a single column unchanged. Modal height roughly halved, Save button always in view.
+- **NSIS installer — HKCU PATH registration**: `src-tauri/installer/hooks.nsh` now appends `$INSTDIR` to `HKCU\Environment\Path` at install time (idempotent guard) and broadcasts `WM_SETTINGCHANGE` so running shells refresh without logoff. `aeroftp-cli` now resolves in VS Code extension hosts, terminal `where aeroftp-cli`, and integration scripts out of the box on fresh installs. `CUSTOM_PRE_UNINSTALL` mirrors the deregistration.
+
+### Fixed
+
+- **Windows delta sync checkbox stayed disabled despite valid session (PR-T11 F8)**: `get_transfer_optimization_hints` (powering the AeroSync Advanced-tab checkbox and badges) consulted a different eligibility source than `sftp_probe_delta_eligibility` (powering the modal). On Windows the two codepaths disagreed — the modal reported eligible while the checkbox stayed disabled. Both sources now ask the provider instance the same question (`delta_transport()` availability), eliminating the split-brain. The derived `private_key_configured` flag is preserved for the user-facing `delta_sync_note` fallback message.
+- **AeroCloud status indicators ignored pause state**: the top-right titlebar button, the session tab, and the status bar all stayed cyan/"active" even when the Settings toggle had been flipped. The shared `useCloudSync` hook now handles the `"paused"` event, clears state on `"disabled"`, and propagates `isCloudPaused` to every consumer. The auto-start effect skips `start_background_sync` when paused.
+- **Raw i18n keys visible in AeroCloud Settings modal**: the code pattern `t('cloud.X') || 'fallback'` never triggered the fallback because `t()` returns the key itself on miss (truthy). 14 missing `cloud.*` keys added to `en.json` + `it.json` and propagated in all 47 locales (`selectiveSync`, `selectiveSyncDesc`, `versioningStrategy`, `versioningDesc`, `browseVersions`, `versioningDisabled`, `versioningTrashCan{,7,90}`, `versioningSimple`, `versioningStaggered`, `sectionConnection`, `sectionSync`, `disableConfirm`).
+- **AeroSync "Delta Sync · available" misread as "ready to enable"**: the slate-gray tone label on the Advanced-tab badge has been renamed to "inactive" so the visible text matches the visual tone (slate-gray fallback = not active). Disabled `Delta Sync` checkbox now carries a `title` tooltip sourced from the backend-provided `delta_sync_note` (no SFTP session, no key, feature off, session needs reconnect, etc.), with a new `syncPanel.deltaDisabledFallback` fallback string translated in all 47 languages.
+
+### Changed
+
+- **`load_native_rsync_enabled()` default stays OFF on fresh install**: the v3.6.1 Windows activation attempted to flip the first-run default to ON so the Windows UX did not greet the user with a disabled checkbox. The flip broke the Linux integration-test lane because the Docker SFTP fixture exposes multiple host-key algorithms and the two SSH libraries (`ssh2` for classic SFTP, `russh` for the native probe) negotiated different ones, producing a fingerprint mismatch the native prototype's host-key pinning rejected. Until the pinning tolerates that negotiation asymmetry, the default stays OFF and first-run UX relies on the Settings toggle. Tracked as a host-key-algorithm follow-up.
+- **Windows CI `windows-native` job — compile-only gate, test runner deferred**: `cargo test --lib` on `windows-latest` could not link the test binary under MSVC because `whisper-rs-sys` left eight C runtime imports unresolved in the test profile. The `.msi` / `.exe` release profile linked fine (Tauri's own build job produces them on the same runner). Step 2 of the job has been reshaped from `cargo test` to `cargo check --all-targets` with default features — this still compiles every Tauri binary and the lib-test target without linking the test binary, protecting the compile surface without gating on a MSVC link issue that is its own hardening story. Linux lanes remain the authoritative test runner.
+- **`windows-native` job timeout 20 → 40 min**: the old ceiling was tight even before v3.6.1 made `proto_native_rsync` default-on, and MSVC link on the aeroftp lib crate is roughly 2× slower than Ubuntu. Cold-cache runs were being cancelled at the boundary.
+
+### i18n
+
+- **15 new `cloud.*` keys** for the redesigned AeroCloud Settings modal and the Disable confirmation. Translated in all 47 languages (en + it manual, 45 via batch agents).
+- **1 new `syncPanel.deltaDisabledFallback` key** for the disabled-checkbox tooltip fallback. Already propagated in all 47 languages as part of the delta-sync hints slice.
+
+### Licensing note
+
+No licensing change from v3.6.1. The native rsync module stays an independent clean-room Rust re-implementation of the rsync wire protocol under GPL-3.0-or-later; AeroFTP is GPL-3.0-or-later as well. See `src-tauri/src/rsync_native_proto/README.md` for details.
+
 ## [3.6.1] - 2026-04-23
 
 ### Windows First-Class Delta Sync + PR-T08 Eligibility Gate + Dependency Security

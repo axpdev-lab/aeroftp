@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Деактивиране на AeroCloud? Това премахва текущата конфигурация. Ще трябва да я конфигурирате отново, за да я използвате.",
+            "selectiveSync": "Избирателна синхронизация",
+            "selectiveSyncDesc": "Премахнете отметките на папките, за да ги изключите от синхронизацията.",
+            "versioningStrategy": "Версии на файлове",
+            "versioningDesc": "Запазва предишните версии на файловете в .aeroversions/ преди презаписване.",
+            "versioningDisabled": "Деактивирано",
+            "versioningTrashCan": "Кошче (30 дни)",
+            "versioningTrashCan7": "Кошче (7 дни)",
+            "versioningTrashCan90": "Кошче (90 дни)",
+            "versioningSimple": "Просто (запазване на 5 версии)",
+            "versioningStaggered": "Стъпаловидно (1/час, 1/ден, 1/седмица)",
+            "browseVersions": "Преглед на архивирани версии",
+            "sectionConnection": "Връзка и местоположение",
+            "sectionSync": "Синхронизация и версии"
         },
         "statusBar": {
             "connected": "Свързан",

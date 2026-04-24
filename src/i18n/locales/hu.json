@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Letiltja az AeroCloud-ot? Ez eltávolítja a jelenlegi konfigurációt. A használathoz újra kell konfigurálnia.",
+            "selectiveSync": "Szelektív szinkronizálás",
+            "selectiveSyncDesc": "Törölje a jelölést a szinkronizálásból kizárandó mappákról.",
+            "versioningStrategy": "Fájlverziózás",
+            "versioningDesc": "Megőrzi a fájlok korábbi verzióit a .aeroversions/ mappában felülírás előtt.",
+            "versioningDisabled": "Letiltva",
+            "versioningTrashCan": "Lomtár (30 nap)",
+            "versioningTrashCan7": "Lomtár (7 nap)",
+            "versioningTrashCan90": "Lomtár (90 nap)",
+            "versioningSimple": "Egyszerű (5 verzió megőrzése)",
+            "versioningStaggered": "Lépcsőzetes (1/óra, 1/nap, 1/hét)",
+            "browseVersions": "Archivált verziók böngészése",
+            "sectionConnection": "Kapcsolat és hely",
+            "sectionSync": "Szinkronizálás és verziózás"
         },
         "statusBar": {
             "connected": "Csatlakozva",

@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Atspējot AeroCloud? Tas noņems pašreizējo konfigurāciju. Lai to izmantotu, jums būs jākonfigurē vēlreiz.",
+            "selectiveSync": "Selektīva sinhronizācija",
+            "selectiveSyncDesc": "Noņemiet atzīmi no mapēm, lai izslēgtu tās no sinhronizācijas.",
+            "versioningStrategy": "Failu versiju veidošana",
+            "versioningDesc": "Saglabā iepriekšējās failu versijas mapē .aeroversions/ pirms pārrakstīšanas.",
+            "versioningDisabled": "Atspējots",
+            "versioningTrashCan": "Miskaste (30 dienas)",
+            "versioningTrashCan7": "Miskaste (7 dienas)",
+            "versioningTrashCan90": "Miskaste (90 dienas)",
+            "versioningSimple": "Vienkāršs (saglabāt 5 versijas)",
+            "versioningStaggered": "Pakāpenisks (1/stundā, 1/dienā, 1/nedēļā)",
+            "browseVersions": "Pārlūkot arhivētās versijas",
+            "sectionConnection": "Savienojums un atrašanās vieta",
+            "sectionSync": "Sinhronizācija un versijas"
         },
         "statusBar": {
             "connected": "Savienots",

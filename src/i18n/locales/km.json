@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "បិទ AeroCloud? សកម្មភាពនេះនឹងលុបការកំណត់បច្ចុប្បន្ន។ អ្នកនឹងត្រូវកំណត់វាម្តងទៀតដើម្បីប្រើ។",
+            "selectiveSync": "ការធ្វើសមកាលកម្មជ្រើសរើស",
+            "selectiveSyncDesc": "ដោះគូសថតដើម្បីដកចេញពីការធ្វើសមកាលកម្ម។",
+            "versioningStrategy": "ការគ្រប់គ្រងកំណែឯកសារ",
+            "versioningDesc": "រក្សាទុកកំណែមុននៃឯកសារនៅក្នុង .aeroversions/ មុនពេលសរសេរជាន់លើ។",
+            "versioningDisabled": "បិទ",
+            "versioningTrashCan": "ធុងសំរាម (30 ថ្ងៃ)",
+            "versioningTrashCan7": "ធុងសំរាម (7 ថ្ងៃ)",
+            "versioningTrashCan90": "ធុងសំរាម (90 ថ្ងៃ)",
+            "versioningSimple": "សាមញ្ញ (រក្សា 5 កំណែ)",
+            "versioningStaggered": "តាមដំណាក់កាល (1/ម៉ោង, 1/ថ្ងៃ, 1/សប្តាហ៍)",
+            "browseVersions": "មើលកំណែដែលបានរក្សាទុក",
+            "sectionConnection": "ការតភ្ជាប់ និងទីតាំង",
+            "sectionSync": "ការធ្វើសមកាលកម្ម និងកំណែ"
         },
         "statusBar": {
             "connected": "បានតភ្ជាប់",

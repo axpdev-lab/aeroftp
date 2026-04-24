@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Անջատել AeroCloud-ը՞ Սա կհեռացնի ընթացիկ կոնֆիգուրացիան՝ Այն կրկին օգտագործելու համար պետք է կրկին կարգավորել՝",
+            "selectiveSync": "Ընտրողական համանքարգում",
+            "selectiveSyncDesc": "Տուղտերտու նշանակը համանքարգմանից բացառելու համար՝",
+            "versioningStrategy": "Ֆայլի վերսիաներ",
+            "versioningDesc": "Պահպանում է ֆայլերի նախորդ վերսիաները .aeroversions/ թղթապանակում՝ մինչև վերագրելը՝",
+            "versioningDisabled": "Անջատված",
+            "versioningTrashCan": "Աղբարկղ (30 օր)",
+            "versioningTrashCan7": "Աղբարկղ (7 օր)",
+            "versioningTrashCan90": "Աղբարկղ (90 օր)",
+            "versioningSimple": "Պարզ (պահպանել 5 վերսիա)",
+            "versioningStaggered": "Աստիճանական (1/ժամ, 1/օր, 1/շաբաթ)",
+            "browseVersions": "Դիտել արխիվացված վերսիաները",
+            "sectionConnection": "Կապ և գտնվելու տեղ",
+            "sectionSync": "Համանքարգում և վերսիաներ"
         },
         "statusBar": {
             "connected": "Միացված է",

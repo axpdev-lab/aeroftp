@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Dezactivați AeroCloud? Aceasta elimină configurația actuală. Va trebui să îl configurați din nou pentru a-l utiliza.",
+            "selectiveSync": "Sincronizare selectivă",
+            "selectiveSyncDesc": "Debifați folderele pentru a le exclude din sincronizare.",
+            "versioningStrategy": "Versionare fișiere",
+            "versioningDesc": "Păstrează versiunile anterioare ale fișierelor în .aeroversions/ înainte de suprascriere.",
+            "versioningDisabled": "Dezactivat",
+            "versioningTrashCan": "Coș de gunoi (30 de zile)",
+            "versioningTrashCan7": "Coș de gunoi (7 zile)",
+            "versioningTrashCan90": "Coș de gunoi (90 de zile)",
+            "versioningSimple": "Simplu (păstrează 5 versiuni)",
+            "versioningStaggered": "Eșalonat (1/oră, 1/zi, 1/săptămână)",
+            "browseVersions": "Răsfoiește versiunile arhivate",
+            "sectionConnection": "Conexiune și locație",
+            "sectionSync": "Sincronizare și versionare"
         },
         "statusBar": {
             "connected": "Conectat",

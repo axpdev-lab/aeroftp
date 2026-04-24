@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Slökkva á AeroCloud? Þetta fjarlægir núverandi uppsetningu. Þú þarft að stilla hana aftur til að nota hana.",
+            "selectiveSync": "Valin samstilling",
+            "selectiveSyncDesc": "Afhakaðu möppur til að útiloka þær frá samstillingu.",
+            "versioningStrategy": "Útgáfusaga skráa",
+            "versioningDesc": "Geymir fyrri útgáfur skráa í .aeroversions/ áður en skrifað er yfir.",
+            "versioningDisabled": "Óvirkt",
+            "versioningTrashCan": "Ruslafata (30 dagar)",
+            "versioningTrashCan7": "Ruslafata (7 dagar)",
+            "versioningTrashCan90": "Ruslafata (90 dagar)",
+            "versioningSimple": "Einfalt (geyma 5 útgáfur)",
+            "versioningStaggered": "Þrepaskipt (1/klst., 1/dag, 1/viku)",
+            "browseVersions": "Skoða geymdar útgáfur",
+            "sectionConnection": "Tenging og staðsetning",
+            "sectionSync": "Samstilling og útgáfur"
         },
         "statusBar": {
             "connected": "Tengt",

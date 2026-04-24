@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Вимкнути AeroCloud? Це видалить поточну конфігурацію. Для повторного використання потрібно буде налаштувати її знову.",
+            "selectiveSync": "Вибіркова синхронізація",
+            "selectiveSyncDesc": "Зніміть позначки з папок, щоб виключити їх із синхронізації.",
+            "versioningStrategy": "Версіонування файлів",
+            "versioningDesc": "Зберігає попередні версії файлів у .aeroversions/ перед перезаписом.",
+            "versioningDisabled": "Вимкнено",
+            "versioningTrashCan": "Кошик (30 днів)",
+            "versioningTrashCan7": "Кошик (7 днів)",
+            "versioningTrashCan90": "Кошик (90 днів)",
+            "versioningSimple": "Просте (зберігати 5 версій)",
+            "versioningStaggered": "Східчасте (1/год., 1/день, 1/тиждень)",
+            "browseVersions": "Переглянути архівні версії",
+            "sectionConnection": "З’єднання та розташування",
+            "sectionSync": "Синхронізація та версіонування"
         },
         "statusBar": {
             "connected": "Підключено",

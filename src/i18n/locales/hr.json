@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Onemogućiti AeroCloud? Time se uklanja trenutna konfiguracija. Morat ćete je ponovno konfigurirati za upotrebu.",
+            "selectiveSync": "Selektivna sinkronizacija",
+            "selectiveSyncDesc": "Poništite oznaku mapa koje želite isključiti iz sinkronizacije.",
+            "versioningStrategy": "Verzioniranje datoteka",
+            "versioningDesc": "Čuva prethodne verzije datoteka u .aeroversions/ prije prepisivanja.",
+            "versioningDisabled": "Onemogućeno",
+            "versioningTrashCan": "Koš za smeće (30 dana)",
+            "versioningTrashCan7": "Koš za smeće (7 dana)",
+            "versioningTrashCan90": "Koš za smeće (90 dana)",
+            "versioningSimple": "Jednostavno (zadrži 5 verzija)",
+            "versioningStaggered": "Stupnjevano (1/sat, 1/dan, 1/tjedan)",
+            "browseVersions": "Pregledaj arhivirane verzije",
+            "sectionConnection": "Veza i lokacija",
+            "sectionSync": "Sinkronizacija i verzioniranje"
         },
         "statusBar": {
             "connected": "Povezano",

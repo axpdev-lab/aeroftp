@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "AeroCloud अक्षम करें? यह वर्तमान कॉन्फ़िगरेशन को हटा देता है। उपयोग करने के लिए आपको इसे फिर से कॉन्फ़िगर करना होगा।",
+            "selectiveSync": "चयनात्मक सिंक",
+            "selectiveSyncDesc": "सिंक से बाहर करने के लिए फ़ोल्डर्स को अनचेक करें।",
+            "versioningStrategy": "फ़ाइल वर्शनिंग",
+            "versioningDesc": "अधिलेखित करने से पहले फ़ाइलों के पिछले संस्करणों को .aeroversions/ में रखता है।",
+            "versioningDisabled": "अक्षम",
+            "versioningTrashCan": "ट्रैश (30 दिन)",
+            "versioningTrashCan7": "ट्रैश (7 दिन)",
+            "versioningTrashCan90": "ट्रैश (90 दिन)",
+            "versioningSimple": "सरल (5 संस्करण रखें)",
+            "versioningStaggered": "चरणबद्ध (1/घंटा, 1/दिन, 1/सप्ताह)",
+            "browseVersions": "संग्रहीत संस्करण ब्राउज़ करें",
+            "sectionConnection": "कनेक्शन और स्थान",
+            "sectionSync": "सिंक और वर्शनिंग"
         },
         "statusBar": {
             "connected": "कनेक्ट हो गया",

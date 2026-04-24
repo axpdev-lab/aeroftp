@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "I-disable ang AeroCloud? Aalisin nito ang kasalukuyang configuration. Kakailanganin mong i-configure ulit para magamit.",
+            "selectiveSync": "Selective na Sync",
+            "selectiveSyncDesc": "Alisan ng tsek ang mga folder para hindi isama sa sync.",
+            "versioningStrategy": "File Versioning",
+            "versioningDesc": "Pinapanatili ang mga nakaraang bersyon ng file sa .aeroversions/ bago i-overwrite.",
+            "versioningDisabled": "Naka-disable",
+            "versioningTrashCan": "Basurahan (30 araw)",
+            "versioningTrashCan7": "Basurahan (7 araw)",
+            "versioningTrashCan90": "Basurahan (90 araw)",
+            "versioningSimple": "Simple (panatilihin ang 5 bersyon)",
+            "versioningStaggered": "Staggered (1/oras, 1/araw, 1/linggo)",
+            "browseVersions": "I-browse ang mga naka-archive na bersyon",
+            "sectionConnection": "Koneksyon at Lokasyon",
+            "sectionSync": "Sync at Versioning"
         },
         "statusBar": {
             "connected": "Nakakonekta",

@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "გათიშოთ AeroCloud? ეს წაშლის მიმდინარე კონფიგურაციას. გამოყენებისთვის ხელახლა დაგჭირდებათ მისი კონფიგურაცია.",
+            "selectiveSync": "შერჩევითი სინქრონიზაცია",
+            "selectiveSyncDesc": "სინქრონიზაციიდან გამოსარიცხად მოხსენით საქაღალდეებს მონიშვნა.",
+            "versioningStrategy": "ფაილების ვერსიები",
+            "versioningDesc": "ინახავს ფაილების წინა ვერსიებს .aeroversions/ საქაღალდეში გადაწერამდე.",
+            "versioningDisabled": "გათიშული",
+            "versioningTrashCan": "სანაგვე ყუთი (30 დღე)",
+            "versioningTrashCan7": "სანაგვე ყუთი (7 დღე)",
+            "versioningTrashCan90": "სანაგვე ყუთი (90 დღე)",
+            "versioningSimple": "მარტივი (5 ვერსიის შენახვა)",
+            "versioningStaggered": "საფეხურებრივი (1/სთ, 1/დღე, 1/კვირა)",
+            "browseVersions": "დაარქივებული ვერსიების დათვალიერება",
+            "sectionConnection": "კავშირი და მდებარეობა",
+            "sectionSync": "სინქრონიზაცია და ვერსიები"
         },
         "statusBar": {
             "connected": "დაკავშირებული",

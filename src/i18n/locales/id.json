@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Nonaktifkan AeroCloud? Ini menghapus konfigurasi saat ini. Anda perlu mengonfigurasinya lagi untuk menggunakannya.",
+            "selectiveSync": "Sinkronisasi Selektif",
+            "selectiveSyncDesc": "Hapus centang folder untuk mengecualikannya dari sinkronisasi.",
+            "versioningStrategy": "Pembuatan Versi File",
+            "versioningDesc": "Menyimpan versi file sebelumnya di .aeroversions/ sebelum ditimpa.",
+            "versioningDisabled": "Dinonaktifkan",
+            "versioningTrashCan": "Tempat Sampah (30 hari)",
+            "versioningTrashCan7": "Tempat Sampah (7 hari)",
+            "versioningTrashCan90": "Tempat Sampah (90 hari)",
+            "versioningSimple": "Sederhana (simpan 5 versi)",
+            "versioningStaggered": "Bertahap (1/jam, 1/hari, 1/minggu)",
+            "browseVersions": "Jelajahi versi yang diarsipkan",
+            "sectionConnection": "Koneksi & Lokasi",
+            "sectionSync": "Sinkronisasi & Pembuatan Versi"
         },
         "statusBar": {
             "connected": "Terhubung",

@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "AeroCloud uitschakelen? Hiermee wordt de huidige configuratie verwijderd. U moet deze opnieuw configureren om te gebruiken.",
+            "selectiveSync": "Selectieve synchronisatie",
+            "selectiveSyncDesc": "Schakel het selectievakje van mappen uit om ze uit te sluiten van synchronisatie.",
+            "versioningStrategy": "Bestandsversies",
+            "versioningDesc": "Bewaart eerdere versies van bestanden in .aeroversions/ voordat ze worden overschreven.",
+            "versioningDisabled": "Uitgeschakeld",
+            "versioningTrashCan": "Prullenbak (30 dagen)",
+            "versioningTrashCan7": "Prullenbak (7 dagen)",
+            "versioningTrashCan90": "Prullenbak (90 dagen)",
+            "versioningSimple": "Eenvoudig (5 versies bewaren)",
+            "versioningStaggered": "Gefaseerd (1/uur, 1/dag, 1/week)",
+            "browseVersions": "Gearchiveerde versies bekijken",
+            "sectionConnection": "Verbinding en locatie",
+            "sectionSync": "Synchronisatie en versies"
         },
         "statusBar": {
             "connected": "Verbonden",

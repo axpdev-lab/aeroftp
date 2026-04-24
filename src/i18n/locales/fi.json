@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Poistetaanko AeroCloud käytöstä? Tämä poistaa nykyisen määrityksen. Se on määritettävä uudelleen ennen käyttöä.",
+            "selectiveSync": "Valikoiva synkronointi",
+            "selectiveSyncDesc": "Poista kansioiden valinta jättääksesi ne synkronoinnin ulkopuolelle.",
+            "versioningStrategy": "Tiedostoversiointi",
+            "versioningDesc": "Säilyttää tiedostojen aiemmat versiot kansiossa .aeroversions/ ennen korvaamista.",
+            "versioningDisabled": "Poistettu käytöstä",
+            "versioningTrashCan": "Roskakori (30 päivää)",
+            "versioningTrashCan7": "Roskakori (7 päivää)",
+            "versioningTrashCan90": "Roskakori (90 päivää)",
+            "versioningSimple": "Yksinkertainen (säilytä 5 versiota)",
+            "versioningStaggered": "Porrastettu (1/tunti, 1/päivä, 1/viikko)",
+            "browseVersions": "Selaa arkistoituja versioita",
+            "sectionConnection": "Yhteys ja sijainti",
+            "sectionSync": "Synkronointi ja versiointi"
         },
         "statusBar": {
             "connected": "Yhdistetty",

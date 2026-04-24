@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Deaktiver AeroCloud? Dette fjerner den nuværende konfiguration. Du skal konfigurere den igen for at bruge den.",
+            "selectiveSync": "Selektiv synkronisering",
+            "selectiveSyncDesc": "Fjern markering af mapper for at udelukke dem fra synkronisering.",
+            "versioningStrategy": "Filversionering",
+            "versioningDesc": "Bevarer tidligere versioner af filer i .aeroversions/ før overskrivning.",
+            "versioningDisabled": "Deaktiveret",
+            "versioningTrashCan": "Papirkurv (30 dage)",
+            "versioningTrashCan7": "Papirkurv (7 dage)",
+            "versioningTrashCan90": "Papirkurv (90 dage)",
+            "versioningSimple": "Simpel (behold 5 versioner)",
+            "versioningStaggered": "Forskudt (1/time, 1/dag, 1/uge)",
+            "browseVersions": "Gennemse arkiverede versioner",
+            "sectionConnection": "Forbindelse og placering",
+            "sectionSync": "Synkronisering og versionering"
         },
         "statusBar": {
             "connected": "Forbundet",

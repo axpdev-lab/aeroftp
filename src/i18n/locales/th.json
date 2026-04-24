@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "ปิดใช้งาน AeroCloud หรือไม่? การดำเนินการนี้จะลบการตั้งค่าปัจจุบัน คุณจะต้องตั้งค่าใหม่เพื่อใช้งานอีกครั้ง",
+            "selectiveSync": "การซิงค์แบบเลือก",
+            "selectiveSyncDesc": "ยกเลิกการเลือกโฟลเดอร์เพื่อไม่ให้ซิงค์",
+            "versioningStrategy": "การทำเวอร์ชันไฟล์",
+            "versioningDesc": "เก็บรักษาไฟล์เวอร์ชันก่อนหน้าไว้ใน .aeroversions/ ก่อนเขียนทับ",
+            "versioningDisabled": "ปิดใช้งาน",
+            "versioningTrashCan": "ถังขยะ (30 วัน)",
+            "versioningTrashCan7": "ถังขยะ (7 วัน)",
+            "versioningTrashCan90": "ถังขยะ (90 วัน)",
+            "versioningSimple": "ธรรมดา (เก็บ 5 เวอร์ชัน)",
+            "versioningStaggered": "แบบไล่ระดับ (1/ชั่วโมง, 1/วัน, 1/สัปดาห์)",
+            "browseVersions": "เรียกดูเวอร์ชันที่เก็บถาวร",
+            "sectionConnection": "การเชื่อมต่อและตำแหน่ง",
+            "sectionSync": "การซิงค์และการทำเวอร์ชัน"
         },
         "statusBar": {
             "connected": "เชื่อมต่อแล้ว",

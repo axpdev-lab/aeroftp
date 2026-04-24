@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Analluogi AeroCloud? Mae hyn yn dileu'r cyfluniad presennol. Bydd angen i chi ei gyfluniad eto i'w ddefnyddio.",
+            "selectiveSync": "Cydweddu detholus",
+            "selectiveSyncDesc": "Dadthiciwch ffolderi i'w heithrio o'r cydweddu.",
+            "versioningStrategy": "Fersiynau ffeiliau",
+            "versioningDesc": "Yn cadw fersiynau blaenorol o ffeiliau yn .aeroversions/ cyn eu trosysgrifo.",
+            "versioningDisabled": "Analluogwyd",
+            "versioningTrashCan": "Bin Sbwriel (30 diwrnod)",
+            "versioningTrashCan7": "Bin Sbwriel (7 diwrnod)",
+            "versioningTrashCan90": "Bin Sbwriel (90 diwrnod)",
+            "versioningSimple": "Syml (cadw 5 fersiwn)",
+            "versioningStaggered": "Graddedig (1/awr, 1/diwrnod, 1/wythnos)",
+            "browseVersions": "Pori fersiynau wedi'u harchifo",
+            "sectionConnection": "Cysylltiad a lleoliad",
+            "sectionSync": "Cydweddu a fersiynau"
         },
         "statusBar": {
             "connected": "Wedi cysylltu",

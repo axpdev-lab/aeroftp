@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Voleu desactivar AeroCloud? Això eliminarà la configuració actual. Haureu de tornar-la a configurar per utilitzar-la.",
+            "selectiveSync": "Sincronització selectiva",
+            "selectiveSyncDesc": "Desmarqueu les carpetes per excloure-les de la sincronització.",
+            "versioningStrategy": "Versionat de fitxers",
+            "versioningDesc": "Conserva les versions anteriors dels fitxers a .aeroversions/ abans de sobreescriure-les.",
+            "versioningDisabled": "Desactivat",
+            "versioningTrashCan": "Paperera (30 dies)",
+            "versioningTrashCan7": "Paperera (7 dies)",
+            "versioningTrashCan90": "Paperera (90 dies)",
+            "versioningSimple": "Simple (conserva 5 versions)",
+            "versioningStaggered": "Esglaonat (1/hora, 1/dia, 1/setmana)",
+            "browseVersions": "Explora les versions arxivades",
+            "sectionConnection": "Connexió i ubicació",
+            "sectionSync": "Sincronització i versions"
         },
         "statusBar": {
             "connected": "Connectat",

@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Lumpuhkan AeroCloud? Ini mengalih keluar konfigurasi semasa. Anda perlu mengkonfigurasinya semula untuk menggunakannya.",
+            "selectiveSync": "Penyegerakan Terpilih",
+            "selectiveSyncDesc": "Nyahtanda folder untuk mengecualikannya daripada penyegerakan.",
+            "versioningStrategy": "Versi Fail",
+            "versioningDesc": "Menyimpan versi fail sebelumnya dalam .aeroversions/ sebelum ditulis ganti.",
+            "versioningDisabled": "Dilumpuhkan",
+            "versioningTrashCan": "Tong Sampah (30 hari)",
+            "versioningTrashCan7": "Tong Sampah (7 hari)",
+            "versioningTrashCan90": "Tong Sampah (90 hari)",
+            "versioningSimple": "Mudah (simpan 5 versi)",
+            "versioningStaggered": "Berperingkat (1/jam, 1/hari, 1/minggu)",
+            "browseVersions": "Layari versi yang diarkibkan",
+            "sectionConnection": "Sambungan & Lokasi",
+            "sectionSync": "Penyegerakan & Versi"
         },
         "statusBar": {
             "connected": "Disambung",

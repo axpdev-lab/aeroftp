@@ -1039,7 +1039,21 @@
             "protocol": "协议",
             "idle": "空闲",
             "neverSynced": "从未同步",
-            "openDashboard": "仪表板"
+            "openDashboard": "仪表板",
+            "disableConfirm": "要禁用 AeroCloud 吗？此操作将删除当前配置。若要再次使用，您需要重新配置。",
+            "selectiveSync": "选择性同步",
+            "selectiveSyncDesc": "取消勾选文件夹以将其排除在同步之外。",
+            "versioningStrategy": "文件版本管理",
+            "versioningDesc": "在覆盖前将文件的先前版本保存在 .aeroversions/ 中。",
+            "versioningDisabled": "已禁用",
+            "versioningTrashCan": "回收站（30 天）",
+            "versioningTrashCan7": "回收站（7 天）",
+            "versioningTrashCan90": "回收站（90 天）",
+            "versioningSimple": "简单（保留 5 个版本）",
+            "versioningStaggered": "分级（每小时 1 个/每天 1 个/每周 1 个）",
+            "browseVersions": "浏览已归档的版本",
+            "sectionConnection": "连接与位置",
+            "sectionSync": "同步与版本管理"
         },
         "statusBar": {
             "connected": "已连接",

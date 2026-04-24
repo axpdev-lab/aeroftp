@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Išjungti AeroCloud? Tai pašalins dabartinę konfigūraciją. Norint naudoti, reikės ją vėl konfigūruoti.",
+            "selectiveSync": "Pasirinktinis sinchronizavimas",
+            "selectiveSyncDesc": "Atžymėkite aplankus, kad juos pašalintumėte iš sinchronizavimo.",
+            "versioningStrategy": "Failų versijos",
+            "versioningDesc": "Saugo ankstesnes failų versijas .aeroversions/ aplanke prieš perrašant.",
+            "versioningDisabled": "Išjungta",
+            "versioningTrashCan": "Šiukšliadėžė (30 dienų)",
+            "versioningTrashCan7": "Šiukšliadėžė (7 dienos)",
+            "versioningTrashCan90": "Šiukšliadėžė (90 dienų)",
+            "versioningSimple": "Paprastas (saugoti 5 versijas)",
+            "versioningStaggered": "Pakopinis (1/val., 1/dieną, 1/savaitę)",
+            "browseVersions": "Naršyti archyvuotas versijas",
+            "sectionConnection": "Ryšys ir vieta",
+            "sectionSync": "Sinchronizavimas ir versijos"
         },
         "statusBar": {
             "connected": "Prisijungta",

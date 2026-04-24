@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Zima AeroCloud? Hii huondoa usanidi wa sasa. Utahitaji kuisanidi tena ili kuitumia.",
+            "selectiveSync": "Usawazishaji Teule",
+            "selectiveSyncDesc": "Ondoa tiki kwenye folda ili kuzitenga kutoka kwenye usawazishaji.",
+            "versioningStrategy": "Uwekaji Toleo la Faili",
+            "versioningDesc": "Huhifadhi matoleo ya awali ya faili katika .aeroversions/ kabla ya kuandika juu.",
+            "versioningDisabled": "Imezimwa",
+            "versioningTrashCan": "Pipa la Taka (siku 30)",
+            "versioningTrashCan7": "Pipa la Taka (siku 7)",
+            "versioningTrashCan90": "Pipa la Taka (siku 90)",
+            "versioningSimple": "Rahisi (hifadhi matoleo 5)",
+            "versioningStaggered": "Kwa Viwango (1/saa, 1/siku, 1/wiki)",
+            "browseVersions": "Vinjari matoleo yaliyohifadhiwa",
+            "sectionConnection": "Muunganisho na Mahali",
+            "sectionSync": "Usawazishaji na Uwekaji Toleo"
         },
         "statusBar": {
             "connected": "Imeunganishwa",

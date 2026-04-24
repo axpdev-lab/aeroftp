@@ -1039,7 +1039,21 @@
             "protocol": "Protocol",
             "idle": "Idle",
             "neverSynced": "Never synced",
-            "openDashboard": "Dashboard"
+            "openDashboard": "Dashboard",
+            "disableConfirm": "Inaktivera AeroCloud? Detta tar bort den aktuella konfigurationen. Du måste konfigurera den igen för att använda den.",
+            "selectiveSync": "Selektiv synkronisering",
+            "selectiveSyncDesc": "Avmarkera mappar för att utesluta dem från synkronisering.",
+            "versioningStrategy": "Filversionering",
+            "versioningDesc": "Behåller tidigare versioner av filer i .aeroversions/ före överskrivning.",
+            "versioningDisabled": "Inaktiverad",
+            "versioningTrashCan": "Papperskorg (30 dagar)",
+            "versioningTrashCan7": "Papperskorg (7 dagar)",
+            "versioningTrashCan90": "Papperskorg (90 dagar)",
+            "versioningSimple": "Enkel (behåll 5 versioner)",
+            "versioningStaggered": "Stegvis (1/timme, 1/dag, 1/vecka)",
+            "browseVersions": "Bläddra bland arkiverade versioner",
+            "sectionConnection": "Anslutning och plats",
+            "sectionSync": "Synkronisering och versionering"
         },
         "statusBar": {
             "connected": "Ansluten",

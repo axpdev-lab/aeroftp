@@ -1039,7 +1039,21 @@
             "protocol": "프로토콜",
             "idle": "유휴",
             "neverSynced": "동기화한 적 없음",
-            "openDashboard": "대시보드"
+            "openDashboard": "대시보드",
+            "disableConfirm": "AeroCloud을(를) 비활성화하시겠습니까? 현재 구성이 제거됩니다. 사용하려면 다시 구성해야 합니다.",
+            "selectiveSync": "선택적 동기화",
+            "selectiveSyncDesc": "동기화에서 제외할 폴더의 선택을 해제하세요.",
+            "versioningStrategy": "파일 버전 관리",
+            "versioningDesc": "덮어쓰기 전에 .aeroversions/에 파일의 이전 버전을 보관합니다.",
+            "versioningDisabled": "비활성화됨",
+            "versioningTrashCan": "휴지통 (30일)",
+            "versioningTrashCan7": "휴지통 (7일)",
+            "versioningTrashCan90": "휴지통 (90일)",
+            "versioningSimple": "단순 (5개 버전 보관)",
+            "versioningStaggered": "단계별 (1/시간, 1/일, 1/주)",
+            "browseVersions": "보관된 버전 찾아보기",
+            "sectionConnection": "연결 및 위치",
+            "sectionSync": "동기화 및 버전 관리"
         },
         "statusBar": {
             "connected": "연결됨",
