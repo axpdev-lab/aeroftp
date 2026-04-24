@@ -1972,7 +1972,8 @@
             "deltaEligibilityBody": "Այս աշխատաշրջանն այս պահին չի կարող օգտագործել rsync դելտա ուղին։ Կարող եք շարունակել դասական փոխանցման ուղով կամ նախ կարդալ պահանջները։",
             "deltaEligibilityProceed": "Շարունակել դասականով",
             "deltaEligibilitySkip": "Այս սերվերի համար այլևս չցուցադրել",
-            "deltaEligibilityLearnMore": "Իմանալ ավելին"
+            "deltaEligibilityLearnMore": "Իմանալ ավելին",
+            "deltaDisabledFallback": "Delta Sync-ը ներկայումս ակտիվ չէ այս նստաշրջանի համար։ Պատճառի համար տե՛ս Փոխանցման կառավարման հուշումը։"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",

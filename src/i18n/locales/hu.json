@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Ez a munkamenet jelenleg nem használhatja az rsync delta útvonalat. Folytathatja a klasszikus átviteli útvonallal, vagy először olvassa el a követelményeket.",
             "deltaEligibilityProceed": "Folytatás klasszikusan",
             "deltaEligibilitySkip": "Ne mutassa újra ehhez a kiszolgálóhoz",
-            "deltaEligibilityLearnMore": "Tudjon meg többet"
+            "deltaEligibilityLearnMore": "Tudjon meg többet",
+            "deltaDisabledFallback": "A Delta Sync ebben a munkamenetben nem aktív. Az okot az Átvitel vezérlése tippben találja."
         },
         "ui": {
             "syncing": "Szinkronizálás...",

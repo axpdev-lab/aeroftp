@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Ni all y sesiwn hon ddefnyddio'r llwybr delta rsync ar hyn o bryd. Gallwch barhau â'r llwybr trosglwyddo clasurol, neu ddarllen y gofynion yn gyntaf.",
             "deltaEligibilityProceed": "Parhau'n glasurol",
             "deltaEligibilitySkip": "Peidiwch â dangos eto ar gyfer y gweinydd hwn",
-            "deltaEligibilityLearnMore": "Dysgu mwy"
+            "deltaEligibilityLearnMore": "Dysgu mwy",
+            "deltaDisabledFallback": "Nid yw Delta Sync yn weithredol ar gyfer y sesiwn hon. Gweler yr awgrym Rheoli Trosglwyddiad am y rheswm."
         },
         "ui": {
             "syncing": "Yn cysoni...",

@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Ta sesja nie może obecnie użyć ścieżki delta rsync. Możesz kontynuować klasyczną ścieżką transferu lub najpierw przeczytać wymagania.",
             "deltaEligibilityProceed": "Kontynuuj klasycznie",
             "deltaEligibilitySkip": "Nie pokazuj ponownie dla tego serwera",
-            "deltaEligibilityLearnMore": "Dowiedz się więcej"
+            "deltaEligibilityLearnMore": "Dowiedz się więcej",
+            "deltaDisabledFallback": "Delta Sync nie jest aktywna dla tej sesji. Powód znajdziesz we wskazówce Sterowanie transferem."
         },
         "ui": {
             "syncing": "Synchronizacja...",

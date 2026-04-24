@@ -526,7 +526,10 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                                 </label>
                             )}
                             {isSftp && (
-                                <span className={`flex items-center gap-1.5 text-xs ${deltaToggleDisabled ? 'text-gray-500' : ''}`}>
+                                <span
+                                    className={`flex items-center gap-1.5 text-xs ${deltaToggleDisabled ? 'text-gray-500' : ''}`}
+                                    title={deltaToggleDisabled ? (hints?.delta_sync_note || t('syncPanel.deltaDisabledFallback')) : undefined}
+                                >
                                     <Checkbox
                                         checked={deltaSyncEnabled && !!hints?.delta_sync_active}
                                         onChange={onDeltaSyncEnabledChange}

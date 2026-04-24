@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Această sesiune nu poate folosi calea delta rsync în acest moment. Puteți continua cu calea de transfer clasică sau citiți mai întâi cerințele.",
             "deltaEligibilityProceed": "Continuați cu clasic",
             "deltaEligibilitySkip": "Nu mai afișa pentru acest server",
-            "deltaEligibilityLearnMore": "Aflați mai multe"
+            "deltaEligibilityLearnMore": "Aflați mai multe",
+            "deltaDisabledFallback": "Delta Sync nu este activ pentru această sesiune. Consultă sugestia Control transfer pentru motiv."
         },
         "ui": {
             "syncing": "Se sincronizează...",

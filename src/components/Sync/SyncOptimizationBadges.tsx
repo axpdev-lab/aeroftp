@@ -24,7 +24,7 @@ interface Badge {
     visible: boolean;
     Icon: typeof Zap;
     detail?: string;
-    tone?: 'active' | 'eligible' | 'available';
+    tone?: 'active' | 'eligible' | 'inactive';
 }
 
 export const SyncOptimizationBadges: React.FC<SyncOptimizationBadgesProps> = React.memo(({
@@ -36,11 +36,16 @@ export const SyncOptimizationBadges: React.FC<SyncOptimizationBadgesProps> = Rea
 
     if (loading || !hints) return null;
 
+    // "available" used to be the fallback label for "neither active
+    // nor eligible right now" — which reads to users as "I can enable
+    // this", the opposite of its intent. Rename the tone to
+    // "inactive" so the badge text mirrors reality when the delta
+    // path is off; the colour remains the neutral slate fallback.
     const deltaTone: Badge['tone'] = hints.delta_sync_active
         ? 'active'
         : hints.delta_sync_eligible
             ? 'eligible'
-            : 'available';
+            : 'inactive';
 
     const badges: Badge[] = [
         {
@@ -87,7 +92,7 @@ export const SyncOptimizationBadges: React.FC<SyncOptimizationBadgesProps> = Rea
         switch (tone) {
             case 'eligible':
                 return 'bg-amber-500/15 text-amber-300 border border-amber-500/20';
-            case 'available':
+            case 'inactive':
                 return 'bg-slate-500/15 text-slate-300 border border-slate-500/20';
             case 'active':
             default:

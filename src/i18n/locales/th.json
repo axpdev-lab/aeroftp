@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "เซสชันนี้ไม่สามารถใช้เส้นทางเดลต้าของ rsync ได้ในขณะนี้ คุณสามารถดำเนินการต่อด้วยเส้นทางการถ่ายโอนแบบคลาสสิก หรืออ่านข้อกำหนดก่อน",
             "deltaEligibilityProceed": "ดำเนินการต่อแบบคลาสสิก",
             "deltaEligibilitySkip": "ไม่ต้องแสดงอีกสำหรับเซิร์ฟเวอร์นี้",
-            "deltaEligibilityLearnMore": "เรียนรู้เพิ่มเติม"
+            "deltaEligibilityLearnMore": "เรียนรู้เพิ่มเติม",
+            "deltaDisabledFallback": "ขณะนี้ Delta Sync ไม่เปิดใช้งานสำหรับเซสชันนี้ ดูเหตุผลได้ที่คำแนะนำการควบคุมการถ่ายโอน"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",

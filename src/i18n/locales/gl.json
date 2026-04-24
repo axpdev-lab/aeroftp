@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Esta sesión non pode utilizar o camiño delta de rsync agora mesmo. Podes continuar coa transferencia clásica ou ler primeiro os requisitos.",
             "deltaEligibilityProceed": "Continuar con clásico",
             "deltaEligibilitySkip": "Non mostrar de novo para este servidor",
-            "deltaEligibilityLearnMore": "Máis información"
+            "deltaEligibilityLearnMore": "Máis información",
+            "deltaDisabledFallback": "Delta Sync non está activo nesta sesión. Consulta a suxestión de Control de transferencia para coñecer o motivo."
         },
         "ui": {
             "syncing": "Sincronizando...",

@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "ამ სესიას ამჟამად არ შეუძლია rsync-ის დელტა გზის გამოყენება. შეგიძლიათ გააგრძელოთ კლასიკური გადაცემის გზით, ან ჯერ წაიკითხოთ მოთხოვნები.",
             "deltaEligibilityProceed": "გაგრძელება კლასიკურით",
             "deltaEligibilitySkip": "ამ სერვერისთვის აღარ მაჩვენო",
-            "deltaEligibilityLearnMore": "მეტის ცოდნა"
+            "deltaEligibilityLearnMore": "მეტის ცოდნა",
+            "deltaDisabledFallback": "Delta Sync ამჟამად არ არის აქტიური ამ სესიისთვის. მიზეზისთვის იხილეთ გადაცემის მართვის მინიშნება."
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",

@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Hindi magagamit ng session na ito ang rsync delta path sa ngayon. Maaari kang magpatuloy sa klasikong paglilipat, o basahin muna ang mga kinakailangan.",
             "deltaEligibilityProceed": "Magpatuloy nang klasiko",
             "deltaEligibilitySkip": "Huwag ipakita muli para sa server na ito",
-            "deltaEligibilityLearnMore": "Matuto pa"
+            "deltaEligibilityLearnMore": "Matuto pa",
+            "deltaDisabledFallback": "Hindi kasalukuyang aktibo ang Delta Sync para sa session na ito. Tingnan ang pahiwatig ng Kontrol ng Paglilipat para sa dahilan."
         },
         "ui": {
             "syncing": "Sinsi-sync...",

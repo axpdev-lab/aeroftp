@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "See seanss ei saa praegu kasutada rsync delta-teed. Võite jätkata klassikalise ülekandega või lugeda esmalt nõudeid.",
             "deltaEligibilityProceed": "Jätka klassikalisega",
             "deltaEligibilitySkip": "Ära näita seda selle serveri kohta uuesti",
-            "deltaEligibilityLearnMore": "Lisateave"
+            "deltaEligibilityLearnMore": "Lisateave",
+            "deltaDisabledFallback": "Delta Sync pole selle seansi jaoks aktiivne. Põhjuse leiate ülekande juhtimise vihjest."
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

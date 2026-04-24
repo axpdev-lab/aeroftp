@@ -2043,6 +2043,7 @@
             "deltaEligibilityProceed": "Procedi con classic",
             "deltaEligibilitySkip": "Non mostrare più per questo server",
             "deltaEligibilityLearnMore": "Approfondisci",
+            "deltaDisabledFallback": "Delta Sync non è attivo per questa sessione. Consulta il suggerimento in Controllo trasferimento per il motivo.",
             "deltaSummary": "{files} file · {bytes} risparmiati · {speedup}x di velocità",
             "deltaTitle": "Risparmio delta",
             "deltaSummaryOptimized": "{files} file trasferiti con ottimizzazione",

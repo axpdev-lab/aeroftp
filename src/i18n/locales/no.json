@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Denne økten kan ikke bruke rsync delta-banen akkurat nå. Du kan fortsette med den klassiske overføringsbanen, eller lese kravene først.",
             "deltaEligibilityProceed": "Fortsett med klassisk",
             "deltaEligibilitySkip": "Ikke vis dette igjen for denne serveren",
-            "deltaEligibilityLearnMore": "Les mer"
+            "deltaEligibilityLearnMore": "Les mer",
+            "deltaDisabledFallback": "Delta Sync er ikke aktiv for denne økten. Se hintet Overføringskontroll for årsaken."
         },
         "ui": {
             "syncing": "Synkroniserer...",

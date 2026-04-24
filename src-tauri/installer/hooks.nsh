@@ -1,7 +1,78 @@
 ; AeroFTP NSIS Installer Hooks
 ; Post-install and pre-uninstall actions for Windows.
 
+; ── StrContains — in-place substring search (no !include needed) ──
+; Usage:   Push <needle>
+;          Push <haystack>
+;          Call StrContains
+;          Pop  $result   ; "yes" if needle is found inside haystack, else "no"
+;
+; Kept inline in hooks.nsh so the installer does not require the
+; StrFunc.nsh plugin or any external lib, matching the convention of
+; the VC++ runtime block below.
+Function StrContains
+  Exch $R1 ; haystack
+  Exch
+  Exch $R2 ; needle
+  Push $R3
+  Push $R4
+  Push $R5
+  StrLen $R4 $R2
+  StrCpy $R5 0
+  StrCpy $R3 ""
+_scan_loop:
+  StrCpy $R3 $R1 $R4 $R5
+  StrCmp $R3 $R2 _found
+  StrCmp $R3 "" _not_found
+  IntOp $R5 $R5 + 1
+  Goto _scan_loop
+_found:
+  StrCpy $R3 "yes"
+  Goto _done
+_not_found:
+  StrCpy $R3 "no"
+_done:
+  Pop $R5
+  Pop $R4
+  StrCpy $R1 $R3
+  Pop $R3
+  Pop $R2
+  Exch $R1
+FunctionEnd
+
 !macro CUSTOM_POST_INSTALL
+    ; --- Register install dir in user PATH (HKCU) ---
+    ; PR-T11 follow-up. The Tauri per-user installer drops binaries in
+    ; %LOCALAPPDATA%\AeroFTP\ but historically never registered that
+    ; directory in HKCU\Environment\Path. Result: the VS Code MCP
+    ; extension, the terminal, and any tool that relies on PATH
+    ; resolution could not locate aeroftp-cli, even though it was on
+    ; disk and worked fine when invoked by absolute path. Fix: append
+    ; $INSTDIR to HKCU Path if not already present, then broadcast
+    ; WM_SETTINGCHANGE so processes started after the installer (but
+    ; within the same session) pick up the new value without a shell
+    ; restart. Idempotent — reinstall or repair does nothing if the
+    ; entry is already there.
+    ReadRegStr $0 HKCU "Environment" "Path"
+    StrCpy $1 ";$0;"          ; wrap haystack so full-segment match disambiguates
+    Push ";$INSTDIR;"         ; needle
+    Push $1                   ; haystack
+    Call StrContains
+    Pop $2
+    StrCmp $2 "yes" _aeroftp_path_done 0
+        StrCmp $0 "" 0 _aeroftp_path_append
+            WriteRegExpandStr HKCU "Environment" "Path" "$INSTDIR"
+            Goto _aeroftp_path_broadcast
+        _aeroftp_path_append:
+            WriteRegExpandStr HKCU "Environment" "Path" "$0;$INSTDIR"
+        _aeroftp_path_broadcast:
+            ; WM_SETTINGCHANGE = 0x001A — same signal Inno Setup's
+            ; ChangesEnvironment=yes emits. Running shells (Explorer,
+            ; VS Code, PowerShell via integrated terminal) get a
+            ; chance to refresh without logoff.
+            System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
+    _aeroftp_path_done:
+
     ; --- VC++ Runtime dependency check ---
     ; Tauri (MSVC toolchain) requires vcruntime140.dll / vcruntime140_1.dll.
     ; On clean Windows installs without VC++ Redistributable, the app crashes
@@ -39,6 +110,40 @@
 !macroend
 
 !macro CUSTOM_PRE_UNINSTALL
+    ; --- Remove install dir from user PATH (HKCU) ---
+    ; Mirror of CUSTOM_POST_INSTALL. Read the current PATH, build a
+    ; new value where ";$INSTDIR" (with or without the trailing ";")
+    ; is stripped, then broadcast WM_SETTINGCHANGE so new processes
+    ; don't see the defunct entry. Keeps HKCU Path tidy after
+    ; uninstall and matches installer-contract expectations.
+    ReadRegStr $0 HKCU "Environment" "Path"
+    StrCmp $0 "" _aeroftp_unpath_done 0
+        StrCpy $1 ";$0"                 ; left-pad haystack with ';' to catch first-entry case
+        StrCpy $2 ";$INSTDIR"           ; needle
+        StrLen $3 $2
+        StrCpy $4 ""                    ; accumulator — new path value
+        StrCpy $5 0                     ; scan cursor
+_aeroftp_unpath_scan:
+        StrCpy $6 $1 $3 $5
+        StrCmp $6 $2 _aeroftp_unpath_hit
+        StrCmp $6 "" _aeroftp_unpath_finish
+        StrCpy $6 $1 1 $5
+        StrCpy $4 "$4$6"
+        IntOp $5 $5 + 1
+        Goto _aeroftp_unpath_scan
+_aeroftp_unpath_hit:
+        IntOp $5 $5 + $3                ; skip ;$INSTDIR (and optional trailing ;)
+        StrCpy $6 $1 1 $5
+        StrCmp $6 ";" 0 _aeroftp_unpath_scan
+        IntOp $5 $5 + 1
+        Goto _aeroftp_unpath_scan
+_aeroftp_unpath_finish:
+        ; $4 starts with the leading ';' we prepended; drop it.
+        StrCpy $4 $4 "" 1
+        WriteRegExpandStr HKCU "Environment" "Path" "$4"
+        System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
+_aeroftp_unpath_done:
+
     ; Remove .aerovault file association and class registration
     DeleteRegKey HKLM "Software\Classes\.aerovault"
     DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroVault"

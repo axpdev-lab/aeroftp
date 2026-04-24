@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "यह सत्र अभी rsync डेल्टा पथ का उपयोग नहीं कर सकता। आप क्लासिक ट्रांसफर पथ के साथ जारी रख सकते हैं, या पहले आवश्यकताएँ पढ़ सकते हैं।",
             "deltaEligibilityProceed": "क्लासिक के साथ जारी रखें",
             "deltaEligibilitySkip": "इस सर्वर के लिए फिर से न दिखाएँ",
-            "deltaEligibilityLearnMore": "और जानें"
+            "deltaEligibilityLearnMore": "और जानें",
+            "deltaDisabledFallback": "इस सत्र के लिए Delta Sync वर्तमान में सक्रिय नहीं है। कारण के लिए ट्रांसफ़र कंट्रोल संकेत देखें।"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",

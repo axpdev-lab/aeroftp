@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Цей сеанс зараз не може використовувати дельта-шлях rsync. Ви можете продовжити класичним шляхом передавання або спочатку прочитати вимоги.",
             "deltaEligibilityProceed": "Продовжити класично",
             "deltaEligibilitySkip": "Більше не показувати для цього сервера",
-            "deltaEligibilityLearnMore": "Дізнатися більше"
+            "deltaEligibilityLearnMore": "Дізнатися більше",
+            "deltaDisabledFallback": "Delta Sync наразі не активний для цього сеансу. Причину дивіться у підказці «Керування передачею»."
         },
         "ui": {
             "syncing": "Синхронізація...",

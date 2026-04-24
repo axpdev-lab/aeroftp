@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Sesi ini tidak dapat menggunakan jalur delta rsync saat ini. Anda dapat melanjutkan dengan jalur transfer klasik, atau baca persyaratannya terlebih dahulu.",
             "deltaEligibilityProceed": "Lanjutkan dengan klasik",
             "deltaEligibilitySkip": "Jangan tampilkan lagi untuk server ini",
-            "deltaEligibilityLearnMore": "Pelajari lebih lanjut"
+            "deltaEligibilityLearnMore": "Pelajari lebih lanjut",
+            "deltaDisabledFallback": "Delta Sync saat ini tidak aktif untuk sesi ini. Lihat petunjuk Kontrol Transfer untuk alasannya."
         },
         "ui": {
             "syncing": "Menyinkronkan...",

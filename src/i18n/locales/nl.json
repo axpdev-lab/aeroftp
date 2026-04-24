@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Deze sessie kan nu het rsync delta-pad niet gebruiken. Je kunt doorgaan met het klassieke overdrachtspad, of eerst de vereisten lezen.",
             "deltaEligibilityProceed": "Doorgaan met klassiek",
             "deltaEligibilitySkip": "Dit niet meer tonen voor deze server",
-            "deltaEligibilityLearnMore": "Meer informatie"
+            "deltaEligibilityLearnMore": "Meer informatie",
+            "deltaDisabledFallback": "Delta Sync is niet actief voor deze sessie. Zie de hint Overdrachtsbeheer voor de reden."
         },
         "ui": {
             "syncing": "Synchroniseren...",

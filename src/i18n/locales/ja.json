@@ -1944,7 +1944,8 @@
             "deltaEligibilityBody": "このセッションでは現在 rsync デルタパスを使用できません。クラシック転送で続行するか、先に要件をお読みください。",
             "deltaEligibilityProceed": "クラシックで続行",
             "deltaEligibilitySkip": "このサーバーでは今後表示しない",
-            "deltaEligibilityLearnMore": "詳細"
+            "deltaEligibilityLearnMore": "詳細",
+            "deltaDisabledFallback": "現在このセッションでは Delta Sync が有効になっていません。理由は「転送コントロール」のヒントを参照してください。"
         },
         "ui": {
             "syncing": "同期中...",

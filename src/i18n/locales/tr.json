@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Bu oturum şu anda rsync delta yolunu kullanamaz. Klasik aktarım yoluyla devam edebilir veya önce gereksinimleri okuyabilirsiniz.",
             "deltaEligibilityProceed": "Klasik ile devam et",
             "deltaEligibilitySkip": "Bu sunucu için tekrar gösterme",
-            "deltaEligibilityLearnMore": "Daha fazla bilgi"
+            "deltaEligibilityLearnMore": "Daha fazla bilgi",
+            "deltaDisabledFallback": "Delta Sync bu oturum için şu anda etkin değil. Nedeni için Aktarım Denetimi ipucuna bakın."
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",

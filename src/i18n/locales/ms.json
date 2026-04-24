@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Sesi ini tidak boleh menggunakan laluan delta rsync sekarang. Anda boleh meneruskan dengan laluan pemindahan klasik, atau baca keperluan terlebih dahulu.",
             "deltaEligibilityProceed": "Teruskan dengan klasik",
             "deltaEligibilitySkip": "Jangan tunjukkan lagi untuk pelayan ini",
-            "deltaEligibilityLearnMore": "Ketahui lebih lanjut"
+            "deltaEligibilityLearnMore": "Ketahui lebih lanjut",
+            "deltaDisabledFallback": "Delta Sync tidak aktif buat masa ini untuk sesi ini. Lihat petunjuk Kawalan Pemindahan untuk sebabnya."
         },
         "ui": {
             "syncing": "Menyegerak...",

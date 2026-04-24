@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "វគ្គនេះមិនអាចប្រើផ្លូវ rsync delta ឥឡូវនេះទេ។ អ្នកអាចបន្តជាមួយផ្លូវផ្ទេរបែបចាស់ ឬអានតម្រូវការជាមុនសិន។",
             "deltaEligibilityProceed": "បន្តជាមួយបែបចាស់",
             "deltaEligibilitySkip": "កុំបង្ហាញម្តងទៀតសម្រាប់ម៉ាស៊ីនមេនេះ",
-            "deltaEligibilityLearnMore": "ស្វែងយល់បន្ថែម"
+            "deltaEligibilityLearnMore": "ស្វែងយល់បន្ថែម",
+            "deltaDisabledFallback": "Delta Sync មិនសកម្មសម្រាប់សម័យនេះទេ។ សូមមើលការណែនាំ ការគ្រប់គ្រងការផ្ទេរ សម្រាប់ហេតុផល។"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",

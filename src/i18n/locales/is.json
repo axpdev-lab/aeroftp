@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Þessi lota getur ekki notað rsync delta-leiðina eins og er. Þú getur haldið áfram með klassískri flutningsleið eða lesið kröfurnar fyrst.",
             "deltaEligibilityProceed": "Halda áfram klassískt",
             "deltaEligibilitySkip": "Ekki sýna aftur fyrir þennan netþjón",
-            "deltaEligibilityLearnMore": "Nánar"
+            "deltaEligibilityLearnMore": "Nánar",
+            "deltaDisabledFallback": "Delta Sync er ekki virkt í þessari lotu. Sjá ábendinguna Stjórn flutnings fyrir ástæðuna."
         },
         "ui": {
             "syncing": "Samstillir...",

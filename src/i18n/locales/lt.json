@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Šis seansas šiuo metu negali naudoti rsync delta kelio. Galite tęsti klasikiniu perdavimo keliu arba pirmiausia perskaityti reikalavimus.",
             "deltaEligibilityProceed": "Tęsti klasikiniu",
             "deltaEligibilitySkip": "Daugiau nerodyti šiam serveriui",
-            "deltaEligibilityLearnMore": "Sužinokite daugiau"
+            "deltaEligibilityLearnMore": "Sužinokite daugiau",
+            "deltaDisabledFallback": "Delta Sync šiuo metu šiame seanse neaktyvus. Priežastį rasite Perdavimo valdymo patarime."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

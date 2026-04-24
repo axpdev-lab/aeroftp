@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Den här sessionen kan inte använda rsync delta-vägen just nu. Du kan fortsätta med den klassiska överföringsvägen eller läsa kraven först.",
             "deltaEligibilityProceed": "Fortsätt med klassisk",
             "deltaEligibilitySkip": "Visa inte detta igen för denna server",
-            "deltaEligibilityLearnMore": "Läs mer"
+            "deltaEligibilityLearnMore": "Läs mer",
+            "deltaDisabledFallback": "Delta Sync är inte aktivt för den här sessionen. Se tipset Överföringskontroll för anledningen."
         },
         "ui": {
             "syncing": "Synkroniserar...",

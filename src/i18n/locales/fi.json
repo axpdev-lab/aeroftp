@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Tämä istunto ei voi juuri nyt käyttää rsync-delta-polkua. Voit jatkaa klassisella siirrolla tai lukea ensin vaatimukset.",
             "deltaEligibilityProceed": "Jatka klassisella",
             "deltaEligibilitySkip": "Älä näytä tätä uudelleen tälle palvelimelle",
-            "deltaEligibilityLearnMore": "Lue lisää"
+            "deltaEligibilityLearnMore": "Lue lisää",
+            "deltaDisabledFallback": "Delta Sync ei ole aktiivinen tässä istunnossa. Katso syy Siirron hallinta -vihjeestä."
         },
         "ui": {
             "syncing": "Synkronoidaan...",

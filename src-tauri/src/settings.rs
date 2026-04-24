@@ -34,12 +34,21 @@ pub fn load_native_rsync_enabled() -> bool {
         Ok(path) => path,
         Err(error) => {
             tracing::warn!("native rsync settings path unavailable: {}", error);
-            return false;
+            // PR-T11 follow-up (F5): when the feature itself is compiled
+            // in, "no settings file yet" is a fresh-install signal, not
+            // an explicit opt-out. The user-facing Cargo feature is
+            // default-on since v3.6.1 and the reasonable expectation
+            // matches — delta sync should be ready to probe without a
+            // manual toggle in Settings after the first install.
+            return true;
         }
     };
 
     if !path.exists() {
-        return false;
+        // Same reasoning: fresh install, no TOML written yet → default
+        // to enabled so Windows (where the desktop binary is the first
+        // touchpoint) does not greet the user with a disabled checkbox.
+        return true;
     }
 
     match fs::read_to_string(&path) {

@@ -7476,24 +7476,53 @@ async fn get_transfer_optimization_hints(
     let inspect_sftp =
         requested == "sftp" || (requested.is_empty() && active_protocol.as_deref() == Some("sftp"));
     if inspect_sftp {
-        let (active_session_is_sftp, private_key_configured) = {
+        let active_session_is_sftp = {
             let config_lock = state.config.lock().await;
-            let active_session_is_sftp = config_lock
+            config_lock
                 .as_ref()
                 .map(|config| config.provider_type == providers::ProviderType::Sftp)
-                .unwrap_or(false);
-            let private_key_configured = config_lock
-                .as_ref()
-                .and_then(|config| config.extra.get("private_key_path"))
-                .map(|path| !path.trim().is_empty())
-                .unwrap_or(false);
-            (active_session_is_sftp, private_key_configured)
+                .unwrap_or(false)
+        };
+
+        // PR-T11 F8 fix. Previous implementation read
+        // `config.extra.get("private_key_path")` to decide whether a
+        // key-based SSH session was in place. That split produced two
+        // divergent codepaths for the same semantic question:
+        //
+        //   - `get_transfer_optimization_hints` — hints/badges/checkbox
+        //   - `sftp_probe_delta_eligibility` — eligibility gate modal
+        //
+        // On Windows the extra-map was not reliably populated even
+        // when the live `SftpProvider` instance held a valid
+        // `private_key_path`, so the modal's probe could say "eligible"
+        // while the hints said "not active" — the AeroSync Delta Sync
+        // checkbox stayed greyed out even when the user had toggled
+        // native rsync ON in Settings and held an SSH key profile.
+        //
+        // Single source of truth is the provider instance's own
+        // `delta_transport()` factory: if it returns Some(...), the
+        // SFTP session can actually drive a DeltaTransport right now;
+        // if it returns None, it cannot. The hints now mirror exactly
+        // what the runtime dispatch will do.
+        let provider_can_deliver_delta = {
+            let mut provider_lock = state.provider.lock().await;
+            provider_lock
+                .as_mut()
+                .and_then(|provider| {
+                    provider
+                        .as_any_mut()
+                        .downcast_mut::<providers::sftp::SftpProvider>()
+                })
+                .map(|sftp| sftp.delta_transport().is_some())
+                .unwrap_or(false)
         };
 
         let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
         let native_feature_enabled = native_rsync_runtime_enabled();
-        let delta_eligible =
-            active_session_is_sftp && private_key_configured && native_feature_enabled;
+        let private_key_configured = provider_can_deliver_delta;
+        let delta_eligible = active_session_is_sftp
+            && provider_can_deliver_delta
+            && native_feature_enabled;
 
         hints.supports_resume_download = false;
         hints.supports_resume_upload = false;

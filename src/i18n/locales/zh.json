@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "此会话目前无法使用 rsync 增量路径。您可以继续使用经典传输路径，或先查看要求。",
             "deltaEligibilityProceed": "继续使用经典模式",
             "deltaEligibilitySkip": "不再为此服务器显示",
-            "deltaEligibilityLearnMore": "了解更多"
+            "deltaEligibilityLearnMore": "了解更多",
+            "deltaDisabledFallback": "当前会话未启用 Delta Sync。请查看“传输控制”提示了解原因。"
         },
         "ui": {
             "syncing": "正在同步...",

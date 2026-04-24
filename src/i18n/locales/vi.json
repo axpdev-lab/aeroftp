@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Phiên này hiện không thể sử dụng đường dẫn delta của rsync. Bạn có thể tiếp tục với đường dẫn truyền tải cổ điển hoặc đọc các yêu cầu trước.",
             "deltaEligibilityProceed": "Tiếp tục với cổ điển",
             "deltaEligibilitySkip": "Không hiển thị lại cho máy chủ này",
-            "deltaEligibilityLearnMore": "Tìm hiểu thêm"
+            "deltaEligibilityLearnMore": "Tìm hiểu thêm",
+            "deltaDisabledFallback": "Delta Sync hiện không hoạt động cho phiên này. Xem gợi ý Điều khiển truyền để biết lý do."
         },
         "ui": {
             "syncing": "Đang đồng bộ...",

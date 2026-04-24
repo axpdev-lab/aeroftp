@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Saio honek ezin du rsync delta-bidea erabili oraintxe. Transferentzia klasikoarekin jarrai dezakezu, edo lehenik eskakizunak irakurri.",
             "deltaEligibilityProceed": "Jarraitu klasikoarekin",
             "deltaEligibilitySkip": "Ez erakutsi berriro zerbitzari honetarako",
-            "deltaEligibilityLearnMore": "Gehiago jakin"
+            "deltaEligibilityLearnMore": "Gehiago jakin",
+            "deltaDisabledFallback": "Delta Sync ez dago aktibo saio honetan. Arrazoia ikusteko, begiratu Transferentzia kontrolaren oharra."
         },
         "ui": {
             "syncing": "Sinkronizatzen...",

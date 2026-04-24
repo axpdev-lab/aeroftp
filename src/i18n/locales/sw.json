@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Kipindi hiki hakiwezi kutumia njia ya delta ya rsync kwa sasa. Unaweza kuendelea na njia ya uhamisho wa kawaida, au usome mahitaji kwanza.",
             "deltaEligibilityProceed": "Endelea na kawaida",
             "deltaEligibilitySkip": "Usionyeshe tena kwa seva hii",
-            "deltaEligibilityLearnMore": "Jifunze zaidi"
+            "deltaEligibilityLearnMore": "Jifunze zaidi",
+            "deltaDisabledFallback": "Delta Sync haijawashwa kwa kipindi hiki. Angalia kidokezo cha Udhibiti wa Uhamisho kwa sababu."
         },
         "ui": {
             "syncing": "Inasawazisha...",

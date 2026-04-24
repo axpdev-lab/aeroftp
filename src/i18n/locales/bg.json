@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Тази сесия не може да използва rsync delta пътя в момента. Можете да продължите с класическия трансфер или първо да прочетете изискванията.",
             "deltaEligibilityProceed": "Продължи с класически",
             "deltaEligibilitySkip": "Не показвай отново за този сървър",
-            "deltaEligibilityLearnMore": "Научи повече"
+            "deltaEligibilityLearnMore": "Научи повече",
+            "deltaDisabledFallback": "Delta Sync не е активен за тази сесия. Вижте подсказката „Контрол на трансфера“ за причината."
         },
         "ui": {
             "syncing": "Синхронизиране...",

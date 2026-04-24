@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "এই সেশনটি এখন rsync ডেল্টা পাথ ব্যবহার করতে পারবে না। আপনি ক্লাসিক ট্রান্সফার পাথ দিয়ে চালিয়ে যেতে পারেন, বা প্রথমে প্রয়োজনীয়তা পড়তে পারেন।",
             "deltaEligibilityProceed": "ক্লাসিক দিয়ে চালিয়ে যান",
             "deltaEligibilitySkip": "এই সার্ভারের জন্য আর দেখাবেন না",
-            "deltaEligibilityLearnMore": "আরও জানুন"
+            "deltaEligibilityLearnMore": "আরও জানুন",
+            "deltaDisabledFallback": "এই সেশনের জন্য Delta Sync বর্তমানে সক্রিয় নয়। কারণের জন্য ট্রান্সফার নিয়ন্ত্রণ ইঙ্গিতটি দেখুন।"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",

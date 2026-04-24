@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Tato relace momentálně nemůže použít rsync delta cestu. Můžete pokračovat klasickou cestou přenosu nebo si nejprve přečíst požadavky.",
             "deltaEligibilityProceed": "Pokračovat klasicky",
             "deltaEligibilitySkip": "Již nezobrazovat pro tento server",
-            "deltaEligibilityLearnMore": "Dozvědět se více"
+            "deltaEligibilityLearnMore": "Dozvědět se více",
+            "deltaDisabledFallback": "Delta Sync není pro tuto relaci aktivní. Důvod najdete v nápovědě Ovládání přenosu."
         },
         "ui": {
             "syncing": "Synchronizace...",

@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Šī sesija pašlaik nevar izmantot rsync delta ceļu. Varat turpināt ar klasisko pārsūtīšanas ceļu vai vispirms izlasīt prasības.",
             "deltaEligibilityProceed": "Turpināt klasiski",
             "deltaEligibilitySkip": "Vairs nerādīt šim serverim",
-            "deltaEligibilityLearnMore": "Uzzināt vairāk"
+            "deltaEligibilityLearnMore": "Uzzināt vairāk",
+            "deltaDisabledFallback": "Delta Sync šajā sesijā pašlaik nav aktīvs. Iemeslu skatiet pārsūtīšanas vadības padomā."
         },
         "ui": {
             "syncing": "Sinhronizē...",

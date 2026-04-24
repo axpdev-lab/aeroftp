@@ -1979,7 +1979,8 @@
             "deltaEligibilityBody": "Diese Sitzung kann den rsync-Delta-Pfad derzeit nicht nutzen. Sie können mit der klassischen Übertragung fortfahren oder zuerst die Anforderungen lesen.",
             "deltaEligibilityProceed": "Klassisch fortfahren",
             "deltaEligibilitySkip": "Für diesen Server nicht mehr anzeigen",
-            "deltaEligibilityLearnMore": "Mehr erfahren"
+            "deltaEligibilityLearnMore": "Mehr erfahren",
+            "deltaDisabledFallback": "Delta Sync ist für diese Sitzung nicht aktiv. Den Grund finden Sie im Hinweis zur Übertragungssteuerung."
         },
         "ui": {
             "syncing": "Synchronisiere...",
