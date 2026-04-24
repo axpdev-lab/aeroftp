@@ -191,3 +191,58 @@ export const FireworksIcon: React.FC<IconProps> = ({ size = 16, className = '' }
     </svg>
 );
 
+// NVIDIA - Official eye logo (green #76B900)
+export const NvidiaIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#76B900">
+        <path d="M8.948 8.798v-1.43a6.7 6.7 0 0 1 .424-.018c3.922-.124 6.493 3.374 6.493 3.374s-2.774 3.851-5.75 3.851c-.398 0-.787-.064-1.158-.185v-4.346c1.523.184 1.83.857 2.744 2.385l2.035-1.716s-1.487-1.95-3.997-1.95a6 6 0 0 0-.79.053m0-4.725v2.138l.424-.027c5.45-.185 9.01 4.473 9.01 4.473s-4.085 4.967-8.332 4.967c-.37 0-.733-.035-1.094-.1v1.324c.308.04.617.061.927.062 3.955 0 6.817-2.023 9.588-4.412.459.37 2.341 1.265 2.728 1.66-2.636 2.209-8.777 3.987-12.255 3.987-.335 0-.657-.02-.974-.05v1.86h15.036V4.073zm0 10.31v1.127c-3.656-.652-4.671-4.461-4.671-4.461s1.755-1.945 4.671-2.257v1.236h-.006c-1.529-.185-2.727 1.247-2.727 1.247s.674 2.42 2.733 3.108m-6.742-3.49s2.164-3.197 6.742-3.548V6.17C3.873 6.578 0 10.882 0 10.882s2.193 6.343 8.948 6.981v-1.272c-4.957-.624-6.742-5.7-6.742-5.7z" />
+    </svg>
+);
+
+// Z.AI (Zhipu) - Stylized Z monogram (indigo #6366F1)
+export const ZaiIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => {
+    const gradId = useId();
+    return (
+        <svg viewBox="0 0 24 24" width={size} height={size} className={className}>
+            <rect x="2" y="2" width="20" height="20" rx="4" fill={`url(#${gradId})`} />
+            <path d="M7 7h10v1.8l-7 7H17V18H7v-1.8l7-7H7z" fill="#FFFFFF" />
+            <defs>
+                <linearGradient id={gradId} x1="0%" x2="100%" y1="0%" y2="100%">
+                    <stop offset="0%" stopColor="#6366F1" />
+                    <stop offset="100%" stopColor="#8B5CF6" />
+                </linearGradient>
+            </defs>
+        </svg>
+    );
+};
+
+// Hyperbolic - Stylized H with wave (magenta #EC4899)
+export const HyperbolicIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#EC4899">
+        <path d="M3 4h3v7h12V4h3v16h-3v-7H6v7H3z" />
+        <path d="M2 22c2.5-2 3.5-2 6 0s3.5 2 6 0 3.5-2 6 0v-1.8c-2.5 2-3.5 2-6 0s-3.5-2-6 0-3.5 2-6 0z" opacity="0.55" />
+    </svg>
+);
+
+// Novita AI - Lightning spark (cyan #06B6D4)
+export const NovitaIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => {
+    const gradId = useId();
+    return (
+        <svg viewBox="0 0 24 24" width={size} height={size} className={className}>
+            <path d="M13 2L3 14h7l-1 8 10-12h-7z" fill={`url(#${gradId})`} />
+            <defs>
+                <linearGradient id={gradId} x1="0%" x2="100%" y1="0%" y2="100%">
+                    <stop offset="0%" stopColor="#06B6D4" />
+                    <stop offset="100%" stopColor="#6366F1" />
+                </linearGradient>
+            </defs>
+        </svg>
+    );
+};
+
+// Yi (01.AI) - "01" monogram (orange #FF6B35)
+export const YiIcon: React.FC<IconProps> = ({ size = 16, className = '' }) => (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="#FF6B35">
+        <path d="M7.5 4a3.5 3.5 0 0 1 3.5 3.5v9a3.5 3.5 0 1 1-7 0v-9A3.5 3.5 0 0 1 7.5 4m0 2a1.5 1.5 0 0 0-1.5 1.5v9a1.5 1.5 0 1 0 3 0v-9A1.5 1.5 0 0 0 7.5 6M15 4h2.5v16H15v-13l-2 .9V5.7z" />
+    </svg>
+);
+

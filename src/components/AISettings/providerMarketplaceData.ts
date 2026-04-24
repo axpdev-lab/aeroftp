@@ -188,6 +188,55 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'freemium',
         highlight: 'Optimized open models',
     },
+    // Flagship — Tier 4 (NVIDIA NIM)
+    {
+        type: 'nvidia',
+        name: 'NVIDIA NIM',
+        description: 'NVIDIA-hosted inference for Llama 3.3 Nemotron, DeepSeek, Mixtral. DGX-grade latency.',
+        category: 'flagship',
+        features: ['streaming', 'tools', 'vision'],
+        pricingTier: 'freemium',
+        highlight: '1000 free requests',
+    },
+    // Chinese — Tier 4
+    {
+        type: 'zai',
+        name: 'Z.AI (Zhipu GLM)',
+        description: 'GLM-4.6 & GLM-4-Plus. Bilingual reasoning with strong tool-use.',
+        category: 'chinese',
+        features: ['streaming', 'tools', 'vision', 'thinking'],
+        pricingTier: 'freemium',
+        highlight: 'GLM-4.6 flagship',
+    },
+    {
+        type: 'yi',
+        name: 'Yi (01.AI)',
+        description: 'Yi-Large & Yi-Vision from 01.AI (Kai-Fu Lee). 200K context.',
+        category: 'chinese',
+        features: ['streaming', 'tools', 'vision'],
+        pricingTier: 'paid',
+        highlight: '200K context window',
+    },
+    // Fast Inference — Tier 4
+    {
+        type: 'hyperbolic',
+        name: 'Hyperbolic',
+        description: 'Affordable hosted open models. Llama 3.3 70B, DeepSeek V3, Qwen.',
+        category: 'fast',
+        features: ['streaming', 'tools'],
+        pricingTier: 'freemium',
+        highlight: 'Cheapest Llama 3.3 70B',
+    },
+    // Gateway — Tier 4
+    {
+        type: 'novita',
+        name: 'Novita AI',
+        description: 'Serverless inference aggregator. Llama, DeepSeek, Kimi, Qwen and more.',
+        category: 'gateway',
+        features: ['streaming', 'tools', 'vision'],
+        pricingTier: 'freemium',
+        highlight: '100+ open models',
+    },
     // Gateway
     {
         type: 'openrouter',

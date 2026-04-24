@@ -5,7 +5,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download, Square } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { createTauriListener } from '../../hooks/useTauriListener';
-import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon } from './AIIcons';
+import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon, NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon } from './AIIcons';
 import { AISettingsPanel } from '../AISettings';
 import { AISettings, AIProviderType } from '../../types/ai';
 import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByName, getToolByNameFromAll } from '../../types/tools';
@@ -260,6 +260,11 @@ const getProviderIcon = (type: AIProviderType, size = 12): React.ReactNode => {
         case 'cerebras': return <CerebrasIcon size={size} />;
         case 'sambanova': return <SambaNovaIcon size={size} />;
         case 'fireworks': return <FireworksIcon size={size} />;
+        case 'nvidia': return <NvidiaIcon size={size} />;
+        case 'zai': return <ZaiIcon size={size} />;
+        case 'hyperbolic': return <HyperbolicIcon size={size} />;
+        case 'novita': return <NovitaIcon size={size} />;
+        case 'yi': return <YiIcon size={size} />;
         case 'custom': return <Bot size={size} className="text-gray-400" />;
         default: return <Bot size={size} />;
     }

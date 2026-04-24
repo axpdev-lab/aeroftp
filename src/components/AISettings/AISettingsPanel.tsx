@@ -10,7 +10,7 @@ import type { PluginManifest } from '../../types/plugins';
 import { DEFAULT_MACROS } from '../DevTools/aiChatToolMacros';
 import { detectOllamaModelFamily } from '../DevTools/aiProviderProfiles';
 import { OllamaGpuMonitor } from '../DevTools/OllamaGpuMonitor';
-import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon } from '../DevTools/AIIcons';
+import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon, NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon } from '../DevTools/AIIcons';
 import { AIProvider, AIModel, AISettings, AIProviderType, PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings } from '../../types/ai';
 import { logger } from '../../utils/logger';
 import './AISettingsPanel.css';
@@ -65,6 +65,16 @@ const getProviderIcon = (type: AIProviderType): React.ReactNode => {
             return <SambaNovaIcon size={16} />;
         case 'fireworks':
             return <FireworksIcon size={16} />;
+        case 'nvidia':
+            return <NvidiaIcon size={16} />;
+        case 'zai':
+            return <ZaiIcon size={16} />;
+        case 'hyperbolic':
+            return <HyperbolicIcon size={16} />;
+        case 'novita':
+            return <NovitaIcon size={16} />;
+        case 'yi':
+            return <YiIcon size={16} />;
         case 'custom':
             return <Server size={14} className="text-gray-400" />;
         default:

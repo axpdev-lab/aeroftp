@@ -87,6 +87,12 @@ pub enum AIProviderType {
     #[serde(rename = "sambanova")]
     SambaNova,
     Fireworks,
+    Nvidia,
+    #[serde(rename = "zai")]
+    Zai,
+    Hyperbolic,
+    Novita,
+    Yi,
 }
 
 // Image attachment for vision models

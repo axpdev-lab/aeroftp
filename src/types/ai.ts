@@ -3,7 +3,7 @@
 
 // AI Provider and Model Types for AeroFTP AI Agent
 
-export type AIProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'openrouter' | 'ollama' | 'custom' | 'kimi' | 'qwen' | 'deepseek' | 'mistral' | 'groq' | 'perplexity' | 'cohere' | 'together' | 'ai21' | 'cerebras' | 'sambanova' | 'fireworks';
+export type AIProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'openrouter' | 'ollama' | 'custom' | 'kimi' | 'qwen' | 'deepseek' | 'mistral' | 'groq' | 'perplexity' | 'cohere' | 'together' | 'ai21' | 'cerebras' | 'sambanova' | 'fireworks' | 'nvidia' | 'zai' | 'hyperbolic' | 'novita' | 'yi';
 
 export interface AIProvider {
     id: string;
@@ -218,6 +218,41 @@ export const PROVIDER_PRESETS: Omit<AIProvider, 'id' | 'apiKey' | 'createdAt' | 
         isDefault: false,
     },
     {
+        name: 'NVIDIA NIM',
+        type: 'nvidia',
+        baseUrl: 'https://integrate.api.nvidia.com/v1',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
+        name: 'Z.AI (Zhipu)',
+        type: 'zai',
+        baseUrl: 'https://api.z.ai/api/paas/v4',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
+        name: 'Hyperbolic',
+        type: 'hyperbolic',
+        baseUrl: 'https://api.hyperbolic.xyz/v1',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
+        name: 'Novita AI',
+        type: 'novita',
+        baseUrl: 'https://api.novita.ai/v3/openai',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
+        name: 'Yi (01.AI)',
+        type: 'yi',
+        baseUrl: 'https://api.lingyiwanwu.com/v1',
+        isEnabled: false,
+        isDefault: false,
+    },
+    {
         name: 'Custom',
         type: 'custom',
         baseUrl: '',
@@ -246,6 +281,11 @@ export const DEFAULT_MODELS: Record<AIProviderType, Omit<AIModel, 'id' | 'provid
     cerebras: [],
     sambanova: [],
     fireworks: [],
+    nvidia: [],
+    zai: [],
+    hyperbolic: [],
+    novita: [],
+    yi: [],
     custom: [],
 };
 

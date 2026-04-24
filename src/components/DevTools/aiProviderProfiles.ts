@@ -297,6 +297,36 @@ export const PROVIDER_PROFILES: Record<AIProviderType, ProviderPromptProfile> = 
         toolFormat: 'native',
         behaviorRules: OPENAI_BEHAVIOR_RULES,
     },
+    nvidia: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by NVIDIA NIM. You support 19 storage protocols with DGX-grade latency.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    zai: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Z.AI (Zhipu GLM). You support 19 storage protocols with strong bilingual reasoning.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    hyperbolic: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Hyperbolic. You support 19 storage protocols.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    novita: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Novita AI. You support 19 storage protocols with access to 100+ open models.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
+    yi: {
+        identity: 'You are AeroAgent, an AI file management assistant for AeroFTP powered by Yi (01.AI). You support 19 storage protocols with a 200K context window.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations. Leverage your long context window for large file analysis. Keep explanations concise.',
+        toolFormat: 'native',
+        behaviorRules: OPENAI_BEHAVIOR_RULES,
+    },
     custom: {
         identity: 'You are AeroAgent, an efficient and direct AI file management assistant for AeroFTP. You support 19 storage protocols and prioritize getting things done.',
         style: 'Be direct and action-oriented. Use function calls for all file operations — never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
@@ -364,6 +394,11 @@ const PARAMETER_PRESETS: Record<AIProviderType, Record<TaskType | 'default', Par
     cerebras: OPENAI_PRESETS,
     sambanova: OPENAI_PRESETS,
     fireworks: OPENAI_PRESETS,
+    nvidia: OPENAI_PRESETS,
+    zai: OPENAI_PRESETS,
+    hyperbolic: OPENAI_PRESETS,
+    novita: OPENAI_PRESETS,
+    yi: OPENAI_PRESETS,
     custom: OPENAI_PRESETS,
 };
 

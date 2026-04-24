@@ -13,7 +13,8 @@ import {
     GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon,
     OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon,
     GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon,
-    AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon
+    AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon,
+    NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon
 } from '../DevTools/AIIcons';
 
 interface ProviderMarketplaceProps {
@@ -42,6 +43,11 @@ const PROVIDER_ICON_MAP: Record<AIProviderType, React.FC<{ size?: number; classN
     cerebras: CerebrasIcon,
     sambanova: SambaNovaIcon,
     fireworks: FireworksIcon,
+    nvidia: NvidiaIcon,
+    zai: ZaiIcon,
+    hyperbolic: HyperbolicIcon,
+    novita: NovitaIcon,
+    yi: YiIcon,
     custom: OpenAIIcon,
 };
 
