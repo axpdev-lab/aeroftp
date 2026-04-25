@@ -1219,6 +1219,20 @@ impl StorageProvider for KDriveProvider {
         _path: &str,
         pattern: &str,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // kDrive /files/search?query= is substring on filename and ignores
+        // glob metacharacters. Strip glob chars for the broad server
+        // prefilter, then apply the precise filter client-side via
+        // matches_find_pattern.
+        let literal: String = pattern
+            .chars()
+            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
+            .collect();
+        let server_query = if literal.is_empty() {
+            ".".to_string()
+        } else {
+            literal
+        };
+
         let base_url = self.api_url_v3("/files/search");
         let mut entries = Vec::new();
         let mut cursor: Option<String> = None;
@@ -1228,10 +1242,10 @@ impl StorageProvider for KDriveProvider {
                 Some(ref c) => format!(
                     "{}?query={}&cursor={}",
                     base_url,
-                    urlencoding::encode(pattern),
+                    urlencoding::encode(&server_query),
                     c
                 ),
-                None => format!("{}?query={}", base_url, urlencoding::encode(pattern)),
+                None => format!("{}?query={}", base_url, urlencoding::encode(&server_query)),
             };
 
             let resp = self.get_with_retry(&url).await?;
@@ -1262,6 +1276,9 @@ impl StorageProvider for KDriveProvider {
 
             for file in files {
                 let name = file.name.unwrap_or_else(|| format!("unnamed_{}", file.id));
+                if !super::matches_find_pattern(&name, pattern) {
+                    continue;
+                }
                 let is_dir = file.file_type.as_deref() == Some("dir");
                 let size = file.size.unwrap_or(0).max(0) as u64;
                 let modified = file.last_modified.map(|ts| {

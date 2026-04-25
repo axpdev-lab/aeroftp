@@ -1339,10 +1339,24 @@ impl StorageProvider for KoofrProvider {
         }
 
         let resolved = self.resolve_path(path);
+
+        // Koofr /search?query= is substring on filename and ignores globs.
+        // Strip glob chars for the broad server prefilter, then apply the
+        // precise filter client-side via matches_find_pattern.
+        let literal: String = pattern
+            .chars()
+            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
+            .collect();
+        let server_query = if literal.is_empty() {
+            ".".to_string()
+        } else {
+            literal
+        };
+
         let url = format!(
             "{}/search?query={}&mountId={}&path={}&limit=256",
             API_BASE,
-            urlencoding::encode(pattern),
+            urlencoding::encode(&server_query),
             urlencoding::encode(&self.mount_id),
             urlencoding::encode(&resolved)
         );
@@ -1357,6 +1371,7 @@ impl StorageProvider for KoofrProvider {
         let entries: Vec<RemoteEntry> = search
             .hits
             .iter()
+            .filter(|hit| super::matches_find_pattern(&hit.name, pattern))
             .map(|hit| RemoteEntry {
                 name: hit.name.clone(),
                 path: hit.path.clone(),

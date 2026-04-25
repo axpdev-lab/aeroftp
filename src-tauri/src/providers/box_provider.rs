@@ -2276,10 +2276,23 @@ impl StorageProvider for BoxProvider {
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
         let token = self.get_token().await?;
 
+        // Box /search?query= is substring on filename and metadata. Strip
+        // glob metachars for the broad server prefilter, then apply the
+        // precise glob/substring filter client-side via matches_find_pattern.
+        let literal: String = pattern
+            .chars()
+            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
+            .collect();
+        let server_query = if literal.is_empty() {
+            ".".to_string()
+        } else {
+            literal
+        };
+
         let url = format!(
             "{}/search?query={}&limit=200",
             API_BASE,
-            urlencoding::encode(pattern)
+            urlencoding::encode(&server_query)
         );
         let resp = self
             .client
@@ -2304,6 +2317,7 @@ impl StorageProvider for BoxProvider {
         Ok(results
             .entries
             .into_iter()
+            .filter(|item| super::matches_find_pattern(&item.name, pattern))
             .map(|item| {
                 RemoteEntry {
                     name: item.name,

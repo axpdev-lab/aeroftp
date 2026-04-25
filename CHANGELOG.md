@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.5] - 2026-04-26
+
+### CLI polish + cross-provider correctness sweep
+
+Drop-in patch driven by an end-to-end stress test of `aeroftp-cli 3.6.4` against real provider accounts (S3, Backblaze, Storj, FTPS, Dropbox, Google Drive, OneDrive, Box, Koofr, Zoho WorkDrive, kDrive, Drime). The session surfaced four recurring correctness defects that span 8 providers, plus a dozen ergonomics rough edges that became visible only when the CLI is driven by an external AI agent rather than a human typing one command at a time. Fixes are surface-level and contained to the CLI binary plus per-provider trait impls; no architectural change.
+
+### Fixed
+
+- **`find` glob matched as substring across 7 providers** — `aeroftp-cli find /path "*.txt"` was returning `report.TXT.rtf` and any file whose name *contained* the literal `txt`, because the per-provider `find()` implementations forwarded the pattern straight to the upstream search API (which is substring-by-name on most clouds) without re-applying glob semantics on the response. Affected: Dropbox, OneDrive, Box, Koofr, Zoho WorkDrive, Drime, kDrive. Fix: server-side query is now broad-prefiltered (glob characters stripped, only the literal portion sent), then the response is re-filtered client-side via the shared `matches_find_pattern` helper that powers the rest of the CLI. Google Drive (already filtered against its own catalog) gets the same belt-and-braces second pass.
+- **`mkdir` + `put` failing on empty-prefix object stores** — `aeroftp-cli put file.bin s3://bucket/key` returned `exit=2 "Parent does not exist"` on a fresh bucket because the put plumbing was issuing a separate `mkdir` call before the upload, which is a hard error on S3 / Azure / Backblaze (no real directory primitive). Fix: skip the parent-directory pre-flight when the provider declares `is_object_store()`. Validated end-to-end on Backblaze and Storj.
+- **`ls` of a missing FTPS path returned `exit=0` with `(empty directory)`** — the unhappy path was indistinguishable from an actually empty directory, so scripts piping the output couldn't tell. Fix: return `exit=2 "Path not found"` when the upstream `LIST` rejects the resolved path. The empty-directory case (path exists, no entries) still exits `0`.
+- **Dropbox `get` of a missing file took 3.5s + 3 retries before failing** — the `path/lookup/not_found` JSON error was being classified as transient and retried, instead of as a permanent client error. Fix: detect `path/not_found` upstream and return `exit=2` immediately. Drops the failure latency from ~3.5 s to ~150 ms.
+- **Koofr WebDAV default Remote Path was `/dav/Koofr/`** (issue #126) — the discovery preset paired `server: https://app.koofr.net/dav/Koofr` with `basePath: /dav/Koofr/`, so the joined request URL doubled to `/dav/Koofr/dav/Koofr/...`, which Koofr rejected with `Invalid credentials`. Fix: default `basePath` is now `/`. Existing saved profiles need to be edited once.
+
+### Changed
+
+- **`aeroftp-cli` polish pass** for the AI-agent demo path:
+  - `pget` is now a real subcommand (alias for `get --segments 4`); the banner cell stops being a lie.
+  - Banner protocol count and the `connect` "Unsupported protocol" error now derive from a single `SUPPORTED_URL_SCHEMES` constant, so they cannot drift apart again.
+  - Subcommand help screens no longer reprint the ASCII banner. Banner is suppressed when stderr isn't a TTY, when `AEROFTP_NO_BANNER` is set, or when `--no-banner` is on the command line. Top-level `--help` still shows it once.
+  - 11 connection globals (`--bucket`, `--region`, `--container`, `--token`, `--tls`, `--key`, `--key-passphrase`, `--password-stdin`, `--insecure`, `--trust-host-key`, `--two-factor`) move under a `Connection options` heading so per-subcommand help is no longer 30 random flags. 6 output flags move under `Output options`.
+  - 39 sentinel `default_value = "_"` arguments now carry `hide_default_value = true` so subcommand help stops rendering `[default: _]` for every URL/path positional.
+  - `cleanup` description rewritten to a single accurate sentence (was a confusing two-line run-on suggesting it handled duplicates, which it doesn't — that lives in `dedupe`).
+  - `dedupe` gained the missing description.
+  - `tree --depth` help no longer leaks the internal "TypeId mismatch" implementation note.
+  - `Invalid URL` error now suggests `--profile <name>` when the input has no scheme, instead of leaking the raw `url::ParseError` message.
+
+### Skipped — flagged for follow-up
+
+- `--exclude` rename: `sync` already has a local `--exclude` (with `-e` short) whose `Vec<String>` semantics differ from the global `--exclude-global`; unifying them would force a refactor of the per-command merge loop. Out of scope for a polish pass; tracked for a dedicated PR with proper test coverage.
+
 ## [3.6.4] - 2026-04-25
 
 ### Patch release: Windows keystore export fix + autostart UX + update opt-out

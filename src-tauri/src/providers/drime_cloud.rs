@@ -1680,6 +1680,19 @@ impl StorageProvider for DrimeCloudProvider {
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
         drime_log(&format!("Searching for '{}'", pattern));
 
+        // Drime /drive/file-entries?query= is substring on filename and
+        // ignores glob metacharacters. Strip glob chars for the broad server
+        // prefilter, then apply the precise filter client-side.
+        let literal: String = pattern
+            .chars()
+            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
+            .collect();
+        let server_query = if literal.is_empty() {
+            ".".to_string()
+        } else {
+            literal
+        };
+
         let mut entries = Vec::new();
         let mut page = 1u32;
 
@@ -1687,7 +1700,7 @@ impl StorageProvider for DrimeCloudProvider {
             let url = format!(
                 "{}?workspaceId=0&query={}&page={}&perPage=50",
                 Self::api_url("/drive/file-entries"),
-                urlencoding::encode(pattern),
+                urlencoding::encode(&server_query),
                 page
             );
 
@@ -1714,6 +1727,9 @@ impl StorageProvider for DrimeCloudProvider {
 
             for file in files {
                 let name = file.name.clone().unwrap_or_default();
+                if !super::matches_find_pattern(&name, pattern) {
+                    continue;
+                }
                 let is_dir = file.file_type.as_deref() == Some("folder");
 
                 entries.push(RemoteEntry {

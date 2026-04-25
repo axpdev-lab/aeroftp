@@ -1774,13 +1774,26 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // Google Drive API supports native search via q parameter
-        // Search both filename and full-text content for comprehensive results
-        let escaped = pattern.replace("'", "\\'");
-        let query = format!(
-            "(name contains '{}' or fullText contains '{}') and trashed=false",
-            escaped, escaped
-        );
+        // Drive API `name contains 'X'` is a case-insensitive substring match
+        // and ignores glob metacharacters. Strategy: strip glob chars from
+        // the pattern for a broad server-side prefilter, then apply a precise
+        // match client-side via the shared `matches_find_pattern` helper
+        // (glob via globset for `*?[]`, substring fallback for plain text).
+        let literal: String = pattern
+            .chars()
+            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
+            .collect();
+
+        let trashed_clause = "trashed=false";
+        let query = if literal.is_empty() {
+            trashed_clause.to_string()
+        } else {
+            let escaped = literal.replace('\'', "\\'");
+            format!(
+                "(name contains '{}' or fullText contains '{}') and {}",
+                escaped, escaped, trashed_clause
+            )
+        };
 
         let mut all_entries = Vec::new();
         let mut page_token: Option<String> = None;
@@ -1817,6 +1830,9 @@ impl StorageProvider for GoogleDriveProvider {
                 .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             for file in &list.files {
+                if !super::matches_find_pattern(&file.name, pattern) {
+                    continue;
+                }
                 all_entries.push(self.to_remote_entry(file, path));
             }
 

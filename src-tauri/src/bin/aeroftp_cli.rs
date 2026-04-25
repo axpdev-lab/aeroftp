@@ -88,6 +88,18 @@ use tokio::sync::Mutex as AsyncMutex;
 
 // ── CLI Argument Parsing ───────────────────────────────────────────
 
+/// Canonical list of URL schemes accepted by `connect`, `ls`, `get`, etc.
+/// Aliases (`ssh`, `http`, `https`) are accepted by the URL parser but are
+/// not listed here so the public surface stays compact. Both the banner
+/// help line and the "Unsupported protocol" error derive from this slice
+/// so the two cannot drift apart again (issue #125 polish).
+const SUPPORTED_URL_SCHEMES: &[&str] = &[
+    "ftp", "ftps", "sftp", "webdav", "webdavs",
+    "s3", "mega", "azure", "filen", "internxt",
+    "jottacloud", "filelu", "koofr", "opendrive", "yandexdisk",
+    "github", "gitlab",
+];
+
 #[derive(Parser)]
 #[command(
     name = "aeroftp",
@@ -98,59 +110,64 @@ use tokio::sync::Mutex as AsyncMutex;
 )]
 struct Cli {
     /// Output format
-    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Text)]
+    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Text, help_heading = "Output options")]
     format: OutputFormat,
 
     /// Shorthand for --format json
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Output options")]
     json: bool,
 
+    /// Suppress the startup banner (also via AEROFTP_NO_BANNER env var)
+    #[arg(long, global = true, help_heading = "Output options")]
+    #[allow(dead_code)] // read from raw_args before clap parses
+    no_banner: bool,
+
     /// Restrict JSON output fields (comma-separated, e.g. name,size,modified)
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Output options")]
     json_fields: Option<String>,
 
     /// Read password from stdin (pipe: echo "pass" | aeroftp ...)
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     password_stdin: bool,
 
     /// SSH private key path for SFTP
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     key: Option<String>,
 
     /// SSH key passphrase
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     key_passphrase: Option<String>,
 
     /// S3 bucket name
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     bucket: Option<String>,
 
     /// S3/Azure region
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     region: Option<String>,
 
     /// Azure container name
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     container: Option<String>,
 
     /// Bearer/API token (kDrive, Jottacloud, FileLu)
-    #[arg(long, global = true, env = "AEROFTP_TOKEN", hide_env_values = true)]
+    #[arg(long, global = true, env = "AEROFTP_TOKEN", hide_env_values = true, help_heading = "Connection options")]
     token: Option<String>,
 
     /// FTP TLS mode: none, explicit, implicit, explicit_if_available
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     tls: Option<String>,
 
     /// Skip TLS certificate verification
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     insecure: bool,
 
     /// Trust unknown SSH host keys (skip TOFU verification)
-    #[arg(long, global = true)]
+    #[arg(long, global = true, help_heading = "Connection options")]
     trust_host_key: bool,
 
     /// 2FA code (Filen, Internxt)
-    #[arg(long, global = true, env = "AEROFTP_2FA", hide_env_values = true)]
+    #[arg(long, global = true, env = "AEROFTP_2FA", hide_env_values = true, help_heading = "Connection options")]
     two_factor: Option<String>,
 
     /// Use a saved server profile instead of URL (name or ID)
@@ -167,11 +184,11 @@ struct Cli {
     master_password: Option<String>,
 
     /// Verbose output (-v debug, -vv trace)
-    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    #[arg(short, long, global = true, action = clap::ArgAction::Count, help_heading = "Output options")]
     verbose: u8,
 
     /// Quiet mode (errors only)
-    #[arg(short, long, global = true, conflicts_with = "verbose")]
+    #[arg(short, long, global = true, conflicts_with = "verbose", help_heading = "Output options")]
     quiet: bool,
 
     /// Speed limit (e.g., "1M", "500K")
@@ -333,13 +350,13 @@ enum Commands {
     /// Test connection to a remote server
     Connect {
         /// Server URL (e.g., sftp://user@host:22). Omit when using --profile.
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
     },
     /// List files on a remote server
     Ls {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path (default: /)
         #[arg(default_value = "/")]
@@ -360,7 +377,7 @@ enum Commands {
     /// Download file(s) from remote server
     Get {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path (supports glob patterns like "*.csv")
         #[arg(default_value = "")]
@@ -374,10 +391,24 @@ enum Commands {
         #[arg(long, default_value_t = 1)]
         segments: usize,
     },
+    /// Segmented parallel download (alias for `get` with --segments preset)
+    Pget {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        remote: String,
+        /// Local destination (default: current filename)
+        local: Option<String>,
+        /// Number of parallel segments (range 2-16)
+        #[arg(long, default_value_t = 4)]
+        segments: usize,
+    },
     /// Upload file(s) to remote server (supports glob patterns like "*.csv")
     Put {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local file path (supports glob patterns like "*.csv")
         #[arg(default_value = "")]
@@ -394,7 +425,7 @@ enum Commands {
     /// Create a remote directory
     Mkdir {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote directory path
         #[arg(default_value = "")]
@@ -406,7 +437,7 @@ enum Commands {
     /// Delete a remote file or directory
     Rm {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to delete
         #[arg(default_value = "")]
@@ -421,7 +452,7 @@ enum Commands {
     /// Rename/move a remote file
     Mv {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Source path
         #[arg(default_value = "")]
@@ -433,7 +464,7 @@ enum Commands {
     /// Copy a remote file on the server side when supported
     Cp {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Source path
         #[arg(default_value = "")]
@@ -445,7 +476,7 @@ enum Commands {
     /// Create a share link for a remote file when supported
     Link {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path
         #[arg(default_value = "")]
@@ -463,7 +494,7 @@ enum Commands {
     /// Find and replace text in a remote UTF-8 file
     Edit {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
         #[arg(default_value = "")]
@@ -481,7 +512,7 @@ enum Commands {
     /// Print remote file to stdout (for piping)
     Cat {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
         #[arg(default_value = "")]
@@ -490,7 +521,7 @@ enum Commands {
     /// Print first N lines of a remote file
     Head {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
         #[arg(default_value = "")]
@@ -502,7 +533,7 @@ enum Commands {
     /// Print last N lines of a remote file
     Tail {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
         #[arg(default_value = "")]
@@ -514,7 +545,7 @@ enum Commands {
     /// Create empty file or update timestamp
     Touch {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
         #[arg(default_value = "")]
@@ -531,7 +562,7 @@ enum Commands {
         #[arg(value_enum, short = 'a', long = "algorithm", default_value = "sha256")]
         algorithm: HashAlgorithm,
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
         #[arg(default_value = "")]
@@ -543,7 +574,7 @@ enum Commands {
     /// Verify local and remote directories are identical
     Check {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory
         #[arg(default_value = ".")]
@@ -561,7 +592,7 @@ enum Commands {
     /// Reconcile local and remote trees with categorized diff output
     Reconcile {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory
         #[arg(default_value = ".")]
@@ -585,7 +616,7 @@ enum Commands {
     /// Show file/directory metadata
     Stat {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path
         #[arg(default_value = "")]
@@ -594,7 +625,7 @@ enum Commands {
     /// Search for files by pattern
     Find {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Base path to search from
         #[arg(default_value = "/")]
@@ -606,19 +637,19 @@ enum Commands {
     /// Show storage quota/usage
     Df {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
     },
     /// Show detailed server info, account, and storage quota
     About {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
     },
     /// Measure upload/download throughput against a writable remote
     Speed {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Test file size (e.g. 1M, 8M, 64M). Also accepts --size / -s.
         #[arg(
@@ -635,11 +666,10 @@ enum Commands {
         #[arg(long)]
         remote_path: Option<String>,
     },
-    /// Find and resolve duplicate files by content hash
-    /// Remove orphaned .aerotmp files from interrupted downloads
+    /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to scan (default: /)
         #[arg(default_value = "/")]
@@ -648,9 +678,10 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// Find duplicate files on a remote by content hash and optionally remove them.
     Dedupe {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to scan
         #[arg(default_value = "/")]
@@ -665,7 +696,7 @@ enum Commands {
     /// Synchronize local and remote directories
     Sync {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory path
         #[arg(default_value = ".")]
@@ -740,7 +771,7 @@ enum Commands {
     /// Preflight checks and risk summary before sync
     SyncDoctor {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory path
         #[arg(default_value = ".")]
@@ -773,22 +804,23 @@ enum Commands {
     /// Display remote directory tree
     Tree {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path (default: /)
         #[arg(default_value = "/")]
         path: String,
-        /// Maximum depth (default: 3). The field is named `depth` (not
-        /// `max_depth`) to avoid colliding with the root-level `--max-depth`
-        /// global flag, which clap's derive otherwise reports as a runtime
-        /// TypeId mismatch.
+        /// Maximum depth to descend.
+        // The field is named `depth` (not `max_depth`) to avoid colliding
+        // with the root-level `--max-depth` global flag, which clap's derive
+        // otherwise reports as a runtime TypeId mismatch. This is an
+        // implementation note — keep it as `//` so it doesn't reach `--help`.
         #[arg(short = 'd', long = "depth", default_value = "3")]
         depth: usize,
     },
     /// Interactive disk usage explorer (ncdu-style TUI)
     Ncdu {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to scan (default: /)
         #[arg(default_value = "/")]
@@ -806,7 +838,7 @@ enum Commands {
         /// Local mount point: empty directory (Linux/macOS) or drive letter like "Z:" (Windows)
         mountpoint: String,
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path (default: / or the URL/profile initial path)
         #[arg(default_value = "/")]
@@ -866,7 +898,7 @@ enum Commands {
     /// Upload stdin directly to a remote file
     Rcat {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote destination path
         #[arg(default_value = "")]
@@ -1081,7 +1113,7 @@ enum CryptCommands {
     /// Initialize an encrypted overlay on a remote directory
     Init {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote directory to encrypt
         #[arg(default_value = "/")]
@@ -1093,7 +1125,7 @@ enum CryptCommands {
     /// List files in an encrypted overlay (decrypted names)
     Ls {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
         #[arg(default_value = "/")]
@@ -1107,7 +1139,7 @@ enum CryptCommands {
         /// Local file to encrypt and upload
         local: String,
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
         #[arg(default_value = "/")]
@@ -1121,7 +1153,7 @@ enum CryptCommands {
         /// Remote file name (decrypted name, e.g., "secret.txt")
         remote: String,
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory (same as used in crypt init/put)
         #[arg(default_value = "/")]
@@ -1164,7 +1196,7 @@ enum ServeCommands {
     /// Serve a remote over local HTTP (read-only)
     Http {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path to expose (default: / or the URL/profile initial path)
         #[arg(default_value = "/")]
@@ -1183,7 +1215,7 @@ enum ServeCommands {
     #[command(name = "webdav")]
     WebDav {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path to expose (default: / or the URL/profile initial path)
         #[arg(default_value = "/")]
@@ -1201,7 +1233,7 @@ enum ServeCommands {
     /// Serve a remote over local FTP (read-write, anonymous)
     Ftp {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path to expose (default: / or the URL/profile initial path)
         #[arg(default_value = "/")]
@@ -1225,7 +1257,7 @@ enum ServeCommands {
     /// Serve a remote over local SFTP (SSH file transfer, read-write)
     Sftp {
         /// Server URL (omit when using --profile)
-        #[arg(default_value = "_")]
+        #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path to expose (default: / or the URL/profile initial path)
         #[arg(default_value = "/")]
@@ -3210,7 +3242,22 @@ fn resolve_password(
 }
 
 fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, String), String> {
-    let url_obj = url::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
+    let url_obj = url::Url::parse(url).map_err(|e| {
+        // A parse failure on a string with no scheme is almost always a
+        // user typing what they think is a saved profile path
+        // (`/myserver/data`) without `--profile`. The url::ParseError
+        // message ("relative URL without a base") is correct but
+        // unhelpful, so map to something actionable. Issue #125 polish.
+        if !url.contains("://") {
+            format!(
+                "Invalid URL or unknown profile in '{}'. Use --profile <name> for saved profiles, or protocol://host/path for direct URLs (supported: {}).",
+                url,
+                SUPPORTED_URL_SCHEMES.join(", ")
+            )
+        } else {
+            format!("Invalid URL: {}", e)
+        }
+    })?;
 
     let scheme = url_obj.scheme().to_lowercase();
     let host_str = url_obj.host_str().ok_or("Missing host in URL")?.to_string();
@@ -3327,7 +3374,11 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
 
             return Ok((config, "/".to_string()));
         }
-        _ => return Err(format!("Unsupported protocol: {}. Supported: ftp, ftps, sftp, webdav, webdavs, s3, mega, azure, filen, internxt, jottacloud, filelu, koofr, opendrive, yandexdisk, github, gitlab", scheme)),
+        _ => return Err(format!(
+            "Unsupported protocol: {}. Supported: {}",
+            scheme,
+            SUPPORTED_URL_SCHEMES.join(", ")
+        )),
     };
 
     let username = if url_obj.username().is_empty() {
@@ -4108,6 +4159,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
                 {"name": "profiles", "syntax": "aeroftp-cli profiles [--json]", "description": "List saved servers"},
                 {"name": "get", "syntax": "aeroftp-cli get --profile NAME /remote/file [./local]", "description": "Download file"},
                 {"name": "get -r", "syntax": "aeroftp-cli get --profile NAME /remote/dir/ ./local/ -r", "description": "Download directory"},
+                {"name": "pget", "syntax": "aeroftp-cli pget --profile NAME /remote/file [./local] [--segments N]", "description": "Segmented parallel download (alias for get with --segments preset, default 4)"},
             ],
             "modify": [
                 {"name": "put", "syntax": "aeroftp-cli put --profile NAME ./local /remote/path [-n]", "description": "Upload file (-n: no-clobber, skip if exists)"},
@@ -8253,6 +8305,28 @@ async fn cmd_ls(
         }
     };
 
+    // FTP/FTPS disambiguation: some servers reply to LIST/MLSD on a missing
+    // directory with an empty listing instead of a 550 error, which collapses
+    // a missing path into an indistinguishable "empty directory" (exit 0).
+    // When the listing is empty and the user supplied an explicit non-root
+    // path, run a follow-up stat to confirm. If the path does not exist,
+    // surface NotFound with the correct exit code.
+    if entries.is_empty()
+        && !path.is_empty()
+        && path != "/"
+        && path != "."
+        && matches!(
+            provider.provider_type(),
+            ProviderType::Ftp | ProviderType::Ftps
+        )
+    {
+        if let Err(ProviderError::NotFound(_)) = provider.stat(effective_path).await {
+            print_error(format, &format!("ls failed: Path not found: {}", path), 2);
+            let _ = provider.disconnect().await;
+            return 2;
+        }
+    }
+
     // Filter hidden files
     let mut entries: Vec<RemoteEntry> = if all {
         entries
@@ -9429,22 +9503,29 @@ async fn cmd_put(
         }
     };
 
-    // Pre-flight: check that the remote parent directory exists. If it does
-    // not, surface an explicit error pointing at the exact missing segment —
-    // some FTP hosters reply with a generic "553 Can't open that file: No
-    // such file or directory" that hides which parent segment is the
-    // culprit. Running three retries against a stable failure was pure noise.
-    // Any non-NotFound error from `stat` is ignored and the upload proceeds;
-    // the goal here is to replace a bad error message, not to add a second
-    // failure mode.
+    // Pre-flight: on FTP/FTPS only, check that the remote parent directory
+    // exists. If it does not, surface an explicit error pointing at the exact
+    // missing segment, since these backends reply with a generic "553 Can't
+    // open that file: No such file or directory" that hides which parent
+    // segment is the culprit and triggers three retries of pure noise.
+    //
+    // Skipped on object-storage protocols (S3, Azure) and on every other
+    // backend, where: (a) prefixes are virtual and stat() of an empty prefix
+    // returns NotFound even after a successful mkdir, producing false
+    // positives that block the natural mkdir+put workflow, and (b) native
+    // error messages from those backends already point at the missing path.
+    let needs_parent_check = matches!(
+        provider.provider_type(),
+        ProviderType::Ftp | ProviderType::Ftps
+    );
     let parent = parent_remote_path(remote_path);
-    if !parent.is_empty() && parent != "/" {
+    if needs_parent_check && !parent.is_empty() && parent != "/" {
         match provider.stat(&parent).await {
             Ok(entry) if !entry.is_dir => {
                 print_error(
                     format,
                     &format!(
-                        "Parent path '{}' exists but is not a directory — upload aborted.",
+                        "Parent path '{}' exists but is not a directory, upload aborted.",
                         parent
                     ),
                     2,
@@ -9464,7 +9545,7 @@ async fn cmd_put(
                 let _ = provider.disconnect().await;
                 return 2;
             }
-            _ => {} // stat OK (dir) or non-definitive error — proceed.
+            _ => {} // stat OK (dir) or non-definitive error, proceed.
         }
     }
 
@@ -22476,13 +22557,25 @@ async fn main() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
 
-    // Show banner when help is displayed (no args, --help, or -h)
+    // Show the banner only when it's actually useful: bare invocation or
+    // top-level --help. Subcommand help (e.g. `aeroftp-cli get --help`)
+    // skips it so the banner doesn't dominate every screen during
+    // exploration. Suppressed entirely when stderr isn't a TTY (CI,
+    // pipes), when AEROFTP_NO_BANNER is set, or when --no-banner is
+    // present anywhere on the command line.
     let raw_args: Vec<String> = std::env::args().collect();
-    let show_help = raw_args.len() <= 1
-        || raw_args
-            .iter()
-            .any(|a| a == "--help" || a == "-h" || a == "help");
-    if show_help {
+    let banner_suppressed = std::env::var("AEROFTP_NO_BANNER").is_ok()
+        || raw_args.iter().any(|a| a == "--no-banner")
+        || !std::io::stderr().is_terminal();
+    let is_top_level_invocation = match raw_args.get(1).map(String::as_str) {
+        // bare `aeroftp-cli` or top-level help variants
+        None | Some("--help" | "-h" | "help") => true,
+        // anything else is either a subcommand or a top-level flag,
+        // neither of which should re-print the banner
+        _ => false,
+    };
+    let show_banner = is_top_level_invocation && !banner_suppressed;
+    if show_banner {
         // Green (#00d26a) for "Aero", Blue (#0095ff) for "FTP"
         if use_color() {
             let g = "\x1b[1;38;2;0;210;106m"; // green
@@ -22496,8 +22589,9 @@ async fn main() {
             eprintln!("  {g}/_/ _ \\_\\___|_|  \\___/ {b}|_|     |_| |_|    {r}");
             eprintln!();
             eprintln!(
-                "  \x1b[1;37mAeroFTP\x1b[0m  {g}v{}{r}  {b}|{r}  23 protocols  {b}|{r}  pget  {b}|{r}  mcp  {b}|{r}  ai agent  {b}|{r}  vault profiles",
-                env!("CARGO_PKG_VERSION")
+                "  \x1b[1;37mAeroFTP\x1b[0m  {g}v{}{r}  {b}|{r}  23 providers, {} via direct URL  {b}|{r}  pget  {b}|{r}  mcp  {b}|{r}  ai agent  {b}|{r}  vault profiles",
+                env!("CARGO_PKG_VERSION"),
+                SUPPORTED_URL_SCHEMES.len()
             );
             eprintln!("\x1b[38;2;140;140;160m  transfer engine for operators, shell users, and terminal obsessives{r}");
         } else {
@@ -22509,8 +22603,9 @@ async fn main() {
             eprintln!("  /_/   \\_\\___|_|  \\___/ |_|     |_| |_|    ");
             eprintln!();
             eprintln!(
-                "  AeroFTP  v{}  |  23 protocols  |  pget  |  mcp  |  ai agent  |  vault profiles",
-                env!("CARGO_PKG_VERSION")
+                "  AeroFTP  v{}  |  23 providers, {} via direct URL  |  pget  |  mcp  |  ai agent  |  vault profiles",
+                env!("CARGO_PKG_VERSION"),
+                SUPPORTED_URL_SCHEMES.len()
             );
             eprintln!("  transfer engine for operators, shell users, and terminal obsessives");
         }
@@ -22579,6 +22674,55 @@ async fn main() {
                 (url.as_str(), path.as_str())
             };
             cmd_ls(u, p, *long, sort, *reverse, *all, &cli, format).await
+        }
+        Commands::Pget {
+            url,
+            remote,
+            local,
+            segments,
+        } => {
+            // Thin alias for `get --segments N`. Always non-recursive
+            // (segmented parallel download only makes sense per-file) and
+            // defaults to 4 segments instead of 1. Routes through the same
+            // cmd_get + retry plumbing so behaviour stays in lockstep.
+            let (u, r, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), Some(remote.as_str()))
+            } else {
+                (url.as_str(), remote.as_str(), local.as_deref())
+            };
+            let max_attempts = cli.retries.max(1);
+            let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+            let max_transfer_limit = resolve_max_transfer(&cli);
+            let mut last_code = 0i32;
+            for attempt in 1..=max_attempts {
+                last_code = cmd_get(
+                    u,
+                    r,
+                    l,
+                    false,
+                    *segments,
+                    &cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
+                if !is_retryable_exit(last_code)
+                    || session_transfer_exceeded(max_transfer_limit)
+                    || attempt == max_attempts
+                {
+                    break;
+                }
+                if !cli.quiet {
+                    eprintln!(
+                        "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                        attempt, max_attempts, last_code, sleep_dur
+                    );
+                }
+                if !sleep_dur.is_zero() {
+                    tokio::time::sleep(sleep_dur).await;
+                }
+            }
+            last_code
         }
         Commands::Get {
             url,
@@ -23492,6 +23636,7 @@ mod tests {
             format: OutputFormat::Text,
             json: false,
             json_fields: None,
+            no_banner: false,
             password_stdin: false,
             key: None,
             key_passphrase: None,

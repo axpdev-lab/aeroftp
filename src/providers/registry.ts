@@ -961,9 +961,14 @@ export const PROVIDERS: ProviderConfig[] = [
             },
         ],
         defaults: {
+            // The server URL already contains `/dav/Koofr` in its path; the
+            // remote base path must therefore be `/` so the joined request
+            // URL stays `https://app.koofr.net/dav/Koofr/...` instead of
+            // doubling up to `https://app.koofr.net/dav/Koofr/dav/Koofr/...`,
+            // which Koofr rejects with "Invalid credentials". Issue #126.
             server: 'https://app.koofr.net/dav/Koofr',
             port: 443,
-            basePath: '/dav/Koofr/',
+            basePath: '/',
         },
         features: {
             shareLink: false,

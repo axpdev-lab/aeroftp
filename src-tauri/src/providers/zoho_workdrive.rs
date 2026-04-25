@@ -2869,7 +2869,21 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .ok_or_else(|| ProviderError::Other("Not connected to a team".to_string()))?
             .clone();
 
-        let encoded = urlencoding::encode(pattern);
+        // Zoho /files/search?search_string= is substring on filename and
+        // ignores glob metacharacters. Strip glob chars for the broad server
+        // prefilter, then apply the precise filter client-side via
+        // matches_find_pattern.
+        let literal: String = pattern
+            .chars()
+            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
+            .collect();
+        let server_query = if literal.is_empty() {
+            ".".to_string()
+        } else {
+            literal
+        };
+
+        let encoded = urlencoding::encode(&server_query);
         let url = format!(
             "{}/files/search?search_string={}&team_id={}",
             self.api_base(),
@@ -2911,16 +2925,17 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ))
         })?;
 
-        let entries = list
+        let entries: Vec<RemoteEntry> = list
             .data
             .iter()
             .map(|f| self.to_remote_entry(f, "/"))
+            .filter(|e| super::matches_find_pattern(&e.name, pattern))
             .collect();
 
         info!(
             "Zoho WorkDrive find '{}': {} results",
             pattern,
-            list.data.len()
+            entries.len()
         );
         Ok(entries)
     }

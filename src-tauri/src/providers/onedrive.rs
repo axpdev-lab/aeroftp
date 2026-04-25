@@ -1199,10 +1199,23 @@ impl StorageProvider for OneDriveProvider {
             self.resolve_path(path).await?
         };
 
+        // Graph search(q=...) is a substring match on filename and ignores
+        // glob metacharacters. Strip glob chars for the server query, then
+        // apply the precise match client-side.
+        let literal: String = pattern
+            .chars()
+            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
+            .collect();
+        let server_query = if literal.is_empty() {
+            ".".to_string()
+        } else {
+            literal
+        };
+
         let url = format!(
             "{}/search(q='{}')",
             self.api_item(&item_id),
-            urlencoding::encode(pattern)
+            urlencoding::encode(&server_query)
         );
 
         let mut all_entries = Vec::new();
@@ -1231,7 +1244,10 @@ impl StorageProvider for OneDriveProvider {
                 .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             for item in &result.value {
-                all_entries.push(self.to_remote_entry(item, path));
+                let entry = self.to_remote_entry(item, path);
+                if super::matches_find_pattern(&entry.name, pattern) {
+                    all_entries.push(entry);
+                }
             }
 
             match result.next_link {

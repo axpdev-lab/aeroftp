@@ -712,6 +712,9 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
+            if text.contains("path/not_found") {
+                return Err(ProviderError::NotFound(sanitize_api_error(&text)));
+            }
             return Err(ProviderError::Other(format!(
                 "Download failed: {}",
                 sanitize_api_error(&text)
@@ -792,6 +795,9 @@ impl StorageProvider for DropboxProvider {
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
+            if text.contains("path/not_found") {
+                return Err(ProviderError::NotFound(sanitize_api_error(&text)));
+            }
             return Err(ProviderError::Other(format!(
                 "Download failed: {}",
                 sanitize_api_error(&text)
@@ -1127,8 +1133,22 @@ impl StorageProvider for DropboxProvider {
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let search_path = self.normalize_path(path);
 
+        // Dropbox search_v2 treats the query as a substring on filename.content,
+        // so glob metacharacters confuse it. Send the literal core to the
+        // server for a broad prefilter and apply the precise match client-side
+        // via matches_find_pattern (glob via globset, substring fallback).
+        let literal: String = pattern
+            .chars()
+            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
+            .collect();
+        let server_query = if literal.is_empty() {
+            ".".to_string() // any character, broadest possible prefilter
+        } else {
+            literal
+        };
+
         let body = serde_json::json!({
-            "query": pattern,
+            "query": server_query,
             "options": {
                 "path": if search_path.is_empty() { "" } else { search_path.as_str() },
                 "max_results": 200,
@@ -1178,6 +1198,7 @@ impl StorageProvider for DropboxProvider {
             .matches
             .iter()
             .map(|m| self.to_remote_entry(&m.metadata.metadata))
+            .filter(|e| super::matches_find_pattern(&e.name, pattern))
             .collect())
     }
 
