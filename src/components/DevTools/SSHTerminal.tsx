@@ -421,12 +421,27 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
 
     const activeTab = tabs.find(t => t.id === activeTabId) || null;
 
+    // Drops only the Tauri event listeners attached for this tab (pty-output,
+    // ssh-shell-closed). Xterm-side handlers like `xterm.onData` are tied to
+    // the xterm instance lifetime — they live until the tab is closed and are
+    // released by `disposeXtermHandlers` below. Mixing the two pools caused
+    // issue #125 on Linux: starting the shell called setupListener, which
+    // called this function, which (when it also disposed xterm handlers)
+    // killed the onData keystroke pipe right after the shell connected — the
+    // terminal showed the prompt but silently dropped every key the user
+    // typed. Symptom on Windows was hidden because spawn_shell stalled before
+    // setupListener even ran.
     const disposeTabListeners = useCallback((tabId: string) => {
         const unlisten = unlistenFns.current.get(tabId);
         if (unlisten) {
             unlisten();
             unlistenFns.current.delete(tabId);
         }
+    }, []);
+
+    // Releases xterm-side handlers (onData, etc.) for a tab that's being torn
+    // down. Call alongside disposeTabListeners on tab close / unmount.
+    const disposeXtermHandlers = useCallback((tabId: string) => {
         const disposables = xtermDisposables.current.get(tabId);
         if (disposables) {
             for (const disposable of disposables) {
@@ -855,6 +870,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     const closeTab = useCallback((tabId: string) => {
         // Clean up resources
         disposeTabListeners(tabId);
+        disposeXtermHandlers(tabId);
         const sessionId = ptySessionIds.current.get(tabId);
         const tab = tabs.find(t => t.id === tabId);
         if (connectedTabs.current.has(tabId)) {
@@ -883,7 +899,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             }
             return remaining;
         });
-    }, [activeTabId, disposeTabListeners, tabs]);
+    }, [activeTabId, disposeTabListeners, disposeXtermHandlers, tabs]);
 
     // Cleanup on unmount — save scrollback for all tabs
     useEffect(() => {
@@ -891,6 +907,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             xtermInstances.current.forEach((xterm, tabId) => {
                 saveScrollback(tabId, xterm);
                 disposeTabListeners(tabId);
+                disposeXtermHandlers(tabId);
                 xterm.dispose();
             });
             connectedTabs.current.forEach((tabId) => {
@@ -900,7 +917,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 }
             });
         };
-    }, [disposeTabListeners]);
+    }, [disposeTabListeners, disposeXtermHandlers]);
 
     // Listen for terminal-execute events from AeroAgent
     useEffect(() => {

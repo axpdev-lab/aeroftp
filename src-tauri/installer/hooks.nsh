@@ -41,7 +41,7 @@ _done:
 FunctionEnd
 
 ; ── Upgrade detection state ──
-; Captured in CUSTOM_PRE_INSTALL, consumed in CUSTOM_POST_INSTALL.
+; Captured in NSIS_HOOK_PREINSTALL, consumed in NSIS_HOOK_POSTINSTALL.
 ; "yes" means an AeroFTP.exe already lived in $INSTDIR before the bundler
 ; copied the new files, i.e. this install is an upgrade rather than a
 ; first-time install.
@@ -52,7 +52,16 @@ Var AeroFTPWasInstalled
 ; manual reinstall) should not silently recreate it. See issue #123.
 Var AeroFTPHadDesktopShortcut
 
-!macro CUSTOM_PRE_INSTALL
+; CRITICAL: Tauri's bundled installer.nsi invokes the four hooks below by
+; the names NSIS_HOOK_{PRE,POST}{INSTALL,UNINSTALL}, gated by an
+; `!ifmacrodef`. From v3.6.2 (commit e4d7868e) through v3.6.3 we shipped
+; these as CUSTOM_PRE_INSTALL / CUSTOM_POST_INSTALL / CUSTOM_PRE_UNINSTALL,
+; which `!ifmacrodef` skipped silently. Result: every hook in this file —
+; the HKCU PATH registration, the .aerovault association, the VC++
+; Runtime bootstrap, the desktop-shortcut respect logic — was inert in
+; every shipped Windows installer. See bug report
+; docs/dev/aeroftp-windows-path-hook-bug-report-2026-04-25.md.
+!macro NSIS_HOOK_PREINSTALL
     StrCpy $AeroFTPWasInstalled "no"
     StrCpy $AeroFTPHadDesktopShortcut "no"
     IfFileExists "$INSTDIR\AeroFTP.exe" 0 _aeroftp_pre_check_shortcut
@@ -63,7 +72,7 @@ Var AeroFTPHadDesktopShortcut
     _aeroftp_pre_install_done:
 !macroend
 
-!macro CUSTOM_POST_INSTALL
+!macro NSIS_HOOK_POSTINSTALL
     ; --- Don't recreate desktop shortcut on upgrades (issue #123) ---
     ; When this run is an upgrade AND the user had no desktop shortcut
     ; before it started, delete the one the Tauri NSIS template just
@@ -150,9 +159,9 @@ Var AeroFTPHadDesktopShortcut
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
 !macroend
 
-!macro CUSTOM_PRE_UNINSTALL
+!macro NSIS_HOOK_PREUNINSTALL
     ; --- Remove install dir from user PATH (HKCU) ---
-    ; Mirror of CUSTOM_POST_INSTALL. Read the current PATH, build a
+    ; Mirror of NSIS_HOOK_POSTINSTALL. Read the current PATH, build a
     ; new value where ";$INSTDIR" (with or without the trailing ";")
     ; is stripped, then broadcast WM_SETTINGCHANGE so new processes
     ; don't see the defunct entry. Keeps HKCU Path tidy after
@@ -195,6 +204,14 @@ _aeroftp_unpath_done:
 
     ; --- Selective user data cleanup on uninstall ---
     ; Three separate prompts let the user choose exactly what to remove.
+    ;
+    ; Silent mode (e.g. WinGet's `upgrade` flow, which runs the old
+    ; installer's uninstaller silently before launching the new one) MUST
+    ; preserve user data — otherwise every non-interactive upgrade would
+    ; either pop blocking modal dialogs or, worse, silently wipe the
+    ; user's saved servers, AI chats and cache. Skip the whole section
+    ; when ${Silent} is true and let the user reinstall keep everything.
+    IfSilent _aeroftp_data_cleanup_done
 
     ; 1) Saved servers, credentials, and vaults
     MessageBox MB_YESNO|MB_ICONQUESTION \
@@ -227,4 +244,5 @@ Safe to remove, frees disk space." \
     _rm_cache:
         RMDir /r "$LOCALAPPDATA\com.aeroftp.AeroFTP"
     _skip_cache:
+    _aeroftp_data_cleanup_done:
 !macroend
