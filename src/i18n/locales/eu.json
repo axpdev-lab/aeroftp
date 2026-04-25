@@ -914,7 +914,11 @@
                 "description": "Erabili AeroFTP-k barneratutako rsync protokoloaren inplementazioa sistemako rsync bitarra abiarazi beharrean. Prozesuen gainkostua murrizten du; muturreko kasuetan gutxiago probatua egon daiteke.",
                 "enableToggle": "Gaitu rsync natiboa SFTP bidezko delta sinkronizaziorako",
                 "experimental": "Esperimentala: errore ez-kritikoen aurrean automatikoki rsync klasikora itzultzen da. Ostalari-gakoaren desadostasunak errore blokeatzaile gisa agertzen dira, isilpeko ordezkorik gabe."
-            }
+            },
+            "startMinimizedOnAutostart": "Hasi erretiluan minimizatuta",
+            "startMinimizedOnAutostartDesc": "Ezkutatu leiho nagusia abio automatikoan. AeroFTP sistemaren erretiluan exekutatzen jarraitzen du, ireki erretiluko ikonotik behar duzunean.",
+            "disableUpdateChecks": "Ez egiaztatu eguneraketak",
+            "disableUpdateChecksDesc": "Saltatu abioko eta eguneroko eguneraketa-egiaztapen automatikoa. Erabilgarria AeroFTP WinGet, AUR edo kanpoko beste pakete-kudeatzaile baten bidez kudeatzen duzunean. Goiko eskuzko egiaztapenek funtzionatzen jarraitzen dute."
         },
         "devtools": {
             "title": "AeroTools",

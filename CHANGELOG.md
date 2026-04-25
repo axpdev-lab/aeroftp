@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.4] - 2026-04-25
+
+### Patch release: Windows keystore export fix + autostart UX + update opt-out
+
+Small but high-impact patch release driven by two community bug reports (issues #123 and #124). The headline fix unblocks the Settings → Backup → Export Keystore flow on Windows, where every export was leaving an orphan `.tmp` file behind and surfacing an "Access is denied (os error 5)" error. Three quality-of-life settings round out the release.
+
+### Fixed
+
+- **Windows keystore export `os error 5`** (issue #124) — Exporting a vault backup from Settings → Backup raised "IO error: Access is denied. (os error 5)" on every Windows machine and left an `aeroftp_keystore_*.tmp` file in place of the final `.aeroftp-keystore`. Root cause: the atomic write helper opened the freshly-written temp file with `File::open` (read-only on Windows) and then called `sync_all`, which on Windows maps to `FlushFileBuffers` and requires a `GENERIC_WRITE` handle. The flush failed before the rename ran. Fix: keep the existing write handle through `flush + sync_all` and gate the parent-directory fsync to Unix only, since `File::open` on a directory needs `FILE_FLAG_BACKUP_SEMANTICS` on Windows and is a no-op for durability there anyway.
+
+### Added
+
+- **Password strength meter on the keystore backup form** — The Export Keystore section now shows the same animated 4-segment strength bar already used by AeroVault, with a 0–100 score and a colour-coded label (Weak/Fair/Strong/Excellent). Reuses [`PasswordStrengthBar`](src/components/vault/PasswordStrengthBar.tsx) so future tweaks land in both places at once.
+- **Start minimized to tray on autostart** (issue #123) — New "Start minimized to tray" checkbox under Settings → General → Startup (visible only when "Launch on system startup" is enabled). When the OS launches AeroFTP from the autostart entry, the main window stays hidden and only the tray icon appears, matching the behaviour expected from background sync apps. Manual launches (double-click on the desktop or Start menu shortcut) always show the window. Detection uses a new `--autostart` argument passed by `tauri-plugin-autostart` and surfaced to the frontend via `is_autostart_launch`. Default off — existing users see no change.
+- **Don't check for updates** toggle (issue #123) — New checkbox under Settings → General → Software Updates that disables both the 5-second startup check and the periodic 24-hour check. The manual "Check for Updates" button continues to work, so the option simply gives users who manage AeroFTP through external package managers (WinGet, AUR, Snap auto-refresh) a way to opt out of the in-app update prompts and bandwidth.
+
+### Changed
+
+- **NSIS installer no longer reinstates the desktop shortcut on every upgrade** (issue #123) — On a fresh install the bundler still creates `Desktop\AeroFTP.lnk` as before. On an upgrade, however, the installer now snapshots the desktop shortcut state in `CUSTOM_PRE_INSTALL` and, if the user had previously deleted the shortcut, removes the one the bundler just recreated. Users who keep the shortcut see no change.
+- **Cross-Profile Transfer pre-selects the active server** — When the dialog is opened from the remote pane while connected, the source profile and source path are now pre-populated from the active session, so the most common flow (copy from the server you're already looking at to another saved server) takes one click instead of three. Source/destination filtering — already in place — still excludes the chosen source from the destination list.
+
+### Translations
+
+- All four new settings labels and descriptions translated across the 47 supported locales.
+
 ## [3.6.3] - 2026-04-25
 
 ### Unified Tool Dispatcher + Cloud Provider Sweep + AeroVault Pro Foundations

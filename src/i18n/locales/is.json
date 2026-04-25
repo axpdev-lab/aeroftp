@@ -914,7 +914,11 @@
                 "description": "Notaðu innbyggða útfærslu AeroFTP á rsync samskiptareglunni í stað þess að ræsa rsync forrit kerfisins. Dregur úr ferlisálagi; gæti verið minna reynt í jaðartilvikum.",
                 "enableToggle": "Virkja innbyggt rsync fyrir delta samstillingu yfir SFTP",
                 "experimental": "Á tilraunastigi: fer sjálfkrafa yfir í klassískt rsync þegar villur sem ekki eru afgerandi koma upp. Ósamræmi í lykli hýsils birtist sem stöðvandi villur, án þöguls varaleiðar."
-            }
+            },
+            "startMinimizedOnAutostart": "Ræsa lágmarkað í kerfisbakka",
+            "startMinimizedOnAutostartDesc": "Fela aðalgluggann við sjálfvirka ræsingu. AeroFTP heldur áfram að keyra í kerfisbakkanum, opnaðu það úr bakkatákninu þegar þú þarft á því að halda.",
+            "disableUpdateChecks": "Ekki leita að uppfærslum",
+            "disableUpdateChecksDesc": "Sleppa sjálfvirkri ræsingu og daglegri uppfærsluleit. Gagnlegt þegar þú stjórnar AeroFTP í gegnum WinGet, AUR eða annan utanaðkomandi pakkastjóra. Handvirkar leitir hér að ofan virka enn."
         },
         "devtools": {
             "title": "AeroTools",

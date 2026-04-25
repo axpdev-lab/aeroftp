@@ -73,6 +73,7 @@ export interface AppSettings {
   swapPanels: boolean;
   lastLocalPath?: string;
   showSystemMenu?: boolean;
+  disableUpdateChecks: boolean;
 }
 
 export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
@@ -101,6 +102,7 @@ const DEFAULTS: AppSettings = {
   retryCount: 3,
   fileExistsAction: 'ask',
   swapPanels: false,
+  disableUpdateChecks: false,
 };
 
 export const useSettings = () => {
@@ -127,6 +129,7 @@ export const useSettings = () => {
   const [retryCount, setRetryCount] = useState(DEFAULTS.retryCount);
   const [fileExistsAction, setFileExistsAction] = useState<AppSettings['fileExistsAction']>(DEFAULTS.fileExistsAction);
   const [swapPanels, setSwapPanels] = useState(DEFAULTS.swapPanels);
+  const [disableUpdateChecks, setDisableUpdateChecks] = useState(DEFAULTS.disableUpdateChecks);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -158,6 +161,7 @@ export const useSettings = () => {
       setFileExistsAction(parsed.fileExistsAction as AppSettings['fileExistsAction']);
     }
     if (typeof parsed.swapPanels === 'boolean') setSwapPanels(parsed.swapPanels);
+    if (typeof parsed.disableUpdateChecks === 'boolean') setDisableUpdateChecks(parsed.disableUpdateChecks);
   }, []);
 
   // Load settings on mount + listen for changes
@@ -241,6 +245,7 @@ export const useSettings = () => {
     retryCount,
     fileExistsAction,
     swapPanels,
+    disableUpdateChecks,
     showSettingsPanel,
 
     // Setters
@@ -267,6 +272,7 @@ export const useSettings = () => {
     setRetryCount,
     setFileExistsAction,
     setSwapPanels,
+    setDisableUpdateChecks,
     setShowSettingsPanel,
 
     // Constants

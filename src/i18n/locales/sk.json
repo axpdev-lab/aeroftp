@@ -914,7 +914,11 @@
                 "description": "Pouzite zabudovanu implementaciu protokolu rsync v AeroFTP namiesto spustania systemoveho binarneho rsync. Znizuje rezie procesov; moze byt menej overena v hranicnych pripadoch.",
                 "enableToggle": "Povolit natívny rsync pre delta synchronizaciu cez SFTP",
                 "experimental": "Experimentalne: pri chybe sa automaticky vrati na klasicky rsync. Nezhody host kluca sa objavia ako kriticke chyby bez tichej zalohy."
-            }
+            },
+            "startMinimizedOnAutostart": "Spustiť minimalizované do oznamovacej oblasti",
+            "startMinimizedOnAutostartDesc": "Skryť hlavné okno pri automatickom spustení. AeroFTP beží ďalej v oznamovacej oblasti, otvor ho cez ikonu v lište, keď ho budeš potrebovať.",
+            "disableUpdateChecks": "Nekontrolovať aktualizácie",
+            "disableUpdateChecksDesc": "Preskočí automatickú kontrolu aktualizácií pri spustení aj dennú kontrolu. Užitočné, keď AeroFTP spravuješ cez WinGet, AUR alebo iného externého správcu balíkov. Ručné kontroly vyššie naďalej fungujú."
         },
         "devtools": {
             "title": "AeroTools",

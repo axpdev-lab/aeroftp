@@ -40,7 +40,42 @@ _done:
   Exch $R1
 FunctionEnd
 
+; ── Upgrade detection state ──
+; Captured in CUSTOM_PRE_INSTALL, consumed in CUSTOM_POST_INSTALL.
+; "yes" means an AeroFTP.exe already lived in $INSTDIR before the bundler
+; copied the new files, i.e. this install is an upgrade rather than a
+; first-time install.
+Var AeroFTPWasInstalled
+; "yes" means $DESKTOP\AeroFTP.lnk existed before the install ran. We use
+; this to respect the user's choice: if they had previously deleted the
+; desktop shortcut, an upgrade (any source — in-app updater, WinGet,
+; manual reinstall) should not silently recreate it. See issue #123.
+Var AeroFTPHadDesktopShortcut
+
+!macro CUSTOM_PRE_INSTALL
+    StrCpy $AeroFTPWasInstalled "no"
+    StrCpy $AeroFTPHadDesktopShortcut "no"
+    IfFileExists "$INSTDIR\AeroFTP.exe" 0 _aeroftp_pre_check_shortcut
+        StrCpy $AeroFTPWasInstalled "yes"
+    _aeroftp_pre_check_shortcut:
+    IfFileExists "$DESKTOP\AeroFTP.lnk" 0 _aeroftp_pre_install_done
+        StrCpy $AeroFTPHadDesktopShortcut "yes"
+    _aeroftp_pre_install_done:
+!macroend
+
 !macro CUSTOM_POST_INSTALL
+    ; --- Don't recreate desktop shortcut on upgrades (issue #123) ---
+    ; When this run is an upgrade AND the user had no desktop shortcut
+    ; before it started, delete the one the Tauri NSIS template just
+    ; recreated. First-time installs (where AeroFTPWasInstalled stays
+    ; "no") keep the shortcut Tauri creates. Users who like having the
+    ; shortcut will still see it after upgrades because it was already
+    ; present (AeroFTPHadDesktopShortcut == "yes") and we don't touch it.
+    StrCmp $AeroFTPWasInstalled "yes" 0 _aeroftp_shortcut_done
+        StrCmp $AeroFTPHadDesktopShortcut "no" 0 _aeroftp_shortcut_done
+            Delete "$DESKTOP\AeroFTP.lnk"
+    _aeroftp_shortcut_done:
+
     ; --- Register install dir in user PATH (HKCU) ---
     ; PR-T11 follow-up. The Tauri per-user installer drops binaries in
     ; %LOCALAPPDATA%\AeroFTP\ but historically never registered that

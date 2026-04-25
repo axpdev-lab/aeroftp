@@ -914,7 +914,11 @@
                 "description": "Gamitin ang built-in na pagpapatupad ng protocol ng rsync ng AeroFTP sa halip na ilunsad ang rsync binary ng sistema. Binabawasan ang overhead ng proseso; maaaring hindi pa gaanong nasubok sa mga extreme na kaso.",
                 "enableToggle": "Paganahin ang katutubong rsync para sa delta sync sa SFTP",
                 "experimental": "Pang-eksperimento: awtomatikong babalik sa klasikong rsync kapag may error. Lumilitaw ang mga hindi pagtugma ng host key bilang mga kritikal na error na walang tahimik na fallback."
-            }
+            },
+            "startMinimizedOnAutostart": "Magsimulang naka-minimize sa tray",
+            "startMinimizedOnAutostartDesc": "Itago ang pangunahing window kapag autostart. Patuloy na tumatakbo ang AeroFTP sa system tray, buksan ito mula sa tray icon kapag kailangan mo.",
+            "disableUpdateChecks": "Huwag tumingin ng mga update",
+            "disableUpdateChecksDesc": "Laktawan ang awtomatikong pagsusuri ng update sa pagsisimula at araw-araw. Kapaki-pakinabang kapag pinamamahalaan mo ang AeroFTP sa pamamagitan ng WinGet, AUR, o iba pang panlabas na package manager. Gumagana pa rin ang manu-manong pagsusuri sa itaas."
         },
         "devtools": {
             "title": "AeroTools",

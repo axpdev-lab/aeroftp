@@ -914,7 +914,11 @@
                 "description": "Naudoti į AeroFTP integruotą rsync protokolo realizaciją vietoj sistemos rsync programos paleidimo. Sumažina proceso pridėtines sąnaudas; gali būti mažiau patikrinta kraštutiniais atvejais.",
                 "enableToggle": "Įjungti savąjį rsync delta sinchronizavimui per SFTP",
                 "experimental": "Eksperimentinis: esant nekritinėms klaidoms automatiškai grįžta prie klasikinio rsync. Serverio rakto neatitikimai pasirodo kaip blokuojančios klaidos, be tyliai veikiančios atsarginės išeities."
-            }
+            },
+            "startMinimizedOnAutostart": "Paleisti sumažintą į dėklą",
+            "startMinimizedOnAutostartDesc": "Slėpti pagrindinį langą automatinio paleidimo metu. AeroFTP toliau veikia sistemos dėkle, atverkite jį iš dėklo piktogramos, kai jo prireiks.",
+            "disableUpdateChecks": "Netikrinti atnaujinimų",
+            "disableUpdateChecksDesc": "Praleisti automatinį paleidimo ir kasdienį atnaujinimų tikrinimą. Naudinga, kai AeroFTP tvarkote per WinGet, AUR ar kitą išorinį paketų tvarkyklę. Rankiniai tikrinimai aukščiau vis dar veikia."
         },
         "devtools": {
             "title": "AeroTools",

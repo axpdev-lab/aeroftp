@@ -914,7 +914,11 @@
                 "description": "Gebruik de ingebouwde rsync-protocolimplementatie van AeroFTP in plaats van het systeem-rsync-programma te starten. Vermindert de procesoverhead; mogelijk minder beproefd in randgevallen.",
                 "enableToggle": "Native rsync inschakelen voor delta-synchronisatie via SFTP",
                 "experimental": "Experimenteel: valt bij niet-kritieke fouten automatisch terug op klassiek rsync. Mismatches van hostsleutels verschijnen als blokkerende fouten, zonder stille fallback."
-            }
+            },
+            "startMinimizedOnAutostart": "Geminimaliseerd starten in systeemvak",
+            "startMinimizedOnAutostartDesc": "Hoofdvenster verbergen bij automatisch opstarten. AeroFTP blijft draaien in het systeemvak, open het via het pictogram wanneer je het nodig hebt.",
+            "disableUpdateChecks": "Niet controleren op updates",
+            "disableUpdateChecksDesc": "Slaat de automatische controle bij opstarten en de dagelijkse controle over. Handig als je AeroFTP beheert via WinGet, AUR of een andere externe pakketbeheerder. Handmatige controles hierboven blijven werken."
         },
         "devtools": {
             "title": "AeroTools",

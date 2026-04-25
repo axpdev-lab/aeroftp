@@ -914,7 +914,11 @@
                 "description": "Käyttää AeroFTP:n sisäänrakennettua rsync-protokollatoteutusta järjestelmän rsync-binaarin käynnistämisen sijaan. Vähentää prosessikuormaa; saattaa olla vähemmän testattu reunatapauksissa.",
                 "enableToggle": "Ota natiivi rsync käyttöön SFTP-delta-synkronoinnissa",
                 "experimental": "Kokeellinen: palaa automaattisesti klassiseen rsynciin ei-kriittisten virheiden sattuessa. Isäntäavaimen ristiriidat näkyvät estävinä virheinä, ilman hiljaista varatoimintoa."
-            }
+            },
+            "startMinimizedOnAutostart": "Käynnistä pienennettynä ilmaisinalueelle",
+            "startMinimizedOnAutostartDesc": "Piilota pääikkuna automaattisen käynnistyksen yhteydessä. AeroFTP jatkaa toimintaansa ilmaisinalueella, avaa se ilmaisinalueen kuvakkeesta kun tarvitset sitä.",
+            "disableUpdateChecks": "Älä tarkista päivityksiä",
+            "disableUpdateChecksDesc": "Ohita automaattinen käynnistyksen ja päivittäinen päivitystarkistus. Hyödyllinen, kun hallitset AeroFTP:tä WinGetin, AUR:n tai muun ulkoisen pakettienhallinnan kautta. Yllä olevat manuaaliset tarkistukset toimivat edelleen."
         },
         "devtools": {
             "title": "AeroTools",

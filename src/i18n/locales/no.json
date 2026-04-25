@@ -914,7 +914,11 @@
                 "description": "Bruk AeroFTPs innebygde implementasjon av rsync-protokollen i stedet for å kjøre systemets rsync-binærfil. Reduserer prosessoverhead; kan være mindre utprøvd i grensetilfeller.",
                 "enableToggle": "Aktiver innebygd rsync for delta-synkronisering over SFTP",
                 "experimental": "Eksperimentell: faller automatisk tilbake til klassisk rsync ved ikke-kritiske feil. Avvik i vertsnøkkelen vises som blokkerende feil, uten stille fallback."
-            }
+            },
+            "startMinimizedOnAutostart": "Start minimert til systemstatusfeltet",
+            "startMinimizedOnAutostartDesc": "Skjul hovedvinduet ved automatisk oppstart. AeroFTP fortsetter å kjøre i systemstatusfeltet, åpne det fra ikonet når du trenger det.",
+            "disableUpdateChecks": "Ikke se etter oppdateringer",
+            "disableUpdateChecksDesc": "Hopp over den automatiske oppstart- og daglige oppdateringssjekken. Nyttig når du administrerer AeroFTP gjennom WinGet, AUR eller en annen ekstern pakkebehandler. Manuelle sjekker ovenfor fungerer fortsatt."
         },
         "devtools": {
             "title": "AeroTools",

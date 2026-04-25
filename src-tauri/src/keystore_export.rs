@@ -11,17 +11,21 @@ use std::path::Path;
 
 const FILE_VERSION: u32 = 1;
 
-/// A2-01: fsync a file and its parent directory for crash durability
-fn fsync_file_and_parent(file_path: &std::path::Path) -> Result<(), std::io::Error> {
-    let f = std::fs::File::open(file_path)?;
-    f.sync_all()?;
+/// A2-01: fsync the parent directory of a freshly written file (Unix only).
+/// On Windows this is a no-op: directory handles need FILE_FLAG_BACKUP_SEMANTICS
+/// and FlushFileBuffers requires GENERIC_WRITE, neither of which `File::open`
+/// provides. Windows guarantees rename durability via NTFS journaling instead.
+#[cfg(unix)]
+fn fsync_parent_dir(file_path: &std::path::Path) {
     if let Some(parent) = file_path.parent() {
         if let Ok(dir) = std::fs::File::open(parent) {
-            dir.sync_all()?;
+            let _ = dir.sync_all();
         }
     }
-    Ok(())
 }
+
+#[cfg(not(unix))]
+fn fsync_parent_dir(_file_path: &std::path::Path) {}
 
 fn normalize_merge_strategy(merge_strategy: &str) -> Result<&'static str, KeystoreExportError> {
     match merge_strategy {
@@ -185,11 +189,18 @@ pub fn export_keystore(
     let file_data = serde_json::to_vec_pretty(&export_file)?;
     // A2-08: Atomic write (temp+rename) + secure permissions
     let tmp_path = file_path.with_extension("tmp");
-    std::fs::write(&tmp_path, file_data)?;
-    // A2-01: fsync temp file before rename, then fsync parent dir after rename
-    fsync_file_and_parent(&tmp_path)?;
+    // A2-01: write+fsync via a write-mode handle. On Windows `File::open` returns
+    // a read-only handle and `sync_all` (FlushFileBuffers) needs GENERIC_WRITE,
+    // which would fail with ERROR_ACCESS_DENIED (os error 5) and leave the .tmp
+    // behind without ever renaming — see issue #124.
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp_path)?;
+        f.write_all(&file_data)?;
+        f.sync_all()?;
+    }
     std::fs::rename(&tmp_path, file_path)?;
-    fsync_file_and_parent(file_path)?;
+    fsync_parent_dir(file_path);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

@@ -914,7 +914,11 @@
                 "description": "Koristi ugrađenu implementaciju rsync protokola u AeroFTP-u umjesto pokretanja sistemskog rsync programa. Smanjuje opterećenje procesa; može biti manje provjerena u rubnim slučajevima.",
                 "enableToggle": "Omogući nativni rsync za delta sinkronizaciju preko SFTP-a",
                 "experimental": "Eksperimentalno: automatski se vraća na klasični rsync kod ne-kritičnih grešaka. Neslaganja SSH ključa poslužitelja javljaju se kao blokirajuće greške, bez tihog fallbacka."
-            }
+            },
+            "startMinimizedOnAutostart": "Pokreni smanjeno u traku obavijesti",
+            "startMinimizedOnAutostartDesc": "Sakrij glavni prozor kod automatskog pokretanja. AeroFTP nastavlja raditi u traci obavijesti, otvori ga preko ikone kada ti zatreba.",
+            "disableUpdateChecks": "Ne provjeravaj ažuriranja",
+            "disableUpdateChecksDesc": "Preskače automatsku provjeru ažuriranja pri pokretanju i dnevnu provjeru. Korisno kada AeroFTP-om upravljaš preko WinGet, AUR ili drugog vanjskog upravitelja paketa. Ručne provjere iznad i dalje rade."
         },
         "devtools": {
             "title": "AeroTools",

@@ -914,7 +914,11 @@
                 "description": "Defnyddio gweithrediad protocol rsync cynhenid AeroFTP yn lle rhedeg y ffeil ddeuaidd rsync system. Yn lleihau gorbenion prosesau; gall fod yn llai profedig mewn achosion ymylol.",
                 "enableToggle": "Galluogi rsync brodorol ar gyfer cydamseriad delta SFTP",
                 "experimental": "Arbrofol: yn syrthio'n ôl yn awtomatig i rsync clasurol ar gyfer gwallau nad ydynt yn feirniadol. Mae anghydweddiadau allwedd gwesteiwr yn ymddangos fel gwallau rhwystrol, heb unrhyw fecanwaith wrth gefn tawel."
-            }
+            },
+            "startMinimizedOnAutostart": "Cychwyn wedi'i leihau i'r hambwrdd",
+            "startMinimizedOnAutostartDesc": "Cuddio'r prif ffenestr wrth gychwyn yn awtomatig. Mae AeroFTP yn parhau i redeg yn hambwrdd y system, agorwch ef o'r eicon hambwrdd pan fydd ei angen arnoch.",
+            "disableUpdateChecks": "Peidio â gwirio am ddiweddariadau",
+            "disableUpdateChecksDesc": "Hepgor y gwiriad diweddariadau awtomatig wrth gychwyn ac yn ddyddiol. Defnyddiol pan fyddwch yn rheoli AeroFTP trwy WinGet, AUR neu reolwr pecynnau allanol arall. Mae gwiriadau â llaw uchod yn dal i weithio."
         },
         "devtools": {
             "title": "AeroTools",

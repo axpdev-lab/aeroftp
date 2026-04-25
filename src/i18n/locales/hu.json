@@ -914,7 +914,11 @@
                 "description": "Az AeroFTP beépített rsync protokoll implementációját használja a rendszer rsync bináris futtatása helyett. Csökkenti a folyamat terhelését; előfordulhat, hogy kevésbé bizonyított éles helyzetekben.",
                 "enableToggle": "Natív rsync engedélyezése SFTP delta szinkronizációhoz",
                 "experimental": "Kísérleti: nem kritikus hibák esetén automatikusan visszaáll a klasszikus rsync-re. A gazdagép kulcsának eltérése blokkoló hibaként jelenik meg, néma visszaesés nélkül."
-            }
+            },
+            "startMinimizedOnAutostart": "Indítás kis méretben a tálcára",
+            "startMinimizedOnAutostartDesc": "A főablak elrejtése automatikus indításkor. Az AeroFTP tovább fut a rendszertálcán, nyisd meg a tálcaikonról, amikor szükséged van rá.",
+            "disableUpdateChecks": "Ne keressen frissítéseket",
+            "disableUpdateChecksDesc": "Az automatikus indításkori és napi frissítés-ellenőrzés kihagyása. Hasznos, ha az AeroFTP-t WinGet, AUR vagy más külső csomagkezelőn keresztül kezeled. A fenti kézi ellenőrzések továbbra is működnek."
         },
         "devtools": {
             "title": "AeroTools",

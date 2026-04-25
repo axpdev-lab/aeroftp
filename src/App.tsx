@@ -232,6 +232,7 @@ const App: React.FC = () => {
     setShowActivityLog,
     setShowHiddenFiles, debugMode, setDebugMode,
     setSwapPanels,
+    disableUpdateChecks,
     SETTINGS_KEY,
   } = settings;
   const [sessionTransferSpeedPreset, setSessionTransferSpeedPreset] = useState<TransferSpeedPreset>(
@@ -279,7 +280,19 @@ const App: React.FC = () => {
     if (appReadySignaled.current) return;
     if (vaultInitDone.current && localFilesInitDone.current) {
       appReadySignaled.current = true;
-      invoke('app_ready').catch(() => { });
+      void (async () => {
+        // When launched by the OS autostart entry AND the user opted in,
+        // keep the main window hidden — the app lives in the tray on boot.
+        let startMinimized = false;
+        try {
+          const isAutostart = await invoke<boolean>('is_autostart_launch');
+          if (isAutostart) {
+            const stored = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
+            startMinimized = !!stored?.startMinimizedOnAutostart;
+          }
+        } catch { /* fall through with startMinimized=false */ }
+        invoke('app_ready', { startMinimized }).catch(() => { });
+      })();
     }
   }, []);
 
@@ -841,7 +854,7 @@ const App: React.FC = () => {
   }, [connectionParams.protocol, connectionParams.options?.verifyCert, connectionParams.server, activityLog, t]);
 
   // Auto-Update: handled by useAutoUpdate hook
-  const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog });
+  const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog, disabled: disableUpdateChecks });
   const [updateToastDismissed, setUpdateToastDismissed] = useState(false);
   const updateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 interface UpdateVerificationInfo {
@@ -7633,7 +7646,13 @@ interface UpdateVerificationInfo {
         {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} />}
         {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && <RcloneCryptUnlock onClose={() => setShowRcloneCryptUnlock(false)} />}
-        {showCrossProfilePanel && <CrossProfilePanel onClose={() => setShowCrossProfilePanel(false)} />}
+        {showCrossProfilePanel && (
+          <CrossProfilePanel
+            onClose={() => setShowCrossProfilePanel(false)}
+            initialSourceProfileId={isConnected ? sessions.find(s => s.id === activeSessionId)?.serverId : undefined}
+            initialSourcePath={isConnected ? currentRemotePath : undefined}
+          />
+        )}
         {archiveBrowserState && (
           <ArchiveBrowser
             archivePath={archiveBrowserState.path}

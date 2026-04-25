@@ -49,6 +49,10 @@ interface TransferSummary {
 
 interface CrossProfilePanelProps {
     onClose: () => void;
+    /** Profile id to pre-select as the source (typically the active connection). */
+    initialSourceProfileId?: string;
+    /** Optional source path to seed the source input (typically the current remote path). */
+    initialSourcePath?: string;
 }
 
 interface ProfileRailProps {
@@ -165,7 +169,7 @@ const TransferBarsSpinner: React.FC<{ className?: string }> = ({ className = 'h-
     </svg>
 );
 
-export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose }) => {
+export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, initialSourceProfileId, initialSourcePath }) => {
     const t = useTranslation();
     const [profiles, setProfiles] = useState<ServerProfile[]>([]);
     const [sourceProfile, setSourceProfile] = useState<ServerProfile | null>(null);
@@ -196,19 +200,39 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose })
     const executeStartRef = useRef<number | null>(null);
     const speedHistoryRef = useRef<number[]>([]);
 
+    // Skip the auto-reset of sourcePath on the first render after seeding from
+    // the active connection — otherwise the second useEffect would overwrite
+    // the seeded `initialSourcePath` with the profile's default.
+    const seededSourceRef = useRef(false);
+
     useEffect(() => {
         (async () => {
             const saved = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
             if (saved) {
                 setProfiles(saved);
+                // Pre-select the profile matching the active connection so users
+                // who open the dialog while connected don't have to re-pick the
+                // server they're already looking at.
+                if (initialSourceProfileId) {
+                    const match = saved.find((p) => p.id === initialSourceProfileId);
+                    if (match) {
+                        seededSourceRef.current = true;
+                        setSourceProfile(match);
+                        setSourcePath(initialSourcePath?.trim() || getDefaultRemotePath(match));
+                    }
+                }
             }
         })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
-        if (sourceProfile) {
-            setSourcePath(getDefaultRemotePath(sourceProfile));
+        if (!sourceProfile) return;
+        if (seededSourceRef.current) {
+            seededSourceRef.current = false;
+            return;
         }
+        setSourcePath(getDefaultRemotePath(sourceProfile));
     }, [sourceProfile]);
 
     useEffect(() => {

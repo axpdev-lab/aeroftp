@@ -914,7 +914,11 @@
                 "description": "Su dung ban trien khai giao thuc rsync tich hop san cua AeroFTP thay vi chay tep nhi phan rsync cua he thong. Giam chi phi tien trinh; co the it duoc kiem thu trong cac truong hop bien.",
                 "enableToggle": "Bat rsync tich hop cho dong bo delta qua SFTP",
                 "experimental": "Thu nghiem: tu dong quay ve rsync co dien khi co loi. Su khong khop khoa host se xuat hien duoi dang loi nghiem trong, khong co du phong am tham."
-            }
+            },
+            "startMinimizedOnAutostart": "Khởi động thu nhỏ vào khay",
+            "startMinimizedOnAutostartDesc": "Ẩn cửa sổ chính khi khởi động tự động. AeroFTP vẫn chạy trong khay hệ thống, mở từ biểu tượng khay khi bạn cần.",
+            "disableUpdateChecks": "Không kiểm tra cập nhật",
+            "disableUpdateChecksDesc": "Bỏ qua kiểm tra cập nhật tự động khi khởi động và hàng ngày. Hữu ích khi bạn quản lý AeroFTP qua WinGet, AUR hoặc trình quản lý gói bên ngoài khác. Các kiểm tra thủ công ở trên vẫn hoạt động."
         },
         "devtools": {
             "title": "AeroTools",

@@ -914,7 +914,11 @@
                 "description": "Izmantot AeroFTP iebūvēto rsync protokola realizāciju sistēmas rsync bināro palaišanas vietā. Samazina procesa slodzi; var būt mazāk pārbaudīts robežgadījumos.",
                 "enableToggle": "Iespējot iebūvēto rsync SFTP delta sinhronizācijai",
                 "experimental": "Eksperimentāls: nekritisku kļūdu gadījumā automātiski atgriežas pie klasiskā rsync. Resursdatora atslēgas neatbilstības parādās kā bloķējošas kļūdas bez klusas atkāpšanās."
-            }
+            },
+            "startMinimizedOnAutostart": "Sākt minimizētu uzdevumjoslā",
+            "startMinimizedOnAutostartDesc": "Slēpt galveno logu automātiskās palaišanas laikā. AeroFTP turpina darboties sistēmas teknē, atveriet to no teknes ikonas, kad tas ir nepieciešams.",
+            "disableUpdateChecks": "Nepārbaudīt atjauninājumus",
+            "disableUpdateChecksDesc": "Izlaist automātisko palaišanas un ikdienas atjauninājumu pārbaudi. Noderīgi, ja pārvaldāt AeroFTP, izmantojot WinGet, AUR vai citu ārējo pakotņu pārvaldnieku. Manuālās pārbaudes augstāk joprojām darbojas."
         },
         "devtools": {
             "title": "AeroTools",

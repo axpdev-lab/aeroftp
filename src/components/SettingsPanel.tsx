@@ -23,6 +23,7 @@ import { ImportExportIcon } from './icons/ImportExportIcon';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from '../utils/appBackgroundPatterns';
 import { TotpSetup } from './TotpSetup';
+import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { SettingsAeroCloudTab } from './settings/SettingsAeroCloudTab';
 import { Checkbox } from './ui/Checkbox';
 import { useTranslation } from '../i18n';
@@ -207,6 +208,9 @@ interface AppSettings {
     analyticsEnabled: boolean;
     // Startup
     launchOnStartup: boolean;
+    startMinimizedOnAutostart: boolean;
+    // Updates
+    disableUpdateChecks: boolean;
 }
 
 const defaultSettings: AppSettings = {
@@ -237,6 +241,8 @@ const defaultSettings: AppSettings = {
     showToastNotifications: false, // Default off - use Activity Log instead
     analyticsEnabled: false,
     launchOnStartup: false,
+    startMinimizedOnAutostart: false,
+    disableUpdateChecks: false,
 };
 
 type TabId = 'general' | 'connection' | 'servers' | 'aerocloud' | 'cloudproviders' | 'transfers' | 'filehandling' | 'ui' | 'security' | 'backup' | 'privacy';
@@ -880,12 +886,36 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         </div>
                                                     }
                                                 />
+                                                <div className={`pl-6 ${settings.launchOnStartup ? '' : 'opacity-50 pointer-events-none'}`}>
+                                                    <Checkbox
+                                                        checked={settings.startMinimizedOnAutostart}
+                                                        onChange={(v) => updateSetting('startMinimizedOnAutostart', v)}
+                                                        label={
+                                                            <div>
+                                                                <p className="text-sm">{t('settings.startMinimizedOnAutostart')}</p>
+                                                                <p className="text-xs text-gray-500">{t('settings.startMinimizedOnAutostartDesc')}</p>
+                                                            </div>
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
 
                                         <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                                             <h4 className="text-sm font-medium mb-2">{t('settings.softwareUpdates')}</h4>
-                                            <CheckUpdateButton onActivityLog={onActivityLog} />
+                                            <div className="space-y-3">
+                                                <CheckUpdateButton onActivityLog={onActivityLog} />
+                                                <Checkbox
+                                                    checked={settings.disableUpdateChecks}
+                                                    onChange={(v) => updateSetting('disableUpdateChecks', v)}
+                                                    label={
+                                                        <div>
+                                                            <p className="text-sm">{t('settings.disableUpdateChecks')}</p>
+                                                            <p className="text-xs text-gray-500">{t('settings.disableUpdateChecksDesc')}</p>
+                                                        </div>
+                                                    }
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -3703,6 +3733,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         <input type={showKeystoreExportPassword ? 'text' : 'password'} placeholder={t('settings.confirmPassword')} value={keystoreExportConfirm} onChange={(e) => setKeystoreExportConfirm(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" />
                                                     </div>
                                                 </div>
+                                                <PasswordStrengthBar password={keystoreExportPassword} />
                                                 <button
                                                     onClick={async () => {
                                                         setKeystoreMessage(null);

@@ -914,7 +914,11 @@
                 "description": "Uzywaj wbudowanej w AeroFTP implementacji protokolu rsync zamiast uruchamiania systemowego pliku binarnego rsync. Zmniejsza narzut procesow; moze byc mniej sprawdzona w praktyce.",
                 "enableToggle": "Wlacz natywny rsync dla synchronizacji roznicowej SFTP",
                 "experimental": "Eksperymentalne: automatycznie wraca do klasycznego rsync w przypadku bledu. Niezgodnosci klucza hosta pojawiaja sie jako bledy krytyczne bez cichego fallbacku."
-            }
+            },
+            "startMinimizedOnAutostart": "Uruchamiaj zminimalizowane do zasobnika",
+            "startMinimizedOnAutostartDesc": "Ukryj główne okno przy automatycznym uruchomieniu. AeroFTP nadal działa w zasobniku systemowym, otwórz go ikoną w zasobniku, gdy będzie potrzebny.",
+            "disableUpdateChecks": "Nie sprawdzaj aktualizacji",
+            "disableUpdateChecksDesc": "Pomija automatyczne sprawdzanie aktualizacji przy starcie oraz codzienne. Przydatne, gdy zarządzasz AeroFTP przez WinGet, AUR lub inny zewnętrzny menedżer pakietów. Ręczne sprawdzanie powyżej nadal działa."
         },
         "devtools": {
             "title": "AeroTools",

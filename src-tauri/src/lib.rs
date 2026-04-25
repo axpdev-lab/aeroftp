@@ -6339,12 +6339,23 @@ static APP_READY_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 /// Timestamp when splash screen was created — used to enforce minimum display time.
 static SPLASH_CREATED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
+/// Returns true if the app was launched via the OS autostart entry.
+/// Detected by the `--autostart` arg passed by tauri-plugin-autostart.
+#[tauri::command]
+fn is_autostart_launch() -> bool {
+    std::env::args().any(|a| a == "--autostart")
+}
+
 /// Called by the frontend when React has finished initializing.
 /// Closes the splash screen, sets the app menu (deferred from setup to
 /// prevent GTK menu flash on the borderless splash), and shows the main window.
+///
+/// `start_minimized`: when true, the main window stays hidden and the user
+/// only sees the tray icon — used for launches from the OS autostart entry.
 #[tauri::command]
-async fn app_ready(app: AppHandle) {
+async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
     use tauri_plugin_window_state::{StateFlags, WindowExt};
+    let start_minimized = start_minimized.unwrap_or(false);
 
     // IMPORTANT: Do NOT set APP_READY_DONE here! Setting it early creates a race
     // condition: rebuild_menu sees the flag, calls app.set_menu() globally, and GTK
@@ -6388,14 +6399,20 @@ async fn app_ready(app: AppHandle) {
     }
 
     // 4. Restore saved size/position/maximized state only after splash teardown,
-    // then show the main window without menu (frontend controls visibility via toggle_menu_bar)
+    // then show the main window without menu (frontend controls visibility via toggle_menu_bar).
+    // When start_minimized is true (autostart launch + user opt-in), keep the window
+    // hidden — user reaches the app via the tray icon.
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.remove_menu();
         let _ = main_window
             .restore_state(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED);
-        let _ = main_window.show();
-        let _ = main_window.set_focus();
-        info!("Main window shown");
+        if start_minimized {
+            info!("Main window kept hidden (autostart minimized)");
+        } else {
+            let _ = main_window.show();
+            let _ = main_window.set_focus();
+            info!("Main window shown");
+        }
     }
 
     // 5. LAST: set the flag so rebuild_menu can freely call app.set_menu()
@@ -11288,7 +11305,9 @@ pub fn run() {
         )
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            // Pass --autostart so we can detect launches triggered by the OS
+            // autostart entry and (optionally) start hidden in the system tray.
+            Some(vec!["--autostart"]),
         ))
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // When a second instance is launched, show and focus the existing window
@@ -11826,6 +11845,7 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             app_ready,
+            is_autostart_launch,
             copy_to_clipboard,
             resolve_hostname,
             connect_ftp,

@@ -914,7 +914,11 @@
                 "description": "使用 AeroFTP 内置的 rsync 协议实现，而非调用系统的 rsync 二进制文件。可减少进程开销；在极端情况下可能经过的验证较少。",
                 "enableToggle": "为 SFTP 增量同步启用原生 rsync",
                 "experimental": "实验性：出错时会自动回退到传统 rsync。主机密钥不匹配将作为致命错误暴露，不会静默回退。"
-            }
+            },
+            "startMinimizedOnAutostart": "启动时最小化到托盘",
+            "startMinimizedOnAutostartDesc": "在自动启动时隐藏主窗口。AeroFTP 会在系统托盘中持续运行,需要时可从托盘图标打开。",
+            "disableUpdateChecks": "不检查更新",
+            "disableUpdateChecksDesc": "跳过启动时和每日的自动更新检查。当您通过 WinGet、AUR 或其他外部包管理器管理 AeroFTP 时很有用。上方的手动检查仍然可用。"
         },
         "devtools": {
             "title": "AeroTools",

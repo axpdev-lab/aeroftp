@@ -914,7 +914,11 @@
                 "description": "Usa a implementación integrada do protocolo rsync de AeroFTP en lugar de executar o binario rsync do sistema. Reduce a sobrecarga de procesos; pode estar menos probada en casos límite.",
                 "enableToggle": "Activar rsync nativo para a sincronización delta por SFTP",
                 "experimental": "Experimental: recae automaticamente no rsync clásico ante erros non críticos. As discrepancias da clave do anfitrión amósanse como erros bloqueantes, sen recurso silencioso."
-            }
+            },
+            "startMinimizedOnAutostart": "Iniciar minimizado na bandexa",
+            "startMinimizedOnAutostartDesc": "Agocha a xanela principal ao iniciar automaticamente. AeroFTP segue executándose na bandexa do sistema, ábreo dende a icona da bandexa cando o precises.",
+            "disableUpdateChecks": "Non comprobar actualizacións",
+            "disableUpdateChecksDesc": "Omite a comprobación automática de actualizacións no inicio e diaria. Útil cando xestionas AeroFTP a través de WinGet, AUR ou outro xestor de paquetes externo. As comprobacións manuais de arriba seguen funcionando."
         },
         "devtools": {
             "title": "AeroTools",

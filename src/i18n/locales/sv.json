@@ -914,7 +914,11 @@
                 "description": "Anvand AeroFTP:s inbyggda implementation av rsync-protokollet istallet for att starta systemets rsync-binar. Minskar processoverhead; kan vara mindre beprovad i gransfall.",
                 "enableToggle": "Aktivera inbyggd rsync for delta-synk over SFTP",
                 "experimental": "Experimentell: faller automatiskt tillbaka till klassisk rsync vid fel. Avvikelser i host-nyckel visas som kritiska fel utan tyst fallback."
-            }
+            },
+            "startMinimizedOnAutostart": "Starta minimerad i aktivitetsfältet",
+            "startMinimizedOnAutostartDesc": "Dölj huvudfönstret vid automatisk start. AeroFTP fortsätter att köras i systemfältet, öppna det från ikonen när du behöver det.",
+            "disableUpdateChecks": "Sök inte efter uppdateringar",
+            "disableUpdateChecksDesc": "Hoppa över den automatiska uppdateringskontrollen vid start och dagligen. Användbart när du hanterar AeroFTP via WinGet, AUR eller en annan extern pakethanterare. Manuella kontroller ovan fungerar fortfarande."
         },
         "devtools": {
             "title": "AeroTools",

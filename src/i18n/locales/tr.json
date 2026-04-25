@@ -914,7 +914,11 @@
                 "description": "Sistem rsync ikili dosyasini calistirmak yerine AeroFTP'nin dahili rsync protokolu uygulamasini kullanin. Surec yukunu azaltir; sinir durumlarda daha az test edilmis olabilir.",
                 "enableToggle": "SFTP delta senkronizasyonu icin yerel rsync'i etkinlestir",
                 "experimental": "Deneysel: hata durumunda otomatik olarak klasik rsync'e geri doner. Host anahtari uyumsuzluklari sessiz geri donus olmadan kritik hata olarak ortaya cikar."
-            }
+            },
+            "startMinimizedOnAutostart": "Sistem tepsisine simge durumunda başlat",
+            "startMinimizedOnAutostartDesc": "Otomatik başlatmada ana pencereyi gizle. AeroFTP sistem tepsisinde çalışmaya devam eder, ihtiyaç duyduğunuzda tepsi simgesinden açın.",
+            "disableUpdateChecks": "Güncellemeleri kontrol etme",
+            "disableUpdateChecksDesc": "Otomatik başlangıç ve günlük güncelleme kontrolünü atla. AeroFTP'yi WinGet, AUR veya başka bir harici paket yöneticisi ile yönettiğinizde kullanışlıdır. Yukarıdaki manuel kontroller yine çalışır."
         },
         "devtools": {
             "title": "AeroTools",

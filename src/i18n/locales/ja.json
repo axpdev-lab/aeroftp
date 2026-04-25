@@ -914,7 +914,11 @@
                 "description": "システムの rsync バイナリを起動する代わりに、AeroFTP に組み込まれた rsync プロトコル実装を使用します。プロセスのオーバーヘッドを削減しますが、エッジケースでの実績は少ない可能性があります。",
                 "enableToggle": "SFTP のデルタ同期にネイティブ rsync を有効化",
                 "experimental": "実験的: 重大でないエラーの場合は自動的に従来の rsync にフォールバックします。ホストキーの不一致はハードエラーとして扱われ、サイレントフォールバックは行われません。"
-            }
+            },
+            "startMinimizedOnAutostart": "トレイに最小化して起動",
+            "startMinimizedOnAutostartDesc": "自動起動時にメインウィンドウを非表示にします。AeroFTP はシステムトレイで動作を続けるので、必要なときにトレイアイコンから開いてください。",
+            "disableUpdateChecks": "更新を確認しない",
+            "disableUpdateChecksDesc": "起動時および毎日の自動更新チェックをスキップします。WinGet、AUR、その他の外部パッケージマネージャーで AeroFTP を管理している場合に便利です。上の手動チェックは引き続き使用できます。"
         },
         "devtools": {
             "title": "AeroTools",

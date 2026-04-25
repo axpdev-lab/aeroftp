@@ -32,13 +32,20 @@ interface UseAutoUpdateProps {
   activityLog: {
     log: (operation: OperationType, message: string, status?: OperationStatus, details?: string) => string;
   };
+  /**
+   * When true, skips the startup check and the periodic 24h interval.
+   * Manual `checkForUpdate(true)` invocations are unaffected so the user can
+   * still trigger a check on demand from Settings. Used by users who manage
+   * updates externally (WinGet, AUR, Snap auto-refresh) — see issue #123.
+   */
+  disabled?: boolean;
 }
 
 const THIRTY_MINUTES = 30 * 60 * 1000;
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 const RETRYABLE_UPDATE_FORMATS = new Set(['deb', 'rpm', 'appimage', 'msi', 'exe', 'dmg']);
 
-export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
+export const useAutoUpdate = ({ activityLog, disabled = false }: UseAutoUpdateProps) => {
   const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);
   const pendingRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -120,8 +127,18 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
     }
   }, [sendSystemNotification]);
 
-  // Check on startup (5s delay) + periodic every 24h
+  // Check on startup (5s delay) + periodic every 24h.
+  // When the user has opted out (manages updates via WinGet/AUR/Snap), skip
+  // both — manual checkForUpdate() calls are still honored.
   useEffect(() => {
+    if (disabled) {
+      if (pendingRetryRef.current) {
+        clearTimeout(pendingRetryRef.current);
+        pendingRetryRef.current = null;
+      }
+      return;
+    }
+
     const timer = setTimeout(() => {
       checkForUpdate(false);
     }, 5000);
@@ -135,7 +152,7 @@ export const useAutoUpdate = ({ activityLog }: UseAutoUpdateProps) => {
       clearInterval(interval);
       if (pendingRetryRef.current) clearTimeout(pendingRetryRef.current);
     };
-  }, [checkForUpdate]);
+  }, [checkForUpdate, disabled]);
 
   return {
     updateAvailable,

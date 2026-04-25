@@ -914,7 +914,11 @@
                 "description": "Gunakan implementasi protokol rsync bawaan AeroFTP alih-alih menjalankan biner rsync sistem. Mengurangi overhead proses; mungkin kurang teruji dalam kasus tepi.",
                 "enableToggle": "Aktifkan rsync native untuk sinkronisasi delta SFTP",
                 "experimental": "Eksperimental: otomatis kembali ke rsync klasik pada kesalahan non-kritis. Ketidakcocokan kunci host muncul sebagai kesalahan fatal, tanpa fallback diam-diam."
-            }
+            },
+            "startMinimizedOnAutostart": "Mulai diminimalkan ke baki",
+            "startMinimizedOnAutostartDesc": "Sembunyikan jendela utama saat peluncuran otomatis. AeroFTP tetap berjalan di baki sistem, buka dari ikon baki saat Anda membutuhkannya.",
+            "disableUpdateChecks": "Jangan periksa pembaruan",
+            "disableUpdateChecksDesc": "Lewati pemeriksaan pembaruan otomatis saat startup dan harian. Berguna saat Anda mengelola AeroFTP melalui WinGet, AUR, atau pengelola paket eksternal lainnya. Pemeriksaan manual di atas tetap berfungsi."
         },
         "devtools": {
             "title": "AeroTools",

@@ -914,7 +914,11 @@
                 "description": "Kasutab AeroFTP sisseehitatud rsync-protokolli rakendust süsteemi rsync-binaari käivitamise asemel. Vähendab protsesside üldkulusid; võib olla piirjuhtudel vähem läbi katsetatud.",
                 "enableToggle": "Luba natiivne rsync SFTP delta-sünkroonimiseks",
                 "experimental": "Eksperimentaalne: mittekriitiliste vigade korral langeb automaatselt klassikalisele rsync-ile tagasi. Hosti võtme mittevastavused ilmnevad blokeerivate vigadena, ilma vaikse varumehhanismita."
-            }
+            },
+            "startMinimizedOnAutostart": "Käivita minimeerituna salve",
+            "startMinimizedOnAutostartDesc": "Peida peaaken automaatsel käivitamisel. AeroFTP jätkab töötamist süsteemisalves, ava see salveikoonilt, kui seda vajad.",
+            "disableUpdateChecks": "Ära kontrolli uuendusi",
+            "disableUpdateChecksDesc": "Jäta vahele automaatne käivitumise ja igapäevane uuenduste kontroll. Kasulik, kui haldad AeroFTP-d WinGeti, AUR-i või mõne muu välise paketihalduri kaudu. Käsitsi kontrollid ülal töötavad endiselt."
         },
         "devtools": {
             "title": "AeroTools",
