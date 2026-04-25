@@ -106,6 +106,12 @@ Var AeroFTPHadDesktopShortcut
             ; VS Code, PowerShell via integrated terminal) get a
             ; chance to refresh without logoff.
             System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
+            ; PowerShell sessions started before this install caches its
+            ; environment at launch, so even after WM_SETTINGCHANGE they
+            ; cannot resolve `aeroftp-cli`. A short notice in the install
+            ; log (and visible MessageBox in interactive mode) saves the
+            ; user some confusion. Issue #125.
+            DetailPrint "Added $INSTDIR to PATH. Open a NEW terminal to run 'aeroftp-cli'."
     _aeroftp_path_done:
 
     ; --- VC++ Runtime dependency check ---

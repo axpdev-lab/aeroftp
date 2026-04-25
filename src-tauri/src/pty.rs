@@ -101,13 +101,23 @@ pub fn spawn_shell(
 
     let mut cmd = CommandBuilder::new(&shell);
 
-    // Windows: start PowerShell with no banner and a custom colored prompt
+    // Windows: start PowerShell as a plain interactive shell.
+    //
+    // Previously we passed `-Command "function prompt { ... }"` to inject a
+    // colored prompt, but on Windows 10 with the default ExecutionPolicy the
+    // -Command parser can stall (issue #125): the call to spawn_command never
+    // returns, the Tauri invoke awaits forever, the frontend never receives
+    // the session id, and every keystroke gets silently dropped at the
+    // `connectedTabs.has(tabId)` gate in SSHTerminal.tsx — making the entire
+    // terminal feel "frozen" with no way out except restarting the app.
+    //
+    // The default PowerShell prompt is uglier but reliable. A user-level
+    // colored prompt can be added later via $PROFILE without touching the
+    // launcher, which is the conventional place for such customizations
+    // anyway.
     #[cfg(windows)]
     if shell.contains("powershell") {
         cmd.arg("-NoLogo");
-        cmd.arg("-NoExit");
-        cmd.arg("-Command");
-        cmd.arg(r#"function prompt { "$([char]27)[1;32m$env:USERNAME@$env:COMPUTERNAME$([char]27)[0m:$([char]27)[1;34m$(Get-Location)$([char]27)[0m$ " }"#);
     }
 
     // Set environment variables for better terminal experience
