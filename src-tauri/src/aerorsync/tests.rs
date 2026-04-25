@@ -8,33 +8,31 @@
 //!   - mock transport replay of upload and download phases
 //!   - mock transport failure injection
 //!
-//! Run with: `cargo test --features proto_native_rsync rsync_native_proto`.
+//! Run with: `cargo test --features aerorsync aerorsync`.
 
 #![cfg(test)]
 
-use crate::rsync_native_proto::driver::{DownloadPlan, SessionDriver, UploadPlan};
-use crate::rsync_native_proto::engine_adapter::{
+use crate::aerorsync::driver::{DownloadPlan, SessionDriver, UploadPlan};
+use crate::aerorsync::engine_adapter::{
     engine_ops_to_wire, CurrentDeltaSyncBridge, DeltaEngineAdapter,
     DeltaInstructionConversionError, EngineDeltaOp, EngineSignatureBlock,
 };
-use crate::rsync_native_proto::events::{
-    classify_oob_frame, BailingSink, EventSink, NativeRsyncEvent,
-};
-use crate::rsync_native_proto::fixtures::{
+use crate::aerorsync::events::{classify_oob_frame, AerorsyncEvent, BailingSink, EventSink};
+use crate::aerorsync::fixtures::{
     BaselineCounters, RealRsyncBaselineByteTranscript, RealRsyncTranscriptPaths,
     BASELINE_LITERAL_BYTES, BASELINE_MATCHED_BYTES, DOWNLOAD_REMOTE_COMMAND,
     REAL_RSYNC_FROZEN_TRANSCRIPT_REL, REAL_RSYNC_LANE_PORT, UPLOAD_REMOTE_COMMAND,
 };
-use crate::rsync_native_proto::mock::{
+use crate::aerorsync::mock::{
     MockRemoteShellTransport, MockTransportConfig, OpenStreamBehavior, ReadExhaustedBehavior,
 };
-use crate::rsync_native_proto::planner::{TransferCandidate, TransferPlanner};
-use crate::rsync_native_proto::protocol::{
-    DeltaInstruction, ErrorMessage, FileMetadataMessage, FrameCodec, HelloMessage,
-    NativeFrameCodec, SignatureBatchMessage, SignatureBlock, SummaryMessage, WireMessage,
+use crate::aerorsync::planner::{TransferCandidate, TransferPlanner};
+use crate::aerorsync::protocol::{
+    AerorsyncFrameCodec, DeltaInstruction, ErrorMessage, FileMetadataMessage, FrameCodec,
+    HelloMessage, SignatureBatchMessage, SignatureBlock, SummaryMessage, WireMessage,
     ENVELOPE_VERSION, FRAME_HEADER_SIZE, FRAME_MAGIC,
 };
-use crate::rsync_native_proto::real_wire::{
+use crate::aerorsync::real_wire::{
     compress_zstd_literal_stream, decode_client_preamble, decode_delta_stream,
     decode_file_list_entry, decode_item_flags, decode_ndx, decode_server_preamble,
     decode_sum_block, decode_sum_head, decode_summary_frame, decompress_zstd_literal_stream,
@@ -43,12 +41,12 @@ use crate::rsync_native_proto::real_wire::{
     DeltaOp, FileListDecodeOptions, FileListDecodeOutcome, MuxDemuxer, MuxHeader, MuxTag, NdxState,
     NDX_DONE, NDX_FLIST_EOF,
 };
-use crate::rsync_native_proto::remote_command::RemoteCommandSpec;
-use crate::rsync_native_proto::session::{NativeRsyncSession, SessionState};
-use crate::rsync_native_proto::transport::CancelHandle;
-use crate::rsync_native_proto::transport::RemoteShellTransport;
-use crate::rsync_native_proto::types::{
-    FeatureFlag, FileEntry, NativeRsyncConfig, NativeRsyncErrorKind, ProtocolVersion, SessionRole,
+use crate::aerorsync::remote_command::RemoteCommandSpec;
+use crate::aerorsync::session::{AerorsyncSession, SessionState};
+use crate::aerorsync::transport::CancelHandle;
+use crate::aerorsync::transport::RemoteShellTransport;
+use crate::aerorsync::types::{
+    AerorsyncConfig, AerorsyncErrorKind, FeatureFlag, FileEntry, ProtocolVersion, SessionRole,
     TransferStrategy,
 };
 
@@ -78,7 +76,7 @@ fn sample_hello() -> WireMessage {
 
 #[test]
 fn frame_codec_round_trip_hello() {
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     let msg = sample_hello();
     let encoded = codec.encode(&msg).unwrap();
     assert_eq!(&encoded[0..4], &FRAME_MAGIC);
@@ -90,7 +88,7 @@ fn frame_codec_round_trip_hello() {
 
 #[test]
 fn frame_codec_round_trip_summary() {
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     let msg = WireMessage::Summary(SummaryMessage {
         bytes_sent: 156_561,
         bytes_received: 17_417,
@@ -104,46 +102,46 @@ fn frame_codec_round_trip_summary() {
 
 #[test]
 fn frame_codec_rejects_bad_magic() {
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     let mut encoded = codec.encode(&sample_hello()).unwrap();
     encoded[0] = b'X';
     let err = codec.decode(&encoded).unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
+    assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
 }
 
 #[test]
 fn frame_codec_rejects_unknown_envelope_version() {
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     let mut encoded = codec.encode(&sample_hello()).unwrap();
     encoded[4] = 99;
     let err = codec.decode(&encoded).unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::UnsupportedVersion);
+    assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
 }
 
 #[test]
 fn frame_codec_rejects_truncated_payload() {
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     let encoded = codec.encode(&sample_hello()).unwrap();
     let truncated = &encoded[..encoded.len() - 2];
     let err = codec.decode(truncated).unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
+    assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
 }
 
 #[test]
 fn frame_codec_rejects_oversized_frame_on_decode() {
     // Encode with a generous limit, then decode with a small limit.
-    let wide = NativeFrameCodec::new(64 * 1024);
-    let narrow = NativeFrameCodec::new(FRAME_HEADER_SIZE + 4);
+    let wide = AerorsyncFrameCodec::new(64 * 1024);
+    let narrow = AerorsyncFrameCodec::new(FRAME_HEADER_SIZE + 4);
     let encoded = wide.encode(&sample_hello()).unwrap();
     let err = narrow.decode(&encoded).unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
+    assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
 }
 
 #[test]
 fn frame_codec_rejects_oversized_frame_on_encode() {
-    let narrow = NativeFrameCodec::new(FRAME_HEADER_SIZE + 4);
+    let narrow = AerorsyncFrameCodec::new(FRAME_HEADER_SIZE + 4);
     let err = narrow.encode(&sample_hello()).unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
+    assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +207,7 @@ fn regular_entry(path: &str, size: u64) -> FileEntry {
 
 #[test]
 fn planner_prefers_full_copy_below_threshold() {
-    let planner = TransferPlanner::new(NativeRsyncConfig::default());
+    let planner = TransferPlanner::new(AerorsyncConfig::default());
     let candidate = TransferCandidate {
         local: Some(regular_entry("small.bin", 512)),
         remote: Some(regular_entry("small.bin", 512)),
@@ -221,7 +219,7 @@ fn planner_prefers_full_copy_below_threshold() {
 
 #[test]
 fn planner_prefers_delta_for_same_size_large_files() {
-    let planner = TransferPlanner::new(NativeRsyncConfig::default());
+    let planner = TransferPlanner::new(AerorsyncConfig::default());
     let candidate = TransferCandidate {
         local: Some(regular_entry("large.bin", 8 * 1024 * 1024)),
         remote: Some(regular_entry("large.bin", 8 * 1024 * 1024)),
@@ -235,7 +233,7 @@ fn planner_prefers_delta_for_same_size_large_files() {
 
 #[test]
 fn planner_is_deterministic_for_identical_input() {
-    let planner = TransferPlanner::new(NativeRsyncConfig::default());
+    let planner = TransferPlanner::new(AerorsyncConfig::default());
     let candidate = TransferCandidate {
         local: Some(regular_entry("deterministic.bin", 4 * 1024 * 1024)),
         remote: Some(regular_entry("deterministic.bin", 4 * 1024 * 1024)),
@@ -250,7 +248,7 @@ fn planner_is_deterministic_for_identical_input() {
 
 #[test]
 fn planner_skips_directory_candidates() {
-    let planner = TransferPlanner::new(NativeRsyncConfig::default());
+    let planner = TransferPlanner::new(AerorsyncConfig::default());
     let mut dir = regular_entry("tree", 0);
     dir.is_dir = true;
     let candidate = TransferCandidate {
@@ -266,9 +264,9 @@ fn planner_skips_directory_candidates() {
 // session.rs — legal/illegal transitions
 // ---------------------------------------------------------------------------
 
-fn fresh_session() -> NativeRsyncSession<MockRemoteShellTransport> {
+fn fresh_session() -> AerorsyncSession<MockRemoteShellTransport> {
     let transport = MockRemoteShellTransport::new(MockTransportConfig::healthy_upload());
-    NativeRsyncSession::new(transport, NativeRsyncConfig::default())
+    AerorsyncSession::new(transport, AerorsyncConfig::default())
 }
 
 #[test]
@@ -304,7 +302,7 @@ fn session_mark_negotiated_enforces_version_and_stores_role() {
 fn session_rejects_skipping_phases() {
     let mut s = fresh_session();
     let err = s.transition_to(SessionState::Transferring).unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::IllegalStateTransition);
+    assert_eq!(err.kind, AerorsyncErrorKind::IllegalStateTransition);
 }
 
 #[test]
@@ -313,7 +311,7 @@ fn session_rejects_moves_after_terminal() {
     s.cancel();
     assert_eq!(s.state, SessionState::Cancelled);
     let err = s.transition_to(SessionState::Probed).unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::IllegalStateTransition);
+    assert_eq!(err.kind, AerorsyncErrorKind::IllegalStateTransition);
 }
 
 #[test]
@@ -328,7 +326,7 @@ fn session_rejects_unsupported_remote_version() {
     let err = s
         .mark_negotiated(&hello, "rsync old".to_string())
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::UnsupportedVersion);
+    assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
     // Session stays non-terminal so the caller can decide to fail it.
     assert_eq!(s.state, SessionState::Probed);
 }
@@ -351,7 +349,7 @@ fn session_accumulates_stats_safely() {
 // ---------------------------------------------------------------------------
 
 fn encoded_hello(role: SessionRole) -> Vec<u8> {
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     codec
         .encode(&WireMessage::Hello(HelloMessage {
             protocol: ProtocolVersion::CURRENT,
@@ -362,7 +360,7 @@ fn encoded_hello(role: SessionRole) -> Vec<u8> {
 }
 
 fn encoded_summary(up: bool) -> Vec<u8> {
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     let counters = if up {
         BaselineCounters::observed_upload()
     } else {
@@ -395,14 +393,14 @@ async fn mock_replays_upload_phase_and_records_outbound() {
     let mut stream = transport.open_stream(exec.clone()).await.unwrap();
 
     // Local writes its Hello first (Sender on upload).
-    use crate::rsync_native_proto::transport::BidirectionalByteStream;
+    use crate::aerorsync::transport::BidirectionalByteStream;
     stream
         .write_frame(&encoded_hello(SessionRole::Sender))
         .await
         .unwrap();
 
     // Read remote Hello then Summary.
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     let remote_hello = codec.decode(&stream.read_frame().await.unwrap()).unwrap();
     match remote_hello {
         WireMessage::Hello(h) => assert_eq!(h.role, SessionRole::Receiver),
@@ -433,13 +431,13 @@ async fn mock_replays_download_phase() {
     let exec = RemoteCommandSpec::download("/workspace/download/target.bin").to_exec_request();
     let mut stream = transport.open_stream(exec.clone()).await.unwrap();
 
-    use crate::rsync_native_proto::transport::BidirectionalByteStream;
+    use crate::aerorsync::transport::BidirectionalByteStream;
     stream
         .write_frame(&encoded_hello(SessionRole::Receiver))
         .await
         .unwrap();
 
-    let codec = NativeFrameCodec::new(64 * 1024);
+    let codec = AerorsyncFrameCodec::new(64 * 1024);
     let remote_hello = codec.decode(&stream.read_frame().await.unwrap()).unwrap();
     if let WireMessage::Hello(h) = remote_hello {
         assert_eq!(h.role, SessionRole::Sender);
@@ -464,7 +462,7 @@ async fn mock_simulates_stream_open_failure() {
     let transport = MockRemoteShellTransport::new(MockTransportConfig::stream_open_fails());
     let exec = RemoteCommandSpec::upload("/workspace/upload/target.bin").to_exec_request();
     let err = transport.open_stream(exec).await.unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::TransportFailure);
+    assert_eq!(err.kind, AerorsyncErrorKind::TransportFailure);
 }
 
 #[tokio::test]
@@ -475,9 +473,9 @@ async fn mock_simulates_remote_close_on_read() {
     let transport = MockRemoteShellTransport::new(config);
     let exec = RemoteCommandSpec::upload("/t").to_exec_request();
     let mut stream = transport.open_stream(exec).await.unwrap();
-    use crate::rsync_native_proto::transport::BidirectionalByteStream;
+    use crate::aerorsync::transport::BidirectionalByteStream;
     let err = stream.read_frame().await.unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::TransportFailure);
+    assert_eq!(err.kind, AerorsyncErrorKind::TransportFailure);
 }
 
 #[tokio::test]
@@ -550,8 +548,8 @@ fn delta_instruction_end_of_file_rejects_with_typed_error() {
 // driver.rs — end-to-end session orchestration against the mock transport
 // ---------------------------------------------------------------------------
 
-fn driver_codec() -> NativeFrameCodec {
-    NativeFrameCodec::new(64 * 1024)
+fn driver_codec() -> AerorsyncFrameCodec {
+    AerorsyncFrameCodec::new(64 * 1024)
 }
 
 fn encode(msg: &WireMessage) -> Vec<u8> {
@@ -617,7 +615,7 @@ fn baseline_summary_frame(upload: bool) -> WireMessage {
 
 fn new_driver(config: MockTransportConfig) -> SessionDriver<MockRemoteShellTransport> {
     let transport = MockRemoteShellTransport::new(config);
-    let session = NativeRsyncSession::new(transport, NativeRsyncConfig::default());
+    let session = AerorsyncSession::new(transport, AerorsyncConfig::default());
     SessionDriver::new(session, driver_codec())
 }
 
@@ -733,7 +731,7 @@ async fn driver_rejects_unsupported_version_in_remote_hello() {
         .drive_upload(RemoteCommandSpec::upload("/t"), sample_upload_plan())
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::UnsupportedVersion);
+    assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
     assert_eq!(driver.session.state, SessionState::Failed);
 }
 
@@ -753,7 +751,7 @@ async fn driver_rejects_role_mismatch_in_remote_hello() {
         .drive_upload(RemoteCommandSpec::upload("/t"), sample_upload_plan())
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::NegotiationFailed);
+    assert_eq!(err.kind, AerorsyncErrorKind::NegotiationFailed);
     assert_eq!(driver.session.state, SessionState::Failed);
 }
 
@@ -778,7 +776,7 @@ async fn driver_surfaces_remote_error_frame_as_typed_error() {
         .drive_upload(RemoteCommandSpec::upload("/t"), sample_upload_plan())
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::RemoteError);
+    assert_eq!(err.kind, AerorsyncErrorKind::RemoteError);
     assert!(err.detail.contains("23"));
     assert_eq!(driver.session.state, SessionState::Failed);
 }
@@ -795,7 +793,7 @@ async fn driver_detects_unexpected_message_type() {
         .drive_upload(RemoteCommandSpec::upload("/t"), sample_upload_plan())
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::UnexpectedMessage);
+    assert_eq!(err.kind, AerorsyncErrorKind::UnexpectedMessage);
     assert_eq!(driver.session.state, SessionState::Failed);
 }
 
@@ -821,7 +819,7 @@ async fn driver_handles_remote_close_before_summary() {
         .drive_upload(RemoteCommandSpec::upload("/t"), sample_upload_plan())
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::TransportFailure);
+    assert_eq!(err.kind, AerorsyncErrorKind::TransportFailure);
     assert_eq!(driver.session.state, SessionState::Failed);
 }
 
@@ -857,7 +855,7 @@ async fn driver_rejects_upload_plan_without_end_of_file_before_any_io() {
         .drive_upload(RemoteCommandSpec::upload("/t"), bad_plan)
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
+    assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
     // No transport I/O was attempted: open_stream was never called.
     assert!(driver.session.transport.last_exec_request().is_none());
     // Session untouched by validation-only failure (still Created).
@@ -893,7 +891,7 @@ async fn driver_rejects_delta_after_end_of_file_marker() {
         .drive_download(RemoteCommandSpec::download("/t"), plan)
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
+    assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
     assert_eq!(driver.session.state, SessionState::Failed);
 }
 
@@ -904,7 +902,7 @@ async fn driver_stream_open_failure_marks_session_failed() {
         .drive_upload(RemoteCommandSpec::upload("/t"), sample_upload_plan())
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::TransportFailure);
+    assert_eq!(err.kind, AerorsyncErrorKind::TransportFailure);
     assert_eq!(driver.session.state, SessionState::Failed);
 }
 
@@ -1327,7 +1325,7 @@ async fn driver_download_with_engine_surfaces_apply_delta_failure() {
         .drive_download_with_engine(RemoteCommandSpec::download("/t"), destination, &bridge)
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::InvalidFrame);
+    assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
     assert!(err.detail.contains("apply_delta"));
     assert_eq!(driver.session.state, SessionState::Failed);
 }
@@ -1377,7 +1375,7 @@ async fn driver_download_with_engine_handles_remote_error_frame() {
         .drive_download_with_engine(RemoteCommandSpec::download("/t"), destination, &bridge)
         .await
         .unwrap_err();
-    assert_eq!(err.kind, NativeRsyncErrorKind::RemoteError);
+    assert_eq!(err.kind, AerorsyncErrorKind::RemoteError);
     assert_eq!(driver.session.state, SessionState::Failed);
 }
 
@@ -1503,7 +1501,7 @@ fn real_rsync_frozen_transcript_path_layout_is_stable() {
     // what future sinergie (S8b+) will parse. A rename on either side
     // would break the oracle silently — catch it here at compile/test
     // time.
-    assert!(REAL_RSYNC_FROZEN_TRANSCRIPT_REL.starts_with("src/rsync_native_proto/capture/"));
+    assert!(REAL_RSYNC_FROZEN_TRANSCRIPT_REL.starts_with("src/aerorsync/capture/"));
     assert!(REAL_RSYNC_FROZEN_TRANSCRIPT_REL.ends_with("/frozen"));
     assert_eq!(REAL_RSYNC_LANE_PORT, 2224);
 
@@ -1528,7 +1526,7 @@ fn real_rsync_frozen_transcript_loads_when_present() {
     let Some(transcript) = RealRsyncBaselineByteTranscript::try_load_frozen() else {
         eprintln!(
             "skipping: no frozen real-rsync transcript at \
-             src/rsync_native_proto/capture/artifacts_real/frozen/ \
+             src/aerorsync/capture/artifacts_real/frozen/ \
              (run capture/run_real_rsync_capture.sh to produce one)"
         );
         return;
@@ -1654,7 +1652,7 @@ fn real_wire_demuxes_frozen_server_post_preamble_to_msg_data_frames() {
     }
 
     let total_payload: usize = frames.iter().map(|(_, len)| *len).sum();
-    let total_headers: usize = frames.len() * crate::rsync_native_proto::real_wire::MUX_HEADER_LEN;
+    let total_headers: usize = frames.len() * crate::aerorsync::real_wire::MUX_HEADER_LEN;
     assert_eq!(
         preamble.consumed + total_headers + total_payload,
         transcript.upload_server_to_client.len(),
@@ -1703,7 +1701,7 @@ fn real_wire_demuxes_frozen_server_post_preamble_for_download_direction() {
     assert!(frame_count >= 1);
     assert_eq!(
         preamble.consumed
-            + frame_count * crate::rsync_native_proto::real_wire::MUX_HEADER_LEN
+            + frame_count * crate::aerorsync::real_wire::MUX_HEADER_LEN
             + total_payload,
         transcript.download_server_to_client.len(),
         "byte accounting must close for the download direction too"
@@ -1748,8 +1746,7 @@ fn real_wire_reassembles_download_server_stream_to_app_bytes() {
     // The download direction is smaller but should still produce >= 1 frame
     // and close byte accounting against the raw mux tail.
     assert!(report.frames_consumed >= 1);
-    let headers_consumed =
-        report.frames_consumed * crate::rsync_native_proto::real_wire::MUX_HEADER_LEN;
+    let headers_consumed = report.frames_consumed * crate::aerorsync::real_wire::MUX_HEADER_LEN;
     let oob_payload: usize = report.out_of_band.iter().map(|(_, n)| *n as usize).sum();
     assert_eq!(
         headers_consumed + report.app_stream.len() + oob_payload,
@@ -1799,8 +1796,7 @@ fn real_wire_client_to_server_upload_is_multiplexed_like_server_side() {
 
     // Byte accounting: preamble + (headers + payloads) + oob payloads
     // must fill the capture exactly.
-    let headers_consumed =
-        report.frames_consumed * crate::rsync_native_proto::real_wire::MUX_HEADER_LEN;
+    let headers_consumed = report.frames_consumed * crate::aerorsync::real_wire::MUX_HEADER_LEN;
     let oob_payload: usize = report.out_of_band.iter().map(|(_, n)| *n as usize).sum();
     assert_eq!(
         preamble.consumed + headers_consumed + report.app_stream.len() + oob_payload,
@@ -1937,7 +1933,9 @@ fn real_wire_file_list_terminator_follows_first_entry_in_frozen_upload() {
     );
 
     // Double-check: feeding the remainder to decode_file_list_entry
-    // again must round-trip to EndOfList, consuming exactly one byte.
+    // again must round-trip to EndOfList, consuming exactly two bytes
+    // (varint(0) terminator + varint(0) io_error count, per the
+    // CF_VARINT_FLIST_FLAGS write_end_of_flist semantics).
     let (outcome, consumed_end) = decode_file_list_entry(
         &report.app_stream[consumed_first..],
         &FileListDecodeOptions {
@@ -1946,7 +1944,7 @@ fn real_wire_file_list_terminator_follows_first_entry_in_frozen_upload() {
         },
     )
     .unwrap();
-    assert_eq!(consumed_end, 1);
+    assert_eq!(consumed_end, 2);
     assert!(matches!(
         outcome,
         FileListDecodeOutcome::EndOfList { io_error: 0 }
@@ -2283,7 +2281,7 @@ fn s8e_scout_hex_dump_post_flist_regions() {
     );
 
     // Scouting aid — not a regression gate. Run with:
-    //   cargo test --features proto_native_rsync --lib \
+    //   cargo test --features aerorsync --lib \
     //     s8e_scout_hex_dump_post_flist_regions -- --ignored --nocapture
 }
 
@@ -2314,7 +2312,7 @@ const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 fn advance_past_sum_head(
     app: &[u8],
     entry_bytes: usize,
-) -> (usize, crate::rsync_native_proto::real_wire::SumHead) {
+) -> (usize, crate::aerorsync::real_wire::SumHead) {
     // Terminator varint(0).
     assert_eq!(app[entry_bytes], 0x00, "file-list terminator must be 0x00");
     // io_error varint(0).
@@ -2597,7 +2595,7 @@ fn real_wire_delta_stream_byte_accounting_closes_on_upload_client_stream() {
 //     summary candidate.
 //
 // Intentionally `#[ignore]`: scouting aid, not a regression gate. Run
-// with: cargo test --features proto_native_rsync --lib \
+// with: cargo test --features aerorsync --lib \
 //   s8g_scout_hex_dump_stream_tails -- --ignored --nocapture
 // ---------------------------------------------------------------------------
 
@@ -3373,11 +3371,11 @@ fn real_wire_events_mock_driver_bails_cleanly_on_mid_session_error() {
     // with newlines stripped (mirrors log.c:353 display semantics).
     assert_eq!(report.events.len(), 2);
     match &report.events[0] {
-        NativeRsyncEvent::Info { message } => assert_eq!(message, "recv ready"),
+        AerorsyncEvent::Info { message } => assert_eq!(message, "recv ready"),
         other => panic!("expected Info, got {other:?}"),
     }
     match &report.events[1] {
-        NativeRsyncEvent::Warning { message } => assert_eq!(message, "slow"),
+        AerorsyncEvent::Warning { message } => assert_eq!(message, "slow"),
         other => panic!("expected Warning, got {other:?}"),
     }
 
@@ -3385,7 +3383,7 @@ fn real_wire_events_mock_driver_bails_cleanly_on_mid_session_error() {
     // message text.
     let terminal = report.terminal.as_ref().expect("expected terminal event");
     match terminal {
-        NativeRsyncEvent::Error { message } => {
+        AerorsyncEvent::Error { message } => {
             assert_eq!(message, "file system full on remote");
         }
         other => panic!("expected Error, got {other:?}"),
@@ -3404,7 +3402,7 @@ fn real_wire_events_mock_driver_bails_cleanly_on_mid_session_error() {
     assert!(sink.bailed());
     assert_eq!(sink.before_terminal.len(), 2);
     match sink.first_terminal().unwrap() {
-        NativeRsyncEvent::Error { message } => assert_eq!(message, "file system full on remote"),
+        AerorsyncEvent::Error { message } => assert_eq!(message, "file system full on remote"),
         other => panic!("expected first terminal Error, got {other:?}"),
     }
     assert!(sink.trailing.is_empty());
@@ -3424,7 +3422,7 @@ fn real_wire_events_classifier_agrees_with_reassemble_with_events_on_oob_frames(
     let mux_tail = &transcript.upload_server_to_client[server_pre.consumed..];
 
     let legacy = reassemble_msg_data(mux_tail).unwrap();
-    let from_oob: Vec<NativeRsyncEvent> = legacy
+    let from_oob: Vec<AerorsyncEvent> = legacy
         .oob_frames
         .into_iter()
         .map(|(tag, payload)| classify_oob_frame(tag, &payload))
@@ -3441,8 +3439,8 @@ fn real_wire_events_classifier_agrees_with_reassemble_with_events_on_oob_frames(
 /// `rwrite(FERROR, …)` half-way through the 5 varlong fields.
 #[test]
 fn real_wire_events_terminal_inside_summary_region_yields_no_partial_summary() {
-    use crate::rsync_native_proto::real_wire::encode_summary_frame;
-    use crate::rsync_native_proto::real_wire::SummaryFrame;
+    use crate::aerorsync::real_wire::encode_summary_frame;
+    use crate::aerorsync::real_wire::SummaryFrame;
 
     let summary = encode_summary_frame(
         &SummaryFrame {
@@ -3493,7 +3491,7 @@ fn real_wire_events_terminal_inside_summary_region_yields_no_partial_summary() {
     assert_eq!(report.app_stream, &summary[..7]);
     assert!(matches!(
         report.terminal.as_ref().unwrap(),
-        NativeRsyncEvent::Error { message } if message == "summary aborted"
+        AerorsyncEvent::Error { message } if message == "summary aborted"
     ));
 }
 
@@ -3694,8 +3692,7 @@ fn compress_zstd_literal_stream_round_trips_through_frozen_oracle_payloads() {
         .app_stream;
     let opts = FileListDecodeOptions::frozen_oracle_default();
     let (_, entry_bytes) = decode_file_list_entry(&app, &opts).unwrap();
-    let (delta_start, head) =
-        crate::rsync_native_proto::tests::advance_past_sum_head(&app, entry_bytes);
+    let (delta_start, head) = crate::aerorsync::tests::advance_past_sum_head(&app, entry_bytes);
     let (report, _) = decode_delta_stream(&app[delta_start..], 16, Some(head.count)).unwrap();
 
     // Step 1: decompress the captured Literals (S8f-bis verified path).

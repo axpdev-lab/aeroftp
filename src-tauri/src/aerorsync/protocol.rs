@@ -23,9 +23,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::rsync_native_proto::types::{
-    FeatureFlag, NativeRsyncError, ProtocolVersion, SessionRole,
-};
+use crate::aerorsync::types::{AerorsyncError, FeatureFlag, ProtocolVersion, SessionRole};
 
 pub const FRAME_MAGIC: [u8; 4] = *b"RSNP";
 pub const ENVELOPE_VERSION: u8 = 1;
@@ -146,16 +144,16 @@ impl WireMessage {
 }
 
 pub trait FrameCodec {
-    fn encode(&self, message: &WireMessage) -> Result<Vec<u8>, NativeRsyncError>;
-    fn decode(&self, raw: &[u8]) -> Result<WireMessage, NativeRsyncError>;
+    fn encode(&self, message: &WireMessage) -> Result<Vec<u8>, AerorsyncError>;
+    fn decode(&self, raw: &[u8]) -> Result<WireMessage, AerorsyncError>;
 }
 
 #[derive(Debug, Clone)]
-pub struct NativeFrameCodec {
+pub struct AerorsyncFrameCodec {
     pub max_frame_size: usize,
 }
 
-impl NativeFrameCodec {
+impl AerorsyncFrameCodec {
     pub fn new(max_frame_size: usize) -> Self {
         Self { max_frame_size }
     }
@@ -163,40 +161,40 @@ impl NativeFrameCodec {
     fn validate_header_slice(
         &self,
         raw: &[u8],
-    ) -> Result<(usize, MessageType, u16), NativeRsyncError> {
+    ) -> Result<(usize, MessageType, u16), AerorsyncError> {
         if raw.len() < FRAME_HEADER_SIZE {
-            return Err(NativeRsyncError::invalid_frame(format!(
+            return Err(AerorsyncError::invalid_frame(format!(
                 "frame too short: {} bytes (need at least {})",
                 raw.len(),
                 FRAME_HEADER_SIZE
             )));
         }
         if raw[0..4] != FRAME_MAGIC {
-            return Err(NativeRsyncError::invalid_frame(
+            return Err(AerorsyncError::invalid_frame(
                 "bad magic: not an RSNP envelope",
             ));
         }
         if raw[4] != ENVELOPE_VERSION {
-            return Err(NativeRsyncError::unsupported_version(format!(
+            return Err(AerorsyncError::unsupported_version(format!(
                 "envelope version {} not supported (expected {})",
                 raw[4], ENVELOPE_VERSION
             )));
         }
         let msg_type = MessageType::from_u8(raw[5]).ok_or_else(|| {
-            NativeRsyncError::invalid_frame(format!("unknown message type byte: {:#x}", raw[5]))
+            AerorsyncError::invalid_frame(format!("unknown message type byte: {:#x}", raw[5]))
         })?;
         let flags = u16::from_be_bytes([raw[6], raw[7]]);
         let payload_len = u32::from_be_bytes([raw[8], raw[9], raw[10], raw[11]]) as usize;
 
         if FRAME_HEADER_SIZE + payload_len > self.max_frame_size {
-            return Err(NativeRsyncError::invalid_frame(format!(
+            return Err(AerorsyncError::invalid_frame(format!(
                 "frame size {} exceeds max {}",
                 FRAME_HEADER_SIZE + payload_len,
                 self.max_frame_size
             )));
         }
         if raw.len() < FRAME_HEADER_SIZE + payload_len {
-            return Err(NativeRsyncError::invalid_frame(format!(
+            return Err(AerorsyncError::invalid_frame(format!(
                 "truncated frame: declared {} bytes of payload but got {}",
                 payload_len,
                 raw.len().saturating_sub(FRAME_HEADER_SIZE)
@@ -209,9 +207,9 @@ impl NativeFrameCodec {
         &self,
         msg: &WireMessage,
         payload_len: usize,
-    ) -> Result<[u8; FRAME_HEADER_SIZE], NativeRsyncError> {
+    ) -> Result<[u8; FRAME_HEADER_SIZE], AerorsyncError> {
         if FRAME_HEADER_SIZE + payload_len > self.max_frame_size {
-            return Err(NativeRsyncError::invalid_frame(format!(
+            return Err(AerorsyncError::invalid_frame(format!(
                 "outgoing frame size {} exceeds max {}",
                 FRAME_HEADER_SIZE + payload_len,
                 self.max_frame_size
@@ -228,10 +226,10 @@ impl NativeFrameCodec {
     }
 }
 
-impl FrameCodec for NativeFrameCodec {
-    fn encode(&self, message: &WireMessage) -> Result<Vec<u8>, NativeRsyncError> {
+impl FrameCodec for AerorsyncFrameCodec {
+    fn encode(&self, message: &WireMessage) -> Result<Vec<u8>, AerorsyncError> {
         let payload = serde_json::to_vec(message).map_err(|e| {
-            NativeRsyncError::invalid_frame(format!("payload serialization failed: {e}"))
+            AerorsyncError::invalid_frame(format!("payload serialization failed: {e}"))
         })?;
         let hdr = self.write_header(message, payload.len())?;
         let mut out = Vec::with_capacity(FRAME_HEADER_SIZE + payload.len());
@@ -240,14 +238,14 @@ impl FrameCodec for NativeFrameCodec {
         Ok(out)
     }
 
-    fn decode(&self, raw: &[u8]) -> Result<WireMessage, NativeRsyncError> {
+    fn decode(&self, raw: &[u8]) -> Result<WireMessage, AerorsyncError> {
         let (payload_len, msg_type, _flags) = self.validate_header_slice(raw)?;
         let payload = &raw[FRAME_HEADER_SIZE..FRAME_HEADER_SIZE + payload_len];
         let msg: WireMessage = serde_json::from_slice(payload).map_err(|e| {
-            NativeRsyncError::invalid_frame(format!("payload deserialization failed: {e}"))
+            AerorsyncError::invalid_frame(format!("payload deserialization failed: {e}"))
         })?;
         if msg.message_type() != msg_type {
-            return Err(NativeRsyncError::invalid_frame(format!(
+            return Err(AerorsyncError::invalid_frame(format!(
                 "header type {:?} does not match payload type {:?}",
                 msg_type,
                 msg.message_type()

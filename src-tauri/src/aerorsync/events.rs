@@ -3,7 +3,7 @@
 //! After Sinergie 8b–8c the demuxer surfaces every non-`MSG_DATA` frame as
 //! a `(MuxTag, payload)` pair through `real_wire::ReassemblyReport`.
 //! Sinergia 8h turns those pairs into a typed, classified
-//! `NativeRsyncEvent` enum that downstream consumers (the future S8i
+//! `AerorsyncEvent` enum that downstream consumers (the future S8i
 //! real_wire driver) can pattern-match on without re-doing byte
 //! archaeology.
 //!
@@ -69,7 +69,7 @@
 //! - `Unknown(tag)` never panics; raw payload is preserved byte-for-byte
 //!   so a future protocol bump doesn't silently corrupt data.
 
-use crate::rsync_native_proto::real_wire::MuxTag;
+use crate::aerorsync::real_wire::MuxTag;
 
 /// Severity gradient. Richer than a single `is_terminal` bool — lets the
 /// driver progress events route to different sinks (status bar vs log
@@ -96,7 +96,7 @@ pub enum EventSeverity {
 ///
 /// Variants ordered to mirror `MuxTag::from_code` for cross-reference.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NativeRsyncEvent {
+pub enum AerorsyncEvent {
     /// `MSG_ERROR_XFER` (tag 1) — file-transfer error reported by remote.
     /// `log.c:251-253` (FERROR_XFER), text payload, terminal.
     ErrorXfer { message: String },
@@ -174,7 +174,7 @@ pub enum NativeRsyncEvent {
     Unknown { tag: u8, payload: Vec<u8> },
 }
 
-impl NativeRsyncEvent {
+impl AerorsyncEvent {
     /// True iff the consumer MUST abort the session on this event.
     /// Single source of truth for the bail policy. Pinned by
     /// `terminal_set_matches_io_c_policy` in tests.
@@ -185,27 +185,27 @@ impl NativeRsyncEvent {
     /// Severity gradient. See `EventSeverity` doc.
     pub fn severity(&self) -> EventSeverity {
         match self {
-            NativeRsyncEvent::Error { .. }
-            | NativeRsyncEvent::ErrorXfer { .. }
-            | NativeRsyncEvent::ErrorSocket { .. } => EventSeverity::Terminal,
-            NativeRsyncEvent::ErrorExit { code } => match code {
+            AerorsyncEvent::Error { .. }
+            | AerorsyncEvent::ErrorXfer { .. }
+            | AerorsyncEvent::ErrorSocket { .. } => EventSeverity::Terminal,
+            AerorsyncEvent::ErrorExit { code } => match code {
                 Some(0) | None => EventSeverity::Info,
                 Some(_) => EventSeverity::Terminal,
             },
-            NativeRsyncEvent::Warning { .. }
-            | NativeRsyncEvent::IoError { .. }
-            | NativeRsyncEvent::IoTimeout { .. }
-            | NativeRsyncEvent::ErrorUtf8 { .. } => EventSeverity::Warning,
-            NativeRsyncEvent::Info { .. }
-            | NativeRsyncEvent::Log { .. }
-            | NativeRsyncEvent::Client { .. }
-            | NativeRsyncEvent::Redo { .. }
-            | NativeRsyncEvent::Stats { .. }
-            | NativeRsyncEvent::Noop
-            | NativeRsyncEvent::Success { .. }
-            | NativeRsyncEvent::Deleted { .. }
-            | NativeRsyncEvent::NoSend { .. }
-            | NativeRsyncEvent::Unknown { .. } => EventSeverity::Info,
+            AerorsyncEvent::Warning { .. }
+            | AerorsyncEvent::IoError { .. }
+            | AerorsyncEvent::IoTimeout { .. }
+            | AerorsyncEvent::ErrorUtf8 { .. } => EventSeverity::Warning,
+            AerorsyncEvent::Info { .. }
+            | AerorsyncEvent::Log { .. }
+            | AerorsyncEvent::Client { .. }
+            | AerorsyncEvent::Redo { .. }
+            | AerorsyncEvent::Stats { .. }
+            | AerorsyncEvent::Noop
+            | AerorsyncEvent::Success { .. }
+            | AerorsyncEvent::Deleted { .. }
+            | AerorsyncEvent::NoSend { .. }
+            | AerorsyncEvent::Unknown { .. } => EventSeverity::Info,
         }
     }
 
@@ -213,24 +213,24 @@ impl NativeRsyncEvent {
     /// raw tag byte preserved at classification time.
     pub fn tag(&self) -> MuxTag {
         match self {
-            NativeRsyncEvent::ErrorXfer { .. } => MuxTag::ErrorXfer,
-            NativeRsyncEvent::Info { .. } => MuxTag::Info,
-            NativeRsyncEvent::Error { .. } => MuxTag::Error,
-            NativeRsyncEvent::Warning { .. } => MuxTag::Warning,
-            NativeRsyncEvent::ErrorSocket { .. } => MuxTag::ErrorSocket,
-            NativeRsyncEvent::Log { .. } => MuxTag::Log,
-            NativeRsyncEvent::Client { .. } => MuxTag::Client,
-            NativeRsyncEvent::ErrorUtf8 { .. } => MuxTag::ErrorUtf8,
-            NativeRsyncEvent::Redo { .. } => MuxTag::Redo,
-            NativeRsyncEvent::Stats { .. } => MuxTag::Stats,
-            NativeRsyncEvent::IoError { .. } => MuxTag::IoError,
-            NativeRsyncEvent::IoTimeout { .. } => MuxTag::IoTimeout,
-            NativeRsyncEvent::Noop => MuxTag::Noop,
-            NativeRsyncEvent::ErrorExit { .. } => MuxTag::ErrorExit,
-            NativeRsyncEvent::Success { .. } => MuxTag::Success,
-            NativeRsyncEvent::Deleted { .. } => MuxTag::Deleted,
-            NativeRsyncEvent::NoSend { .. } => MuxTag::NoSend,
-            NativeRsyncEvent::Unknown { tag, .. } => MuxTag::from_code(*tag),
+            AerorsyncEvent::ErrorXfer { .. } => MuxTag::ErrorXfer,
+            AerorsyncEvent::Info { .. } => MuxTag::Info,
+            AerorsyncEvent::Error { .. } => MuxTag::Error,
+            AerorsyncEvent::Warning { .. } => MuxTag::Warning,
+            AerorsyncEvent::ErrorSocket { .. } => MuxTag::ErrorSocket,
+            AerorsyncEvent::Log { .. } => MuxTag::Log,
+            AerorsyncEvent::Client { .. } => MuxTag::Client,
+            AerorsyncEvent::ErrorUtf8 { .. } => MuxTag::ErrorUtf8,
+            AerorsyncEvent::Redo { .. } => MuxTag::Redo,
+            AerorsyncEvent::Stats { .. } => MuxTag::Stats,
+            AerorsyncEvent::IoError { .. } => MuxTag::IoError,
+            AerorsyncEvent::IoTimeout { .. } => MuxTag::IoTimeout,
+            AerorsyncEvent::Noop => MuxTag::Noop,
+            AerorsyncEvent::ErrorExit { .. } => MuxTag::ErrorExit,
+            AerorsyncEvent::Success { .. } => MuxTag::Success,
+            AerorsyncEvent::Deleted { .. } => MuxTag::Deleted,
+            AerorsyncEvent::NoSend { .. } => MuxTag::NoSend,
+            AerorsyncEvent::Unknown { tag, .. } => MuxTag::from_code(*tag),
         }
     }
 
@@ -238,15 +238,15 @@ impl NativeRsyncEvent {
     /// numeric / state-marker variants.
     pub fn message(&self) -> Option<&str> {
         match self {
-            NativeRsyncEvent::ErrorXfer { message }
-            | NativeRsyncEvent::Info { message }
-            | NativeRsyncEvent::Error { message }
-            | NativeRsyncEvent::Warning { message }
-            | NativeRsyncEvent::ErrorSocket { message }
-            | NativeRsyncEvent::Log { message }
-            | NativeRsyncEvent::Client { message }
-            | NativeRsyncEvent::ErrorUtf8 { message } => Some(message.as_str()),
-            NativeRsyncEvent::Deleted { path } => Some(path.as_str()),
+            AerorsyncEvent::ErrorXfer { message }
+            | AerorsyncEvent::Info { message }
+            | AerorsyncEvent::Error { message }
+            | AerorsyncEvent::Warning { message }
+            | AerorsyncEvent::ErrorSocket { message }
+            | AerorsyncEvent::Log { message }
+            | AerorsyncEvent::Client { message }
+            | AerorsyncEvent::ErrorUtf8 { message } => Some(message.as_str()),
+            AerorsyncEvent::Deleted { path } => Some(path.as_str()),
             _ => None,
         }
     }
@@ -263,76 +263,76 @@ impl NativeRsyncEvent {
 /// `Data` (tag 0) is a programming error — that frame is the app
 /// stream, not an event. We classify it as `Unknown` rather than panic
 /// so a misuse surfaces in tests instead of crashing prod.
-pub fn classify_oob_frame(tag: MuxTag, payload: &[u8]) -> NativeRsyncEvent {
+pub fn classify_oob_frame(tag: MuxTag, payload: &[u8]) -> AerorsyncEvent {
     match tag {
-        MuxTag::Data => NativeRsyncEvent::Unknown {
+        MuxTag::Data => AerorsyncEvent::Unknown {
             tag: tag.code(),
             payload: payload.to_vec(),
         },
 
         // Textual payloads: UTF-8 lossy + strip trailing \r\n.
-        MuxTag::ErrorXfer => NativeRsyncEvent::ErrorXfer {
+        MuxTag::ErrorXfer => AerorsyncEvent::ErrorXfer {
             message: decode_text(payload),
         },
-        MuxTag::Info => NativeRsyncEvent::Info {
+        MuxTag::Info => AerorsyncEvent::Info {
             message: decode_text(payload),
         },
-        MuxTag::Error => NativeRsyncEvent::Error {
+        MuxTag::Error => AerorsyncEvent::Error {
             message: decode_text(payload),
         },
-        MuxTag::Warning => NativeRsyncEvent::Warning {
+        MuxTag::Warning => AerorsyncEvent::Warning {
             message: decode_text(payload),
         },
-        MuxTag::ErrorSocket => NativeRsyncEvent::ErrorSocket {
+        MuxTag::ErrorSocket => AerorsyncEvent::ErrorSocket {
             message: decode_text(payload),
         },
-        MuxTag::Log => NativeRsyncEvent::Log {
+        MuxTag::Log => AerorsyncEvent::Log {
             message: decode_text(payload),
         },
-        MuxTag::Client => NativeRsyncEvent::Client {
+        MuxTag::Client => AerorsyncEvent::Client {
             message: decode_text(payload),
         },
-        MuxTag::ErrorUtf8 => NativeRsyncEvent::ErrorUtf8 {
+        MuxTag::ErrorUtf8 => AerorsyncEvent::ErrorUtf8 {
             message: decode_text(payload),
         },
-        MuxTag::Deleted => NativeRsyncEvent::Deleted {
+        MuxTag::Deleted => AerorsyncEvent::Deleted {
             // `log.c:863` may include a trailing null for directory
             // markers. Strip both null and newline trailers.
             path: decode_text(strip_trailing_null(payload)),
         },
 
         // Integer payloads (4 bytes LE, SIVAL).
-        MuxTag::Redo => NativeRsyncEvent::Redo {
+        MuxTag::Redo => AerorsyncEvent::Redo {
             flist_index: read_u32_le_or_zero(payload),
         },
-        MuxTag::IoError => NativeRsyncEvent::IoError {
+        MuxTag::IoError => AerorsyncEvent::IoError {
             flags: read_u32_le_or_zero(payload),
         },
-        MuxTag::IoTimeout => NativeRsyncEvent::IoTimeout {
+        MuxTag::IoTimeout => AerorsyncEvent::IoTimeout {
             seconds: read_u32_le_or_zero(payload),
         },
-        MuxTag::Success => NativeRsyncEvent::Success {
+        MuxTag::Success => AerorsyncEvent::Success {
             flist_index: read_u32_le_or_zero(payload),
         },
-        MuxTag::NoSend => NativeRsyncEvent::NoSend {
+        MuxTag::NoSend => AerorsyncEvent::NoSend {
             flist_index: read_u32_le_or_zero(payload),
         },
 
         // 64-bit binary (Stats — pipe-only in real rsync, accepted here
         // for hand-crafted tests / future tunneling).
-        MuxTag::Stats => NativeRsyncEvent::Stats {
+        MuxTag::Stats => AerorsyncEvent::Stats {
             total_read: read_u64_le_or_zero(payload),
         },
 
         // Empty payload only.
-        MuxTag::Noop => NativeRsyncEvent::Noop,
+        MuxTag::Noop => AerorsyncEvent::Noop,
 
         // Two payload forms — see `io.c:1668-1672`.
-        MuxTag::ErrorExit => NativeRsyncEvent::ErrorExit {
+        MuxTag::ErrorExit => AerorsyncEvent::ErrorExit {
             code: classify_error_exit_payload(payload),
         },
 
-        MuxTag::Unknown(raw) => NativeRsyncEvent::Unknown {
+        MuxTag::Unknown(raw) => AerorsyncEvent::Unknown {
             tag: raw,
             payload: payload.to_vec(),
         },
@@ -407,7 +407,7 @@ fn read_u64_le_or_zero(payload: &[u8]) -> u64 {
 /// are already `Send` (simple owned structs or closures that capture
 /// `Send` state), so the bound is purely additive.
 pub trait EventSink: Send {
-    fn handle(&mut self, event: NativeRsyncEvent) {
+    fn handle(&mut self, event: AerorsyncEvent) {
         match event.severity() {
             EventSeverity::Info => self.on_info(event),
             EventSeverity::Warning => self.on_warning(event),
@@ -416,20 +416,20 @@ pub trait EventSink: Send {
         }
     }
 
-    fn on_info(&mut self, _event: NativeRsyncEvent) {}
-    fn on_warning(&mut self, _event: NativeRsyncEvent) {}
-    fn on_error(&mut self, _event: NativeRsyncEvent) {}
-    fn on_terminal(&mut self, _event: NativeRsyncEvent) {}
+    fn on_info(&mut self, _event: AerorsyncEvent) {}
+    fn on_warning(&mut self, _event: AerorsyncEvent) {}
+    fn on_error(&mut self, _event: AerorsyncEvent) {}
+    fn on_terminal(&mut self, _event: AerorsyncEvent) {}
 }
 
 /// Test sink that accumulates every event in encounter order.
 #[derive(Debug, Default, Clone)]
 pub struct CollectingSink {
-    pub events: Vec<NativeRsyncEvent>,
+    pub events: Vec<AerorsyncEvent>,
 }
 
 impl EventSink for CollectingSink {
-    fn handle(&mut self, event: NativeRsyncEvent) {
+    fn handle(&mut self, event: AerorsyncEvent) {
         self.events.push(event);
     }
 }
@@ -442,13 +442,13 @@ impl EventSink for CollectingSink {
 /// bailed and on which event.
 #[derive(Debug, Default, Clone)]
 pub struct BailingSink {
-    pub before_terminal: Vec<NativeRsyncEvent>,
-    pub terminal: Option<NativeRsyncEvent>,
-    pub trailing: Vec<NativeRsyncEvent>,
+    pub before_terminal: Vec<AerorsyncEvent>,
+    pub terminal: Option<AerorsyncEvent>,
+    pub trailing: Vec<AerorsyncEvent>,
 }
 
 impl BailingSink {
-    pub fn first_terminal(&self) -> Option<&NativeRsyncEvent> {
+    pub fn first_terminal(&self) -> Option<&AerorsyncEvent> {
         self.terminal.as_ref()
     }
 
@@ -458,7 +458,7 @@ impl BailingSink {
 }
 
 impl EventSink for BailingSink {
-    fn handle(&mut self, event: NativeRsyncEvent) {
+    fn handle(&mut self, event: AerorsyncEvent) {
         if self.terminal.is_some() {
             self.trailing.push(event);
             return;
@@ -511,7 +511,7 @@ mod tests {
         let event = classify_oob_frame(MuxTag::Info, b"hello\n");
         assert_eq!(
             event,
-            NativeRsyncEvent::Info {
+            AerorsyncEvent::Info {
                 message: "hello".to_string()
             }
         );
@@ -522,7 +522,7 @@ mod tests {
         let event = classify_oob_frame(MuxTag::Info, b"hello\r\n");
         assert_eq!(
             event,
-            NativeRsyncEvent::Info {
+            AerorsyncEvent::Info {
                 message: "hello".to_string()
             }
         );
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn classify_warning_preserves_inner_newlines_and_strips_only_trailing() {
         let event = classify_oob_frame(MuxTag::Warning, b"line1\nline2\n");
-        let NativeRsyncEvent::Warning { message } = event else {
+        let AerorsyncEvent::Warning { message } = event else {
             panic!("expected Warning");
         };
         assert_eq!(message, "line1\nline2");
@@ -540,7 +540,7 @@ mod tests {
     #[test]
     fn classify_error_with_invalid_utf8_uses_lossy_decode_no_panic() {
         let event = classify_oob_frame(MuxTag::Error, &[0x66, 0x6F, 0xFF, 0xFE, 0x6F]);
-        let NativeRsyncEvent::Error { message } = event else {
+        let AerorsyncEvent::Error { message } = event else {
             panic!("expected Error");
         };
         assert!(message.contains('f'));
@@ -552,7 +552,7 @@ mod tests {
         let event = classify_oob_frame(MuxTag::Error, &[]);
         assert_eq!(
             event,
-            NativeRsyncEvent::Error {
+            AerorsyncEvent::Error {
                 message: String::new()
             }
         );
@@ -565,26 +565,26 @@ mod tests {
     #[test]
     fn classify_redo_decodes_le_u32() {
         let event = classify_oob_frame(MuxTag::Redo, &[0x2A, 0x00, 0x00, 0x00]);
-        assert_eq!(event, NativeRsyncEvent::Redo { flist_index: 42 });
+        assert_eq!(event, AerorsyncEvent::Redo { flist_index: 42 });
     }
 
     #[test]
     fn classify_io_error_decodes_le_u32() {
         // io.c:1525 io_error |= val pattern. 0xDEADBEEF as a flag set.
         let event = classify_oob_frame(MuxTag::IoError, &[0xEF, 0xBE, 0xAD, 0xDE]);
-        assert_eq!(event, NativeRsyncEvent::IoError { flags: 0xDEAD_BEEF });
+        assert_eq!(event, AerorsyncEvent::IoError { flags: 0xDEAD_BEEF });
     }
 
     #[test]
     fn classify_io_timeout_decodes_seconds() {
         let event = classify_oob_frame(MuxTag::IoTimeout, &[0x3C, 0x00, 0x00, 0x00]);
-        assert_eq!(event, NativeRsyncEvent::IoTimeout { seconds: 60 });
+        assert_eq!(event, AerorsyncEvent::IoTimeout { seconds: 60 });
     }
 
     #[test]
     fn classify_truncated_int_payload_yields_zero_no_panic() {
         let event = classify_oob_frame(MuxTag::Redo, &[0x01, 0x02]);
-        assert_eq!(event, NativeRsyncEvent::Redo { flist_index: 0 });
+        assert_eq!(event, AerorsyncEvent::Redo { flist_index: 0 });
     }
 
     #[test]
@@ -593,7 +593,7 @@ mod tests {
             MuxTag::Stats,
             &[0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
         );
-        assert_eq!(event, NativeRsyncEvent::Stats { total_read: 4096 });
+        assert_eq!(event, AerorsyncEvent::Stats { total_read: 4096 });
     }
 
     // -------------------------------------------------------------------------
@@ -604,14 +604,14 @@ mod tests {
     fn classify_error_exit_empty_payload_is_none_non_terminal() {
         // io.c:1668-1672: 0-byte payload -> exit code 0 (cleanup signal).
         let event = classify_oob_frame(MuxTag::ErrorExit, &[]);
-        assert_eq!(event, NativeRsyncEvent::ErrorExit { code: None });
+        assert_eq!(event, AerorsyncEvent::ErrorExit { code: None });
         assert!(!event.is_terminal());
     }
 
     #[test]
     fn classify_error_exit_zero_code_payload_is_some_zero_non_terminal() {
         let event = classify_oob_frame(MuxTag::ErrorExit, &[0x00, 0x00, 0x00, 0x00]);
-        assert_eq!(event, NativeRsyncEvent::ErrorExit { code: Some(0) });
+        assert_eq!(event, AerorsyncEvent::ErrorExit { code: Some(0) });
         assert!(!event.is_terminal());
     }
 
@@ -619,14 +619,14 @@ mod tests {
     fn classify_error_exit_nonzero_code_payload_is_terminal() {
         // RERR_FILEIO=11, see errcode.h:24-64.
         let event = classify_oob_frame(MuxTag::ErrorExit, &[0x0B, 0x00, 0x00, 0x00]);
-        assert_eq!(event, NativeRsyncEvent::ErrorExit { code: Some(11) });
+        assert_eq!(event, AerorsyncEvent::ErrorExit { code: Some(11) });
         assert!(event.is_terminal());
     }
 
     #[test]
     fn classify_error_exit_malformed_length_folds_to_none() {
         let event = classify_oob_frame(MuxTag::ErrorExit, &[0x01, 0x02, 0x03]);
-        assert_eq!(event, NativeRsyncEvent::ErrorExit { code: None });
+        assert_eq!(event, AerorsyncEvent::ErrorExit { code: None });
         assert!(!event.is_terminal());
     }
 
@@ -639,7 +639,7 @@ mod tests {
         let event = classify_oob_frame(MuxTag::Deleted, b"some/dir\0");
         assert_eq!(
             event,
-            NativeRsyncEvent::Deleted {
+            AerorsyncEvent::Deleted {
                 path: "some/dir".to_string()
             }
         );
@@ -650,7 +650,7 @@ mod tests {
         let event = classify_oob_frame(MuxTag::Deleted, b"some/file.txt");
         assert_eq!(
             event,
-            NativeRsyncEvent::Deleted {
+            AerorsyncEvent::Deleted {
                 path: "some/file.txt".to_string()
             }
         );
@@ -663,7 +663,7 @@ mod tests {
     #[test]
     fn classify_noop_ignores_payload_and_yields_unit_variant() {
         let event = classify_oob_frame(MuxTag::Noop, &[1, 2, 3]);
-        assert_eq!(event, NativeRsyncEvent::Noop);
+        assert_eq!(event, AerorsyncEvent::Noop);
     }
 
     #[test]
@@ -671,7 +671,7 @@ mod tests {
         let event = classify_oob_frame(MuxTag::Unknown(77), &[0xAA, 0xBB, 0xCC]);
         assert_eq!(
             event,
-            NativeRsyncEvent::Unknown {
+            AerorsyncEvent::Unknown {
                 tag: 77,
                 payload: vec![0xAA, 0xBB, 0xCC],
             }
@@ -687,7 +687,7 @@ mod tests {
         let event = classify_oob_frame(MuxTag::Data, &[0x42]);
         assert_eq!(
             event,
-            NativeRsyncEvent::Unknown {
+            AerorsyncEvent::Unknown {
                 tag: 0,
                 payload: vec![0x42],
             }
@@ -805,9 +805,9 @@ mod tests {
         sink.handle(classify_oob_frame(MuxTag::Warning, b"b"));
         sink.handle(classify_oob_frame(MuxTag::Error, b"c"));
         assert_eq!(sink.events.len(), 3);
-        assert!(matches!(&sink.events[0], NativeRsyncEvent::Info { .. }));
-        assert!(matches!(&sink.events[1], NativeRsyncEvent::Warning { .. }));
-        assert!(matches!(&sink.events[2], NativeRsyncEvent::Error { .. }));
+        assert!(matches!(&sink.events[0], AerorsyncEvent::Info { .. }));
+        assert!(matches!(&sink.events[1], AerorsyncEvent::Warning { .. }));
+        assert!(matches!(&sink.events[2], AerorsyncEvent::Error { .. }));
     }
 
     #[test]
@@ -824,7 +824,7 @@ mod tests {
         assert_eq!(sink.before_terminal.len(), 2);
         assert!(matches!(
             sink.first_terminal().unwrap(),
-            NativeRsyncEvent::Error { message } if message == "BOOM"
+            AerorsyncEvent::Error { message } if message == "BOOM"
         ));
         // HARDENING: trailing events are PRESERVED, not dropped.
         // A driver post-mortem may want to see what the remote sent
@@ -850,16 +850,16 @@ mod tests {
             seen: Vec<&'static str>,
         }
         impl EventSink for TaggingSink {
-            fn on_info(&mut self, _e: NativeRsyncEvent) {
+            fn on_info(&mut self, _e: AerorsyncEvent) {
                 self.seen.push("info");
             }
-            fn on_warning(&mut self, _e: NativeRsyncEvent) {
+            fn on_warning(&mut self, _e: AerorsyncEvent) {
                 self.seen.push("warning");
             }
-            fn on_error(&mut self, _e: NativeRsyncEvent) {
+            fn on_error(&mut self, _e: AerorsyncEvent) {
                 self.seen.push("error");
             }
-            fn on_terminal(&mut self, _e: NativeRsyncEvent) {
+            fn on_terminal(&mut self, _e: AerorsyncEvent) {
                 self.seen.push("terminal");
             }
         }

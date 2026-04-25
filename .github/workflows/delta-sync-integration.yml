@@ -229,9 +229,9 @@ jobs:
 
   windows-native:
     # PR-T11: validate the cross-OS surgical gate on Windows.
-    # Since v3.6.1 `proto_native_rsync` is in the default feature set,
+    # Since v3.6.1 `aerorsync` is in the default feature set,
     # so the "default features" matrix entry is the same as
-    # "--features proto_native_rsync". The two meaningful matrix entries
+    # "--features aerorsync". The two meaningful matrix entries
     # are now:
     #   - default (native prototype on) — the shipping configuration
     #   - `--no-default-features` — the classic-only fallback path; on
@@ -267,7 +267,7 @@ jobs:
           shared-key: delta-sync-windows
 
       # Compile-surface gate for the classic-only fallback path:
-      # `--no-default-features` turns `proto_native_rsync` off, and on
+      # `--no-default-features` turns `aerorsync` off, and on
       # Windows the binary-rsync transport is also gated out. The only
       # thing that should survive on this path is
       # `SftpProvider::delta_transport() -> None`, which the consumer
@@ -279,7 +279,7 @@ jobs:
         run: cargo check --locked --no-default-features
 
       # Compile-surface gate for the shipping configuration (default
-      # features, which include `proto_native_rsync`). This confirms
+      # features, which include `aerorsync`). This confirms
       # the native rsync driver, the type layer
       # (`RsyncCapability`/`RsyncConfig`/`RsyncError`/`RsyncStats`),
       # the cross-platform adapter, and `SftpProvider::delta_transport()`

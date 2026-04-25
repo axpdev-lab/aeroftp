@@ -829,3 +829,160 @@ mod mock_transport_coverage {
         );
     }
 }
+
+// ============================================================================
+// Blocco B.3 — Native rsync path against stock `rsync --server` Docker fixture.
+//
+// The existing `aeroftp-delta-sync-fixture` container ships Alpine
+// openssh-server + stock `rsync` (3.4.1, protocol 32 banner). After B.1 the
+// production dispatch invokes `rsync --server -logDtprze.iLsfxCIvu --stats
+// . /target` on the remote, so these tests drive the native wire-protocol
+// 31 client against a real rsync server. Failures surface wire divergences
+// (the scope of Blocco B.2).
+//
+// Tests are `#[ignore]` — run explicitly with:
+//   cargo test --test integration_delta_sync --features aerorsync \
+//     -- --ignored native_rsync_against_stock
+// ============================================================================
+
+#[cfg(feature = "aerorsync")]
+mod native_against_stock_rsync {
+    use super::*;
+    use ftp_client_gui_lib::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
+    use ftp_client_gui_lib::aerorsync::ssh_transport::{SshHostKeyPolicy, SshTransportConfig};
+    use ftp_client_gui_lib::delta_transport::DeltaTransport;
+
+    /// Build a native transport wired to the fixture container with
+    /// `AcceptAny` host-key policy (dev fixture only — production pins).
+    fn native_transport() -> AerorsyncDeltaTransport {
+        let config = SshTransportConfig {
+            host: "127.0.0.1".to_string(),
+            port: 2222,
+            username: "testuser".to_string(),
+            private_key_path: ssh_key_path(),
+            connect_timeout_ms: 5_000,
+            io_timeout_ms: 30_000,
+            worker_idle_poll_ms: 250,
+            max_frame_size: 1 << 20,
+            host_key_policy: SshHostKeyPolicy::AcceptAny,
+            // Default probe_request targets stock `rsync --version` after B.4,
+            // which is what we want here.
+            probe_request: ftp_client_gui_lib::aerorsync::transport::RemoteExecRequest {
+                program: "rsync".to_string(),
+                args: vec!["--version".to_string()],
+                environment: Vec::new(),
+            },
+        };
+        // 1 MiB min size so small test payloads still flow through.
+        AerorsyncDeltaTransport::new(config, 1024)
+    }
+
+    /// B.3 smoke test: the native probe talks to stock `rsync --version` and
+    /// pulls the protocol number out of the multi-line banner.
+    #[tokio::test]
+    #[ignore = "requires docker fixture"]
+    async fn native_rsync_probe_against_stock_rsync_reports_protocol() {
+        if !fixture_ready_or_skip("native_rsync_probe_against_stock_rsync_reports_protocol") {
+            return;
+        }
+
+        let transport = native_transport();
+        let capability = transport
+            .probe_remote()
+            .await
+            .expect("native probe against stock rsync must succeed");
+
+        // Alpine 3.19 ships rsync 3.4.1 / protocol 32. Older fixtures may
+        // ship 3.2.7 / protocol 31. Both are wire-compatible with our
+        // client (protocol 31 is the negotiation floor).
+        assert!(
+            (30..=32).contains(&capability.protocol),
+            "unexpected protocol version: {}",
+            capability.protocol
+        );
+        assert!(
+            capability.version.contains("rsync"),
+            "banner missing 'rsync' prefix: {}",
+            capability.version
+        );
+        assert!(
+            capability.version.contains("protocol version"),
+            "banner missing 'protocol version' marker: {}",
+            capability.version
+        );
+    }
+
+    /// B.3 full wire test: upload a fresh file through the native driver to
+    /// stock `rsync --server`, then compare sha256 of local vs remote via
+    /// system `ssh` exec. Any wire divergence shows up as either a driver
+    /// error (decoder fails on the server's protocol frames) or a byte-level
+    /// mismatch (opens the B.2 audit track).
+    #[tokio::test]
+    #[ignore = "requires docker fixture"]
+    async fn native_rsync_upload_against_stock_rsync_preserves_bytes() {
+        if !fixture_ready_or_skip("native_rsync_upload_against_stock_rsync_preserves_bytes") {
+            return;
+        }
+
+        // 1 MiB pseudo-random payload — crosses the 16 KiB
+        // `MAX_DELTA_LITERAL_LEN` threshold well enough to force the
+        // S8j multi-chunk DEFLATED_DATA path. Random bytes keep zstd
+        // from deduping against the whole-file scenario (empty baseline)
+        // and also keep the compressed stream large enough that the
+        // wire payload spans many DEFLATED_DATA tokens rather than
+        // accidentally fitting in one after compression. If this
+        // regressed to a single-token emission the test would stay
+        // green against a pre-S8j driver; keep it oversized on purpose.
+        let payload_dir = tempfile::tempdir().expect("tempdir");
+        let local = payload_dir.path().join("native-upload.bin");
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&local).unwrap();
+            let mut seed = 0x5A_5A_5A_5Au32;
+            let mut buf = vec![0u8; 1024 * 1024];
+            for chunk in buf.chunks_exact_mut(4) {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                chunk.copy_from_slice(&seed.to_le_bytes());
+            }
+            f.write_all(&buf).unwrap();
+        }
+
+        // `unique_remote_root` already returns "/workdir/<basename>";
+        // appending ".bin" suffix gives the final remote path.
+        let remote_path = format!("{}.bin", unique_remote_root("b3-native-upload"));
+
+        // Pre-clean any prior leftover (best-effort).
+        let _ = ssh_exec_shell(&format!("rm -f {}", remote_path));
+
+        let transport = native_transport();
+        let stats = transport
+            .upload(&local, &remote_path)
+            .await
+            .expect("native upload against stock rsync must succeed");
+
+        eprintln!(
+            "native upload ok: sent={}B, received={}B, speedup={:.2}x, duration={}ms",
+            stats.bytes_sent, stats.bytes_received, stats.speedup, stats.duration_ms
+        );
+
+        // sha256 compare: remote via ssh exec, local via filesystem.
+        let remote_hash = ssh_exec_shell(&format!("sha256sum {}", remote_path))
+            .expect("remote sha256sum must succeed")
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let local_bytes = std::fs::read(&local).unwrap();
+        let local_hash = {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(&local_bytes))
+        };
+        assert_eq!(
+            remote_hash, local_hash,
+            "wire-level byte mismatch between native client and stock rsync server"
+        );
+
+        // Cleanup.
+        let _ = ssh_exec_shell(&format!("rm -f {}", remote_path));
+    }
+}

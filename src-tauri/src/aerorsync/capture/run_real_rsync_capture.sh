@@ -209,8 +209,8 @@ export RSNP_TEST_REAL_HOST_FINGERPRINT="$HOST_FINGERPRINT"
 export RSNP_TEST_REAL_REMOTE_UPLOAD_TARGET="/workspace/real/upload/target.bin"
 
 pushd "$SRC_TAURI_DIR" >/dev/null
-cargo test --features proto_native_rsync \
-  rsync_native_proto::live_tests::live_real_rsync_lane_emits_protocol_31_greeting \
+cargo test --features aerorsync \
+  aerorsync::live_tests::live_real_rsync_lane_emits_protocol_31_greeting \
   -- --ignored --nocapture
 popd >/dev/null
 

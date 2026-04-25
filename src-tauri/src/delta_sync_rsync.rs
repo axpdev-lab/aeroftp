@@ -15,7 +15,7 @@
 //! # Cross-OS status (PR-T11)
 //! The adapter itself is cross-platform. The only Unix-only reachability
 //! condition is the provider returning `None` from `delta_transport()` on
-//! Windows when the `proto_native_rsync` feature is disabled — in that
+//! Windows when the `aerorsync` feature is disabled — in that
 //! case `try_delta_transfer` short-circuits to `None` silently and the
 //! caller proceeds with classic SFTP, identical to the behavior on Unix
 //! for non-SFTP providers.

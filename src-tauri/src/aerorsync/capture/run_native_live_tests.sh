@@ -12,11 +12,11 @@ mkdir -p "$WORKSPACE_DIR/upload" "$WORKSPACE_DIR/download" "$WORKSPACE_DIR/local
 rm -f "$WORKSPACE_DIR"/upload/target.bin "$WORKSPACE_DIR"/download/target.bin "$WORKSPACE_DIR"/local/upload.bin "$WORKSPACE_DIR"/local/download.bin "$WORKSPACE_DIR"/local/expected-upload.bin "$WORKSPACE_DIR"/local/expected-download.bin
 
 pushd "$SRC_TAURI_DIR" >/dev/null
-cargo build --features proto_native_rsync --bin rsync_proto_serve
+cargo build --features aerorsync --bin aerorsync_serve
 popd >/dev/null
 
-cp "$SRC_TAURI_DIR/target/debug/rsync_proto_serve" "$BIN_DIR/rsync_proto_serve"
-chmod +x "$BIN_DIR/rsync_proto_serve"
+cp "$SRC_TAURI_DIR/target/debug/aerorsync_serve" "$BIN_DIR/aerorsync_serve"
+chmod +x "$BIN_DIR/aerorsync_serve"
 
 python3 - <<'PY' "$WORKSPACE_DIR"
 from pathlib import Path
@@ -97,5 +97,5 @@ export RSNP_TEST_EXPECT_UPLOAD_FILE="$WORKSPACE_DIR/upload/target.bin"
 export RSNP_TEST_EXPECT_DOWNLOAD_FILE="$WORKSPACE_DIR/local/expected-download.bin"
 
 pushd "$SRC_TAURI_DIR" >/dev/null
-cargo test --features proto_native_rsync live_tests -- --ignored --nocapture
+cargo test --features aerorsync live_tests -- --ignored --nocapture
 popd >/dev/null

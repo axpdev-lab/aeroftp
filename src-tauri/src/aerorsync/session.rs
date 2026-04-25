@@ -4,10 +4,10 @@
 //! `protocol.rs`; transport I/O lives in `transport.rs`; decisions on
 //! skip/full/delta live in `planner.rs`.
 
-use crate::rsync_native_proto::protocol::HelloMessage;
-use crate::rsync_native_proto::transport::RemoteShellTransport;
-use crate::rsync_native_proto::types::{
-    FeatureFlag, NativeRsyncConfig, NativeRsyncError, ProtocolVersion, SessionRole, SessionStats,
+use crate::aerorsync::protocol::HelloMessage;
+use crate::aerorsync::transport::RemoteShellTransport;
+use crate::aerorsync::types::{
+    AerorsyncConfig, AerorsyncError, FeatureFlag, ProtocolVersion, SessionRole, SessionStats,
 };
 
 /// Explicit phase enum for the native session state machine.
@@ -60,16 +60,16 @@ pub struct NegotiatedSession {
     pub remote_banner: String,
 }
 
-pub struct NativeRsyncSession<T: RemoteShellTransport> {
+pub struct AerorsyncSession<T: RemoteShellTransport> {
     pub transport: T,
-    pub config: NativeRsyncConfig,
+    pub config: AerorsyncConfig,
     pub state: SessionState,
     pub negotiated: Option<NegotiatedSession>,
     pub stats: SessionStats,
 }
 
-impl<T: RemoteShellTransport> NativeRsyncSession<T> {
-    pub fn new(transport: T, config: NativeRsyncConfig) -> Self {
+impl<T: RemoteShellTransport> AerorsyncSession<T> {
+    pub fn new(transport: T, config: AerorsyncConfig) -> Self {
         Self {
             transport,
             config,
@@ -82,15 +82,15 @@ impl<T: RemoteShellTransport> NativeRsyncSession<T> {
     /// Validated forward transition. Returns `IllegalStateTransition` for any
     /// move that is not in `legal_next`. Terminal transitions (cancel / fail)
     /// are handled by `cancel` and `fail` instead.
-    pub fn transition_to(&mut self, next: SessionState) -> Result<(), NativeRsyncError> {
+    pub fn transition_to(&mut self, next: SessionState) -> Result<(), AerorsyncError> {
         if self.state.is_terminal() {
-            return Err(NativeRsyncError::illegal_transition(format!(
+            return Err(AerorsyncError::illegal_transition(format!(
                 "{:?} is terminal; cannot move to {:?}",
                 self.state, next
             )));
         }
         if !self.state.legal_next().contains(&next) {
-            return Err(NativeRsyncError::illegal_transition(format!(
+            return Err(AerorsyncError::illegal_transition(format!(
                 "{:?} → {:?} is not a legal forward transition",
                 self.state, next
             )));
@@ -103,9 +103,9 @@ impl<T: RemoteShellTransport> NativeRsyncSession<T> {
         &mut self,
         hello: &HelloMessage,
         remote_banner: String,
-    ) -> Result<(), NativeRsyncError> {
+    ) -> Result<(), AerorsyncError> {
         if !hello.protocol.is_supported() {
-            return Err(NativeRsyncError::unsupported_version(format!(
+            return Err(AerorsyncError::unsupported_version(format!(
                 "remote reported {} (supported: {}..={})",
                 hello.protocol,
                 ProtocolVersion::MIN_SUPPORTED.as_u32(),
@@ -151,7 +151,7 @@ impl<T: RemoteShellTransport> NativeRsyncSession<T> {
         }
     }
 
-    pub fn finalize(&mut self) -> Result<(), NativeRsyncError> {
+    pub fn finalize(&mut self) -> Result<(), AerorsyncError> {
         self.transition_to(SessionState::Finalized)
     }
 }

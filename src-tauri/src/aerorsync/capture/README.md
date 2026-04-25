@@ -5,7 +5,7 @@ the Strada C prototype is developed against. Three independent "lanes"
 exist, each with its own port, image, and purpose.
 
 Everything here is prototype-only and already covered by the repository
-`.gitignore` for `src-tauri/src/rsync_native_proto/`.
+`.gitignore` for `src-tauri/src/aerorsync/`.
 
 ## Lane matrix
 
@@ -32,7 +32,7 @@ Captures stdout/stderr, `execve` chains, and SSH debug lines into
 
 ## Lane 2 — native RSNP live tests
 
-Our dev-only `rsync_proto_serve` binary is cross-compiled from the host
+Our dev-only `aerorsync_serve` binary is cross-compiled from the host
 and mounted into a debian:trixie-slim container. The Rust test process
 (via `ssh2`) drives real SSH exec sessions against it and runs the five
 live tests in `live_tests.rs` (probe / upload / download / host-key

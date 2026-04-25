@@ -70,7 +70,7 @@ pub enum FeatureFlag {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NativeRsyncConfig {
+pub struct AerorsyncConfig {
     pub protocol: ProtocolVersion,
     pub min_delta_file_size: u64,
     pub max_frame_size: usize,
@@ -79,7 +79,7 @@ pub struct NativeRsyncConfig {
     pub allow_preserve_times: bool,
 }
 
-impl Default for NativeRsyncConfig {
+impl Default for AerorsyncConfig {
     fn default() -> Self {
         Self {
             protocol: ProtocolVersion::CURRENT,
@@ -114,7 +114,7 @@ pub struct SessionStats {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum NativeRsyncErrorKind {
+pub enum AerorsyncErrorKind {
     UnsupportedVersion,
     InvalidFrame,
     TransportFailure,
@@ -135,13 +135,13 @@ pub enum NativeRsyncErrorKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NativeRsyncError {
-    pub kind: NativeRsyncErrorKind,
+pub struct AerorsyncError {
+    pub kind: AerorsyncErrorKind,
     pub detail: String,
 }
 
-impl NativeRsyncError {
-    pub fn new(kind: NativeRsyncErrorKind, detail: impl Into<String>) -> Self {
+impl AerorsyncError {
+    pub fn new(kind: AerorsyncErrorKind, detail: impl Into<String>) -> Self {
         Self {
             kind,
             detail: detail.into(),
@@ -149,41 +149,41 @@ impl NativeRsyncError {
     }
 
     pub fn invalid_frame(detail: impl Into<String>) -> Self {
-        Self::new(NativeRsyncErrorKind::InvalidFrame, detail)
+        Self::new(AerorsyncErrorKind::InvalidFrame, detail)
     }
 
     pub fn unsupported_version(detail: impl Into<String>) -> Self {
-        Self::new(NativeRsyncErrorKind::UnsupportedVersion, detail)
+        Self::new(AerorsyncErrorKind::UnsupportedVersion, detail)
     }
 
     pub fn illegal_transition(detail: impl Into<String>) -> Self {
-        Self::new(NativeRsyncErrorKind::IllegalStateTransition, detail)
+        Self::new(AerorsyncErrorKind::IllegalStateTransition, detail)
     }
 
     pub fn transport(detail: impl Into<String>) -> Self {
-        Self::new(NativeRsyncErrorKind::TransportFailure, detail)
+        Self::new(AerorsyncErrorKind::TransportFailure, detail)
     }
 
     pub fn remote(code: u16, message: impl Into<String>) -> Self {
         Self::new(
-            NativeRsyncErrorKind::RemoteError,
+            AerorsyncErrorKind::RemoteError,
             format!("remote error {}: {}", code, message.into()),
         )
     }
 
     pub fn unexpected_message(detail: impl Into<String>) -> Self {
-        Self::new(NativeRsyncErrorKind::UnexpectedMessage, detail)
+        Self::new(AerorsyncErrorKind::UnexpectedMessage, detail)
     }
 
     pub fn cancelled(detail: impl Into<String>) -> Self {
-        Self::new(NativeRsyncErrorKind::Cancelled, detail)
+        Self::new(AerorsyncErrorKind::Cancelled, detail)
     }
 
     pub fn host_key_rejected(detail: impl Into<String>) -> Self {
-        Self::new(NativeRsyncErrorKind::HostKeyRejected, detail)
+        Self::new(AerorsyncErrorKind::HostKeyRejected, detail)
     }
 
-    /// Translate a terminal out-of-band `NativeRsyncEvent` into the
+    /// Translate a terminal out-of-band `AerorsyncEvent` into the
     /// matching typed error.
     ///
     /// Intended call site: the S8i real-wire driver, when its `EventSink`
@@ -203,28 +203,28 @@ impl NativeRsyncError {
     ///   exit code rendered into the detail string; code 0 and empty
     ///   payload are non-terminal by policy and land in the `Internal`
     ///   fallback branch.
-    pub fn from_oob_event(event: &crate::rsync_native_proto::events::NativeRsyncEvent) -> Self {
-        use crate::rsync_native_proto::events::NativeRsyncEvent;
+    pub fn from_oob_event(event: &crate::aerorsync::events::AerorsyncEvent) -> Self {
+        use crate::aerorsync::events::AerorsyncEvent;
         match event {
-            NativeRsyncEvent::Error { message } => Self::new(
-                NativeRsyncErrorKind::RemoteError,
+            AerorsyncEvent::Error { message } => Self::new(
+                AerorsyncErrorKind::RemoteError,
                 format!("remote error: {message}"),
             ),
-            NativeRsyncEvent::ErrorXfer { message } => Self::new(
-                NativeRsyncErrorKind::RemoteError,
+            AerorsyncEvent::ErrorXfer { message } => Self::new(
+                AerorsyncErrorKind::RemoteError,
                 format!("remote xfer error: {message}"),
             ),
-            NativeRsyncEvent::ErrorSocket { message } => Self::new(
-                NativeRsyncErrorKind::TransportFailure,
+            AerorsyncEvent::ErrorSocket { message } => Self::new(
+                AerorsyncErrorKind::TransportFailure,
                 format!("remote socket error: {message}"),
             ),
-            NativeRsyncEvent::ErrorExit { code } => match code {
+            AerorsyncEvent::ErrorExit { code } => match code {
                 Some(c) if *c != 0 => Self::new(
-                    NativeRsyncErrorKind::RemoteError,
+                    AerorsyncErrorKind::RemoteError,
                     format!("remote rsync exited with code {c}"),
                 ),
                 _ => Self::new(
-                    NativeRsyncErrorKind::Internal,
+                    AerorsyncErrorKind::Internal,
                     format!(
                         "from_oob_event called on non-terminal ErrorExit({code:?}) \
                          — caller should have filtered this via is_terminal()"
@@ -232,7 +232,7 @@ impl NativeRsyncError {
                 ),
             },
             other => Self::new(
-                NativeRsyncErrorKind::Internal,
+                AerorsyncErrorKind::Internal,
                 format!(
                     "from_oob_event called on non-terminal event {other:?} \
                      — caller should have filtered this via is_terminal()"
@@ -242,36 +242,36 @@ impl NativeRsyncError {
     }
 }
 
-impl fmt::Display for NativeRsyncError {
+impl fmt::Display for AerorsyncError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}: {}", self.kind, self.detail)
     }
 }
 
-impl std::error::Error for NativeRsyncError {}
+impl std::error::Error for AerorsyncError {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rsync_native_proto::events::NativeRsyncEvent;
+    use crate::aerorsync::events::AerorsyncEvent;
 
     #[test]
     fn from_oob_event_error_maps_to_remote_error_with_message() {
-        let ev = NativeRsyncEvent::Error {
+        let ev = AerorsyncEvent::Error {
             message: "boom".to_string(),
         };
-        let err = NativeRsyncError::from_oob_event(&ev);
-        assert_eq!(err.kind, NativeRsyncErrorKind::RemoteError);
+        let err = AerorsyncError::from_oob_event(&ev);
+        assert_eq!(err.kind, AerorsyncErrorKind::RemoteError);
         assert!(err.detail.contains("boom"));
     }
 
     #[test]
     fn from_oob_event_error_xfer_maps_to_remote_error() {
-        let ev = NativeRsyncEvent::ErrorXfer {
+        let ev = AerorsyncEvent::ErrorXfer {
             message: "xfer".into(),
         };
-        let err = NativeRsyncError::from_oob_event(&ev);
-        assert_eq!(err.kind, NativeRsyncErrorKind::RemoteError);
+        let err = AerorsyncError::from_oob_event(&ev);
+        assert_eq!(err.kind, AerorsyncErrorKind::RemoteError);
         assert!(err.detail.contains("xfer"));
     }
 
@@ -279,48 +279,48 @@ mod tests {
     fn from_oob_event_error_socket_maps_to_transport_failure() {
         // Socket-level failures are transport failures, not semantic
         // remote errors — the remote rsync never got to say anything.
-        let ev = NativeRsyncEvent::ErrorSocket {
+        let ev = AerorsyncEvent::ErrorSocket {
             message: "conn reset".into(),
         };
-        let err = NativeRsyncError::from_oob_event(&ev);
-        assert_eq!(err.kind, NativeRsyncErrorKind::TransportFailure);
+        let err = AerorsyncError::from_oob_event(&ev);
+        assert_eq!(err.kind, AerorsyncErrorKind::TransportFailure);
         assert!(err.detail.contains("conn reset"));
     }
 
     #[test]
     fn from_oob_event_error_exit_nonzero_carries_code() {
-        let ev = NativeRsyncEvent::ErrorExit { code: Some(23) };
-        let err = NativeRsyncError::from_oob_event(&ev);
-        assert_eq!(err.kind, NativeRsyncErrorKind::RemoteError);
+        let ev = AerorsyncEvent::ErrorExit { code: Some(23) };
+        let err = AerorsyncError::from_oob_event(&ev);
+        assert_eq!(err.kind, AerorsyncErrorKind::RemoteError);
         assert!(err.detail.contains("23"), "missing code: {}", err.detail);
     }
 
     #[test]
     fn from_oob_event_error_exit_zero_is_caller_bug_falls_to_internal() {
-        let ev = NativeRsyncEvent::ErrorExit { code: Some(0) };
-        let err = NativeRsyncError::from_oob_event(&ev);
-        assert_eq!(err.kind, NativeRsyncErrorKind::Internal);
+        let ev = AerorsyncEvent::ErrorExit { code: Some(0) };
+        let err = AerorsyncError::from_oob_event(&ev);
+        assert_eq!(err.kind, AerorsyncErrorKind::Internal);
         assert!(err.detail.contains("non-terminal"));
     }
 
     #[test]
     fn from_oob_event_non_terminal_warning_is_caller_bug_falls_to_internal() {
-        let ev = NativeRsyncEvent::Warning {
+        let ev = AerorsyncEvent::Warning {
             message: "w".into(),
         };
-        let err = NativeRsyncError::from_oob_event(&ev);
-        assert_eq!(err.kind, NativeRsyncErrorKind::Internal);
+        let err = AerorsyncError::from_oob_event(&ev);
+        assert_eq!(err.kind, AerorsyncErrorKind::Internal);
     }
 
     #[test]
     fn from_oob_event_unknown_is_caller_bug_falls_to_internal() {
         // A future opcode we do not recognise is NOT terminal per events.rs
         // policy — calling from_oob_event on it is a bug. Pin the fallback.
-        let ev = NativeRsyncEvent::Unknown {
+        let ev = AerorsyncEvent::Unknown {
             tag: 77,
             payload: vec![1, 2, 3],
         };
-        let err = NativeRsyncError::from_oob_event(&ev);
-        assert_eq!(err.kind, NativeRsyncErrorKind::Internal);
+        let err = AerorsyncError::from_oob_event(&ev);
+        assert_eq!(err.kind, AerorsyncErrorKind::Internal);
     }
 }

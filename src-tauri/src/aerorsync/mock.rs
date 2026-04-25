@@ -16,11 +16,11 @@ use async_trait::async_trait;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::rsync_native_proto::transport::{
+use crate::aerorsync::transport::{
     BidirectionalByteStream, RawByteStream, RawRemoteShellTransport, RemoteCommandOutput,
     RemoteExecRequest, RemoteShellTransport, TransportProbe,
 };
-use crate::rsync_native_proto::types::{NativeRsyncError, ProtocolVersion};
+use crate::aerorsync::types::{AerorsyncError, ProtocolVersion};
 
 /// Shared outbound frame buffer captured by a `MockStream`.
 pub type OutboundBuffer = Arc<Mutex<Vec<Vec<u8>>>>;
@@ -53,7 +53,7 @@ pub struct MockTransportConfig {
     pub stream_behavior: OpenStreamBehavior,
     pub read_exhausted: ReadExhaustedBehavior,
     /// A2.1 — optional raw-stream behaviour. `None` means `open_raw_stream`
-    /// returns `NativeRsyncError::transport("raw stream not configured")`.
+    /// returns `AerorsyncError::transport("raw stream not configured")`.
     pub raw_stream_behavior: Option<OpenRawStreamBehavior>,
 }
 
@@ -132,32 +132,32 @@ impl MockStream {
 
 #[async_trait]
 impl BidirectionalByteStream for MockStream {
-    async fn write_frame(&mut self, frame: &[u8]) -> Result<(), NativeRsyncError> {
+    async fn write_frame(&mut self, frame: &[u8]) -> Result<(), AerorsyncError> {
         let mut guard = self
             .outbound
             .lock()
-            .map_err(|_| NativeRsyncError::transport("mock outbound mutex poisoned"))?;
+            .map_err(|_| AerorsyncError::transport("mock outbound mutex poisoned"))?;
         guard.push(frame.to_vec());
         Ok(())
     }
 
-    async fn read_frame(&mut self) -> Result<Vec<u8>, NativeRsyncError> {
+    async fn read_frame(&mut self) -> Result<Vec<u8>, AerorsyncError> {
         if let Some(frame) = self.inbound.pop_front() {
             return Ok(frame);
         }
         match self.read_exhausted {
-            ReadExhaustedBehavior::Error => Err(NativeRsyncError::transport(
+            ReadExhaustedBehavior::Error => Err(AerorsyncError::transport(
                 "mock inbound exhausted: simulated remote close",
             )),
             ReadExhaustedBehavior::EmptyFrame => Ok(Vec::new()),
         }
     }
 
-    async fn shutdown(&mut self) -> Result<(), NativeRsyncError> {
+    async fn shutdown(&mut self) -> Result<(), AerorsyncError> {
         let mut guard = self
             .shutdown_called
             .lock()
-            .map_err(|_| NativeRsyncError::transport("mock shutdown mutex poisoned"))?;
+            .map_err(|_| AerorsyncError::transport("mock shutdown mutex poisoned"))?;
         *guard = true;
         Ok(())
     }
@@ -217,14 +217,14 @@ impl MockRemoteShellTransport {
 impl RemoteShellTransport for MockRemoteShellTransport {
     type Stream = MockStream;
 
-    async fn probe(&self) -> Result<TransportProbe, NativeRsyncError> {
+    async fn probe(&self) -> Result<TransportProbe, AerorsyncError> {
         Ok(self.config.probe.clone())
     }
 
     async fn exec(
         &self,
         request: RemoteExecRequest,
-    ) -> Result<RemoteCommandOutput, NativeRsyncError> {
+    ) -> Result<RemoteCommandOutput, AerorsyncError> {
         let mut guard = self.last_exec.lock().unwrap();
         *guard = Some(request);
         Ok(self.config.exec_output.clone())
@@ -233,7 +233,7 @@ impl RemoteShellTransport for MockRemoteShellTransport {
     async fn open_stream(
         &self,
         request: RemoteExecRequest,
-    ) -> Result<Self::Stream, NativeRsyncError> {
+    ) -> Result<Self::Stream, AerorsyncError> {
         let mut exec_guard = self.last_exec.lock().unwrap();
         *exec_guard = Some(request);
         drop(exec_guard);
@@ -246,11 +246,11 @@ impl RemoteShellTransport for MockRemoteShellTransport {
                 *self.last_shutdown.lock().unwrap() = Some(shutdown);
                 Ok(stream)
             }
-            OpenStreamBehavior::Fail(reason) => Err(NativeRsyncError::transport(reason.clone())),
+            OpenStreamBehavior::Fail(reason) => Err(AerorsyncError::transport(reason.clone())),
         }
     }
 
-    async fn cancel(&self) -> Result<(), NativeRsyncError> {
+    async fn cancel(&self) -> Result<(), AerorsyncError> {
         *self.cancel_called.lock().unwrap() = true;
         Ok(())
     }
@@ -263,7 +263,7 @@ impl RemoteShellTransport for MockRemoteShellTransport {
 // flat `Vec<u8>` inbound buffer with a cursor and a shared outbound
 // `Vec<u8>` capture. `read_bytes(max)` returns up to `max` bytes,
 // honouring SSH's "short-read is valid" semantics. An optional cancel
-// flag is observed on each read and reported as `NativeRsyncError::
+// flag is observed on each read and reported as `AerorsyncError::
 // Cancelled` so driver-level cancel tests can pin the typed error.
 // =============================================================================
 
@@ -276,7 +276,7 @@ pub struct MockRawStream {
     outbound: RawOutboundBuffer,
     shutdown_called: ShutdownFlag,
     /// Optional flag consulted on each read/write. When it flips to
-    /// `true` the operation returns `NativeRsyncError::Cancelled`.
+    /// `true` the operation returns `AerorsyncError::Cancelled`.
     cancel_flag: Option<Arc<AtomicBool>>,
 }
 
@@ -301,10 +301,10 @@ impl MockRawStream {
         self.cancel_flag = Some(flag);
     }
 
-    fn check_cancel(&self, op: &'static str) -> Result<(), NativeRsyncError> {
+    fn check_cancel(&self, op: &'static str) -> Result<(), AerorsyncError> {
         if let Some(flag) = &self.cancel_flag {
             if flag.load(Ordering::SeqCst) {
-                return Err(NativeRsyncError::cancelled(format!(
+                return Err(AerorsyncError::cancelled(format!(
                     "mock raw stream cancelled before {op}"
                 )));
             }
@@ -315,10 +315,10 @@ impl MockRawStream {
 
 #[async_trait]
 impl RawByteStream for MockRawStream {
-    async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, NativeRsyncError> {
+    async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, AerorsyncError> {
         self.check_cancel("read_bytes")?;
         if self.inbound_cursor >= self.inbound.len() {
-            return Err(NativeRsyncError::transport(
+            return Err(AerorsyncError::transport(
                 "mock raw inbound exhausted: simulated remote close",
             ));
         }
@@ -329,21 +329,21 @@ impl RawByteStream for MockRawStream {
         Ok(slice)
     }
 
-    async fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), NativeRsyncError> {
+    async fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), AerorsyncError> {
         self.check_cancel("write_bytes")?;
         let mut guard = self
             .outbound
             .lock()
-            .map_err(|_| NativeRsyncError::transport("mock raw outbound mutex poisoned"))?;
+            .map_err(|_| AerorsyncError::transport("mock raw outbound mutex poisoned"))?;
         guard.extend_from_slice(bytes);
         Ok(())
     }
 
-    async fn shutdown(&mut self) -> Result<(), NativeRsyncError> {
+    async fn shutdown(&mut self) -> Result<(), AerorsyncError> {
         let mut guard = self
             .shutdown_called
             .lock()
-            .map_err(|_| NativeRsyncError::transport("mock raw shutdown mutex poisoned"))?;
+            .map_err(|_| AerorsyncError::transport("mock raw shutdown mutex poisoned"))?;
         *guard = true;
         Ok(())
     }
@@ -369,7 +369,7 @@ impl RawRemoteShellTransport for MockRemoteShellTransport {
     async fn open_raw_stream(
         &self,
         request: RemoteExecRequest,
-    ) -> Result<Self::RawStream, NativeRsyncError> {
+    ) -> Result<Self::RawStream, AerorsyncError> {
         {
             let mut exec_guard = self.last_exec.lock().unwrap();
             *exec_guard = Some(request);
@@ -382,9 +382,9 @@ impl RawRemoteShellTransport for MockRemoteShellTransport {
                 Ok(stream)
             }
             Some(OpenRawStreamBehavior::Fail(reason)) => {
-                Err(NativeRsyncError::transport(reason.clone()))
+                Err(AerorsyncError::transport(reason.clone()))
             }
-            None => Err(NativeRsyncError::transport(
+            None => Err(AerorsyncError::transport(
                 "raw stream not configured on MockTransportConfig",
             )),
         }

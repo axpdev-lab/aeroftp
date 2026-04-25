@@ -1,9 +1,7 @@
 //! Planning logic for deciding whether a file should be skipped, copied fully,
 //! or transferred as delta in the Strada C prototype.
 
-use crate::rsync_native_proto::types::{
-    FileEntry, NativeRsyncConfig, SessionRole, TransferStrategy,
-};
+use crate::aerorsync::types::{AerorsyncConfig, FileEntry, SessionRole, TransferStrategy};
 
 #[derive(Debug, Clone)]
 pub struct TransferCandidate {
@@ -22,11 +20,11 @@ pub struct PlannerDecision {
 
 #[derive(Debug, Clone)]
 pub struct TransferPlanner {
-    pub config: NativeRsyncConfig,
+    pub config: AerorsyncConfig,
 }
 
 impl TransferPlanner {
-    pub fn new(config: NativeRsyncConfig) -> Self {
+    pub fn new(config: AerorsyncConfig) -> Self {
         Self { config }
     }
 

@@ -29,14 +29,12 @@ use tokio::sync::oneshot;
 
 use std::io::Write;
 
-use crate::rsync_native_proto::frame_io::{
-    read_length_prefixed_frame, write_length_prefixed_frame,
-};
-use crate::rsync_native_proto::transport::{
+use crate::aerorsync::frame_io::{read_length_prefixed_frame, write_length_prefixed_frame};
+use crate::aerorsync::transport::{
     BidirectionalByteStream, CancelHandle, RawByteStream, RawRemoteShellTransport,
     RemoteCommandOutput, RemoteExecRequest, RemoteShellTransport, TransportProbe,
 };
-use crate::rsync_native_proto::types::{NativeRsyncError, NativeRsyncErrorKind, ProtocolVersion};
+use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, ProtocolVersion};
 
 /// SSH host key verification policy.
 ///
@@ -92,9 +90,12 @@ impl SshTransportConfig {
             worker_idle_poll_ms: 250,
             max_frame_size,
             host_key_policy: SshHostKeyPolicy::AcceptAny,
+            // B.1/B.4: default probe points at stock `rsync --version`;
+            // tests that rely on the dev helper (`live_tests.rs`) override
+            // `probe_request` explicitly.
             probe_request: RemoteExecRequest {
-                program: "/opt/rsnp/bin/rsync_proto_serve".to_string(),
-                args: vec!["--probe".to_string()],
+                program: "rsync".to_string(),
+                args: vec!["--version".to_string()],
                 environment: Vec::new(),
             },
         }
@@ -151,9 +152,9 @@ pub struct SshProtoStream {
 }
 
 impl SshProtoStream {
-    fn check_cancel(&self, op: &'static str) -> Result<(), NativeRsyncError> {
+    fn check_cancel(&self, op: &'static str) -> Result<(), AerorsyncError> {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            Err(NativeRsyncError::cancelled(format!(
+            Err(AerorsyncError::cancelled(format!(
                 "ssh stream cancelled before {op}"
             )))
         } else {
@@ -161,11 +162,11 @@ impl SshProtoStream {
         }
     }
 
-    fn map_worker_error(&self, err: String) -> NativeRsyncError {
+    fn map_worker_error(&self, err: String) -> AerorsyncError {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            NativeRsyncError::cancelled(err)
+            AerorsyncError::cancelled(err)
         } else {
-            NativeRsyncError::transport(err)
+            AerorsyncError::transport(err)
         }
     }
 }
@@ -179,38 +180,38 @@ enum WorkerCommand {
 
 #[async_trait]
 impl BidirectionalByteStream for SshProtoStream {
-    async fn write_frame(&mut self, frame: &[u8]) -> Result<(), NativeRsyncError> {
+    async fn write_frame(&mut self, frame: &[u8]) -> Result<(), AerorsyncError> {
         self.check_cancel("write_frame")?;
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(WorkerCommand::Write(frame.to_vec(), tx))
-            .map_err(|_| NativeRsyncError::transport("ssh worker channel closed before write"))?;
+            .map_err(|_| AerorsyncError::transport("ssh worker channel closed before write"))?;
         let outcome = rx
             .await
-            .map_err(|_| NativeRsyncError::transport("ssh worker dropped write reply"))?;
+            .map_err(|_| AerorsyncError::transport("ssh worker dropped write reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 
-    async fn read_frame(&mut self) -> Result<Vec<u8>, NativeRsyncError> {
+    async fn read_frame(&mut self) -> Result<Vec<u8>, AerorsyncError> {
         self.check_cancel("read_frame")?;
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(WorkerCommand::Read(tx))
-            .map_err(|_| NativeRsyncError::transport("ssh worker channel closed before read"))?;
+            .map_err(|_| AerorsyncError::transport("ssh worker channel closed before read"))?;
         let outcome = rx
             .await
-            .map_err(|_| NativeRsyncError::transport("ssh worker dropped read reply"))?;
+            .map_err(|_| AerorsyncError::transport("ssh worker dropped read reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 
-    async fn shutdown(&mut self) -> Result<(), NativeRsyncError> {
+    async fn shutdown(&mut self) -> Result<(), AerorsyncError> {
         let (tx, rx) = oneshot::channel();
-        self.sender.send(WorkerCommand::Shutdown(tx)).map_err(|_| {
-            NativeRsyncError::transport("ssh worker channel closed before shutdown")
-        })?;
+        self.sender
+            .send(WorkerCommand::Shutdown(tx))
+            .map_err(|_| AerorsyncError::transport("ssh worker channel closed before shutdown"))?;
         let outcome = rx
             .await
-            .map_err(|_| NativeRsyncError::transport("ssh worker dropped shutdown reply"))?;
+            .map_err(|_| AerorsyncError::transport("ssh worker dropped shutdown reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 }
@@ -219,10 +220,10 @@ impl BidirectionalByteStream for SshProtoStream {
 impl RemoteShellTransport for SshRemoteShellTransport {
     type Stream = SshProtoStream;
 
-    async fn probe(&self) -> Result<TransportProbe, NativeRsyncError> {
+    async fn probe(&self) -> Result<TransportProbe, AerorsyncError> {
         let output = self.exec(self.config.probe_request.clone()).await?;
         if output.exit_code != 0 {
-            return Err(NativeRsyncError::transport(format!(
+            return Err(AerorsyncError::transport(format!(
                 "probe exited with code {}: {}",
                 output.exit_code,
                 String::from_utf8_lossy(&output.stderr)
@@ -240,20 +241,20 @@ impl RemoteShellTransport for SshRemoteShellTransport {
     async fn exec(
         &self,
         request: RemoteExecRequest,
-    ) -> Result<RemoteCommandOutput, NativeRsyncError> {
+    ) -> Result<RemoteCommandOutput, AerorsyncError> {
         let config = self.config.clone();
         tokio::task::spawn_blocking(move || exec_once(&config, request))
             .await
-            .map_err(|e| NativeRsyncError::transport(format!("spawn_blocking join: {e}")))?
+            .map_err(|e| AerorsyncError::transport(format!("spawn_blocking join: {e}")))?
     }
 
     async fn open_stream(
         &self,
         request: RemoteExecRequest,
-    ) -> Result<Self::Stream, NativeRsyncError> {
+    ) -> Result<Self::Stream, AerorsyncError> {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            return Err(NativeRsyncError::new(
-                NativeRsyncErrorKind::Cancelled,
+            return Err(AerorsyncError::new(
+                AerorsyncErrorKind::Cancelled,
                 "ssh transport was cancelled before open_stream",
             ));
         }
@@ -266,7 +267,7 @@ impl RemoteShellTransport for SshRemoteShellTransport {
             spawn_worker(config, request, receiver, cancel_flag)
         })
         .await
-        .map_err(|e| NativeRsyncError::transport(format!("spawn worker join: {e}")))??;
+        .map_err(|e| AerorsyncError::transport(format!("spawn worker join: {e}")))??;
 
         {
             let mut guard = self.active.lock().unwrap();
@@ -279,7 +280,7 @@ impl RemoteShellTransport for SshRemoteShellTransport {
         })
     }
 
-    async fn cancel(&self) -> Result<(), NativeRsyncError> {
+    async fn cancel(&self) -> Result<(), AerorsyncError> {
         self.cancel_flag.store(true, Ordering::SeqCst);
         let snapshot = {
             let guard = self.active.lock().unwrap();
@@ -306,30 +307,30 @@ impl RemoteShellTransport for SshRemoteShellTransport {
 fn exec_once(
     config: &SshTransportConfig,
     request: RemoteExecRequest,
-) -> Result<RemoteCommandOutput, NativeRsyncError> {
+) -> Result<RemoteCommandOutput, AerorsyncError> {
     let (session, _tcp) = connect_and_auth(config)?;
     let mut channel = session
         .channel_session()
-        .map_err(|e| NativeRsyncError::transport(format!("channel_session: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("channel_session: {e}")))?;
     channel.exec(&request.full_command_line()).map_err(|e| {
-        NativeRsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
+        AerorsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
     })?;
 
     let mut stdout = Vec::new();
     channel
         .read_to_end(&mut stdout)
-        .map_err(|e| NativeRsyncError::transport(format!("read stdout: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("read stdout: {e}")))?;
     let mut stderr = Vec::new();
     channel
         .stderr()
         .read_to_end(&mut stderr)
-        .map_err(|e| NativeRsyncError::transport(format!("read stderr: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("read stderr: {e}")))?;
     channel
         .wait_close()
-        .map_err(|e| NativeRsyncError::transport(format!("wait_close: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("wait_close: {e}")))?;
     let exit_code = channel
         .exit_status()
-        .map_err(|e| NativeRsyncError::transport(format!("exit_status: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("exit_status: {e}")))?;
 
     Ok(RemoteCommandOutput {
         exit_code,
@@ -343,13 +344,13 @@ fn spawn_worker(
     request: RemoteExecRequest,
     receiver: mpsc::Receiver<WorkerCommand>,
     cancel_flag: Arc<AtomicBool>,
-) -> Result<Arc<TcpStream>, NativeRsyncError> {
+) -> Result<Arc<TcpStream>, AerorsyncError> {
     let (session, tcp) = connect_and_auth(&config)?;
     let mut channel = session
         .channel_session()
-        .map_err(|e| NativeRsyncError::transport(format!("channel_session: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("channel_session: {e}")))?;
     channel.exec(&request.full_command_line()).map_err(|e| {
-        NativeRsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
+        AerorsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
     })?;
 
     let max_frame_size = config.max_frame_size;
@@ -412,44 +413,44 @@ fn spawn_worker(
 
 fn connect_and_auth(
     config: &SshTransportConfig,
-) -> Result<(Session, Arc<TcpStream>), NativeRsyncError> {
+) -> Result<(Session, Arc<TcpStream>), AerorsyncError> {
     let tcp = TcpStream::connect((config.host.as_str(), config.port)).map_err(|e| {
-        NativeRsyncError::transport(format!("tcp connect {}:{}: {e}", config.host, config.port))
+        AerorsyncError::transport(format!("tcp connect {}:{}: {e}", config.host, config.port))
     })?;
     tcp.set_read_timeout(Some(Duration::from_millis(config.io_timeout_ms)))
-        .map_err(|e| NativeRsyncError::transport(format!("set read timeout: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("set read timeout: {e}")))?;
     tcp.set_write_timeout(Some(Duration::from_millis(config.io_timeout_ms)))
-        .map_err(|e| NativeRsyncError::transport(format!("set write timeout: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("set write timeout: {e}")))?;
 
     // Keep a clone of the socket so that `cancel()` can shut the fd down
     // from a different thread. Both handles share the same kernel fd, so a
     // shutdown on one unblocks the other.
     let tcp_for_cancel = tcp
         .try_clone()
-        .map_err(|e| NativeRsyncError::transport(format!("tcp try_clone: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("tcp try_clone: {e}")))?;
     let tcp_arc = Arc::new(tcp_for_cancel);
 
     let mut session = Session::new()
-        .map_err(|e| NativeRsyncError::transport(format!("create ssh session: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("create ssh session: {e}")))?;
     session.set_tcp_stream(tcp);
     session.set_timeout(config.connect_timeout_ms as u32);
     session
         .handshake()
-        .map_err(|e| NativeRsyncError::transport(format!("ssh handshake: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("ssh handshake: {e}")))?;
 
     enforce_host_key_policy(&session, &config.host_key_policy)?;
 
     session
         .userauth_pubkey_file(&config.username, None, &config.private_key_path, None)
         .map_err(|e| {
-            NativeRsyncError::transport(format!(
+            AerorsyncError::transport(format!(
                 "pubkey auth {} with {}: {e}",
                 config.username,
                 config.private_key_path.display()
             ))
         })?;
     if !session.authenticated() {
-        return Err(NativeRsyncError::transport(
+        return Err(AerorsyncError::transport(
             "ssh authentication did not complete",
         ));
     }
@@ -459,19 +460,19 @@ fn connect_and_auth(
 fn enforce_host_key_policy(
     session: &Session,
     policy: &SshHostKeyPolicy,
-) -> Result<(), NativeRsyncError> {
+) -> Result<(), AerorsyncError> {
     match policy {
         SshHostKeyPolicy::AcceptAny => Ok(()),
         SshHostKeyPolicy::PinnedFingerprintSha256 { sha256_hex } => {
             let host_key = session.host_key().ok_or_else(|| {
-                NativeRsyncError::host_key_rejected(
+                AerorsyncError::host_key_rejected(
                     "remote did not expose a host key (unsupported cipher suite?)",
                 )
             })?;
             let actual = sha256_hex_of(host_key.0);
             let expected = sha256_hex.to_ascii_lowercase();
             if actual != expected {
-                return Err(NativeRsyncError::host_key_rejected(format!(
+                return Err(AerorsyncError::host_key_rejected(format!(
                     "host key fingerprint mismatch: expected {expected}, got {actual}"
                 )));
             }
@@ -517,9 +518,9 @@ pub struct SshRawStream {
 }
 
 impl SshRawStream {
-    fn check_cancel(&self, op: &'static str) -> Result<(), NativeRsyncError> {
+    fn check_cancel(&self, op: &'static str) -> Result<(), AerorsyncError> {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            Err(NativeRsyncError::cancelled(format!(
+            Err(AerorsyncError::cancelled(format!(
                 "ssh raw stream cancelled before {op}"
             )))
         } else {
@@ -527,55 +528,51 @@ impl SshRawStream {
         }
     }
 
-    fn map_worker_error(&self, err: String) -> NativeRsyncError {
+    fn map_worker_error(&self, err: String) -> AerorsyncError {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            NativeRsyncError::cancelled(err)
+            AerorsyncError::cancelled(err)
         } else {
-            NativeRsyncError::transport(err)
+            AerorsyncError::transport(err)
         }
     }
 }
 
 #[async_trait]
 impl RawByteStream for SshRawStream {
-    async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, NativeRsyncError> {
+    async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, AerorsyncError> {
         self.check_cancel("read_bytes")?;
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(RawWorkerCommand::Read(max, tx))
-            .map_err(|_| {
-                NativeRsyncError::transport("ssh raw worker channel closed before read")
-            })?;
+            .map_err(|_| AerorsyncError::transport("ssh raw worker channel closed before read"))?;
         let outcome = rx
             .await
-            .map_err(|_| NativeRsyncError::transport("ssh raw worker dropped read reply"))?;
+            .map_err(|_| AerorsyncError::transport("ssh raw worker dropped read reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 
-    async fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), NativeRsyncError> {
+    async fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), AerorsyncError> {
         self.check_cancel("write_bytes")?;
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(RawWorkerCommand::Write(bytes.to_vec(), tx))
-            .map_err(|_| {
-                NativeRsyncError::transport("ssh raw worker channel closed before write")
-            })?;
+            .map_err(|_| AerorsyncError::transport("ssh raw worker channel closed before write"))?;
         let outcome = rx
             .await
-            .map_err(|_| NativeRsyncError::transport("ssh raw worker dropped write reply"))?;
+            .map_err(|_| AerorsyncError::transport("ssh raw worker dropped write reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 
-    async fn shutdown(&mut self) -> Result<(), NativeRsyncError> {
+    async fn shutdown(&mut self) -> Result<(), AerorsyncError> {
         let (tx, rx) = oneshot::channel();
         self.sender
             .send(RawWorkerCommand::Shutdown(tx))
             .map_err(|_| {
-                NativeRsyncError::transport("ssh raw worker channel closed before shutdown")
+                AerorsyncError::transport("ssh raw worker channel closed before shutdown")
             })?;
         let outcome = rx
             .await
-            .map_err(|_| NativeRsyncError::transport("ssh raw worker dropped shutdown reply"))?;
+            .map_err(|_| AerorsyncError::transport("ssh raw worker dropped shutdown reply"))?;
         outcome.map_err(|e| self.map_worker_error(e))
     }
 }
@@ -587,10 +584,10 @@ impl RawRemoteShellTransport for SshRemoteShellTransport {
     async fn open_raw_stream(
         &self,
         request: RemoteExecRequest,
-    ) -> Result<Self::RawStream, NativeRsyncError> {
+    ) -> Result<Self::RawStream, AerorsyncError> {
         if self.cancel_flag.load(Ordering::SeqCst) {
-            return Err(NativeRsyncError::new(
-                NativeRsyncErrorKind::Cancelled,
+            return Err(AerorsyncError::new(
+                AerorsyncErrorKind::Cancelled,
                 "ssh transport was cancelled before open_raw_stream",
             ));
         }
@@ -603,7 +600,7 @@ impl RawRemoteShellTransport for SshRemoteShellTransport {
             spawn_raw_worker(config, request, receiver, cancel_flag)
         })
         .await
-        .map_err(|e| NativeRsyncError::transport(format!("spawn raw worker join: {e}")))??;
+        .map_err(|e| AerorsyncError::transport(format!("spawn raw worker join: {e}")))??;
 
         // Track the raw session's sender/tcp for the shared cancel-handle
         // machinery. We cannot reuse `ActiveSession` directly because its
@@ -625,13 +622,13 @@ fn spawn_raw_worker(
     request: RemoteExecRequest,
     receiver: mpsc::Receiver<RawWorkerCommand>,
     cancel_flag: Arc<AtomicBool>,
-) -> Result<Arc<TcpStream>, NativeRsyncError> {
+) -> Result<Arc<TcpStream>, AerorsyncError> {
     let (session, tcp) = connect_and_auth(&config)?;
     let mut channel = session
         .channel_session()
-        .map_err(|e| NativeRsyncError::transport(format!("channel_session: {e}")))?;
+        .map_err(|e| AerorsyncError::transport(format!("channel_session: {e}")))?;
     channel.exec(&request.full_command_line()).map_err(|e| {
-        NativeRsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
+        AerorsyncError::transport(format!("exec {}: {e}", request.full_command_line()))
     })?;
 
     let idle_poll = Duration::from_millis(config.worker_idle_poll_ms.max(50));
@@ -648,21 +645,45 @@ fn spawn_raw_worker(
             }
             match receiver.recv_timeout(idle_poll) {
                 Ok(RawWorkerCommand::Write(bytes, reply)) => {
+                    // B.2: `channel.write_all` on ssh2 buffers into an
+                    // internal libssh2 send queue; small payloads (e.g.
+                    // a 50-byte rsync preamble) never reach the wire
+                    // until something flushes the channel. Stock
+                    // `rsync --server` then blocks in `read()` waiting
+                    // for bytes we've already "written" client-side.
+                    // `flush()` forces the queue through the TCP socket.
                     let result = channel
                         .write_all(&bytes)
+                        .and_then(|_| channel.flush())
                         .map_err(|e| format!("write_bytes: {e}"));
                     let _ = reply.send(result);
                 }
                 Ok(RawWorkerCommand::Read(max, reply)) => {
                     let mut buf = vec![0u8; max];
+                    let mut eof = false;
                     let result = match channel.read(&mut buf) {
                         Ok(n) => {
                             buf.truncate(n);
-                            Ok(buf)
+                            if n == 0 {
+                                eof = true;
+                                let mut stderr = Vec::new();
+                                let _ = channel.stderr().read_to_end(&mut stderr);
+                                let _ = channel.wait_close();
+                                let status = channel.exit_status().unwrap_or(-1);
+                                let stderr = String::from_utf8_lossy(&stderr);
+                                Err(format!(
+                                    "read_bytes: remote closed (exit {status}): {stderr}"
+                                ))
+                            } else {
+                                Ok(buf)
+                            }
                         }
                         Err(e) => Err(format!("read_bytes: {e}")),
                     };
                     let _ = reply.send(result);
+                    if eof {
+                        break;
+                    }
                 }
                 Ok(RawWorkerCommand::Shutdown(reply)) => {
                     let result = channel
@@ -691,15 +712,37 @@ fn spawn_raw_worker(
     Ok(tcp)
 }
 
-fn parse_probe_protocol(stdout: &str) -> Result<ProtocolVersion, NativeRsyncError> {
-    let suffix = stdout
-        .split_whitespace()
-        .last()
-        .ok_or_else(|| NativeRsyncError::transport("probe output was empty"))?;
-    let version = suffix.parse::<u32>().map_err(|e| {
-        NativeRsyncError::transport(format!("parse probe protocol from '{suffix}': {e}"))
-    })?;
-    Ok(ProtocolVersion(version))
+/// Parse the protocol version from `rsync --version` output.
+///
+/// The canonical first line is:
+///   `rsync  version 3.2.7  protocol version 31`
+///
+/// We search for the `protocol version ` marker on any line (robust to
+/// banner formatting variations across rsync 3.1/3.2/3.3) and take the
+/// next whitespace-delimited token as the numeric version. Anything else
+/// is a transport-level parse error that the caller maps to
+/// `RemoteNotAvailable` (soft classic fallback).
+fn parse_probe_protocol(stdout: &str) -> Result<ProtocolVersion, AerorsyncError> {
+    const MARKER: &str = "protocol version ";
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Err(AerorsyncError::transport("probe output was empty"));
+    }
+    for line in trimmed.lines() {
+        if let Some(rest) = line.split_once(MARKER).map(|(_, tail)| tail) {
+            let token = rest.split_whitespace().next().ok_or_else(|| {
+                AerorsyncError::transport("probe output: no token after 'protocol version '")
+            })?;
+            let version = token.parse::<u32>().map_err(|e| {
+                AerorsyncError::transport(format!("parse probe protocol from '{token}': {e}"))
+            })?;
+            return Ok(ProtocolVersion(version));
+        }
+    }
+    Err(AerorsyncError::transport(format!(
+        "probe output missing 'protocol version N'; first line: '{}'",
+        trimmed.lines().next().unwrap_or("<empty>")
+    )))
 }
 
 #[cfg(test)]
@@ -712,9 +755,49 @@ mod tests {
     use std::time::{Duration, Instant};
 
     #[test]
-    fn parses_probe_banner() {
-        let protocol = parse_probe_protocol("rsnp-proto server protocol 31").unwrap();
+    fn parses_probe_banner_single_line() {
+        let protocol = parse_probe_protocol("rsync  version 3.2.7  protocol version 31").unwrap();
         assert_eq!(protocol.as_u32(), 31);
+    }
+
+    #[test]
+    fn parses_probe_banner_multi_line() {
+        // Canonical `rsync --version` output (trimmed for the test).
+        let banner = "rsync  version 3.2.7  protocol version 31\n\
+            Copyright (C) 1996-2022 by Andrew Tridgell, Wayne Davison, and others.\n\
+            Web site: https://rsync.samba.org/\n\
+            Capabilities:\n    \
+            64-bit files, 64-bit inums, 64-bit timestamps, 64-bit long ints,\n    \
+            socketpairs, hardlinks, symlinks, IPv6, atimes, batchfiles\n";
+        let protocol = parse_probe_protocol(banner).unwrap();
+        assert_eq!(protocol.as_u32(), 31);
+    }
+
+    #[test]
+    fn parses_probe_banner_protocol_30() {
+        // rsync 3.1.x emits protocol version 30.
+        let banner = "rsync  version 3.1.3  protocol version 30";
+        let protocol = parse_probe_protocol(banner).unwrap();
+        assert_eq!(protocol.as_u32(), 30);
+    }
+
+    #[test]
+    fn rejects_empty_probe_output() {
+        let err = parse_probe_protocol("").unwrap_err();
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn rejects_missing_protocol_marker() {
+        // Example: a BusyBox `rsync --version` that drops the marker line.
+        let err = parse_probe_protocol("bash: rsync: command not found\n").unwrap_err();
+        assert!(err.to_string().contains("protocol version"));
+    }
+
+    #[test]
+    fn rejects_non_numeric_protocol_token() {
+        let err = parse_probe_protocol("rsync version X.Y protocol version beta").unwrap_err();
+        assert!(err.to_string().contains("parse probe protocol"));
     }
 
     #[test]

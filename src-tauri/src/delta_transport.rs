@@ -73,7 +73,7 @@ pub trait DeltaTransport: Send + Sync {
 /// **Platform:** Unix-only. The implementation spawns the system `rsync`
 /// binary, which is not available on Windows as a first-class dependency.
 /// Windows delivers delta sync through the native prototype transport
-/// (`NativeRsyncDeltaTransport`) gated behind the `proto_native_rsync`
+/// (`AerorsyncDeltaTransport`) gated behind the `aerorsync`
 /// cargo feature.
 #[cfg(unix)]
 pub struct RsyncBinaryTransport {

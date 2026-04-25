@@ -196,7 +196,7 @@ impl std::error::Error for RsyncError {}
 // The helpers below drive the system `rsync` binary over an SSH pipe. They
 // exist exclusively for the `RsyncBinaryTransport` Unix path; Windows
 // delivers delta sync through the cross-platform native prototype transport
-// in `rsync_native_proto`, which does not need any of these helpers.
+// in `aerorsync`, which does not need any of these helpers.
 
 /// Probe the remote for rsync availability and version.
 ///

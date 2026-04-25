@@ -3,8 +3,8 @@
 //! Goal: produce the exact same remote command line that the current wrapper
 //! capture observes. The captured forms are:
 //!
-//!   upload   : `rsync --server -logDtprze.iLsfxCIvu --stats . /workspace/upload/target.bin`
-//!   download : `rsync --server --sender -logDtprze.iLsfxCIvu . /workspace/download/target.bin`
+//!   upload   : `rsync --server -logDtprcze.iLsfxCIvu --stats . /workspace/upload/target.bin`
+//!   download : `rsync --server --sender -logDtprcze.iLsfxCIvu . /workspace/download/target.bin`
 //!
 //! See `fixtures::UPLOAD_REMOTE_COMMAND` / `DOWNLOAD_REMOTE_COMMAND`.
 //!
@@ -15,14 +15,14 @@
 //!
 //! Flag order is fixed to match the captured shape.
 
-use crate::rsync_native_proto::transport::RemoteExecRequest;
-use crate::rsync_native_proto::types::SessionRole;
+use crate::aerorsync::transport::RemoteExecRequest;
+use crate::aerorsync::types::SessionRole;
 
 /// The compact flag bundle observed in both captures.
 /// Spelled out: log, gid, Devices, times, perms, recursion, z (compress request),
 /// extended attribute chars `.iLsfxCIvu` (incremental + extras).
-pub const OBSERVED_COMPACT_FLAGS: &str = "-logDtprze.iLsfxCIvu";
-pub const NATIVE_PROTO_SERVER_PROGRAM: &str = "/opt/rsnp/bin/rsync_proto_serve";
+pub const OBSERVED_COMPACT_FLAGS: &str = "-logDtprcze.iLsfxCIvu";
+pub const AERORSYNC_SERVER_PROGRAM: &str = "/opt/aerorsync/bin/aerorsync_serve";
 
 /// Working directory placeholder passed to `rsync --server`.
 /// In remote-shell mode rsync uses `.` as the source in the remote command.
@@ -31,7 +31,7 @@ pub const REMOTE_WORKDIR_PLACEHOLDER: &str = ".";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoteCommandFlavor {
     WrapperParity,
-    NativeProtoServe,
+    AerorsyncServe,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,21 +66,21 @@ impl RemoteCommandSpec {
         }
     }
 
-    pub fn native_upload(remote_target: impl Into<String>) -> Self {
+    pub fn aerorsync_upload(remote_target: impl Into<String>) -> Self {
         Self {
             remote_role: SessionRole::Receiver,
             remote_target: remote_target.into(),
             emit_stats: true,
-            flavor: RemoteCommandFlavor::NativeProtoServe,
+            flavor: RemoteCommandFlavor::AerorsyncServe,
         }
     }
 
-    pub fn native_download(remote_target: impl Into<String>) -> Self {
+    pub fn aerorsync_download(remote_target: impl Into<String>) -> Self {
         Self {
             remote_role: SessionRole::Sender,
             remote_target: remote_target.into(),
             emit_stats: false,
-            flavor: RemoteCommandFlavor::NativeProtoServe,
+            flavor: RemoteCommandFlavor::AerorsyncServe,
         }
     }
 
@@ -102,7 +102,7 @@ impl RemoteCommandSpec {
                 args.push(self.remote_target.clone());
                 args
             }
-            RemoteCommandFlavor::NativeProtoServe => {
+            RemoteCommandFlavor::AerorsyncServe => {
                 let mut args = vec![
                     "--mode".to_string(),
                     match self.remote_role {
@@ -127,7 +127,7 @@ impl RemoteCommandSpec {
         RemoteExecRequest {
             program: match self.flavor {
                 RemoteCommandFlavor::WrapperParity => "rsync".to_string(),
-                RemoteCommandFlavor::NativeProtoServe => NATIVE_PROTO_SERVER_PROGRAM.to_string(),
+                RemoteCommandFlavor::AerorsyncServe => AERORSYNC_SERVER_PROGRAM.to_string(),
             },
             args: self.to_args(),
             environment: Vec::new(),
@@ -137,5 +137,53 @@ impl RemoteCommandSpec {
     /// String representation matching the captured single-line form.
     pub fn to_command_line(&self) -> String {
         self.to_exec_request().full_command_line()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // B.5 pin: production dispatch (`AerorsyncDeltaTransport::upload` and
+    // `::download` in `delta_transport_impl.rs`) calls `RemoteCommandSpec::
+    // upload` / `RemoteCommandSpec::download`. These MUST stay locked on
+    // `WrapperParity` forever — the `AerorsyncServe` flavor is a dev-only
+    // helper kept alive exclusively for the in-process mock tests
+    // (`driver_finish_session_aerorsync_serve_upload_*`) and the gated
+    // `live_tests.rs` lane. If these constructors ever regress to
+    // `AerorsyncServe`, production will try to exec
+    // `/opt/aerorsync/bin/aerorsync_serve` against stock rsync servers —
+    // the exact failure mode that Blocco B.1 ended.
+    #[test]
+    fn upload_spec_is_always_wrapper_parity_for_production() {
+        let spec = RemoteCommandSpec::upload("/workdir/anything.bin");
+        assert_eq!(
+            spec.flavor,
+            RemoteCommandFlavor::WrapperParity,
+            "RemoteCommandSpec::upload is the production dispatch call site; \
+             it must pin to WrapperParity so AerorsyncDeltaTransport never \
+             exec's the dev-only aerorsync_serve binary in production"
+        );
+        let argv = spec.to_args();
+        assert_eq!(argv.first().map(String::as_str), Some("--server"));
+        assert!(
+            argv.iter().all(|a| a != "--mode"),
+            "--mode is the aerorsync_serve CLI shape; must never appear in \
+             the stock rsync wire command"
+        );
+    }
+
+    #[test]
+    fn download_spec_is_always_wrapper_parity_for_production() {
+        let spec = RemoteCommandSpec::download("/workdir/anything.bin");
+        assert_eq!(
+            spec.flavor,
+            RemoteCommandFlavor::WrapperParity,
+            "RemoteCommandSpec::download mirrors the upload pin: production \
+             dispatch uses only stock rsync --server --sender"
+        );
+        let argv = spec.to_args();
+        assert_eq!(argv.first().map(String::as_str), Some("--server"));
+        assert_eq!(argv.get(1).map(String::as_str), Some("--sender"));
     }
 }

@@ -18,12 +18,14 @@ name = "aeroftp-cli"
 path = "src/bin/aeroftp_cli.rs"
 
 [[bin]]
-name = "rsync_proto_serve"
-path = "src/bin/rsync_proto_serve.rs"
-# The real server body is gated behind `proto_native_rsync`. When the feature
-# is OFF this binary compiles to a stub that prints a message and exits with
-# code 1, so the Tauri bundler can still copy the expected artifact on macOS
-# and Windows without failing the release build.
+name = "aerorsync_serve"
+path = "src/bin/aerorsync_serve.rs"
+# The real server body is gated behind the `aerorsync` feature. When the
+# feature is OFF this binary compiles to a stub that prints a message and
+# exits with code 1, so the Tauri bundler can still copy the expected
+# artifact on macOS and Windows without failing the release build.
+# (This dev helper is the wire-protocol oracle used by unit and live tests;
+# the production path talks to stock `rsync --server` via `WrapperParity`.)
 
 [[bin]]
 name = "seed_test_profiles"
@@ -166,16 +168,17 @@ libunftp = "0.23"                                                      # FTP ser
 unftp-core = "0.1"                                                     # FTP server storage/auth traits
 
 # Interactive TUI (ncdu disk explorer)
-ratatui = "0.29"                                                       # Terminal UI framework
+ratatui = "0.30"                                                       # Terminal UI framework
 crossterm = "0.29"                                                     # Cross-platform terminal control
 
-# Strada C (native rsync prototype) — optional, gated by `proto_native_rsync`.
-# Used by `real_wire.rs` to decompress DEFLATED_DATA literals emitted by
-# rsync's sender when CPRES_ZSTD is negotiated. Off by default.
+# aerorsync — native rsync protocol 31/32 implementation in Rust.
+# Optional dependencies gated by the `aerorsync` feature. Used by
+# `real_wire.rs` to decompress DEFLATED_DATA literals emitted by rsync's
+# sender when CPRES_ZSTD is negotiated. Off with `--no-default-features`.
 zstd = { version = "0.13", optional = true }
-# Strada C — XXH3-128 file-level checksum trailer (S8j). Off by default.
-# Provides `xxhash_rust::xxh3::xxh3_128` used by the native driver to
-# compute the file checksum rsync verifies at the end of a delta stream.
+# aerorsync — XXH3-128 file-level checksum trailer (S8j). Provides
+# `xxhash_rust::xxh3::xxh3_128` used by the driver to compute the file
+# checksum rsync verifies at the end of a delta stream.
 xxhash-rust = { version = "0.8", features = ["xxh3"], optional = true }
 
 # Local speech-to-text — excluded on macOS (WKWebView has native Web Speech API)
@@ -203,17 +206,19 @@ fuser = "0.16"
 [dev-dependencies]
 
 [features]
-default = ["proto_native_rsync"]
+default = ["aerorsync"]
 custom-protocol = ["tauri/custom-protocol"]
 
-# Native rsync protocol 31/32 (in-tree since PR-T11, default-on).
-# Turns on the cross-platform Rust implementation under
-# `src/rsync_native_proto/`, enabling byte-level delta sync on Windows
-# (first-class) and as the preferred path on Unix when
-# `settings::load_native_rsync_enabled()` returns true.
+# aerorsync — AeroFTP's native Rust implementation of the rsync wire
+# protocol 31 (in-tree since PR-T11, default-on). Turns on the
+# cross-platform Rust implementation under `src/aerorsync/`, enabling
+# byte-level delta sync on Windows (first-class) and as the preferred
+# path on Unix when `settings::load_native_rsync_enabled()` returns
+# true. The `native_rsync_enabled` runtime toggle and its TOML config
+# file retain the legacy name for backward compatibility.
 # Disable with `--no-default-features` for leaner builds or when
 # debugging the classic binary-rsync path on Unix.
-proto_native_rsync = ["dep:zstd", "dep:xxhash-rust"]
+aerorsync = ["dep:zstd", "dep:xxhash-rust"]
 
 # Strada C — Docker-harness lane cfg flags. Declared here so
 # `#[cfg(ci_lane2)]` / `#[cfg(ci_lane3)]` do not surface

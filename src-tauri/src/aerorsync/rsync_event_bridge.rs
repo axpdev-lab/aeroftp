@@ -1,4 +1,4 @@
-//! Bridge layer: `NativeRsyncEvent` (from `events.rs`) → `RsyncEvent`
+//! Bridge layer: `AerorsyncEvent` (from `events.rs`) → `RsyncEvent`
 //! (from `crate::rsync_output`).
 //!
 //! # Why a dedicated module
@@ -16,7 +16,7 @@
 //!
 //! # Scope of the bridge
 //!
-//! This module ONLY handles out-of-band (`NativeRsyncEvent`) traffic.
+//! This module ONLY handles out-of-band (`AerorsyncEvent`) traffic.
 //! App-stream signals — `Progress` (byte-level transfer counter),
 //! `FileStart` (emerges from FileListEntry parsing), and `Summary` (emitted
 //! from the `SummaryFrame` decoded by `real_wire`) — are produced by the
@@ -26,7 +26,7 @@
 //!
 //! # Dropped vs mapped events
 //!
-//! Several `NativeRsyncEvent` variants map to `None`:
+//! Several `AerorsyncEvent` variants map to `None`:
 //!
 //! - Internal state markers (`Redo`, `Success`, `NoSend`) — pipe-internal
 //!   signals between generator/receiver that would be noise in the UI.
@@ -43,7 +43,7 @@
 //!
 //! Mapped events:
 //!
-//! | `NativeRsyncEvent`                        | `RsyncEvent`                   |
+//! | `AerorsyncEvent`                        | `RsyncEvent`                   |
 //! |-------------------------------------------|--------------------------------|
 //! | `Warning { message }`                     | `Warning { message }`          |
 //! | `Error { message }` (terminal)            | `Error { message }` (terminal) |
@@ -61,7 +61,7 @@
 //! `first_terminal()`. Subsequent terminal events are mapped and forwarded
 //! normally — we do not silently swallow trailing errors.
 
-use crate::rsync_native_proto::events::{EventSink, NativeRsyncEvent};
+use crate::aerorsync::events::{AerorsyncEvent, EventSink};
 use crate::rsync_output::RsyncEvent;
 
 /// `EventSink` adapter that translates typed native events into the
@@ -72,7 +72,7 @@ use crate::rsync_output::RsyncEvent;
 /// progress bus. The bridge itself is transport-agnostic.
 pub struct RsyncEventBridge<F: FnMut(RsyncEvent)> {
     sink: F,
-    first_terminal: Option<NativeRsyncEvent>,
+    first_terminal: Option<AerorsyncEvent>,
     events_forwarded: u64,
     events_dropped: u64,
 }
@@ -87,12 +87,12 @@ impl<F: FnMut(RsyncEvent)> RsyncEventBridge<F> {
         }
     }
 
-    /// The first `NativeRsyncEvent` classified as terminal, if any.
+    /// The first `AerorsyncEvent` classified as terminal, if any.
     /// Preserves the full typed payload (including the raw `ErrorExit` code
     /// or the `tag` of an `Unknown` that happened to bail) so post-mortem
     /// logging / fallback classification can see exactly why the session
     /// ended.
-    pub fn first_terminal(&self) -> Option<&NativeRsyncEvent> {
+    pub fn first_terminal(&self) -> Option<&AerorsyncEvent> {
         self.first_terminal.as_ref()
     }
 
@@ -110,7 +110,7 @@ impl<F: FnMut(RsyncEvent)> RsyncEventBridge<F> {
 }
 
 impl<F: FnMut(RsyncEvent) + Send> EventSink for RsyncEventBridge<F> {
-    fn handle(&mut self, event: NativeRsyncEvent) {
+    fn handle(&mut self, event: AerorsyncEvent) {
         if event.is_terminal() && self.first_terminal.is_none() {
             self.first_terminal = Some(event.clone());
         }
@@ -130,24 +130,24 @@ impl<F: FnMut(RsyncEvent) + Send> EventSink for RsyncEventBridge<F> {
 /// the native protocol carries many signals that have no UI analog).
 ///
 /// Single source of truth for the mapping. Pinned exhaustively by tests
-/// below. If `NativeRsyncEvent` grows a variant, the exhaustive `match`
+/// below. If `AerorsyncEvent` grows a variant, the exhaustive `match`
 /// forces the author to decide a mapping (fail-to-compile > silent drift).
-pub fn map_native_to_rsync_event(event: &NativeRsyncEvent) -> Option<RsyncEvent> {
+pub fn map_native_to_rsync_event(event: &AerorsyncEvent) -> Option<RsyncEvent> {
     match event {
         // Terminal textual → Error
-        NativeRsyncEvent::Error { message } => Some(RsyncEvent::Error {
+        AerorsyncEvent::Error { message } => Some(RsyncEvent::Error {
             message: message.clone(),
         }),
-        NativeRsyncEvent::ErrorXfer { message } => Some(RsyncEvent::Error {
+        AerorsyncEvent::ErrorXfer { message } => Some(RsyncEvent::Error {
             message: message.clone(),
         }),
-        NativeRsyncEvent::ErrorSocket { message } => Some(RsyncEvent::Error {
+        AerorsyncEvent::ErrorSocket { message } => Some(RsyncEvent::Error {
             message: message.clone(),
         }),
 
         // ErrorExit has dual semantics: None / Some(0) = cleanup, non-terminal,
         // drop. Some(code!=0) = terminal, render as Error with code.
-        NativeRsyncEvent::ErrorExit { code } => match code {
+        AerorsyncEvent::ErrorExit { code } => match code {
             None | Some(0) => None,
             Some(c) => Some(RsyncEvent::Error {
                 message: format!("remote rsync exited with code {}", c),
@@ -155,33 +155,33 @@ pub fn map_native_to_rsync_event(event: &NativeRsyncEvent) -> Option<RsyncEvent>
         },
 
         // Non-terminal warnings
-        NativeRsyncEvent::Warning { message } => Some(RsyncEvent::Warning {
+        AerorsyncEvent::Warning { message } => Some(RsyncEvent::Warning {
             message: message.clone(),
         }),
-        NativeRsyncEvent::ErrorUtf8 { message } => Some(RsyncEvent::Warning {
+        AerorsyncEvent::ErrorUtf8 { message } => Some(RsyncEvent::Warning {
             message: format!("utf-8 decode warning: {}", message),
         }),
-        NativeRsyncEvent::IoError { flags } => Some(RsyncEvent::Warning {
+        AerorsyncEvent::IoError { flags } => Some(RsyncEvent::Warning {
             message: format!("io_error flags: 0x{:08X}", flags),
         }),
-        NativeRsyncEvent::IoTimeout { seconds } => Some(RsyncEvent::Warning {
+        AerorsyncEvent::IoTimeout { seconds } => Some(RsyncEvent::Warning {
             message: format!("io_timeout refresh: {}s", seconds),
         }),
-        NativeRsyncEvent::Deleted { path } => Some(RsyncEvent::Warning {
+        AerorsyncEvent::Deleted { path } => Some(RsyncEvent::Warning {
             message: format!("deleted: {}", path),
         }),
 
         // Pipe-internal + state markers — no UI value, mirror the
         // production wrapper's stdout parser which also ignores these.
-        NativeRsyncEvent::Info { .. }
-        | NativeRsyncEvent::Log { .. }
-        | NativeRsyncEvent::Client { .. }
-        | NativeRsyncEvent::Redo { .. }
-        | NativeRsyncEvent::Stats { .. }
-        | NativeRsyncEvent::Noop
-        | NativeRsyncEvent::Success { .. }
-        | NativeRsyncEvent::NoSend { .. }
-        | NativeRsyncEvent::Unknown { .. } => None,
+        AerorsyncEvent::Info { .. }
+        | AerorsyncEvent::Log { .. }
+        | AerorsyncEvent::Client { .. }
+        | AerorsyncEvent::Redo { .. }
+        | AerorsyncEvent::Stats { .. }
+        | AerorsyncEvent::Noop
+        | AerorsyncEvent::Success { .. }
+        | AerorsyncEvent::NoSend { .. }
+        | AerorsyncEvent::Unknown { .. } => None,
     }
 }
 
@@ -192,14 +192,14 @@ pub fn map_native_to_rsync_event(event: &NativeRsyncEvent) -> Option<RsyncEvent>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rsync_native_proto::events::classify_oob_frame;
-    use crate::rsync_native_proto::real_wire::MuxTag;
+    use crate::aerorsync::events::classify_oob_frame;
+    use crate::aerorsync::real_wire::MuxTag;
 
     // --- mapping pins --------------------------------------------------------
 
     #[test]
     fn error_maps_to_rsync_error_terminal() {
-        let native = NativeRsyncEvent::Error {
+        let native = AerorsyncEvent::Error {
             message: "remote kaboom".to_string(),
         };
         let out = map_native_to_rsync_event(&native);
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn error_xfer_maps_to_rsync_error() {
-        let native = NativeRsyncEvent::ErrorXfer {
+        let native = AerorsyncEvent::ErrorXfer {
             message: "xfer failed".to_string(),
         };
         assert!(matches!(
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn error_socket_maps_to_rsync_error() {
-        let native = NativeRsyncEvent::ErrorSocket {
+        let native = AerorsyncEvent::ErrorSocket {
             message: "socket broken".to_string(),
         };
         assert!(matches!(
@@ -233,19 +233,19 @@ mod tests {
 
     #[test]
     fn error_exit_none_is_dropped() {
-        let native = NativeRsyncEvent::ErrorExit { code: None };
+        let native = AerorsyncEvent::ErrorExit { code: None };
         assert_eq!(map_native_to_rsync_event(&native), None);
     }
 
     #[test]
     fn error_exit_zero_is_dropped() {
-        let native = NativeRsyncEvent::ErrorExit { code: Some(0) };
+        let native = AerorsyncEvent::ErrorExit { code: Some(0) };
         assert_eq!(map_native_to_rsync_event(&native), None);
     }
 
     #[test]
     fn error_exit_nonzero_maps_to_error_with_code_in_message() {
-        let native = NativeRsyncEvent::ErrorExit { code: Some(11) };
+        let native = AerorsyncEvent::ErrorExit { code: Some(11) };
         match map_native_to_rsync_event(&native) {
             Some(RsyncEvent::Error { message }) => {
                 assert!(message.contains("11"), "missing code: {message}");
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn warning_passes_through_verbatim() {
-        let native = NativeRsyncEvent::Warning {
+        let native = AerorsyncEvent::Warning {
             message: "the thing".to_string(),
         };
         assert_eq!(
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn error_utf8_maps_to_warning_with_prefix() {
-        let native = NativeRsyncEvent::ErrorUtf8 {
+        let native = AerorsyncEvent::ErrorUtf8 {
             message: "bad filename".to_string(),
         };
         match map_native_to_rsync_event(&native) {
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn io_error_maps_to_warning_with_hex_flags() {
-        let native = NativeRsyncEvent::IoError { flags: 0xDEAD_BEEF };
+        let native = AerorsyncEvent::IoError { flags: 0xDEAD_BEEF };
         match map_native_to_rsync_event(&native) {
             Some(RsyncEvent::Warning { message }) => {
                 assert!(message.contains("0xDEADBEEF"), "hex missing: {message}");
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn io_timeout_maps_to_warning_with_seconds() {
-        let native = NativeRsyncEvent::IoTimeout { seconds: 60 };
+        let native = AerorsyncEvent::IoTimeout { seconds: 60 };
         match map_native_to_rsync_event(&native) {
             Some(RsyncEvent::Warning { message }) => {
                 assert!(message.contains("60"));
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn deleted_maps_to_warning_with_prefix() {
-        let native = NativeRsyncEvent::Deleted {
+        let native = AerorsyncEvent::Deleted {
             path: "foo/bar.txt".to_string(),
         };
         match map_native_to_rsync_event(&native) {
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn info_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Info {
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::Info {
             message: "x".to_string(),
         })
         .is_none());
@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn log_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Log {
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::Log {
             message: "x".to_string(),
         })
         .is_none());
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn client_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Client {
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::Client {
             message: "x".to_string(),
         })
         .is_none());
@@ -346,32 +346,32 @@ mod tests {
 
     #[test]
     fn redo_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Redo { flist_index: 7 }).is_none());
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::Redo { flist_index: 7 }).is_none());
     }
 
     #[test]
     fn stats_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Stats { total_read: 4096 }).is_none());
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::Stats { total_read: 4096 }).is_none());
     }
 
     #[test]
     fn noop_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Noop).is_none());
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::Noop).is_none());
     }
 
     #[test]
     fn success_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Success { flist_index: 5 }).is_none());
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::Success { flist_index: 5 }).is_none());
     }
 
     #[test]
     fn no_send_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::NoSend { flist_index: 9 }).is_none());
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::NoSend { flist_index: 9 }).is_none());
     }
 
     #[test]
     fn unknown_is_dropped() {
-        assert!(map_native_to_rsync_event(&NativeRsyncEvent::Unknown {
+        assert!(map_native_to_rsync_event(&AerorsyncEvent::Unknown {
             tag: 77,
             payload: vec![1, 2, 3],
         })
@@ -386,7 +386,7 @@ mod tests {
         // bridge MUST produce an `RsyncEvent::Error`. This pins the
         // cross-layer invariant "terminal ⇒ Error" so a future refactor of
         // either side cannot silently break it.
-        let terminal_cases: Vec<NativeRsyncEvent> = vec![
+        let terminal_cases: Vec<AerorsyncEvent> = vec![
             classify_oob_frame(MuxTag::Error, b"boom"),
             classify_oob_frame(MuxTag::ErrorXfer, b"xfer"),
             classify_oob_frame(MuxTag::ErrorSocket, b"sock"),
@@ -405,33 +405,33 @@ mod tests {
     fn non_terminal_native_event_never_maps_to_error() {
         // Symmetric pin: no non-terminal OOB frame may produce an Error.
         // Any drift here would misclassify recoverable warnings as fatal.
-        let cases: Vec<NativeRsyncEvent> = vec![
-            NativeRsyncEvent::Warning {
+        let cases: Vec<AerorsyncEvent> = vec![
+            AerorsyncEvent::Warning {
                 message: "w".into(),
             },
-            NativeRsyncEvent::ErrorUtf8 {
+            AerorsyncEvent::ErrorUtf8 {
                 message: "u".into(),
             },
-            NativeRsyncEvent::IoError { flags: 1 },
-            NativeRsyncEvent::IoTimeout { seconds: 30 },
-            NativeRsyncEvent::ErrorExit { code: None },
-            NativeRsyncEvent::ErrorExit { code: Some(0) },
-            NativeRsyncEvent::Info {
+            AerorsyncEvent::IoError { flags: 1 },
+            AerorsyncEvent::IoTimeout { seconds: 30 },
+            AerorsyncEvent::ErrorExit { code: None },
+            AerorsyncEvent::ErrorExit { code: Some(0) },
+            AerorsyncEvent::Info {
                 message: "i".into(),
             },
-            NativeRsyncEvent::Log {
+            AerorsyncEvent::Log {
                 message: "l".into(),
             },
-            NativeRsyncEvent::Client {
+            AerorsyncEvent::Client {
                 message: "c".into(),
             },
-            NativeRsyncEvent::Redo { flist_index: 0 },
-            NativeRsyncEvent::Stats { total_read: 0 },
-            NativeRsyncEvent::Noop,
-            NativeRsyncEvent::Success { flist_index: 0 },
-            NativeRsyncEvent::Deleted { path: "p".into() },
-            NativeRsyncEvent::NoSend { flist_index: 0 },
-            NativeRsyncEvent::Unknown {
+            AerorsyncEvent::Redo { flist_index: 0 },
+            AerorsyncEvent::Stats { total_read: 0 },
+            AerorsyncEvent::Noop,
+            AerorsyncEvent::Success { flist_index: 0 },
+            AerorsyncEvent::Deleted { path: "p".into() },
+            AerorsyncEvent::NoSend { flist_index: 0 },
+            AerorsyncEvent::Unknown {
                 tag: 77,
                 payload: vec![],
             },
@@ -455,13 +455,13 @@ mod tests {
         let collected_for_closure = collected.clone();
         let mut bridge =
             RsyncEventBridge::new(move |evt| collected_for_closure.lock().unwrap().push(evt));
-        bridge.handle(NativeRsyncEvent::Warning {
+        bridge.handle(AerorsyncEvent::Warning {
             message: "w".into(),
         });
-        bridge.handle(NativeRsyncEvent::Info {
+        bridge.handle(AerorsyncEvent::Info {
             message: "i".into(),
         });
-        bridge.handle(NativeRsyncEvent::Error {
+        bridge.handle(AerorsyncEvent::Error {
             message: "e".into(),
         });
         let log = collected.lock().unwrap();
@@ -476,20 +476,20 @@ mod tests {
         let collected_for_closure = collected.clone();
         let mut bridge =
             RsyncEventBridge::new(move |evt| collected_for_closure.lock().unwrap().push(evt));
-        bridge.handle(NativeRsyncEvent::Warning {
+        bridge.handle(AerorsyncEvent::Warning {
             message: "pre".into(),
         });
-        bridge.handle(NativeRsyncEvent::Error {
+        bridge.handle(AerorsyncEvent::Error {
             message: "first".into(),
         });
-        bridge.handle(NativeRsyncEvent::Error {
+        bridge.handle(AerorsyncEvent::Error {
             message: "second".into(),
         });
         // First terminal pinned, but subsequent Errors still flow to the
         // sink — callers may need the trailing context (often an ExitCode).
         assert!(bridge.bailed());
         match bridge.first_terminal() {
-            Some(NativeRsyncEvent::Error { message }) => assert_eq!(message, "first"),
+            Some(AerorsyncEvent::Error { message }) => assert_eq!(message, "first"),
             other => panic!("expected Error first_terminal, got {other:?}"),
         }
         let log = collected.lock().unwrap();
@@ -499,14 +499,14 @@ mod tests {
     #[test]
     fn bridge_counters_track_forwarded_vs_dropped() {
         let mut bridge = RsyncEventBridge::new(|_| ());
-        bridge.handle(NativeRsyncEvent::Info {
+        bridge.handle(AerorsyncEvent::Info {
             message: "i".into(),
         });
-        bridge.handle(NativeRsyncEvent::Noop);
-        bridge.handle(NativeRsyncEvent::Warning {
+        bridge.handle(AerorsyncEvent::Noop);
+        bridge.handle(AerorsyncEvent::Warning {
             message: "w".into(),
         });
-        bridge.handle(NativeRsyncEvent::Error {
+        bridge.handle(AerorsyncEvent::Error {
             message: "e".into(),
         });
         assert_eq!(bridge.events_forwarded(), 2);
@@ -516,10 +516,10 @@ mod tests {
     #[test]
     fn bridge_with_no_terminal_does_not_flag_bailed() {
         let mut bridge = RsyncEventBridge::new(|_| ());
-        bridge.handle(NativeRsyncEvent::Warning {
+        bridge.handle(AerorsyncEvent::Warning {
             message: "w".into(),
         });
-        bridge.handle(NativeRsyncEvent::IoError { flags: 1 });
+        bridge.handle(AerorsyncEvent::IoError { flags: 1 });
         assert!(!bridge.bailed());
         assert!(bridge.first_terminal().is_none());
     }
@@ -527,13 +527,13 @@ mod tests {
     #[test]
     fn bridge_preserves_full_native_payload_in_first_terminal() {
         // HARDENING: the bridge's `first_terminal()` must return the
-        // unmodified NativeRsyncEvent (not the lossy RsyncEvent mapping).
+        // unmodified AerorsyncEvent (not the lossy RsyncEvent mapping).
         // A future fallback policy classifier needs the raw ErrorExit code
         // / Unknown tag to make an informed decision.
         let mut bridge = RsyncEventBridge::new(|_| ());
-        bridge.handle(NativeRsyncEvent::ErrorExit { code: Some(23) });
+        bridge.handle(AerorsyncEvent::ErrorExit { code: Some(23) });
         match bridge.first_terminal() {
-            Some(NativeRsyncEvent::ErrorExit { code: Some(23) }) => {}
+            Some(AerorsyncEvent::ErrorExit { code: Some(23) }) => {}
             other => panic!("payload lost in terminal capture: {other:?}"),
         }
     }

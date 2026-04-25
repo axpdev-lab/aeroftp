@@ -4,18 +4,16 @@
 //! not rsync-wire compatible. Its purpose is to validate transport, state,
 //! cancellation, and file mutation over a real SSH exec stream.
 
-use crate::rsync_native_proto::engine_adapter::{
+use crate::aerorsync::engine_adapter::{
     engine_ops_to_wire, CurrentDeltaSyncBridge, DeltaEngineAdapter,
     DeltaInstructionConversionError, EngineDeltaOp, EngineSignatureBlock,
 };
-use crate::rsync_native_proto::frame_io::{
-    read_length_prefixed_frame, write_length_prefixed_frame,
-};
-use crate::rsync_native_proto::protocol::{
-    DeltaInstruction, FileMetadataMessage, FrameCodec, HelloMessage, NativeFrameCodec,
+use crate::aerorsync::frame_io::{read_length_prefixed_frame, write_length_prefixed_frame};
+use crate::aerorsync::protocol::{
+    AerorsyncFrameCodec, DeltaInstruction, FileMetadataMessage, FrameCodec, HelloMessage,
     SignatureBatchMessage, SignatureBlock, SummaryMessage, WireMessage,
 };
-use crate::rsync_native_proto::types::{FeatureFlag, ProtocolVersion, SessionRole};
+use crate::aerorsync::types::{FeatureFlag, ProtocolVersion, SessionRole};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -37,7 +35,14 @@ pub struct ProtoServeOptions {
 
 impl ProtoServeOptions {
     pub fn probe_banner(protocol: ProtocolVersion) -> String {
-        format!("rsnp-proto server protocol {}", protocol.as_u32())
+        // B.4: align with stock `rsync --version` shape so the same parser
+        // (`parse_probe_protocol`) accepts both production rsync peers and
+        // this dev helper. The `rsnp-proto server` prefix still identifies
+        // the helper for live-test provenance.
+        format!(
+            "rsnp-proto server version 0.0.0 protocol version {}",
+            protocol.as_u32()
+        )
     }
 }
 
@@ -46,7 +51,7 @@ pub fn serve_stdio(options: ProtoServeOptions) -> Result<(), String> {
     let stdout = io::stdout();
     let mut input = stdin.lock();
     let mut output = stdout.lock();
-    let codec = NativeFrameCodec::new(options.max_frame_size);
+    let codec = AerorsyncFrameCodec::new(options.max_frame_size);
     let bridge = CurrentDeltaSyncBridge::new();
 
     match options.mode {
@@ -58,7 +63,7 @@ pub fn serve_stdio(options: ProtoServeOptions) -> Result<(), String> {
 }
 
 fn serve_upload<R: Read, W: Write>(
-    codec: &NativeFrameCodec,
+    codec: &AerorsyncFrameCodec,
     bridge: &dyn DeltaEngineAdapter,
     options: &ProtoServeOptions,
     input: &mut R,
@@ -118,7 +123,7 @@ fn serve_upload<R: Read, W: Write>(
 }
 
 fn serve_download<R: Read, W: Write>(
-    codec: &NativeFrameCodec,
+    codec: &AerorsyncFrameCodec,
     bridge: &dyn DeltaEngineAdapter,
     options: &ProtoServeOptions,
     input: &mut R,
@@ -175,13 +180,16 @@ fn serve_download<R: Read, W: Write>(
     Ok(())
 }
 
-fn expect_message<R: Read>(codec: &NativeFrameCodec, input: &mut R) -> Result<WireMessage, String> {
+fn expect_message<R: Read>(
+    codec: &AerorsyncFrameCodec,
+    input: &mut R,
+) -> Result<WireMessage, String> {
     let raw = read_length_prefixed_frame(input, codec.max_frame_size).map_err(|e| e.to_string())?;
     codec.decode(&raw).map_err(|e| e.to_string())
 }
 
 fn send_message<W: Write>(
-    codec: &NativeFrameCodec,
+    codec: &AerorsyncFrameCodec,
     output: &mut W,
     msg: &WireMessage,
 ) -> Result<(), String> {
@@ -190,7 +198,7 @@ fn send_message<W: Write>(
 }
 
 fn expect_hello<R: Read>(
-    codec: &NativeFrameCodec,
+    codec: &AerorsyncFrameCodec,
     input: &mut R,
     expected_role: SessionRole,
 ) -> Result<HelloMessage, String> {
@@ -205,7 +213,7 @@ fn expect_hello<R: Read>(
 }
 
 fn expect_file_metadata<R: Read>(
-    codec: &NativeFrameCodec,
+    codec: &AerorsyncFrameCodec,
     input: &mut R,
 ) -> Result<FileMetadataMessage, String> {
     match expect_message(codec, input)? {
@@ -218,7 +226,7 @@ fn expect_file_metadata<R: Read>(
 }
 
 fn expect_signature_batch<R: Read>(
-    codec: &NativeFrameCodec,
+    codec: &AerorsyncFrameCodec,
     input: &mut R,
 ) -> Result<SignatureBatchMessage, String> {
     match expect_message(codec, input)? {
@@ -231,7 +239,7 @@ fn expect_signature_batch<R: Read>(
 }
 
 fn expect_delta_batch<R: Read>(
-    codec: &NativeFrameCodec,
+    codec: &AerorsyncFrameCodec,
     input: &mut R,
 ) -> Result<Vec<DeltaInstruction>, String> {
     match expect_message(codec, input)? {
@@ -243,7 +251,7 @@ fn expect_delta_batch<R: Read>(
     }
 }
 
-fn expect_done<R: Read>(codec: &NativeFrameCodec, input: &mut R) -> Result<(), String> {
+fn expect_done<R: Read>(codec: &AerorsyncFrameCodec, input: &mut R) -> Result<(), String> {
     match expect_message(codec, input)? {
         WireMessage::Done => Ok(()),
         other => Err(format!("expected Done, got {:?}", other.message_type())),
@@ -304,7 +312,7 @@ fn summarize_engine_ops(
 }
 
 fn matched_bytes_from_plan(
-    plan: &crate::rsync_native_proto::engine_adapter::EngineDeltaPlan,
+    plan: &crate::aerorsync::engine_adapter::EngineDeltaPlan,
     sigs: &[EngineSignatureBlock],
 ) -> Result<u64, String> {
     let mut matched = 0u64;
@@ -351,21 +359,19 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{ProtoServeMode, ProtoServeOptions};
-    use crate::rsync_native_proto::engine_adapter::{CurrentDeltaSyncBridge, DeltaEngineAdapter};
-    use crate::rsync_native_proto::frame_io::{
-        read_length_prefixed_frame, write_length_prefixed_frame,
-    };
-    use crate::rsync_native_proto::protocol::{
-        FileMetadataMessage, FrameCodec, HelloMessage, NativeFrameCodec, SignatureBatchMessage,
+    use crate::aerorsync::engine_adapter::{CurrentDeltaSyncBridge, DeltaEngineAdapter};
+    use crate::aerorsync::frame_io::{read_length_prefixed_frame, write_length_prefixed_frame};
+    use crate::aerorsync::protocol::{
+        AerorsyncFrameCodec, FileMetadataMessage, FrameCodec, HelloMessage, SignatureBatchMessage,
         SignatureBlock, SummaryMessage, WireMessage,
     };
-    use crate::rsync_native_proto::types::{FeatureFlag, ProtocolVersion, SessionRole};
+    use crate::aerorsync::types::{FeatureFlag, ProtocolVersion, SessionRole};
     use std::fs;
     use std::io::Cursor;
     use tempfile::tempdir;
 
-    fn codec() -> NativeFrameCodec {
-        NativeFrameCodec::new(256 * 1024)
+    fn codec() -> AerorsyncFrameCodec {
+        AerorsyncFrameCodec::new(256 * 1024)
     }
 
     fn encode(msg: &WireMessage) -> Vec<u8> {
@@ -413,7 +419,7 @@ mod tests {
             .collect();
         let engine_sigs = sigs.iter().cloned().map(Into::into).collect::<Vec<_>>();
         let plan = bridge.compute_delta(&source, &engine_sigs, bs);
-        let delta = crate::rsync_native_proto::engine_adapter::engine_ops_to_wire(plan.ops);
+        let delta = crate::aerorsync::engine_adapter::engine_ops_to_wire(plan.ops);
 
         let input = pack(&[
             WireMessage::Hello(HelloMessage {

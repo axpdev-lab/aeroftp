@@ -3,8 +3,8 @@
 //! The driver composes the stable pieces owned by other modules:
 //!
 //! - transport (`transport::RemoteShellTransport`) — open a byte stream
-//! - codec    (`protocol::NativeFrameCodec`)       — encode / decode messages
-//! - session  (`session::NativeRsyncSession`)      — validated state transitions
+//! - codec    (`protocol::AerorsyncFrameCodec`)       — encode / decode messages
+//! - session  (`session::AerorsyncSession`)      — validated state transitions
 //! - roles    (`remote_command::RemoteCommandSpec`) — capture-parity command shape
 //! - engine   (`engine_adapter::DeltaEngineAdapter`) — sigs / delta / apply
 //!
@@ -60,19 +60,19 @@
 //! `SessionStats::{literal_bytes, matched_bytes}` are copied from the Summary
 //! frame and ARE the rsync parity target.
 
-use crate::rsync_native_proto::engine_adapter::{
+use crate::aerorsync::engine_adapter::{
     engine_ops_to_wire, DeltaEngineAdapter, DeltaInstructionConversionError, EngineDeltaOp,
     EngineSignatureBlock,
 };
-use crate::rsync_native_proto::protocol::{
-    DeltaInstruction, FileMetadataMessage, FrameCodec, HelloMessage, MessageType, NativeFrameCodec,
-    SignatureBatchMessage, SignatureBlock, WireMessage,
+use crate::aerorsync::protocol::{
+    AerorsyncFrameCodec, DeltaInstruction, FileMetadataMessage, FrameCodec, HelloMessage,
+    MessageType, SignatureBatchMessage, SignatureBlock, WireMessage,
 };
-use crate::rsync_native_proto::remote_command::RemoteCommandSpec;
-use crate::rsync_native_proto::session::{NativeRsyncSession, SessionState};
-use crate::rsync_native_proto::transport::{BidirectionalByteStream, RemoteShellTransport};
-use crate::rsync_native_proto::types::{
-    FeatureFlag, NativeRsyncError, NativeRsyncErrorKind, ProtocolVersion, SessionRole, SessionStats,
+use crate::aerorsync::remote_command::RemoteCommandSpec;
+use crate::aerorsync::session::{AerorsyncSession, SessionState};
+use crate::aerorsync::transport::{BidirectionalByteStream, RemoteShellTransport};
+use crate::aerorsync::types::{
+    AerorsyncError, AerorsyncErrorKind, FeatureFlag, ProtocolVersion, SessionRole, SessionStats,
 };
 
 /// Upload with caller-computed delta. The last element of
@@ -106,13 +106,13 @@ pub struct DriveOutcome {
 }
 
 pub struct SessionDriver<T: RemoteShellTransport> {
-    pub session: NativeRsyncSession<T>,
-    pub codec: NativeFrameCodec,
+    pub session: AerorsyncSession<T>,
+    pub codec: AerorsyncFrameCodec,
     cancel_requested: bool,
 }
 
 impl<T: RemoteShellTransport> SessionDriver<T> {
-    pub fn new(session: NativeRsyncSession<T>, codec: NativeFrameCodec) -> Self {
+    pub fn new(session: AerorsyncSession<T>, codec: AerorsyncFrameCodec) -> Self {
         Self {
             session,
             codec,
@@ -120,7 +120,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         }
     }
 
-    pub async fn cancel(&mut self) -> Result<(), NativeRsyncError> {
+    pub async fn cancel(&mut self) -> Result<(), AerorsyncError> {
         self.cancel_requested = true;
         self.session.cancel();
         self.session.transport.cancel().await
@@ -132,7 +132,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         &mut self,
         spec: RemoteCommandSpec,
         plan: UploadPlan,
-    ) -> Result<DriveOutcome, NativeRsyncError> {
+    ) -> Result<DriveOutcome, AerorsyncError> {
         Self::validate_upload_plan(&plan)?;
         self.drive_internal(spec, DrivePlan::UploadCaller(plan))
             .await
@@ -142,7 +142,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         &mut self,
         spec: RemoteCommandSpec,
         plan: DownloadPlan,
-    ) -> Result<DriveOutcome, NativeRsyncError> {
+    ) -> Result<DriveOutcome, AerorsyncError> {
         self.drive_internal(spec, DrivePlan::DownloadCaller(plan))
             .await
     }
@@ -153,7 +153,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         file_meta: FileMetadataMessage,
         source_data: Vec<u8>,
         adapter: &dyn DeltaEngineAdapter,
-    ) -> Result<DriveOutcome, NativeRsyncError> {
+    ) -> Result<DriveOutcome, AerorsyncError> {
         self.drive_internal(
             spec,
             DrivePlan::UploadEngine {
@@ -170,7 +170,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         spec: RemoteCommandSpec,
         destination_data: Vec<u8>,
         adapter: &dyn DeltaEngineAdapter,
-    ) -> Result<DriveOutcome, NativeRsyncError> {
+    ) -> Result<DriveOutcome, AerorsyncError> {
         self.drive_internal(
             spec,
             DrivePlan::DownloadEngine {
@@ -181,13 +181,13 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         .await
     }
 
-    fn validate_upload_plan(plan: &UploadPlan) -> Result<(), NativeRsyncError> {
+    fn validate_upload_plan(plan: &UploadPlan) -> Result<(), AerorsyncError> {
         match plan.delta_instructions.last() {
             Some(DeltaInstruction::EndOfFile) => Ok(()),
-            Some(_) => Err(NativeRsyncError::invalid_frame(
+            Some(_) => Err(AerorsyncError::invalid_frame(
                 "UploadPlan.delta_instructions must end with DeltaInstruction::EndOfFile",
             )),
-            None => Err(NativeRsyncError::invalid_frame(
+            None => Err(AerorsyncError::invalid_frame(
                 "UploadPlan.delta_instructions is empty; at least EndOfFile is required",
             )),
         }
@@ -199,7 +199,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         &mut self,
         spec: RemoteCommandSpec,
         plan: DrivePlan<'a>,
-    ) -> Result<DriveOutcome, NativeRsyncError> {
+    ) -> Result<DriveOutcome, AerorsyncError> {
         if self.cancel_requested || self.session.state.is_terminal() {
             return Ok(self.terminal_outcome());
         }
@@ -211,8 +211,8 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         })?;
         if !probe.supports_remote_shell {
             self.session.fail();
-            return Err(NativeRsyncError::new(
-                NativeRsyncErrorKind::NegotiationFailed,
+            return Err(AerorsyncError::new(
+                AerorsyncErrorKind::NegotiationFailed,
                 "remote transport does not support remote-shell mode",
             ));
         }
@@ -282,7 +282,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         stream: &mut T::Stream,
         role: Role,
         remote_banner: &str,
-    ) -> Result<(), NativeRsyncError> {
+    ) -> Result<(), AerorsyncError> {
         let local_hello = WireMessage::Hello(HelloMessage {
             protocol: ProtocolVersion::CURRENT,
             role: role.local_role(),
@@ -301,8 +301,8 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         };
         if remote_hello.role != role.expected_remote_role() {
             self.session.fail();
-            return Err(NativeRsyncError::new(
-                NativeRsyncErrorKind::NegotiationFailed,
+            return Err(AerorsyncError::new(
+                AerorsyncErrorKind::NegotiationFailed,
                 format!(
                     "expected remote role {:?}, got {:?}",
                     role.expected_remote_role(),
@@ -323,7 +323,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         stream: &mut T::Stream,
         role: Role,
         outgoing: Option<&FileMetadataMessage>,
-    ) -> Result<FileMetadataMessage, NativeRsyncError> {
+    ) -> Result<FileMetadataMessage, AerorsyncError> {
         match role {
             Role::LocalSender => {
                 let fm = outgoing
@@ -350,7 +350,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         stream: &mut T::Stream,
         role: Role,
         plan: &DrivePlan<'a>,
-    ) -> Result<(u32, Vec<EngineSignatureBlock>), NativeRsyncError> {
+    ) -> Result<(u32, Vec<EngineSignatureBlock>), AerorsyncError> {
         match role {
             Role::LocalSender => {
                 // Receive remote signatures.
@@ -392,7 +392,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
     fn build_receiver_signatures<'a>(
         &mut self,
         plan: &DrivePlan<'a>,
-    ) -> Result<(u32, Vec<EngineSignatureBlock>), NativeRsyncError> {
+    ) -> Result<(u32, Vec<EngineSignatureBlock>), AerorsyncError> {
         match plan {
             DrivePlan::DownloadCaller(p) => {
                 let engine: Vec<EngineSignatureBlock> = p
@@ -411,7 +411,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
                 let sigs = adapter.build_signatures(destination_data, bs_usize);
                 let block_size = u32::try_from(bs_usize).map_err(|_| {
                     self.session.fail();
-                    NativeRsyncError::invalid_frame(format!(
+                    AerorsyncError::invalid_frame(format!(
                         "engine block_size {bs_usize} exceeds u32 wire range"
                     ))
                 })?;
@@ -428,7 +428,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         plan: &DrivePlan<'a>,
         block_size: u32,
         engine_sigs: &[EngineSignatureBlock],
-    ) -> Result<(Vec<EngineDeltaOp>, Option<Vec<u8>>), NativeRsyncError> {
+    ) -> Result<(Vec<EngineDeltaOp>, Option<Vec<u8>>), AerorsyncError> {
         match role {
             Role::LocalSender => {
                 let instructions =
@@ -459,7 +459,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
                             .apply_delta(destination_data, &ops, block_size as usize)
                             .map_err(|e| {
                                 self.session.fail();
-                                NativeRsyncError::invalid_frame(format!("apply_delta failed: {e}"))
+                                AerorsyncError::invalid_frame(format!("apply_delta failed: {e}"))
                             })?;
                         Some(bytes)
                     }
@@ -476,7 +476,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         plan: &DrivePlan<'a>,
         block_size: u32,
         engine_sigs: &[EngineSignatureBlock],
-    ) -> Result<Vec<DeltaInstruction>, NativeRsyncError> {
+    ) -> Result<Vec<DeltaInstruction>, AerorsyncError> {
         match plan {
             DrivePlan::UploadCaller(p) => Ok(p.delta_instructions.clone()),
             DrivePlan::UploadEngine {
@@ -505,7 +505,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         }
     }
 
-    fn guarded_transition(&mut self, next: SessionState) -> Result<(), NativeRsyncError> {
+    fn guarded_transition(&mut self, next: SessionState) -> Result<(), AerorsyncError> {
         self.session.transition_to(next).inspect_err(|_| {
             self.session.fail();
         })
@@ -515,7 +515,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         &mut self,
         stream: &mut T::Stream,
         msg: &WireMessage,
-    ) -> Result<(), NativeRsyncError> {
+    ) -> Result<(), AerorsyncError> {
         let bytes = self.codec.encode(msg).inspect_err(|_| {
             self.session.fail();
         })?;
@@ -529,7 +529,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
     async fn recv_non_error(
         &mut self,
         stream: &mut T::Stream,
-    ) -> Result<WireMessage, NativeRsyncError> {
+    ) -> Result<WireMessage, AerorsyncError> {
         let bytes = stream.read_frame().await.inspect_err(|_| {
             self.session.fail();
         })?;
@@ -539,7 +539,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         })?;
         if let WireMessage::Error(e) = msg {
             self.session.fail();
-            return Err(NativeRsyncError::remote(e.code, e.message));
+            return Err(AerorsyncError::remote(e.code, e.message));
         }
         Ok(msg)
     }
@@ -548,9 +548,9 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         &mut self,
         expected: MessageType,
         got: &WireMessage,
-    ) -> Result<(), NativeRsyncError> {
+    ) -> Result<(), AerorsyncError> {
         self.session.fail();
-        Err(NativeRsyncError::unexpected_message(format!(
+        Err(AerorsyncError::unexpected_message(format!(
             "expected {:?}, got {:?}",
             expected,
             got.message_type()
@@ -560,13 +560,13 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
     fn convert_delta_batch(
         &mut self,
         batch: Vec<DeltaInstruction>,
-    ) -> Result<Vec<EngineDeltaOp>, NativeRsyncError> {
+    ) -> Result<Vec<EngineDeltaOp>, AerorsyncError> {
         let mut out = Vec::with_capacity(batch.len());
         let mut saw_end = false;
         for (idx, ins) in batch.into_iter().enumerate() {
             if saw_end {
                 self.session.fail();
-                return Err(NativeRsyncError::invalid_frame(format!(
+                return Err(AerorsyncError::invalid_frame(format!(
                     "DeltaInstruction at index {idx} follows EndOfFile marker"
                 )));
             }
@@ -579,7 +579,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
         }
         if !saw_end {
             self.session.fail();
-            return Err(NativeRsyncError::invalid_frame(
+            return Err(AerorsyncError::invalid_frame(
                 "delta batch missing EndOfFile terminator",
             ));
         }

@@ -16,10 +16,10 @@
 //! If `delta_sync.rs` changes, only the small conversion block here needs
 //! maintenance — the rest of the prototype stays stable.
 
-use crate::delta_sync;
-use crate::rsync_native_proto::protocol::{
+use crate::aerorsync::protocol::{
     DeltaInstruction as ProtocolDeltaInstruction, SignatureBlock as ProtocolSignatureBlock,
 };
+use crate::delta_sync;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineSignatureBlock {
@@ -199,7 +199,7 @@ pub trait DeltaEngineAdapter: Send + Sync {
     /// the block size the signatures were computed with.
     ///
     /// Returns the raw underlying engine error as a string — the driver wraps
-    /// it into a typed `NativeRsyncError::InvalidFrame` before returning to
+    /// it into a typed `AerorsyncError::InvalidFrame` before returning to
     /// callers.
     fn apply_delta(
         &self,

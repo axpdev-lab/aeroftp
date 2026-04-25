@@ -27,7 +27,7 @@ mod aerovault_v2;
 pub mod agent_memory_db;
 pub mod ai;
 pub mod ai_core;
-mod ai_stream;
+pub mod ai_stream;
 mod ai_tools;
 mod archive_browse;
 mod chat_history;
@@ -63,7 +63,9 @@ pub mod rsync_over_ssh;
 mod ssh_exec;
 pub mod util;
 // Strada C — native rsync prototype (dev-only, gitignored, feature-gated).
-// Does not affect production builds. See `src/rsync_native_proto/README.md`.
+// Does not affect production builds. See `src/aerorsync/README.md`.
+#[cfg(feature = "aerorsync")]
+pub mod aerorsync;
 mod file_tags;
 mod file_watcher;
 mod filesystem;
@@ -86,8 +88,6 @@ pub mod providers;
 mod pty;
 mod rclone_crypt;
 pub mod rclone_import;
-#[cfg(feature = "proto_native_rsync")]
-pub mod rsync_native_proto;
 mod session_commands;
 mod session_manager;
 #[cfg(not(target_os = "macos"))]
@@ -7420,12 +7420,12 @@ fn native_rsync_runtime_enabled() -> bool {
         return false;
     }
 
-    #[cfg(feature = "proto_native_rsync")]
+    #[cfg(feature = "aerorsync")]
     {
         crate::settings::load_native_rsync_enabled()
     }
 
-    #[cfg(not(feature = "proto_native_rsync"))]
+    #[cfg(not(feature = "aerorsync"))]
     {
         false
     }
@@ -7520,9 +7520,8 @@ async fn get_transfer_optimization_hints(
         let native_feature_compiled = crate::settings::native_rsync_feature_compiled();
         let native_feature_enabled = native_rsync_runtime_enabled();
         let private_key_configured = provider_can_deliver_delta;
-        let delta_eligible = active_session_is_sftp
-            && provider_can_deliver_delta
-            && native_feature_enabled;
+        let delta_eligible =
+            active_session_is_sftp && provider_can_deliver_delta && native_feature_enabled;
 
         hints.supports_resume_download = false;
         hints.supports_resume_upload = false;
@@ -11968,9 +11967,9 @@ pub fn run() {
             app_master_password_update_activity,
             app_master_password_check_timeout,
             settings::native_rsync_feature_compiled,
-            #[cfg(feature = "proto_native_rsync")]
+            #[cfg(feature = "aerorsync")]
             settings::native_rsync_enabled_get,
-            #[cfg(feature = "proto_native_rsync")]
+            #[cfg(feature = "aerorsync")]
             settings::native_rsync_enabled_set,
             // Profile Export/Import
             export_server_profiles,

@@ -17,12 +17,12 @@ use crate::number_parsing::{parse_f64_loose, parse_u64_loose};
 /// Observed remote command line for upload (local sends, remote receives).
 /// Source: `capture/artifacts/20260417_154800/upload.remote_command.txt`.
 pub const UPLOAD_REMOTE_COMMAND: &str =
-    "rsync --server -logDtprze.iLsfxCIvu --stats . /workspace/upload/target.bin";
+    "rsync --server -logDtprcze.iLsfxCIvu --stats . /workspace/upload/target.bin";
 
 /// Observed remote command line for download (remote sends, local receives).
 /// Source: `capture/artifacts/20260417_154800/download.remote_command.txt`.
 pub const DOWNLOAD_REMOTE_COMMAND: &str =
-    "rsync --server --sender -logDtprze.iLsfxCIvu . /workspace/download/target.bin";
+    "rsync --server --sender -logDtprcze.iLsfxCIvu . /workspace/download/target.bin";
 
 /// rsync banner observed in `summary.env`.
 pub const OBSERVED_RSYNC_BANNER: &str = "rsync  version 3.2.7  protocol version 31";
@@ -229,7 +229,7 @@ total size is 8,388,608  speedup is 48.22
 //
 // Layout (relative to the repo root):
 //
-//   src-tauri/src/rsync_native_proto/capture/artifacts_real/frozen/
+//   src-tauri/src/aerorsync/capture/artifacts_real/frozen/
 //     ├── summary.env                      (freeze_ts, fingerprints, byte counts)
 //     ├── host_rsync_version.txt
 //     ├── server_rsync_version.txt
@@ -253,8 +253,7 @@ total size is 8,388,608  speedup is 48.22
 
 /// Frozen subdirectory of the real-rsync lane. Relative to the cargo
 /// manifest directory (`src-tauri/`) so `cargo test` can resolve it.
-pub const REAL_RSYNC_FROZEN_TRANSCRIPT_REL: &str =
-    "src/rsync_native_proto/capture/artifacts_real/frozen";
+pub const REAL_RSYNC_FROZEN_TRANSCRIPT_REL: &str = "src/aerorsync/capture/artifacts_real/frozen";
 
 /// Container-side workspace root for the real-rsync lane.
 pub const REAL_RSYNC_LANE_WORKDIR: &str = "/workspace/real";

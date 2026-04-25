@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::rsync_native_proto::types::{NativeRsyncError, ProtocolVersion};
+use crate::aerorsync::shell_escape::shell_escape_posix;
+use crate::aerorsync::types::{AerorsyncError, ProtocolVersion};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransportProbe {
@@ -34,13 +35,10 @@ pub struct RemoteExecRequest {
 
 impl RemoteExecRequest {
     pub fn full_command_line(&self) -> String {
-        let mut out = String::with_capacity(self.program.len() + 64);
-        out.push_str(&self.program);
-        for a in &self.args {
-            out.push(' ');
-            out.push_str(a);
-        }
-        out
+        let mut parts = Vec::with_capacity(1 + self.args.len());
+        parts.push(shell_escape_posix(&self.program));
+        parts.extend(self.args.iter().map(|arg| shell_escape_posix(arg)));
+        parts.join(" ")
     }
 }
 
@@ -57,28 +55,24 @@ pub struct RemoteCommandOutput {
 /// is needed. The prototype mock is single-threaded and in-process.
 #[async_trait]
 pub trait BidirectionalByteStream: Send {
-    async fn write_frame(&mut self, frame: &[u8]) -> Result<(), NativeRsyncError>;
-    async fn read_frame(&mut self) -> Result<Vec<u8>, NativeRsyncError>;
-    async fn shutdown(&mut self) -> Result<(), NativeRsyncError>;
+    async fn write_frame(&mut self, frame: &[u8]) -> Result<(), AerorsyncError>;
+    async fn read_frame(&mut self) -> Result<Vec<u8>, AerorsyncError>;
+    async fn shutdown(&mut self) -> Result<(), AerorsyncError>;
 }
 
 #[async_trait]
 pub trait RemoteShellTransport: Send + Sync {
     type Stream: BidirectionalByteStream + Send;
 
-    async fn probe(&self) -> Result<TransportProbe, NativeRsyncError>;
+    async fn probe(&self) -> Result<TransportProbe, AerorsyncError>;
 
-    async fn exec(
-        &self,
-        request: RemoteExecRequest,
-    ) -> Result<RemoteCommandOutput, NativeRsyncError>;
+    async fn exec(&self, request: RemoteExecRequest)
+        -> Result<RemoteCommandOutput, AerorsyncError>;
 
-    async fn open_stream(
-        &self,
-        request: RemoteExecRequest,
-    ) -> Result<Self::Stream, NativeRsyncError>;
+    async fn open_stream(&self, request: RemoteExecRequest)
+        -> Result<Self::Stream, AerorsyncError>;
 
-    async fn cancel(&self) -> Result<(), NativeRsyncError>;
+    async fn cancel(&self) -> Result<(), AerorsyncError>;
 
     /// Returns a lightweight cancel handle that callers can drive from an
     /// async `select!` without having to hold the whole transport.
@@ -156,9 +150,9 @@ impl std::fmt::Debug for CancelHandle {
 /// writes the whole slice. `shutdown` tears the remote end down.
 #[async_trait]
 pub trait RawByteStream: Send {
-    async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, NativeRsyncError>;
-    async fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), NativeRsyncError>;
-    async fn shutdown(&mut self) -> Result<(), NativeRsyncError>;
+    async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, AerorsyncError>;
+    async fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), AerorsyncError>;
+    async fn shutdown(&mut self) -> Result<(), AerorsyncError>;
 }
 
 /// Transport that can open a raw byte-stream session in addition to the
@@ -172,5 +166,5 @@ pub trait RawRemoteShellTransport: RemoteShellTransport {
     async fn open_raw_stream(
         &self,
         request: RemoteExecRequest,
-    ) -> Result<Self::RawStream, NativeRsyncError>;
+    ) -> Result<Self::RawStream, AerorsyncError>;
 }

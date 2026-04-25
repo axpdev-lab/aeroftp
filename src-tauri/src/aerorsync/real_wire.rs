@@ -677,7 +677,7 @@ impl<'a> Iterator for MuxDemuxer<'a> {
 /// tests) records `(tag, length)` only — the OOB payload is dropped.
 /// `oob_frames` was added in Sinergia 8h to retain the full payload
 /// so the event classifier in `events::classify_oob_frame` can produce
-/// typed `NativeRsyncEvent`s without re-walking the demuxer.
+/// typed `AerorsyncEvent`s without re-walking the demuxer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReassemblyReport {
     /// Concatenated payload of every `MSG_DATA` frame in encounter order.
@@ -737,7 +737,7 @@ pub fn reassemble_msg_data(buf: &[u8]) -> Result<ReassemblyReport, RealWireError
 //
 // Both return `ClassifiedReassemblyReport`. A non-`None` `terminal`
 // field means the stream bailed; the consumer (future S8i driver) maps
-// it to a `NativeRsyncError` via `events::NativeRsyncEvent`.
+// it to a `AerorsyncError` via `events::AerorsyncEvent`.
 //
 // Design choice: the bail path returns `Ok` with `terminal: Some(...)`
 // rather than synthesising a `RealWireError` variant. A remote-driven
@@ -757,20 +757,20 @@ pub fn reassemble_msg_data(buf: &[u8]) -> Result<ReassemblyReport, RealWireError
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassifiedReassemblyReport {
     pub app_stream: Vec<u8>,
-    pub events: Vec<crate::rsync_native_proto::events::NativeRsyncEvent>,
-    pub terminal: Option<crate::rsync_native_proto::events::NativeRsyncEvent>,
+    pub events: Vec<crate::aerorsync::events::AerorsyncEvent>,
+    pub terminal: Option<crate::aerorsync::events::AerorsyncEvent>,
     pub consumed_bytes: usize,
     pub frames_consumed: usize,
 }
 
 /// Walk every mux frame, classify every OOB frame into a typed
-/// `NativeRsyncEvent`, never bail. `terminal` is always `None`.
+/// `AerorsyncEvent`, never bail. `terminal` is always `None`.
 ///
 /// Equivalent in app_stream contents to `reassemble_msg_data` —
 /// pinned by the `reassemble_with_events_app_stream_matches_legacy`
 /// regression test.
 pub fn reassemble_with_events(buf: &[u8]) -> Result<ClassifiedReassemblyReport, RealWireError> {
-    use crate::rsync_native_proto::events::classify_oob_frame;
+    use crate::aerorsync::events::classify_oob_frame;
 
     let mut app_stream = Vec::new();
     let mut events = Vec::new();
@@ -795,7 +795,7 @@ pub fn reassemble_with_events(buf: &[u8]) -> Result<ClassifiedReassemblyReport, 
 }
 
 /// Same as `reassemble_with_events` but stops at the first terminal
-/// OOB frame (per `NativeRsyncEvent::is_terminal`). The terminating
+/// OOB frame (per `AerorsyncEvent::is_terminal`). The terminating
 /// event is moved into `terminal`; subsequent bytes are NOT consumed.
 ///
 /// **Stop semantics, hardening-pinned**: `app_stream` ends at the byte
@@ -804,7 +804,7 @@ pub fn reassemble_with_events(buf: &[u8]) -> Result<ClassifiedReassemblyReport, 
 /// includes the terminating frame's header + payload but no further
 /// bytes. See `reassemble_until_terminal_does_not_consume_data_after_error`.
 pub fn reassemble_until_terminal(buf: &[u8]) -> Result<ClassifiedReassemblyReport, RealWireError> {
-    use crate::rsync_native_proto::events::classify_oob_frame;
+    use crate::aerorsync::events::classify_oob_frame;
 
     let mut app_stream = Vec::new();
     let mut events = Vec::new();
@@ -868,13 +868,13 @@ pub fn reassemble_until_terminal(buf: &[u8]) -> Result<ClassifiedReassemblyRepor
 /// info, state markers). The driver forwards these to the `EventSink`.
 ///
 /// `Terminal` is a classified terminal event. The driver MUST translate
-/// it via `NativeRsyncError::from_oob_event` and abort the session. After
+/// it via `AerorsyncError::from_oob_event` and abort the session. After
 /// `Terminal` is returned once, the reader is locked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MuxPoll {
     Data(Vec<u8>),
-    Oob(crate::rsync_native_proto::events::NativeRsyncEvent),
-    Terminal(crate::rsync_native_proto::events::NativeRsyncEvent),
+    Oob(crate::aerorsync::events::AerorsyncEvent),
+    Terminal(crate::aerorsync::events::AerorsyncEvent),
 }
 
 /// Streaming multiplex reader. Decouples SSH read cadence from
@@ -929,7 +929,7 @@ impl MuxStreamReader {
     /// bail); callers that want the locked behaviour should flip
     /// `terminal_seen` themselves or stop polling.
     pub fn poll_frame(&mut self) -> Option<Result<MuxPoll, RealWireError>> {
-        use crate::rsync_native_proto::events::classify_oob_frame;
+        use crate::aerorsync::events::classify_oob_frame;
 
         if self.terminal_seen {
             return None;
@@ -1320,11 +1320,20 @@ pub fn decode_file_list_entry(
     cursor += consumed_flags;
 
     // Terminator: flags == 0 means end of file-list. For varint mode an
-    // explicit io_error varint can follow; for classic mode a
+    // explicit io_error varint follows the terminator (mirroring
+    // `flist.c::write_end_of_flist` which emits two `write_varint(0)`
+    // calls on the happy path). For classic mode a
     // `XMIT_EXTENDED_FLAGS | XMIT_IO_ERROR_ENDLIST` pairing carries the
-    // same info — neither yet observed in the frozen oracle.
+    // same info.
     if flags == 0 {
-        return Ok((FileListDecodeOutcome::EndOfList { io_error: 0 }, cursor));
+        let io_error = if options.xfer_flags_as_varint {
+            let (raw, consumed) = decode_varint(&buf[cursor..])?;
+            cursor += consumed;
+            raw as i32
+        } else {
+            0
+        };
+        return Ok((FileListDecodeOutcome::EndOfList { io_error }, cursor));
     }
 
     // --- 2. Name length + name ---------------------------------------------
@@ -1686,12 +1695,17 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
 }
 
 /// Encode a file-list terminator. In `xfer_flags_as_varint` mode this
-/// is `varint(0)` (single zero byte); in classic mode this is also a
-/// single zero byte. Symmetric to the `flags == 0` early return in
+/// is `varint(0) + varint(0)` (terminator + io_error count, 2 zero
+/// bytes), matching `flist.c::write_end_of_flist` for the happy path
+/// (no io_error). In classic mode this is a single `XMIT_EXTENDED_FLAGS
+/// = 0` byte. Symmetric to the `flags == 0` early return in
 /// `decode_file_list_entry`.
 pub fn encode_file_list_terminator(options: &FileListDecodeOptions) -> Vec<u8> {
     if options.xfer_flags_as_varint {
-        encode_varint(0)
+        // write_end_of_flist(f, 0): write_varint(0) + write_varint(0)
+        let mut out = encode_varint(0);
+        out.extend_from_slice(&encode_varint(0));
+        out
     } else {
         vec![0u8]
     }
@@ -2523,7 +2537,7 @@ pub fn decode_delta_stream(
 /// chunks and handing the result to `zstd::stream::Decoder`, which
 /// processes back-to-back blocks transparently.
 ///
-/// Available only when the `proto_native_rsync` feature is enabled
+/// Available only when the `aerorsync` feature is enabled
 /// (the `zstd` crate is an optional dependency gated behind it).
 pub fn decompress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<u8>, RealWireError> {
     // A session-wide zstd context mirrors `recv_zstd_token`'s
@@ -2645,7 +2659,7 @@ pub fn decompress_zstd_literal_stream_boundaries(
 /// DEFLATED_DATA record (consistent with `send_zstd_token` not
 /// emitting an empty token, see token.c:691 `if (nb)` guard).
 ///
-/// Available only when `proto_native_rsync` is enabled.
+/// Available only when `aerorsync` is enabled.
 pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, RealWireError> {
     use zstd::zstd_safe::zstd_sys::ZSTD_EndDirective;
     use zstd::zstd_safe::{CCtx, CParameter, InBuffer, OutBuffer};
@@ -3457,11 +3471,11 @@ mod tests {
         // Order preserved: Info before Warning.
         assert!(matches!(
             &report.events[0],
-            crate::rsync_native_proto::events::NativeRsyncEvent::Info { message } if message == "one"
+            crate::aerorsync::events::AerorsyncEvent::Info { message } if message == "one"
         ));
         assert!(matches!(
             &report.events[1],
-            crate::rsync_native_proto::events::NativeRsyncEvent::Warning { message } if message == "two"
+            crate::aerorsync::events::AerorsyncEvent::Warning { message } if message == "two"
         ));
     }
 
@@ -3513,11 +3527,11 @@ mod tests {
         assert_eq!(report.events.len(), 1);
         assert!(matches!(
             &report.events[0],
-            crate::rsync_native_proto::events::NativeRsyncEvent::Warning { .. }
+            crate::aerorsync::events::AerorsyncEvent::Warning { .. }
         ));
         assert!(matches!(
             report.terminal.as_ref().unwrap(),
-            crate::rsync_native_proto::events::NativeRsyncEvent::Error { message } if message == "BOOM!"
+            crate::aerorsync::events::AerorsyncEvent::Error { message } if message == "BOOM!"
         ));
         // 3 frames consumed: Data, Warning, Error (NOT the trailing Data).
         assert_eq!(report.frames_consumed, 3);
@@ -3588,7 +3602,7 @@ mod tests {
         let report = reassemble_until_terminal(&buf).unwrap();
         assert!(matches!(
             report.terminal.as_ref().unwrap(),
-            crate::rsync_native_proto::events::NativeRsyncEvent::ErrorExit { code: Some(23) }
+            crate::aerorsync::events::AerorsyncEvent::ErrorExit { code: Some(23) }
         ));
     }
 
@@ -3835,9 +3849,11 @@ mod tests {
     #[test]
     fn decode_file_list_entry_recognises_terminator_varint_zero() {
         let opts = frozen_oracle_opts(None);
-        let buf = [0x00u8]; // varint(0)
+        // B.2 fix: terminator in varint mode is 2 bytes (flags varint(0) +
+        // io_error count varint(0)) per write_end_of_flist semantics.
+        let buf = [0x00u8, 0x00u8];
         let (outcome, consumed) = decode_file_list_entry(&buf, &opts).unwrap();
-        assert_eq!(consumed, 1);
+        assert_eq!(consumed, 2);
         assert_eq!(outcome, FileListDecodeOutcome::EndOfList { io_error: 0 });
     }
 
@@ -5191,13 +5207,15 @@ mod tests {
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = true;
         let bytes = encode_file_list_terminator(&opts);
-        assert_eq!(bytes, vec![0x00]);
+        // B.2 fix: terminator in varint mode is 2 bytes (flags varint(0)
+        // + io_error count varint(0)) per write_end_of_flist semantics.
+        assert_eq!(bytes, vec![0x00, 0x00]);
         let (outcome, consumed) = decode_file_list_entry(&bytes, &opts).unwrap();
         assert!(matches!(
             outcome,
             FileListDecodeOutcome::EndOfList { io_error: 0 }
         ));
-        assert_eq!(consumed, 1);
+        assert_eq!(consumed, 2);
     }
 
     #[test]
@@ -5222,6 +5240,115 @@ mod tests {
         let (l1, suffix) = compute_flist_name_split(&entry, Some(&prev), true);
         assert_eq!(l1, 255);
         assert_eq!(suffix.len(), 45);
+    }
+
+    // -------------------------------------------------------------------------
+    // B.2 Step 3 — Byte-level pin against the frozen oracle's first
+    // MSG_DATA payload (file list entry + checksum + end-of-flist +
+    // NDX_FLIST_EOF marker, 67 bytes total). The expected bytes are taken
+    // verbatim from
+    // `src-tauri/src/aerorsync/capture/artifacts_real/frozen/upload/capture_in.bin`
+    // bytes [59..126] (after the `43 00 00 07` mux header). Decoded
+    // field-by-field in
+    // `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/2026-04-25_File_List_Wire_Annotation.md`.
+    // -------------------------------------------------------------------------
+
+    /// FileListEntry mirroring the oracle's encoding of `upload.bin`
+    /// (mtime + nsec + mode + uid/gid + name + xxh128 checksum).
+    fn oracle_upload_bin_entry() -> FileListEntry {
+        FileListEntry {
+            // xflags varint = 0x2c00 = USER_NAME_FOLLOWS | GROUP_NAME_FOLLOWS | MOD_NSEC.
+            // No SAME_* and no LONG_NAME — first entry, name <= 255.
+            flags: XMIT_USER_NAME_FOLLOWS | XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC,
+            path: "upload.bin".to_string(),
+            size: 262_144,
+            mtime: 1_776_451_416, // 0x69E27F58 (decoded from oracle bytes `69 58 7f e2`)
+            mtime_nsec: Some(958_813_121), // 0x39265301 (decoded from oracle bytes `f0 c1 53 26 39`)
+            mode: 0o100_664,               // 0x000081B4 (S_IFREG | rw-rw-r--)
+            uid: Some(1000),
+            uid_name: Some("axpnet".to_string()),
+            gid: Some(1000),
+            gid_name: Some("axpnet".to_string()),
+            checksum: vec![
+                0x0c, 0x22, 0x11, 0xc6, 0xe2, 0xe7, 0xc9, 0x9c, 0x96, 0xc3, 0xfd, 0xfb, 0x51, 0x2c,
+                0x82, 0xc9,
+            ],
+        }
+    }
+
+    /// Decode options matching the oracle compat negotiation:
+    /// CF_VARINT_FLIST_FLAGS on, --checksum on (xxh128, 16 B),
+    /// preserve_uid + preserve_gid on (rsync command had `-o -g`).
+    fn oracle_upload_bin_options() -> FileListDecodeOptions<'static> {
+        FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        }
+    }
+
+    /// Bytes [0..63] of the oracle file-list MSG_DATA payload — the
+    /// FileListEntry (47 B) + the 16-byte xxh128 file checksum.
+    const ORACLE_FLIST_ENTRY_BYTES: &[u8] = &[
+        // xflags varint (0x2c00 → "ac 00")
+        0xac, 0x00, // name_len byte (10)
+        0x0a, // name "upload.bin"
+        0x75, 0x70, 0x6c, 0x6f, 0x61, 0x64, 0x2e, 0x62, 0x69, 0x6e,
+        // size varlong3 (262144)
+        0x04, 0x00, 0x00, // mtime varlong4 (1776844632)
+        0x69, 0x58, 0x7f, 0xe2, // mod_nsec varint (959968705)
+        0xf0, 0xc1, 0x53, 0x26, 0x39, // mode int32 LE (0x000081b4)
+        0xb4, 0x81, 0x00, 0x00, // uid varint (1000)
+        0x83, 0xe8, // user_name length + "axpnet"
+        0x06, 0x61, 0x78, 0x70, 0x6e, 0x65, 0x74, // gid varint (1000)
+        0x83, 0xe8, // group_name length + "axpnet"
+        0x06, 0x61, 0x78, 0x70, 0x6e, 0x65, 0x74, // xxh128 file checksum (16 bytes)
+        0x0c, 0x22, 0x11, 0xc6, 0xe2, 0xe7, 0xc9, 0x9c, 0x96, 0xc3, 0xfd, 0xfb, 0x51, 0x2c, 0x82,
+        0xc9,
+    ];
+
+    #[test]
+    fn encode_file_list_entry_matches_oracle_byte_for_byte() {
+        let entry = oracle_upload_bin_entry();
+        let opts = oracle_upload_bin_options();
+        let encoded = encode_file_list_entry(&entry, &opts);
+        assert_eq!(
+            encoded, ORACLE_FLIST_ENTRY_BYTES,
+            "encoder output diverges from frozen oracle bytes [0..63] (entry+checksum)"
+        );
+        assert_eq!(encoded.len(), 63, "entry+checksum must be 63 B");
+    }
+
+    #[test]
+    fn encode_file_list_terminator_emits_two_zero_bytes_in_varint_mode() {
+        // After the entry, the oracle emits `00 00` — write_varint(0) for
+        // the flags terminator AND write_varint(0) for the io_error
+        // count (write_end_of_flist with `xfer_flags_as_varint`).
+        let mut opts = FileListDecodeOptions::frozen_oracle_default();
+        opts.xfer_flags_as_varint = true;
+        let bytes = encode_file_list_terminator(&opts);
+        assert_eq!(
+            bytes,
+            vec![0x00, 0x00],
+            "terminator must be 2 bytes (varint(0) + varint(0)) in CF_VARINT_FLIST_FLAGS mode"
+        );
+    }
+
+    #[test]
+    fn encode_ndx_flist_eof_first_call_emits_ff_01() {
+        // After the file-list terminator, the sender emits write_ndx(NDX_FLIST_EOF=-2).
+        // First call: prev_negative starts at 1, diff = 2 - 1 = 1 → "ff 01".
+        let mut state = NdxState::default();
+        let bytes = encode_ndx(NDX_FLIST_EOF, &mut state);
+        assert_eq!(
+            bytes,
+            vec![0xff, 0x01],
+            "NDX_FLIST_EOF marker must be 2 bytes (0xff prefix + diff=1)"
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -5499,7 +5626,7 @@ mod tests {
     // Sinergia 8i — MuxStreamReader (streaming demuxer + progress counter)
     // ==========================================================================
 
-    use crate::rsync_native_proto::events::NativeRsyncEvent;
+    use crate::aerorsync::events::AerorsyncEvent;
 
     fn frame(tag: MuxTag, payload: &[u8]) -> Vec<u8> {
         let hdr = MuxHeader {
@@ -5556,7 +5683,7 @@ mod tests {
         r.feed(&frame(MuxTag::Data, b"real"));
         // First poll: OOB Info (non-terminal)
         match r.poll_frame().unwrap().unwrap() {
-            MuxPoll::Oob(NativeRsyncEvent::Info { message }) => {
+            MuxPoll::Oob(AerorsyncEvent::Info { message }) => {
                 assert_eq!(message, "chatter");
             }
             other => panic!("expected Oob(Info), got {other:?}"),
@@ -5605,7 +5732,7 @@ mod tests {
             other => panic!("{other:?}"),
         }
         match r.poll_frame().unwrap().unwrap() {
-            MuxPoll::Oob(NativeRsyncEvent::Info { .. }) => {}
+            MuxPoll::Oob(AerorsyncEvent::Info { .. }) => {}
             other => panic!("{other:?}"),
         }
         match r.poll_frame().unwrap().unwrap() {
@@ -5635,7 +5762,7 @@ mod tests {
         }
         // Terminal
         match r.poll_frame().unwrap().unwrap() {
-            MuxPoll::Terminal(NativeRsyncEvent::Error { message }) => {
+            MuxPoll::Terminal(AerorsyncEvent::Error { message }) => {
                 assert_eq!(message, "remote boom");
             }
             other => panic!("{other:?}"),
@@ -5700,7 +5827,7 @@ mod tests {
         let mut r = MuxStreamReader::new();
         r.feed(&frame(MuxTag::ErrorExit, &[0u8, 0, 0, 0]));
         match r.poll_frame().unwrap().unwrap() {
-            MuxPoll::Oob(NativeRsyncEvent::ErrorExit { code: Some(0) }) => {}
+            MuxPoll::Oob(AerorsyncEvent::ErrorExit { code: Some(0) }) => {}
             other => panic!("expected Oob(ErrorExit(0)), got {other:?}"),
         }
         assert!(!r.terminal_seen());

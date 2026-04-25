@@ -1,15 +1,15 @@
-//! A4 — `NativeRsyncDeltaTransport`: production-facing `DeltaTransport`
+//! A4 — `AerorsyncDeltaTransport`: production-facing `DeltaTransport`
 //! implementation backed by the Strada C native rsync driver.
 //!
 //! The module is the bridge between the prototype driver
-//! (`NativeRsyncDriver` + `RsyncEventBridge`) and the production
+//! (`AerorsyncDriver` + `RsyncEventBridge`) and the production
 //! `crate::delta_transport::DeltaTransport` trait consumed by the sync
 //! loop. It owns:
 //!
 //! - Construction of the SSH transport, driver, adapter, and bridge for
 //!   each individual transfer (no cross-transfer session caching — the
 //!   trait is `&self`, so we avoid locking altogether).
-//! - Translation of typed `NativeRsyncError` into `RsyncError` through
+//! - Translation of typed `AerorsyncError` into `RsyncError` through
 //!   the `fallback_policy::classify_fallback` matrix. HardError variants
 //!   land in `RsyncError::HardRejection`, which
 //!   `delta_sync_rsync::transfer_with_delta` now routes to
@@ -37,7 +37,7 @@
 //! - R3: download decodes into a `Vec<u8>` that A4 buffers before the
 //!   temp-file write. Accepted for the same reason.
 
-#![cfg(feature = "proto_native_rsync")]
+#![cfg(feature = "aerorsync")]
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -47,23 +47,23 @@ use async_trait::async_trait;
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 
-use crate::delta_transport::DeltaTransport;
-use crate::rsync_native_proto::engine_adapter::CurrentDeltaSyncBridge;
-use crate::rsync_native_proto::fallback_policy::{classify_fallback, FallbackVerdict};
-use crate::rsync_native_proto::native_driver::NativeRsyncDriver;
-use crate::rsync_native_proto::real_wire::FileListEntry;
-use crate::rsync_native_proto::remote_command::RemoteCommandSpec;
-use crate::rsync_native_proto::rsync_event_bridge::RsyncEventBridge;
-use crate::rsync_native_proto::ssh_transport::{
+use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
+use crate::aerorsync::native_driver::AerorsyncDriver;
+use crate::aerorsync::real_wire::FileListEntry;
+use crate::aerorsync::remote_command::RemoteCommandSpec;
+use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
+use crate::aerorsync::ssh_transport::{
     SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
 };
-use crate::rsync_native_proto::transport::{CancelHandle, RemoteExecRequest, RemoteShellTransport};
-use crate::rsync_native_proto::types::{NativeRsyncError, SessionStats};
+use crate::aerorsync::transport::{CancelHandle, RemoteExecRequest, RemoteShellTransport};
+use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionStats};
+use crate::delta_transport::DeltaTransport;
 use crate::rsync_output::RsyncEvent;
 use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
 
 /// Display name surfaced by `DeltaTransport::name()`.
-const NATIVE_TRANSPORT_NAME: &str = "native-rsync-proto-31";
+const AERORSYNC_TRANSPORT_NAME: &str = "aerorsync-proto-31";
 
 /// Chunk size used by `write_atomic_chunked` in production. 64 KiB
 /// matches the AeroVault v2 body chunk + keeps syscall count reasonable.
@@ -78,7 +78,7 @@ const TEMP_SUFFIX: &str = ".aerotmp";
 /// classic `RsyncBinaryTransport` streams via subprocess stdio and is
 /// unaffected, so we gate by size to avoid OOM-ing the Tauri main
 /// process on multi-GB transfers. Streaming upgrade tracked in S8k.
-const NATIVE_MAX_IN_MEMORY_BYTES: u64 = 256 * 1024 * 1024;
+const AERORSYNC_MAX_IN_MEMORY_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Counter used to salt the per-instance temp suffix so two concurrent
 /// AeroFTP processes (or two threads in the same app) downloading to the
@@ -90,12 +90,12 @@ static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::At
 /// One instance is cheap to construct and safe to share across many
 /// transfers; each `upload` / `download` call builds its own SSH session
 /// and driver so the trait methods can remain `&self`.
-pub struct NativeRsyncDeltaTransport {
+pub struct AerorsyncDeltaTransport {
     ssh_config: SshTransportConfig,
     min_file_size: u64,
 }
 
-impl NativeRsyncDeltaTransport {
+impl AerorsyncDeltaTransport {
     /// Primary constructor — takes a fully-populated SSH config and the
     /// size threshold below which delta is declined.
     pub fn new(ssh_config: SshTransportConfig, min_file_size: u64) -> Self {
@@ -128,12 +128,15 @@ impl NativeRsyncDeltaTransport {
             worker_idle_poll_ms: 250,
             max_frame_size: 1 << 20,
             host_key_policy,
-            // `probe_request` is unused while `probe_remote` returns a
-            // hardcoded capability. Kept populated so a future real probe
-            // (S8j) can drop in without touching this factory.
+            // B.1/B.4: probe stock `rsync --version` on the remote. The
+            // parser in `parse_probe_protocol` extracts the numeric
+            // protocol version from the multi-line banner. A missing
+            // `rsync` binary surfaces as exit != 0 and is mapped to
+            // `RsyncError::RemoteNotAvailable` (soft classic fallback);
+            // only `HostKeyRejected` escalates to `HardRejection`.
             probe_request: RemoteExecRequest {
-                program: "/opt/rsnp/bin/rsync_proto_serve".into(),
-                args: vec!["--probe".into()],
+                program: "rsync".into(),
+                args: vec!["--version".into()],
                 environment: Vec::new(),
             },
         };
@@ -142,14 +145,14 @@ impl NativeRsyncDeltaTransport {
 }
 
 #[async_trait]
-impl DeltaTransport for NativeRsyncDeltaTransport {
+impl DeltaTransport for AerorsyncDeltaTransport {
     fn name(&self) -> &'static str {
-        NATIVE_TRANSPORT_NAME
+        AERORSYNC_TRANSPORT_NAME
     }
 
     async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
         // U-04: real exec probe. Opens a one-shot SSH exec channel and
-        // runs `rsync_proto_serve --probe`. A non-zero exit or a
+        // runs `aerorsync_serve --probe`. A non-zero exit or a
         // transport failure propagates as `RsyncError::RemoteNotAvailable`
         // so the adapter's probe cache (`PROBE_CACHE`, 5-minute TTL)
         // memoises a typed "unavailable" verdict — without this, every
@@ -160,13 +163,17 @@ impl DeltaTransport for NativeRsyncDeltaTransport {
         let probe = match transport.probe().await {
             Ok(p) => p,
             Err(error) => {
+                let rsync_error = map_native_probe_error_to_rsync(error);
+                if matches!(rsync_error, RsyncError::HardRejection(_)) {
+                    return Err(rsync_error);
+                }
                 tracing::warn!(
                     "native rsync probe failed for {}:{}: {} — marking remote unavailable",
                     self.ssh_config.host,
                     self.ssh_config.port,
-                    error
+                    rsync_error
                 );
-                return Err(RsyncError::RemoteNotAvailable);
+                return Err(rsync_error);
             }
         };
         Ok(RsyncCapability {
@@ -194,7 +201,7 @@ impl DeltaTransport for NativeRsyncDeltaTransport {
 
 // --- upload flow ---------------------------------------------------------
 
-impl NativeRsyncDeltaTransport {
+impl AerorsyncDeltaTransport {
     async fn upload_inner(
         &self,
         local_path: &Path,
@@ -213,32 +220,36 @@ impl NativeRsyncDeltaTransport {
         // the cap, surface a classic-fallback signal rather than OOM the
         // process. Classic `RsyncBinaryTransport` streams via subprocess
         // stdio and handles large files safely.
-        if file_size > NATIVE_MAX_IN_MEMORY_BYTES {
+        if file_size > AERORSYNC_MAX_IN_MEMORY_BYTES {
             return Err(RsyncError::TransferFailed {
                 exit: -1,
                 stderr: format!(
                     "native fallback: upload source {} bytes exceeds in-memory cap {} bytes",
-                    file_size, NATIVE_MAX_IN_MEMORY_BYTES
+                    file_size, AERORSYNC_MAX_IN_MEMORY_BYTES
                 ),
             });
         }
         // R2: buffered in-memory source. Accepted for prototype scope
-        // (bounded above by `NATIVE_MAX_IN_MEMORY_BYTES`).
+        // (bounded above by `AERORSYNC_MAX_IN_MEMORY_BYTES`).
         let source_data = fs::read(local_path).await.map_err(RsyncError::Io)?;
         // U-07: preserve the source mtime on the wire. Classic rsync
         // preserves mtime by default and `RsyncConfig::preserve_times` is
         // already on for the SFTP path; hardcoding `mtime: 0` was a
         // silent regression for mtime-aware sync consumers.
-        let source_entry = build_source_entry(local_path, file_size, &metadata);
+        let source_entry = build_source_entry(local_path, file_size, &metadata, &source_data);
 
         let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
         let cancel = CancelHandle::inert();
-        let mut driver = NativeRsyncDriver::new(transport, cancel);
+        let mut driver = AerorsyncDriver::new(transport, cancel);
         let adapter = CurrentDeltaSyncBridge::new();
         let warnings = new_warnings_sink();
         let mut bridge = build_event_bridge(warnings.clone());
 
-        let spec = RemoteCommandSpec::native_upload(remote_path);
+        // B.1: production dispatch now talks to stock `rsync --server`
+        // (WrapperParity flavor) instead of the dev helper
+        // `aerorsync_serve`. The wrapper command line is byte-pinned
+        // against rsync 3.2.7 capture by `upload_remote_command_matches_capture`.
+        let spec = RemoteCommandSpec::upload(remote_path);
         let drive_res = driver
             .drive_upload_through_delta(spec, source_entry, &source_data, &adapter, &mut bridge)
             .await;
@@ -262,7 +273,7 @@ impl NativeRsyncDeltaTransport {
 
 // --- download flow -------------------------------------------------------
 
-impl NativeRsyncDeltaTransport {
+impl AerorsyncDeltaTransport {
     async fn download_inner(
         &self,
         remote_path: &str,
@@ -276,13 +287,13 @@ impl NativeRsyncDeltaTransport {
         // download while hiding the underlying error from the user.
         let (destination_data, baseline_mode) = match fs::read(local_path).await {
             Ok(data) => {
-                if data.len() as u64 > NATIVE_MAX_IN_MEMORY_BYTES {
+                if data.len() as u64 > AERORSYNC_MAX_IN_MEMORY_BYTES {
                     return Err(RsyncError::TransferFailed {
                         exit: -1,
                         stderr: format!(
                             "native fallback: download baseline {} bytes exceeds in-memory cap {} bytes",
                             data.len(),
-                            NATIVE_MAX_IN_MEMORY_BYTES
+                            AERORSYNC_MAX_IN_MEMORY_BYTES
                         ),
                     });
                 }
@@ -316,12 +327,15 @@ impl NativeRsyncDeltaTransport {
 
         let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
         let cancel = CancelHandle::inert();
-        let mut driver = NativeRsyncDriver::new(transport, cancel);
+        let mut driver = AerorsyncDriver::new(transport, cancel);
         let adapter = CurrentDeltaSyncBridge::new();
         let warnings = new_warnings_sink();
         let mut bridge = build_event_bridge(warnings.clone());
 
-        let spec = RemoteCommandSpec::native_download(remote_path);
+        // B.1: production dispatch now talks to stock `rsync --server --sender`
+        // (WrapperParity flavor). Pinned against rsync 3.2.7 capture by
+        // `download_remote_command_matches_capture`.
+        let spec = RemoteCommandSpec::download(remote_path);
         let drive_res = driver
             .drive_download_through_delta(spec, &destination_data, &adapter, &mut bridge)
             .await;
@@ -347,14 +361,28 @@ impl NativeRsyncDeltaTransport {
             })?
             .to_vec();
         let file_size = reconstructed.len() as u64;
-        if file_size > NATIVE_MAX_IN_MEMORY_BYTES {
+        if file_size > AERORSYNC_MAX_IN_MEMORY_BYTES {
             return Err(RsyncError::TransferFailed {
                 exit: -1,
                 stderr: format!(
                     "native fallback: reconstructed output {} bytes exceeds in-memory cap {} bytes",
-                    file_size, NATIVE_MAX_IN_MEMORY_BYTES
+                    file_size, AERORSYNC_MAX_IN_MEMORY_BYTES
                 ),
             });
+        }
+
+        let remote_entry = driver.downloaded_entry().cloned();
+        let preserve_mode = remote_entry
+            .as_ref()
+            .map(|entry| entry.mode)
+            .or(baseline_mode);
+        let preserve_mtime = remote_entry
+            .as_ref()
+            .map(|entry| (entry.mtime, entry.mtime_nsec));
+        if remote_entry.is_none() {
+            tracing::warn!(
+                "native rsync download completed without remote file metadata; preserving local baseline mode only"
+            );
         }
 
         write_atomic_chunked(
@@ -362,7 +390,8 @@ impl NativeRsyncDeltaTransport {
             &reconstructed,
             ATOMIC_WRITE_CHUNK_SIZE,
             None,
-            baseline_mode,
+            preserve_mode,
+            preserve_mtime,
         )
         .await
         .map_err(map_write_atomic_error)?;
@@ -380,35 +409,134 @@ impl NativeRsyncDeltaTransport {
 
 // --- helpers -------------------------------------------------------------
 
-/// Build the single-file `FileListEntry` for the upload path. Flags
-/// mirror the A2.x `sample_file_list_entry` baseline so the server sees
-/// a shape that exercises the same encoder we pinned against the frozen
-/// oracle. `mtime` + `mode` are lifted from the source metadata so the
-/// native path preserves them same as classic rsync (U-07).
-fn build_source_entry(local_path: &Path, size: u64, metadata: &std::fs::Metadata) -> FileListEntry {
-    // Flag values match `rsync 3.2.7 flist.c`: XMIT_LONG_NAME (0x0040),
-    // XMIT_SAME_MODE (0x0002), XMIT_SAME_UID (0x0008), XMIT_SAME_GID
-    // (0x0010), XMIT_SAME_TIME (0x0080). Cumulative = 0x00DA.
-    const BASELINE_FLAGS: u32 = 0x0040 | 0x0002 | 0x0008 | 0x0010 | 0x0080;
+/// Build the single-file `FileListEntry` for the upload path. The flag
+/// shape mirrors the frozen oracle's first MSG_DATA (oracle bytes
+/// [59..126], decoded in
+/// `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/2026-04-25_File_List_Wire_Annotation.md`):
+/// the first entry of a list never SAMEs with anything (no previous
+/// entry to compare against), and the production CLI invokes
+/// `rsync --server -vlogDtprcze...` (preserve owner/group/times,
+/// `-c` always-checksum). Therefore `XMIT_USER_NAME_FOLLOWS |
+/// XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC` is the cumulative shape; the
+/// uid/gid varints + name pairs follow inline because `inc_recurse=1`
+/// is negotiated via CF_INC_RECURSE in the server compat byte.
+fn build_source_entry(
+    local_path: &Path,
+    size: u64,
+    metadata: &std::fs::Metadata,
+    source_data: &[u8],
+) -> FileListEntry {
+    // 0x2c00 = USER_NAME_FOLLOWS (1<<10) | GROUP_NAME_FOLLOWS (1<<11) | MOD_NSEC (1<<13).
+    const BASELINE_FLAGS: u32 = (1 << 10) | (1 << 11) | (1 << 13);
     let name = local_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("source.bin")
         .to_string();
-    let (mtime_secs, mtime_nsec) = file_mtime_components(metadata);
+    let (mtime_secs, mtime_nsec_opt) = file_mtime_components(metadata);
+    let (uid_value, gid_value) = file_owner_components(metadata);
+    let uid_name = lookup_user_name(uid_value);
+    let gid_name = lookup_group_name(gid_value);
+    // xxh128 over the file bytes mirrors `rsync -c` always-checksum.
+    // Server reads this many bytes (16 = csum_len_for_type(CSUM_XXH3_128))
+    // regardless of value; using the real digest keeps semantics aligned
+    // with classic rsync so the receiver may short-circuit equal files.
+    let checksum = xxh128_digest_bytes(source_data);
     FileListEntry {
         flags: BASELINE_FLAGS,
         path: name,
         size: size as i64,
         mtime: mtime_secs,
-        mtime_nsec,
+        // MOD_NSEC requires a value on the wire even if subsec is zero;
+        // emit Some(0) in that case to keep the encoder + decoder paths
+        // consistent.
+        mtime_nsec: Some(mtime_nsec_opt.unwrap_or(0)),
         mode: file_mode_from_metadata(metadata),
-        uid: None,
-        uid_name: None,
-        gid: None,
-        gid_name: None,
-        checksum: Vec::new(),
+        uid: Some(uid_value as i64),
+        uid_name: Some(uid_name),
+        gid: Some(gid_value as i64),
+        gid_name: Some(gid_name),
+        checksum,
     }
+}
+
+/// Extract `(uid, gid)` from filesystem metadata. Falls back to (0, 0)
+/// on non-Unix platforms (the native path is `#[cfg(unix)]` at the
+/// callsite today, so this branch is unreachable in production).
+fn file_owner_components(metadata: &std::fs::Metadata) -> (u32, u32) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        (metadata.uid(), metadata.gid())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = metadata;
+        (0, 0)
+    }
+}
+
+/// Look up the user name for `uid` via `getpwuid_r`. On lookup failure
+/// or non-Unix, returns the numeric uid as a string so the wire byte
+/// `user_name length` is non-zero (avoids a 0-len name that some
+/// receivers might mishandle when XMIT_USER_NAME_FOLLOWS is set).
+fn lookup_user_name(uid: u32) -> String {
+    #[cfg(unix)]
+    unsafe {
+        let mut pwd: libc::passwd = std::mem::zeroed();
+        let mut buf = [0i8; 1024];
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        let rc = libc::getpwuid_r(
+            uid as libc::uid_t,
+            &mut pwd,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        );
+        if rc == 0 && !result.is_null() && !pwd.pw_name.is_null() {
+            if let Ok(s) = std::ffi::CStr::from_ptr(pwd.pw_name).to_str() {
+                if !s.is_empty() && s.len() <= u8::MAX as usize {
+                    return s.to_string();
+                }
+            }
+        }
+    }
+    uid.to_string()
+}
+
+/// Look up the group name for `gid` via `getgrgid_r`. Same fallback
+/// strategy as `lookup_user_name`.
+fn lookup_group_name(gid: u32) -> String {
+    #[cfg(unix)]
+    unsafe {
+        let mut grp: libc::group = std::mem::zeroed();
+        let mut buf = [0i8; 1024];
+        let mut result: *mut libc::group = std::ptr::null_mut();
+        let rc = libc::getgrgid_r(
+            gid as libc::gid_t,
+            &mut grp,
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut result,
+        );
+        if rc == 0 && !result.is_null() && !grp.gr_name.is_null() {
+            if let Ok(s) = std::ffi::CStr::from_ptr(grp.gr_name).to_str() {
+                if !s.is_empty() && s.len() <= u8::MAX as usize {
+                    return s.to_string();
+                }
+            }
+        }
+    }
+    gid.to_string()
+}
+
+/// Compute the 16-byte xxh128 digest of `data` and return it as the
+/// little-endian byte sequence rsync expects on the wire (rsync stores
+/// the digest as raw bytes in the order returned by `XXH128_digest`).
+fn xxh128_digest_bytes(data: &[u8]) -> Vec<u8> {
+    use xxhash_rust::xxh3::xxh3_128;
+    let digest = xxh3_128(data);
+    digest.to_le_bytes().to_vec()
 }
 
 /// Extract `(mtime_seconds_since_epoch, optional_nanoseconds)` from a
@@ -514,7 +642,7 @@ fn build_stats(
     }
 }
 
-/// Translate a typed `NativeRsyncError` into the production `RsyncError`
+/// Translate a typed `AerorsyncError` into the production `RsyncError`
 /// by consulting the fallback policy matrix. The resulting variant drives
 /// downstream semantics through `delta_sync_rsync::transfer_with_delta`:
 ///
@@ -528,7 +656,7 @@ fn build_stats(
 /// - `FallbackVerdict::HardError` → `RsyncError::HardRejection(...)` →
 ///   `DeltaSyncResult::hard_error` → surfaced to the user, classic
 ///   fallback suppressed. This is the R4 solution.
-fn map_native_error_to_rsync(err: NativeRsyncError, committed: bool) -> RsyncError {
+fn map_native_error_to_rsync(err: AerorsyncError, committed: bool) -> RsyncError {
     match classify_fallback(&err, committed) {
         FallbackVerdict::Cancel => RsyncError::Cancelled,
         FallbackVerdict::AttemptClassicSftpFallback => RsyncError::TransferFailed {
@@ -540,6 +668,13 @@ fn map_native_error_to_rsync(err: NativeRsyncError, committed: bool) -> RsyncErr
             err.kind, err.detail
         )),
     }
+}
+
+fn map_native_probe_error_to_rsync(err: AerorsyncError) -> RsyncError {
+    if err.kind == AerorsyncErrorKind::HostKeyRejected {
+        return map_native_error_to_rsync(err, false);
+    }
+    RsyncError::RemoteNotAvailable
 }
 
 fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
@@ -629,7 +764,9 @@ pub enum WriteAtomicError {
 /// 4. If `preserve_mode` is provided, apply it to the temp before
 ///    rename (U-09) so the final inode keeps the caller-specified
 ///    perms. Skipped silently on non-unix.
-/// 5. `rename` onto `local_path`. Atomic within the same filesystem; an
+/// 5. If `preserve_mtime` is provided, apply it to the temp before
+///    rename so the final inode reflects the remote file-list metadata.
+/// 6. `rename` onto `local_path`. Atomic within the same filesystem; an
 ///    `EXDEV` error surfaces as `PostOpen { stage: "rename" }`.
 ///
 /// On any post-open failure the function best-effort `remove_file`s the
@@ -643,6 +780,7 @@ pub async fn write_atomic_chunked(
     chunk_size: usize,
     inter_chunk_delay: Option<Duration>,
     preserve_mode: Option<u32>,
+    preserve_mtime: Option<(i64, Option<i32>)>,
 ) -> Result<(), WriteAtomicError> {
     if chunk_size == 0 {
         return Err(WriteAtomicError::PreOpen(std::io::Error::new(
@@ -716,7 +854,7 @@ pub async fn write_atomic_chunked(
         #[cfg(unix)]
         if let Some(mode) = preserve_mode {
             use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(mode);
+            let perms = std::fs::Permissions::from_mode(mode & 0o7777);
             fs::set_permissions(&tmp_path, perms).await.map_err(|e| {
                 WriteAtomicError::PostOpen {
                     stage: "chmod",
@@ -726,6 +864,18 @@ pub async fn write_atomic_chunked(
         }
         #[cfg(not(unix))]
         let _ = preserve_mode;
+        if let Some((secs, nanos)) = preserve_mtime {
+            let nanos = nanos
+                .filter(|n| (0..1_000_000_000).contains(n))
+                .unwrap_or(0) as u32;
+            let file_time = filetime::FileTime::from_unix_time(secs, nanos);
+            filetime::set_file_mtime(&tmp_path, file_time).map_err(|e| {
+                WriteAtomicError::PostOpen {
+                    stage: "mtime",
+                    source: e,
+                }
+            })?;
+        }
         fs::rename(&tmp_path, local_path)
             .await
             .map_err(|e| WriteAtomicError::PostOpen {
@@ -752,7 +902,7 @@ pub async fn write_atomic_chunked(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rsync_native_proto::types::NativeRsyncErrorKind;
+    use crate::aerorsync::types::AerorsyncErrorKind;
     use std::io::Write;
     use tempfile::TempDir;
     use tokio::time::timeout;
@@ -766,7 +916,7 @@ mod tests {
     #[test]
     fn map_cancel_maps_to_rsync_cancelled_regardless_of_committed() {
         for committed in [false, true] {
-            let err = NativeRsyncError::cancelled("user abort");
+            let err = AerorsyncError::cancelled("user abort");
             let rs = map_native_error_to_rsync(err, committed);
             assert!(
                 matches!(rs, RsyncError::Cancelled),
@@ -778,13 +928,13 @@ mod tests {
     #[test]
     fn map_pre_commit_environmental_errors_land_in_transfer_failed_minus_one() {
         let kinds = [
-            NativeRsyncErrorKind::UnsupportedVersion,
-            NativeRsyncErrorKind::NegotiationFailed,
-            NativeRsyncErrorKind::TransportFailure,
-            NativeRsyncErrorKind::RemoteError,
+            AerorsyncErrorKind::UnsupportedVersion,
+            AerorsyncErrorKind::NegotiationFailed,
+            AerorsyncErrorKind::TransportFailure,
+            AerorsyncErrorKind::RemoteError,
         ];
         for kind in kinds {
-            let err = NativeRsyncError::new(kind, "env");
+            let err = AerorsyncError::new(kind, "env");
             let rs = map_native_error_to_rsync(err, false);
             match rs {
                 RsyncError::TransferFailed { exit, stderr } => {
@@ -802,7 +952,7 @@ mod tests {
         // R4 pin: HostKeyRejected MUST produce HardRejection even pre-commit,
         // so `transfer_with_delta` routes it to `hard_error` and the user
         // sees the failure — no silent classic fallback.
-        let err = NativeRsyncError::host_key_rejected("fingerprint mismatch");
+        let err = AerorsyncError::host_key_rejected("fingerprint mismatch");
         let rs = map_native_error_to_rsync(err, false);
         match rs {
             RsyncError::HardRejection(msg) => {
@@ -814,21 +964,41 @@ mod tests {
     }
 
     #[test]
+    fn map_probe_host_key_rejected_is_hard_rejection() {
+        let err = AerorsyncError::host_key_rejected("probe fingerprint mismatch");
+        let rs = map_native_probe_error_to_rsync(err);
+        match rs {
+            RsyncError::HardRejection(msg) => {
+                assert!(msg.contains("HostKeyRejected"));
+                assert!(msg.contains("probe fingerprint mismatch"));
+            }
+            other => panic!("probe HostKeyRejected must be hard, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_probe_environmental_error_is_remote_not_available() {
+        let err = AerorsyncError::transport("rsync missing");
+        let rs = map_native_probe_error_to_rsync(err);
+        assert!(matches!(rs, RsyncError::RemoteNotAvailable));
+    }
+
+    #[test]
     fn map_post_commit_non_cancel_is_always_hard_rejection() {
         let kinds = [
-            NativeRsyncErrorKind::UnsupportedVersion,
-            NativeRsyncErrorKind::InvalidFrame,
-            NativeRsyncErrorKind::TransportFailure,
-            NativeRsyncErrorKind::NegotiationFailed,
-            NativeRsyncErrorKind::PlannerRejected,
-            NativeRsyncErrorKind::IllegalStateTransition,
-            NativeRsyncErrorKind::RemoteError,
-            NativeRsyncErrorKind::UnexpectedMessage,
-            NativeRsyncErrorKind::HostKeyRejected,
-            NativeRsyncErrorKind::Internal,
+            AerorsyncErrorKind::UnsupportedVersion,
+            AerorsyncErrorKind::InvalidFrame,
+            AerorsyncErrorKind::TransportFailure,
+            AerorsyncErrorKind::NegotiationFailed,
+            AerorsyncErrorKind::PlannerRejected,
+            AerorsyncErrorKind::IllegalStateTransition,
+            AerorsyncErrorKind::RemoteError,
+            AerorsyncErrorKind::UnexpectedMessage,
+            AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::Internal,
         ];
         for kind in kinds {
-            let err = NativeRsyncError::new(kind, "post-commit");
+            let err = AerorsyncError::new(kind, "post-commit");
             let rs = map_native_error_to_rsync(err, true);
             match rs {
                 RsyncError::HardRejection(msg) => {
@@ -845,14 +1015,14 @@ mod tests {
     #[test]
     fn map_pre_commit_protocol_bugs_are_hard_rejection() {
         let kinds = [
-            NativeRsyncErrorKind::InvalidFrame,
-            NativeRsyncErrorKind::IllegalStateTransition,
-            NativeRsyncErrorKind::PlannerRejected,
-            NativeRsyncErrorKind::UnexpectedMessage,
-            NativeRsyncErrorKind::Internal,
+            AerorsyncErrorKind::InvalidFrame,
+            AerorsyncErrorKind::IllegalStateTransition,
+            AerorsyncErrorKind::PlannerRejected,
+            AerorsyncErrorKind::UnexpectedMessage,
+            AerorsyncErrorKind::Internal,
         ];
         for kind in kinds {
-            let err = NativeRsyncError::new(kind, "proto-bug");
+            let err = AerorsyncError::new(kind, "proto-bug");
             let rs = map_native_error_to_rsync(err, false);
             match rs {
                 RsyncError::HardRejection(_) => {}
@@ -878,7 +1048,7 @@ mod tests {
         let dir = fresh_tempdir();
         let path = dir.path().join("payload.bin");
         let meta = metadata_for(&path);
-        let entry = build_source_entry(&path, 1_234_567, &meta);
+        let entry = build_source_entry(&path, 1_234_567, &meta, &[]);
         assert_eq!(entry.path, "payload.bin");
         assert_eq!(entry.size, 1_234_567);
         // U-07 regression pin: mtime MUST be populated from metadata;
@@ -888,12 +1058,29 @@ mod tests {
             "mtime must reflect the source file (got {})",
             entry.mtime
         );
-        assert!(entry.uid.is_none());
-        assert!(entry.gid.is_none());
-        assert!(entry.checksum.is_empty());
-        // Baseline flags exercised by the A2.x frozen-oracle pins.
-        assert_eq!(entry.flags & 0x0040, 0x0040, "XMIT_LONG_NAME");
-        assert_eq!(entry.flags & 0x0002, 0x0002, "XMIT_SAME_MODE");
+        // B.2 baseline: oracle's first-entry shape is
+        // USER_NAME_FOLLOWS | GROUP_NAME_FOLLOWS | MOD_NSEC = 0x2c00.
+        // uid/gid + names follow inline; xxh128 16-byte checksum trails.
+        assert_eq!(entry.flags, (1 << 10) | (1 << 11) | (1 << 13));
+        assert!(entry.uid.is_some(), "uid must be populated (preserve_uid)");
+        assert!(entry.gid.is_some(), "gid must be populated (preserve_gid)");
+        assert!(
+            entry.uid_name.as_deref().is_some_and(|s| !s.is_empty()),
+            "uid_name must be populated (XMIT_USER_NAME_FOLLOWS)"
+        );
+        assert!(
+            entry.gid_name.as_deref().is_some_and(|s| !s.is_empty()),
+            "gid_name must be populated (XMIT_GROUP_NAME_FOLLOWS)"
+        );
+        assert_eq!(
+            entry.checksum.len(),
+            16,
+            "always_checksum on → 16-byte xxh128 digest required"
+        );
+        assert!(
+            entry.mtime_nsec.is_some(),
+            "MOD_NSEC requires mtime_nsec on the wire"
+        );
     }
 
     #[test]
@@ -902,7 +1089,7 @@ mod tests {
         // a source (a directory is fine for the fallback check).
         let dir = fresh_tempdir();
         let meta = std::fs::metadata(dir.path()).unwrap();
-        let entry = build_source_entry(Path::new("/"), 0, &meta);
+        let entry = build_source_entry(Path::new("/"), 0, &meta, &[]);
         assert_eq!(entry.path, "source.bin");
     }
 
@@ -916,7 +1103,7 @@ mod tests {
             std::fs::File::create(&path).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
             let meta = std::fs::metadata(&path).unwrap();
-            let entry = build_source_entry(&path, 0, &meta);
+            let entry = build_source_entry(&path, 0, &meta, &[]);
             // `mode` is the raw `st_mode` value; the low 12 bits carry
             // the permission bits we just set.
             assert_eq!((entry.mode as u32) & 0o7777, 0o640);
@@ -961,7 +1148,7 @@ mod tests {
             .write_all(b"OLD")
             .unwrap();
 
-        write_atomic_chunked(&target, b"NEW_CONTENTS", 4096, None, None)
+        write_atomic_chunked(&target, b"NEW_CONTENTS", 4096, None, None, None)
             .await
             .expect("atomic write must succeed");
 
@@ -974,7 +1161,7 @@ mod tests {
         let dir = fresh_tempdir();
         let target = dir.path().join("fresh.bin");
         assert!(!target.exists());
-        write_atomic_chunked(&target, b"NEW", 4096, None, None)
+        write_atomic_chunked(&target, b"NEW", 4096, None, None, None)
             .await
             .unwrap();
         assert_eq!(fs::read(&target).await.unwrap(), b"NEW");
@@ -984,7 +1171,7 @@ mod tests {
     async fn write_atomic_rejects_zero_chunk_size_pre_open() {
         let dir = fresh_tempdir();
         let target = dir.path().join("x.bin");
-        let err = write_atomic_chunked(&target, b"DATA", 0, None, None)
+        let err = write_atomic_chunked(&target, b"DATA", 0, None, None, None)
             .await
             .expect_err("zero chunk must be rejected");
         assert!(matches!(err, WriteAtomicError::PreOpen(_)));
@@ -1007,7 +1194,7 @@ mod tests {
         // per-invocation: on success the rename consumes the temp.
         let dir = fresh_tempdir();
         let target = dir.path().join("fresh.bin");
-        write_atomic_chunked(&target, b"DATA", 4096, None, None)
+        write_atomic_chunked(&target, b"DATA", 4096, None, None, None)
             .await
             .unwrap();
         let leftovers = std::fs::read_dir(dir.path())
@@ -1030,7 +1217,7 @@ mod tests {
             let original_mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
             assert_eq!(original_mode, 0o640);
 
-            write_atomic_chunked(&target, b"NEW", 4096, None, Some(0o640))
+            write_atomic_chunked(&target, b"NEW", 4096, None, Some(0o100640), None)
                 .await
                 .unwrap();
 
@@ -1040,6 +1227,22 @@ mod tests {
                 "U-09: mode must be preserved across rename"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn write_atomic_preserves_mtime_when_requested() {
+        let dir = fresh_tempdir();
+        let target = dir.path().join("mtime.bin");
+        let remote_mtime = (1_700_000_123_i64, Some(987_654_321_i32));
+
+        write_atomic_chunked(&target, b"NEW", 4096, None, None, Some(remote_mtime))
+            .await
+            .unwrap();
+
+        let meta = std::fs::metadata(&target).unwrap();
+        let modified = filetime::FileTime::from_last_modification_time(&meta);
+        assert_eq!(modified.unix_seconds(), remote_mtime.0);
+        assert_eq!(modified.nanoseconds(), remote_mtime.1.unwrap() as u32);
     }
 
     // -- write_atomic_chunked mid-write drop invariant pin ----------------
@@ -1081,6 +1284,7 @@ mod tests {
                     &new_data,
                     128,
                     Some(Duration::from_millis(1)),
+                    None,
                     None,
                 ),
             )

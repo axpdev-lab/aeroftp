@@ -1,4 +1,4 @@
-#![cfg(all(test, feature = "proto_native_rsync"))]
+#![cfg(all(test, feature = "aerorsync"))]
 
 use std::env;
 use std::fs;
@@ -7,18 +7,18 @@ use std::time::{Duration, Instant};
 
 use tokio::time::sleep;
 
-use crate::rsync_native_proto::driver::SessionDriver;
-use crate::rsync_native_proto::engine_adapter::CurrentDeltaSyncBridge;
-use crate::rsync_native_proto::protocol::{FileMetadataMessage, NativeFrameCodec};
-use crate::rsync_native_proto::remote_command::RemoteCommandSpec;
-use crate::rsync_native_proto::session::NativeRsyncSession;
-use crate::rsync_native_proto::ssh_transport::{
+use crate::aerorsync::driver::SessionDriver;
+use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+use crate::aerorsync::protocol::{AerorsyncFrameCodec, FileMetadataMessage};
+use crate::aerorsync::remote_command::RemoteCommandSpec;
+use crate::aerorsync::session::AerorsyncSession;
+use crate::aerorsync::ssh_transport::{
     SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
 };
-use crate::rsync_native_proto::transport::{
+use crate::aerorsync::transport::{
     BidirectionalByteStream, RemoteExecRequest, RemoteShellTransport,
 };
-use crate::rsync_native_proto::types::{NativeRsyncConfig, NativeRsyncErrorKind};
+use crate::aerorsync::types::{AerorsyncConfig, AerorsyncErrorKind};
 
 fn env_path(name: &str) -> PathBuf {
     PathBuf::from(env::var(name).unwrap_or_else(|_| panic!("missing env var {name}")))
@@ -87,12 +87,22 @@ fn file_metadata_for(path: &Path, bytes: &[u8]) -> FileMetadataMessage {
 #[tokio::test]
 #[ignore = "requires the Docker RSNP SSH fixture"]
 async fn live_probe_reports_protocol_31() {
-    let transport = ssh_transport();
+    // B.4: default `probe_request` is now `rsync --version`. This live
+    // lane targets the dev helper fixture (not stock rsync), so override
+    // to invoke the helper explicitly. The helper's banner is now
+    // rsync-compatible ("... protocol version N"), so the same
+    // `parse_probe_protocol` accepts it.
+    let mut config = base_config();
+    config.probe_request = crate::aerorsync::transport::RemoteExecRequest {
+        program: "/opt/aerorsync/bin/aerorsync_serve".to_string(),
+        args: vec!["--probe".to_string()],
+        environment: Vec::new(),
+    };
+    let transport = SshRemoteShellTransport::new(config);
     let probe = transport.probe().await.unwrap();
     assert_eq!(probe.protocol.as_u32(), 31);
-    assert!(probe
-        .remote_banner
-        .contains("rsnp-proto server protocol 31"));
+    assert!(probe.remote_banner.contains("rsnp-proto server"));
+    assert!(probe.remote_banner.contains("protocol version 31"));
 }
 
 #[tokio::test]
@@ -106,12 +116,12 @@ async fn live_upload_applies_delta_to_remote_target() {
     write_bytes(&local_file, &updated);
 
     let transport = ssh_transport();
-    let codec = NativeFrameCodec::new(NativeRsyncConfig::default().max_frame_size);
-    let session = NativeRsyncSession::new(transport, NativeRsyncConfig::default());
+    let codec = AerorsyncFrameCodec::new(AerorsyncConfig::default().max_frame_size);
+    let session = AerorsyncSession::new(transport, AerorsyncConfig::default());
     let mut driver = SessionDriver::new(session, codec);
     let outcome = driver
         .drive_upload_with_engine(
-            RemoteCommandSpec::native_upload(remote_target),
+            RemoteCommandSpec::aerorsync_upload(remote_target),
             file_metadata_for(&local_file, &updated),
             updated.clone(),
             &CurrentDeltaSyncBridge,
@@ -136,12 +146,12 @@ async fn live_download_applies_delta_to_local_target() {
     write_bytes(&env_path("RSNP_TEST_EXPECT_DOWNLOAD_FILE"), &updated);
 
     let transport = ssh_transport();
-    let codec = NativeFrameCodec::new(NativeRsyncConfig::default().max_frame_size);
-    let session = NativeRsyncSession::new(transport, NativeRsyncConfig::default());
+    let codec = AerorsyncFrameCodec::new(AerorsyncConfig::default().max_frame_size);
+    let session = AerorsyncSession::new(transport, AerorsyncConfig::default());
     let mut driver = SessionDriver::new(session, codec);
     let outcome = driver
         .drive_download_with_engine(
-            RemoteCommandSpec::native_download(remote_target),
+            RemoteCommandSpec::aerorsync_download(remote_target),
             basis.clone(),
             &CurrentDeltaSyncBridge,
         )
@@ -170,7 +180,7 @@ async fn live_host_key_pin_mismatch_rejects_session() {
     let err = transport.probe().await.unwrap_err();
     assert_eq!(
         err.kind,
-        NativeRsyncErrorKind::HostKeyRejected,
+        AerorsyncErrorKind::HostKeyRejected,
         "expected HostKeyRejected, got {:?}: {}",
         err.kind,
         err.detail
@@ -181,7 +191,7 @@ async fn live_host_key_pin_mismatch_rejects_session() {
 #[tokio::test]
 #[ignore = "requires the Docker RSNP SSH fixture"]
 async fn live_cancel_during_read_unblocks_quickly() {
-    // The `rsync_proto_serve` upload stream reads its first frame from the
+    // The `aerorsync_serve` upload stream reads its first frame from the
     // client before emitting anything. If we open the stream and try to
     // read immediately, we block inside libssh2 until either the server
     // speaks (which it never will without our Hello) or the I/O times out.
@@ -192,7 +202,7 @@ async fn live_cancel_during_read_unblocks_quickly() {
     config.io_timeout_ms = 10_000;
     let transport = SshRemoteShellTransport::new(config);
     let stream_request = RemoteExecRequest {
-        program: "/opt/rsnp/bin/rsync_proto_serve".to_string(),
+        program: "/opt/aerorsync/bin/aerorsync_serve".to_string(),
         args: vec![
             "--mode".to_string(),
             "upload".to_string(),
@@ -204,7 +214,7 @@ async fn live_cancel_during_read_unblocks_quickly() {
     let mut stream = transport
         .open_stream(stream_request)
         .await
-        .expect("open_stream against rsync_proto_serve");
+        .expect("open_stream against aerorsync_serve");
 
     let handle = transport.cancel_handle();
     let cancel_task = tokio::spawn(async move {
@@ -228,7 +238,7 @@ async fn live_cancel_during_read_unblocks_quickly() {
     assert!(
         matches!(
             err.kind,
-            NativeRsyncErrorKind::Cancelled | NativeRsyncErrorKind::TransportFailure
+            AerorsyncErrorKind::Cancelled | AerorsyncErrorKind::TransportFailure
         ),
         "expected Cancelled or TransportFailure, got {:?}: {}",
         err.kind,
