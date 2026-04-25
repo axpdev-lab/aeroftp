@@ -117,6 +117,9 @@ pub trait ToolCtx: Send + Sync {
     fn approval_grant_id(&self) -> Option<&str> {
         None
     }
+    fn tauri_app_handle(&self) -> Option<tauri::AppHandle> {
+        None
+    }
     fn extreme_mode(&self) -> bool {
         false
     }
@@ -1085,6 +1088,90 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
         },
+        ToolDef {
+            name: "set_theme",
+            description: "Change the application theme.",
+            input_schema: json!({ "type": "object", "properties": { "theme": {"type": "string"} }, "required": ["theme"] }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "app_info",
+            description: "Get application version, OS, and connection status.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "sync_control",
+            description: "Control background sync process.",
+            input_schema: json!({ "type": "object", "properties": { "action": {"type": "string"} }, "required": ["action"] }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "vault_peek",
+            description: "Check the number of credentials in the vault without unlocking it.",
+            input_schema: json!({ "type": "object", "properties": { "path": {"type": "string"} }, "required": ["path"] }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "cross_profile_transfer",
+            description: "Transfer files between two saved remote profiles without downloading locally.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "preview_edit",
+            description: "Preview a find and replace edit.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "hash_file",
+            description: "Compute the hash of a local file.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "generate_transfer_plan",
+            description: "Plan a bulk upload or download operation.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "upload_files",
+            description: "Upload multiple local files to a remote directory.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "download_files",
+            description: "Download multiple remote files to a local directory.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "sync_preview",
+            description: "Preview a directory sync operation.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Safe,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "remote_edit",
+            description: "Edit a remote file by finding and replacing a string.",
+            input_schema: json!({ "type": "object" }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
     ]
 });
 
@@ -1190,6 +1277,11 @@ pub async fn dispatch_tool(
         "rag_index" => agent_tools::rag_index(ctx, args).await,
         "rag_search" => agent_tools::rag_search(ctx, args).await,
         "agent_memory_write" => agent_tools::agent_memory_write(ctx, args).await,
+        // GUI-specific legacy tools
+        "set_theme" | "app_info" | "sync_control" | "vault_peek" | "cross_profile_transfer" | 
+        "preview_edit" | "hash_file" | "generate_transfer_plan" | "upload_files" | "download_files" | 
+        "sync_preview" | "remote_edit" => crate::ai_core::gui_tools::dispatch_gui_tool(ctx, tool_name, args).await,
+
         // Tool presente nel registry ma non ancora wired nel dispatcher.
         _ => Err(ToolError::NotMigrated(tool_name.to_string())),
     }

@@ -10,12 +10,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-use crate::mcp::notifier::{format_transfer_message, McpNotifier};
+use crate::mcp::notifier::McpNotifier;
 use crate::mcp::pool::ConnectionPool;
 use crate::mcp::security::{self, RateCategory};
-use crate::providers::{ProviderError, ShareLinkOptions, StorageProvider};
 use serde_json::{json, Value};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -53,145 +51,20 @@ fn push_progress(tx: &mpsc::Sender<ProgressSample>, sample: ProgressSample) {
 static MCP_START: std::sync::LazyLock<chrono::DateTime<chrono::Utc>> =
     std::sync::LazyLock::new(chrono::Utc::now);
 
-/// Hard cap for in-memory read previews.
+// Hard cap for in-memory read previews. Used by `validate_read_preview_target`
+// which is now `#[cfg(test)]`, so this constant follows the same gating to
+// keep the production lib build warning-free.
+#[cfg(test)]
 const MAX_READ_PREVIEW_BYTES: u64 = 1_048_576;
 
-/// Hard cap for `aeroftp_edit`. Ten times the read preview cap because edit
-/// is the primary alternative to full download/modify/upload for agents —
-/// being too restrictive pushes them back to that anti-pattern. Ten megabytes
-/// still keeps a single tool call well inside reasonable in-memory bounds.
-const MAX_EDIT_BYTES: u64 = 10 * 1_048_576;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DeleteKind {
-    File,
-    Directory,
-    DirectoryRecursive,
-}
-
-/// Sanitize provider error messages to prevent credential leakage to AI clients.
-/// Strips potential tokens, keys, and excessively long error bodies.
-fn sanitize_error(e: impl std::fmt::Display) -> String {
-    crate::providers::sanitize_api_error(&e.to_string())
-}
-
-/// Classifier for transport-level errors that leave the pooled connection in
-/// an unusable state.
-///
-/// Motivation: `suppaftp` surfaces "Data connection is already open" after any
-/// failed PASV/STOR pair — every subsequent call on the same socket returns
-/// the same error until the control channel is torn down and re-opened. The
-/// pool cannot distinguish a bad connection from a bad argument by return
-/// type alone, so we peek at both the `ProviderError` variant and the free-
-/// form message.
-///
-/// Returns `true` when the pool entry MUST be invalidated. Benign errors
-/// (`NotFound`, `AlreadyExists`, `InvalidPath`, `PermissionDenied`, auth) are
-/// kept — those do not corrupt the session.
-fn is_transport_error(err: &ProviderError) -> bool {
-    match err {
-        // Variant-based classification: these always imply a broken session.
-        ProviderError::NotConnected
-        | ProviderError::ConnectionFailed(_)
-        | ProviderError::Timeout
-        | ProviderError::NetworkError(_)
-        | ProviderError::IoError(_) => true,
-        // String-based variants may wrap a transport failure or a server
-        // status code. Inspect the message for known patterns.
-        ProviderError::TransferFailed(msg)
-        | ProviderError::ServerError(msg)
-        | ProviderError::Other(msg)
-        | ProviderError::Unknown(msg) => message_implies_broken_session(msg),
-        _ => false,
-    }
-}
-
-/// Case-insensitive pattern match against signatures of a broken session.
-/// Keeps the list narrow on purpose — false positives evict healthy pooled
-/// connections; false negatives merely fall back to surfacing the original
-/// error to the caller.
-///
-/// The `421 control*` family was added after v3.5.10 deploy testing: Aruba's
-/// proftpd (and most servers with an idle-timeout policy) drops the control
-/// channel after ~5 minutes of silence, which happens routinely during long
-/// remote scans where only data channels are active. The first subsequent
-/// op hits `421 Control connection timed out`; without this classification
-/// the error bubbles up to the agent as if the transfer itself failed, when
-/// really the pool just needs a fresh connection.
-fn message_implies_broken_session(msg: &str) -> bool {
-    let lower = msg.to_ascii_lowercase();
-    const PATTERNS: &[&str] = &[
-        "data connection is already open",
-        "data connection already open",
-        "connection is already open",
-        "broken pipe",
-        "pipe closed",
-        "connection reset",
-        "connection closed",
-        "connection aborted",
-        "connection refused",
-        "not connected",
-        "eof from server",
-        "unexpected eof",
-        "channel closed",
-        "session closed",
-        "socket closed",
-        "stream closed",
-        "bad file descriptor",
-        // 421 family — idle / timeout / control channel drop.
-        "421 ",
-        "control connection timed out",
-        "control connection closed",
-        "service not available",
-        "idle timeout",
-        "timeout waiting",
-        "session timeout",
-    ];
-    PATTERNS.iter().any(|p| lower.contains(p))
-}
-
-/// Run `op` on a pooled provider, retrying once with a fresh connection when
-/// the first attempt fails with a transport-level error.
-///
-/// The closure takes the locked provider guard and returns `Result<T,
-/// ProviderError>`. On transport failure, the pool entry is invalidated (fast
-/// path, no awaited disconnect) and `op` is retried exactly once on a freshly
-/// opened connection. Benign errors (e.g. `NotFound`) bubble up unchanged.
-///
-/// Centralizing this logic means the dispatch site stays readable and every
-/// tool inherits the same invalidation policy automatically.
-async fn execute_with_reset<T, F>(
-    pool: &ConnectionPool,
-    server: &str,
-    mut op: F,
-) -> Result<T, String>
-where
-    F: for<'p> FnMut(
-        &'p mut Box<dyn StorageProvider>,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<T, ProviderError>> + Send + 'p>,
-    >,
-{
-    let arc = pool.get_provider(server).await?;
-    let first = {
-        let mut guard = arc.lock().await;
-        op(&mut guard).await
-    };
-    match first {
-        Ok(v) => Ok(v),
-        Err(e) if is_transport_error(&e) => {
-            // Drop the Arc held by the pool so a fresh get_provider() creates
-            // a new connection. We must release our `arc` handle too so the
-            // pool sees strong_count == 1 and actually closes the old one.
-            drop(arc);
-            let _ = pool.invalidate(server).await;
-            let retry_arc = pool.get_provider(server).await?;
-            let mut guard = retry_arc.lock().await;
-            op(&mut guard).await.map_err(sanitize_error)
-        }
-        Err(e) => Err(sanitize_error(e)),
-    }
-}
+// `MAX_EDIT_BYTES`, `DeleteKind`, `sanitize_error`, `is_transport_error`,
+// `message_implies_broken_session` and `execute_with_reset` were the
+// transport-failure / pool-invalidation helpers used by the legacy per-tool
+// match arms. T3 Gate 3 moved every remote tool body into
+// `ai_core::remote_tools` which talks to the pool through the
+// McpRemoteBackend abstraction; the pool itself owns
+// invalidation today, so the helpers no longer have callers and were
+// removed wholesale.
 
 /// MCP tool definition for `tools/list`.
 pub struct McpToolDef {
@@ -203,234 +76,16 @@ pub struct McpToolDef {
 
 /// Get all 16 curated tool definitions.
 pub fn tool_definitions() -> Vec<McpToolDef> {
-    vec![
-        // -- Tier 1: Core (12 tools) --
-        McpToolDef {
-            name: "aeroftp_list_servers",
-            description: "List saved server profiles from the encrypted vault. Supports optional filtering (name_contains, protocol) and pagination (limit, offset). Passwords are never exposed.",
-            input_schema: json!({ "type": "object", "properties": {
-                "name_contains": { "type": "string", "description": "Case-insensitive substring filter on profile name" },
-                "protocol": { "type": "string", "description": "Filter by protocol (e.g. ftp, sftp, webdav, s3). Case-insensitive." },
-                "limit": { "type": "integer", "description": "Maximum entries to return (default: 200, cap: 1000)" },
-                "offset": { "type": "integer", "description": "Entries to skip before applying limit (default: 0)" }
-            }, "required": [] }),
-            category: RateCategory::ReadOnly,
-        },
-        McpToolDef {
-            name: "aeroftp_list_files",
-            description: "List files and directories on a remote server.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID from aeroftp_list_servers" },
-                "path": { "type": "string", "description": "Remote directory path (default: /)" }
-            }, "required": ["server"] }),
-            category: RateCategory::ReadOnly,
-        },
-        McpToolDef {
-            name: "aeroftp_read_file",
-            description: "Read a remote text file (default 5 KB preview, configurable up to 1024 KB via preview_kb). For binary files, use aeroftp_download_file instead.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Remote file path" },
-                "preview_kb": { "type": "integer", "description": "Max preview size in KB (default: 5, cap: 1024)" }
-            }, "required": ["server", "path"] }),
-            category: RateCategory::ReadOnly,
-        },
-        McpToolDef {
-            name: "aeroftp_file_info",
-            description: "Get metadata for a remote file or directory: size, modified date, permissions, owner.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Remote path" }
-            }, "required": ["server", "path"] }),
-            category: RateCategory::ReadOnly,
-        },
-        McpToolDef {
-            name: "aeroftp_search_files",
-            description: "Search for files matching a glob pattern on a remote server.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Base path to search in (default: /)" },
-                "pattern": { "type": "string", "description": "Search pattern (e.g. \"*.log\", \"report*\")" }
-            }, "required": ["server", "pattern"] }),
-            category: RateCategory::ReadOnly,
-        },
-        McpToolDef {
-            name: "aeroftp_upload_file",
-            description: "Upload a local file or inline text content to a remote server. Set create_parents=true to auto-mkdir missing parent directories (idempotent). Set no_clobber=true to skip the upload if the destination already exists (response returns `uploaded: false, skipped: true, reason: \"exists\"`).",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "remote_path": { "type": "string", "description": "Destination path on the server" },
-                "local_path": { "type": "string", "description": "Local file path to upload (mutually exclusive with content)" },
-                "content": { "type": "string", "description": "Inline text content to upload (mutually exclusive with local_path)" },
-                "create_parents": { "type": "boolean", "description": "Recursively mkdir the parent directories if missing (default: false)" },
-                "no_clobber": { "type": "boolean", "description": "Skip the upload if the destination already exists — no overwrite. Default: false (overwrite)." }
-            }, "required": ["server", "remote_path"] }),
-            category: RateCategory::Mutative,
-        },
-        McpToolDef {
-            name: "aeroftp_upload_many",
-            description: "Upload multiple local files to a remote server in a single batch. Each item may specify its own `create_parents` and `no_clobber` flags. Applies a server-friendly backoff between operations (same contract as aeroftp_delete_many) and returns per-item results plus summary.totals. Serial-per-connection: one item at a time on the pooled connection, since most protocols (FTP, SFTP) do not parallelize uploads on a single session. Set continue_on_error=false to stop at the first failure.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "local_path": { "type": "string", "description": "Local file to upload" },
-                            "remote_path": { "type": "string", "description": "Destination path on the server" },
-                            "create_parents": { "type": "boolean", "description": "Auto-mkdir missing parent directories (default: false)" },
-                            "no_clobber": { "type": "boolean", "description": "Skip this item if the destination already exists (default: false)" }
-                        },
-                        "required": ["local_path", "remote_path"]
-                    },
-                    "description": "Items to upload (max 100)"
-                },
-                "continue_on_error": { "type": "boolean", "description": "Keep going after a single-item failure (default: true)" },
-                "delay_ms": { "type": "integer", "description": "Pause between uploads in milliseconds (default: 0, cap: 2000)" },
-                "no_clobber": { "type": "boolean", "description": "Default no_clobber for every item that does not override it (default: false)" }
-            }, "required": ["server", "items"] }),
-            category: RateCategory::Mutative,
-        },
-        McpToolDef {
-            name: "aeroftp_download_file",
-            description: "Download a file from a remote server to a local path.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "remote_path": { "type": "string", "description": "Source path on the server" },
-                "local_path": { "type": "string", "description": "Destination local path" }
-            }, "required": ["server", "remote_path", "local_path"] }),
-            category: RateCategory::Mutative,
-        },
-        McpToolDef {
-            name: "aeroftp_create_directory",
-            description: "Create a directory on a remote server.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Remote directory path to create" }
-            }, "required": ["server", "path"] }),
-            category: RateCategory::Mutative,
-        },
-        McpToolDef {
-            name: "aeroftp_delete",
-            description: "Delete one or more remote entries. Pass 'path' for a single delete, or 'paths' (array, max 100) for batch mode. Batch mode applies a server-friendly backoff and returns per-item results plus an aggregate summary. Set recursive=true to remove non-empty directories. `aeroftp_delete_many` is a kept-for-compat alias of this tool in batch mode.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Remote path to delete (single-delete mode; mutually exclusive with 'paths')" },
-                "paths": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Remote paths to delete (batch mode; max 100). Mutually exclusive with 'path'."
-                },
-                "recursive": { "type": "boolean", "description": "Delete directories recursively (default: false)" },
-                "continue_on_error": { "type": "boolean", "description": "Batch mode: keep going after a single-item failure (default: true)" },
-                "delay_ms": { "type": "integer", "description": "Batch mode: pause between deletes in milliseconds (default: 200, cap: 2000)" }
-            }, "required": ["server"] }),
-            category: RateCategory::Destructive,
-        },
-        McpToolDef {
-            name: "aeroftp_delete_many",
-            description: "Deprecated alias of `aeroftp_delete` in batch mode. Prefer the unified `aeroftp_delete` tool with the `paths` array. Accepts the same arguments as the batch branch of `aeroftp_delete` and returns the same shape.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "paths": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Remote paths to delete (max 100)"
-                },
-                "recursive": { "type": "boolean", "description": "Delete directories recursively (default: false)" },
-                "continue_on_error": { "type": "boolean", "description": "Keep going after a single-item failure (default: true)" },
-                "delay_ms": { "type": "integer", "description": "Pause between deletes in milliseconds (default: 200, cap: 2000)" }
-            }, "required": ["server", "paths"] }),
-            category: RateCategory::Destructive,
-        },
-        McpToolDef {
-            name: "aeroftp_rename",
-            description: "Rename or move a file/directory on a remote server.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "from": { "type": "string", "description": "Current remote path" },
-                "to": { "type": "string", "description": "New remote path" }
-            }, "required": ["server", "from", "to"] }),
-            category: RateCategory::Mutative,
-        },
-        McpToolDef {
-            name: "aeroftp_storage_quota",
-            description: "Get storage usage and quota information for a remote server.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" }
-            }, "required": ["server"] }),
-            category: RateCategory::ReadOnly,
-        },
-        McpToolDef {
-            name: "aeroftp_server_info",
-            description: "Get server type, features, and version information.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" }
-            }, "required": ["server"] }),
-            category: RateCategory::ReadOnly,
-        },
-        // -- Tier 2: Extended (4 tools) --
-        McpToolDef {
-            name: "aeroftp_create_share_link",
-            description: "Generate a share link for a remote file (when supported by the provider).",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Remote file path" },
-                "expires_in_secs": { "type": "number", "description": "Link expiration in seconds (optional)" },
-                "password": { "type": "string", "description": "Password protection (optional)" }
-            }, "required": ["server", "path"] }),
-            category: RateCategory::Mutative,
-        },
-        McpToolDef {
-            name: "aeroftp_server_copy",
-            description: "Copy a file server-side without download/upload (when supported).",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "from": { "type": "string", "description": "Source remote path" },
-                "to": { "type": "string", "description": "Destination remote path" }
-            }, "required": ["server", "from", "to"] }),
-            category: RateCategory::Mutative,
-        },
-        McpToolDef {
-            name: "aeroftp_file_versions",
-            description: "List version history of a file (when supported by the provider).",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Remote file path" }
-            }, "required": ["server", "path"] }),
-            category: RateCategory::ReadOnly,
-        },
-        McpToolDef {
-            name: "aeroftp_checksum",
-            description: "Get server-side checksum(s) of a file (when supported).",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Remote file path" }
-            }, "required": ["server", "path"] }),
-            category: RateCategory::ReadOnly,
-        },
-        McpToolDef {
-            name: "aeroftp_edit",
-            description: "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories.",
-            input_schema: json!({ "type": "object", "properties": {
-                "server": { "type": "string", "description": "Server name or ID" },
-                "path": { "type": "string", "description": "Remote file path (UTF-8 text)" },
-                "find": { "type": "string", "description": "Literal string to search for (not a regex)" },
-                "replace": { "type": "string", "description": "Replacement string" },
-                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false — replace all)" }
-            }, "required": ["server", "path", "find", "replace"] }),
-            category: RateCategory::Mutative,
-        },
+    let mut defs = vec![
         McpToolDef {
             name: "aeroftp_mcp_info",
-            description: "Return diagnostics about the running MCP process itself: PID, binary path, binary mtime/size, version, uptime, and (on Linux) whether the executable file has been deleted while the process is still running. Agents should call this at the start of a test session to verify the binary matches the expected build — if `binary_deleted=true` or `binary_mtime` predates the last rebuild, the process is stale and the user should restart the MCP server before continuing.",
+            description: "Return diagnostics about the running MCP process itself...",
             input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
             category: RateCategory::ReadOnly,
         },
         McpToolDef {
             name: "aeroftp_close_connection",
-            description: "Close a pooled server connection explicitly. Useful when the agent wants to free resources or force a fresh authentication handshake on the next call. Returns {released, closed, was_active} so callers can distinguish a real close from a no-op (nothing pooled matched the query).",
+            description: "Close a pooled server connection explicitly...",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID to disconnect" }
             }, "required": ["server"] }),
@@ -438,7 +93,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_check_tree",
-            description: "Compare a local directory against a remote directory and report differences grouped as match, differ, missing_local, missing_remote. Each entry carries compare_method ('checksum' or 'size') so agents can tell how the decision was made. When checksum=true, SHA-256 is computed on local files AND on the remote when the provider supports server-side checksums; otherwise comparison falls back to size. Supports glob excludes and one-way mode. For large scopes set summary_only=true to get just the counters without the per-entry arrays.",
+            description: "Compare a local directory against a remote directory and report differences...",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "local_dir": { "type": "string", "description": "Local directory to compare" },
@@ -501,8 +156,81 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
             }, "required": ["server", "local_dir", "remote_dir", "direction"] }),
             category: RateCategory::Mutative,
         },
-    ]
+        // upload_many + edit live in MCP_TOOL_DEFS to keep the rich
+        // descriptions / nested item-schema (no_clobber inside items[],
+        // first-only flag) that downstream agents and the parity tests
+        // depend on. The unified core registry has lighter shapes for
+        // these tools — the dynamic injection below skips them via the
+        // already-registered name (vec push order wins on `find`).
+        McpToolDef {
+            name: "aeroftp_upload_many",
+            description: "Upload multiple local files to a remote server in a single batch. Each item may specify its own `create_parents` and `no_clobber` flags. Applies a server-friendly backoff between operations (same contract as aeroftp_delete_many) and returns per-item results plus summary.totals. Serial-per-connection: one item at a time on the pooled connection, since most protocols (FTP, SFTP) do not parallelize uploads on a single session. Set continue_on_error=false to stop at the first failure.",
+            input_schema: json!({ "type": "object", "properties": {
+                "server": { "type": "string", "description": "Server name or ID" },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "local_path": { "type": "string", "description": "Local file to upload" },
+                            "remote_path": { "type": "string", "description": "Destination path on the server" },
+                            "create_parents": { "type": "boolean", "description": "Auto-mkdir missing parent directories (default: false)" },
+                            "no_clobber": { "type": "boolean", "description": "Skip this item if the destination already exists (default: false)" }
+                        },
+                        "required": ["local_path", "remote_path"]
+                    },
+                    "description": "Items to upload (max 100)"
+                },
+                "continue_on_error": { "type": "boolean", "description": "Keep going after a single-item failure (default: true)" },
+                "delay_ms": { "type": "integer", "description": "Pause between uploads in milliseconds (default: 0, cap: 2000)" },
+                "no_clobber": { "type": "boolean", "description": "Default no_clobber for every item that does not override it (default: false)" }
+            }, "required": ["server", "items"] }),
+            category: RateCategory::Mutative,
+        },
+        McpToolDef {
+            name: "aeroftp_edit",
+            description: "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories.",
+            input_schema: json!({ "type": "object", "properties": {
+                "server": { "type": "string", "description": "Server name or ID" },
+                "path": { "type": "string", "description": "Remote file path (UTF-8 text)" },
+                "find": { "type": "string", "description": "Literal string to search for (not a regex)" },
+                "replace": { "type": "string", "description": "Replacement string" },
+                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false — replace all)" }
+            }, "required": ["server", "path", "find", "replace"] }),
+            category: RateCategory::Mutative,
+        },
+    ];
+
+    // Inject dynamic tools from the unified core registry (T3 Gate 3).
+    // Skip names that the legacy MCP_TOOL_DEFS already provides (richer
+    // descriptions and nested schemas the unified registry intentionally
+    // simplifies — see aeroftp_upload_many / aeroftp_edit / aeroftp_sync_tree).
+    use crate::ai_core::tools::{Surfaces, DangerLevel, TOOL_DEFINITIONS};
+    let already_defined: std::collections::HashSet<&'static str> =
+        defs.iter().map(|d| d.name).collect();
+    for core_def in TOOL_DEFINITIONS.iter() {
+        if !core_def.surfaces.contains(Surfaces::MCP) {
+            continue;
+        }
+        if already_defined.contains(core_def.name) {
+            continue;
+        }
+        let cat = match core_def.danger {
+            DangerLevel::Safe | DangerLevel::ReadOnly => RateCategory::ReadOnly,
+            DangerLevel::Medium => RateCategory::Mutative,
+            DangerLevel::High => RateCategory::Destructive,
+        };
+        defs.push(McpToolDef {
+            name: core_def.name,
+            description: core_def.description,
+            input_schema: core_def.input_schema.clone(),
+            category: cat,
+        });
+    }
+
+    defs
 }
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -555,6 +283,11 @@ fn parse_files_from(args: &Value) -> Option<std::collections::HashSet<String>> {
 /// window but within the hard cap are accepted here and truncated downstream
 /// with `truncated:true` so agents can get a tail-free preview without having
 /// to retry.
+///
+/// Kept for the existing unit test coverage on the read-preview cap.
+/// The production read path lives in `ai_core::remote_tools::read_file`
+/// after T3 Gate 3 — this helper is no longer wired into a tool dispatch.
+#[cfg(test)]
 fn validate_read_preview_target(
     is_dir: bool,
     size: u64,
@@ -573,605 +306,15 @@ fn validate_read_preview_target(
     Ok(())
 }
 
-/// Return the parent directory of `remote_path` using POSIX-style slashes,
-/// or `None` when the path has no meaningful parent (root / bare filename).
-fn parent_remote_dir(remote_path: &str) -> Option<String> {
-    let trimmed = remote_path.trim_end_matches('/');
-    let idx = trimmed.rfind('/')?;
-    if idx == 0 {
-        // Path like "/foo" — parent is the root. No mkdir needed.
-        return None;
-    }
-    Some(trimmed[..idx].to_string())
-}
-
-/// Recursively create every parent directory under `dir` on the remote.
-///
-/// Idempotent: `ProviderError::AlreadyExists` is absorbed. Other errors that
-/// plausibly mean "the directory is already there" (server returns 550/EEXIST
-/// via `Other`/`ServerError`) are tolerated too — the caller's subsequent
-/// upload will surface any genuine problem with a much better error message.
-///
-/// On transport failure, the pool entry is invalidated and the recursion
-/// retried on a fresh connection exactly once to stay consistent with
-/// `execute_with_reset` behavior.
-async fn ensure_remote_parents(
-    pool: &ConnectionPool,
-    server: &str,
-    dir: &str,
-) -> Result<(), String> {
-    let dir = dir.trim_end_matches('/');
-    if dir.is_empty() {
-        return Ok(());
-    }
-    let mut components: Vec<&str> = Vec::new();
-    for part in dir.split('/') {
-        if !part.is_empty() {
-            components.push(part);
-        }
-    }
-    let leading_slash = dir.starts_with('/');
-    let mut accumulated = String::new();
-    for part in components {
-        if leading_slash || !accumulated.is_empty() {
-            accumulated.push('/');
-        }
-        accumulated.push_str(part);
-        let path_for_call = accumulated.clone();
-        let result = execute_with_reset(pool, server, move |p| {
-            let path = path_for_call.clone();
-            Box::pin(async move { p.mkdir(&path).await })
-        })
-        .await;
-        match result {
-            Ok(()) => {}
-            Err(e) => {
-                // Best-effort idempotency: swallow the "already exists" family.
-                let low = e.to_ascii_lowercase();
-                if low.contains("already exists")
-                    || low.contains("file exists")
-                    || low.contains("eexist")
-                    || low.contains("550")
-                {
-                    continue;
-                }
-                return Err(format!("mkdir {} failed: {}", accumulated, e));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Collapse the `"[NNN] NNN ..."` doubled-status-code pattern that suppaftp
-/// emits when concatenating its internal `[code]` tag with a server reply
-/// that already begins with the same code. Scans the whole message (not just
-/// the prefix) so prefixed wrappings like `"Transfer failed: Invalid
-/// response: [553] 553 Can't open..."` are also collapsed. Leaves
-/// non-matching strings untouched.
-///
-/// UTF-8 safe: only inspects ASCII bytes for the pattern and copies segments
-/// of the original `&str` verbatim via index slicing so multi-byte characters
-/// in the non-matching regions are preserved untouched.
-fn collapse_duplicate_ftp_code(msg: &str) -> String {
-    let bytes = msg.as_bytes();
-    let n = bytes.len();
-    // Minimum match length: "[NNN] NNN " = 10 bytes (all ASCII).
-    if n < 10 {
-        return msg.to_string();
-    }
-    let mut out = String::with_capacity(n);
-    let mut last_emit = 0usize;
-    let mut i = 0usize;
-    while i + 10 <= n {
-        let c = bytes[i];
-        // Fast reject: only `[` is a candidate start. Safe on multi-byte
-        // UTF-8 because `[` (0x5B) is never a continuation byte.
-        if c != b'[' {
-            i += 1;
-            continue;
-        }
-        if bytes[i + 1].is_ascii_digit()
-            && bytes[i + 2].is_ascii_digit()
-            && bytes[i + 3].is_ascii_digit()
-            && bytes[i + 4] == b']'
-            && bytes[i + 5].is_ascii_whitespace()
-            && bytes[i + 6].is_ascii_digit()
-            && bytes[i + 7].is_ascii_digit()
-            && bytes[i + 8].is_ascii_digit()
-            && bytes[i + 9].is_ascii_whitespace()
-            && bytes[i + 1] == bytes[i + 6]
-            && bytes[i + 2] == bytes[i + 7]
-            && bytes[i + 3] == bytes[i + 8]
-        {
-            // Flush everything before the match verbatim, then emit the
-            // tail-side code + its trailing whitespace. Skip over the whole
-            // 10-byte doubled pattern.
-            out.push_str(&msg[last_emit..i]);
-            out.push_str(&msg[i + 6..i + 10]);
-            i += 10;
-            last_emit = i;
-            continue;
-        }
-        i += 1;
-    }
-    out.push_str(&msg[last_emit..]);
-    out
-}
-
-/// Detect parent-missing errors across providers. FTP returns `553` (some
-/// servers) or `550`; SFTP/WebDAV surface `ENOENT` or `No such file or
-/// directory`. Match on substrings so we don't miss provider-specific wording.
-fn looks_like_parent_missing_upload(msg: &str) -> bool {
-    let lower = msg.to_ascii_lowercase();
-    let has_enoent = lower.contains("no such file or directory")
-        || lower.contains("enoent")
-        || lower.contains("does not exist");
-    let has_ftp_code = lower.contains("553") || lower.contains("550");
-    // "can't open that file" is the exact suppaftp wording for missing parent
-    // on vsftpd/Pure-FTPd. Keep it as a standalone trigger because the FTP
-    // code may have been stripped by upstream sanitization.
-    let has_suppa = lower.contains("can't open that file");
-    has_enoent || has_ftp_code || has_suppa
-}
-
-/// Wrap an upload failure with a hint that points at `create_parents=true`
-/// when the failure smells like a missing parent directory. The hint mentions
-/// the full remote_path rather than the specific missing component because
-/// the server reply does not always identify which component is missing.
-fn augment_upload_error(
-    sanitized: &str,
-    remote_path: &str,
-    create_parents: bool,
-    had_parent: bool,
-) -> String {
-    let collapsed = collapse_duplicate_ftp_code(sanitized);
-    // Only augment when the agent did NOT ask for auto-mkdir AND there is a
-    // parent to create. If `create_parents=true` already failed, the message
-    // would be misleading — the mkdir itself blew up elsewhere.
-    if !create_parents && had_parent && looks_like_parent_missing_upload(&collapsed) {
-        format!(
-            "Upload failed: parent directory does not exist for '{}'. Retry with create_parents=true to auto-mkdir. Server said: {}",
-            remote_path, collapsed
-        )
-    } else {
-        collapsed
-    }
-}
-
-/// Maximum number of paths accepted by a single batch delete call. Hard-coded
-/// here so both `aeroftp_delete` (batch branch) and `aeroftp_delete_many`
-/// report an identical error message to the caller.
-const DELETE_BATCH_MAX: usize = 100;
-
-/// Maximum number of items accepted by a single batch upload call. Same
-/// rationale as `DELETE_BATCH_MAX`: batches larger than this should be split
-/// client-side so one failure does not cost the whole round-trip.
-const UPLOAD_BATCH_MAX: usize = 100;
-
-/// One parsed entry in the `aeroftp_upload_many` request. Parsed once up
-/// front so the execution loop can operate on fully-validated structs.
-#[derive(Debug, Clone)]
-struct UploadBatchItem {
-    local_path: String,
-    remote_path: String,
-    create_parents: bool,
-    no_clobber: bool,
-}
-
-/// Shared implementation of `aeroftp_upload_many`. Mirrors
-/// `dispatch_delete_batch` in shape: validation first, then a sequential
-/// loop that records per-item results and aggregates a summary with
-/// `totals` for uniform reporting.
-///
-/// Serial by design: FTP, SFTP, and WebDAV over HTTP/1.1 do not pipeline
-/// uploads over a single control channel, and the pool holds one
-/// connection per profile. Parallelism would require a per-profile pool
-/// with multiple slots; that is a future refactor tracked in APPENDIX-08.
-async fn dispatch_upload_batch(
-    args: &Value,
-    server: &str,
-    pool: &ConnectionPool,
-    notifier: Option<&McpNotifier>,
-) -> (Value, bool) {
-    let items_val = match args.get("items").and_then(|v| v.as_array()) {
-        Some(a) => a.clone(),
-        None => {
-            return err(
-                "'items' must be a non-empty array of {local_path, remote_path} objects".into(),
-            );
-        }
-    };
-    if items_val.is_empty() {
-        return err("'items' must contain at least one entry".into());
-    }
-    if items_val.len() > UPLOAD_BATCH_MAX {
-        return err(format!(
-            "items exceeds max ({}): got {}",
-            UPLOAD_BATCH_MAX,
-            items_val.len()
-        ));
-    }
-
-    // Parse + validate up front. Agents pass dozens of items; catching a
-    // bad entry after 15 successful uploads wastes time.
-    let mut items: Vec<UploadBatchItem> = Vec::with_capacity(items_val.len());
-    for (idx, v) in items_val.iter().enumerate() {
-        let obj = match v.as_object() {
-            Some(o) => o,
-            None => {
-                return err(format!(
-                    "items[{}] must be an object with local_path and remote_path",
-                    idx
-                ));
-            }
-        };
-        let local = obj
-            .get("local_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let remote = obj
-            .get("remote_path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        if local.is_empty() || remote.is_empty() {
-            return err(format!(
-                "items[{}] must have non-empty local_path and remote_path",
-                idx
-            ));
-        }
-        if let Err(e) = security::validate_local_path(&local) {
-            return err(format!("items[{}]: {}", idx, e));
-        }
-        if let Err(e) = security::validate_remote_path(&remote) {
-            return err(format!("items[{}]: {}", idx, e));
-        }
-        let cp = obj
-            .get("create_parents")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        // Per-item no_clobber can be overridden; if absent it falls back to
-        // the request-level `no_clobber` default (if any).
-        let nc_default = get_bool_opt(args, "no_clobber").unwrap_or(false);
-        let nc = obj
-            .get("no_clobber")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(nc_default);
-        items.push(UploadBatchItem {
-            local_path: local,
-            remote_path: remote,
-            create_parents: cp,
-            no_clobber: nc,
-        });
-    }
-
-    let continue_on_error = get_bool_opt(args, "continue_on_error").unwrap_or(true);
-    // Default 0 ms — batch upload rarely needs the anti-rate-limit pacing
-    // that delete needs, because uploads already take seconds each. Keep
-    // the knob for cases where an agent wants to gentle-walk a rate-limited
-    // provider.
-    let delay_ms = args
-        .get("delay_ms")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0)
-        .min(2_000);
-
-    let mut results: Vec<Value> = Vec::with_capacity(items.len());
-    let mut uploaded_ok: u32 = 0;
-    let mut skipped_ok: u32 = 0;
-    let mut errors: u32 = 0;
-    let mut aborted_after: Option<usize> = None;
-    let mut bytes_total: u64 = 0;
-
-    for (idx, item) in items.iter().enumerate() {
-        if idx > 0 && delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-        }
-
-        // no_clobber short-circuit per-item. stat probe; `Ok` means the
-        // file exists and we skip the upload. `Err` assumes not-found and
-        // proceeds — same semantics as the single-file path.
-        if item.no_clobber {
-            let probe_path = item.remote_path.clone();
-            let exists = execute_with_reset(pool, server, move |p| {
-                let path = probe_path.clone();
-                Box::pin(async move { p.stat(&path).await })
-            })
-            .await
-            .is_ok();
-            if exists {
-                skipped_ok += 1;
-                results.push(json!({
-                    "local_path": item.local_path,
-                    "remote_path": item.remote_path,
-                    "uploaded": false,
-                    "skipped": true,
-                    "reason": "exists",
-                    "no_clobber": true,
-                }));
-                continue;
-            }
-        }
-
-        // Create parents up front (if requested) so the upload itself only
-        // needs one shot. Mirrors the single-file aeroftp_upload_file flow.
-        if item.create_parents {
-            if let Some(parent) = parent_remote_dir(&item.remote_path) {
-                if let Err(e) = ensure_remote_parents(pool, server, &parent).await {
-                    errors += 1;
-                    let err_obj = json!({ "message": e.clone(), "path": item.remote_path });
-                    results.push(json!({
-                        "local_path": item.local_path,
-                        "remote_path": item.remote_path,
-                        "uploaded": false,
-                        "error": e,
-                        "errors": [err_obj],
-                    }));
-                    if !continue_on_error {
-                        aborted_after = Some(idx + 1);
-                        break;
-                    }
-                    continue;
-                }
-            }
-        }
-
-        // Retry loop with the same contract as the single-file upload path:
-        // up to MAX_UPLOAD_ATTEMPTS tries on transport-level errors, each
-        // attempt gets a freshly built progress callback.
-        let mut attempt: u8 = 0;
-        let outcome = loop {
-            attempt += 1;
-            let arc = match pool.get_provider(server).await {
-                Ok(a) => a,
-                Err(e) => break Err((e, attempt)),
-            };
-            let bytes = std::fs::metadata(&item.local_path)
-                .map(|m| m.len())
-                .unwrap_or(0);
-            let upload_result = {
-                let mut p = arc.lock().await;
-                let cb = build_progress_callback(notifier, "upload");
-                p.upload(&item.local_path, &item.remote_path, cb).await
-            };
-            match upload_result {
-                Ok(()) => break Ok((bytes, attempt)),
-                Err(e) => {
-                    let transport = is_transport_error(&e);
-                    let sanitized = sanitize_error(e);
-                    drop(arc);
-                    if transport {
-                        let _ = pool.invalidate(server).await;
-                        if attempt < MAX_UPLOAD_ATTEMPTS {
-                            continue;
-                        }
-                    }
-                    break Err((
-                        augment_upload_error(
-                            &sanitized,
-                            &item.remote_path,
-                            item.create_parents,
-                            parent_remote_dir(&item.remote_path).is_some(),
-                        ),
-                        attempt,
-                    ));
-                }
-            }
-        };
-
-        match outcome {
-            Ok((bytes, attempts)) => {
-                uploaded_ok += 1;
-                bytes_total = bytes_total.saturating_add(bytes);
-                results.push(json!({
-                    "local_path": item.local_path,
-                    "remote_path": item.remote_path,
-                    "uploaded": true,
-                    "bytes": bytes,
-                    "attempts": attempts,
-                }));
-            }
-            Err((msg, attempts)) => {
-                errors += 1;
-                let err_obj = json!({ "message": msg.clone(), "path": item.remote_path });
-                results.push(json!({
-                    "local_path": item.local_path,
-                    "remote_path": item.remote_path,
-                    "uploaded": false,
-                    "error": msg,
-                    "errors": [err_obj],
-                    "attempts": attempts,
-                }));
-                if !continue_on_error {
-                    aborted_after = Some(idx + 1);
-                    break;
-                }
-            }
-        }
-    }
-
-    let total_planned = items.len();
-    let processed = results.len();
-    let errors_array: Vec<Value> = results
-        .iter()
-        .filter_map(|r| {
-            let msg = r.get("error").and_then(|v| v.as_str())?;
-            let path = r
-                .get("remote_path")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            Some(json!({ "message": msg, "path": path }))
-        })
-        .collect();
-    ok(json!({
-        "server": server,
-        "results": results,
-        "summary": {
-            "planned": total_planned,
-            "processed": processed,
-            "uploaded": uploaded_ok,
-            "skipped": skipped_ok,
-            "errors": errors,
-            "aborted_after": aborted_after,
-            "delay_ms": delay_ms,
-            "bytes_uploaded": bytes_total,
-            "totals": {
-                "requested": total_planned,
-                "succeeded": uploaded_ok,
-                "failed": errors,
-                "skipped": skipped_ok,
-                "elapsed_secs": 0u64,
-            },
-        },
-        "errors": errors_array,
-    }))
-}
-
-/// Maximum retry attempts for single-file upload and batch upload paths.
-/// Rationale — suppaftp can leave a pooled FTP control channel with a
-/// half-open data connection after a successful STOR on some servers
-/// (Aruba FTPS, vsftpd under load). The NEXT op on that connection hits
-/// "Data connection is already open" even though the previous op succeeded.
-/// Three attempts cover the full recovery cycle: initial fail → pool
-/// invalidate → fresh connection → retry → success.
-const MAX_UPLOAD_ATTEMPTS: u8 = 3;
-
-/// Shared implementation of the batch delete branch. Called from both
-/// `aeroftp_delete` (when `paths` is provided) and `aeroftp_delete_many`.
-///
-/// Returns `(json_payload, is_error)` in the same shape `execute_tool`
-/// expects, so callers only need to wrap it with `finish()`. Validation of
-/// `server` is the caller's responsibility — the dispatcher assumes it has
-/// already been performed.
-async fn dispatch_delete_batch(args: &Value, server: &str, pool: &ConnectionPool) -> (Value, bool) {
-    let paths_val = match args.get("paths").and_then(|v| v.as_array()) {
-        Some(a) => a.clone(),
-        None => {
-            return err("'paths' must be a non-empty array of strings".into());
-        }
-    };
-    if paths_val.is_empty() {
-        return err("'paths' must contain at least one entry".into());
-    }
-    if paths_val.len() > DELETE_BATCH_MAX {
-        return err(format!(
-            "paths exceeds max ({}): got {}",
-            DELETE_BATCH_MAX,
-            paths_val.len()
-        ));
-    }
-    let mut paths: Vec<String> = Vec::with_capacity(paths_val.len());
-    for v in paths_val {
-        match v.as_str() {
-            Some(s) if !s.is_empty() => paths.push(s.to_string()),
-            _ => {
-                return err("every entry of 'paths' must be a non-empty string".into());
-            }
-        }
-    }
-    for p in &paths {
-        if let Err(e) = security::validate_remote_path(p) {
-            return err(e);
-        }
-    }
-    let recursive = get_bool_opt(args, "recursive").unwrap_or(false);
-    let continue_on_error = get_bool_opt(args, "continue_on_error").unwrap_or(true);
-    // Default 200 ms — matches the rhythm Lumo had to simulate with external
-    // sleeps. Cap at 2 s so an agent cannot stall the tool indefinitely by
-    // passing a huge value.
-    let delay_ms = args
-        .get("delay_ms")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(200)
-        .min(2_000);
-
-    let mut results: Vec<Value> = Vec::with_capacity(paths.len());
-    let mut deleted_ok: u32 = 0;
-    let mut errors: u32 = 0;
-    let mut aborted_after: Option<usize> = None;
-    for (idx, path) in paths.iter().enumerate() {
-        if idx > 0 && delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-        }
-        let path_for_call = path.clone();
-        let outcome = execute_with_reset(pool, server, move |p| {
-            let path = path_for_call.clone();
-            Box::pin(async move {
-                let entry = p.stat(&path).await?;
-                match delete_kind(entry.is_dir, recursive) {
-                    DeleteKind::Directory => p.rmdir(&path).await.map(|_| true),
-                    DeleteKind::DirectoryRecursive => p.rmdir_recursive(&path).await.map(|_| true),
-                    DeleteKind::File => p.delete(&path).await.map(|_| false),
-                }
-            })
-        })
-        .await;
-        match outcome {
-            Ok(is_dir) => {
-                deleted_ok += 1;
-                // No per-item `recursive` field: it is an input knob applied
-                // globally to the batch, not a property of each result. The
-                // caller already knows what they passed; echoing it back would
-                // be noise and mislead consumers into thinking it's a per-item
-                // outcome.
-                results.push(json!({
-                    "path": path,
-                    "deleted": true,
-                    "is_dir": is_dir,
-                }));
-            }
-            Err(msg) => {
-                errors += 1;
-                let err_obj = json!({ "message": msg.clone(), "path": path });
-                results.push(json!({
-                    "path": path,
-                    "deleted": false,
-                    "error": msg,
-                    "errors": [err_obj],
-                }));
-                if !continue_on_error {
-                    aborted_after = Some(idx + 1);
-                    break;
-                }
-            }
-        }
-    }
-    let total_planned = paths.len();
-    let processed = results.len();
-    // Collect error messages for the aggregate envelope. The per-item
-    // entries keep the detail; this mirror is a convenience for consumers
-    // that want to check `errors.length > 0` at the top level.
-    let errors_array: Vec<Value> = results
-        .iter()
-        .filter_map(|r| {
-            let msg = r.get("error").and_then(|v| v.as_str())?;
-            let path = r.get("path").and_then(|v| v.as_str()).unwrap_or_default();
-            Some(json!({ "message": msg, "path": path }))
-        })
-        .collect();
-    ok(json!({
-        "server": server,
-        "results": results,
-        "summary": {
-            "planned": total_planned,
-            "processed": processed,
-            "deleted": deleted_ok,
-            "errors": errors,
-            "aborted_after": aborted_after,
-            "delay_ms": delay_ms,
-            "recursive": recursive,
-            "totals": {
-                "requested": total_planned,
-                "succeeded": deleted_ok,
-                "failed": errors,
-                "skipped": 0u32,
-                "elapsed_secs": 0u64,
-            },
-        },
-        "errors": errors_array,
-    }))
-}
+// `parent_remote_dir`, `ensure_remote_parents`, `collapse_duplicate_ftp_code`,
+// `looks_like_parent_missing_upload`, `augment_upload_error`,
+// `dispatch_upload_batch`, `dispatch_delete_batch`, `UploadBatchItem`,
+// DELETE_BATCH_MAX / UPLOAD_BATCH_MAX / MAX_UPLOAD_ATTEMPTS were removed
+// in T3 Gate 3. Every remote tool now flows through
+// `ai_core::remote_tools::dispatch_remote_tool`, which talks to the pool
+// via the McpRemoteBackend abstraction and emits progress through
+// EventSink. ~600 LOC of duplicated transport / error / batching logic
+// gone for good.
 
 /// Group a flat sync plan into per-operation buckets (`upload`, `download`,
 /// `delete`, `skip`). Each bucket is capped at `per_op_cap` so an agent
@@ -1404,51 +547,10 @@ fn build_mcp_info() -> Value {
     payload
 }
 
-/// Pure find/replace applied to the file text of `aeroftp_edit`.
-///
-/// Returns `(new_content, replacements)`. Uses literal-string semantics
-/// (not regex) to match what the CLI does. When `first_only` is true, at
-/// most one replacement is performed.
-///
-/// Callers are responsible for deciding whether to re-upload: `replacements
-/// == 0` means the file is byte-identical to the input and there is no
-/// point spending a round-trip on a no-op upload.
-fn apply_replacements(
-    original: &str,
-    find: &str,
-    replace: &str,
-    first_only: bool,
-) -> (String, u32) {
-    if find.is_empty() {
-        return (original.to_string(), 0);
-    }
-    if first_only {
-        if let Some(idx) = original.find(find) {
-            let mut out = String::with_capacity(original.len() + replace.len());
-            out.push_str(&original[..idx]);
-            out.push_str(replace);
-            out.push_str(&original[idx + find.len()..]);
-            (out, 1)
-        } else {
-            (original.to_string(), 0)
-        }
-    } else {
-        let count = original.matches(find).count() as u32;
-        if count == 0 {
-            (original.to_string(), 0)
-        } else {
-            (original.replace(find, replace), count)
-        }
-    }
-}
-
-fn delete_kind(is_dir: bool, recursive: bool) -> DeleteKind {
-    match (is_dir, recursive) {
-        (true, true) => DeleteKind::DirectoryRecursive,
-        (true, false) => DeleteKind::Directory,
-        (false, _) => DeleteKind::File,
-    }
-}
+// `apply_replacements` and `delete_kind` were used by the legacy
+// per-tool match arms removed in T3 Gate 3. The unified dispatcher
+// (ai_core::remote_tools::dispatch_remote_tool) handles edits and
+// deletions via the McpRemoteBackend abstraction.
 
 /// Validate server + optional path, return error tuple if invalid.
 fn validate_sp(server: &str, path: Option<&str>) -> Result<(), String> {
@@ -1492,53 +594,9 @@ fn finish(
 
 // ─── Execute ─────────────────────────────────────────────────────────
 
-/// Build a transfer progress callback that forwards bytes sent / total to the
-/// MCP notifier. The callback is sync (invoked from inside provider I/O) while
-/// the notifier is async, so samples are funneled through a bounded mpsc to
-/// a single drain task. Previously this site spawned one task per call — a
-/// 1 GB upload at 4 KB chunks would leak ~262 000 no-op tasks before the
-/// throttle had a chance to filter them out.
-fn build_progress_callback(
-    notifier: Option<&McpNotifier>,
-    label: &'static str,
-) -> Option<Box<dyn Fn(u64, u64) + Send>> {
-    let notifier = notifier?.clone();
-    if !notifier.is_active() {
-        return None;
-    }
-    // Bounded channel coalesces bursts under backpressure. When the callback
-    // drops, the sender drops → rx.recv() returns None → consumer task exits.
-    let (tx, rx) = mpsc::channel::<ProgressSample>(32);
-    spawn_progress_consumer(notifier, rx);
-
-    let start = Arc::new(Instant::now());
-    let last_sent = Arc::new(AtomicU64::new(0));
-    let last_elapsed_ms = Arc::new(AtomicU64::new(0));
-    Some(Box::new(move |sent: u64, total: u64| {
-        let elapsed_ms = start.elapsed().as_millis() as u64;
-        let delta_ms = elapsed_ms.saturating_sub(last_elapsed_ms.load(Ordering::Relaxed));
-        let delta_bytes = sent.saturating_sub(last_sent.load(Ordering::Relaxed));
-        let bps = if delta_ms > 0 {
-            delta_bytes.saturating_mul(1000) / delta_ms.max(1)
-        } else {
-            0
-        };
-        last_sent.store(sent, Ordering::Relaxed);
-        last_elapsed_ms.store(elapsed_ms, Ordering::Relaxed);
-        let pct = if total > 0 {
-            ((sent as f64 / total as f64) * 100.0).min(100.0) as u64
-        } else {
-            0
-        };
-        let message = format!(
-            "{}: {}",
-            label,
-            format_transfer_message(pct, sent, total, bps)
-        );
-        let total_opt = if total > 0 { Some(total) } else { None };
-        push_progress(&tx, (sent, total_opt, message));
-    }))
-}
+// `build_progress_callback` powered the legacy upload/download arms.
+// Removed in T3 Gate 3 — `ai_core::remote_tools` now emits progress via
+// `EventSink::emit_tool_progress` directly.
 
 /// Execute a tool call. Returns `(result_json, is_error)`.
 pub async fn execute_tool(
@@ -1579,1006 +637,15 @@ pub async fn execute_tool(
     }
 
     match tool_name {
-        "aeroftp_list_servers" => {
-            let name_contains = get_str_opt(args, "name_contains").map(|s| s.to_lowercase());
-            let protocol = get_str_opt(args, "protocol").map(|s| s.to_lowercase());
-            let limit = args
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|n| n.min(1_000) as usize)
-                .unwrap_or(200);
-            let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-
-            let result = match crate::mcp::load_safe_profiles() {
-                Ok(profiles) => {
-                    let filtered: Vec<Value> = profiles
-                        .into_iter()
-                        .filter(|p| match (&name_contains, &protocol) {
-                            (None, None) => true,
-                            (Some(needle), None) => p
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .map(|n| n.to_lowercase().contains(needle))
-                                .unwrap_or(false),
-                            (None, Some(proto)) => p
-                                .get("protocol")
-                                .and_then(|v| v.as_str())
-                                .map(|pr| pr.to_lowercase() == *proto)
-                                .unwrap_or(false),
-                            (Some(needle), Some(proto)) => {
-                                let name_match = p
-                                    .get("name")
-                                    .and_then(|v| v.as_str())
-                                    .map(|n| n.to_lowercase().contains(needle))
-                                    .unwrap_or(false);
-                                let proto_match = p
-                                    .get("protocol")
-                                    .and_then(|v| v.as_str())
-                                    .map(|pr| pr.to_lowercase() == *proto)
-                                    .unwrap_or(false);
-                                name_match && proto_match
-                            }
-                        })
-                        .collect();
-                    let matched_total = filtered.len();
-                    let page: Vec<Value> = filtered.into_iter().skip(offset).take(limit).collect();
-                    let returned = page.len();
-                    ok(json!({
-                        "servers": page,
-                        "count": returned,
-                        "total_matched": matched_total,
-                        "offset": offset,
-                        "limit": limit,
-                        "truncated": offset + returned < matched_total,
-                    }))
-                }
-                Err(e) => err(e),
-            };
-            finish(tool_name, None, None, result, start)
-        }
-
-        "aeroftp_list_files" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let path = get_str_opt(args, "path").unwrap_or_else(|| "/".to_string());
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            let path_for_call = path.clone();
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let path = path_for_call.clone();
-                Box::pin(async move { p.list(&path).await })
-            })
-            .await
-            {
-                Err(e) => err(e),
-                Ok(entries) => {
-                    let items: Vec<Value> = entries
-                        .iter()
-                        .take(200)
-                        .map(|e| {
-                            json!({
-                                "name": e.name, "path": e.path, "is_dir": e.is_dir,
-                                "size": e.size, "modified": e.modified,
-                            })
-                        })
-                        .collect();
-                    ok(json!({
-                        "server": server, "path": path, "entries": items,
-                        "total": entries.len(), "truncated": entries.len() > 200,
-                    }))
-                }
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_read_file" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let path = match get_str(args, "path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            // Caller-controlled preview size, clamped to [1 KB, 1024 KB]. The
-            // MAX_READ_PREVIEW_BYTES constant caps the hard ceiling of what
-            // the tool will even consider downloading.
-            let requested_kb = args
-                .get("preview_kb")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(5)
-                .max(1);
-            let preview_bytes = (requested_kb.saturating_mul(1024)).min(MAX_READ_PREVIEW_BYTES);
-            let path_for_stat = path.clone();
-            let stat_result = execute_with_reset(pool, &server, move |p| {
-                let path = path_for_stat.clone();
-                Box::pin(async move { p.stat(&path).await })
-            })
-            .await;
-            let result = match stat_result {
-                Err(e) => err(e),
-                Ok(entry) => {
-                    match validate_read_preview_target(entry.is_dir, entry.size, preview_bytes) {
-                        Err(msg) => err(msg),
-                        Ok(()) => {
-                            let path_for_dl = path.clone();
-                            match execute_with_reset(pool, &server, move |p| {
-                                let path = path_for_dl.clone();
-                                Box::pin(async move { p.download_to_bytes(&path).await })
-                            })
-                            .await
-                            {
-                                Err(e) => err(e),
-                                Ok(data) => {
-                                    let window = preview_bytes as usize;
-                                    let truncated = data.len() > window;
-                                    let preview = if truncated {
-                                        &data[..window]
-                                    } else {
-                                        &data[..]
-                                    };
-                                    let content = String::from_utf8_lossy(preview).to_string();
-                                    ok(json!({
-                                        "path": path,
-                                        "content": content,
-                                        "size": data.len(),
-                                        "truncated": truncated,
-                                        "preview_kb": preview_bytes / 1024,
-                                    }))
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_file_info" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let path = match get_str(args, "path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            let path_for_call = path.clone();
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let path = path_for_call.clone();
-                Box::pin(async move { p.stat(&path).await })
-            })
-            .await
-            {
-                Err(e) => err(e),
-                Ok(entry) => ok(json!({
-                    "path": path, "name": entry.name, "is_dir": entry.is_dir,
-                    "size": entry.size, "modified": entry.modified,
-                    "permissions": entry.permissions, "owner": entry.owner,
-                })),
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_search_files" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let pattern = match get_str(args, "pattern") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            let path = get_str_opt(args, "path").unwrap_or_else(|| "/".to_string());
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            let path_for_call = path.clone();
-            let pattern_for_call = pattern.clone();
-            let result =
-                match execute_with_reset(pool, &server, move |p| {
-                    let path = path_for_call.clone();
-                    let pattern = pattern_for_call.clone();
-                    Box::pin(async move { p.find(&path, &pattern).await })
-                })
-                .await
-                {
-                    Err(e) => err(e),
-                    Ok(entries) => {
-                        let items: Vec<Value> = entries.iter().take(100).map(|e| json!({
-                        "name": e.name, "path": e.path, "is_dir": e.is_dir, "size": e.size,
-                    })).collect();
-                        ok(json!({
-                            "path": path, "pattern": pattern, "results": items,
-                            "total": entries.len(), "truncated": entries.len() > 100,
-                        }))
-                    }
-                };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_upload_file" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let remote_path = match get_str(args, "remote_path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&remote_path)) {
-                return finish(tool_name, Some(&server), Some(&remote_path), err(e), start);
-            }
-            let local_path = get_str_opt(args, "local_path");
-            let content = get_str_opt(args, "content");
-            let create_parents = get_bool_opt(args, "create_parents").unwrap_or(false);
-            let no_clobber = get_bool_opt(args, "no_clobber").unwrap_or(false);
-            if local_path.is_none() && content.is_none() {
-                return finish(
-                    tool_name,
-                    Some(&server),
-                    Some(&remote_path),
-                    err("Provide either 'local_path' or 'content'".into()),
-                    start,
-                );
-            }
-            if let Some(ref lp) = local_path {
-                if let Err(e) = security::validate_local_path(lp) {
-                    return finish(tool_name, Some(&server), Some(&remote_path), err(e), start);
-                }
-            }
-            if let Some(ref c) = content {
-                if let Err(e) = security::validate_text_content(c) {
-                    return finish(tool_name, Some(&server), Some(&remote_path), err(e), start);
-                }
-            }
-
-            // no_clobber short-circuit. Use `stat` as a liveness probe; if it
-            // succeeds, the file exists and we abort before touching the
-            // upload machinery. `stat` errors are ignored — they almost
-            // always mean "not found", which is exactly the case we want to
-            // proceed. NotSupported providers fall through to an attempted
-            // upload, which is the same behavior a CLI `--no-clobber` gets.
-            if no_clobber {
-                let probe_path = remote_path.clone();
-                let exists = execute_with_reset(pool, &server, move |p| {
-                    let path = probe_path.clone();
-                    Box::pin(async move { p.stat(&path).await })
-                })
-                .await
-                .is_ok();
-                if exists {
-                    return finish(
-                        tool_name,
-                        Some(&server),
-                        Some(&remote_path),
-                        ok(json!({
-                            "remote_path": remote_path,
-                            "uploaded": false,
-                            "skipped": true,
-                            "reason": "exists",
-                            "no_clobber": true,
-                        })),
-                        start,
-                    );
-                }
-            }
-
-            // Optional parent auto-creation. We deliberately run this BEFORE
-            // acquiring the provider for the upload so that mkdir errors never
-            // leave the pooled connection in a half-open data-channel state
-            // (the exact failure mode that first motivated this refactor).
-            if create_parents {
-                if let Some(parent) = parent_remote_dir(&remote_path) {
-                    if let Err(e) = ensure_remote_parents(pool, &server, &parent).await {
-                        return finish(tool_name, Some(&server), Some(&remote_path), err(e), start);
-                    }
-                }
-            }
-
-            let had_parent = parent_remote_dir(&remote_path).is_some();
-
-            // Resolve the local source. Inline text content is materialized
-            // into a tmp file once here so the retry loop below uses the same
-            // path on each attempt. tmp is cleaned up unconditionally at the
-            // end of the tool dispatch.
-            let (upload_src, declared_bytes, tmp_cleanup): (
-                String,
-                u64,
-                Option<std::path::PathBuf>,
-            ) = if let Some(ref lp) = local_path {
-                let b = std::fs::metadata(lp).map(|m| m.len()).unwrap_or(0);
-                (lp.clone(), b, None)
-            } else {
-                let text = content.as_deref().unwrap_or_default();
-                let b = text.len() as u64;
-                let nonce = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_nanos())
-                    .unwrap_or(0);
-                let tmp = std::env::temp_dir().join(format!("aeroftp_mcp_upload_{}", nonce));
-                if let Err(e) = std::fs::write(&tmp, text) {
-                    return finish(
-                        tool_name,
-                        Some(&server),
-                        Some(&remote_path),
-                        err(sanitize_error(e)),
-                        start,
-                    );
-                }
-                (tmp.to_string_lossy().into_owned(), b, Some(tmp))
-            };
-            let has_progress = local_path.is_some();
-
-            // Retry loop: up to MAX_UPLOAD_ATTEMPTS tries on transport-level
-            // errors. Rationale — suppaftp can leave a pooled FTP control
-            // channel with a half-open data connection after a successful
-            // STOR on some servers (Aruba FTPS, vsftpd under load). The
-            // NEXT op on that connection hits "Data connection is already
-            // open" even though the previous op succeeded. Without this
-            // retry the failure surfaces to the agent as a hard error; with
-            // it we transparently open a fresh connection and the second
-            // attempt succeeds.
-            let mut attempt: u8 = 0;
-            let result = loop {
-                attempt += 1;
-                let arc = match pool.get_provider(&server).await {
-                    Ok(a) => a,
-                    Err(e) => break err(e),
-                };
-                let upload_result = {
-                    let mut p = arc.lock().await;
-                    let cb = if has_progress {
-                        build_progress_callback(notifier, "upload")
-                    } else {
-                        None
-                    };
-                    p.upload(&upload_src, &remote_path, cb).await
-                };
-                match upload_result {
-                    Ok(()) => {
-                        if has_progress {
-                            if let Some(n) = notifier {
-                                n.send_progress_final(
-                                    declared_bytes,
-                                    Some(declared_bytes),
-                                    Some(format!("upload complete: {} bytes", declared_bytes)),
-                                )
-                                .await;
-                            }
-                        }
-                        break ok(json!({
-                            "remote_path": remote_path,
-                            "uploaded": true,
-                            "bytes": declared_bytes,
-                            "attempts": attempt,
-                        }));
-                    }
-                    Err(e) => {
-                        let transport = is_transport_error(&e);
-                        let sanitized = sanitize_error(e);
-                        drop(arc);
-                        if transport {
-                            let _ = pool.invalidate(&server).await;
-                            if attempt < MAX_UPLOAD_ATTEMPTS {
-                                // Try again on a freshly-opened connection.
-                                continue;
-                            }
-                        }
-                        break err(augment_upload_error(
-                            &sanitized,
-                            &remote_path,
-                            create_parents,
-                            had_parent,
-                        ));
-                    }
-                }
-            };
-            if let Some(tmp) = tmp_cleanup {
-                let _ = std::fs::remove_file(&tmp);
-            }
-            finish(tool_name, Some(&server), Some(&remote_path), result, start)
-        }
-
-        "aeroftp_download_file" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let remote_path = match get_str(args, "remote_path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            let local_path = match get_str(args, "local_path") {
-                Ok(s) => s,
-                Err(e) => {
-                    return finish(tool_name, Some(&server), Some(&remote_path), err(e), start)
-                }
-            };
-            if let Err(e) = validate_sp(&server, Some(&remote_path)) {
-                return finish(tool_name, Some(&server), Some(&remote_path), err(e), start);
-            }
-            if let Err(e) = security::validate_local_path(&local_path) {
-                return finish(tool_name, Some(&server), Some(&remote_path), err(e), start);
-            }
-            if let Some(parent) = std::path::Path::new(&local_path).parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-
-            let result = match pool.get_provider(&server).await {
-                Err(e) => err(e),
-                Ok(arc) => {
-                    let mut p = arc.lock().await;
-                    let cb = build_progress_callback(notifier, "download");
-                    match p.download(&remote_path, &local_path, cb).await {
-                        Ok(()) => {
-                            if let Some(n) = notifier {
-                                let bytes =
-                                    std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
-                                n.send_progress_final(
-                                    bytes,
-                                    Some(bytes.max(1)),
-                                    Some(format!("download complete: {} bytes", bytes)),
-                                )
-                                .await;
-                            }
-                            ok(
-                                json!({ "remote_path": remote_path, "local_path": local_path, "downloaded": true }),
-                            )
-                        }
-                        Err(e) => {
-                            let transport = is_transport_error(&e);
-                            let sanitized = sanitize_error(e);
-                            drop(p);
-                            drop(arc);
-                            if transport {
-                                let _ = pool.invalidate(&server).await;
-                            }
-                            err(sanitized)
-                        }
-                    }
-                }
-            };
-            finish(tool_name, Some(&server), Some(&remote_path), result, start)
-        }
-
-        "aeroftp_create_directory" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let path = match get_str(args, "path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            let path_for_call = path.clone();
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let path = path_for_call.clone();
-                Box::pin(async move { p.mkdir(&path).await })
-            })
-            .await
-            {
-                Ok(()) => ok(json!({ "path": path, "created": true })),
-                Err(e) => err(e),
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_delete" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            if let Err(e) = security::validate_server_query(&server) {
-                return finish(tool_name, Some(&server), None, err(e), start);
-            }
-            // Batch mode when `paths` is provided. `path` and `paths` are
-            // mutually exclusive — rejecting combined input prevents ambiguity
-            // about which argument wins.
-            let has_paths = args.get("paths").is_some();
-            let has_path = args.get("path").is_some();
-            if has_paths && has_path {
-                return finish(
-                    tool_name,
-                    Some(&server),
-                    None,
-                    err(
-                        "Provide either 'path' (single delete) or 'paths' (batch) — not both"
-                            .into(),
-                    ),
-                    start,
-                );
-            }
-            if has_paths {
-                let result = dispatch_delete_batch(args, &server, pool).await;
-                return finish(tool_name, Some(&server), None, result, start);
-            }
-
-            let path = match get_str(args, "path") {
-                Ok(s) => s,
-                Err(_) => return finish(
-                    tool_name,
-                    Some(&server),
-                    None,
-                    err(
-                        "Provide either 'path' (single delete) or 'paths' (batch array of strings)"
-                            .into(),
-                    ),
-                    start,
-                ),
-            };
-            let recursive = get_bool_opt(args, "recursive").unwrap_or(false);
-            if let Err(e) = security::validate_remote_path(&path) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            let path_for_call = path.clone();
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let path = path_for_call.clone();
-                Box::pin(async move {
-                    let entry = p.stat(&path).await?;
-                    match delete_kind(entry.is_dir, recursive) {
-                        DeleteKind::Directory => p.rmdir(&path).await.map(|_| (true, false)),
-                        DeleteKind::DirectoryRecursive => {
-                            p.rmdir_recursive(&path).await.map(|_| (true, true))
-                        }
-                        DeleteKind::File => p.delete(&path).await.map(|_| (false, false)),
-                    }
-                })
-            })
-            .await
-            {
-                Err(e) => err(e),
-                Ok((is_dir, was_recursive)) => ok(json!({
-                    "path": path,
-                    "deleted": true,
-                    "is_dir": is_dir,
-                    "recursive": was_recursive,
-                })),
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_delete_many" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            if let Err(e) = security::validate_server_query(&server) {
-                return finish(tool_name, Some(&server), None, err(e), start);
-            }
-            // Thin alias kept for back-compat. All logic lives in the shared
-            // batch dispatcher so the two tools never drift.
-            let result = dispatch_delete_batch(args, &server, pool).await;
-            finish(tool_name, Some(&server), None, result, start)
-        }
-
-        "aeroftp_upload_many" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            if let Err(e) = security::validate_server_query(&server) {
-                return finish(tool_name, Some(&server), None, err(e), start);
-            }
-            let result = dispatch_upload_batch(args, &server, pool, notifier).await;
-            finish(tool_name, Some(&server), None, result, start)
-        }
-
-        "aeroftp_rename" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let from = match get_str(args, "from") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            let to = match get_str(args, "to") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), Some(&from), err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&from)) {
-                return finish(tool_name, Some(&server), Some(&from), err(e), start);
-            }
-            if let Err(e) = security::validate_remote_path(&to) {
-                return finish(tool_name, Some(&server), Some(&from), err(e), start);
-            }
-
-            let from_for_call = from.clone();
-            let to_for_call = to.clone();
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let from = from_for_call.clone();
-                let to = to_for_call.clone();
-                Box::pin(async move { p.rename(&from, &to).await })
-            })
-            .await
-            {
-                Ok(()) => ok(json!({ "from": from, "to": to, "renamed": true })),
-                Err(e) => err(e),
-            };
-            finish(tool_name, Some(&server), Some(&from), result, start)
-        }
-
-        "aeroftp_storage_quota" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            if let Err(e) = security::validate_server_query(&server) {
-                return finish(tool_name, Some(&server), None, err(e), start);
-            }
-
-            let result = match execute_with_reset(pool, &server, move |p| {
-                Box::pin(async move { p.storage_info().await })
-            })
-            .await
-            {
-                Err(e) => err(e),
-                Ok(info) => {
-                    let used_pct = if info.total > 0 {
-                        format!("{:.1}%", info.used as f64 / info.total as f64 * 100.0)
-                    } else {
-                        "N/A".to_string()
-                    };
-                    ok(
-                        json!({ "used": info.used, "total": info.total, "free": info.free, "used_pct": used_pct }),
-                    )
-                }
-            };
-            finish(tool_name, Some(&server), None, result, start)
-        }
-
-        "aeroftp_server_info" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            if let Err(e) = security::validate_server_query(&server) {
-                return finish(tool_name, Some(&server), None, err(e), start);
-            }
-
-            let result = match execute_with_reset(pool, &server, move |p| {
-                Box::pin(async move {
-                    let info = p.server_info().await?;
-                    Ok::<_, ProviderError>((
-                        info,
-                        p.provider_type().to_string(),
-                        p.supports_share_links(),
-                        p.supports_server_copy(),
-                        p.supports_versions(),
-                        p.supports_checksum(),
-                        p.supports_find(),
-                    ))
-                })
-            })
-            .await
-            {
-                Err(e) => err(e),
-                Ok((info, provider_type, share, copy, versions, checksum, find)) => ok(json!({
-                    "provider_type": provider_type,
-                    "server_info": info,
-                    "supports_share_links": share,
-                    "supports_server_copy": copy,
-                    "supports_versions": versions,
-                    "supports_checksum": checksum,
-                    "supports_find": find,
-                })),
-            };
-            finish(tool_name, Some(&server), None, result, start)
-        }
-
-        "aeroftp_create_share_link" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let path = match get_str(args, "path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-            let expires = args.get("expires_in_secs").and_then(|v| v.as_u64());
-            let password = get_str_opt(args, "password");
-
-            let path_for_call = path.clone();
-            let opts = ShareLinkOptions {
-                expires_in_secs: expires,
-                password,
-                permissions: None,
-            };
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let path = path_for_call.clone();
-                let opts = opts.clone();
-                Box::pin(async move { p.create_share_link(&path, opts).await })
-            })
-            .await
-            {
-                Err(e) => err(e),
-                Ok(link) => ok(
-                    json!({ "url": link.url, "password": link.password, "expires_at": link.expires_at }),
-                ),
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_server_copy" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let from = match get_str(args, "from") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            let to = match get_str(args, "to") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), Some(&from), err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&from)) {
-                return finish(tool_name, Some(&server), Some(&from), err(e), start);
-            }
-            if let Err(e) = security::validate_remote_path(&to) {
-                return finish(tool_name, Some(&server), Some(&from), err(e), start);
-            }
-
-            let from_for_call = from.clone();
-            let to_for_call = to.clone();
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let from = from_for_call.clone();
-                let to = to_for_call.clone();
-                Box::pin(async move { p.server_copy(&from, &to).await })
-            })
-            .await
-            {
-                Ok(()) => ok(json!({ "from": from, "to": to, "copied": true })),
-                Err(e) => err(e),
-            };
-            finish(tool_name, Some(&server), Some(&from), result, start)
-        }
-
-        "aeroftp_file_versions" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let path = match get_str(args, "path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            let path_for_call = path.clone();
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let path = path_for_call.clone();
-                Box::pin(async move { p.list_versions(&path).await })
-            })
-            .await
-            {
-                Err(e) => err(e),
-                Ok(versions) => {
-                    let items: Vec<Value> = versions
-                        .iter()
-                        .map(|v| {
-                            json!({
-                                "id": v.id, "modified": v.modified, "size": v.size,
-                            })
-                        })
-                        .collect();
-                    ok(json!({ "path": path, "versions": items, "total": versions.len() }))
-                }
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_checksum" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let path = match get_str(args, "path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            let path_for_call = path.clone();
-            let result = match execute_with_reset(pool, &server, move |p| {
-                let path = path_for_call.clone();
-                Box::pin(async move { p.checksum(&path).await })
-            })
-            .await
-            {
-                Err(e) => err(e),
-                Ok(checksums) => ok(json!({ "path": path, "checksums": checksums })),
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
-        "aeroftp_edit" => {
-            let server = match get_str(args, "server") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, None, None, err(e), start),
-            };
-            let path = match get_str(args, "path") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), None, err(e), start),
-            };
-            let find = match get_str(args, "find") {
-                Ok(s) => s,
-                Err(e) => return finish(tool_name, Some(&server), Some(&path), err(e), start),
-            };
-            // `replace` is a required STRING but may be empty (delete-match
-            // semantics). `get_str` rejects empty-missing distinction, so we
-            // accept a present-but-empty value explicitly here.
-            let replace = match args.get("replace").and_then(|v| v.as_str()) {
-                Some(s) => s.to_string(),
-                None => {
-                    return finish(
-                        tool_name,
-                        Some(&server),
-                        Some(&path),
-                        err("Missing required argument: replace".into()),
-                        start,
-                    )
-                }
-            };
-            let first_only = get_bool_opt(args, "first").unwrap_or(false);
-            if let Err(e) = validate_sp(&server, Some(&path)) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-            if find.is_empty() {
-                return finish(
-                    tool_name,
-                    Some(&server),
-                    Some(&path),
-                    err("`find` must not be empty".into()),
-                    start,
-                );
-            }
-            if let Err(e) = security::validate_text_content(&find) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-            if let Err(e) = security::validate_text_content(&replace) {
-                return finish(tool_name, Some(&server), Some(&path), err(e), start);
-            }
-
-            // Stat first so we can reject directories and oversize files
-            // without paying for an unnecessary download.
-            let path_for_stat = path.clone();
-            let stat_result = execute_with_reset(pool, &server, move |p| {
-                let path = path_for_stat.clone();
-                Box::pin(async move { p.stat(&path).await })
-            })
-            .await;
-            let result = match stat_result {
-                Err(e) => err(e),
-                Ok(entry) => {
-                    if entry.is_dir {
-                        err("Cannot edit a directory.".into())
-                    } else if entry.size > MAX_EDIT_BYTES {
-                        err(format!(
-                            "File too large for in-place edit ({:.1} KB). Hard cap: {} KB. Download, edit locally, then upload.",
-                            entry.size as f64 / 1024.0,
-                            MAX_EDIT_BYTES / 1024,
-                        ))
-                    } else {
-                        // Fetch → UTF-8 decode → apply. `apply_replacements`
-                        // is a pure function; the surrounding I/O is the
-                        // only side-effect path.
-                        let path_for_dl = path.clone();
-                        match execute_with_reset(pool, &server, move |p| {
-                            let path = path_for_dl.clone();
-                            Box::pin(async move { p.download_to_bytes(&path).await })
-                        })
-                        .await
-                        {
-                            Err(e) => err(e),
-                            Ok(data) => match String::from_utf8(data) {
-                                Err(_) => err(
-                                    "File is not valid UTF-8. aeroftp_edit operates only on text files; use aeroftp_download_file + aeroftp_upload_file for binary content.".into(),
-                                ),
-                                Ok(original) => {
-                                    let bytes_before = original.len() as u64;
-                                    let (new_content, replacements) =
-                                        apply_replacements(&original, &find, &replace, first_only);
-                                    if replacements == 0 {
-                                        // No-op: do NOT re-upload. Saves a
-                                        // round-trip and avoids churning
-                                        // mtime on a file that did not need
-                                        // to change.
-                                        ok(json!({
-                                            "path": path,
-                                            "find": find,
-                                            "replacements": 0u32,
-                                            "modified": false,
-                                            "bytes_before": bytes_before,
-                                            "bytes_after": bytes_before,
-                                        }))
-                                    } else {
-                                        let bytes_after = new_content.len() as u64;
-                                        // Write to a tmp file and upload.
-                                        // Matches the path used by the
-                                        // `content`-mode branch of
-                                        // aeroftp_upload_file — shared
-                                        // disk-backed upload keeps the
-                                        // surface uniform.
-                                        let nonce = std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .map(|d| d.as_nanos())
-                                            .unwrap_or(0);
-                                        let tmp = std::env::temp_dir()
-                                            .join(format!("aeroftp_mcp_edit_{}", nonce));
-                                        if let Err(e) = std::fs::write(&tmp, &new_content) {
-                                            err(sanitize_error(e))
-                                        } else {
-                                            let tmp_str = tmp.to_string_lossy().into_owned();
-                                            let up_result = match pool.get_provider(&server).await {
-                                                Err(e) => Err(e),
-                                                Ok(arc) => {
-                                                    let res = {
-                                                        let mut p = arc.lock().await;
-                                                        p.upload(&tmp_str, &path, None)
-                                                            .await
-                                                            .map_err(sanitize_error)
-                                                    };
-                                                    drop(arc);
-                                                    res
-                                                }
-                                            };
-                                            let _ = std::fs::remove_file(&tmp);
-                                            match up_result {
-                                                Err(e) => err(e),
-                                                Ok(()) => ok(json!({
-                                                    "path": path,
-                                                    "find": find,
-                                                    "replacements": replacements,
-                                                    "modified": true,
-                                                    "bytes_before": bytes_before,
-                                                    "bytes_after": bytes_after,
-                                                })),
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                        }
-                    }
-                }
-            };
-            finish(tool_name, Some(&server), Some(&path), result, start)
-        }
-
         "aeroftp_mcp_info" => {
+
             // No server/path validation: this tool has no external I/O.
             let result = ok(build_mcp_info());
             finish(tool_name, None, None, result, start)
+        
         }
-
         "aeroftp_close_connection" => {
+
             let server = match get_str(args, "server") {
                 Ok(s) => s,
                 Err(e) => return finish(tool_name, None, None, err(e), start),
@@ -2615,9 +682,10 @@ pub async fn execute_tool(
                 })),
             };
             finish(tool_name, Some(&server), None, result, start)
+        
         }
-
         "aeroftp_check_tree" => {
+
             use crate::sync_core::{compare_trees, scan_local_tree, scan_remote_tree, ScanOptions};
 
             let server = match get_str(args, "server") {
@@ -2784,9 +852,10 @@ pub async fn execute_tool(
                 }
             };
             finish(tool_name, Some(&server), Some(&remote_dir), result, start)
+        
         }
-
         "aeroftp_sync_tree" => {
+
             use crate::sync_core::{
                 sync_tree_core, ConflictMode, DeltaPolicy, ScanOptions, SyncDirection, SyncOptions,
             };
@@ -3187,15 +1256,9 @@ pub async fn execute_tool(
                 }
             };
             finish(tool_name, Some(&server), Some(&remote_dir), result, start)
+        
         }
-
-        _ => finish(
-            tool_name,
-            None,
-            None,
-            err(format!("Unknown tool: {}", tool_name)),
-            start,
-        ),
+        _ => finish(tool_name, None, None, err(format!("Unknown tool: {}", tool_name)), start),
     }
 }
 
@@ -3397,10 +1460,7 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        delete_kind, tool_definitions, validate_read_preview_target, DeleteKind,
-        MAX_READ_PREVIEW_BYTES,
-    };
+    use super::{tool_definitions, validate_read_preview_target, MAX_READ_PREVIEW_BYTES};
 
     #[test]
     fn read_preview_rejects_directories() {
@@ -3437,14 +1497,6 @@ mod tests {
     }
 
     #[test]
-    fn delete_kind_distinguishes_file_directory_and_recursive_directory() {
-        assert_eq!(delete_kind(false, false), DeleteKind::File);
-        assert_eq!(delete_kind(false, true), DeleteKind::File);
-        assert_eq!(delete_kind(true, false), DeleteKind::Directory);
-        assert_eq!(delete_kind(true, true), DeleteKind::DirectoryRecursive);
-    }
-
-    #[test]
     fn delete_tool_schema_exposes_recursive_flag() {
         let delete_tool = tool_definitions()
             .into_iter()
@@ -3474,91 +1526,6 @@ mod tests {
                 required
             );
         }
-    }
-
-    #[test]
-    fn transport_error_classifier_catches_variant_level_failures() {
-        use super::is_transport_error;
-        use crate::providers::ProviderError;
-        assert!(is_transport_error(&ProviderError::NotConnected));
-        assert!(is_transport_error(&ProviderError::ConnectionFailed(
-            "refused".into(),
-        )));
-        assert!(is_transport_error(&ProviderError::Timeout));
-        assert!(is_transport_error(&ProviderError::NetworkError(
-            "dns".into(),
-        )));
-    }
-
-    #[test]
-    fn transport_error_classifier_catches_message_patterns() {
-        use super::is_transport_error;
-        use crate::providers::ProviderError;
-        // The exact failure Lumo CMS hit on Aruba FTP after a 553 — the
-        // control channel comes back with "Data connection is already open"
-        // on every subsequent command until it is reset.
-        assert!(is_transport_error(&ProviderError::TransferFailed(
-            "Data connection is already open".into(),
-        )));
-        assert!(is_transport_error(&ProviderError::Other(
-            "broken pipe while sending data".into(),
-        )));
-        assert!(is_transport_error(&ProviderError::ServerError(
-            "connection reset by peer".into(),
-        )));
-    }
-
-    #[test]
-    fn transport_error_classifier_catches_421_idle_timeout_family() {
-        use super::is_transport_error;
-        use crate::providers::ProviderError;
-        // Aruba proftpd after a ~5min idle window: the control channel is
-        // dropped and the first subsequent op surfaces `421`. Without this
-        // classifier entry the error bubbles up as a hard transfer failure.
-        assert!(is_transport_error(&ProviderError::TransferFailed(
-            "Invalid response: 421 Control connection timed out.".into(),
-        )));
-        assert!(is_transport_error(&ProviderError::ServerError(
-            "421 Idle timeout".into(),
-        )));
-        assert!(is_transport_error(&ProviderError::Other(
-            "421 Service not available, closing control connection".into(),
-        )));
-        assert!(is_transport_error(&ProviderError::TransferFailed(
-            "control connection closed".into(),
-        )));
-    }
-
-    #[test]
-    fn transport_error_classifier_leaves_business_errors_alone() {
-        use super::is_transport_error;
-        use crate::providers::ProviderError;
-        // Business-level failures must NOT invalidate the pool — doing so
-        // would churn connections on every harmless 404/409 and defeat the
-        // whole point of pooling.
-        assert!(!is_transport_error(&ProviderError::NotFound(
-            "/missing".into(),
-        )));
-        assert!(!is_transport_error(&ProviderError::AlreadyExists(
-            "/exists".into(),
-        )));
-        assert!(!is_transport_error(&ProviderError::PermissionDenied(
-            "read-only".into(),
-        )));
-        assert!(!is_transport_error(&ProviderError::AuthenticationFailed(
-            "bad creds".into(),
-        )));
-    }
-
-    #[test]
-    fn parent_remote_dir_handles_common_shapes() {
-        use super::parent_remote_dir;
-        assert_eq!(parent_remote_dir("/a/b/c.txt").as_deref(), Some("/a/b"));
-        assert_eq!(parent_remote_dir("/a/b/c/").as_deref(), Some("/a/b"));
-        // Root-relative single segment → no parent to mkdir.
-        assert_eq!(parent_remote_dir("/foo"), None);
-        assert_eq!(parent_remote_dir("/"), None);
-        assert_eq!(parent_remote_dir("bare.txt"), None);
     }
 
     #[test]
@@ -3618,111 +1585,6 @@ mod tests {
     }
 
     #[test]
-    fn collapse_duplicate_ftp_code_removes_leading_bracket_pair() {
-        let input = "[553] 553 Can't open that file: No such file or directory.";
-        let out = super::collapse_duplicate_ftp_code(input);
-        assert_eq!(out, "553 Can't open that file: No such file or directory.");
-    }
-
-    #[test]
-    fn collapse_duplicate_ftp_code_leaves_single_code_alone() {
-        let input = "553 Can't open that file";
-        assert_eq!(super::collapse_duplicate_ftp_code(input), input);
-    }
-
-    #[test]
-    fn collapse_duplicate_ftp_code_leaves_non_matching_messages_alone() {
-        let input = "some random error message";
-        assert_eq!(super::collapse_duplicate_ftp_code(input), input);
-    }
-
-    #[test]
-    fn collapse_duplicate_ftp_code_handles_wrapped_prefix() {
-        // Real-world shape: provider error wraps the suppaftp response.
-        let input = "Transfer failed: Invalid response: [553] 553 Can't open that file: No such file or directory.";
-        let out = super::collapse_duplicate_ftp_code(input);
-        assert_eq!(
-            out,
-            "Transfer failed: Invalid response: 553 Can't open that file: No such file or directory."
-        );
-    }
-
-    #[test]
-    fn collapse_duplicate_ftp_code_preserves_multibyte_context() {
-        // Non-ASCII content on either side of the doubled code must survive.
-        let input = "Errore à livello: [550] 550 File non esiste — fine.";
-        let out = super::collapse_duplicate_ftp_code(input);
-        assert_eq!(out, "Errore à livello: 550 File non esiste — fine.");
-    }
-
-    #[test]
-    fn augment_upload_error_hint_does_not_retain_bracket_double() {
-        // Reproduces the agent-reported residual: even the Server-said tail
-        // must be free of the `[NNN] NNN` doubled pattern.
-        let wrapped = "Transfer failed: Invalid response: [553] 553 Can't open that file: No such file or directory.";
-        let msg = super::augment_upload_error(wrapped, "/etna/_no_dir/t.sql", false, true);
-        assert!(msg.contains("create_parents=true"), "expected hint: {msg}");
-        assert!(
-            !msg.contains("[553] 553"),
-            "duplicated code should be collapsed even inside Server-said tail: {msg}"
-        );
-    }
-
-    #[test]
-    fn parent_missing_classifier_matches_common_phrases() {
-        assert!(super::looks_like_parent_missing_upload(
-            "553 Can't open that file: No such file or directory."
-        ));
-        assert!(super::looks_like_parent_missing_upload(
-            "SFTP upload: ENOENT (No such file or directory)"
-        ));
-        assert!(super::looks_like_parent_missing_upload(
-            "WebDAV: 404 Not Found - parent does not exist"
-        ));
-    }
-
-    #[test]
-    fn parent_missing_classifier_ignores_unrelated_failures() {
-        assert!(!super::looks_like_parent_missing_upload(
-            "Permission denied"
-        ));
-        assert!(!super::looks_like_parent_missing_upload(
-            "Connection reset by peer"
-        ));
-    }
-
-    #[test]
-    fn augment_upload_error_hints_create_parents_when_relevant() {
-        let msg = super::augment_upload_error(
-            "[553] 553 Can't open that file: No such file or directory.",
-            "/etna/_no_dir/_sub/t.sql",
-            false, // create_parents
-            true,  // had_parent
-        );
-        assert!(
-            msg.contains("create_parents=true"),
-            "expected hint in: {msg}"
-        );
-        assert!(msg.contains("/etna/_no_dir/_sub/t.sql"));
-        // The duplicated `[553] 553` pair should be collapsed.
-        assert!(!msg.contains("[553] 553"));
-    }
-
-    #[test]
-    fn augment_upload_error_skips_hint_when_create_parents_already_true() {
-        let input = "553 No such file or directory";
-        let msg = super::augment_upload_error(input, "/a/b/c", true, true);
-        assert!(!msg.contains("create_parents=true"));
-    }
-
-    #[test]
-    fn augment_upload_error_skips_hint_when_error_is_unrelated() {
-        let msg = super::augment_upload_error("Permission denied", "/a/b/c", false, true);
-        assert!(!msg.contains("create_parents=true"));
-        assert_eq!(msg, "Permission denied");
-    }
-
-    #[test]
     fn err_envelope_exposes_both_scalar_and_array() {
         let (payload, is_error) = super::err("boom".to_string());
         assert!(is_error);
@@ -3733,51 +1595,6 @@ mod tests {
             .expect("errors array");
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0].get("message").and_then(|v| v.as_str()), Some("boom"));
-    }
-
-    #[test]
-    fn apply_replacements_replaces_all_by_default() {
-        let (out, n) = super::apply_replacements("aa bb aa bb aa", "aa", "X", false);
-        assert_eq!(out, "X bb X bb X");
-        assert_eq!(n, 3);
-    }
-
-    #[test]
-    fn apply_replacements_honors_first_only() {
-        let (out, n) = super::apply_replacements("aa bb aa", "aa", "X", true);
-        assert_eq!(out, "X bb aa");
-        assert_eq!(n, 1);
-    }
-
-    #[test]
-    fn apply_replacements_returns_zero_on_no_match() {
-        let (out, n) = super::apply_replacements("nothing here", "xyz", "X", false);
-        assert_eq!(out, "nothing here");
-        assert_eq!(n, 0);
-    }
-
-    #[test]
-    fn apply_replacements_supports_empty_replace() {
-        // Delete-match semantics: replacing "foo" with "" removes matches.
-        let (out, n) = super::apply_replacements("foobar foo baz", "foo", "", false);
-        assert_eq!(out, "bar  baz");
-        assert_eq!(n, 2);
-    }
-
-    #[test]
-    fn apply_replacements_handles_multibyte_utf8() {
-        // UTF-8 safety check: é (2 bytes), 中 (3 bytes), 😀 (4 bytes) all survive.
-        let (out, n) = super::apply_replacements("café中😀café", "café", "CAFE", false);
-        assert_eq!(out, "CAFE中😀CAFE");
-        assert_eq!(n, 2);
-    }
-
-    #[test]
-    fn apply_replacements_rejects_empty_find() {
-        // Empty find would be an infinite match; we short-circuit to 0.
-        let (out, n) = super::apply_replacements("anything", "", "x", false);
-        assert_eq!(out, "anything");
-        assert_eq!(n, 0);
     }
 
     #[test]

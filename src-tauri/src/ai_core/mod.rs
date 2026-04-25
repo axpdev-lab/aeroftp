@@ -22,3 +22,4 @@ pub use credential_provider::{CredentialProvider, ServerCredentials, ServerProfi
 pub use event_sink::{EventSink, ToolProgress};
 pub use remote_backend::RemoteBackend;
 pub use tools::{dispatch_tool, find_tool, DangerLevel, Surfaces, ToolCtx, ToolDef, ToolError};
+pub mod gui_tools;

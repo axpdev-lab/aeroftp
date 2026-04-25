@@ -127,6 +127,21 @@ pub(crate) fn get_str_opt(args: &Value, key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Estrae un array di stringhe da `args[key]`. Errore se la chiave
+/// manca, non è un array, o non contiene almeno una stringa. Usato da
+/// gui_tools / system_tools / handler che accettano `paths: []`,
+/// `items: []`, ecc. Single source of truth per il pattern.
+pub(crate) fn value_as_string_array(args: &Value, key: &str) -> Result<Vec<String>, String> {
+    args.get(key)
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .ok_or_else(|| format!("Missing '{}' array parameter", key))
+}
+
 fn map_err<E: std::fmt::Display>(e: E) -> ToolError {
     ToolError::Exec(e.to_string())
 }

@@ -350,6 +350,7 @@ use crate::ai_core::tools::{Surfaces, ToolCtx};
 use std::sync::Arc;
 
 pub struct TauriToolCtx {
+    pub app: AppHandle,
     pub sink: TauriEventSink,
     pub creds: VaultCredentialProvider,
     pub context_local_path: Option<String>,
@@ -372,6 +373,9 @@ impl ToolCtx for TauriToolCtx {
     }
     fn approval_grant_id(&self) -> Option<&str> {
         self.approval_grant_id.as_deref()
+    }
+    fn tauri_app_handle(&self) -> Option<tauri::AppHandle> {
+        Some(self.app.clone())
     }
     fn surface(&self) -> Surfaces {
         Surfaces::GUI
