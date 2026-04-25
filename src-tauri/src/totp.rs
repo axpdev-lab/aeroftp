@@ -311,3 +311,120 @@ pub fn verify_internal(state: &TotpState, code: &str) -> Result<bool, String> {
     }
     Ok(valid)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh_inner() -> TotpInner {
+        TotpInner {
+            pending_secret: None,
+            setup_verified: false,
+            enabled: false,
+            active_secret: None,
+            failed_attempts: 0,
+            lockout_until: None,
+        }
+    }
+
+    #[test]
+    fn generate_secret_base32_is_deterministic_length_and_alphabet() {
+        let s = generate_secret_base32();
+        // 20 bytes → 32 base32 characters (no padding since BASE32_NOPAD)
+        assert_eq!(s.len(), 32);
+        assert!(s
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
+
+        // two consecutive calls produce different secrets (CSPRNG)
+        let s2 = generate_secret_base32();
+        assert_ne!(s, s2, "generate_secret_base32 must not produce duplicates");
+    }
+
+    #[test]
+    fn build_totp_accepts_valid_base32_and_rejects_garbage() {
+        let secret = generate_secret_base32();
+        assert!(build_totp(&secret).is_ok());
+        assert!(build_totp("not-valid-base32!!!").is_err());
+        assert!(build_totp("").is_err());
+    }
+
+    #[test]
+    fn check_rate_limit_passes_when_not_locked_out() {
+        let inner = fresh_inner();
+        assert!(check_rate_limit(&inner).is_ok());
+    }
+
+    #[test]
+    fn check_rate_limit_rejects_while_locked_out() {
+        let mut inner = fresh_inner();
+        inner.lockout_until = Some(Instant::now() + std::time::Duration::from_secs(60));
+        let err = check_rate_limit(&inner).unwrap_err();
+        assert!(err.contains("Too many failed attempts"));
+    }
+
+    #[test]
+    fn check_rate_limit_passes_after_lockout_expires() {
+        let mut inner = fresh_inner();
+        // Lockout set in the past — should no longer block
+        inner.lockout_until = Some(Instant::now() - std::time::Duration::from_secs(1));
+        assert!(check_rate_limit(&inner).is_ok());
+    }
+
+    #[test]
+    fn record_failure_increments_counter_but_no_lockout_below_threshold() {
+        let mut inner = fresh_inner();
+        for i in 1..MAX_FAILED_ATTEMPTS {
+            record_failure(&mut inner);
+            assert_eq!(inner.failed_attempts, i);
+            assert!(inner.lockout_until.is_none());
+        }
+    }
+
+    #[test]
+    fn record_failure_sets_lockout_at_threshold_with_exponential_backoff() {
+        let mut inner = fresh_inner();
+        for _ in 0..MAX_FAILED_ATTEMPTS {
+            record_failure(&mut inner);
+        }
+        assert_eq!(inner.failed_attempts, MAX_FAILED_ATTEMPTS);
+        let first_lockout = inner.lockout_until.expect("lockout should be set");
+
+        // Additional failures extend the lockout exponentially
+        record_failure(&mut inner);
+        let second_lockout = inner.lockout_until.expect("lockout should still be set");
+        assert!(second_lockout > first_lockout);
+    }
+
+    #[test]
+    fn record_failure_caps_lockout_at_15_minutes() {
+        let mut inner = fresh_inner();
+        // Push far beyond threshold — lockout should saturate at 900s
+        inner.failed_attempts = MAX_FAILED_ATTEMPTS + 50;
+        record_failure(&mut inner);
+        let lockout = inner.lockout_until.expect("lockout should be set");
+        let max = Instant::now() + std::time::Duration::from_secs(901);
+        assert!(lockout <= max, "lockout should be capped at 15 minutes");
+    }
+
+    #[test]
+    fn reset_rate_limit_clears_counter_and_lockout() {
+        let mut inner = fresh_inner();
+        inner.failed_attempts = 3;
+        inner.lockout_until = Some(Instant::now() + std::time::Duration::from_secs(60));
+        reset_rate_limit(&mut inner);
+        assert_eq!(inner.failed_attempts, 0);
+        assert!(inner.lockout_until.is_none());
+    }
+
+    #[test]
+    fn totp_state_default_starts_empty_and_disabled() {
+        let state = TotpState::default();
+        let inner = state.inner.lock().unwrap();
+        assert!(!inner.enabled);
+        assert!(!inner.setup_verified);
+        assert!(inner.active_secret.is_none());
+        assert!(inner.pending_secret.is_none());
+        assert_eq!(inner.failed_attempts, 0);
+    }
+}

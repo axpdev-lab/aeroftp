@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 use std::fs;
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 use std::path::PathBuf;
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 use std::sync::{LazyLock, Mutex};
 
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 static SETTINGS_WRITE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct NativeRsyncSettings {
     #[serde(default)]
     enabled: bool,
 }
 
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 fn native_rsync_config_path() -> Result<PathBuf, String> {
     let base = dirs::config_dir()
         .or_else(dirs::home_dir)
@@ -28,7 +28,18 @@ fn native_rsync_config_path() -> Result<PathBuf, String> {
     Ok(base.join("aeroftp").join("native_rsync.toml"))
 }
 
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
+/// Runtime gate for the `aerorsync` native rsync backend.
+///
+/// Fresh installs default to OFF since the F5 revert in `aca4577c`; audit
+/// finding P3-06 keeps that distinction explicit: Cargo compiles the backend
+/// by default (feature `aerorsync`), but runtime dispatch stays opt-in until
+/// the host-key algorithm negotiation asymmetry is resolved.
+///
+/// The function name, the persisted TOML filename (`native_rsync.toml`) and
+/// the `native_rsync_enabled` TOML key all retain the legacy naming that
+/// predated the `aerorsync` rebrand — renaming them would break upgrade
+/// paths for users who already toggled the flag on.
 pub fn load_native_rsync_enabled() -> bool {
     let path = match native_rsync_config_path() {
         Ok(path) => path,
@@ -79,7 +90,7 @@ pub fn load_native_rsync_enabled() -> bool {
     }
 }
 
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 pub fn set_native_rsync_enabled(enabled: bool) -> Result<(), String> {
     let _lock = SETTINGS_WRITE_LOCK
         .lock()
@@ -104,20 +115,20 @@ pub fn set_native_rsync_enabled(enabled: bool) -> Result<(), String> {
 pub fn native_rsync_feature_compiled() -> bool {
     // Post PR-T11: the native dispatch in `SftpProvider::delta_transport()`
     // is cross-platform. The toggle is eligible on any OS that compiled
-    // with the `proto_native_rsync` cargo feature, Windows included.
+    // with the `aerorsync` cargo feature, Windows included.
     // The binary-rsync classic fallback is still Unix-only; Windows
     // without the feature drops to plain SFTP silently (handled inside
     // `classic_binary_fallback`).
-    cfg!(feature = "proto_native_rsync")
+    cfg!(feature = "aerorsync")
 }
 
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 #[tauri::command]
 pub fn native_rsync_enabled_get() -> bool {
     load_native_rsync_enabled()
 }
 
-#[cfg(feature = "proto_native_rsync")]
+#[cfg(feature = "aerorsync")]
 #[tauri::command]
 pub fn native_rsync_enabled_set(enabled: bool) -> Result<(), String> {
     set_native_rsync_enabled(enabled)
@@ -130,7 +141,7 @@ pub fn native_rsync_enabled_set(enabled: bool) -> Result<(), String> {
 // The tests run the load/set helpers against a scratch config directory
 // by overriding the resolver through a temp env var at runtime, so they
 // do not poke the real `$XDG_CONFIG_HOME/aeroftp/native_rsync.toml`.
-#[cfg(all(test, feature = "proto_native_rsync"))]
+#[cfg(all(test, feature = "aerorsync"))]
 mod tests {
     use super::*;
     use std::sync::Mutex;
@@ -217,10 +228,10 @@ mod tests {
     }
 
     #[test]
-    fn feature_probe_is_unix_gated() {
-        // U-05 pin: the probe must return `true` only on unix feature-on
-        // builds. Inside this `#[cfg(feature = "proto_native_rsync")]`
-        // module the compile-time answer depends on platform.
-        assert_eq!(native_rsync_feature_compiled(), cfg!(unix));
+    fn feature_probe_reports_compiled_feature_cross_platform() {
+        // PR-T11 made native dispatch cross-platform. Inside this
+        // `#[cfg(feature = "aerorsync")]` module the command must
+        // report the compiled feature on every OS, Windows included.
+        assert!(native_rsync_feature_compiled());
     }
 }

@@ -194,3 +194,149 @@ pub async fn vault_history_clear(state: State<'_, VaultHistoryDb>) -> Result<(),
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn open_in_memory() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        init_db(&conn).expect("init schema");
+        conn
+    }
+
+    fn insert_vault(conn: &Connection, path: &str, name: &str, last_opened: i64) -> i64 {
+        conn.execute(
+            "INSERT INTO recent_vaults
+                (vault_path, vault_name, security_level, vault_version,
+                 cascade_mode, file_count, last_opened_at, created_at)
+             VALUES (?1, ?2, 'advanced', 2, 0, 0, ?3, ?3)
+             ON CONFLICT(vault_path) DO UPDATE SET
+                last_opened_at = excluded.last_opened_at,
+                vault_name = excluded.vault_name",
+            params![path, name, last_opened],
+        )
+        .expect("insert vault");
+        conn.last_insert_rowid()
+    }
+
+    #[test]
+    fn init_db_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(init_db(&conn).is_ok());
+        // Running again over an existing schema must not error.
+        assert!(init_db(&conn).is_ok());
+    }
+
+    #[test]
+    fn init_db_creates_recent_vaults_table_with_unique_path() {
+        let conn = open_in_memory();
+        insert_vault(&conn, "/vault/one.aerovault", "one", 100);
+
+        // Upsert on conflict: same path with later timestamp should update, not duplicate.
+        insert_vault(&conn, "/vault/one.aerovault", "one-renamed", 200);
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM recent_vaults", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let name: String = conn
+            .query_row(
+                "SELECT vault_name FROM recent_vaults WHERE vault_path = ?1",
+                params!["/vault/one.aerovault"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "one-renamed");
+    }
+
+    #[test]
+    fn init_db_creates_opened_at_index() {
+        let conn = open_in_memory();
+        let idx: String = conn
+            .query_row(
+                "SELECT name FROM sqlite_master
+                 WHERE type='index' AND name='idx_recent_vaults_opened'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(idx, "idx_recent_vaults_opened");
+    }
+
+    #[test]
+    fn ordering_by_last_opened_desc_returns_newest_first() {
+        let conn = open_in_memory();
+        insert_vault(&conn, "/a.aerovault", "a", 100);
+        insert_vault(&conn, "/b.aerovault", "b", 200);
+        insert_vault(&conn, "/c.aerovault", "c", 150);
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT vault_name FROM recent_vaults
+                 ORDER BY last_opened_at DESC",
+            )
+            .unwrap();
+        let names: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert_eq!(names, vec!["b", "c", "a"]);
+    }
+
+    #[test]
+    fn trim_query_keeps_only_max_entries_by_last_opened() {
+        let conn = open_in_memory();
+        // Insert more than MAX_ENTRIES
+        for i in 0..(MAX_ENTRIES + 5) {
+            insert_vault(
+                &conn,
+                &format!("/vault/{}.aerovault", i),
+                &format!("vault-{}", i),
+                100 + i,
+            );
+        }
+        // Apply the same trim query used by vault_history_save
+        conn.execute(
+            "DELETE FROM recent_vaults WHERE id NOT IN (
+                SELECT id FROM recent_vaults ORDER BY last_opened_at DESC LIMIT ?1
+            )",
+            params![MAX_ENTRIES],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM recent_vaults", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, MAX_ENTRIES);
+
+        // Oldest entries should have been dropped — vault-0..vault-4 gone
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM recent_vaults WHERE vault_name = 'vault-0'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(exists, 0);
+    }
+
+    #[test]
+    fn now_epoch_returns_positive_unix_seconds() {
+        let t = now_epoch();
+        // Sanity: must be after 2020-01-01 (1577836800)
+        assert!(
+            t > 1_577_836_800,
+            "now_epoch returned suspiciously old value {}",
+            t
+        );
+    }
+
+    #[test]
+    fn max_entries_constant_matches_documented_cap() {
+        // Contract check — the retention cap is a documented invariant.
+        assert_eq!(MAX_ENTRIES, 20);
+    }
+}

@@ -24,6 +24,13 @@ fn validate_no_null_bytes(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Check whether a cleanup target is an AeroFTP-managed temp vault file.
+/// Extracted for direct unit testing of the filename gate used by
+/// `vault_v2_cleanup_temp` (which otherwise requires Tauri State and FS).
+fn is_managed_temp_vault_filename(file_name: &str) -> bool {
+    file_name.starts_with("aerovault_remote_") && file_name.ends_with(".aerovault")
+}
+
 /// Download a remote .aerovault file to a temporary local path.
 /// Returns the temporary local file path.
 #[tauri::command]
@@ -129,7 +136,7 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or("Invalid filename")?;
-    if !file_name.starts_with("aerovault_remote_") || !file_name.ends_with(".aerovault") {
+    if !is_managed_temp_vault_filename(file_name) {
         return Err("Can only clean up AeroFTP temporary vault files".into());
     }
 
@@ -194,4 +201,46 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to remove temp file: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_no_null_bytes_accepts_clean_paths() {
+        assert!(validate_no_null_bytes("").is_ok());
+        assert!(validate_no_null_bytes("/normal/path").is_ok());
+        assert!(validate_no_null_bytes("secret.aerovault").is_ok());
+        assert!(validate_no_null_bytes("folder/with spaces/file.aerovault").is_ok());
+    }
+
+    #[test]
+    fn validate_no_null_bytes_rejects_embedded_nulls() {
+        assert!(validate_no_null_bytes("/evil\0path").is_err());
+        assert!(validate_no_null_bytes("\0leading").is_err());
+        assert!(validate_no_null_bytes("trailing\0").is_err());
+    }
+
+    #[test]
+    fn is_managed_temp_vault_filename_requires_prefix_and_extension() {
+        // Accepts AeroFTP-managed pattern
+        assert!(is_managed_temp_vault_filename(
+            "aerovault_remote_550e8400-e29b-41d4-a716-446655440000.aerovault"
+        ));
+        assert!(is_managed_temp_vault_filename(
+            "aerovault_remote_x.aerovault"
+        ));
+
+        // Missing prefix
+        assert!(!is_managed_temp_vault_filename("secret.aerovault"));
+        // Missing extension
+        assert!(!is_managed_temp_vault_filename("aerovault_remote_abc"));
+        // Wrong extension
+        assert!(!is_managed_temp_vault_filename("aerovault_remote_abc.zip"));
+        // Partial/empty
+        assert!(!is_managed_temp_vault_filename("aerovault_remote_"));
+        assert!(!is_managed_temp_vault_filename(""));
+        assert!(!is_managed_temp_vault_filename(".aerovault"));
+    }
 }

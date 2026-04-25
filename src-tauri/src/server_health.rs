@@ -686,3 +686,208 @@ pub async fn server_health_check_batch(
     }
     Ok(results)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(name: &str, status: &str, latency_ms: Option<f64>) -> CheckDetail {
+        CheckDetail {
+            name: name.into(),
+            status: status.into(),
+            latency_ms,
+            details: None,
+        }
+    }
+
+    #[test]
+    fn default_port_knows_every_common_protocol() {
+        assert_eq!(default_port("ftp"), 21);
+        assert_eq!(default_port("ftps"), 990);
+        assert_eq!(default_port("sftp"), 22);
+        assert_eq!(default_port("webdav"), 443);
+        assert_eq!(default_port("s3"), 443);
+        // unknown → https default
+        assert_eq!(default_port("unknown-protocol"), 443);
+    }
+
+    #[test]
+    fn is_cloud_protocol_matches_known_providers() {
+        assert!(is_cloud_protocol("googledrive"));
+        assert!(is_cloud_protocol("dropbox"));
+        assert!(is_cloud_protocol("onedrive"));
+        assert!(is_cloud_protocol("mega"));
+        assert!(!is_cloud_protocol("ftp"));
+        assert!(!is_cloud_protocol("sftp"));
+        assert!(!is_cloud_protocol(""));
+    }
+
+    #[test]
+    fn cloud_api_host_maps_protocol_to_stable_hostname() {
+        assert_eq!(cloud_api_host("googledrive"), Some("www.googleapis.com"));
+        assert_eq!(cloud_api_host("dropbox"), Some("api.dropboxapi.com"));
+        assert_eq!(cloud_api_host("onedrive"), Some("graph.microsoft.com"));
+        assert_eq!(cloud_api_host("ftp"), None);
+    }
+
+    #[test]
+    fn cloud_probe_url_is_https_for_known_providers() {
+        for protocol in ["googledrive", "dropbox", "onedrive"] {
+            let url = cloud_probe_url(protocol).expect("probe url should exist");
+            assert!(
+                url.starts_with("https://"),
+                "{} probe url must be https",
+                protocol
+            );
+        }
+    }
+
+    #[test]
+    fn should_check_tls_respects_protocol_and_port() {
+        // SSH-based protocols never get TLS checks
+        assert!(!should_check_tls("sftp", 22));
+        // Plain FTP: no TLS
+        assert!(!should_check_tls("ftp", 21));
+        // Implicit FTPS: yes
+        assert!(should_check_tls("ftps", 990));
+        // WebDAV on 443: yes; on non-443: plaintext assumption
+        assert!(should_check_tls("webdav", 443));
+        assert!(!should_check_tls("webdav", 8080));
+        // S3 endpoints always TLS
+        assert!(should_check_tls("s3", 443));
+        // Known cloud protocols
+        assert!(should_check_tls("googledrive", 443));
+    }
+
+    #[test]
+    fn is_reachable_status_accepts_expected_codes() {
+        use reqwest::StatusCode;
+        assert!(is_reachable_status(StatusCode::OK, false));
+        assert!(is_reachable_status(StatusCode::MOVED_PERMANENTLY, false));
+        // Auth-required codes are still "server is up"
+        assert!(is_reachable_status(StatusCode::UNAUTHORIZED, false));
+        assert!(is_reachable_status(StatusCode::FORBIDDEN, false));
+        assert!(is_reachable_status(StatusCode::METHOD_NOT_ALLOWED, false));
+        // Cloud-only leniency for 400/404/429
+        assert!(is_reachable_status(StatusCode::BAD_REQUEST, true));
+        assert!(!is_reachable_status(StatusCode::BAD_REQUEST, false));
+        assert!(is_reachable_status(StatusCode::NOT_FOUND, true));
+        assert!(!is_reachable_status(StatusCode::NOT_FOUND, false));
+        assert!(is_reachable_status(StatusCode::TOO_MANY_REQUESTS, true));
+        // Hard 5xx: not reachable
+        assert!(!is_reachable_status(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            true
+        ));
+    }
+
+    #[test]
+    fn calculate_score_returns_zero_on_fatal_dns_or_tcp_failure() {
+        let checks = vec![
+            check("dns_resolution", "fail", None),
+            check("tcp_connect", "pass", Some(50.0)),
+        ];
+        assert_eq!(calculate_score(&checks), 0);
+
+        let checks = vec![
+            check("dns_resolution", "pass", Some(20.0)),
+            check("tcp_connect", "fail", None),
+        ];
+        assert_eq!(calculate_score(&checks), 0);
+    }
+
+    #[test]
+    fn calculate_score_penalizes_slow_responses() {
+        let fast = vec![
+            check("dns_resolution", "pass", Some(20.0)),
+            check("tcp_connect", "pass", Some(50.0)),
+            check("http_response", "pass", Some(100.0)),
+        ];
+        let slow = vec![
+            check("dns_resolution", "pass", Some(20.0)),
+            check("tcp_connect", "pass", Some(50.0)),
+            check("http_response", "pass", Some(1500.0)),
+        ];
+        assert!(calculate_score(&fast) > calculate_score(&slow));
+    }
+
+    #[test]
+    fn calculate_score_all_pass_fast_is_perfect() {
+        let checks = vec![
+            check("dns_resolution", "pass", Some(10.0)),
+            check("tcp_connect", "pass", Some(20.0)),
+            check("tls_handshake", "pass", Some(50.0)),
+            check("http_response", "pass", Some(80.0)),
+        ];
+        assert_eq!(calculate_score(&checks), 100);
+    }
+
+    #[test]
+    fn calculate_score_clamps_at_zero() {
+        // Multiple soft failures stacked should still clamp at 0
+        let checks = vec![
+            check("tls_handshake", "fail", None),
+            check("http_response", "fail", None),
+            check("extra_check", "fail", None),
+            check("another", "fail", None),
+        ];
+        let score = calculate_score(&checks);
+        assert!(score <= 100);
+    }
+
+    #[test]
+    fn score_to_status_maps_thresholds_correctly() {
+        assert_eq!(score_to_status(100), "healthy");
+        assert_eq!(score_to_status(85), "healthy");
+        assert_eq!(score_to_status(80), "healthy");
+        assert_eq!(score_to_status(79), "degraded");
+        assert_eq!(score_to_status(50), "degraded");
+        assert_eq!(score_to_status(49), "degraded");
+        assert_eq!(score_to_status(1), "degraded");
+        assert_eq!(score_to_status(0), "unreachable");
+    }
+
+    #[test]
+    fn sanitize_host_strips_scheme_and_path() {
+        assert_eq!(sanitize_host("https://example.com"), "example.com");
+        assert_eq!(sanitize_host("http://example.com/api/v3"), "example.com");
+        assert_eq!(sanitize_host("example.com/folder/"), "example.com");
+        assert_eq!(sanitize_host("example.com"), "example.com");
+        assert_eq!(
+            sanitize_host("https://storage.googleapis.com/bucket/path"),
+            "storage.googleapis.com"
+        );
+    }
+
+    #[test]
+    fn parse_host_port_extracts_explicit_port() {
+        let (h, p) = parse_host_port("example.com:2222", 22, "sftp");
+        assert_eq!(h, "example.com");
+        assert_eq!(p, 2222);
+    }
+
+    #[test]
+    fn parse_host_port_falls_back_to_provided_port() {
+        let (h, p) = parse_host_port("example.com", 8443, "webdav");
+        assert_eq!(h, "example.com");
+        assert_eq!(p, 8443);
+    }
+
+    #[test]
+    fn parse_host_port_uses_protocol_default_when_no_port_given() {
+        let (h, p) = parse_host_port("example.com", 0, "sftp");
+        assert_eq!(h, "example.com");
+        assert_eq!(p, 22);
+
+        let (_, p) = parse_host_port("example.com", 0, "ftps");
+        assert_eq!(p, 990);
+    }
+
+    #[test]
+    fn parse_host_port_ignores_invalid_port_segment() {
+        // When the part after ":" is not a valid u16, fall back to defaults.
+        let (h, p) = parse_host_port("example.com:not-a-port", 443, "webdav");
+        assert_eq!(h, "example.com:not-a-port");
+        assert_eq!(p, 443);
+    }
+}
