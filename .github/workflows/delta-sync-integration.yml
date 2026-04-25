@@ -239,7 +239,7 @@ jobs:
     #     surface so the consumer drops silently to plain SFTP.
     # No live fixture on Windows — the CI image cannot reach a Linux rsync
     # server and the native prototype's live probe is covered by the
-    # strada-c-prototype.yml lane against the Linux fixture.
+    # aerorsync-protocol.yml lane against the Linux fixture.
     name: Windows cross-OS build + native unit tests
     runs-on: windows-latest
     # `windows-latest` is slower than ubuntu-latest by ~2x for MSVC
@@ -299,7 +299,7 @@ jobs:
       # we actually care about for PR-T11 (delta_sync_rsync
       # eligibility probes, rsync_output parsing, native prototype
       # encoders, ndx round-trips) are executed by the
-      # strada-c-prototype.yml lane and by the Linux integration
+      # aerorsync-protocol.yml lane and by the Linux integration
       # job above. Adding a Windows-side test runner is tracked as a
       # follow-up to harden whisper-rs-sys MSVC linkage separately
       # from the release gate.

@@ -64,7 +64,7 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 
 ## Tool Reference
 
-### Remote Operations (9 tools)
+### Remote Operations (10 tools)
 
 | Tool | Danger | Description |
 | ---- | ------ | ----------- |
@@ -76,9 +76,10 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | `remote_upload` | medium | Upload single file |
 | `remote_mkdir` | medium | Create remote directory |
 | `remote_rename` | medium | Rename/move remote file |
+| `remote_edit` | medium | Find and replace in remote file (download, edit, upload) |
 | `remote_delete` | high | Delete remote file or directory |
 
-### Local File Operations (16 tools)
+### Local File Operations (15 tools)
 
 | Tool | Danger | Description |
 | ---- | ------ | ----------- |
@@ -97,7 +98,6 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | `local_find_duplicates` | safe | Find duplicate files via hash |
 | `local_search` | medium | Search local files by pattern |
 | `local_delete` | high | Delete local file or directory |
-| `remote_edit` | medium | Find and replace in remote file (download, edit, upload) |
 
 ### Content Inspection (7 tools)
 
@@ -147,12 +147,13 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | `app_info` | safe | Get app state, connection info, version |
 | `sync_control` | medium | Start/stop/status AeroSync service |
 
-### Clipboard (2 tools)
+### Clipboard (3 tools)
 
 | Tool | Danger | Description |
 | ---- | ------ | ----------- |
 | `clipboard_read` | medium | Read text from system clipboard |
 | `clipboard_write` | medium | Write text to system clipboard |
+| `clipboard_read_image` | medium | Read clipboard image as RGBA (used as multimodal-paste fallback on WebKitGTK Linux where the standard `clipboardData.items` doesn't expose images) |
 
 ### Agent Memory (1 tool)
 
@@ -182,7 +183,7 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 | Level | Behavior | Count |
 | ----- | -------- | ----- |
 | **safe** | Auto-execute without user confirmation | 14 tools |
-| **medium** | Show approval modal, user must confirm | 27 tools |
+| **medium** | Show approval modal, user must confirm | 28 tools |
 | **high** | Explicit confirmation with danger warning | 6 tools |
 
 ### Path Validation
@@ -378,11 +379,17 @@ Composite tool macros allow chaining multiple tools into reusable workflows:
 AeroAgent tools are available in the AeroFTP CLI via the `ai_core/` trait abstraction:
 
 ```bash
-# Orchestration mode
+# One-shot prompt
+aeroftp-cli agent --provider ollama --message "list saved servers"
+
+# Orchestration mode (JSON-RPC over stdin/stdout)
 aeroftp-cli agent --orchestrate
 
-# MCP server mode
+# MCP server mode (full alias)
 aeroftp-cli agent --mcp
+
+# MCP server mode (top-level shortcut, used by the VS Code extension)
+aeroftp-cli mcp
 ```
 
 ### Orchestration Protocol

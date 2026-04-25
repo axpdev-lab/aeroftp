@@ -88,7 +88,7 @@ cargo check  --features aerorsync
 cargo clippy --features aerorsync --all-targets -- -D warnings
 
 # Unit tests (contro frozen transcripts catturati da rsync 3.2.7 reale)
-cargo test --features aerorsync --lib rsync_native_proto
+cargo test --features aerorsync --lib aerorsync
 
 # Live greeting test contro rsync reale (richiede env vars al fixture Docker)
 RSNP_TEST_REAL_SSH_KEY=.../ssh_key \

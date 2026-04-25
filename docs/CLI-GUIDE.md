@@ -1,13 +1,14 @@
 # AeroFTP CLI — User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
+> **Version reference**: v3.6.1 (April 2026) — last reviewed 25 April 2026
 > **License**: GPL-3.0
 
 ---
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, sync, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays, and AI agent discovery/orchestration.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
 
 ### Direct URL Protocols
 
@@ -564,6 +565,30 @@ With `--json`, each cycle emits one NDJSON object on stdout with `cycle`, `trigg
 
 Anti-loop protection: events are suppressed during active syncs and within the cooldown window. Editor temp files (`.swp`, `.tmp`, `~`, `.aerotmp`) are automatically filtered.
 
+### reconcile — Categorized Local/Remote Diff
+
+```bash
+# Detailed diff with all 4 categories (matches / differs / missing-remote / missing-local)
+aeroftp-cli reconcile --profile "server" ./local /remote --json > diff.json
+
+# Summary mode (counts only, faster for large trees)
+aeroftp-cli reconcile --profile "server" ./local /remote --reconcile-format summary
+
+# Feed the diff into a sync command without re-scanning
+aeroftp-cli sync --profile "server" ./local /remote --from-reconcile diff.json --direction upload
+```
+
+`reconcile` returns a structured diff in 4 buckets, designed for AI agents and CI pipelines that need to *plan* a sync before executing it. Pair with `sync --from-reconcile` to skip the rescan.
+
+### sync-doctor — Pre-Sync Preflight Checks
+
+```bash
+# Preflight: risks + suggested next command
+aeroftp-cli sync-doctor --profile "server" ./local /remote --json
+```
+
+Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `next_command` field with the exact `aeroftp-cli sync ...` invocation that matches the preflight. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
+
 ### transfer — Cross-Profile Transfer
 
 Copy files directly between two saved profiles without exposing credentials in the shell.
@@ -753,11 +778,35 @@ aeroftp-cli agent --provider ollama --message "list the saved servers"
 # Orchestration mode over stdin/stdout
 aeroftp-cli agent --orchestrate
 
-# MCP server mode
+# MCP server mode (full alias)
 aeroftp-cli agent --mcp
 ```
 
 Runs AeroAgent through the shared Rust backend. It supports one-shot prompts, interactive runs, orchestration mode, and MCP server mode for external agent clients.
+
+### mcp — MCP Server (top-level shortcut)
+
+```bash
+# Start the MCP server on stdin/stdout (used by the official VS Code extension)
+aeroftp-cli mcp
+```
+
+`aeroftp-cli mcp` is a top-level alias for `aeroftp-cli agent --mcp` (added in v3.5.4). The official VS Code extension `axpdev-lab.aeroftp-mcp` registers exactly this argv, so the shortcut keeps the extension self-contained without nested subcommands. The server initializes the Universal Vault automatically (or falls back to `AEROFTP_MASTER_PASSWORD` when set) so saved profiles work out-of-the-box, serializes per-profile tool calls, and validates `inputSchema.required` before dispatch.
+
+### speed — Bandwidth Benchmark
+
+```bash
+# Default test (10 MB synthetic file)
+aeroftp-cli speed --profile "server"
+
+# Custom size (alias --size / -s)
+aeroftp-cli speed --profile "server" --size 100M
+
+# JSON output
+aeroftp-cli speed --profile "server" --size 50M --json
+```
+
+Uploads a synthetic file, downloads it back, and reports upload/download MB/s, latency, and round-trip time. Useful for diagnosing slow connections or comparing providers.
 
 ### import rclone — Import rclone Configuration
 
@@ -1283,6 +1332,17 @@ The following providers have been tested live via CLI with `--profile`:
 | 4shared | OAuth 1.0 | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
 
 **12 providers tested**, all core operations verified. `about` tested on all 12 providers. `dedupe`, `track-renames`, and `bwlimit` tested on SFTP.
+
+---
+
+## Recent Highlights
+
+- **v3.6.1 — Windows first-class delta sync**: native rsync protocol 31 in pure Rust (`aerorsync`), no `rsync.exe` bundle, no WSL requirement. The Windows binary now performs delta uploads byte-identical to stock rsync 3.4.1 in CI.
+- **v3.5.4 — MCP hardening**: `aeroftp-cli mcp` top-level alias, vault auto-init in MCP, per-profile serialization, schema validation, S3 bucket fix, FTP/SFTP/WebDAV/Filen/FileLu/Drime/Immich error message hardening.
+- **v3.5.3 — Continuous bidirectional `sync --watch`**: native filesystem watcher (inotify/FSEvents/ReadDirectoryChangesW) with anti-loop cooldown, periodic rescan, NDJSON output. First CLI on the market with this feature natively (rclone doesn't ship it).
+- **v3.5.3 — Agent-friendly flags**: `--files-from`, `--immutable`, `--no-check-dest`, `--max-depth`, `--inplace`, `--fast-list` (S3), `--compare-dest`/`--copy-dest`, `cleanup` for orphan `.aerotmp`.
+- **v3.5.2 — Determinism & threat model**: 12 structured exit codes mapping all `ProviderError` variants, `mkdir --parents`, `rm --force`, `put --no-clobber`, `--chunk-size`/`--buffer-size` overrides, [`docs/THREAT-MODEL.md`](THREAT-MODEL.md), [`docs/LLM-INTEGRATION-GUIDE.md`](LLM-INTEGRATION-GUIDE.md).
+- **v3.3.4 — Local server bridges**: `serve http` (read-only HTTP, Range requests), `serve webdav` (read-write, axum-based), `serve ftp` / `serve sftp` (anonymous read-write).
 
 ---
 

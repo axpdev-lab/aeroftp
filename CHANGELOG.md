@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.6.3] - 2026-04-25
 
 ### Unified Tool Dispatcher + Cloud Provider Sweep + AeroVault Pro Foundations
 
@@ -46,6 +46,8 @@ The post-3.6.2 sprint consolidates three years of organically-grown AeroAgent su
 
 ### Security
 
+- **russh 0.59 → 0.60.1** — Closes Dependabot HIGH (GHSA-f5v4-2wr6-hqmg): pre-auth DoS via unbounded allocation in the keyboard-interactive auth handler. AeroFTP exposes a russh-based SSH server through `aeroftp-cli serve sftp`, so the fix is mandatory. The bump required updating the ed25519 server-key generation call site to the new `CryptoRng` bound — added a narrow `rand_010` (rand 0.10) alias for that single line, with the rest of the codebase staying on rand 0.8.
+- **rand 0.8.5 → 0.8.6** — Closes Dependabot LOW (GHSA-cq8v-f236-94qc): rand was unsound when paired with a custom logger using `rand::rng()`. Direct dep bump only; the build-time-only transitive `rand 0.7.3` (pulled by phf_generator 0.8.0 / selectors 0.24.0 in the Tauri stack) is left in place — not in the runtime path and the upstream chain is locked at this combination by Tauri's wry dependency.
 - **`validate_path` component-aware matching** — `path_matches_prefix(path, prefix)` helper replaces 11 occurrences of `s.starts_with(d)`. Eliminates false positives on prefix matches (e.g. `/bootcamp` was being blocked as if it were under `/boot`).
 - **Single source of truth for `shell_execute` denylist** — Both the GUI fast-path and the new `system_tools::shell_execute` delegate to `ai_tools::shell_execute` for the canonical 35+ regex denylist + meta-character filter. The CI security regression script (`security-regression.cjs`) now actively verifies this delegation chain stays intact.
 

@@ -1,18 +1,24 @@
-name: Strada C Native Rsync Prototype
+name: Aerorsync Protocol
 
-# Dedicated workflow for the Strada C `aerorsync` subtree.
+# Dedicated workflow for the `aerorsync` native rsync wire-protocol module.
 # The production `build.yml` workflow stays untouched — this file lives
 # next to it and is entirely additive.
+#
+# Originally created as `strada-c-prototype.yml` while the module was an
+# opt-in experiment; renamed in v3.6.3 because `aerorsync` has been
+# mainline + default-on since v3.6.1 and is no longer a prototype.
+# The `strada-c-*` branch triggers below are kept for back-compat with
+# in-flight feature branches; all new work targets `main`.
 #
 # Triggering policy:
 #   * push / PR on `strada-c-**` branches -> full verification matrix
 #     (check + clippy + mock + Docker lane 2 + Docker lane 3).
 #   * push on `main` -> a single `cargo check --lib` smoke step to catch
-#     regressions that would prevent a future rebase of the prototype.
+#     regressions that would prevent a future rebase of in-flight work.
 #
-# The prototype subtree `src-tauri/src/aerorsync/` is gitignored
-# on `main`; the `lane2` / `lane3` jobs assume the subtree is present
-# (which is only true on `strada-c-*` branches).
+# The lane2 / lane3 Docker jobs need `src-tauri/src/aerorsync/capture/`
+# (Docker fixtures, ssh keys, compose files); on `main` that subtree is
+# present but the artifact directories underneath are gitignored.
 
 on:
   push:
@@ -85,7 +91,7 @@ jobs:
         run: cargo clippy --lib --features aerorsync --all-targets -- -D warnings
       - name: Mock + unit test suite
         working-directory: src-tauri
-        run: cargo test --features aerorsync --lib rsync_native_proto
+        run: cargo test --features aerorsync --lib aerorsync
       - name: Default build regression (feature off)
         working-directory: src-tauri
         run: cargo check --lib

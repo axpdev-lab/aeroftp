@@ -1,9 +1,9 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 16 April 2026
-> Version: v3.5.3
+> Last Updated: 25 April 2026
+> Version: v3.6.1
 >
-> **Note**: GitHub (23rd protocol) supports repository filesystem (list, upload/commit, download, delete/commit, tree, search), release asset management (up to 2 GiB), automatic branch workflow for protected branches, and PR creation. Feature matrix tables below will be updated in a future pass to include GitHub columns.
+> **Note**: AeroFTP currently ships **22 production protocols** (FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive) plus three repository/media-specific backends — **GitHub** (Git-as-filesystem with PEM key vault storage and PR workflow), **Immich** (photo/video library REST API), and **Drime Cloud** (dev-only). Feature matrix tables below cover the 22 production protocols; GitHub and Immich are documented inline with their dedicated sections.
 
 ---
 
@@ -34,9 +34,13 @@
 | **FileLu** | HTTPS | API Key | Universal Vault | TLS Certificate |
 | **Yandex Disk** | HTTPS | OAuth2 Token | Universal Vault | TLS Certificate |
 | **OpenDrive** | HTTPS | Session (Username/Password) | Universal Vault | TLS Certificate |
+| **Jottacloud** | HTTPS | Bearer Token (auto-refresh 60s pre-expiry) | Universal Vault | TLS Certificate |
+| **GitHub** | HTTPS | PAT / Device Flow (PEM keys vaulted, AES-256-GCM) | Universal Vault | TLS Certificate |
 | **Immich** | HTTPS | API Key (`x-api-key` header) | Universal Vault | TLS Certificate |
 
 ### Security Features by Protocol
+
+> Tables below group OAuth providers (Google Drive · Dropbox · OneDrive · Box · pCloud · Zoho WorkDrive · Koofr · Jottacloud · Yandex Disk) under a single "OAuth Providers" column when the security semantics are identical. Protocols with distinctive semantics (E2E encryption, OAuth 1.0, etc.) keep dedicated columns.
 
 | Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen | Internxt | kDrive | FileLu | Yandex | OpenDrive |
 |---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|----------|--------|--------|--------|-----------|
@@ -426,7 +430,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 47 tools work identically across all 27 protocols via the `StorageProvider` trait:
+All 47 tools work identically across the 22 production protocols (and the GitHub/Immich backends) via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -618,12 +622,22 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v2.9.6 | **Remote Timestamp Timezone Fix** — MLSD/SFTP/cloud UTC→local conversion, sync comparison fix, 11 provider backends updated | Done |
 | v2.9.7 | **Share Links for FTP/SFTP/WebDAV** — Per-server Public URL Base mapping, folder scan progress toast, update install overlay, security audit remediation | Done |
 | v2.9.8 | **OpenDrive Native API** (22nd protocol), Settings OAuth for Yandex/Zoho, protocol count update to 21 | Done |
+| v3.0.5 | **SFTP upload 0-byte fix** (russh→ssh2/SCP backend on embedded SFTP servers), atomic downloads (`.aerotmp` rename) on all 22 providers, **GitHub PEM vault** (AES-256-GCM encrypted in vault on import), GitHub token expiry badges, 0 B file alert badge | Done |
+| v3.1.x | Filen Encrypted Notes (Beta), CSP Phase 2 prep, biometric unlock investigation | Done |
+| v3.3.4 | **`serve http`** + **`serve webdav`** local servers (axum-based, Range requests, PROPFIND, atomic PUT) | Done |
+| v3.5.2 | **CLI determinism**: 12-code exit map covering all `ProviderError` variants, `mkdir --parents`, `rm --force`, `put --no-clobber`, `--chunk-size`/`--buffer-size` overrides, Azure server-side copy, parallel S3 multipart, threat model + LLM Integration Guide | Done |
+| v3.5.3 | **CLI `sync --watch`** continuous bidirectional sync (filesystem watcher native, anti-loop cooldown, NDJSON output), **MCP Server dialog** + VS Code extension `axpdev-lab.aeroftp-mcp`, `--files-from`/`--immutable`/`--no-check-dest`/`--max-depth`/`--inplace`/`--fast-list`, `cleanup` orphan `.aerotmp` scanner, dedupe 7 modes, bisync `--conflict-mode rename`, FTP/WebDAV listing path fixes | Done |
+| v3.5.4 | **MCP hardening**: top-level `aeroftp mcp` subcommand, shared `profile_loader` for CLI+MCP, S3 bucket fix from vault, vault auto-init in MCP, per-profile serialization mutex, shutdown drain, schema validation, FTP/SFTP/WebDAV/Filen/FileLu/Drime/Immich error message + retry hardening, CLI `hashsum --algorithm`, `speed --size` aliases | Done |
+| v3.5.8 / v3.5.9 | MCP pool auto-reset, `delete_many`, `list_servers` filter, `read_file preview_kb`, `upload_file create_parents`, `sync_tree plan[]`, two-sided checksum, CLI parent explainer, scan reconnect, ssh2 OpenSSL Windows CI quirks | Done |
+| v3.6.0 | MCP `read_file` soft-truncate, `check_tree compare_method`, cluster doc reorg | Done |
+| v3.6.1 | **Windows first-class delta sync** — native rsync protocol 31 in pure Rust, no rsync.exe bundle, no WSL requirement (`aerorsync` cross-OS, `#![cfg(unix)]` removed surgically) | Done |
 
 ### Planned
 
 | Version | Feature |
 |---------|---------|
-| v3.2.0 | Advanced Share Links (expiration, password, permissions), Full Activity Logging, Blomp provider |
+| v3.7.x | P3-T01 streaming multi-file + session reuse (rimuove cap 256 MiB native rsync, batch SSH session per N file). 4 onde, ~24 gg netti |
+| v3.x | Advanced Share Links (expiration, password, permissions), Full Activity Logging, Blomp provider, AeroVault biometric unlock |
 
 ---
 
