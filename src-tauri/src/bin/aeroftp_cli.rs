@@ -7984,8 +7984,11 @@ mod serve_sftp {
         auth_credentials: Option<ServeAuthCredentials>,
         quiet: bool,
     ) -> i32 {
+        // russh 0.60 requires a CryptoRng from rand_core 0.10. The legacy
+        // `rand::thread_rng()` (rand 0.8) no longer satisfies that bound;
+        // use `rand_010::rng()` (rand 0.10 alias) for this single call site.
         let key = russh::keys::PrivateKey::random(
-            &mut rand::thread_rng(),
+            &mut rand_010::rng(),
             russh::keys::Algorithm::Ed25519,
         )
         .expect("generate ed25519 key");

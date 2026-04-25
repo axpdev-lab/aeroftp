@@ -90,6 +90,10 @@ oauth2 = { version = "5", default-features = false }
 http = "1"
 open = "5"
 rand = "0.8"
+# rand 0.10 alias used only by `aeroftp-cli serve sftp` to feed russh 0.60's
+# new CryptoRng bound on `PrivateKey::random()`. The rest of the codebase
+# stays on rand 0.8 to avoid an ecosystem-wide bump.
+rand_010 = { package = "rand", version = "0.10" }
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2.3.3"
 semver = "1.0.28"
@@ -118,7 +122,7 @@ mime_guess = "2"
 
 # SFTP Support (Sprint 3 - v1.3.0)
 # SFTP channel writes: see sftp-upload-0byte-bug.md in memory
-russh = { version = "0.59", features = ["ring"] }
+russh = { version = "0.60.1", features = ["ring"] }
 russh-sftp = "2.1"
 ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
 
