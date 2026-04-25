@@ -2435,3 +2435,122 @@ impl StorageProvider for GoogleDriveProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> GoogleDriveProvider {
+        GoogleDriveProvider::new(GoogleDriveConfig::new("cid", "csec"))
+    }
+
+    fn make_file(
+        id: &str,
+        name: &str,
+        mime: &str,
+        size: Option<&str>,
+        is_starred: bool,
+    ) -> DriveFile {
+        DriveFile {
+            id: id.to_string(),
+            name: name.to_string(),
+            mime_type: mime.to_string(),
+            size: size.map(|s| s.to_string()),
+            modified_time: Some("2026-01-01T10:00:00Z".to_string()),
+            parents: Vec::new(),
+            trashed: false,
+            starred: is_starred,
+            description: None,
+            properties: None,
+        }
+    }
+
+    #[test]
+    fn workspace_export_info_maps_native_google_types() {
+        let (mime, ext) =
+            GoogleDriveProvider::workspace_export_info("application/vnd.google-apps.document")
+                .unwrap();
+        assert!(mime.contains("wordprocessingml"));
+        assert_eq!(ext, ".docx");
+
+        let (_, ext) =
+            GoogleDriveProvider::workspace_export_info("application/vnd.google-apps.spreadsheet")
+                .unwrap();
+        assert_eq!(ext, ".xlsx");
+
+        let (_, ext) =
+            GoogleDriveProvider::workspace_export_info("application/vnd.google-apps.presentation")
+                .unwrap();
+        assert_eq!(ext, ".pptx");
+
+        let (mime, ext) =
+            GoogleDriveProvider::workspace_export_info("application/vnd.google-apps.drawing")
+                .unwrap();
+        assert_eq!(mime, "application/pdf");
+        assert_eq!(ext, ".pdf");
+
+        // non-workspace MIME returns None
+        assert!(GoogleDriveProvider::workspace_export_info("image/png").is_none());
+        assert!(GoogleDriveProvider::workspace_export_info("").is_none());
+    }
+
+    #[test]
+    fn to_remote_entry_detects_folder_and_builds_path() {
+        let p = test_provider();
+        let folder = make_file(
+            "folder-1",
+            "Photos",
+            "application/vnd.google-apps.folder",
+            None,
+            false,
+        );
+        let entry = p.to_remote_entry(&folder, "/");
+        assert!(entry.is_dir);
+        assert_eq!(entry.path, "/Photos");
+        assert_eq!(entry.size, 0);
+        assert_eq!(entry.metadata.get("id").unwrap(), "folder-1");
+    }
+
+    #[test]
+    fn to_remote_entry_parses_size_and_nested_path() {
+        let p = test_provider();
+        let file = make_file("f1", "report.pdf", "application/pdf", Some("12345"), false);
+        let entry = p.to_remote_entry(&file, "/docs");
+        assert!(!entry.is_dir);
+        assert_eq!(entry.size, 12345);
+        assert_eq!(entry.path, "/docs/report.pdf");
+        assert_eq!(entry.name, "report.pdf");
+        // non-workspace files don't get export metadata
+        assert!(!entry.metadata.contains_key("isWorkspaceFile"));
+    }
+
+    #[test]
+    fn to_remote_entry_marks_starred_and_workspace_files() {
+        let p = test_provider();
+        let doc = make_file(
+            "doc-1",
+            "Contract",
+            "application/vnd.google-apps.document",
+            None,
+            true,
+        );
+        let entry = p.to_remote_entry(&doc, "/");
+        assert!(entry.metadata.get("starred").map(|s| s.as_str()) == Some("true"));
+        assert!(entry.metadata.contains_key("isWorkspaceFile"));
+        assert_eq!(entry.metadata.get("exportExtension").unwrap(), ".docx");
+    }
+
+    #[test]
+    fn to_remote_entry_ignores_bad_size_and_defaults_to_zero() {
+        let p = test_provider();
+        let file = make_file(
+            "bad-size",
+            "weird.bin",
+            "application/octet-stream",
+            Some("not-a-number"),
+            false,
+        );
+        let entry = p.to_remote_entry(&file, "/");
+        assert_eq!(entry.size, 0);
+    }
+}

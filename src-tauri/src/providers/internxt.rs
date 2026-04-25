@@ -2504,3 +2504,51 @@ impl InternxtProvider {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> InternxtProvider {
+        let config = InternxtConfig {
+            email: "alice@example.com".to_string(),
+            password: SecretString::from("pw".to_string()),
+            two_factor_code: None,
+            initial_path: None,
+        };
+        InternxtProvider::new(config)
+    }
+
+    #[test]
+    fn normalize_path_resolves_dotdot_and_collapses_duplicates() {
+        assert_eq!(InternxtProvider::normalize_path(""), "/");
+        assert_eq!(InternxtProvider::normalize_path("."), "/");
+        assert_eq!(InternxtProvider::normalize_path("/"), "/");
+        assert_eq!(InternxtProvider::normalize_path("/a/b"), "/a/b");
+        assert_eq!(InternxtProvider::normalize_path("a/./b"), "/a/b");
+        assert_eq!(InternxtProvider::normalize_path("a/b/../c"), "/a/c");
+        assert_eq!(InternxtProvider::normalize_path("/a/b/../../.."), "/");
+        assert_eq!(InternxtProvider::normalize_path("//a///b//"), "/a/b");
+    }
+
+    #[test]
+    fn split_path_handles_root_nested_and_bare() {
+        assert_eq!(InternxtProvider::split_path("/file.txt"), ("/", "file.txt"));
+        assert_eq!(InternxtProvider::split_path("/a/b/c"), ("/a/b", "c"));
+        assert_eq!(InternxtProvider::split_path("bare"), ("/", "bare"));
+        assert_eq!(InternxtProvider::split_path("/a/"), ("/", "a"));
+    }
+
+    #[test]
+    fn resolve_path_handles_absolute_relative_and_parent() {
+        let mut p = test_provider();
+        p.current_path = "/documents/work".to_string();
+        assert_eq!(p.resolve_path("/abs"), "/abs");
+        assert_eq!(p.resolve_path("child"), "/documents/work/child");
+        // ".." moves one level up
+        assert_eq!(p.resolve_path(".."), "/documents");
+        // from root, ".." stays at root
+        p.current_path = "/".to_string();
+        assert_eq!(p.resolve_path(".."), "/");
+    }
+}

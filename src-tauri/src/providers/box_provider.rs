@@ -2334,3 +2334,42 @@ impl StorageProvider for BoxProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use secrecy::{ExposeSecret, SecretString};
+
+    #[test]
+    fn normalize_path_ensures_leading_slash_and_trims_trailing() {
+        assert_eq!(BoxProvider::normalize_path(""), "/");
+        assert_eq!(BoxProvider::normalize_path("/"), "/");
+        assert_eq!(BoxProvider::normalize_path("foo"), "/foo");
+        assert_eq!(BoxProvider::normalize_path("/foo"), "/foo");
+        assert_eq!(BoxProvider::normalize_path("/foo/"), "/foo");
+        assert_eq!(BoxProvider::normalize_path("/a/b/c/"), "/a/b/c");
+    }
+
+    #[test]
+    fn normalize_path_preserves_single_root_slash() {
+        assert_eq!(BoxProvider::normalize_path("/"), "/");
+        // pure root never gets trimmed into empty
+        let r = BoxProvider::normalize_path("/");
+        assert_eq!(r, "/");
+    }
+
+    #[test]
+    fn bearer_header_builds_valid_authorization_header() {
+        let token = SecretString::from("abc.def.ghi".to_string());
+        let header = BoxProvider::bearer_header(&token).unwrap();
+        assert_eq!(header.to_str().unwrap(), "Bearer abc.def.ghi");
+        // input token still accessible after use (secrecy doesn't consume it)
+        assert_eq!(token.expose_secret(), "abc.def.ghi");
+    }
+
+    #[test]
+    fn bearer_header_rejects_control_chars_in_token() {
+        let bad_token = SecretString::from("bad\ntoken".to_string());
+        assert!(BoxProvider::bearer_header(&bad_token).is_err());
+    }
+}

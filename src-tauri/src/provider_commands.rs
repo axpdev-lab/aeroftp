@@ -209,11 +209,9 @@ impl ProviderConnectionParams {
             if let Some(ref endpoint) = self.endpoint {
                 extra.insert("endpoint".to_string(), endpoint.clone());
             }
-            // Always insert path_style so S3Config doesn't default to true for custom endpoints
-            extra.insert(
-                "path_style".to_string(),
-                self.path_style.unwrap_or(false).to_string(),
-            );
+            if let Some(path_style) = self.path_style {
+                extra.insert("path_style".to_string(), path_style.to_string());
+            }
             // S3 enterprise: storage class, SSE mode, KMS key
             if let Some(ref sc) = self.storage_class {
                 if !sc.is_empty() {
@@ -8465,7 +8463,56 @@ pub async fn kdrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
 
 #[cfg(test)]
 mod tests {
-    use super::remote_matches_repo;
+    use super::{remote_matches_repo, ProviderConnectionParams};
+
+    fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
+        ProviderConnectionParams {
+            protocol: "s3".to_string(),
+            server: "http://localhost".to_string(),
+            port: Some(3900),
+            username: "access".to_string(),
+            password: "secret".to_string(),
+            initial_path: None,
+            bucket: Some("garage-bucket".to_string()),
+            region: Some("garage".to_string()),
+            endpoint: None,
+            path_style,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            save_session: None,
+            mega_mode: None,
+            session_expires_at: None,
+            logout_on_disconnect: None,
+            private_key_path: None,
+            key_passphrase: None,
+            timeout: None,
+            tls_mode: None,
+            verify_cert: None,
+            two_factor_code: None,
+            github_auth_mode: None,
+            github_app_id: None,
+            github_installation_id: None,
+            github_pem_path: None,
+            github_token_expires_at: None,
+            github_branch: None,
+        }
+    }
+
+    #[test]
+    fn test_s3_provider_params_preserve_absent_path_style() {
+        let config = s3_params(None).to_provider_config().unwrap();
+        assert!(!config.extra.contains_key("path_style"));
+    }
+
+    #[test]
+    fn test_s3_provider_params_preserve_explicit_virtual_host_style() {
+        let config = s3_params(Some(false)).to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("path_style").map(String::as_str),
+            Some("false")
+        );
+    }
 
     // SEC-GH-002: Exact repo matching with boundary detection
     #[test]

@@ -1124,3 +1124,83 @@ impl StorageProvider for GitLabProvider {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_host_field_accepts_owner_repo_shorthand() {
+        let (api, path) = parse_host_field("owner/repo").unwrap();
+        assert_eq!(api, "https://gitlab.com/api/v4");
+        assert_eq!(path, "owner/repo");
+    }
+
+    #[test]
+    fn parse_host_field_accepts_self_hosted_instance_url() {
+        let (api, path) = parse_host_field("https://gitlab.example.com/group/project").unwrap();
+        assert_eq!(api, "https://gitlab.example.com/api/v4");
+        assert_eq!(path, "group/project");
+    }
+
+    #[test]
+    fn parse_host_field_strips_scheme_and_upgrades_to_https() {
+        // The helper accepts both http:// and https:// prefixes but the
+        // computed api_base is always https:// — input scheme is dropped as a
+        // defense-in-depth measure. Test asserts the actual behavior so any
+        // future change is intentional.
+        let (api, path) = parse_host_field("http://gitlab.local/team/svc/").unwrap();
+        assert_eq!(api, "https://gitlab.local/api/v4");
+        assert_eq!(path, "team/svc");
+
+        // https input works identically
+        let (api2, _) = parse_host_field("https://gitlab.local/team/svc").unwrap();
+        assert_eq!(api2, "https://gitlab.local/api/v4");
+    }
+
+    #[test]
+    fn parse_host_field_handles_nested_groups() {
+        let (api, path) = parse_host_field("https://gitlab.com/team/sub/project").unwrap();
+        assert_eq!(api, "https://gitlab.com/api/v4");
+        assert_eq!(path, "team/sub/project");
+    }
+
+    #[test]
+    fn parse_host_field_rejects_missing_project_path() {
+        // Only a domain, no project segment
+        assert!(parse_host_field("gitlab.com").is_err());
+        assert!(parse_host_field("gitlab.com/").is_err());
+        // Empty input
+        assert!(parse_host_field("").is_err());
+    }
+
+    #[test]
+    fn encode_project_path_percent_encodes_slashes_only() {
+        assert_eq!(encode_project_path("group/project"), "group%2Fproject");
+        assert_eq!(
+            encode_project_path("team/sub/project"),
+            "team%2Fsub%2Fproject"
+        );
+        // No slash → unchanged
+        assert_eq!(encode_project_path("solo"), "solo");
+        // Other characters stay as-is (they go through urlencode elsewhere)
+        assert_eq!(encode_project_path("team-1/svc.api"), "team-1%2Fsvc.api");
+    }
+
+    #[test]
+    fn encode_file_path_percent_encodes_slashes() {
+        assert_eq!(encode_file_path("src/main.rs"), "src%2Fmain.rs");
+        assert_eq!(encode_file_path("a/b/c"), "a%2Fb%2Fc");
+        assert_eq!(encode_file_path("Cargo.toml"), "Cargo.toml");
+    }
+
+    #[test]
+    fn normalise_path_strips_slashes_and_dot() {
+        assert_eq!(normalise_path(""), "");
+        assert_eq!(normalise_path("/"), "");
+        assert_eq!(normalise_path("."), "");
+        assert_eq!(normalise_path("/src/main.rs/"), "src/main.rs");
+        assert_eq!(normalise_path("///a///"), "a");
+        assert_eq!(normalise_path("src/main.rs"), "src/main.rs");
+    }
+}

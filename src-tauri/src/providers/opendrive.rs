@@ -1884,3 +1884,76 @@ impl StorageProvider for OpenDriveProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_u64_value_accepts_number_string_bool_and_null() {
+        assert_eq!(parse_u64_value(Some(&json!(42))), 42);
+        assert_eq!(parse_u64_value(Some(&json!("123"))), 123);
+        assert_eq!(parse_u64_value(Some(&json!("not-a-number"))), 0);
+        assert_eq!(parse_u64_value(Some(&json!(true))), 1);
+        assert_eq!(parse_u64_value(Some(&json!(false))), 0);
+        assert_eq!(parse_u64_value(None), 0);
+        assert_eq!(parse_u64_value(Some(&json!(null))), 0);
+    }
+
+    #[test]
+    fn parse_boolish_accepts_bool_number_and_textual_variants() {
+        assert!(parse_boolish(Some(&json!(true))));
+        assert!(!parse_boolish(Some(&json!(false))));
+        assert!(parse_boolish(Some(&json!(1))));
+        assert!(!parse_boolish(Some(&json!(0))));
+        assert!(parse_boolish(Some(&json!("yes"))));
+        assert!(parse_boolish(Some(&json!("On"))));
+        assert!(parse_boolish(Some(&json!("TRUE"))));
+        assert!(!parse_boolish(Some(&json!("no"))));
+        assert!(!parse_boolish(None));
+    }
+
+    #[test]
+    fn parse_timestamp_rejects_non_positive_and_accepts_ms() {
+        assert_eq!(parse_timestamp_to_iso(Some(&json!(0))), None);
+        assert_eq!(parse_timestamp_to_iso(Some(&json!(-1))), None);
+        assert_eq!(parse_timestamp_to_iso(None), None);
+        let secs = parse_timestamp_to_iso(Some(&json!(1_700_000_000))).unwrap();
+        assert!(secs.starts_with("2023-"));
+        // values > 10 digits are treated as milliseconds
+        let ms = parse_timestamp_to_iso(Some(&json!(1_700_000_000_000_i64))).unwrap();
+        assert!(ms.starts_with("2023-"));
+    }
+
+    #[test]
+    fn normalize_path_rejects_null_bytes() {
+        let err = normalize_path("evil\0path").unwrap_err();
+        assert!(matches!(err, ProviderError::InvalidPath(_)));
+    }
+
+    #[test]
+    fn normalize_path_resolves_dotdot_and_backslashes() {
+        assert_eq!(normalize_path("/").unwrap(), "/");
+        assert_eq!(normalize_path("").unwrap(), "/");
+        assert_eq!(normalize_path("/a/b/c").unwrap(), "/a/b/c");
+        assert_eq!(normalize_path("a/b/../c").unwrap(), "/a/c");
+        assert_eq!(normalize_path("/a/./b").unwrap(), "/a/b");
+        assert_eq!(normalize_path(r"a\b\c").unwrap(), "/a/b/c");
+        assert_eq!(normalize_path("/a/b/../../..").unwrap(), "/");
+    }
+
+    #[test]
+    fn split_parent_child_handles_root_and_nested() {
+        assert_eq!(split_parent_child("/"), ("/".to_string(), String::new()));
+        assert_eq!(split_parent_child(""), ("/".to_string(), String::new()));
+        assert_eq!(
+            split_parent_child("/file.txt"),
+            ("/".to_string(), "file.txt".to_string())
+        );
+        assert_eq!(
+            split_parent_child("/a/b/file.txt"),
+            ("/a/b".to_string(), "file.txt".to_string())
+        );
+    }
+}

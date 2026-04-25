@@ -1259,3 +1259,52 @@ impl StorageProvider for SwiftProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> SwiftProvider {
+        SwiftProvider::new(SwiftConfig {
+            auth_url: "https://keystone.example.com:5000/v3".to_string(),
+            username: "user".to_string(),
+            password: SecretString::from("pw".to_string()),
+            verify_cert: true,
+        })
+    }
+
+    #[test]
+    fn normalize_path_strips_leading_and_trailing_slashes() {
+        assert_eq!(SwiftProvider::normalize_path(""), "");
+        assert_eq!(SwiftProvider::normalize_path("/"), "");
+        assert_eq!(SwiftProvider::normalize_path("///"), "");
+        assert_eq!(SwiftProvider::normalize_path("foo"), "foo");
+        assert_eq!(SwiftProvider::normalize_path("/foo/bar/"), "foo/bar");
+        assert_eq!(SwiftProvider::normalize_path("/a/b/c"), "a/b/c");
+    }
+
+    #[test]
+    fn md5_hex_produces_stable_hex_digest() {
+        let digest = md5_hex(b"hello");
+        assert_eq!(digest, "5d41402abc4b2a76b9719d911017c592");
+        // md5 of empty
+        assert_eq!(md5_hex(b""), "d41d8cd98f00b204e9800998ecf8427e");
+    }
+
+    #[test]
+    fn object_url_returns_error_when_not_authenticated() {
+        let p = test_provider();
+        // Without having authenticated, storage_url is unavailable → error
+        assert!(p.object_url("some/object").is_err());
+    }
+
+    #[test]
+    fn swift_auth_is_valid_within_ttl() {
+        let auth = SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: "https://obj.example.com/v1/AUTH_a".to_string(),
+            obtained_at: Instant::now(),
+        };
+        assert!(auth.is_valid());
+    }
+}

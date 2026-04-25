@@ -289,13 +289,14 @@ impl DrimeCloudProvider {
         if trimmed.is_empty() || trimmed == "." {
             return self.current_path.clone();
         }
-        let normalized = Self::normalize_path(trimmed);
-        if normalized.starts_with('/') {
-            normalized
-        } else {
-            let base = self.current_path.trim_end_matches('/');
-            format!("{}/{}", base, normalized)
+        // Check leading slash on the raw input before normalizing —
+        // normalize_path unconditionally prepends "/", which would otherwise
+        // make every relative input appear absolute and skip the current_path join.
+        if trimmed.starts_with('/') {
+            return Self::normalize_path(trimmed);
         }
+        let base = self.current_path.trim_end_matches('/');
+        Self::normalize_path(&format!("{}/{}", base, trimmed))
     }
 
     fn split_path(path: &str) -> (&str, &str) {
@@ -1986,5 +1987,78 @@ impl StorageProvider for DrimeCloudProvider {
             .collect();
 
         Ok(versions)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> DrimeCloudProvider {
+        let config = DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: None,
+        };
+        DrimeCloudProvider::new(config)
+    }
+
+    #[test]
+    fn api_url_prefixes_api_base() {
+        assert_eq!(
+            DrimeCloudProvider::api_url("/files"),
+            format!("{}/files", API_BASE)
+        );
+        assert_eq!(DrimeCloudProvider::api_url(""), API_BASE.to_string());
+    }
+
+    #[test]
+    fn normalize_path_preserves_root_and_trims_trailing_slash() {
+        assert_eq!(DrimeCloudProvider::normalize_path(""), "/");
+        assert_eq!(DrimeCloudProvider::normalize_path("/"), "/");
+        assert_eq!(DrimeCloudProvider::normalize_path("   "), "/");
+        assert_eq!(DrimeCloudProvider::normalize_path("foo"), "/foo");
+        assert_eq!(DrimeCloudProvider::normalize_path("/foo"), "/foo");
+        assert_eq!(DrimeCloudProvider::normalize_path("/foo/"), "/foo");
+        assert_eq!(DrimeCloudProvider::normalize_path(r"foo\bar"), "/foo/bar");
+    }
+
+    #[test]
+    fn split_path_handles_root_nested_and_missing_separator() {
+        assert_eq!(DrimeCloudProvider::split_path("/foo"), ("/", "foo"));
+        assert_eq!(DrimeCloudProvider::split_path("/a/b"), ("/a", "b"));
+        assert_eq!(DrimeCloudProvider::split_path("/a/b/c"), ("/a/b", "c"));
+        assert_eq!(DrimeCloudProvider::split_path("bare"), ("/", "bare"));
+        assert_eq!(DrimeCloudProvider::split_path("/foo/"), ("/", "foo"));
+    }
+
+    #[test]
+    fn resolve_path_is_relative_to_current_path() {
+        let mut p = test_provider();
+        p.current_path = "/base".to_string();
+        // absolute path bypasses current_path
+        assert_eq!(p.resolve_path("/abs"), "/abs");
+        // "." and empty map to current_path
+        assert_eq!(p.resolve_path("."), "/base");
+        assert_eq!(p.resolve_path(""), "/base");
+        // relative path is joined against current_path
+        assert_eq!(p.resolve_path("child"), "/base/child");
+        assert_eq!(p.resolve_path("sub/leaf"), "/base/sub/leaf");
+
+        // when current_path is root, no double slash
+        let mut p2 = test_provider();
+        p2.current_path = "/".to_string();
+        assert_eq!(p2.resolve_path("child"), "/child");
+    }
+
+    #[test]
+    fn parse_date_accepts_rfc3339_and_falls_back_to_truncation() {
+        let iso = DrimeCloudProvider::parse_date("2025-01-15T10:30:00Z").unwrap();
+        assert!(iso.starts_with("2025-01-15"));
+        let with_frac = DrimeCloudProvider::parse_date("2025-01-15T10:30:00.000000Z").unwrap();
+        assert!(with_frac.starts_with("2025-01-15"));
+        // unparseable but date-like string gets safely truncated
+        let fallback = DrimeCloudProvider::parse_date("2025-01-15 10:30:00 server time").unwrap();
+        assert_eq!(fallback.len(), 19);
+        assert_eq!(DrimeCloudProvider::parse_date("short"), None);
     }
 }

@@ -1782,3 +1782,116 @@ impl AzureProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::header::{HeaderMap, HeaderValue};
+
+    fn test_config() -> AzureConfig {
+        AzureConfig {
+            account_name: "myacc".to_string(),
+            access_key: secrecy::SecretString::from("dGVzdGtleQ==".to_string()),
+            container: "mycontainer".to_string(),
+            sas_token: None,
+            endpoint: None,
+        }
+    }
+
+    #[test]
+    fn blob_endpoint_defaults_to_azure_and_respects_custom() {
+        let c = test_config();
+        assert_eq!(c.blob_endpoint(), "https://myacc.blob.core.windows.net");
+
+        let mut c2 = test_config();
+        c2.endpoint = Some("blob.local:10000".to_string());
+        assert_eq!(c2.blob_endpoint(), "https://blob.local:10000");
+
+        let mut c3 = test_config();
+        c3.endpoint = Some("http://azurite:10000".to_string());
+        assert_eq!(c3.blob_endpoint(), "http://azurite:10000");
+    }
+
+    #[test]
+    fn parse_azure_xml_error_extracts_code_and_first_message_line() {
+        let xml = r#"<?xml version="1.0"?><Error>
+            <Code>BlobNotFound</Code>
+            <Message>The specified blob does not exist.
+RequestId:abc-123
+Time:2026-01-01</Message>
+        </Error>"#;
+        let formatted = parse_azure_xml_error(xml);
+        assert!(formatted.starts_with("BlobNotFound:"));
+        assert!(formatted.contains("specified blob"));
+        assert!(!formatted.contains("RequestId"));
+    }
+
+    #[test]
+    fn parse_azure_xml_error_falls_back_when_no_code_element() {
+        // Plain body (not Azure XML): falls back to sanitize_api_error
+        let out = parse_azure_xml_error("plain text error");
+        assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn build_canonical_headers_lowercases_sorts_and_filters_xms() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ms-version", HeaderValue::from_static("2024-11-04"));
+        headers.insert("x-ms-date", HeaderValue::from_static("Mon, 01 Jan 2026"));
+        headers.insert("x-ms-blob-type", HeaderValue::from_static("BlockBlob"));
+        headers.insert("content-type", HeaderValue::from_static("text/plain"));
+        headers.insert("authorization", HeaderValue::from_static("Bearer xyz"));
+
+        let canonical = AzureProvider::build_canonical_headers(&headers);
+        // Only x-ms-* headers, sorted alphabetically
+        let lines: Vec<&str> = canonical.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].starts_with("x-ms-blob-type:"));
+        assert!(lines[1].starts_with("x-ms-date:"));
+        assert!(lines[2].starts_with("x-ms-version:"));
+        // No non-xms headers
+        assert!(!canonical.contains("content-type"));
+        assert!(!canonical.contains("authorization"));
+    }
+
+    #[test]
+    fn build_canonical_headers_is_empty_when_no_xms_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", HeaderValue::from_static("text/plain"));
+        assert_eq!(AzureProvider::build_canonical_headers(&headers), "");
+    }
+
+    #[test]
+    fn blob_url_prefixes_container_and_endpoint() {
+        let p = AzureProvider::new(test_config());
+        assert_eq!(
+            p.blob_url("folder/file.txt"),
+            "https://myacc.blob.core.windows.net/mycontainer/folder/file.txt"
+        );
+        assert_eq!(
+            p.blob_url(""),
+            "https://myacc.blob.core.windows.net/mycontainer"
+        );
+        assert_eq!(
+            p.blob_url("/leading-slash/file"),
+            "https://myacc.blob.core.windows.net/mycontainer/leading-slash/file"
+        );
+    }
+
+    #[test]
+    fn resolve_blob_path_joins_relative_against_current_prefix() {
+        let mut p = AzureProvider::new(test_config());
+        p.current_prefix = "project/".to_string();
+
+        assert_eq!(p.resolve_blob_path("."), "project/");
+        assert_eq!(p.resolve_blob_path(""), "project/");
+        // absolute paths strip leading slashes and bypass current_prefix
+        assert_eq!(p.resolve_blob_path("/other/file"), "other/file");
+        // relative joins against current_prefix
+        assert_eq!(p.resolve_blob_path("sub/file.txt"), "project/sub/file.txt");
+
+        // empty current_prefix
+        let p2 = AzureProvider::new(test_config());
+        assert_eq!(p2.resolve_blob_path("child"), "child");
+    }
+}

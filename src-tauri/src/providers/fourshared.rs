@@ -1561,3 +1561,135 @@ impl StorageProvider for FourSharedProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> FourSharedProvider {
+        let config = FourSharedConfig {
+            consumer_key: "ck".to_string(),
+            consumer_secret: secrecy::SecretString::from("cs".to_string()),
+            access_token: secrecy::SecretString::from("at".to_string()),
+            access_token_secret: secrecy::SecretString::from("ats".to_string()),
+        };
+        FourSharedProvider::new(config)
+    }
+
+    #[test]
+    fn normalize_path_handles_root_dot_and_collapses_segments() {
+        assert_eq!(FourSharedProvider::normalize_path(""), "/");
+        assert_eq!(FourSharedProvider::normalize_path("/"), "/");
+        assert_eq!(FourSharedProvider::normalize_path("."), "/");
+        assert_eq!(FourSharedProvider::normalize_path("./"), "/");
+        assert_eq!(FourSharedProvider::normalize_path("/Cloud"), "/Cloud");
+        assert_eq!(FourSharedProvider::normalize_path("Cloud"), "/Cloud");
+        assert_eq!(FourSharedProvider::normalize_path("/a/b/c/"), "/a/b/c");
+        // dot/dotdot segments are dropped (simple filter, not full path resolution)
+        assert_eq!(FourSharedProvider::normalize_path("/a/./b/../c"), "/a/b/c");
+        assert_eq!(FourSharedProvider::normalize_path("//a//b//"), "/a/b");
+    }
+
+    #[test]
+    fn resolve_path_joins_relative_against_current_path() {
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("/abs"), "/abs");
+        assert_eq!(p.resolve_path("."), "/Cloud");
+        assert_eq!(p.resolve_path(""), "/Cloud");
+        assert_eq!(p.resolve_path("child"), "/Cloud/child");
+
+        let mut p2 = test_provider();
+        p2.current_path = "/".to_string();
+        assert_eq!(p2.resolve_path("child"), "/child");
+    }
+
+    #[test]
+    fn split_path_handles_root_nested_and_bare() {
+        assert_eq!(
+            FourSharedProvider::split_path("/file.txt"),
+            ("/".to_string(), "file.txt".to_string())
+        );
+        assert_eq!(
+            FourSharedProvider::split_path("/a/b/file"),
+            ("/a/b".to_string(), "file".to_string())
+        );
+        assert_eq!(
+            FourSharedProvider::split_path("bare"),
+            ("/".to_string(), "bare".to_string())
+        );
+    }
+
+    #[test]
+    fn enforce_cache_limit_evicts_half_when_over_threshold() {
+        let mut cache: HashMap<String, String> = HashMap::new();
+        for i in 0..10_005 {
+            cache.insert(format!("k{}", i), format!("v{}", i));
+        }
+        FourSharedProvider::enforce_cache_limit(&mut cache);
+        // after enforce: len is roughly half of original (approx 5003)
+        assert!(cache.len() < 10_000);
+        assert!(cache.len() >= 5_000);
+    }
+
+    #[test]
+    fn extract_json_array_accepts_raw_array_and_wrapper_keys() {
+        let arr =
+            FourSharedProvider::extract_json_array(r#"[{"id":"1"},{"id":"2"}]"#, &["children"])
+                .unwrap();
+        assert_eq!(arr.len(), 2);
+
+        let from_wrapper =
+            FourSharedProvider::extract_json_array(r#"{"children":[{"id":"1"}]}"#, &["children"])
+                .unwrap();
+        assert_eq!(from_wrapper.len(), 1);
+
+        // tries multiple keys in order
+        let from_alt = FourSharedProvider::extract_json_array(
+            r#"{"folders":[{"id":"a"},{"id":"b"},{"id":"c"}]}"#,
+            &["children", "folders", "items"],
+        )
+        .unwrap();
+        assert_eq!(from_alt.len(), 3);
+
+        // single object gets wrapped
+        let wrapped =
+            FourSharedProvider::extract_json_array(r#"{"id":"solo"}"#, &["children"]).unwrap();
+        assert_eq!(wrapped.len(), 1);
+
+        // unparseable body returns None
+        assert!(FourSharedProvider::extract_json_array("not json", &["x"]).is_none());
+    }
+
+    #[test]
+    fn parse_folder_list_never_fails_on_unparseable_body() {
+        // Completely unparseable body returns empty, no panic
+        assert!(FourSharedProvider::parse_folder_list("garbage").is_empty());
+        assert!(FourSharedProvider::parse_folder_list("").is_empty());
+    }
+
+    #[test]
+    fn parse_folder_list_reads_raw_array_with_partial_failures() {
+        // Real-shape folder objects should parse; malformed entries are skipped.
+        let body = r#"[
+            {"id": "1", "name": "Photos", "parentId": "0"},
+            {"id": "2", "name": "Videos"}
+        ]"#;
+        let folders = FourSharedProvider::parse_folder_list(body);
+        assert_eq!(folders.len(), 2);
+        assert_eq!(folders[0].name.as_deref(), Some("Photos"));
+    }
+
+    #[test]
+    fn parse_file_list_handles_wrapper_object() {
+        let body = r#"{"files":[
+            {"id": "f1", "name": "a.txt", "size": 100},
+            {"id": "f2", "name": "b.txt", "size": "250"}
+        ]}"#;
+        let files = FourSharedProvider::parse_file_list(body);
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].size, Some(100));
+        // size "250" gets parsed via the string_or_i64 deserializer
+        assert_eq!(files[1].size, Some(250));
+    }
+}

@@ -294,13 +294,14 @@ impl KDriveProvider {
         if trimmed.is_empty() || trimmed == "." {
             return self.current_path.clone();
         }
-        let normalized = Self::normalize_path(trimmed);
-        if normalized.starts_with('/') {
-            normalized
-        } else {
-            let base = self.current_path.trim_end_matches('/');
-            format!("{}/{}", base, normalized)
+        // Check leading slash on the raw input before normalizing —
+        // normalize_path unconditionally prepends "/", which would otherwise
+        // make every relative input appear absolute and skip the current_path join.
+        if trimmed.starts_with('/') {
+            return Self::normalize_path(trimmed);
         }
+        let base = self.current_path.trim_end_matches('/');
+        Self::normalize_path(&format!("{}/{}", base, trimmed))
     }
 
     fn split_path(path: &str) -> (&str, &str) {
@@ -1763,5 +1764,66 @@ impl KDriveProvider {
 
         tracing::info!("kDrive: trash emptied");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> KDriveProvider {
+        let config = KDriveConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            drive_id: "987654".to_string(),
+            initial_path: None,
+        };
+        KDriveProvider::new(config)
+    }
+
+    #[test]
+    fn api_url_v2_and_v3_embed_drive_id() {
+        let p = test_provider();
+        assert_eq!(
+            p.api_url_v2("/files"),
+            format!("{}/2/drive/987654/files", API_BASE)
+        );
+        assert_eq!(
+            p.api_url_v3("/files"),
+            format!("{}/3/drive/987654/files", API_BASE)
+        );
+        assert_eq!(p.api_url_v2(""), format!("{}/2/drive/987654", API_BASE));
+    }
+
+    #[test]
+    fn normalize_path_preserves_root_and_trims_trailing() {
+        assert_eq!(KDriveProvider::normalize_path(""), "/");
+        assert_eq!(KDriveProvider::normalize_path("/"), "/");
+        assert_eq!(KDriveProvider::normalize_path("foo"), "/foo");
+        assert_eq!(KDriveProvider::normalize_path("/foo/"), "/foo");
+        assert_eq!(KDriveProvider::normalize_path(r"a\b"), "/a/b");
+    }
+
+    #[test]
+    fn split_path_handles_root_nested_and_bare() {
+        assert_eq!(KDriveProvider::split_path("/file.txt"), ("/", "file.txt"));
+        assert_eq!(KDriveProvider::split_path("/a/b/c"), ("/a/b", "c"));
+        assert_eq!(KDriveProvider::split_path("bare"), ("/", "bare"));
+        assert_eq!(KDriveProvider::split_path("/a/"), ("/", "a"));
+    }
+
+    #[test]
+    fn resolve_path_joins_relative_against_current_path() {
+        let mut p = test_provider();
+        p.current_path = "/docs".to_string();
+        assert_eq!(p.resolve_path("/abs"), "/abs");
+        assert_eq!(p.resolve_path("."), "/docs");
+        assert_eq!(p.resolve_path(""), "/docs");
+        assert_eq!(p.resolve_path("child"), "/docs/child");
+        assert_eq!(p.resolve_path("sub/leaf"), "/docs/sub/leaf");
+
+        // when current_path is root, no double slash
+        let mut p2 = test_provider();
+        p2.current_path = "/".to_string();
+        assert_eq!(p2.resolve_path("child"), "/child");
     }
 }

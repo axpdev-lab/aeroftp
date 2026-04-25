@@ -1123,3 +1123,78 @@ impl MegaCmdProvider {
 }
 
 pub type MegaProvider = MegaCmdProvider;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::providers::MegaConnectionMode;
+
+    fn test_provider() -> MegaCmdProvider {
+        let config = MegaConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("pw".to_string()),
+            save_session: false,
+            logout_on_disconnect: Some(true),
+            connection_mode: MegaConnectionMode::MegaCmd,
+        };
+        MegaCmdProvider::new(config)
+    }
+
+    #[test]
+    fn resolve_path_handles_absolute_empty_and_relative() {
+        let mut p = test_provider();
+        p.current_path = "/photos".to_string();
+        assert_eq!(p.resolve_path("/abs"), "/abs");
+        assert_eq!(p.resolve_path(""), "/photos");
+        assert_eq!(p.resolve_path("."), "/photos");
+        assert_eq!(p.resolve_path("album"), "/photos/album");
+
+        // when current_path is root, no double slash
+        let mut p2 = test_provider();
+        p2.current_path = "/".to_string();
+        assert_eq!(p2.resolve_path("child"), "/child");
+    }
+
+    #[test]
+    fn parse_ls_line_skips_header_and_section_lines() {
+        assert!(MegaCmdProvider::parse_ls_line("FLAGS VERS SIZE DATE TIME NAME", "/").is_none());
+        assert!(MegaCmdProvider::parse_ls_line("/photos:", "/").is_none());
+        assert!(MegaCmdProvider::parse_ls_line("", "/").is_none());
+        assert!(MegaCmdProvider::parse_ls_line("too few columns", "/").is_none());
+    }
+
+    #[test]
+    fn parse_ls_line_extracts_file_and_directory() {
+        let line = "----  1  1024  15Jan2026  14:30  hello.txt";
+        let entry = MegaCmdProvider::parse_ls_line(line, "/").unwrap();
+        assert_eq!(entry.name, "hello.txt");
+        assert_eq!(entry.size, 1024);
+        assert!(!entry.is_dir);
+        assert_eq!(entry.path, "/hello.txt");
+        assert!(entry.modified.is_some());
+
+        let dir_line = "d---  1  0  15Jan2026  14:30  photos";
+        let entry = MegaCmdProvider::parse_ls_line(dir_line, "/home").unwrap();
+        assert!(entry.is_dir);
+        assert_eq!(entry.path, "/home/photos");
+    }
+
+    #[test]
+    fn parse_ls_line_joins_name_with_spaces() {
+        // files with spaces — parts[5..] joined with space
+        let line = "----  1  42  15Jan2026  14:30  file with spaces.txt";
+        let entry = MegaCmdProvider::parse_ls_line(line, "/").unwrap();
+        assert_eq!(entry.name, "file with spaces.txt");
+    }
+
+    #[test]
+    fn resolve_mega_cmd_returns_plain_name_when_nothing_found() {
+        // In a test environment MEGAcmd isn't installed at the platform-specific
+        // paths checked by resolve_mega_cmd; the function should fall back to
+        // the bare command name (letting PATH lookup do the rest at runtime).
+        let out = MegaCmdProvider::resolve_mega_cmd("mega-ls");
+        assert!(!out.is_empty());
+        // Either a full path (if something was found) or the plain name.
+        assert!(out.contains("mega-ls") || out.ends_with("mega-ls"));
+    }
+}

@@ -1672,3 +1672,83 @@ impl PCloudProvider {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> PCloudProvider {
+        PCloudProvider::new(PCloudConfig::new("client-id", "client-secret", "eu"))
+    }
+
+    fn api_response(result: u32, error: Option<&str>) -> PCloudResponse {
+        PCloudResponse {
+            result,
+            error: error.map(|s| s.to_string()),
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn normalize_path_prepends_root_slash_and_trims_trailing() {
+        assert_eq!(PCloudProvider::normalize_path(""), "/");
+        assert_eq!(PCloudProvider::normalize_path("/"), "/");
+        assert_eq!(PCloudProvider::normalize_path("foo"), "/foo");
+        assert_eq!(PCloudProvider::normalize_path("/foo/"), "/foo");
+        assert_eq!(PCloudProvider::normalize_path("/foo/bar/"), "/foo/bar");
+    }
+
+    #[test]
+    fn resolve_path_joins_relative_against_current_path() {
+        let mut p = test_provider();
+        p.current_path = "/Docs".to_string();
+        assert_eq!(p.resolve_path("/abs"), "/abs");
+        assert_eq!(p.resolve_path("."), "/Docs");
+        assert_eq!(p.resolve_path(""), "/Docs");
+        assert_eq!(p.resolve_path("file.txt"), "/Docs/file.txt");
+
+        // when current_path is root, don't duplicate leading slash
+        let mut p2 = test_provider();
+        p2.current_path = "/".to_string();
+        assert_eq!(p2.resolve_path("child"), "/child");
+    }
+
+    #[test]
+    fn check_response_succeeds_when_result_is_zero() {
+        assert!(PCloudProvider::check_response(&api_response(0, None)).is_ok());
+    }
+
+    #[test]
+    fn check_response_maps_result_codes_to_provider_errors() {
+        assert!(matches!(
+            PCloudProvider::check_response(&api_response(1000, Some("Log in required"))),
+            Err(ProviderError::AuthenticationFailed(_))
+        ));
+        assert!(matches!(
+            PCloudProvider::check_response(&api_response(2094, Some("Invalid access_token"))),
+            Err(ProviderError::AuthenticationFailed(_))
+        ));
+        assert!(matches!(
+            PCloudProvider::check_response(&api_response(2009, Some("File not found"))),
+            Err(ProviderError::NotFound(_))
+        ));
+        assert!(matches!(
+            PCloudProvider::check_response(&api_response(2003, Some("Access denied"))),
+            Err(ProviderError::PermissionDenied(_))
+        ));
+        assert!(matches!(
+            PCloudProvider::check_response(&api_response(2004, Some("Already exists"))),
+            Err(ProviderError::AlreadyExists(_))
+        ));
+        assert!(matches!(
+            PCloudProvider::check_response(&api_response(9999, Some("Server hiccup"))),
+            Err(ProviderError::ServerError(_))
+        ));
+    }
+
+    #[test]
+    fn check_response_synthesizes_error_when_none_provided() {
+        let err = PCloudProvider::check_response(&api_response(5000, None)).unwrap_err();
+        assert!(format!("{}", err).contains("5000"));
+    }
+}

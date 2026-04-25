@@ -3113,3 +3113,64 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(region: &str) -> ZohoWorkdriveConfig {
+        ZohoWorkdriveConfig::new("cid", "csec", region)
+    }
+
+    #[test]
+    fn api_domain_maps_each_region_to_correct_host() {
+        assert_eq!(config("us").api_domain(), "www.zohoapis.com");
+        assert_eq!(config("eu").api_domain(), "www.zohoapis.eu");
+        assert_eq!(config("in").api_domain(), "www.zohoapis.in");
+        assert_eq!(config("au").api_domain(), "www.zohoapis.com.au");
+        assert_eq!(config("jp").api_domain(), "www.zohoapis.jp");
+        assert_eq!(config("uk").api_domain(), "www.zohoapis.uk");
+        assert_eq!(config("ca").api_domain(), "www.zohoapis.ca");
+        assert_eq!(config("sa").api_domain(), "www.zohoapis.sa");
+        // unknown region falls back to US
+        assert_eq!(config("unknown").api_domain(), "www.zohoapis.com");
+    }
+
+    #[test]
+    fn download_domain_differs_from_api_domain() {
+        assert_eq!(config("us").download_domain(), "download.zoho.com");
+        assert_eq!(config("eu").download_domain(), "download.zoho.eu");
+        assert_eq!(config("ae").download_domain(), "files.zoho.ae");
+        assert_eq!(config("sa").download_domain(), "files.zoho.sa");
+        // API domain and download domain must not be equal
+        assert_ne!(config("us").api_domain(), config("us").download_domain());
+    }
+
+    #[test]
+    fn api_base_builds_workdrive_v1_url() {
+        let c = config("eu");
+        assert_eq!(c.api_base(), "https://www.zohoapis.eu/workdrive/api/v1");
+        let c = config("us");
+        assert_eq!(c.api_base(), "https://www.zohoapis.com/workdrive/api/v1");
+    }
+
+    #[test]
+    fn zoho_native_export_info_maps_zoho_extensions() {
+        let (product, format, office_ext) = zoho_native_export_info("zw").unwrap();
+        assert_eq!(product, "writer");
+        assert_eq!(format, "docx");
+        assert_eq!(office_ext, ".docx");
+
+        let (product, format, _) = zoho_native_export_info("ZohoSheet").unwrap();
+        assert_eq!(product, "sheet");
+        assert_eq!(format, "xlsx");
+
+        let (product, _, _) = zoho_native_export_info("zp").unwrap();
+        assert_eq!(product, "show");
+
+        // non-zoho extensions return None
+        assert!(zoho_native_export_info("pdf").is_none());
+        assert!(zoho_native_export_info("jpg").is_none());
+        assert!(zoho_native_export_info("").is_none());
+    }
+}

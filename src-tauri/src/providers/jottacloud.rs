@@ -1915,3 +1915,111 @@ impl JottacloudProvider {
         entries
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> JottacloudProvider {
+        let config = JottacloudConfig {
+            login_token: SecretString::from("test-token".to_string()),
+            device: "Jotta".to_string(),
+            mountpoint: "Archive".to_string(),
+            initial_path: None,
+        };
+        let mut p = JottacloudProvider::new(config);
+        p.username = "user123".to_string();
+        p
+    }
+
+    #[test]
+    fn normalize_path_trims_and_normalizes_separators() {
+        assert_eq!(JottacloudProvider::normalize_path(""), "/");
+        assert_eq!(JottacloudProvider::normalize_path("/"), "/");
+        assert_eq!(JottacloudProvider::normalize_path("   "), "/");
+        assert_eq!(JottacloudProvider::normalize_path("foo"), "/foo");
+        assert_eq!(JottacloudProvider::normalize_path("/foo/bar/"), "/foo/bar");
+        assert_eq!(JottacloudProvider::normalize_path(r"\foo\bar"), "/foo/bar");
+    }
+
+    #[test]
+    fn split_path_handles_root_nested_and_bare() {
+        assert_eq!(
+            JottacloudProvider::split_path("/file.txt"),
+            ("/".to_string(), "file.txt".to_string())
+        );
+        assert_eq!(
+            JottacloudProvider::split_path("/a/b/file"),
+            ("/a/b".to_string(), "file".to_string())
+        );
+        assert_eq!(
+            JottacloudProvider::split_path("/onlyone"),
+            ("/".to_string(), "onlyone".to_string())
+        );
+    }
+
+    #[test]
+    fn jfs_url_builds_canonical_path_with_device_and_mountpoint() {
+        let p = test_provider();
+        assert_eq!(p.jfs_url(""), format!("{}/user123/Jotta/Archive", JFS_BASE));
+        assert_eq!(
+            p.jfs_url("/folder/file.txt"),
+            format!("{}/user123/Jotta/Archive/folder/file.txt", JFS_BASE)
+        );
+        assert_eq!(
+            p.jfs_url("no-slash/path"),
+            format!("{}/user123/Jotta/Archive/no-slash/path", JFS_BASE)
+        );
+    }
+
+    #[test]
+    fn resolve_path_joins_relative_against_current_path() {
+        let mut p = test_provider();
+        p.current_path = "/pictures".to_string();
+        assert_eq!(p.resolve_path("/abs"), "/abs");
+        assert_eq!(p.resolve_path(""), "/pictures");
+        assert_eq!(p.resolve_path("."), "/pictures");
+        assert_eq!(p.resolve_path("child"), "/pictures/child");
+    }
+
+    #[test]
+    fn parse_device_names_extracts_all_devices() {
+        let xml = r#"<?xml version="1.0"?>
+            <user>
+              <devices>
+                <device><name>Jotta</name></device>
+                <device><name>LAPTOP-01</name></device>
+                <device><name>iPhone</name></device>
+              </devices>
+            </user>"#;
+        let names = JottacloudProvider::parse_device_names(xml);
+        assert_eq!(names, vec!["Jotta", "LAPTOP-01", "iPhone"]);
+    }
+
+    #[test]
+    fn parse_device_names_returns_empty_on_malformed_xml() {
+        assert!(JottacloudProvider::parse_device_names("not-xml-at-all").is_empty());
+        assert!(JottacloudProvider::parse_device_names("<empty/>").is_empty());
+    }
+
+    #[test]
+    fn parse_mountpoint_names_extracts_name_attribute() {
+        let xml = r#"<device>
+            <mountPoint name="Archive"/>
+            <mountPoint name="Sync"/>
+            <mountPoint name="Shared"></mountPoint>
+        </device>"#;
+        let names = JottacloudProvider::parse_mountpoint_names(xml);
+        assert_eq!(names, vec!["Archive", "Sync", "Shared"]);
+    }
+
+    #[test]
+    fn parse_jotta_time_normalizes_nonstandard_format() {
+        // Jottacloud uses "-T" separator — parse_jotta_time should strip it
+        let out = JottacloudProvider::parse_jotta_time("2023-01-15-T10:30:45+0100");
+        assert!(out.starts_with("2023-01-15"));
+        // Fallback: string not parseable is returned cleaned (no "-T")
+        let fallback = JottacloudProvider::parse_jotta_time("not-a-time");
+        assert_eq!(fallback, "not-a-time");
+    }
+}

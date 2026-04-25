@@ -29,8 +29,8 @@ use super::{
 
 const MEGA_API_BASE_URL: &str = "https://g.api.mega.co.nz/cs";
 const MEGA_API_VERSION: &str = "2";
-const NATIVE_MAX_RETRIES: u32 = 2;
-const NATIVE_RETRY_DELAY_MS: u64 = 2000;
+const AERORSYNC_MAX_RETRIES: u32 = 2;
+const AERORSYNC_RETRY_DELAY_MS: u64 = 2000;
 
 // ─── Wire types ───────────────────────────────────────────────────────────
 
@@ -423,15 +423,15 @@ impl MegaNativeProvider {
         loop {
             match self.api_client.command(command.clone()).await {
                 Ok(r) => return Ok(r),
-                Err(err) if attempt < NATIVE_MAX_RETRIES && Self::is_transient_error(&err) => {
+                Err(err) if attempt < AERORSYNC_MAX_RETRIES && Self::is_transient_error(&err) => {
                     attempt += 1;
                     tracing::warn!(
                         "[MEGA Native] transient error, retry {}/{}: {}",
                         attempt,
-                        NATIVE_MAX_RETRIES,
+                        AERORSYNC_MAX_RETRIES,
                         err
                     );
-                    sleep(Duration::from_millis(NATIVE_RETRY_DELAY_MS)).await;
+                    sleep(Duration::from_millis(AERORSYNC_RETRY_DELAY_MS)).await;
                 }
                 Err(err) => return Err(err),
             }

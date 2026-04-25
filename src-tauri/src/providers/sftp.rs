@@ -173,7 +173,7 @@ pub struct SftpProvider {
     /// with the SHA-256 hex fingerprint of the accepted host key. The
     /// native rsync transport reuses this fingerprint to pin its own
     /// SSH connection (U-02) so the fresh TCP socket it opens for
-    /// `rsync_proto_serve` does not skip host-key verification.
+    /// `aerorsync_serve` does not skip host-key verification.
     host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
 }
 
@@ -233,10 +233,10 @@ impl SftpProvider {
     ///
     /// - **Unix + any build**: returns `RsyncBinaryTransport` as the classic
     ///   fallback when the native feature is off or refuses.
-    /// - **Unix + `proto_native_rsync`**: attempts `NativeRsyncDeltaTransport`
+    /// - **Unix + `aerorsync`**: attempts `AerorsyncDeltaTransport`
     ///   first (if the runtime toggle and host-key pinning allow), otherwise
     ///   falls back to `RsyncBinaryTransport`.
-    /// - **Windows + `proto_native_rsync`**: uses the native transport only.
+    /// - **Windows + `aerorsync`**: uses the native transport only.
     ///   Without the feature compiled in, this method returns `None` so the
     ///   consumer transparently drops to classic SFTP (same shape the adapter
     ///   already accepts for non-SFTP providers).
@@ -262,10 +262,10 @@ impl SftpProvider {
             known_hosts_path,
         };
 
-        #[cfg(feature = "proto_native_rsync")]
+        #[cfg(feature = "aerorsync")]
         {
             // Runtime toggle - read from settings. When on, attempt
-            // NativeRsyncDeltaTransport and fall through to classic
+            // AerorsyncDeltaTransport and fall through to classic
             // binary on any construction error.
             //
             // U-02 security gate: the native path opens its own SSH
@@ -278,8 +278,8 @@ impl SftpProvider {
             // ride `AcceptAny`, which is a MITM window on a second
             // independent socket.
             if crate::settings::load_native_rsync_enabled() {
-                use crate::rsync_native_proto::delta_transport_impl::NativeRsyncDeltaTransport;
-                use crate::rsync_native_proto::ssh_transport::SshHostKeyPolicy;
+                use crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
+                use crate::aerorsync::ssh_transport::SshHostKeyPolicy;
 
                 let host_key_policy = match self.accepted_host_key_sha256_hex() {
                     Some(hex) => SshHostKeyPolicy::pinned_hex(hex),
@@ -293,7 +293,7 @@ impl SftpProvider {
                     }
                 };
 
-                match NativeRsyncDeltaTransport::from_rsync_config(&rsync_config, host_key_policy) {
+                match AerorsyncDeltaTransport::from_rsync_config(&rsync_config, host_key_policy) {
                     Ok(transport) => {
                         tracing::info!(
                             "providers::sftp: using native rsync delta transport (host key pinned)"
@@ -334,9 +334,10 @@ fn classic_binary_fallback(
 ) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
     #[cfg(unix)]
     {
-        Some(Box::new(
-            crate::delta_transport::RsyncBinaryTransport::new(rsync_config, Some(handle)),
-        ))
+        Some(Box::new(crate::delta_transport::RsyncBinaryTransport::new(
+            rsync_config,
+            Some(handle),
+        )))
     }
     #[cfg(not(unix))]
     {

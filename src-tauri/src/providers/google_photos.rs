@@ -1418,3 +1418,102 @@ impl StorageProvider for GooglePhotosProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_path_splits_album_from_filename() {
+        assert_eq!(GooglePhotosProvider::parse_path("/"), (None, None));
+        assert_eq!(GooglePhotosProvider::parse_path(""), (None, None));
+        assert_eq!(
+            GooglePhotosProvider::parse_path("/MyAlbum"),
+            (Some("MyAlbum"), None)
+        );
+        assert_eq!(
+            GooglePhotosProvider::parse_path("/MyAlbum/"),
+            (Some("MyAlbum"), None)
+        );
+        assert_eq!(
+            GooglePhotosProvider::parse_path("/MyAlbum/photo.jpg"),
+            (Some("MyAlbum"), Some("photo.jpg"))
+        );
+        assert_eq!(
+            GooglePhotosProvider::parse_path("/[All Photos]/photo.jpg"),
+            (Some("[All Photos]"), Some("photo.jpg"))
+        );
+    }
+
+    #[test]
+    fn download_url_appends_size_token_per_media_kind() {
+        assert_eq!(
+            GooglePhotosProvider::download_url("https://lh3.googleusercontent.com/abc", false),
+            "https://lh3.googleusercontent.com/abc=d"
+        );
+        assert_eq!(
+            GooglePhotosProvider::download_url("https://lh3.googleusercontent.com/abc", true),
+            "https://lh3.googleusercontent.com/abc=dv"
+        );
+    }
+
+    #[test]
+    fn is_video_item_detects_via_metadata_and_mime() {
+        // Video via explicit media_metadata.video
+        let item = MediaItem {
+            id: "1".to_string(),
+            filename: Some("clip.mp4".to_string()),
+            mime_type: Some("video/mp4".to_string()),
+            base_url: Some("https://x/v".to_string()),
+            media_metadata: Some(MediaMetadata {
+                creation_time: None,
+                width: None,
+                height: None,
+                photo: None,
+                video: Some(VideoMetadata {
+                    status: Some("READY".to_string()),
+                }),
+            }),
+        };
+        assert!(GooglePhotosProvider::is_video_item(&item));
+
+        // Video via MIME only
+        let item = MediaItem {
+            id: "2".to_string(),
+            filename: Some("clip.mov".to_string()),
+            mime_type: Some("video/quicktime".to_string()),
+            base_url: None,
+            media_metadata: None,
+        };
+        assert!(GooglePhotosProvider::is_video_item(&item));
+
+        // Photo: not a video
+        let item = MediaItem {
+            id: "3".to_string(),
+            filename: Some("photo.jpg".to_string()),
+            mime_type: Some("image/jpeg".to_string()),
+            base_url: None,
+            media_metadata: None,
+        };
+        assert!(!GooglePhotosProvider::is_video_item(&item));
+
+        // Missing mime + missing metadata → not video
+        let item = MediaItem {
+            id: "4".to_string(),
+            filename: None,
+            mime_type: None,
+            base_url: None,
+            media_metadata: None,
+        };
+        assert!(!GooglePhotosProvider::is_video_item(&item));
+    }
+
+    #[test]
+    fn accepted_upload_types_includes_common_image_and_video_mimes() {
+        let types = GooglePhotosProvider::accepted_upload_types();
+        assert!(types.iter().any(|t| t == "image/jpeg"));
+        assert!(types.iter().any(|t| t == "image/png"));
+        // the list should be non-trivial
+        assert!(types.len() >= 4);
+    }
+}

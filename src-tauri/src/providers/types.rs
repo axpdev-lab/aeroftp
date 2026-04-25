@@ -428,29 +428,7 @@ impl S3Config {
             config.port,
             config.extra.get("endpoint")
         );
-        // U4 finding: the CLI parses `s3://k:s@host:9000` and drops the
-        // port, because only `config.host` made it through. We now
-        // assemble the endpoint using host, optional explicit port, and
-        // a scheme that matches the port (80 → http, 443 → https, MinIO
-        // 9xxx → http, otherwise https). Existing endpoints with an
-        // explicit scheme are preserved verbatim.
-        let endpoint = endpoint_raw.map(|host| {
-            if host.starts_with("http://") || host.starts_with("https://") {
-                return host;
-            }
-            let has_explicit_port = host.contains(':');
-            let port = config.port;
-            let scheme = match port {
-                Some(443) => "https",
-                Some(80) => "http",
-                Some(9000) | Some(9001) | Some(9002) => "http",
-                _ => "https",
-            };
-            match (has_explicit_port, port) {
-                (true, _) | (false, None) => format!("{scheme}://{host}"),
-                (false, Some(p)) => format!("{scheme}://{host}:{p}"),
-            }
-        });
+        let endpoint = endpoint_raw.map(|host| normalize_s3_endpoint(&host, config.port));
 
         let path_style = config
             .extra
@@ -489,6 +467,68 @@ impl S3Config {
             sse_kms_key_id,
         })
     }
+}
+
+fn normalize_s3_endpoint(endpoint: &str, configured_port: Option<u16>) -> String {
+    let trimmed = endpoint.trim().trim_end_matches('/');
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        if let Ok(mut url) = url::Url::parse(trimmed) {
+            if url.port().is_none() {
+                if let Some(port) = configured_port {
+                    let default_port = match url.scheme() {
+                        "http" => Some(80),
+                        "https" => Some(443),
+                        _ => None,
+                    };
+                    if Some(port) != default_port {
+                        let _ = url.set_port(Some(port));
+                    }
+                }
+            }
+            return url.to_string().trim_end_matches('/').to_string();
+        }
+
+        return trimmed.to_string();
+    }
+
+    let parsed_authority = url::Url::parse(&format!("http://{trimmed}")).ok();
+    let explicit_port = parsed_authority.as_ref().and_then(|url| url.port());
+    let host = parsed_authority
+        .as_ref()
+        .and_then(|url| url.host_str())
+        .unwrap_or(trimmed);
+    let port = explicit_port.or(configured_port);
+    let scheme = infer_s3_endpoint_scheme(host, port);
+    let default_port = match scheme {
+        "http" => Some(80),
+        "https" => Some(443),
+        _ => None,
+    };
+
+    match configured_port {
+        Some(port) if explicit_port.is_none() && Some(port) != default_port => {
+            format!("{scheme}://{trimmed}:{port}")
+        }
+        _ => format!("{scheme}://{trimmed}"),
+    }
+}
+
+fn infer_s3_endpoint_scheme(host: &str, port: Option<u16>) -> &'static str {
+    match port {
+        Some(80) | Some(3900) | Some(9000) | Some(9001) | Some(9002) => "http",
+        Some(443) => "https",
+        Some(_) if is_loopback_host(host) => "http",
+        _ => "https",
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let host = host
+        .trim_matches('[')
+        .trim_matches(']')
+        .to_ascii_lowercase();
+    host == "localhost" || host == "::1" || host.starts_with("127.")
 }
 
 /// SFTP-specific configuration
@@ -1238,6 +1278,54 @@ mod tests {
 
         let no_ext = RemoteEntry::file("Makefile".to_string(), "/path/Makefile".to_string(), 500);
         assert_eq!(no_ext.extension(), None);
+    }
+
+    #[test]
+    fn test_s3_custom_http_endpoint_keeps_configured_port_and_path_style_default() {
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "garage-bucket".to_string());
+        extra.insert("region".to_string(), "garage".to_string());
+
+        let config = ProviderConfig {
+            name: "Garage".to_string(),
+            provider_type: ProviderType::S3,
+            host: "http://localhost".to_string(),
+            port: Some(3900),
+            username: Some("access".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra,
+        };
+
+        let s3_config = S3Config::from_provider_config(&config).unwrap();
+        assert_eq!(s3_config.endpoint.as_deref(), Some("http://localhost:3900"));
+        assert!(s3_config.path_style);
+    }
+
+    #[test]
+    fn test_s3_explicit_virtual_host_style_is_preserved() {
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "bucket".to_string());
+        extra.insert("region".to_string(), "us-east-1".to_string());
+        extra.insert("path_style".to_string(), "false".to_string());
+
+        let config = ProviderConfig {
+            name: "Virtual Hosted".to_string(),
+            provider_type: ProviderType::S3,
+            host: "s3.example.com".to_string(),
+            port: Some(443),
+            username: Some("access".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra,
+        };
+
+        let s3_config = S3Config::from_provider_config(&config).unwrap();
+        assert_eq!(
+            s3_config.endpoint.as_deref(),
+            Some("https://s3.example.com")
+        );
+        assert!(!s3_config.path_style);
     }
 
     #[test]

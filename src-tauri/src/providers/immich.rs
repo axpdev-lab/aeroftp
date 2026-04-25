@@ -1417,3 +1417,88 @@ impl StorageProvider for ImmichProvider {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn immich_config_new_strips_trailing_slash_from_base_url() {
+        let c = ImmichConfig::new("https://photos.example.com/", "api-key");
+        assert_eq!(c.base_url, "https://photos.example.com");
+        assert_eq!(c.api_key, "api-key");
+
+        let c2 = ImmichConfig::new("https://photos.example.com", "k");
+        assert_eq!(c2.base_url, "https://photos.example.com");
+    }
+
+    #[test]
+    fn api_url_appends_api_prefix_to_base_url() {
+        let p = ImmichProvider::new(ImmichConfig::new("https://photos.example.com", "k"));
+        assert_eq!(
+            p.api_url("/albums"),
+            "https://photos.example.com/api/albums"
+        );
+        assert_eq!(p.api_url(""), "https://photos.example.com/api");
+    }
+
+    #[test]
+    fn parse_path_splits_virtual_folder_from_filename() {
+        assert_eq!(ImmichProvider::parse_path("/"), (None, None));
+        assert_eq!(ImmichProvider::parse_path(""), (None, None));
+        assert_eq!(
+            ImmichProvider::parse_path("/Vacation"),
+            (Some("Vacation"), None)
+        );
+        assert_eq!(
+            ImmichProvider::parse_path("/Vacation/photo.jpg"),
+            (Some("Vacation"), Some("photo.jpg"))
+        );
+        assert_eq!(
+            ImmichProvider::parse_path("/[All Assets]/photo.jpg"),
+            (Some("[All Assets]"), Some("photo.jpg"))
+        );
+    }
+
+    #[test]
+    fn map_api_error_routes_to_provider_error_variants() {
+        use reqwest::StatusCode;
+        assert!(matches!(
+            ImmichProvider::map_api_error(StatusCode::UNAUTHORIZED, "nope", "login"),
+            ProviderError::AuthenticationFailed(_)
+        ));
+        assert!(matches!(
+            ImmichProvider::map_api_error(StatusCode::FORBIDDEN, "denied", "op"),
+            ProviderError::PermissionDenied(_)
+        ));
+        assert!(matches!(
+            ImmichProvider::map_api_error(StatusCode::NOT_FOUND, "gone", "get"),
+            ProviderError::NotFound(_)
+        ));
+        assert!(matches!(
+            ImmichProvider::map_api_error(StatusCode::INTERNAL_SERVER_ERROR, "boom", "op"),
+            ProviderError::ConnectionFailed(_)
+        ));
+        assert!(matches!(
+            ImmichProvider::map_api_error(StatusCode::TOO_MANY_REQUESTS, "slow down", "x"),
+            ProviderError::Other(_)
+        ));
+        assert!(matches!(
+            ImmichProvider::map_api_error(StatusCode::BAD_REQUEST, "bad", "op"),
+            ProviderError::Other(_)
+        ));
+    }
+
+    #[test]
+    fn device_asset_id_is_deterministic_and_depends_on_size() {
+        let a = ImmichProvider::device_asset_id("photo.jpg", 1024);
+        let b = ImmichProvider::device_asset_id("photo.jpg", 1024);
+        assert_eq!(a, b, "same inputs must produce same id");
+        // sha256 hex is 64 chars
+        assert_eq!(a.len(), 64);
+        let c = ImmichProvider::device_asset_id("photo.jpg", 2048);
+        assert_ne!(a, c, "different size must change hash");
+        let d = ImmichProvider::device_asset_id("other.jpg", 1024);
+        assert_ne!(a, d, "different name must change hash");
+    }
+}

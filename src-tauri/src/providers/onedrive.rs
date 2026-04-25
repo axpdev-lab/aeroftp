@@ -1706,3 +1706,73 @@ impl StorageProvider for OneDriveProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> OneDriveProvider {
+        OneDriveProvider::new(OneDriveConfig::new("cid", "csec"))
+    }
+
+    #[test]
+    fn encode_path_segments_preserves_slash_but_encodes_each_segment() {
+        assert_eq!(
+            OneDriveProvider::encode_path_segments("foo/bar/baz"),
+            "foo/bar/baz"
+        );
+        // spaces and special chars get percent-encoded per segment
+        let encoded = OneDriveProvider::encode_path_segments("my docs/hello world.txt");
+        assert_eq!(encoded, "my%20docs/hello%20world.txt");
+        // plus sign is reserved in URL forms, should be encoded
+        let encoded = OneDriveProvider::encode_path_segments("a+b/c&d");
+        assert!(encoded.contains("%2B"));
+        assert!(encoded.contains("%26"));
+        // separator between segments stays unencoded
+        assert!(encoded.contains('/'));
+    }
+
+    #[test]
+    fn encode_path_segments_handles_empty_and_single_segment() {
+        assert_eq!(OneDriveProvider::encode_path_segments(""), "");
+        assert_eq!(
+            OneDriveProvider::encode_path_segments("file.txt"),
+            "file.txt"
+        );
+    }
+
+    #[test]
+    fn api_path_targets_root_when_empty() {
+        let p = test_provider();
+        assert_eq!(p.api_path(""), format!("{}/me/drive/root", GRAPH_API_BASE));
+        assert_eq!(p.api_path("/"), format!("{}/me/drive/root", GRAPH_API_BASE));
+        assert_eq!(
+            p.api_path("folder"),
+            format!("{}/me/drive/root:/folder", GRAPH_API_BASE)
+        );
+        assert_eq!(
+            p.api_path("/nested/file.txt"),
+            format!("{}/me/drive/root:/nested/file.txt", GRAPH_API_BASE)
+        );
+    }
+
+    #[test]
+    fn api_path_url_encodes_each_segment_individually() {
+        let p = test_provider();
+        let path = p.api_path("my docs/hello world.txt");
+        assert!(path.ends_with("/me/drive/root:/my%20docs/hello%20world.txt"));
+    }
+
+    #[test]
+    fn api_item_routes_root_alias_and_plain_id() {
+        let p = test_provider();
+        assert_eq!(
+            p.api_item("root"),
+            format!("{}/me/drive/root", GRAPH_API_BASE)
+        );
+        assert_eq!(
+            p.api_item("01ABC123"),
+            format!("{}/me/drive/items/01ABC123", GRAPH_API_BASE)
+        );
+    }
+}

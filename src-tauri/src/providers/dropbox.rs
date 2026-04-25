@@ -1840,3 +1840,77 @@ impl StorageProvider for DropboxProvider {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_provider() -> DropboxProvider {
+        DropboxProvider::new(DropboxConfig::new("app-key", "app-secret"))
+    }
+
+    #[test]
+    fn normalize_path_returns_empty_for_root_and_slash_prefix_for_rest() {
+        let p = test_provider();
+        assert_eq!(p.normalize_path(""), "");
+        assert_eq!(p.normalize_path("/"), "");
+        assert_eq!(p.normalize_path("///"), "");
+        assert_eq!(p.normalize_path("foo"), "/foo");
+        assert_eq!(p.normalize_path("/foo"), "/foo");
+        assert_eq!(p.normalize_path("/foo/"), "/foo");
+        assert_eq!(p.normalize_path("foo/bar"), "/foo/bar");
+    }
+
+    #[test]
+    fn normalize_path_trims_multiple_slashes_at_both_ends() {
+        let p = test_provider();
+        assert_eq!(p.normalize_path("///foo///"), "/foo");
+    }
+
+    #[test]
+    fn oauth_config_uses_provider_configured_keys() {
+        let p = test_provider();
+        let oauth = p.oauth_config();
+        // keys have been threaded through to OAuthConfig
+        assert_eq!(oauth.client_id, "app-key");
+    }
+
+    fn make_provider_config() -> ProviderConfig {
+        ProviderConfig {
+            name: "test-dropbox".to_string(),
+            provider_type: ProviderType::Dropbox,
+            host: String::new(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: None,
+            extra: Default::default(),
+        }
+    }
+
+    #[test]
+    fn dropbox_config_from_provider_config_prefers_app_key_over_client_id() {
+        let mut cfg = make_provider_config();
+        cfg.extra
+            .insert("app_key".to_string(), "primary".to_string());
+        cfg.extra
+            .insert("client_id".to_string(), "fallback".to_string());
+        cfg.extra
+            .insert("app_secret".to_string(), "secret".to_string());
+        let out = DropboxConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(out.app_key, "primary");
+        assert_eq!(out.app_secret, "secret");
+    }
+
+    #[test]
+    fn dropbox_config_from_provider_config_falls_back_to_client_id() {
+        let mut cfg = make_provider_config();
+        cfg.extra
+            .insert("client_id".to_string(), "fallback".to_string());
+        cfg.extra
+            .insert("client_secret".to_string(), "s".to_string());
+        let out = DropboxConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(out.app_key, "fallback");
+        assert_eq!(out.app_secret, "s");
+    }
+}
