@@ -19959,6 +19959,24 @@ async fn execute_cli_tool(
         }
     };
 
+    // Try dispatch through the unified tool engine (T3 Gate 2 Area A/B/C).
+    // Se il tool non è nel registry canonico, cade nel match legacy sotto.
+    {
+        let json_mode = std::env::args().any(|a| a == "--json");
+        let ctx = ftp_client_gui_lib::ai_core::cli_impl::CliToolCtx::new(
+            ftp_client_gui_lib::ai_core::cli_impl::CliEventSink { json_mode },
+            ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
+        );
+        match ftp_client_gui_lib::ai_core::tools::dispatch_tool(&ctx, tool_name, args).await {
+            Ok(v) => return Ok(v),
+            Err(ftp_client_gui_lib::ai_core::tools::ToolError::Unknown(_))
+            | Err(ftp_client_gui_lib::ai_core::tools::ToolError::NotMigrated(_)) => {
+                // Fallback al match legacy
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+
     match tool_name {
         "local_list" => {
             let path = resolve_path(&get_str("path")?);
@@ -21413,6 +21431,125 @@ fn is_auto_approved(tool_name: &str, approve_level: u8) -> bool {
     }
 }
 
+/// EventSink that both streams tokens live to stdout (when `print_live`) and
+/// accumulates the full response so the caller can reconstruct an AIResponse
+/// after the stream finishes. Used by `agent_tool_loop` to replace the
+/// previous synchronous `call_ai()` path with token-by-token streaming.
+struct CollectingCliSink {
+    print_live: bool,
+    inner: std::sync::Mutex<CollectingSinkState>,
+}
+
+#[derive(Default)]
+struct CollectingSinkState {
+    content: String,
+    thinking: String,
+    tool_calls: Option<Vec<ftp_client_gui_lib::ai::AIToolCall>>,
+    input_tokens: Option<u32>,
+    output_tokens: Option<u32>,
+    tokens_used: Option<u32>,
+    cache_creation_input_tokens: Option<u32>,
+    cache_read_input_tokens: Option<u32>,
+    error_seen: bool,
+}
+
+impl CollectingCliSink {
+    fn new(print_live: bool) -> Self {
+        Self {
+            print_live,
+            inner: std::sync::Mutex::new(CollectingSinkState::default()),
+        }
+    }
+
+    /// Produce an AIResponse snapshot from the accumulated stream state.
+    fn into_response(self, model: &str) -> ftp_client_gui_lib::ai::AIResponse {
+        let state = self.inner.into_inner().unwrap_or_else(|e| e.into_inner());
+        ftp_client_gui_lib::ai::AIResponse {
+            content: state.content,
+            model: model.to_string(),
+            tokens_used: state.tokens_used.or_else(|| {
+                match (state.input_tokens, state.output_tokens) {
+                    (Some(i), Some(o)) => Some(i + o),
+                    _ => None,
+                }
+            }),
+            input_tokens: state.input_tokens,
+            output_tokens: state.output_tokens,
+            finish_reason: None,
+            tool_calls: state.tool_calls,
+            cache_creation_input_tokens: state.cache_creation_input_tokens,
+            cache_read_input_tokens: state.cache_read_input_tokens,
+        }
+    }
+}
+
+impl ftp_client_gui_lib::ai_core::EventSink for CollectingCliSink {
+    fn emit_stream_chunk(
+        &self,
+        _stream_id: &str,
+        chunk: &ftp_client_gui_lib::ai_stream::StreamChunk,
+    ) {
+        // Live output to stdout when enabled. We only print content deltas here;
+        // thinking text (Anthropic extended thinking) goes to stderr dimmed.
+        if self.print_live {
+            if !chunk.content.is_empty() {
+                use std::io::Write;
+                print!("{}", chunk.content);
+                io::stdout().flush().ok();
+            }
+            if let Some(ref thinking) = chunk.thinking {
+                if !thinking.is_empty() {
+                    eprint!("\x1b[2m{}\x1b[0m", thinking);
+                    io::stderr().flush().ok();
+                }
+            }
+        }
+
+        // Accumulate regardless of live-print so the caller sees the full
+        // response even when running non-interactively.
+        if let Ok(mut state) = self.inner.lock() {
+            if chunk.content.starts_with("Error:") && chunk.done {
+                state.error_seen = true;
+            }
+            state.content.push_str(&chunk.content);
+            if let Some(ref t) = chunk.thinking {
+                state.thinking.push_str(t);
+            }
+            if chunk.tool_calls.is_some() {
+                state.tool_calls = chunk.tool_calls.clone();
+            }
+            if let Some(v) = chunk.input_tokens {
+                state.input_tokens = Some(v);
+            }
+            if let Some(v) = chunk.output_tokens {
+                state.output_tokens = Some(v);
+                state.tokens_used = Some(state.input_tokens.unwrap_or(0) + v);
+            }
+            if let Some(v) = chunk.cache_creation_input_tokens {
+                state.cache_creation_input_tokens = Some(v);
+            }
+            if let Some(v) = chunk.cache_read_input_tokens {
+                state.cache_read_input_tokens = Some(v);
+            }
+            if chunk.done && self.print_live && !state.content.is_empty() {
+                // Ensure a trailing newline so the shell prompt doesn't
+                // collide with the last streamed token.
+                if !state.content.ends_with('\n') {
+                    println!();
+                }
+            }
+        }
+    }
+
+    fn emit_tool_progress(&self, _progress: &ftp_client_gui_lib::ai_core::ToolProgress) {
+        // Tool progress is surfaced via agent_tool_loop's inline execution UI.
+    }
+
+    fn emit_app_control(&self, _event_name: &str, _payload: &serde_json::Value) {
+        // CLI ignores GUI-only app control events.
+    }
+}
+
 /// Multi-step agent tool execution loop.
 /// Sends tool definitions to the model, processes tool_calls, executes tools,
 /// re-injects results, and loops until the model responds with text only.
@@ -21454,9 +21591,37 @@ async fn agent_tool_loop(
             web_search: None,
         };
 
-        let response: AIResponse = ftp_client_gui_lib::ai::call_ai(request)
-            .await
-            .map_err(|e| e.to_string())?;
+        // T4: stream the assistant response token-by-token via ai_chat_stream_with_sink.
+        // Ctrl+C during the stream triggers ai_cancel_stream for graceful cancellation.
+        let stream_id = format!(
+            "cli-agent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+
+        // Only stream live to stdout when attached to a TTY and plan_only is off.
+        // plan_only should produce deterministic output, not interleaved tokens.
+        let print_live = is_tty && !cfg.plan_only;
+        let sink = CollectingCliSink::new(print_live);
+
+        let sid_for_signal = stream_id.clone();
+        let cancel_task = tokio::spawn(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                let _ = ftp_client_gui_lib::ai_stream::ai_cancel_stream(sid_for_signal).await;
+            }
+        });
+
+        let stream_outcome =
+            ftp_client_gui_lib::ai_stream::ai_chat_stream_with_sink(&sink, request, &stream_id)
+                .await;
+
+        cancel_task.abort();
+        stream_outcome?;
+
+        let response: AIResponse = sink.into_response(&cfg.model);
 
         {
             let mut usage = cfg
@@ -21532,8 +21697,12 @@ async fn agent_tool_loop(
                     ));
                 }
 
-                // Show assistant text if any
-                if !response.content.is_empty() && is_tty {
+                // Show assistant text if any.
+                // T4: when print_live is true the sink has already streamed
+                // response.content to stdout — printing it again here would
+                // duplicate the visible output, so we only fall back to the
+                // stderr echo when streaming to stdout is disabled.
+                if !response.content.is_empty() && is_tty && !print_live {
                     eprintln!("\n{}", response.content);
                 }
 
@@ -21860,7 +22029,12 @@ async fn cmd_agent_oneshot(message: &str, cfg: &AgentConfig, format: OutputForma
                     );
                 }
                 OutputFormat::Text => {
-                    println!("{}", response);
+                    // T4: when is_tty the final response was already streamed to
+                    // stdout token-by-token by the sink, so avoid duplicating it.
+                    // Ensure there is a trailing newline for non-streamed paths.
+                    if !is_tty || cfg.plan_only {
+                        println!("{}", response);
+                    }
                 }
             }
             0
@@ -22023,7 +22197,8 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
             tool_call_id: None,
         });
 
-        // Show thinking indicator
+        // Show thinking indicator — cleared as soon as the first stream chunk
+        // lands on stdout, so the spinner never clashes with streamed tokens.
         if is_tty {
             eprint!("\n  \x1b[2m⠙ Thinking...\x1b[0m");
             io::stderr().flush().ok();
@@ -22034,8 +22209,12 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
             Ok(response) => {
                 if is_tty {
                     eprint!("\r                    \r"); // Clear "Thinking..."
+                                                         // T4: response has already been streamed to stdout by the
+                                                         // sink. Just emit a blank line for readability between turns.
+                    println!();
+                } else {
+                    println!("\n{}\n", response);
                 }
-                println!("\n{}\n", response);
                 conversation.push(ChatMessage {
                     role: "assistant".to_string(),
                     content: response,

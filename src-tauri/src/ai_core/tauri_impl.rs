@@ -343,3 +343,37 @@ impl<'a> RemoteBackend for TauriRemoteBackend<'a> {
         Err("storage quota not supported on FTP fallback".to_string())
     }
 }
+
+// ─── TauriToolCtx ─────────────────────────────────────────────────────
+
+use crate::ai_core::tools::{Surfaces, ToolCtx};
+use std::sync::Arc;
+
+pub struct TauriToolCtx {
+    pub sink: TauriEventSink,
+    pub creds: VaultCredentialProvider,
+    pub context_local_path: Option<String>,
+    pub approval_grant_id: Option<String>,
+}
+
+#[async_trait]
+impl ToolCtx for TauriToolCtx {
+    fn event_sink(&self) -> &dyn EventSink {
+        &self.sink
+    }
+    fn credentials(&self) -> &dyn CredentialProvider {
+        &self.creds
+    }
+    async fn remote_backend(&self, _server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
+        Err("remote_backend not wired in TauriToolCtx (Area A)".to_string())
+    }
+    fn context_local_path(&self) -> Option<&str> {
+        self.context_local_path.as_deref()
+    }
+    fn approval_grant_id(&self) -> Option<&str> {
+        self.approval_grant_id.as_deref()
+    }
+    fn surface(&self) -> Surfaces {
+        Surfaces::GUI
+    }
+}

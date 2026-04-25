@@ -1836,6 +1836,33 @@ pub async fn execute_ai_tool(
         }
     }
 
+    // Try dispatch through the unified tool engine (T3 Gate 2 Area A).
+    // Se il tool non è nel registry canonico, cade nel match legacy sotto.
+    {
+        let ctx = crate::ai_core::tauri_impl::TauriToolCtx {
+            sink: crate::ai_core::tauri_impl::TauriEventSink::new(app.clone()),
+            creds: crate::ai_core::tauri_impl::VaultCredentialProvider,
+            context_local_path: context_local_path.clone(),
+            approval_grant_id: approval_grant_id.clone(),
+        };
+        match crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args).await {
+            Ok(v) => {
+                if let Some(ref key) = cache_key {
+                    store_cached_tool_result(session_id.as_deref(), &tool_name, key.clone(), &v)
+                        .await;
+                } else {
+                    invalidate_tool_cache(session_id.as_deref()).await;
+                }
+                return Ok(v);
+            }
+            Err(crate::ai_core::tools::ToolError::Unknown(_))
+            | Err(crate::ai_core::tools::ToolError::NotMigrated(_)) => {
+                // Fallback al match legacy
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+
     let result = match tool_name.as_str() {
         "remote_list" => {
             let path = get_str(&args, "path")?;

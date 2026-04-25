@@ -123,7 +123,7 @@ impl McpServer {
 }
 
 /// Load safe (no-password) profiles from the cached vault.
-fn load_safe_profiles() -> Result<Vec<serde_json::Value>, String> {
+pub(crate) fn load_safe_profiles() -> Result<Vec<serde_json::Value>, String> {
     let store = CredentialStore::from_cache().ok_or_else(|| {
         "Vault not open. Set AEROFTP_MASTER_PASSWORD or open vault first.".to_string()
     })?;

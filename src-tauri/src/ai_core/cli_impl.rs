@@ -415,3 +415,49 @@ impl RemoteBackend for CliRemoteBackend {
         Err("Storage quota extraction not yet implemented for this provider".to_string())
     }
 }
+
+// ─── CliToolCtx ───────────────────────────────────────────────────────
+
+use crate::ai_core::tools::{Surfaces, ToolCtx};
+use std::sync::Arc;
+
+pub struct CliToolCtx {
+    pub sink: CliEventSink,
+    pub creds: CliCredentialProvider,
+    /// Cwd snapshot al momento della costruzione, usato come base per
+    /// risolvere path relativi. Mirror del legacy CLI `resolve_path`
+    /// che faceva `std::env::current_dir().join(path)`.
+    pub cwd: Option<String>,
+}
+
+impl CliToolCtx {
+    /// Costruttore con `cwd` automatica. Se `current_dir()` fallisce
+    /// (caso raro: dir cancellata), `cwd` resta `None` e il dispatcher
+    /// userà il path inalterato (stesso comportamento del legacy CLI
+    /// con `unwrap_or_else(|_| path.to_string())`).
+    pub fn new(sink: CliEventSink, creds: CliCredentialProvider) -> Self {
+        let cwd = std::env::current_dir()
+            .ok()
+            .map(|p| p.to_string_lossy().to_string());
+        Self { sink, creds, cwd }
+    }
+}
+
+#[async_trait]
+impl ToolCtx for CliToolCtx {
+    fn event_sink(&self) -> &dyn EventSink {
+        &self.sink
+    }
+    fn credentials(&self) -> &dyn CredentialProvider {
+        &self.creds
+    }
+    async fn remote_backend(&self, _server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
+        Err("remote_backend not wired in CliToolCtx (Area A)".to_string())
+    }
+    fn context_local_path(&self) -> Option<&str> {
+        self.cwd.as_deref()
+    }
+    fn surface(&self) -> Surfaces {
+        Surfaces::CLI
+    }
+}

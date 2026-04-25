@@ -17,6 +17,9 @@ function assert(condition, message) {
 
 function checkShellDenylist() {
   // v2.2.3: denylist moved from frontend (terminal_execute) to Rust backend (shell_execute)
+  // T3 Gate 2 Area B: unified dispatcher routes shell_execute via
+  // ai_core::system_tools::shell_execute, which delegates back to
+  // ai_tools::shell_execute (single source of denylist truth).
   const rustFile = 'src-tauri/src/ai_tools.rs';
   const rustContent = read(rustFile);
 
@@ -36,6 +39,19 @@ function checkShellDenylist() {
   for (const token of requiredTokens) {
     assert(rustContent.includes(token), `shell denylist regression: missing token in ${rustFile}: ${token}`);
   }
+
+  // T3 Gate 2 Area B: verify the unified dispatcher delegates to the legacy
+  // helper (single denylist source) and validates working_dir before call.
+  const systemToolsFile = 'src-tauri/src/ai_core/system_tools.rs';
+  const systemToolsContent = read(systemToolsFile);
+  assert(
+    systemToolsContent.includes('crate::ai_tools::shell_execute('),
+    `shell denylist regression: system_tools must delegate to ai_tools::shell_execute (single source of truth)`
+  );
+  assert(
+    systemToolsContent.includes('validate_path(wd, "working_dir")'),
+    `shell denylist regression: system_tools must validate working_dir against deny-list`
+  );
 
   // Also verify frontend references shell_execute (not terminal_execute)
   const chatFile = 'src/components/DevTools/AIChat.tsx';

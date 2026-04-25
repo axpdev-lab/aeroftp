@@ -1544,7 +1544,7 @@ fn build_progress_callback(
 pub async fn execute_tool(
     tool_name: &str,
     args: &Value,
-    pool: &ConnectionPool,
+    pool: &Arc<ConnectionPool>,
     rate_limiter: &security::RateLimiter,
     notifier: Option<&McpNotifier>,
 ) -> (Value, bool) {
@@ -1563,6 +1563,19 @@ pub async fn execute_tool(
             "Rate limit exceeded. Retry after {:.1} seconds.",
             retry_after
         ));
+    }
+
+    // T3 Gate 2 Area C: prefer the unified core dispatcher for the remote
+    // tools that have been migrated. Advanced MCP-only tools still fall
+    // through to the mature legacy match below.
+    {
+        let ctx = crate::ai_core::mcp_impl::McpToolCtx::new(Arc::clone(pool), notifier.cloned());
+        match crate::ai_core::tools::dispatch_tool(&ctx, tool_name, args).await {
+            Ok(value) => return finish(tool_name, None, None, ok(value), start),
+            Err(crate::ai_core::tools::ToolError::Unknown(_))
+            | Err(crate::ai_core::tools::ToolError::NotMigrated(_)) => {}
+            Err(e) => return finish(tool_name, None, None, err(e.to_string()), start),
+        }
     }
 
     match tool_name {
