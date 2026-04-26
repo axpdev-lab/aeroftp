@@ -3969,7 +3969,13 @@
         "mediaServices": "მედია სერვისები"
       },
       "confirmDeleteServer": "წაიშალოს სერვერი \"{name}\"? ეს ამოშლის შენახულ სერთიფიკატებს და ვერ გაუქმდება.",
-      "renameWithHotkey": "სახელის გადარქმევა (F2)"
+      "renameWithHotkey": "სახელის გადარქმევა (F2)",
+      "setAsCrossProfileSource": "დაყენება Cross-Profile-ის წყაროდ",
+      "setAsCrossProfileDestination": "დაყენება Cross-Profile-ის დანიშნულებად",
+      "crossProfileSourceSelected": "არჩეულია Cross-Profile-ის წყაროდ",
+      "crossProfileDestinationSelected": "არჩეულია Cross-Profile-ის დანიშნულებად",
+      "crossProfileOpenWithSource": "Cross-Profile Transfer-ის გახსნა (წყარო მზადაა)",
+      "crossProfileOpenWithPair": "Cross-Profile Transfer-ის გახსნა (წყარო + დანიშნულება მზადაა)"
     },
     "gitlab": {
       "projectPath": "პროექტის გზა",

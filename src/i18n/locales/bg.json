@@ -3969,7 +3969,13 @@
         "mediaServices": "Медийни услуги"
       },
       "confirmDeleteServer": "Изтриване на сървъра \"{name}\"? Това ще премахне запазените идентификационни данни и не може да бъде отменено.",
-      "renameWithHotkey": "Преименуване (F2)"
+      "renameWithHotkey": "Преименуване (F2)",
+      "setAsCrossProfileSource": "Задай като източник за Cross-Profile",
+      "setAsCrossProfileDestination": "Задай като дестинация за Cross-Profile",
+      "crossProfileSourceSelected": "Избран като източник за Cross-Profile",
+      "crossProfileDestinationSelected": "Избран като дестинация за Cross-Profile",
+      "crossProfileOpenWithSource": "Отвори Cross-Profile Transfer (източникът е готов)",
+      "crossProfileOpenWithPair": "Отвори Cross-Profile Transfer (източникът и дестинацията са готови)"
     },
     "gitlab": {
       "projectPath": "Път на проекта",

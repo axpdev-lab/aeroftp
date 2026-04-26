@@ -3969,7 +3969,13 @@
         "mediaServices": "Perkhidmatan Media"
       },
       "confirmDeleteServer": "Padam pelayan \"{name}\"? Ini akan mengalih keluar kelayakan yang disimpan dan tidak boleh dibuat asal.",
-      "renameWithHotkey": "Namakan semula (F2)"
+      "renameWithHotkey": "Namakan semula (F2)",
+      "setAsCrossProfileSource": "Tetapkan sebagai sumber Cross-Profile",
+      "setAsCrossProfileDestination": "Tetapkan sebagai destinasi Cross-Profile",
+      "crossProfileSourceSelected": "Dipilih sebagai sumber Cross-Profile",
+      "crossProfileDestinationSelected": "Dipilih sebagai destinasi Cross-Profile",
+      "crossProfileOpenWithSource": "Buka Cross-Profile Transfer (sumber sedia)",
+      "crossProfileOpenWithPair": "Buka Cross-Profile Transfer (sumber + destinasi sedia)"
     },
     "gitlab": {
       "projectPath": "Laluan Projek",

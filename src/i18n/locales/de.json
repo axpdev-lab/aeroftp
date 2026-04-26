@@ -3959,7 +3959,13 @@
         "mediaServices": "Mediendienste"
       },
       "confirmDeleteServer": "Server \"{name}\" löschen? Dies entfernt gespeicherte Anmeldedaten und kann nicht rückgängig gemacht werden.",
-      "renameWithHotkey": "Umbenennen (F2)"
+      "renameWithHotkey": "Umbenennen (F2)",
+      "setAsCrossProfileSource": "Als Cross-Profile-Quelle festlegen",
+      "setAsCrossProfileDestination": "Als Cross-Profile-Ziel festlegen",
+      "crossProfileSourceSelected": "Als Cross-Profile-Quelle ausgewählt",
+      "crossProfileDestinationSelected": "Als Cross-Profile-Ziel ausgewählt",
+      "crossProfileOpenWithSource": "Cross-Profile Transfer öffnen (Quelle bereit)",
+      "crossProfileOpenWithPair": "Cross-Profile Transfer öffnen (Quelle + Ziel bereit)"
     },
     "gitlab": {
       "projectPath": "Projektpfad",

@@ -3959,7 +3959,13 @@
         "mediaServices": "Servicii Media"
       },
       "confirmDeleteServer": "Ștergeți serverul \"{name}\"? Aceasta elimină acreditările salvate și nu poate fi anulată.",
-      "renameWithHotkey": "Redenumire (F2)"
+      "renameWithHotkey": "Redenumire (F2)",
+      "setAsCrossProfileSource": "Seteaza ca sursa Cross-Profile",
+      "setAsCrossProfileDestination": "Seteaza ca destinatie Cross-Profile",
+      "crossProfileSourceSelected": "Selectat ca sursa Cross-Profile",
+      "crossProfileDestinationSelected": "Selectat ca destinatie Cross-Profile",
+      "crossProfileOpenWithSource": "Deschide Cross-Profile Transfer (sursa gata)",
+      "crossProfileOpenWithPair": "Deschide Cross-Profile Transfer (sursa + destinatie gata)"
     },
     "gitlab": {
       "projectPath": "Calea proiectului",

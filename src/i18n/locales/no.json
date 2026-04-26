@@ -3988,7 +3988,13 @@
         "mediaServices": "Medietjenester"
       },
       "confirmDeleteServer": "Slett serveren \"{name}\"? Dette fjerner lagrede legitimasjonsopplysninger og kan ikke angres.",
-      "renameWithHotkey": "Gi nytt navn (F2)"
+      "renameWithHotkey": "Gi nytt navn (F2)",
+      "setAsCrossProfileSource": "Angi som Cross-Profile-kilde",
+      "setAsCrossProfileDestination": "Angi som Cross-Profile-mål",
+      "crossProfileSourceSelected": "Valgt som Cross-Profile-kilde",
+      "crossProfileDestinationSelected": "Valgt som Cross-Profile-mål",
+      "crossProfileOpenWithSource": "Åpne Cross-Profile Transfer (kilde klar)",
+      "crossProfileOpenWithPair": "Åpne Cross-Profile Transfer (kilde + mål klare)"
     },
     "gitlab": {
       "projectPath": "Prosjektsti",

@@ -3969,7 +3969,13 @@
         "mediaServices": "Médiaszolgáltatások"
       },
       "confirmDeleteServer": "Törli a(z) \"{name}\" szervert? Ez eltávolítja a mentett hitelesítő adatokat, és nem vonható vissza.",
-      "renameWithHotkey": "Átnevezés (F2)"
+      "renameWithHotkey": "Átnevezés (F2)",
+      "setAsCrossProfileSource": "Beállítás Cross-Profile forrásként",
+      "setAsCrossProfileDestination": "Beállítás Cross-Profile célként",
+      "crossProfileSourceSelected": "Kiválasztva Cross-Profile forrásként",
+      "crossProfileDestinationSelected": "Kiválasztva Cross-Profile célként",
+      "crossProfileOpenWithSource": "Cross-Profile Transfer megnyitása (forrás kész)",
+      "crossProfileOpenWithPair": "Cross-Profile Transfer megnyitása (forrás + cél kész)"
     },
     "gitlab": {
       "projectPath": "Projekt utvonal",

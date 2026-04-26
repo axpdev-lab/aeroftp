@@ -3959,7 +3959,13 @@
         "mediaServices": "メディアサービス"
       },
       "confirmDeleteServer": "サーバー \"{name}\" を削除しますか？保存された認証情報が削除され、元に戻すことはできません。",
-      "renameWithHotkey": "名前を変更 (F2)"
+      "renameWithHotkey": "名前を変更 (F2)",
+      "setAsCrossProfileSource": "Cross-Profile のソースに設定",
+      "setAsCrossProfileDestination": "Cross-Profile の宛先に設定",
+      "crossProfileSourceSelected": "Cross-Profile のソースとして選択中",
+      "crossProfileDestinationSelected": "Cross-Profile の宛先として選択中",
+      "crossProfileOpenWithSource": "Cross-Profile Transfer を開く (ソース準備完了)",
+      "crossProfileOpenWithPair": "Cross-Profile Transfer を開く (ソース + 宛先 準備完了)"
     },
     "gitlab": {
       "projectPath": "プロジェクトパス",

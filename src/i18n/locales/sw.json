@@ -3969,7 +3969,13 @@
         "mediaServices": "Huduma za Media"
       },
       "confirmDeleteServer": "Futa seva \"{name}\"? Hii itaondoa vitambulisho vilivyohifadhiwa na haiwezi kutendwa upya.",
-      "renameWithHotkey": "Pa jina jipya (F2)"
+      "renameWithHotkey": "Pa jina jipya (F2)",
+      "setAsCrossProfileSource": "Weka kama chanzo cha Cross-Profile",
+      "setAsCrossProfileDestination": "Weka kama lengo la Cross-Profile",
+      "crossProfileSourceSelected": "Imechaguliwa kama chanzo cha Cross-Profile",
+      "crossProfileDestinationSelected": "Imechaguliwa kama lengo la Cross-Profile",
+      "crossProfileOpenWithSource": "Fungua Cross-Profile Transfer (chanzo tayari)",
+      "crossProfileOpenWithPair": "Fungua Cross-Profile Transfer (chanzo + lengo tayari)"
     },
     "gitlab": {
       "projectPath": "Njia ya mradi",

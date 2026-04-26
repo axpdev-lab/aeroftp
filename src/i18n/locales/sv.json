@@ -3969,7 +3969,13 @@
         "mediaServices": "Medietjänster"
       },
       "confirmDeleteServer": "Ta bort servern \"{name}\"? Detta tar bort sparade inloggningsuppgifter och kan inte ångras.",
-      "renameWithHotkey": "Byt namn (F2)"
+      "renameWithHotkey": "Byt namn (F2)",
+      "setAsCrossProfileSource": "Ange som Cross-Profile-kalla",
+      "setAsCrossProfileDestination": "Ange som Cross-Profile-destination",
+      "crossProfileSourceSelected": "Vald som Cross-Profile-kalla",
+      "crossProfileDestinationSelected": "Vald som Cross-Profile-destination",
+      "crossProfileOpenWithSource": "Oppna Cross-Profile Transfer (kalla redo)",
+      "crossProfileOpenWithPair": "Oppna Cross-Profile Transfer (kalla + destination redo)"
     },
     "gitlab": {
       "projectPath": "Projektsokvag",

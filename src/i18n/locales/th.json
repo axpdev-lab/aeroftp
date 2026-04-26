@@ -3969,7 +3969,13 @@
         "mediaServices": "บริการสื่อ"
       },
       "confirmDeleteServer": "ลบเซิร์ฟเวอร์ \"{name}\"? การดำเนินการนี้จะลบข้อมูลรับรองที่บันทึกไว้และไม่สามารถย้อนกลับได้",
-      "renameWithHotkey": "เปลี่ยนชื่อ (F2)"
+      "renameWithHotkey": "เปลี่ยนชื่อ (F2)",
+      "setAsCrossProfileSource": "ตั้งเป็นต้นทาง Cross-Profile",
+      "setAsCrossProfileDestination": "ตั้งเป็นปลายทาง Cross-Profile",
+      "crossProfileSourceSelected": "เลือกเป็นต้นทาง Cross-Profile แล้ว",
+      "crossProfileDestinationSelected": "เลือกเป็นปลายทาง Cross-Profile แล้ว",
+      "crossProfileOpenWithSource": "เปิด Cross-Profile Transfer (ต้นทางพร้อม)",
+      "crossProfileOpenWithPair": "เปิด Cross-Profile Transfer (ต้นทาง + ปลายทางพร้อม)"
     },
     "gitlab": {
       "projectPath": "เส้นทางโปรเจกต์",

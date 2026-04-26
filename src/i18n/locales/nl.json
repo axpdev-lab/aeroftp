@@ -3959,7 +3959,13 @@
         "mediaServices": "Mediadiensten"
       },
       "confirmDeleteServer": "Server \"{name}\" verwijderen? Dit verwijdert opgeslagen inloggegevens en kan niet ongedaan worden gemaakt.",
-      "renameWithHotkey": "Hernoemen (F2)"
+      "renameWithHotkey": "Hernoemen (F2)",
+      "setAsCrossProfileSource": "Instellen als Cross-Profile bron",
+      "setAsCrossProfileDestination": "Instellen als Cross-Profile bestemming",
+      "crossProfileSourceSelected": "Geselecteerd als Cross-Profile bron",
+      "crossProfileDestinationSelected": "Geselecteerd als Cross-Profile bestemming",
+      "crossProfileOpenWithSource": "Cross-Profile Transfer openen (bron gereed)",
+      "crossProfileOpenWithPair": "Cross-Profile Transfer openen (bron + bestemming gereed)"
     },
     "gitlab": {
       "projectPath": "Projectpad",

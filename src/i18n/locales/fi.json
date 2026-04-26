@@ -3969,7 +3969,13 @@
         "mediaServices": "Mediapalvelut"
       },
       "confirmDeleteServer": "Poistetaanko palvelin \"{name}\"? Tämä poistaa tallennetut tunnistetiedot eikä sitä voi kumota.",
-      "renameWithHotkey": "Nimeä uudelleen (F2)"
+      "renameWithHotkey": "Nimeä uudelleen (F2)",
+      "setAsCrossProfileSource": "Aseta Cross-Profile-lähteeksi",
+      "setAsCrossProfileDestination": "Aseta Cross-Profile-kohteeksi",
+      "crossProfileSourceSelected": "Valittu Cross-Profile-lähteeksi",
+      "crossProfileDestinationSelected": "Valittu Cross-Profile-kohteeksi",
+      "crossProfileOpenWithSource": "Avaa Cross-Profile Transfer (lähde valmis)",
+      "crossProfileOpenWithPair": "Avaa Cross-Profile Transfer (lähde + kohde valmiina)"
     },
     "gitlab": {
       "projectPath": "Projektipolku",

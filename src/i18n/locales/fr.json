@@ -3959,7 +3959,13 @@
         "mediaServices": "Services multimédias"
       },
       "confirmDeleteServer": "Supprimer le serveur \"{name}\" ? Cela supprime les identifiants enregistrés et ne peut pas être annulé.",
-      "renameWithHotkey": "Renommer (F2)"
+      "renameWithHotkey": "Renommer (F2)",
+      "setAsCrossProfileSource": "Définir comme source Cross-Profile",
+      "setAsCrossProfileDestination": "Définir comme destination Cross-Profile",
+      "crossProfileSourceSelected": "Sélectionné comme source Cross-Profile",
+      "crossProfileDestinationSelected": "Sélectionné comme destination Cross-Profile",
+      "crossProfileOpenWithSource": "Ouvrir Cross-Profile Transfer (source prête)",
+      "crossProfileOpenWithPair": "Ouvrir Cross-Profile Transfer (source + destination prêtes)"
     },
     "gitlab": {
       "projectPath": "Chemin du projet",

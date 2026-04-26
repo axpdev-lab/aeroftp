@@ -262,6 +262,7 @@ export interface ConnectionParams {
   options?: ProviderOptions;
   displayName?: string; // Custom name for tab display
   providerId?: string; // Registry provider ID for logo display
+  savedServerId?: string; // ServerProfile.id when connecting from a saved server (used by Cross-Profile Transfer)
 }
 
 export interface DownloadParams {
@@ -387,7 +388,8 @@ export type SessionStatus =
 // FTP Session for multi-session tabs (Hybrid Cache Architecture)
 export interface FtpSession {
   id: string;
-  serverId: string; // Reference to ServerProfile.id
+  serverId: string; // Display key (host/displayName) — kept for backwards compat with favicon lookups
+  savedServerId?: string; // ServerProfile.id when connecting from a saved server
   serverName: string; // Display name for tab
   status: SessionStatus;
   remotePath: string;

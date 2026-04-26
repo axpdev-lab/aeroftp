@@ -3969,7 +3969,13 @@
         "mediaServices": "Medietjenester"
       },
       "confirmDeleteServer": "Slet serveren \"{name}\"? Dette fjerner gemte legitimationsoplysninger og kan ikke fortrydes.",
-      "renameWithHotkey": "Omdøb (F2)"
+      "renameWithHotkey": "Omdøb (F2)",
+      "setAsCrossProfileSource": "Indstil som Cross-Profile-kilde",
+      "setAsCrossProfileDestination": "Indstil som Cross-Profile-destination",
+      "crossProfileSourceSelected": "Valgt som Cross-Profile-kilde",
+      "crossProfileDestinationSelected": "Valgt som Cross-Profile-destination",
+      "crossProfileOpenWithSource": "Åbn Cross-Profile Transfer (kilde klar)",
+      "crossProfileOpenWithPair": "Åbn Cross-Profile Transfer (kilde + destination klar)"
     },
     "gitlab": {
       "projectPath": "Projektsti",

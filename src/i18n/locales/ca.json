@@ -3988,7 +3988,13 @@
         "mediaServices": "Serveis multimèdia"
       },
       "confirmDeleteServer": "Voleu eliminar el servidor \"{name}\"? Això eliminarà les credencials desades i no es podrà desfer.",
-      "renameWithHotkey": "Reanomena (F2)"
+      "renameWithHotkey": "Reanomena (F2)",
+      "setAsCrossProfileSource": "Estableix com a origen Cross-Profile",
+      "setAsCrossProfileDestination": "Estableix com a destinació Cross-Profile",
+      "crossProfileSourceSelected": "Seleccionat com a origen Cross-Profile",
+      "crossProfileDestinationSelected": "Seleccionat com a destinació Cross-Profile",
+      "crossProfileOpenWithSource": "Obre Cross-Profile Transfer (origen llest)",
+      "crossProfileOpenWithPair": "Obre Cross-Profile Transfer (origen + destinació llestos)"
     },
     "gitlab": {
       "projectPath": "Ruta del projecte",

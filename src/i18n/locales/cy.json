@@ -3988,7 +3988,13 @@
         "mediaServices": "Gwasanaethau cyfryngau"
       },
       "confirmDeleteServer": "Dileu'r gweinydd \"{name}\"? Mae hyn yn dileu manylion mewngofnodi a gadwyd ac ni ellir ei ddadwneud.",
-      "renameWithHotkey": "Ailenwi (F2)"
+      "renameWithHotkey": "Ailenwi (F2)",
+      "setAsCrossProfileSource": "Gosod fel ffynhonnell Cross-Profile",
+      "setAsCrossProfileDestination": "Gosod fel cyrchfan Cross-Profile",
+      "crossProfileSourceSelected": "Wedi'i ddewis fel ffynhonnell Cross-Profile",
+      "crossProfileDestinationSelected": "Wedi'i ddewis fel cyrchfan Cross-Profile",
+      "crossProfileOpenWithSource": "Agor Cross-Profile Transfer (ffynhonnell yn barod)",
+      "crossProfileOpenWithPair": "Agor Cross-Profile Transfer (ffynhonnell + cyrchfan yn barod)"
     },
     "gitlab": {
       "projectPath": "Llwybr y prosiect",

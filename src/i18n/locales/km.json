@@ -3988,7 +3988,13 @@
         "mediaServices": "សេវាកម្មមេឌៀ"
       },
       "confirmDeleteServer": "លុបម៉ាស៊ីនមេ \"{name}\"? វានឹងលុបព័ត៌មានសម្ងាត់ដែលបានរក្សាទុក ហើយមិនអាចត្រឡប់វិញបានទេ។",
-      "renameWithHotkey": "ប្តូរឈ្មោះ (F2)"
+      "renameWithHotkey": "ប្តូរឈ្មោះ (F2)",
+      "setAsCrossProfileSource": "កំណត់ជាប្រភព Cross-Profile",
+      "setAsCrossProfileDestination": "កំណត់ជាគោលដៅ Cross-Profile",
+      "crossProfileSourceSelected": "បានជ្រើសរើសជាប្រភព Cross-Profile",
+      "crossProfileDestinationSelected": "បានជ្រើសរើសជាគោលដៅ Cross-Profile",
+      "crossProfileOpenWithSource": "បើក Cross-Profile Transfer (ប្រភពរួចរាល់)",
+      "crossProfileOpenWithPair": "បើក Cross-Profile Transfer (ប្រភព + គោលដៅរួចរាល់)"
     },
     "gitlab": {
       "projectPath": "ផ្លូវគម្រោង",

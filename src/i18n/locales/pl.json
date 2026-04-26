@@ -3959,7 +3959,13 @@
         "mediaServices": "Usługi multimedialne"
       },
       "confirmDeleteServer": "Usunąć serwer \"{name}\"? Spowoduje to usunięcie zapisanych danych logowania i nie można tego cofnąć.",
-      "renameWithHotkey": "Zmień nazwę (F2)"
+      "renameWithHotkey": "Zmień nazwę (F2)",
+      "setAsCrossProfileSource": "Ustaw jako zrodlo Cross-Profile",
+      "setAsCrossProfileDestination": "Ustaw jako miejsce docelowe Cross-Profile",
+      "crossProfileSourceSelected": "Wybrano jako zrodlo Cross-Profile",
+      "crossProfileDestinationSelected": "Wybrano jako miejsce docelowe Cross-Profile",
+      "crossProfileOpenWithSource": "Otworz Cross-Profile Transfer (zrodlo gotowe)",
+      "crossProfileOpenWithPair": "Otworz Cross-Profile Transfer (zrodlo + miejsce docelowe gotowe)"
     },
     "gitlab": {
       "projectPath": "Sciezka projektu",

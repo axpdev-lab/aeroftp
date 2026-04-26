@@ -3959,7 +3959,13 @@
         "mediaServices": "媒体服务"
       },
       "confirmDeleteServer": "删除服务器 \"{name}\"？这将移除已保存的凭据，且无法撤销。",
-      "renameWithHotkey": "重命名 (F2)"
+      "renameWithHotkey": "重命名 (F2)",
+      "setAsCrossProfileSource": "设为 Cross-Profile 源",
+      "setAsCrossProfileDestination": "设为 Cross-Profile 目标",
+      "crossProfileSourceSelected": "已选为 Cross-Profile 源",
+      "crossProfileDestinationSelected": "已选为 Cross-Profile 目标",
+      "crossProfileOpenWithSource": "打开 Cross-Profile Transfer（源已就绪）",
+      "crossProfileOpenWithPair": "打开 Cross-Profile Transfer（源 + 目标已就绪）"
     },
     "gitlab": {
       "projectPath": "项目路径",

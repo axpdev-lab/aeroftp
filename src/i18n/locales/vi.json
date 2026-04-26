@@ -3969,7 +3969,13 @@
         "mediaServices": "Dịch vụ Phương tiện"
       },
       "confirmDeleteServer": "Xóa máy chủ \"{name}\"? Thao tác này sẽ xóa thông tin xác thực đã lưu và không thể hoàn tác.",
-      "renameWithHotkey": "Đổi tên (F2)"
+      "renameWithHotkey": "Đổi tên (F2)",
+      "setAsCrossProfileSource": "Dat lam nguon Cross-Profile",
+      "setAsCrossProfileDestination": "Dat lam dich Cross-Profile",
+      "crossProfileSourceSelected": "Da chon lam nguon Cross-Profile",
+      "crossProfileDestinationSelected": "Da chon lam dich Cross-Profile",
+      "crossProfileOpenWithSource": "Mo Cross-Profile Transfer (nguon san sang)",
+      "crossProfileOpenWithPair": "Mo Cross-Profile Transfer (nguon + dich san sang)"
     },
     "gitlab": {
       "projectPath": "Duong dan du an",

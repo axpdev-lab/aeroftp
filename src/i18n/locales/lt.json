@@ -3969,7 +3969,13 @@
         "mediaServices": "Medijos paslaugos"
       },
       "confirmDeleteServer": "Ištrinti serverį \"{name}\"? Tai pašalins išsaugotus kredencialus ir negalės būti atšaukta.",
-      "renameWithHotkey": "Pervadinti (F2)"
+      "renameWithHotkey": "Pervadinti (F2)",
+      "setAsCrossProfileSource": "Nustatyti kaip Cross-Profile šaltinį",
+      "setAsCrossProfileDestination": "Nustatyti kaip Cross-Profile paskirties vietą",
+      "crossProfileSourceSelected": "Pasirinkta kaip Cross-Profile šaltinis",
+      "crossProfileDestinationSelected": "Pasirinkta kaip Cross-Profile paskirties vieta",
+      "crossProfileOpenWithSource": "Atidaryti Cross-Profile Transfer (šaltinis paruoštas)",
+      "crossProfileOpenWithPair": "Atidaryti Cross-Profile Transfer (šaltinis + paskirties vieta paruošti)"
     },
     "gitlab": {
       "projectPath": "Projekto kelias",

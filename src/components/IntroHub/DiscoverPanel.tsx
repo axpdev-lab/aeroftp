@@ -158,8 +158,10 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
 
     return (
         <div className="h-full flex gap-4">
-            {/* Category Sidebar */}
-            <div className="w-52 shrink-0 space-y-1">
+            {/* Category Sidebar — min stays at the original 13rem (~208px); on wider
+                windows it grows modestly (capped at 17rem) so longer category labels
+                stay readable without dominating the layout. */}
+            <div className="shrink-0 space-y-1" style={{ width: 'clamp(13rem, 16vw, 17rem)' }}>
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-3 py-2">
                     {t('introHub.discoverTitle')}
                 </div>
@@ -244,7 +246,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                             <p className="text-sm">{t('introHub.noResults')}</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2">
                             {activeItems.map((item) => (
                                 <ServiceCard
                                     key={item.id}

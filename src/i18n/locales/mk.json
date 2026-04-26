@@ -3988,7 +3988,13 @@
         "mediaServices": "Медиумски услуги"
       },
       "confirmDeleteServer": "Да се избрише серверот \"{name}\"? Ова ги отстранува зачуваните ингеренции и не може да се поништи.",
-      "renameWithHotkey": "Преименувај (F2)"
+      "renameWithHotkey": "Преименувај (F2)",
+      "setAsCrossProfileSource": "Постави како Cross-Profile извор",
+      "setAsCrossProfileDestination": "Постави како Cross-Profile дестинација",
+      "crossProfileSourceSelected": "Избрано како Cross-Profile извор",
+      "crossProfileDestinationSelected": "Избрано како Cross-Profile дестинација",
+      "crossProfileOpenWithSource": "Отвори Cross-Profile Transfer (изворот е подготвен)",
+      "crossProfileOpenWithPair": "Отвори Cross-Profile Transfer (изворот + дестинацијата се подготвени)"
     },
     "gitlab": {
       "projectPath": "Патека на проект",

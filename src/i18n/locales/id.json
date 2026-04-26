@@ -3969,7 +3969,13 @@
         "mediaServices": "Layanan Media"
       },
       "confirmDeleteServer": "Hapus server \"{name}\"? Ini akan menghapus kredensial yang tersimpan dan tidak dapat dibatalkan.",
-      "renameWithHotkey": "Ganti nama (F2)"
+      "renameWithHotkey": "Ganti nama (F2)",
+      "setAsCrossProfileSource": "Tetapkan sebagai sumber Cross-Profile",
+      "setAsCrossProfileDestination": "Tetapkan sebagai tujuan Cross-Profile",
+      "crossProfileSourceSelected": "Dipilih sebagai sumber Cross-Profile",
+      "crossProfileDestinationSelected": "Dipilih sebagai tujuan Cross-Profile",
+      "crossProfileOpenWithSource": "Buka Cross-Profile Transfer (sumber siap)",
+      "crossProfileOpenWithPair": "Buka Cross-Profile Transfer (sumber + tujuan siap)"
     },
     "gitlab": {
       "projectPath": "Jalur Proyek",

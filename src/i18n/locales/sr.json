@@ -3969,7 +3969,13 @@
         "mediaServices": "Медијски сервиси"
       },
       "confirmDeleteServer": "Обрисати сервер \"{name}\"? Ово уклања сачуване акредитиве и не може се поништити.",
-      "renameWithHotkey": "Преименуј (F2)"
+      "renameWithHotkey": "Преименуј (F2)",
+      "setAsCrossProfileSource": "Постави као извор Cross-Profile",
+      "setAsCrossProfileDestination": "Постави као одредиште Cross-Profile",
+      "crossProfileSourceSelected": "Изабрано као извор Cross-Profile",
+      "crossProfileDestinationSelected": "Изабрано као одредиште Cross-Profile",
+      "crossProfileOpenWithSource": "Отвори Cross-Profile Transfer (извор спреман)",
+      "crossProfileOpenWithPair": "Отвори Cross-Profile Transfer (извор + одредиште спремни)"
     },
     "gitlab": {
       "projectPath": "Путања пројекта",

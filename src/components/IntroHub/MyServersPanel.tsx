@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -95,6 +95,8 @@ interface MyServersPanelProps {
     lastUpdate?: number;
     onOpenExportImport?: () => void;
     onServersChange?: (count: number) => void;
+    /** Open the Cross-Profile Transfer modal. Pre-fills source/destination when provided. */
+    onOpenCrossProfile?: (opts?: { sourceId?: string; sourcePath?: string; destId?: string; destPath?: string }) => void;
 }
 
 export function MyServersPanel({
@@ -104,6 +106,7 @@ export function MyServersPanel({
     lastUpdate,
     onOpenExportImport,
     onServersChange,
+    onOpenCrossProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
     const [servers, setServers] = useState<ServerProfile[]>([]);
@@ -131,6 +134,8 @@ export function MyServersPanel({
         } catch { return new Set(); }
     });
     const [renamingId, setRenamingId] = useState<string | null>(null);
+    // Cross-Profile selection: ephemeral, max 2. selection[0] = source, selection[1] = destination.
+    const [crossProfileSelection, setCrossProfileSelection] = useState<string[]>([]);
     const hoveredServerRef = useRef<ServerProfile | null>(null);
     const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
@@ -175,8 +180,51 @@ export function MyServersPanel({
 
     const handleToggleFavorite = useCallback((s: ServerProfile) => toggleFavorite(s.id), [toggleFavorite]);
 
-    // Drag & reorder: only works on full list (no search/filter active)
-    const canDrag = !searchQuery.trim() && activeFilter === 'all';
+    // Toggle a server in the Cross-Profile selection. Max 2: when full and a
+    // new server is clicked, drop the oldest (FIFO) so the latest click always
+    // becomes part of the pair.
+    const toggleCrossProfileSelection = useCallback((serverId: string) => {
+        setCrossProfileSelection(prev => {
+            if (prev.includes(serverId)) return prev.filter(id => id !== serverId);
+            if (prev.length >= 2) return [prev[1], serverId];
+            return [...prev, serverId];
+        });
+    }, []);
+
+    const setAsCrossProfileSource = useCallback((serverId: string) => {
+        setCrossProfileSelection(prev => {
+            const others = prev.filter(id => id !== serverId);
+            return [serverId, ...others].slice(0, 2);
+        });
+    }, []);
+
+    const setAsCrossProfileDestination = useCallback((serverId: string) => {
+        setCrossProfileSelection(prev => {
+            const others = prev.filter(id => id !== serverId);
+            // If nothing else is selected, leave dest at index 1 by padding with
+            // a sentinel-free shape: keep the array length 1 with this id at [1]
+            // is awkward; simpler — make it [otherFirst, serverId] when one
+            // other exists, else [serverId] (which means it becomes source).
+            if (others.length === 0) return [serverId];
+            return [others[0], serverId];
+        });
+    }, []);
+
+    const handleSelectServer = useCallback((s: ServerProfile) => toggleCrossProfileSelection(s.id), [toggleCrossProfileSelection]);
+
+    const handleOpenCrossProfile = useCallback(() => {
+        if (!onOpenCrossProfile) return;
+        onOpenCrossProfile({
+            sourceId: crossProfileSelection[0],
+            destId: crossProfileSelection[1],
+        });
+    }, [onOpenCrossProfile, crossProfileSelection]);
+
+    // Drag & reorder: works in any view (full list, search, or filter chip).
+    // dragIdx/overIdx hold real indices into the full `servers` array — when
+    // a filter is active we resolve the visible card to its real index by id,
+    // so the reorder produces a coherent move in the underlying list.
+    const canDrag = true;
 
     const handleDragStart = useCallback((idx: number) => (e: React.DragEvent) => {
         setDragIdx(idx);
@@ -199,10 +247,13 @@ export function MyServersPanel({
     const handleDrop = useCallback((idx: number) => (e: React.DragEvent) => {
         e.preventDefault();
         if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
-        // Reorder
         const updated = [...servers];
         const [moved] = updated.splice(dragIdx, 1);
-        updated.splice(idx, 0, moved);
+        // After splice the target index shifts left by one when the moved item
+        // was earlier in the array — adjust so the dropped card lands where the
+        // user actually pointed.
+        const target = dragIdx < idx ? idx - 1 : idx;
+        updated.splice(target, 0, moved);
         setServers(updated);
         secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
         setDragIdx(null);
@@ -308,7 +359,7 @@ export function MyServersPanel({
                 setServers(updated);
                 secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
 
-                await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId }, server.initialPath, server.localInitialPath);
+                await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
             } catch (e) {
                 logger.error('OAuth connection failed', e);
             } finally {
@@ -346,7 +397,7 @@ export function MyServersPanel({
                 setServers(updated);
                 secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
 
-                await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId }, server.initialPath, server.localInitialPath);
+                await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
             } catch (e) {
                 logger.error('4shared connection failed', e);
             } finally {
@@ -383,6 +434,7 @@ export function MyServersPanel({
                 displayName: server.name,
                 options: server.options,
                 providerId: server.providerId,
+                savedServerId: server.id,
             }, server.initialPath, server.localInitialPath);
         } catch (e) {
             logger.error('Connection failed', e);
@@ -465,11 +517,26 @@ export function MyServersPanel({
             { label: t('introHub.renameWithHotkey'), icon: <PencilLine size={14} />, action: () => handleRenameStart(server) },
             { label: t('common.duplicate'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
             { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: <Star size={14} />, action: () => toggleFavorite(server.id) },
+        ];
+        if (onOpenCrossProfile) {
+            items.push({
+                label: t('introHub.setAsCrossProfileSource'),
+                icon: <ArrowUpRight size={14} className="text-indigo-500" />,
+                action: () => setAsCrossProfileSource(server.id),
+                divider: true,
+            });
+            items.push({
+                label: t('introHub.setAsCrossProfileDestination'),
+                icon: <ArrowDownLeft size={14} className="text-emerald-500" />,
+                action: () => setAsCrossProfileDestination(server.id),
+            });
+        }
+        items.push(
             { label: t('healthCheck.title'), icon: <Activity size={14} />, action: () => setHealthCheckTarget(server.id), divider: true },
             { label: t('common.delete'), icon: <Trash2 size={14} />, action: () => handleDelete(server), danger: true },
-        ];
+        );
         showContextMenu(e, items);
-    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu]);
+    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination]);
 
     return (
         <div className="h-full flex flex-col">
@@ -487,6 +554,8 @@ export function MyServersPanel({
                 chipCounts={chipCounts}
                 onOpenExportImport={onOpenExportImport}
                 onHealthCheck={() => setHealthCheckTarget('all')}
+                onOpenCrossProfile={onOpenCrossProfile ? handleOpenCrossProfile : undefined}
+                crossProfileSelectionCount={crossProfileSelection.length}
             />
 
             {filteredServers.length === 0 ? (
@@ -519,9 +588,17 @@ export function MyServersPanel({
                     className="flex-1 overflow-y-auto pr-3 custom-scroll-area"
                     style={{ willChange: 'scroll-position', transform: 'translateZ(0)' }}
                 >
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" style={{ contain: 'layout style' }}>
-                        {filteredServers.map((server, idx) => {
-                            const realIdx = canDrag ? idx : -1;
+                    <div
+                        className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 p-1"
+                        style={{ contain: 'layout style' }}
+                    >
+                        {filteredServers.map((server) => {
+                            // Resolve the real index in the full `servers` array so drag-reorder
+                            // works correctly even with a filter or search applied.
+                            const realIdx = servers.findIndex(s => s.id === server.id);
+                            const selectionIndex = crossProfileSelection.indexOf(server.id);
+                            const selectionRole: 'source' | 'destination' | null =
+                                selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
                             return (
                                 <ServerCard
                                     key={server.id}
@@ -548,6 +625,8 @@ export function MyServersPanel({
                                     onDragOver={canDrag ? handleDragOver(realIdx) : undefined}
                                     onDrop={canDrag ? handleDrop(realIdx) : undefined}
                                     onDragEnd={canDrag ? handleDragEnd : undefined}
+                                    selectionRole={selectionRole}
+                                    onSelect={handleSelectServer}
                                 />
                             );
                         })}
@@ -559,7 +638,10 @@ export function MyServersPanel({
                     className="flex-1 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 custom-scroll-area"
                 >
                     {filteredServers.map((server, idx) => {
-                        const realIdx = canDrag ? idx : -1;
+                        const realIdx = servers.findIndex(s => s.id === server.id);
+                        const selectionIndex = crossProfileSelection.indexOf(server.id);
+                        const selectionRole: 'source' | 'destination' | null =
+                            selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
                         return (
                             <ServerCard
                                 key={server.id}
@@ -587,6 +669,8 @@ export function MyServersPanel({
                                 onDragOver={canDrag ? handleDragOver(realIdx) : undefined}
                                 onDrop={canDrag ? handleDrop(realIdx) : undefined}
                                 onDragEnd={canDrag ? handleDragEnd : undefined}
+                                selectionRole={selectionRole}
+                                onSelect={handleSelectServer}
                             />
                         );
                     })}

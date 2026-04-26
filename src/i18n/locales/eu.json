@@ -3988,7 +3988,13 @@
         "mediaServices": "Multimedia zerbitzuak"
       },
       "confirmDeleteServer": "\"{name}\" zerbitzaria ezabatu? Honek gordetako kredentzialak kentzen ditu eta ezin da desegin.",
-      "renameWithHotkey": "Berrizendatu (F2)"
+      "renameWithHotkey": "Berrizendatu (F2)",
+      "setAsCrossProfileSource": "Ezarri Cross-Profile iturburu gisa",
+      "setAsCrossProfileDestination": "Ezarri Cross-Profile helburu gisa",
+      "crossProfileSourceSelected": "Cross-Profile iturburu gisa hautatua",
+      "crossProfileDestinationSelected": "Cross-Profile helburu gisa hautatua",
+      "crossProfileOpenWithSource": "Ireki Cross-Profile Transfer (iturburua prest)",
+      "crossProfileOpenWithPair": "Ireki Cross-Profile Transfer (iturburua + helburua prest)"
     },
     "gitlab": {
       "projectPath": "Proiektuaren bidea",

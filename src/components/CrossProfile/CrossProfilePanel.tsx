@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { ArrowLeftRight, ArrowRight, ArrowRightLeft, Play, RefreshCw, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowRightLeft, ArrowUpRight, Play, RefreshCw, X } from 'lucide-react';
 import { ServerProfile, TransferEvent } from '../../types';
 import { useTranslation } from '../../i18n';
 import { secureGetWithFallback } from '../../utils/secureStorage';
@@ -53,6 +53,10 @@ interface CrossProfilePanelProps {
     initialSourceProfileId?: string;
     /** Optional source path to seed the source input (typically the current remote path). */
     initialSourcePath?: string;
+    /** Profile id to pre-select as the destination (e.g. second selection from My Servers). */
+    initialDestProfileId?: string;
+    /** Optional destination path to seed the destination input. */
+    initialDestPath?: string;
 }
 
 interface ProfileRailProps {
@@ -61,6 +65,8 @@ interface ProfileRailProps {
     selected: ServerProfile | null;
     onSelect: (profile: ServerProfile) => void;
     emptyMessage: string;
+    /** Selection role for this rail. Drives the arrow icon shown on the selected card. */
+    role: 'source' | 'destination';
 }
 
 const ProfileIcon: React.FC<{ profile: ServerProfile }> = ({ profile }) => {
@@ -90,57 +96,84 @@ const ProfileIcon: React.FC<{ profile: ServerProfile }> = ({ profile }) => {
     );
 };
 
-const ProfileRail: React.FC<ProfileRailProps> = ({ title, profiles, selected, onSelect, emptyMessage }) => (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {title}
-            </span>
-            {selected && (
-                <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
-                    {selected.name}
+const ProfileRail: React.FC<ProfileRailProps> = ({ title, profiles, selected, onSelect, emptyMessage, role }) => {
+    // Match the indicator colors used in MyServersPanel/ServerCard:
+    // indigo for source (outgoing arrow ↗), emerald for destination (incoming arrow ↙).
+    const isSource = role === 'source';
+    const selectedRing = isSource
+        ? 'bg-indigo-50 ring-1 ring-indigo-500 dark:bg-indigo-900/30 dark:ring-indigo-400'
+        : 'bg-emerald-50 ring-1 ring-emerald-500 dark:bg-emerald-900/30 dark:ring-emerald-400';
+    const badgeClass = isSource
+        ? 'bg-indigo-500 text-white ring-1 ring-indigo-400/60'
+        : 'bg-emerald-500 text-white ring-1 ring-emerald-400/60';
+    const Arrow = isSource ? ArrowUpRight : ArrowDownLeft;
+    // Promote the selected profile to the top of the rail so it is always
+    // visible without scrolling, both when the modal opens with an
+    // auto-prefilled selection and after a manual click in the rail itself.
+    const orderedProfiles = useMemo(() => {
+        if (!selected) return profiles;
+        const idx = profiles.findIndex(p => p.id === selected.id);
+        if (idx <= 0) return profiles;
+        return [profiles[idx], ...profiles.slice(0, idx), ...profiles.slice(idx + 1)];
+    }, [profiles, selected]);
+    return (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {title}
                 </span>
-            )}
-        </div>
-        <div className="max-h-60 overflow-y-auto p-2 space-y-1">
-            {profiles.map((profile) => {
-                const isSelected = selected?.id === profile.id;
-                return (
-                    <button
-                        key={profile.id}
-                        type="button"
-                        onClick={() => onSelect(profile)}
-                        className={`w-full rounded-lg px-2 py-2 text-left transition flex items-center gap-3 ${
-                            isSelected
-                                ? 'bg-blue-50 ring-1 ring-blue-500 dark:bg-blue-900/30 dark:ring-blue-400'
-                                : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                        }`}
-                    >
-                        <ProfileIcon profile={profile} />
-                        <div className="min-w-0 flex-1">
-                            <div className="font-medium flex items-center gap-2">
-                                <span className="truncate text-sm text-gray-900 dark:text-white">{profile.name}</span>
-                                <span className="text-xs px-1.5 py-0.5 rounded font-medium uppercase bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">
-                                    {profile.protocol || 'ftp'}
+                {selected && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
+                        {selected.name}
+                    </span>
+                )}
+            </div>
+            <div className="max-h-60 overflow-y-auto p-2 space-y-1">
+                {orderedProfiles.map((profile) => {
+                    const isSelected = selected?.id === profile.id;
+                    return (
+                        <button
+                            key={profile.id}
+                            type="button"
+                            onClick={() => onSelect(profile)}
+                            className={`relative w-full rounded-lg px-2 py-2 text-left transition flex items-center gap-3 ${
+                                isSelected ? selectedRing : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                            }`}
+                        >
+                            <ProfileIcon profile={profile} />
+                            {isSelected && (
+                                <span
+                                    className={`absolute -top-1.5 -left-1.5 flex items-center justify-center w-5 h-5 rounded-full shadow ${badgeClass}`}
+                                    aria-hidden="true"
+                                >
+                                    <Arrow size={12} strokeWidth={2.5} />
                                 </span>
-                            </div>
-                            {profile.initialPath?.trim() && (
-                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                    {profile.initialPath.trim()}
-                                </div>
                             )}
-                        </div>
-                    </button>
-                );
-            })}
-            {profiles.length === 0 && (
-                <div className="rounded-lg border border-dashed border-gray-300 px-3 py-4 text-center text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
-                    {emptyMessage}
-                </div>
-            )}
+                            <div className="min-w-0 flex-1">
+                                <div className="font-medium flex items-center gap-2">
+                                    <span className="truncate text-sm text-gray-900 dark:text-white">{profile.name}</span>
+                                    <span className="text-xs px-1.5 py-0.5 rounded font-medium uppercase bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">
+                                        {profile.protocol || 'ftp'}
+                                    </span>
+                                </div>
+                                {profile.initialPath?.trim() && (
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                        {profile.initialPath.trim()}
+                                    </div>
+                                )}
+                            </div>
+                        </button>
+                    );
+                })}
+                {profiles.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-gray-300 px-3 py-4 text-center text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                        {emptyMessage}
+                    </div>
+                )}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 const TransferBarsSpinner: React.FC<{ className?: string }> = ({ className = 'h-6 w-6' }) => (
     <svg
@@ -169,7 +202,7 @@ const TransferBarsSpinner: React.FC<{ className?: string }> = ({ className = 'h-
     </svg>
 );
 
-export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, initialSourceProfileId, initialSourcePath }) => {
+export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, initialSourceProfileId, initialSourcePath, initialDestProfileId, initialDestPath }) => {
     const t = useTranslation();
     const [profiles, setProfiles] = useState<ServerProfile[]>([]);
     const [sourceProfile, setSourceProfile] = useState<ServerProfile | null>(null);
@@ -200,10 +233,11 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     const executeStartRef = useRef<number | null>(null);
     const speedHistoryRef = useRef<number[]>([]);
 
-    // Skip the auto-reset of sourcePath on the first render after seeding from
-    // the active connection — otherwise the second useEffect would overwrite
-    // the seeded `initialSourcePath` with the profile's default.
+    // Skip the auto-reset of source/dest path on the first render after seeding —
+    // otherwise the second useEffect would overwrite the seeded path with the
+    // profile's default.
     const seededSourceRef = useRef(false);
+    const seededDestRef = useRef(false);
 
     useEffect(() => {
         (async () => {
@@ -221,6 +255,14 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                         setSourcePath(initialSourcePath?.trim() || getDefaultRemotePath(match));
                     }
                 }
+                if (initialDestProfileId && initialDestProfileId !== initialSourceProfileId) {
+                    const match = saved.find((p) => p.id === initialDestProfileId);
+                    if (match) {
+                        seededDestRef.current = true;
+                        setDestProfile(match);
+                        setDestPath(initialDestPath?.trim() || getDefaultRemotePath(match));
+                    }
+                }
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -236,9 +278,12 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     }, [sourceProfile]);
 
     useEffect(() => {
-        if (destProfile) {
-            setDestPath(getDefaultRemotePath(destProfile));
+        if (!destProfile) return;
+        if (seededDestRef.current) {
+            seededDestRef.current = false;
+            return;
         }
+        setDestPath(getDefaultRemotePath(destProfile));
     }, [destProfile]);
 
     const sourceChoices = useMemo(
@@ -533,6 +578,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                     selected={sourceProfile}
                                     onSelect={setSourceProfile}
                                     emptyMessage={t('transfer.crossProfile.noProfiles')}
+                                    role="source"
                                 />
                                 <ProfileRail
                                     title={t('transfer.crossProfile.destinationProfile')}
@@ -540,6 +586,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                     selected={destProfile}
                                     onSelect={setDestProfile}
                                     emptyMessage={t('transfer.crossProfile.noProfiles')}
+                                    role="destination"
                                 />
                             </div>
 

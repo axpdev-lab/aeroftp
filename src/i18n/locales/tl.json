@@ -3988,7 +3988,13 @@
         "mediaServices": "Mga Serbisyo ng Media"
       },
       "confirmDeleteServer": "Burahin ang server na \"{name}\"? Aalisin nito ang mga naka-save na kredensyal at hindi ito maaaring ibalik.",
-      "renameWithHotkey": "Palitan ang pangalan (F2)"
+      "renameWithHotkey": "Palitan ang pangalan (F2)",
+      "setAsCrossProfileSource": "Itakda bilang pinagmulan ng Cross-Profile",
+      "setAsCrossProfileDestination": "Itakda bilang patutunguhan ng Cross-Profile",
+      "crossProfileSourceSelected": "Napili bilang pinagmulan ng Cross-Profile",
+      "crossProfileDestinationSelected": "Napili bilang patutunguhan ng Cross-Profile",
+      "crossProfileOpenWithSource": "Buksan ang Cross-Profile Transfer (handa na ang pinagmulan)",
+      "crossProfileOpenWithPair": "Buksan ang Cross-Profile Transfer (handa na ang pinagmulan + patutunguhan)"
     },
     "gitlab": {
       "projectPath": "Path ng Project",

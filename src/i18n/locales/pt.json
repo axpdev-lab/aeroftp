@@ -3959,7 +3959,13 @@
         "mediaServices": "Serviços de Mídia"
       },
       "confirmDeleteServer": "Excluir o servidor \"{name}\"? Isso remove as credenciais salvas e não pode ser desfeito.",
-      "renameWithHotkey": "Renomear (F2)"
+      "renameWithHotkey": "Renomear (F2)",
+      "setAsCrossProfileSource": "Definir como origem Cross-Profile",
+      "setAsCrossProfileDestination": "Definir como destino Cross-Profile",
+      "crossProfileSourceSelected": "Selecionado como origem Cross-Profile",
+      "crossProfileDestinationSelected": "Selecionado como destino Cross-Profile",
+      "crossProfileOpenWithSource": "Abrir Cross-Profile Transfer (origem pronta)",
+      "crossProfileOpenWithPair": "Abrir Cross-Profile Transfer (origem + destino prontos)"
     },
     "gitlab": {
       "projectPath": "Caminho do projeto",

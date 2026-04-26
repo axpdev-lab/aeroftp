@@ -424,7 +424,14 @@ const App: React.FC = () => {
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
-  const [showCrossProfilePanel, setShowCrossProfilePanel] = useState(false);
+  // false → closed; object → open with optional pre-selection (sourceId/destId/sourcePath/destPath).
+  // An empty object {} opens the panel with no overrides (active connection seeds source if connected).
+  const [showCrossProfilePanel, setShowCrossProfilePanel] = useState<false | {
+    sourceId?: string;
+    sourcePath?: string;
+    destId?: string;
+    destPath?: string;
+  }>(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
   const [showZohoTrash, setShowZohoTrash] = useState(false);
   const [showGDriveComment, setShowGDriveComment] = useState<{ path: string; name: string } | null>(null);
@@ -2794,6 +2801,7 @@ interface UpdateVerificationInfo {
           password: effectiveParams.password,
           options: effectiveParams.options,
           providerId: effectiveParams.providerId,
+          savedServerId: effectiveParams.savedServerId,
         };
         createSession(
           providerName,
@@ -2924,6 +2932,7 @@ interface UpdateVerificationInfo {
     const newSession: FtpSession = {
       id: `session_${Date.now()}`,
       serverId: serverName,
+      savedServerId: paramsCopy.savedServerId,
       serverName,
       status: 'connected',
       remotePath,
@@ -6663,7 +6672,7 @@ interface UpdateVerificationInfo {
       items.push({
         label: 'Cross-Profile Transfer',
         icon: <ArrowRight size={14} className="text-indigo-500" />,
-        action: () => setShowCrossProfilePanel(true),
+        action: () => setShowCrossProfilePanel({}),
       });
     }
 
@@ -7646,13 +7655,20 @@ interface UpdateVerificationInfo {
         {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} />}
         {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && <RcloneCryptUnlock onClose={() => setShowRcloneCryptUnlock(false)} />}
-        {showCrossProfilePanel && (
-          <CrossProfilePanel
-            onClose={() => setShowCrossProfilePanel(false)}
-            initialSourceProfileId={isConnected ? sessions.find(s => s.id === activeSessionId)?.serverId : undefined}
-            initialSourcePath={isConnected ? currentRemotePath : undefined}
-          />
-        )}
+        {showCrossProfilePanel && (() => {
+          const activeSavedId = isConnected ? sessions.find(s => s.id === activeSessionId)?.savedServerId : undefined;
+          const sourceId = showCrossProfilePanel.sourceId ?? activeSavedId;
+          const sourcePath = showCrossProfilePanel.sourcePath ?? (isConnected && activeSavedId ? currentRemotePath : undefined);
+          return (
+            <CrossProfilePanel
+              onClose={() => setShowCrossProfilePanel(false)}
+              initialSourceProfileId={sourceId}
+              initialSourcePath={sourcePath}
+              initialDestProfileId={showCrossProfilePanel.destId}
+              initialDestPath={showCrossProfilePanel.destPath}
+            />
+          );
+        })()}
         {archiveBrowserState && (
           <ArchiveBrowser
             archivePath={archiveBrowserState.path}
@@ -7945,7 +7961,7 @@ interface UpdateVerificationInfo {
               isAeroCloudConnected={isCloudActive}
               isAeroCloudPaused={isCloudPaused}
               onAeroFile={handleToggleAeroFile}
-              onOpenCrossProfile={() => setShowCrossProfilePanel(true)}
+              onOpenCrossProfile={(opts) => setShowCrossProfilePanel(opts ?? {})}
               onSavedServerConnect={async (params, initialPath, localInitialPath) => {
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
@@ -8582,7 +8598,7 @@ interface UpdateVerificationInfo {
                     )}
                     {isConnected && (
                       <button
-                        onClick={() => setShowCrossProfilePanel(true)}
+                        onClick={() => setShowCrossProfilePanel({})}
                         className="flex-shrink-0 p-1.5 rounded text-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
                         title="Cross-Profile Transfer"
                       >

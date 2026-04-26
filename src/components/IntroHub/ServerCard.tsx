@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Folder, HardDrive, Check, X } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Folder, HardDrive, Check, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -122,6 +122,10 @@ interface ServerCardProps {
     onDragOver?: (e: React.DragEvent) => void;
     onDrop?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
+    /** Cross-Profile Transfer selection role for this card. */
+    selectionRole?: 'source' | 'destination' | null;
+    /** Toggles this server in the Cross-Profile selection. Triggered by clicking the card body. */
+    onSelect?: (server: ServerProfile) => void;
 }
 
 function RenameInput({
@@ -242,12 +246,36 @@ export const ServerCard = React.memo(function ServerCard({
     onDragOver,
     onDrop,
     onDragEnd,
+    selectionRole = null,
+    onSelect,
 }: ServerCardProps) {
     const t = useTranslation();
     const proto = server.protocol || 'ftp';
     const timeAgo = getTimeAgo(server.lastConnected);
     const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
     const handleMouseLeave = onHoverChange ? () => onHoverChange(null) : undefined;
+    // Card body click toggles cross-profile selection — but only when the click
+    // didn't bubble from an interactive child (icon/button/input) which already
+    // calls e.stopPropagation() in its own handler.
+    const handleCardClick = onSelect ? (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('button, input, a, [role="menuitem"]')) return;
+        onSelect(server);
+    } : undefined;
+    const isSource = selectionRole === 'source';
+    const isDestination = selectionRole === 'destination';
+    const isSelected = isSource || isDestination;
+    // Selection ring colors: indigo for source (outgoing), emerald for destination (incoming).
+    const selectionRingClass = isSource
+        ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 border-indigo-300 dark:border-indigo-500/50'
+        : isDestination
+            ? 'ring-2 ring-emerald-500 dark:ring-emerald-400 border-emerald-300 dark:border-emerald-500/50'
+            : '';
+    const selectionTitle = isSource
+        ? t('introHub.crossProfileSourceSelected')
+        : isDestination
+            ? t('introHub.crossProfileDestinationSelected')
+            : '';
 
     const subtitle = React.useMemo(() => {
         const shouldMask = credentialsMasked && server.protocol !== 'github';
@@ -273,15 +301,27 @@ export const ServerCard = React.memo(function ServerCard({
                 onDragOver={onDragOver}
                 onDrop={onDrop}
                 onDragEnd={onDragEnd}
-                className={`group flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 transition-colors ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''}`}
+                onClick={handleCardClick}
+                className={`group flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 transition-colors ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''} ${selectionRingClass}`}
                 onContextMenu={(e) => onContextMenu?.(e, server)}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
+                title={selectionTitle || undefined}
             >
                 {/* Drag handle */}
                 {isDraggable && (
                     <div className="text-gray-400 opacity-0 group-hover:opacity-60 shrink-0 -ml-1">
                         <GripVertical size={14} />
+                    </div>
+                )}
+                {/* Cross-Profile selection badge */}
+                {isSelected && (
+                    <div className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full ${
+                        isSource
+                            ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-400/40'
+                            : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-400/40'
+                    }`}>
+                        {isSource ? <ArrowUpRight size={11} strokeWidth={2.5} /> : <ArrowDownLeft size={11} strokeWidth={2.5} />}
                     </div>
                 )}
 
@@ -379,11 +419,23 @@ export const ServerCard = React.memo(function ServerCard({
             onDragOver={onDragOver}
             onDrop={onDrop}
             onDragEnd={onDragEnd}
-            className={`group relative bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border rounded-lg p-3.5 transition-colors shadow-sm dark:shadow-md ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-40 scale-[0.97] shadow-lg ring-2 ring-blue-400/50 border-blue-400' : 'border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30'} ${isDragTarget ? '!border-blue-500 !border-2 bg-blue-50 dark:bg-blue-900/30 shadow-inner' : ''}`}
+            onClick={handleCardClick}
+            className={`group relative bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border rounded-lg p-3.5 transition-colors shadow-sm dark:shadow-md ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 scale-[0.97] shadow-lg ring-2 ring-blue-400/50 border-blue-400' : 'border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30'} ${isDragTarget ? '!border-blue-500 !border-2 bg-blue-50 dark:bg-blue-900/30 shadow-inner' : ''} ${selectionRingClass}`}
             onContextMenu={(e) => onContextMenu?.(e, server)}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            title={selectionTitle || undefined}
         >
+            {/* Cross-Profile selection badge (top-left, doesn't overlap actions on the right) */}
+            {isSelected && (
+                <div className={`absolute top-2 left-2 flex items-center justify-center w-5 h-5 rounded-full pointer-events-none ${
+                    isSource
+                        ? 'bg-indigo-500 text-white shadow ring-1 ring-indigo-400/60'
+                        : 'bg-emerald-500 text-white shadow ring-1 ring-emerald-400/60'
+                }`}>
+                    {isSource ? <ArrowUpRight size={12} strokeWidth={2.5} /> : <ArrowDownLeft size={12} strokeWidth={2.5} />}
+                </div>
+            )}
             {/* Top row: clickable icon + name + badge */}
             <div className="flex items-start gap-3">
                 {/* Icon = connect button */}

@@ -3969,7 +3969,13 @@
         "mediaServices": "Medya Hizmetleri"
       },
       "confirmDeleteServer": "\"{name}\" sunucusu silinsin mi? Bu işlem kayıtlı kimlik bilgilerini kaldırır ve geri alınamaz.",
-      "renameWithHotkey": "Yeniden adlandır (F2)"
+      "renameWithHotkey": "Yeniden adlandır (F2)",
+      "setAsCrossProfileSource": "Cross-Profile kaynagi olarak ayarla",
+      "setAsCrossProfileDestination": "Cross-Profile hedefi olarak ayarla",
+      "crossProfileSourceSelected": "Cross-Profile kaynagi olarak secildi",
+      "crossProfileDestinationSelected": "Cross-Profile hedefi olarak secildi",
+      "crossProfileOpenWithSource": "Cross-Profile Transfer'i ac (kaynak hazir)",
+      "crossProfileOpenWithPair": "Cross-Profile Transfer'i ac (kaynak + hedef hazir)"
     },
     "gitlab": {
       "projectPath": "Proje Yolu",

@@ -3969,7 +3969,13 @@
         "mediaServices": "मीडिया सेवाएं"
       },
       "confirmDeleteServer": "सर्वर \"{name}\" हटाएं? इससे सहेजी गई क्रेडेंशियल हट जाएंगी और इसे पूर्ववत नहीं किया जा सकता।",
-      "renameWithHotkey": "नाम बदलें (F2)"
+      "renameWithHotkey": "नाम बदलें (F2)",
+      "setAsCrossProfileSource": "Cross-Profile स्रोत के रूप में सेट करें",
+      "setAsCrossProfileDestination": "Cross-Profile गंतव्य के रूप में सेट करें",
+      "crossProfileSourceSelected": "Cross-Profile स्रोत के रूप में चयनित",
+      "crossProfileDestinationSelected": "Cross-Profile गंतव्य के रूप में चयनित",
+      "crossProfileOpenWithSource": "Cross-Profile Transfer खोलें (स्रोत तैयार)",
+      "crossProfileOpenWithPair": "Cross-Profile Transfer खोलें (स्रोत + गंतव्य तैयार)"
     },
     "gitlab": {
       "projectPath": "प्रोजेक्ट पथ",

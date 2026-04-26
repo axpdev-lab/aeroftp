@@ -3969,7 +3969,13 @@
         "mediaServices": "Multivides pakalpojumi"
       },
       "confirmDeleteServer": "Dzēst serveri \"{name}\"? Tas noņems saglabātos akreditācijas datus un darbību nevar atsaukt.",
-      "renameWithHotkey": "Pārdēvēt (F2)"
+      "renameWithHotkey": "Pārdēvēt (F2)",
+      "setAsCrossProfileSource": "Iestatīt kā Cross-Profile avotu",
+      "setAsCrossProfileDestination": "Iestatīt kā Cross-Profile mērķi",
+      "crossProfileSourceSelected": "Atlasīts kā Cross-Profile avots",
+      "crossProfileDestinationSelected": "Atlasīts kā Cross-Profile mērķis",
+      "crossProfileOpenWithSource": "Atvērt Cross-Profile Transfer (avots gatavs)",
+      "crossProfileOpenWithPair": "Atvērt Cross-Profile Transfer (avots + mērķis gatavi)"
     },
     "gitlab": {
       "projectPath": "Projekta ceļš",

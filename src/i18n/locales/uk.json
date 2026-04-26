@@ -3959,7 +3959,13 @@
         "mediaServices": "Медіасервіси"
       },
       "confirmDeleteServer": "Видалити сервер \"{name}\"? Це видалить збережені облікові дані і дію неможливо скасувати.",
-      "renameWithHotkey": "Перейменувати (F2)"
+      "renameWithHotkey": "Перейменувати (F2)",
+      "setAsCrossProfileSource": "Встановити як джерело Cross-Profile",
+      "setAsCrossProfileDestination": "Встановити як призначення Cross-Profile",
+      "crossProfileSourceSelected": "Вибрано як джерело Cross-Profile",
+      "crossProfileDestinationSelected": "Вибрано як призначення Cross-Profile",
+      "crossProfileOpenWithSource": "Відкрити Cross-Profile Transfer (джерело готове)",
+      "crossProfileOpenWithPair": "Відкрити Cross-Profile Transfer (джерело + призначення готові)"
     },
     "gitlab": {
       "projectPath": "Шлях до проєкту",

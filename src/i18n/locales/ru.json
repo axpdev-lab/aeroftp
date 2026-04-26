@@ -3959,7 +3959,13 @@
         "mediaServices": "Медиасервисы"
       },
       "confirmDeleteServer": "Удалить сервер \"{name}\"? Это удалит сохранённые учётные данные и действие нельзя отменить.",
-      "renameWithHotkey": "Переименовать (F2)"
+      "renameWithHotkey": "Переименовать (F2)",
+      "setAsCrossProfileSource": "Установить как источник Cross-Profile",
+      "setAsCrossProfileDestination": "Установить как назначение Cross-Profile",
+      "crossProfileSourceSelected": "Выбрано как источник Cross-Profile",
+      "crossProfileDestinationSelected": "Выбрано как назначение Cross-Profile",
+      "crossProfileOpenWithSource": "Открыть Cross-Profile Transfer (источник готов)",
+      "crossProfileOpenWithPair": "Открыть Cross-Profile Transfer (источник + назначение готовы)"
     },
     "gitlab": {
       "projectPath": "Путь к проекту",

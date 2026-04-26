@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -18,6 +18,10 @@ interface MyServersToolbarProps {
     chipCounts: Record<MyServersFilterBy, number>;
     onOpenExportImport?: () => void;
     onHealthCheck?: () => void;
+    /** Open Cross-Profile Transfer modal (always available — pre-selection optional). */
+    onOpenCrossProfile?: () => void;
+    /** 0/1/2 — drives the 3 brightness states of the cross-profile button. */
+    crossProfileSelectionCount?: number;
 }
 
 export function MyServersToolbar({
@@ -34,8 +38,19 @@ export function MyServersToolbar({
     chipCounts,
     onOpenExportImport,
     onHealthCheck,
+    onOpenCrossProfile,
+    crossProfileSelectionCount = 0,
 }: MyServersToolbarProps) {
     const t = useTranslation();
+    // Cross-Profile button visual states:
+    //  - 0 selected: muted (low contrast) — invites click but doesn't compete with the rest
+    //  - 1 selected: normal indigo accent (matches the existing brand color for cross-profile)
+    //  - 2 selected: saturated + ring + bg — strongest signal; the pair is ready to transfer
+    const cpButtonClass = crossProfileSelectionCount >= 2
+        ? 'bg-indigo-500 text-white ring-2 ring-indigo-400/60 shadow-md hover:bg-indigo-600'
+        : crossProfileSelectionCount === 1
+            ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40'
+            : 'text-indigo-400/70 dark:text-indigo-400/60 hover:bg-indigo-50/60 dark:hover:bg-indigo-900/20 hover:text-indigo-500 dark:hover:text-indigo-300';
 
     return (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -115,6 +130,30 @@ export function MyServersToolbar({
             >
                 {credentialsMasked ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
+
+            {/* Cross-Profile Transfer - always visible, brightness scales with selection */}
+            {onOpenCrossProfile && (
+                <button
+                    onClick={onOpenCrossProfile}
+                    className={`relative p-2 rounded-lg transition-colors ${cpButtonClass}`}
+                    title={
+                        crossProfileSelectionCount === 0 ? t('transfer.crossProfile.title') :
+                        crossProfileSelectionCount === 1 ? t('introHub.crossProfileOpenWithSource') :
+                        t('introHub.crossProfileOpenWithPair')
+                    }
+                >
+                    <ArrowRightLeft size={15} />
+                    {crossProfileSelectionCount > 0 && (
+                        <span className={`absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold leading-4 text-center tabular-nums ${
+                            crossProfileSelectionCount >= 2
+                                ? 'bg-white text-indigo-600 ring-1 ring-indigo-300'
+                                : 'bg-indigo-500 text-white'
+                        }`}>
+                            {crossProfileSelectionCount}
+                        </span>
+                    )}
+                </button>
+            )}
 
             {/* Health Check - emerald like original */}
             {onHealthCheck && serverCount > 0 && (

@@ -3988,7 +3988,13 @@
         "mediaServices": "Margmiðlunarþjónustur"
       },
       "confirmDeleteServer": "Eyða þjóninum \"{name}\"? Þetta fjarlægir vistuð skilríki og er óafturkræft.",
-      "renameWithHotkey": "Endurnefna (F2)"
+      "renameWithHotkey": "Endurnefna (F2)",
+      "setAsCrossProfileSource": "Stilla sem Cross-Profile uppruna",
+      "setAsCrossProfileDestination": "Stilla sem Cross-Profile áfangastað",
+      "crossProfileSourceSelected": "Valið sem Cross-Profile uppruni",
+      "crossProfileDestinationSelected": "Valið sem Cross-Profile áfangastaður",
+      "crossProfileOpenWithSource": "Opna Cross-Profile Transfer (uppruni tilbúinn)",
+      "crossProfileOpenWithPair": "Opna Cross-Profile Transfer (uppruni + áfangastaður tilbúin)"
     },
     "gitlab": {
       "projectPath": "Verkefnisslóð",

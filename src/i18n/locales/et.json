@@ -3969,7 +3969,13 @@
         "mediaServices": "Meediateenused"
       },
       "confirmDeleteServer": "Kustutada server \"{name}\"? See eemaldab salvestatud mandaadid ja seda ei saa tagasi võtta.",
-      "renameWithHotkey": "Nimeta ümber (F2)"
+      "renameWithHotkey": "Nimeta ümber (F2)",
+      "setAsCrossProfileSource": "Määra Cross-Profile allikaks",
+      "setAsCrossProfileDestination": "Määra Cross-Profile sihtkohaks",
+      "crossProfileSourceSelected": "Valitud Cross-Profile allikaks",
+      "crossProfileDestinationSelected": "Valitud Cross-Profile sihtkohaks",
+      "crossProfileOpenWithSource": "Ava Cross-Profile Transfer (allikas valmis)",
+      "crossProfileOpenWithPair": "Ava Cross-Profile Transfer (allikas + sihtkoht valmis)"
     },
     "gitlab": {
       "projectPath": "Projekti tee",

@@ -3969,7 +3969,13 @@
         "mediaServices": "Medijske usluge"
       },
       "confirmDeleteServer": "Izbrisati poslužitelj \"{name}\"? Time se uklanjaju spremljene vjerodajnice i ne može se poništiti.",
-      "renameWithHotkey": "Preimenuj (F2)"
+      "renameWithHotkey": "Preimenuj (F2)",
+      "setAsCrossProfileSource": "Postavi kao Cross-Profile izvor",
+      "setAsCrossProfileDestination": "Postavi kao Cross-Profile odredište",
+      "crossProfileSourceSelected": "Odabrano kao Cross-Profile izvor",
+      "crossProfileDestinationSelected": "Odabrano kao Cross-Profile odredište",
+      "crossProfileOpenWithSource": "Otvori Cross-Profile Transfer (izvor spreman)",
+      "crossProfileOpenWithPair": "Otvori Cross-Profile Transfer (izvor + odredište spremni)"
     },
     "gitlab": {
       "projectPath": "Putanja projekta",

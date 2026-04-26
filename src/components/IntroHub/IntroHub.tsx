@@ -45,7 +45,7 @@ export interface IntroHubProps {
     isAeroCloudConnected?: boolean;
     isAeroCloudPaused?: boolean;
     onOpenCloudPanel?: () => void;
-    onOpenCrossProfile?: () => void;
+    onOpenCrossProfile?: (opts?: { sourceId?: string; sourcePath?: string; destId?: string; destPath?: string }) => void;
     hasExistingSessions?: boolean;
     serversRefreshKey?: number;
     onServersChanged?: () => void;
@@ -294,7 +294,7 @@ export function IntroHub(props: IntroHubProps) {
     const activeFormTab = formTabs.find(ft => ft.id === activeTab);
 
     return (
-        <div className="max-w-7xl w-full mx-auto relative z-10 flex flex-col h-full bg-slate-50/50 dark:bg-gray-800/40 backdrop-blur-md rounded-xl border border-gray-200/50 dark:border-gray-700/50 shadow-2xl overflow-hidden">
+        <div className="w-full relative z-10 flex flex-col h-full bg-slate-50/50 dark:bg-gray-800/40 backdrop-blur-md rounded-xl border border-gray-200/50 dark:border-gray-700/50 shadow-2xl overflow-hidden">
             {/* Tab Header */}
             <IntroHubHeader
                 activeTab={activeTab}
@@ -333,6 +333,7 @@ export function IntroHub(props: IntroHubProps) {
                                 else setPaletteServers([]);
                             } catch { setPaletteServers([]); }
                         }}
+                        onOpenCrossProfile={onOpenCrossProfile}
                     />
                 )}
 

@@ -3969,7 +3969,13 @@
         "mediaServices": "Υπηρεσίες πολυμέσων"
       },
       "confirmDeleteServer": "Διαγραφή διακομιστή \"{name}\"; Αυτό αφαιρεί τα αποθηκευμένα διαπιστευτήρια και δεν μπορεί να αναιρεθεί.",
-      "renameWithHotkey": "Μετονομασία (F2)"
+      "renameWithHotkey": "Μετονομασία (F2)",
+      "setAsCrossProfileSource": "Ορισμός ως πηγή Cross-Profile",
+      "setAsCrossProfileDestination": "Ορισμός ως προορισμός Cross-Profile",
+      "crossProfileSourceSelected": "Επιλέχθηκε ως πηγή Cross-Profile",
+      "crossProfileDestinationSelected": "Επιλέχθηκε ως προορισμός Cross-Profile",
+      "crossProfileOpenWithSource": "Άνοιγμα Cross-Profile Transfer (η πηγή είναι έτοιμη)",
+      "crossProfileOpenWithPair": "Άνοιγμα Cross-Profile Transfer (πηγή + προορισμός έτοιμα)"
     },
     "gitlab": {
       "projectPath": "Διαδρομή Έργου",

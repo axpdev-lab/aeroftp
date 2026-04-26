@@ -3969,7 +3969,13 @@
         "mediaServices": "Medijske storitve"
       },
       "confirmDeleteServer": "Izbrisati strežnik \"{name}\"? S tem se odstranijo shranjene poverilnice in tega ni mogoče razveljaviti.",
-      "renameWithHotkey": "Preimenuj (F2)"
+      "renameWithHotkey": "Preimenuj (F2)",
+      "setAsCrossProfileSource": "Nastavi kot vir Cross-Profile",
+      "setAsCrossProfileDestination": "Nastavi kot cilj Cross-Profile",
+      "crossProfileSourceSelected": "Izbrano kot vir Cross-Profile",
+      "crossProfileDestinationSelected": "Izbrano kot cilj Cross-Profile",
+      "crossProfileOpenWithSource": "Odpri Cross-Profile Transfer (vir pripravljen)",
+      "crossProfileOpenWithPair": "Odpri Cross-Profile Transfer (vir + cilj pripravljena)"
     },
     "gitlab": {
       "projectPath": "Pot projekta",

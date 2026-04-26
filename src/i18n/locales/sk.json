@@ -3969,7 +3969,13 @@
         "mediaServices": "Mediálne služby"
       },
       "confirmDeleteServer": "Odstrániť server \"{name}\"? Týmto sa odstránia uložené prihlasovacie údaje a túto akciu nie je možné vrátiť späť.",
-      "renameWithHotkey": "Premenovať (F2)"
+      "renameWithHotkey": "Premenovať (F2)",
+      "setAsCrossProfileSource": "Nastavit ako zdroj Cross-Profile",
+      "setAsCrossProfileDestination": "Nastavit ako ciel Cross-Profile",
+      "crossProfileSourceSelected": "Vybrane ako zdroj Cross-Profile",
+      "crossProfileDestinationSelected": "Vybrane ako ciel Cross-Profile",
+      "crossProfileOpenWithSource": "Otvorit Cross-Profile Transfer (zdroj pripraveny)",
+      "crossProfileOpenWithPair": "Otvorit Cross-Profile Transfer (zdroj + ciel pripravene)"
     },
     "gitlab": {
       "projectPath": "Cesta k projektu",
