@@ -36,13 +36,15 @@ function ServerBadges({ server }: { server: ServerProfile }) {
         AeroCloud: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
     };
 
+    // Only render the protocol badge when it carries dedicated color (FTP/FTPS/SFTP);
+    // for everything else the colored class badge + provider icon already convey it,
+    // so the gray fallback is just visual noise.
+    const showProtoBadge = isFtps || isSftp || isPlainFtp;
     const badgeClass = isFtps
         ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
         : isSftp
             ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
-            : isPlainFtp
-                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
-                : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300';
+            : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300';
 
     return (
         <div className="flex items-center gap-1 flex-wrap">
@@ -51,11 +53,11 @@ function ServerBadges({ server }: { server: ServerProfile }) {
                       style={{ backgroundColor: '#0083ce22', color: '#0083ce' }}>
                     API OCS
                 </span>
-            ) : (
+            ) : showProtoBadge ? (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${badgeClass}`}>
                     {displayProto}
                 </span>
-            )}
+            ) : null}
             {showClassBadge && server.providerId !== 'felicloud' && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${classBadgeColor[protocolClass] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
                     {protocolClass}
