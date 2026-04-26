@@ -1518,8 +1518,11 @@ impl StorageProvider for WebDavProvider {
             .map_err(ProviderError::IoError)?;
         let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
 
-        // Stream file with Content-Length header (required by some HTTP/1.1 servers)
-        let stream = tokio_util::io::ReaderStream::new(file);
+        // Stream file with Content-Length header (required by some HTTP/1.1 servers).
+        // 256 KiB capacity matches our SFTP default and avoids the 4 KiB read
+        // chunks ReaderStream uses by default, which churn syscalls and bottleneck
+        // local-network throughput.
+        let stream = tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024);
         let body = reqwest::Body::wrap_stream(stream);
 
         let response = self

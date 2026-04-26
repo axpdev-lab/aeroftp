@@ -832,6 +832,10 @@ impl StorageProvider for FtpProvider {
         use suppaftp::types::FileType;
         use tokio::io::AsyncReadExt;
 
+        // Capture before the &mut self borrow below; needed later to decide
+        // whether to insert the TLS-drain sleep.
+        let tls_active = !matches!(self.config.tls_mode, FtpTlsMode::None);
+
         let stream = self.stream_mut()?;
 
         // Set binary transfer mode explicitly
@@ -873,18 +877,27 @@ impl StorageProvider for FtpProvider {
             }
         }
 
-        // Flush all TLS buffers to the wire
+        // Flush all (TLS) buffers to the wire
         data_stream
             .flush()
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Flush error: {}", e)))?;
 
-        // Wait for TCP to drain all TLS records before close_notify
-        // TLS shutdown races with TCP send buffer; scale delay with file size
-        let drain_ms = (total_written / 4096).clamp(100, 2000);
-        tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
+        // TLS shutdown races with TCP send buffer when a close_notify is
+        // sent before the kernel has drained the last TLS records. On
+        // **TLS-protected** FTP connections we therefore wait for the
+        // socket to drain in proportion to the upload size before letting
+        // suppaftp issue close_notify and read the 226 reply. Plain FTP
+        // has no close_notify and the underlying TCP FIN ordering is fine
+        // — the sleep there is pure dead time and was the dominant cost
+        // on small/medium uploads (50-100ms per file × 500 files = 25-50s
+        // wasted on the bulk-of-small-files benchmark).
+        if tls_active {
+            let drain_ms = (total_written / 4096).clamp(100, 2000);
+            tokio::time::sleep(std::time::Duration::from_millis(drain_ms)).await;
+        }
 
-        // Finalize: sends TLS close_notify, reads 226 from control channel
+        // Finalize: sends TLS close_notify (when TLS), reads 226 from control channel
         stream
             .finalize_put_stream(data_stream)
             .await

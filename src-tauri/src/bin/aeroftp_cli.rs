@@ -24570,15 +24570,17 @@ mod tests {
         assert!(extract_destination_relative(&headers).is_err());
     }
 
-    // ── BUG-1: resolve_cli_remote_path with leading slash ──────────────
+    // ── resolve_cli_remote_path with no meaningful base ──────────────────
+    // Behaviour after f8da815a: when initial_path is empty or bare "/", user
+    // input passes through verbatim so absolute paths target the filesystem
+    // root on non-chroot servers, and empty input yields "" so the provider
+    // applies its canonical default (FTP home, bucket root, ...).
 
     #[test]
-    fn test_resolve_cli_remote_path_root_base_strips_leading_slash() {
-        // When initial_path is "/", both "/front/includes" and "front/includes"
-        // should resolve identically (relative to CWD).
+    fn test_resolve_cli_remote_path_root_base_preserves_input() {
         assert_eq!(
             resolve_cli_remote_path("/", "/front/includes"),
-            "front/includes"
+            "/front/includes"
         );
         assert_eq!(
             resolve_cli_remote_path("/", "front/includes"),
@@ -24588,9 +24590,9 @@ mod tests {
 
     #[test]
     fn test_resolve_cli_remote_path_root_base_empty_and_slash() {
-        assert_eq!(resolve_cli_remote_path("/", ""), "/");
-        assert_eq!(resolve_cli_remote_path("/", "/"), "/");
-        assert_eq!(resolve_cli_remote_path("", ""), "/");
+        assert_eq!(resolve_cli_remote_path("/", ""), "");
+        assert_eq!(resolve_cli_remote_path("/", "/"), "");
+        assert_eq!(resolve_cli_remote_path("", ""), "");
     }
 
     #[test]
