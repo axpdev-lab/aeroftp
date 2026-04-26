@@ -26,9 +26,6 @@ jobs:
             target: windows
           - platform: macos-latest
             target: macos
-          - platform: macos-latest
-            target: macos-intel
-            rust_target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
     
@@ -53,7 +50,6 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           toolchain: stable
-          targets: ${{ matrix.rust_target || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
@@ -94,7 +90,7 @@ jobs:
         run: cargo test
 
       - name: Build Tauri app
-        run: npm run tauri build ${{ matrix.rust_target && format('-- --target {0}', matrix.rust_target) || '' }}
+        run: npm run tauri build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -209,9 +205,6 @@ jobs:
             macos)
               ARTIFACTS+=(src-tauri/target/release/bundle/dmg/*-beta.dmg)
               ;;
-            macos-intel)
-              ARTIFACTS+=(src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*-beta.dmg)
-              ;;
           esac
 
           echo "Found ${#ARTIFACTS[@]} artifacts to sign"
@@ -296,14 +289,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Rename macOS DMG to beta
-        if: matrix.target == 'macos' || matrix.target == 'macos-intel'
+        if: matrix.target == 'macos'
         shell: bash
         run: |
-          if [ "${{ matrix.target }}" = "macos-intel" ]; then
-            DMG_DIR="src-tauri/target/x86_64-apple-darwin/release/bundle/dmg"
-          else
-            DMG_DIR="src-tauri/target/release/bundle/dmg"
-          fi
+          DMG_DIR="src-tauri/target/release/bundle/dmg"
           for f in "$DMG_DIR"/*.dmg; do
             [ -f "$f" ] || continue
             NEWNAME=$(echo "$f" | sed 's/\.dmg$/-beta.dmg/')
@@ -320,16 +309,6 @@ jobs:
           files: |
             src-tauri/target/release/bundle/dmg/*-beta.dmg
             src-tauri/target/release/bundle/dmg/*-beta.dmg.sigstore.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload macOS Intel binaries to Release
-        if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'macos-intel'
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
-        with:
-          files: |
-            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*-beta.dmg
-            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*-beta.dmg.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
