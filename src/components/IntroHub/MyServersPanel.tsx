@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -13,7 +13,9 @@ import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureSt
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
 import { ServerHealthCheck } from '../ServerHealthCheck';
+import { SpeedTestDialog } from '../SpeedTestDialog';
 import { AlertDialog } from '../Dialogs';
+import { supportsSpeedTest } from '../../utils/speedTest';
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
@@ -135,6 +137,7 @@ export function MyServersPanel({
     });
     const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
+    const [speedTestTarget, setSpeedTestTarget] = useState<string | undefined | false>(false);
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
     // Drag & reorder
     const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -554,6 +557,12 @@ export function MyServersPanel({
         }
         items.push(
             { label: t('healthCheck.title'), icon: <Activity size={14} />, action: () => setHealthCheckTarget(server.id), divider: true },
+            {
+                label: t('speedTest.title'),
+                icon: <Gauge size={14} />,
+                action: () => setSpeedTestTarget(server.id),
+                disabled: !supportsSpeedTest(server),
+            },
             { label: t('common.delete'), icon: <Trash2 size={14} />, action: () => handleDelete(server), danger: true },
         );
         showContextMenu(e, items);
@@ -575,6 +584,7 @@ export function MyServersPanel({
                 chipCounts={chipCounts}
                 onOpenExportImport={onOpenExportImport}
                 onHealthCheck={() => setHealthCheckTarget('all')}
+                onSpeedTest={() => setSpeedTestTarget(undefined)}
                 onOpenCrossProfile={onOpenCrossProfile && servers.length > 1 ? handleOpenCrossProfile : undefined}
                 crossProfileSelectionCount={crossProfileSelection.length}
             />
@@ -745,6 +755,13 @@ export function MyServersPanel({
                     servers={servers}
                     onClose={() => setHealthCheckTarget(false)}
                     singleServerId={healthCheckTarget !== 'all' ? healthCheckTarget : undefined}
+                />
+            )}
+            {speedTestTarget !== false && (
+                <SpeedTestDialog
+                    servers={servers}
+                    initialServerId={speedTestTarget || undefined}
+                    onClose={() => setSpeedTestTarget(false)}
                 />
             )}
             {deleteTarget && (

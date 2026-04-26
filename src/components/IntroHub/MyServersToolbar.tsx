@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -18,6 +18,7 @@ interface MyServersToolbarProps {
     chipCounts: Record<MyServersFilterBy, number>;
     onOpenExportImport?: () => void;
     onHealthCheck?: () => void;
+    onSpeedTest?: () => void;
     /** Open Cross-Profile Transfer modal (always available — pre-selection optional). */
     onOpenCrossProfile?: () => void;
     /** 0/1/2 — drives the 3 brightness states of the cross-profile button. */
@@ -38,6 +39,7 @@ export function MyServersToolbar({
     chipCounts,
     onOpenExportImport,
     onHealthCheck,
+    onSpeedTest,
     onOpenCrossProfile,
     crossProfileSelectionCount = 0,
 }: MyServersToolbarProps) {
@@ -163,6 +165,17 @@ export function MyServersToolbar({
                     title={t('healthCheck.title')}
                 >
                     <Activity size={15} />
+                </button>
+            )}
+
+            {/* Speed Test - indigo, paired with Health Check */}
+            {onSpeedTest && serverCount > 0 && (
+                <button
+                    onClick={onSpeedTest}
+                    className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 text-indigo-600 dark:text-indigo-400 transition-colors"
+                    title={t('speedTest.title')}
+                >
+                    <Gauge size={15} />
                 </button>
             )}
 

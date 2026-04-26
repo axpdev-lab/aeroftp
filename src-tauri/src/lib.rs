@@ -161,6 +161,7 @@ mod speech {
 mod cloud_filter_badge;
 mod image_edit;
 mod server_health;
+mod speedtest;
 mod settings;
 mod vault_history;
 
@@ -11869,6 +11870,7 @@ pub fn run() {
     let builder = builder.manage(master_password::MasterPasswordState::new());
     let builder = builder.manage(totp::TotpState::default());
     let builder = builder.manage(speech::SpeechState::default());
+    let builder = builder.manage(speedtest::SpeedTestState::new());
 
     builder
         .invoke_handler(tauri::generate_handler![
@@ -12509,6 +12511,9 @@ pub fn run() {
             // Server Health Check
             server_health::server_health_check,
             server_health::server_health_check_batch,
+            // Server Speed Test
+            speedtest::speedtest_run,
+            speedtest::speedtest_cancel,
             // AeroImage
             image_edit::process_image,
             // InfiniCloud REST API
