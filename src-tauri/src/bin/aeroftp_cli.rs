@@ -3656,18 +3656,31 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
     }
 
     if matches!(format, OutputFormat::Json) {
-        // JSON: output array with safe fields only (no credentials)
+        // JSON: enrich with auth_state derived from local vault state only
+        // (no network). Agents read this once and skip a follow-up connect
+        // for profiles that aren't ready yet.
+        let accounts: std::collections::HashSet<String> = store
+            .list_accounts()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
         let safe: Vec<serde_json::Value> = profiles
             .iter()
             .map(|p| {
+                let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+                let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
+                    &store, &accounts, id, proto,
+                );
                 serde_json::json!({
-                    "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                    "id": id,
                     "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
-                    "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                    "protocol": proto,
                     "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
                     "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
                     "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
                     "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+                    "auth_state": auth_state,
                 })
             })
             .collect();
@@ -3946,17 +3959,31 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
     let profiles = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json)
         .map_err(|e| format!("Failed to parse saved profiles: {}", e))?;
 
+    // List vault keys ONCE; per-profile auth-state derivation then checks
+    // existence in this set instead of issuing N decryptions.
+    let accounts: std::collections::HashSet<String> = store
+        .list_accounts()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
     Ok(profiles
         .iter()
         .map(|p| {
+            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+            let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
+                &store, &accounts, id, proto,
+            );
             serde_json::json!({
-                "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                "id": id,
                 "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
-                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                "protocol": proto,
                 "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
                 "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
                 "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
                 "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+                "auth_state": auth_state,
             })
         })
         .collect())

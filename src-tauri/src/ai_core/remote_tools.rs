@@ -172,6 +172,18 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
     let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
     let profiles = ctx.credentials().list_servers().map_err(ToolError::Exec)?;
+    // Snapshot vault keyset once so per-profile auth_state derivation is
+    // O(1) instead of one decryption per call. When the vault isn't open
+    // (rare in MCP, possible in CLI agent context), derivation falls back
+    // to "unknown" via auth_state_from_cache, but here we have the cache.
+    let auth_lookup = crate::credential_store::CredentialStore::from_cache().map(|store| {
+        let accounts: std::collections::HashSet<String> = store
+            .list_accounts()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        (store, accounts)
+    });
     let filtered: Vec<Value> = profiles
         .into_iter()
         .filter(|p| {
@@ -186,6 +198,17 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
             name_ok && proto_ok
         })
         .map(|p| {
+            let auth_state = auth_lookup
+                .as_ref()
+                .map(|(store, accounts)| {
+                    crate::profile_auth_state::derive_profile_auth_state(
+                        store,
+                        accounts,
+                        &p.id,
+                        &p.protocol,
+                    )
+                })
+                .unwrap_or("unknown");
             json!({
                 "id": p.id,
                 "name": p.name,
@@ -195,6 +218,7 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
                 "username": p.username,
                 "initialPath": p.initial_path,
                 "providerId": p.provider_id,
+                "auth_state": auth_state,
             })
         })
         .collect();
