@@ -4023,6 +4023,27 @@
       "manualConfig": "Konfigurasi Manual",
       "configPaths": "Lokasi Fail Konfigurasi",
       "docs": "Dokumentasi"
+    },
+    "iconPicker": {
+      "title": "Pilih ikon",
+      "tabShipped": "Ikon pembekal",
+      "tabCustom": "Ikon tersuai",
+      "search": "Cari ikon...",
+      "upload": "Muat naik ikon",
+      "empty": "Belum ada ikon tersuai",
+      "emptyHint": "Muat naik ikon pertama anda untuk mula membina pustaka anda.",
+      "removeIcon": "Alih keluar dari pustaka",
+      "noResults": "Tiada ikon sepadan dengan carian anda",
+      "currentSection": "Semasa",
+      "inUse": "Sedang digunakan",
+      "inUseDescription": "Ikon yang sedang ditetapkan untuk pelayan ini",
+      "autoDetected": "Auto-dikesan (disimpan)",
+      "autoDetectedDescription": "Asalnya dikesan apabila pelayan ditambahkan",
+      "matchesServer": "Sepadan dengan pelayan",
+      "onServer": "Pada pelayan",
+      "onServerDescription": "Baru dikesan dengan mengimbas pelayan",
+      "scanning": "Mengimbas pelayan...",
+      "scanningDescription": "Mencari favicon semasa"
     }
   }
 }

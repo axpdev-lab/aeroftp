@@ -4013,6 +4013,27 @@
       "manualConfig": "手动配置",
       "configPaths": "配置文件位置",
       "docs": "文档"
+    },
+    "iconPicker": {
+      "title": "选择图标",
+      "tabShipped": "提供商图标",
+      "tabCustom": "自定义图标",
+      "search": "搜索图标...",
+      "upload": "上传图标",
+      "empty": "尚无自定义图标",
+      "emptyHint": "上传您的第一个图标以开始构建您的图标库。",
+      "removeIcon": "从库中移除",
+      "noResults": "没有图标匹配您的搜索",
+      "currentSection": "当前",
+      "inUse": "使用中",
+      "inUseDescription": "当前为此服务器设置的图标",
+      "autoDetected": "自动检测（已保存）",
+      "autoDetectedDescription": "服务器首次添加时检测到",
+      "matchesServer": "与服务器匹配",
+      "onServer": "服务器上",
+      "onServerDescription": "刚通过扫描服务器检测到",
+      "scanning": "扫描服务器中...",
+      "scanningDescription": "正在查找当前 favicon"
     }
   }
 }

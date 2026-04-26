@@ -4013,6 +4013,27 @@
       "manualConfig": "Handmatige configuratie",
       "configPaths": "Locaties van configuratiebestanden",
       "docs": "Documentatie"
+    },
+    "iconPicker": {
+      "title": "Pictogram kiezen",
+      "tabShipped": "Aanbieder-pictogrammen",
+      "tabCustom": "Aangepaste pictogrammen",
+      "search": "Pictogrammen zoeken...",
+      "upload": "Pictogram uploaden",
+      "empty": "Nog geen aangepaste pictogrammen",
+      "emptyHint": "Upload je eerste pictogram om je bibliotheek op te bouwen.",
+      "removeIcon": "Verwijderen uit bibliotheek",
+      "noResults": "Geen pictogrammen komen overeen met je zoekopdracht",
+      "currentSection": "Huidig",
+      "inUse": "In gebruik",
+      "inUseDescription": "Pictogram dat momenteel voor deze server is ingesteld",
+      "autoDetected": "Auto-gedetecteerd (opgesl.)",
+      "autoDetectedDescription": "Oorspronkelijk gedetecteerd bij het toevoegen van de server",
+      "matchesServer": "Komt overeen met server",
+      "onServer": "Op de server",
+      "onServerDescription": "Net gedetecteerd door de server te scannen",
+      "scanning": "Server scannen...",
+      "scanningDescription": "Op zoek naar de huidige favicon"
     }
   }
 }

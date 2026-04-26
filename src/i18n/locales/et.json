@@ -4023,6 +4023,27 @@
       "manualConfig": "Käsitsi seadistamine",
       "configPaths": "Konfiguratsioonifaili asukohad",
       "docs": "Dokumentatsioon"
+    },
+    "iconPicker": {
+      "title": "Vali ikoon",
+      "tabShipped": "Pakkujate ikoonid",
+      "tabCustom": "Kohandatud ikoonid",
+      "search": "Otsi ikoone...",
+      "upload": "Laadi ikoon üles",
+      "empty": "Veel pole kohandatud ikoone",
+      "emptyHint": "Laadi üles oma esimene ikoon, et hakata oma teeki üles ehitama.",
+      "removeIcon": "Eemalda teegist",
+      "noResults": "Ükski ikoon ei vasta sinu otsingule",
+      "currentSection": "Praegune",
+      "inUse": "Kasutusel",
+      "inUseDescription": "Selle serveri jaoks praegu määratud ikoon",
+      "autoDetected": "Auto-tuvastatud (salv.)",
+      "autoDetectedDescription": "Algselt tuvastatud serveri lisamisel",
+      "matchesServer": "Vastab serverile",
+      "onServer": "Serveris",
+      "onServerDescription": "Just tuvastatud serverit skannides",
+      "scanning": "Serveri skannimine...",
+      "scanningDescription": "Otsib praegust favicon-i"
     }
   }
 }

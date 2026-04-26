@@ -4013,6 +4013,27 @@
       "manualConfig": "手動設定",
       "configPaths": "設定ファイルの場所",
       "docs": "ドキュメント"
+    },
+    "iconPicker": {
+      "title": "アイコンを選択",
+      "tabShipped": "プロバイダーアイコン",
+      "tabCustom": "カスタムアイコン",
+      "search": "アイコンを検索...",
+      "upload": "アイコンをアップロード",
+      "empty": "カスタムアイコンはまだありません",
+      "emptyHint": "最初のアイコンをアップロードしてライブラリを構築しましょう。",
+      "removeIcon": "ライブラリから削除",
+      "noResults": "検索に一致するアイコンはありません",
+      "currentSection": "現在",
+      "inUse": "使用中",
+      "inUseDescription": "このサーバーに現在設定されているアイコン",
+      "autoDetected": "自動検出（保存済み）",
+      "autoDetectedDescription": "サーバー追加時に元々検出されたもの",
+      "matchesServer": "サーバーと一致",
+      "onServer": "サーバー上",
+      "onServerDescription": "サーバーをスキャンして検出",
+      "scanning": "サーバーをスキャン中...",
+      "scanningDescription": "現在のファビコンを探しています"
     }
   }
 }

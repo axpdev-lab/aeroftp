@@ -4042,6 +4042,27 @@
       "manualConfig": "Eskuzko konfigurazioa",
       "configPaths": "Konfigurazio fitxategiaren kokapena",
       "docs": "Dokumentazioa"
+    },
+    "iconPicker": {
+      "title": "Aukeratu ikonoa",
+      "tabShipped": "Hornitzaileen ikonoak",
+      "tabCustom": "Ikono pertsonalizatuak",
+      "search": "Bilatu ikonoak...",
+      "upload": "Igo ikonoa",
+      "empty": "Oraindik ez dago ikono pertsonalizaturik",
+      "emptyHint": "Igo zure lehen ikonoa zure liburutegia eraikitzen hasteko.",
+      "removeIcon": "Kendu liburutegitik",
+      "noResults": "Ez dago bilaketarekin bat datorren ikonorik",
+      "currentSection": "Unekoa",
+      "inUse": "Erabilian",
+      "inUseDescription": "Zerbitzari honetarako unean ezarrita dagoen ikonoa",
+      "autoDetected": "Auto-detektatua (gordeta)",
+      "autoDetectedDescription": "Hasieran detektatua zerbitzaria gehitu zenean",
+      "matchesServer": "Zerbitzariarekin bat dator",
+      "onServer": "Zerbitzarian",
+      "onServerDescription": "Zerbitzaria eskaneatuz oraintxe detektatua",
+      "scanning": "Zerbitzaria eskaneatzen...",
+      "scanningDescription": "Uneko favicon-a bilatzen"
     }
   }
 }

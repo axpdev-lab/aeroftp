@@ -4013,6 +4013,27 @@
       "manualConfig": "Configurare manuală",
       "configPaths": "Locații fișier de configurare",
       "docs": "Documentație"
+    },
+    "iconPicker": {
+      "title": "Alege pictograma",
+      "tabShipped": "Pictograme furnizori",
+      "tabCustom": "Pictograme personalizate",
+      "search": "Caută pictograme...",
+      "upload": "Încarcă pictogramă",
+      "empty": "Încă nu există pictograme personalizate",
+      "emptyHint": "Încarcă prima pictogramă pentru a începe să construiești biblioteca.",
+      "removeIcon": "Elimină din bibliotecă",
+      "noResults": "Nicio pictogramă nu se potrivește căutării",
+      "currentSection": "Curent",
+      "inUse": "În uz",
+      "inUseDescription": "Pictogramă setată în prezent pentru acest server",
+      "autoDetected": "Auto-detectată (salvată)",
+      "autoDetectedDescription": "Detectată inițial la adăugarea serverului",
+      "matchesServer": "Se potrivește cu serverul",
+      "onServer": "Pe server",
+      "onServerDescription": "Detectată acum prin scanarea serverului",
+      "scanning": "Se scanează serverul...",
+      "scanningDescription": "Caut favicon-ul curent"
     }
   }
 }

@@ -4042,6 +4042,27 @@
       "manualConfig": "Handvirk stilling",
       "configPaths": "Staðsetningar stillingarskráar",
       "docs": "Skjölun"
+    },
+    "iconPicker": {
+      "title": "Velja tákn",
+      "tabShipped": "Veitutákn",
+      "tabCustom": "Sérsniðin tákn",
+      "search": "Leita að táknum...",
+      "upload": "Hlaða upp tákni",
+      "empty": "Engin sérsniðin tákn enn",
+      "emptyHint": "Hladdu upp fyrsta tákninu þínu til að byrja að byggja safnið.",
+      "removeIcon": "Fjarlægja úr safni",
+      "noResults": "Engin tákn passa við leitina",
+      "currentSection": "Núverandi",
+      "inUse": "Í notkun",
+      "inUseDescription": "Tákn sem er stillt fyrir þennan þjón",
+      "autoDetected": "Sjálfgreint (vistað)",
+      "autoDetectedDescription": "Upphaflega greint þegar þjóninum var bætt við",
+      "matchesServer": "Samsvarar þjóni",
+      "onServer": "Á þjóninum",
+      "onServerDescription": "Nýgreint með því að skanna þjóninn",
+      "scanning": "Skanna þjón...",
+      "scanningDescription": "Leita að núverandi favicon"
     }
   }
 }

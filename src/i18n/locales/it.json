@@ -4013,6 +4013,27 @@
       "manualConfig": "Configurazione manuale",
       "configPaths": "Percorsi file di configurazione",
       "docs": "Documentazione"
+    },
+    "iconPicker": {
+      "title": "Scegli icona",
+      "tabShipped": "Icone provider",
+      "tabCustom": "Icone personalizzate",
+      "search": "Cerca icone...",
+      "upload": "Carica icona",
+      "empty": "Nessuna icona personalizzata",
+      "emptyHint": "Carica la tua prima icona per iniziare a costruire la libreria.",
+      "removeIcon": "Rimuovi dalla libreria",
+      "noResults": "Nessuna icona corrisponde alla ricerca",
+      "currentSection": "Attuale",
+      "inUse": "In uso",
+      "inUseDescription": "Icona attualmente impostata per questo server",
+      "autoDetected": "Auto-rilevata (salvata)",
+      "autoDetectedDescription": "Rilevata originariamente quando il server è stato aggiunto",
+      "matchesServer": "Corrisponde al server",
+      "onServer": "Sul server",
+      "onServerDescription": "Appena rilevata scansionando il server",
+      "scanning": "Scansione del server...",
+      "scanningDescription": "Cerco la favicon attuale"
     }
   }
 }

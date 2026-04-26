@@ -4023,6 +4023,27 @@
       "manualConfig": "Manuāla konfigurācija",
       "configPaths": "Konfigurācijas failu atrašanās vietas",
       "docs": "Dokumentācija"
+    },
+    "iconPicker": {
+      "title": "Izvēlēties ikonu",
+      "tabShipped": "Pakalpojumu sniedzēju ikonas",
+      "tabCustom": "Pielāgotas ikonas",
+      "search": "Meklēt ikonas...",
+      "upload": "Augšupielādēt ikonu",
+      "empty": "Vēl nav pielāgotu ikonu",
+      "emptyHint": "Augšupielādējiet savu pirmo ikonu, lai sāktu veidot bibliotēku.",
+      "removeIcon": "Noņemt no bibliotēkas",
+      "noResults": "Neviena ikona neatbilst meklēšanai",
+      "currentSection": "Pašreizējais",
+      "inUse": "Lietošanā",
+      "inUseDescription": "Pašlaik šim serverim iestatītā ikona",
+      "autoDetected": "Auto-konstatēts (saglab.)",
+      "autoDetectedDescription": "Sākotnēji konstatēts, pievienojot serveri",
+      "matchesServer": "Atbilst serverim",
+      "onServer": "Serverī",
+      "onServerDescription": "Tikko konstatēts skenējot serveri",
+      "scanning": "Skenē serveri...",
+      "scanningDescription": "Meklē pašreizējo favicon"
     }
   }
 }

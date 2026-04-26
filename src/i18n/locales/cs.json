@@ -4023,6 +4023,27 @@
       "manualConfig": "Ruční konfigurace",
       "configPaths": "Umístění konfiguračního souboru",
       "docs": "Dokumentace"
+    },
+    "iconPicker": {
+      "title": "Vybrat ikonu",
+      "tabShipped": "Ikony poskytovatelů",
+      "tabCustom": "Vlastní ikony",
+      "search": "Hledat ikony...",
+      "upload": "Nahrát ikonu",
+      "empty": "Zatím žádné vlastní ikony",
+      "emptyHint": "Nahrajte první ikonu a začněte budovat svou knihovnu.",
+      "removeIcon": "Odebrat z knihovny",
+      "noResults": "Žádné ikony neodpovídají hledání",
+      "currentSection": "Aktuální",
+      "inUse": "V používání",
+      "inUseDescription": "Ikona aktuálně nastavená pro tento server",
+      "autoDetected": "Auto-zjištěná (uložená)",
+      "autoDetectedDescription": "Zjištěná při prvním přidání serveru",
+      "matchesServer": "Odpovídá serveru",
+      "onServer": "Na serveru",
+      "onServerDescription": "Právě zjištěná skenováním serveru",
+      "scanning": "Skenuji server...",
+      "scanningDescription": "Hledám aktuální favicon"
     }
   }
 }

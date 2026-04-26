@@ -4013,6 +4013,27 @@
       "manualConfig": "Manuelle Konfiguration",
       "configPaths": "Speicherorte der Konfigurationsdatei",
       "docs": "Dokumentation"
+    },
+    "iconPicker": {
+      "title": "Symbol wählen",
+      "tabShipped": "Anbieter-Symbole",
+      "tabCustom": "Eigene Symbole",
+      "search": "Symbole suchen...",
+      "upload": "Symbol hochladen",
+      "empty": "Noch keine eigenen Symbole",
+      "emptyHint": "Laden Sie Ihr erstes Symbol hoch, um Ihre Bibliothek aufzubauen.",
+      "removeIcon": "Aus Bibliothek entfernen",
+      "noResults": "Keine Symbole entsprechen Ihrer Suche",
+      "currentSection": "Aktuell",
+      "inUse": "In Verwendung",
+      "inUseDescription": "Aktuell für diesen Server festgelegtes Symbol",
+      "autoDetected": "Automatisch erkannt (gespeichert)",
+      "autoDetectedDescription": "Erkannt beim ersten Hinzufügen des Servers",
+      "matchesServer": "Stimmt mit Server überein",
+      "onServer": "Auf dem Server",
+      "onServerDescription": "Soeben durch Server-Scan erkannt",
+      "scanning": "Server wird gescannt...",
+      "scanningDescription": "Suche nach aktuellem Favicon"
     }
   }
 }

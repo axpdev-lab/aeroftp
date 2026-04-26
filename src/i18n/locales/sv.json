@@ -4023,6 +4023,27 @@
       "manualConfig": "Manuell konfiguration",
       "configPaths": "Platser för konfigurationsfil",
       "docs": "Dokumentation"
+    },
+    "iconPicker": {
+      "title": "Välj ikon",
+      "tabShipped": "Leverantörsikoner",
+      "tabCustom": "Anpassade ikoner",
+      "search": "Sök ikoner...",
+      "upload": "Ladda upp ikon",
+      "empty": "Inga anpassade ikoner ännu",
+      "emptyHint": "Ladda upp din första ikon för att börja bygga ditt bibliotek.",
+      "removeIcon": "Ta bort från biblioteket",
+      "noResults": "Inga ikoner matchar din sökning",
+      "currentSection": "Aktuell",
+      "inUse": "Används",
+      "inUseDescription": "Ikon som för närvarande är inställd för den här servern",
+      "autoDetected": "Auto-upptäckt (sparad)",
+      "autoDetectedDescription": "Ursprungligen upptäckt när servern lades till",
+      "matchesServer": "Matchar servern",
+      "onServer": "På servern",
+      "onServerDescription": "Just upptäckt genom att skanna servern",
+      "scanning": "Skannar servern...",
+      "scanningDescription": "Letar efter den aktuella favicon"
     }
   }
 }

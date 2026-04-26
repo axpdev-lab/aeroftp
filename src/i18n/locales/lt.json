@@ -4023,6 +4023,27 @@
       "manualConfig": "Rankinis konfigūravimas",
       "configPaths": "Konfigūracijos failų vietos",
       "docs": "Dokumentacija"
+    },
+    "iconPicker": {
+      "title": "Pasirinkti piktogramą",
+      "tabShipped": "Tiekėjų piktogramos",
+      "tabCustom": "Pasirinktinės piktogramos",
+      "search": "Ieškoti piktogramų...",
+      "upload": "Įkelti piktogramą",
+      "empty": "Kol kas nėra pasirinktinių piktogramų",
+      "emptyHint": "Įkelkite savo pirmą piktogramą, kad pradėtumėte kurti biblioteką.",
+      "removeIcon": "Pašalinti iš bibliotekos",
+      "noResults": "Jokia piktograma neatitinka paieškos",
+      "currentSection": "Dabartinis",
+      "inUse": "Naudojama",
+      "inUseDescription": "Šiuo metu šiam serveriui nustatyta piktograma",
+      "autoDetected": "Auto-aptikta (išsaugota)",
+      "autoDetectedDescription": "Iš pradžių aptikta pridedant serverį",
+      "matchesServer": "Atitinka serverį",
+      "onServer": "Serveryje",
+      "onServerDescription": "Ką tik aptikta nuskaitant serverį",
+      "scanning": "Nuskaitomas serveris...",
+      "scanningDescription": "Ieškau dabartinės favicon"
     }
   }
 }

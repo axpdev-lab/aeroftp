@@ -4013,6 +4013,27 @@
       "manualConfig": "Configuration manuelle",
       "configPaths": "Emplacements du fichier de configuration",
       "docs": "Documentation"
+    },
+    "iconPicker": {
+      "title": "Choisir une icône",
+      "tabShipped": "Icônes des fournisseurs",
+      "tabCustom": "Icônes personnalisées",
+      "search": "Rechercher des icônes...",
+      "upload": "Téléverser une icône",
+      "empty": "Aucune icône personnalisée pour le moment",
+      "emptyHint": "Téléversez votre première icône pour commencer à construire votre bibliothèque.",
+      "removeIcon": "Retirer de la bibliothèque",
+      "noResults": "Aucune icône ne correspond à votre recherche",
+      "currentSection": "Actuel",
+      "inUse": "En cours d’utilisation",
+      "inUseDescription": "Icône actuellement définie pour ce serveur",
+      "autoDetected": "Auto-détecté (enregistré)",
+      "autoDetectedDescription": "Détecté initialement lors de l'ajout du serveur",
+      "matchesServer": "Correspond au serveur",
+      "onServer": "Sur le serveur",
+      "onServerDescription": "Détecté à l'instant en scannant le serveur",
+      "scanning": "Analyse du serveur...",
+      "scanningDescription": "Recherche de la favicon actuelle"
     }
   }
 }

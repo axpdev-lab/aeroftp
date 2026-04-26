@@ -4042,6 +4042,27 @@
       "manualConfig": "Manu-manong Pagsasaayos",
       "configPaths": "Mga Lokasyon ng Config File",
       "docs": "Dokumentasyon"
+    },
+    "iconPicker": {
+      "title": "Pumili ng icon",
+      "tabShipped": "Mga icon ng provider",
+      "tabCustom": "Mga custom na icon",
+      "search": "Maghanap ng icon...",
+      "upload": "Mag-upload ng icon",
+      "empty": "Wala pang mga custom na icon",
+      "emptyHint": "Mag-upload ng iyong unang icon upang simulan ang pagbuo ng iyong library.",
+      "removeIcon": "Alisin sa library",
+      "noResults": "Walang icon na tumugma sa iyong paghahanap",
+      "currentSection": "Kasalukuyan",
+      "inUse": "Ginagamit",
+      "inUseDescription": "Icon na kasalukuyang itinakda para sa server na ito",
+      "autoDetected": "Auto-natukoy (naka-save)",
+      "autoDetectedDescription": "Orihinal na natukoy nang idagdag ang server",
+      "matchesServer": "Tugma sa server",
+      "onServer": "Sa server",
+      "onServerDescription": "Bagong natukoy sa pamamagitan ng pag-scan sa server",
+      "scanning": "Sini-scan ang server...",
+      "scanningDescription": "Hinahanap ang kasalukuyang favicon"
     }
   }
 }

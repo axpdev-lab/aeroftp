@@ -4023,6 +4023,27 @@
       "manualConfig": "Ručná konfigurácia",
       "configPaths": "Umiestnenia konfiguračného súboru",
       "docs": "Dokumentácia"
+    },
+    "iconPicker": {
+      "title": "Vybrať ikonu",
+      "tabShipped": "Ikony poskytovateľov",
+      "tabCustom": "Vlastné ikony",
+      "search": "Hľadať ikony...",
+      "upload": "Nahrať ikonu",
+      "empty": "Zatiaľ žiadne vlastné ikony",
+      "emptyHint": "Nahrajte svoju prvú ikonu a začnite budovať knižnicu.",
+      "removeIcon": "Odstrániť z knižnice",
+      "noResults": "Žiadna ikona nezodpovedá hľadaniu",
+      "currentSection": "Aktuálne",
+      "inUse": "V používaní",
+      "inUseDescription": "Ikona aktuálne nastavená pre tento server",
+      "autoDetected": "Auto-zistená (uložená)",
+      "autoDetectedDescription": "Pôvodne zistená pri pridaní servera",
+      "matchesServer": "Zhoduje sa so serverom",
+      "onServer": "Na serveri",
+      "onServerDescription": "Práve zistená skenovaním servera",
+      "scanning": "Skenovanie servera...",
+      "scanningDescription": "Hľadám aktuálnu favicon"
     }
   }
 }

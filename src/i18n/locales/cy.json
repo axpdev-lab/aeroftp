@@ -4042,6 +4042,27 @@
       "manualConfig": "Ffurfweddiad Â Llaw",
       "configPaths": "Lleoliadau Ffeil Ffurfwedd",
       "docs": "Dogfennaeth"
+    },
+    "iconPicker": {
+      "title": "Dewis eicon",
+      "tabShipped": "Eiconau Darparwr",
+      "tabCustom": "Eiconau Personol",
+      "search": "Chwilio eiconau...",
+      "upload": "Llwytho eicon i fyny",
+      "empty": "Dim eiconau personol eto",
+      "emptyHint": "Llwythwch eich eicon cyntaf i fyny i ddechrau adeiladu eich llyfrgell.",
+      "removeIcon": "Tynnu o'r llyfrgell",
+      "noResults": "Does dim eiconau yn cyfateb i'ch chwiliad",
+      "currentSection": "Cyfredol",
+      "inUse": "Yn cael ei ddefnyddio",
+      "inUseDescription": "Eicon a osodir ar hyn o bryd ar gyfer y gweinydd hwn",
+      "autoDetected": "Wedi'i ganfod (wedi'i gadw)",
+      "autoDetectedDescription": "Wedi'i ganfod yn wreiddiol pan ychwanegwyd y gweinydd",
+      "matchesServer": "Cyfateb i'r gweinydd",
+      "onServer": "Ar y gweinydd",
+      "onServerDescription": "Newydd ei ganfod drwy sganio'r gweinydd",
+      "scanning": "Sganio'r gweinydd...",
+      "scanningDescription": "Yn chwilio am y favicon cyfredol"
     }
   }
 }

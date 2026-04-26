@@ -20,9 +20,11 @@ import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSele
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
+import { IconPickerDialog } from './IconPickerDialog';
 import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
 
 // Storage key for saved servers (same as SavedServers component)
@@ -482,6 +484,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     }, [connectionName]);
     const [customIconForSave, setCustomIconForSave] = useState<string | undefined>(undefined);
     const [faviconForSave, setFaviconForSave] = useState<string | undefined>(undefined);
+    const [showIconPicker, setShowIconPicker] = useState(false);
 
     // AeroCloud state
     const [aeroCloudConfig, setAeroCloudConfig] = useState<AeroCloudConfig | null>(null);
@@ -772,41 +775,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    // Icon picker for saved connections (no provider logo)
-    const pickCustomIcon = async () => {
-        try {
-            const selected = await open({
-                multiple: false,
-                filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'ico', 'webp', 'gif'] }],
-            });
-            if (!selected) return;
-            const filePath = Array.isArray(selected) ? selected[0] : selected;
-            const bytes = await readFile(filePath);
-            const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-            const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon' };
-            const mime = mimeMap[ext] || 'image/png';
-            const blob = new Blob([bytes], { type: mime });
-            const url = URL.createObjectURL(blob);
-            const img = new window.Image();
-            const timeout = setTimeout(() => URL.revokeObjectURL(url), 10000);
-            img.onload = () => {
-                clearTimeout(timeout);
-                const canvas = document.createElement('canvas');
-                const size = 128;
-                canvas.width = size; canvas.height = size;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) { URL.revokeObjectURL(url); return; }
-                const scale = Math.min(size / img.width, size / img.height);
-                const w = img.width * scale, h = img.height * scale;
-                ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-                setCustomIconForSave(canvas.toDataURL('image/png'));
-                URL.revokeObjectURL(url);
-            };
-            img.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(url); };
-            img.src = url;
-        } catch { /* cancelled */ }
-    };
-
     const hasProviderLogoForSave = !!PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
 
     const renderIconPicker = () => {
@@ -830,7 +798,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         </div>
                         <button
                             type="button"
-                            onClick={pickCustomIcon}
+                            onClick={() => setShowIconPicker(true)}
                             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5"
                         >
                             <Image size={12} />
@@ -3850,6 +3818,37 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     message={gitHubAlert.message}
                     type={gitHubAlert.type}
                     onClose={() => setGitHubAlert(null)}
+                />
+            )}
+            {showIconPicker && (
+                <IconPickerDialog
+                    onSelect={(dataUrl) => setCustomIconForSave(dataUrl)}
+                    onClose={() => setShowIconPicker(false)}
+                    currentIcon={customIconForSave || faviconForSave}
+                    detectedFavicon={faviconForSave}
+                    onRescan={async () => {
+                        // Live re-detection: re-runs the same Tauri commands as
+                        // the auto-detection hook, so a favicon that changed on
+                        // the server after the first connection shows up here.
+                        // Operates on the active FTP/provider state, so this only
+                        // returns a meaningful result when the editing server
+                        // has a live connection — otherwise it returns null.
+                        const proto = connectionParams.protocol || 'ftp';
+                        const SERVER_PROTOCOLS = new Set(['ftp', 'ftps']);
+                        const PROVIDER_PROTOCOLS = new Set(['sftp', 's3', 'webdav']);
+                        if (!SERVER_PROTOCOLS.has(proto) && !PROVIDER_PROTOCOLS.has(proto)) return null;
+                        const command = PROVIDER_PROTOCOLS.has(proto) ? 'detect_provider_favicon' : 'detect_server_favicon';
+                        const searchPaths: string[] = [];
+                        const initial = editingProfile?.initialPath || quickConnectDirs?.remoteDir;
+                        if (initial) searchPaths.push(initial);
+                        if (!searchPaths.includes('/')) searchPaths.push('/');
+                        try {
+                            return await invoke<string | null>(command, { searchPaths });
+                        } catch (e) {
+                            logger.warn('rescan-favicon failed', e);
+                            return null;
+                        }
+                    }}
                 />
             )}
             {gitHubDeviceFlow && (

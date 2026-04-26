@@ -4023,6 +4023,27 @@
       "manualConfig": "Manuaalinen määritys",
       "configPaths": "Määritystiedoston sijainnit",
       "docs": "Dokumentaatio"
+    },
+    "iconPicker": {
+      "title": "Valitse kuvake",
+      "tabShipped": "Palveluntarjoajien kuvakkeet",
+      "tabCustom": "Omat kuvakkeet",
+      "search": "Hae kuvakkeita...",
+      "upload": "Lataa kuvake",
+      "empty": "Ei vielä omia kuvakkeita",
+      "emptyHint": "Lataa ensimmäinen kuvakkeesi aloittaaksesi kirjaston rakentamisen.",
+      "removeIcon": "Poista kirjastosta",
+      "noResults": "Yksikään kuvake ei vastaa hakua",
+      "currentSection": "Nykyinen",
+      "inUse": "Käytössä",
+      "inUseDescription": "Tällä hetkellä tälle palvelimelle asetettu kuvake",
+      "autoDetected": "Autom. tunnistettu (tall.)",
+      "autoDetectedDescription": "Alun perin tunnistettu palvelinta lisättäessä",
+      "matchesServer": "Vastaa palvelinta",
+      "onServer": "Palvelimella",
+      "onServerDescription": "Juuri tunnistettu skannaamalla palvelin",
+      "scanning": "Skannataan palvelinta...",
+      "scanningDescription": "Etsitään nykyistä favicon-kuvaketta"
     }
   }
 }

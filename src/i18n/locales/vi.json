@@ -4023,6 +4023,27 @@
       "manualConfig": "Cấu hình Thủ công",
       "configPaths": "Vị trí Tệp Cấu hình",
       "docs": "Tài liệu"
+    },
+    "iconPicker": {
+      "title": "Chọn biểu tượng",
+      "tabShipped": "Biểu tượng nhà cung cấp",
+      "tabCustom": "Biểu tượng tùy chỉnh",
+      "search": "Tìm biểu tượng...",
+      "upload": "Tải lên biểu tượng",
+      "empty": "Chưa có biểu tượng tùy chỉnh nào",
+      "emptyHint": "Tải lên biểu tượng đầu tiên của bạn để bắt đầu xây dựng thư viện.",
+      "removeIcon": "Xóa khỏi thư viện",
+      "noResults": "Không có biểu tượng nào phù hợp với tìm kiếm",
+      "currentSection": "Hiện tại",
+      "inUse": "Đang sử dụng",
+      "inUseDescription": "Biểu tượng hiện được đặt cho máy chủ này",
+      "autoDetected": "Tự phát hiện (đã lưu)",
+      "autoDetectedDescription": "Phát hiện ban đầu khi máy chủ được thêm vào",
+      "matchesServer": "Khớp với máy chủ",
+      "onServer": "Trên máy chủ",
+      "onServerDescription": "Vừa phát hiện bằng cách quét máy chủ",
+      "scanning": "Đang quét máy chủ...",
+      "scanningDescription": "Đang tìm favicon hiện tại"
     }
   }
 }

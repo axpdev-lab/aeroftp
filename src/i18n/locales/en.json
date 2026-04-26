@@ -3935,6 +3935,27 @@
         "developer": "Developer"
       }
     },
+    "iconPicker": {
+      "title": "Choose icon",
+      "tabShipped": "Provider icons",
+      "tabCustom": "Custom icons",
+      "search": "Search icons...",
+      "upload": "Upload icon",
+      "empty": "No custom icons yet",
+      "emptyHint": "Upload your first icon to start building your library.",
+      "removeIcon": "Remove from library",
+      "noResults": "No icons match your search",
+      "currentSection": "Current",
+      "inUse": "In use",
+      "inUseDescription": "Icon currently set for this server",
+      "matchesServer": "Matches server",
+      "autoDetected": "Auto-detected (saved)",
+      "autoDetectedDescription": "Originally detected when the server was first added",
+      "onServer": "On server",
+      "onServerDescription": "Just detected by scanning the server now",
+      "scanning": "Scanning server...",
+      "scanningDescription": "Looking for the current favicon"
+    },
     "googledrive": {
       "star": "Star",
       "unstar": "Unstar",

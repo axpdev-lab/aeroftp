@@ -4023,6 +4023,27 @@
       "manualConfig": "Manuel konfiguration",
       "configPaths": "Placeringer af konfigurationsfil",
       "docs": "Dokumentation"
+    },
+    "iconPicker": {
+      "title": "Vælg ikon",
+      "tabShipped": "Udbyderikoner",
+      "tabCustom": "Brugerdefinerede ikoner",
+      "search": "Søg ikoner...",
+      "upload": "Upload ikon",
+      "empty": "Ingen brugerdefinerede ikoner endnu",
+      "emptyHint": "Upload dit første ikon for at begynde at opbygge dit bibliotek.",
+      "removeIcon": "Fjern fra biblioteket",
+      "noResults": "Ingen ikoner matcher din søgning",
+      "currentSection": "Nuværende",
+      "inUse": "I brug",
+      "inUseDescription": "Ikon der i øjeblikket er angivet for denne server",
+      "autoDetected": "Auto-registreret (gemt)",
+      "autoDetectedDescription": "Oprindeligt registreret da serveren blev tilføjet",
+      "matchesServer": "Matcher serveren",
+      "onServer": "På serveren",
+      "onServerDescription": "Lige registreret ved at scanne serveren",
+      "scanning": "Scanner server...",
+      "scanningDescription": "Leder efter den aktuelle favicon"
     }
   }
 }

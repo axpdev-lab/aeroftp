@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { FtpSession, ServerProfile } from '../types';
 import { secureGetWithFallback } from '../utils/secureStorage';
+import { logger } from '../utils/logger';
 
 // FTP/FTPS use ftp_manager (suppaftp) → detect_server_favicon
 const SERVER_PROTOCOLS = new Set(['ftp', 'ftps']);
@@ -26,6 +27,14 @@ export function useFaviconDetection(
   sessionsRef.current = sessions;
   const callbackRef = useRef(onFaviconDetected);
   callbackRef.current = onFaviconDetected;
+
+  // Track status of the active session so the effect re-runs when it transitions
+  // (e.g. connecting → connected). Previously the effect only depended on
+  // activeSessionId, so if the id was set before the connection completed the
+  // detection skipped silently and never retried.
+  const activeSession = sessions.find(s => s.id === activeSessionId);
+  const activeStatus = activeSession?.status;
+  const activeHasFavicon = !!activeSession?.faviconUrl;
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -78,16 +87,23 @@ export function useFaviconDetection(
         // SFTP/S3/WebDAV → StorageProvider (ProviderState)
         const command = isProviderProtocol ? 'detect_provider_favicon' : 'detect_server_favicon';
 
+        logger.debug('favicon-detection: invoking', { command, searchPaths, sessionId: session.id, protocol });
+
         const result = await invoke<string | null>(command, { searchPaths });
 
         if (cancelled) return;
         checkedRef.current.add(cacheKey);
 
         if (result) {
+          logger.debug('favicon-detection: hit', { sessionId: session.id, length: result.length });
           callbackRef.current(session.serverId, result);
+        } else {
+          logger.debug('favicon-detection: miss', { sessionId: session.id, command, searchPaths });
         }
-      } catch {
-        // Detection failed silently — server has no favicon
+      } catch (e) {
+        // Detection failed silently — log to dev console so first-run failures
+        // surface to the user instead of being swallowed.
+        logger.warn('favicon-detection: error', e);
         if (!cancelled) {
           checkedRef.current.add(cacheKey);
         }
@@ -99,5 +115,5 @@ export function useFaviconDetection(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [activeSessionId]);
+  }, [activeSessionId, activeStatus, activeHasFavicon]);
 }

@@ -4023,6 +4023,27 @@
       "manualConfig": "Manuel Yapılandırma",
       "configPaths": "Yapılandırma Dosyası Konumları",
       "docs": "Belgeler"
+    },
+    "iconPicker": {
+      "title": "Simge seç",
+      "tabShipped": "Sağlayıcı simgeleri",
+      "tabCustom": "Özel simgeler",
+      "search": "Simge ara...",
+      "upload": "Simge yükle",
+      "empty": "Henüz özel simge yok",
+      "emptyHint": "Kütüphanenizi oluşturmaya başlamak için ilk simgenizi yükleyin.",
+      "removeIcon": "Kütüphaneden kaldır",
+      "noResults": "Aramanızla eşleşen simge yok",
+      "currentSection": "Mevcut",
+      "inUse": "Kullanımda",
+      "inUseDescription": "Bu sunucu için şu anda ayarlanan simge",
+      "autoDetected": "Oto. algılandı (kayıtlı)",
+      "autoDetectedDescription": "Sunucu ilk eklendiğinde algılanmış",
+      "matchesServer": "Sunucuyla eşleşiyor",
+      "onServer": "Sunucuda",
+      "onServerDescription": "Sunucuyu tarayarak az önce algılandı",
+      "scanning": "Sunucu taranıyor...",
+      "scanningDescription": "Mevcut favicon aranıyor"
     }
   }
 }

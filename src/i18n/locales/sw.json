@@ -4023,6 +4023,27 @@
       "manualConfig": "Usanidi wa Mkono",
       "configPaths": "Maeneo ya Faili la Usanidi",
       "docs": "Nyaraka"
+    },
+    "iconPicker": {
+      "title": "Chagua aikoni",
+      "tabShipped": "Aikoni za watoa huduma",
+      "tabCustom": "Aikoni maalum",
+      "search": "Tafuta aikoni...",
+      "upload": "Pakia aikoni",
+      "empty": "Bado hakuna aikoni maalum",
+      "emptyHint": "Pakia aikoni yako ya kwanza ili kuanza kujenga maktaba yako.",
+      "removeIcon": "Ondoa kutoka maktaba",
+      "noResults": "Hakuna aikoni inayolingana na utafutaji",
+      "currentSection": "Sasa",
+      "inUse": "Inatumika",
+      "inUseDescription": "Aikoni iliyowekwa kwa sasa kwa seva hii",
+      "autoDetected": "Imegunduliwa kiotomatiki (imehifadhiwa)",
+      "autoDetectedDescription": "Iligunduliwa awali wakati seva iliongezwa",
+      "matchesServer": "Inalingana na seva",
+      "onServer": "Kwenye seva",
+      "onServerDescription": "Imegunduliwa sasa kwa kukagua seva",
+      "scanning": "Inakagua seva...",
+      "scanningDescription": "Inatafuta favicon ya sasa"
     }
   }
 }

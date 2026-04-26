@@ -4042,6 +4042,27 @@
       "manualConfig": "Configuració manual",
       "configPaths": "Ubicacions del fitxer de configuració",
       "docs": "Documentació"
+    },
+    "iconPicker": {
+      "title": "Tria una icona",
+      "tabShipped": "Icones del proveïdor",
+      "tabCustom": "Icones personalitzades",
+      "search": "Cerca icones...",
+      "upload": "Puja una icona",
+      "empty": "Encara no hi ha icones personalitzades",
+      "emptyHint": "Puja la teva primera icona per començar a construir la teva biblioteca.",
+      "removeIcon": "Treu de la biblioteca",
+      "noResults": "Cap icona coincideix amb la cerca",
+      "currentSection": "Actual",
+      "inUse": "En ús",
+      "inUseDescription": "Icona configurada actualment per a aquest servidor",
+      "autoDetected": "Detectada (desada)",
+      "autoDetectedDescription": "Detectada inicialment quan es va afegir el servidor",
+      "matchesServer": "Coincideix amb el servidor",
+      "onServer": "Al servidor",
+      "onServerDescription": "Acabada de detectar escanejant el servidor",
+      "scanning": "Escanejant servidor...",
+      "scanningDescription": "Cercant la favicon actual"
     }
   }
 }

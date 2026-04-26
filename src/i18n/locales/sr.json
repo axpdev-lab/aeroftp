@@ -4023,6 +4023,27 @@
       "manualConfig": "Ručna konfiguracija",
       "configPaths": "Lokacije konfiguracionog fajla",
       "docs": "Dokumentacija"
+    },
+    "iconPicker": {
+      "title": "Изабери икону",
+      "tabShipped": "Иконе провајдера",
+      "tabCustom": "Прилагођене иконе",
+      "search": "Тражи иконе...",
+      "upload": "Отпреми икону",
+      "empty": "Још нема прилагођених икона",
+      "emptyHint": "Отпремите своју прву икону да бисте почели да правите библиотеку.",
+      "removeIcon": "Уклони из библиотеке",
+      "noResults": "Ниједна икона не одговара претрази",
+      "currentSection": "Тренутно",
+      "inUse": "У употреби",
+      "inUseDescription": "Икона тренутно постављена за овај сервер",
+      "autoDetected": "Ауто-откривена (сачув.)",
+      "autoDetectedDescription": "Првобитно откривена при додавању сервера",
+      "matchesServer": "Одговара серверу",
+      "onServer": "На серверу",
+      "onServerDescription": "Управо откривена скенирањем сервера",
+      "scanning": "Скенирање сервера...",
+      "scanningDescription": "Тражим тренутну favicon"
     }
   }
 }

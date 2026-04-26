@@ -4042,6 +4042,27 @@
       "manualConfig": "Manuell konfigurasjon",
       "configPaths": "Plasseringer av konfigurasjonsfil",
       "docs": "Dokumentasjon"
+    },
+    "iconPicker": {
+      "title": "Velg ikon",
+      "tabShipped": "Leverandørikoner",
+      "tabCustom": "Egendefinerte ikoner",
+      "search": "Søk ikoner...",
+      "upload": "Last opp ikon",
+      "empty": "Ingen egendefinerte ikoner ennå",
+      "emptyHint": "Last opp ditt første ikon for å begynne å bygge biblioteket.",
+      "removeIcon": "Fjern fra biblioteket",
+      "noResults": "Ingen ikoner matcher søket",
+      "currentSection": "Nåværende",
+      "inUse": "I bruk",
+      "inUseDescription": "Ikon som er angitt for denne serveren",
+      "autoDetected": "Auto-oppdaget (lagret)",
+      "autoDetectedDescription": "Opprinnelig oppdaget da serveren ble lagt til",
+      "matchesServer": "Samsvarer med serveren",
+      "onServer": "På serveren",
+      "onServerDescription": "Nettopp oppdaget ved å skanne serveren",
+      "scanning": "Skanner serveren...",
+      "scanningDescription": "Leter etter gjeldende favicon"
     }
   }
 }

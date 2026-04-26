@@ -4013,6 +4013,27 @@
       "manualConfig": "수동 구성",
       "configPaths": "구성 파일 위치",
       "docs": "문서"
+    },
+    "iconPicker": {
+      "title": "아이콘 선택",
+      "tabShipped": "공급자 아이콘",
+      "tabCustom": "사용자 지정 아이콘",
+      "search": "아이콘 검색...",
+      "upload": "아이콘 업로드",
+      "empty": "아직 사용자 지정 아이콘이 없습니다",
+      "emptyHint": "첫 번째 아이콘을 업로드하여 라이브러리를 구축하세요.",
+      "removeIcon": "라이브러리에서 제거",
+      "noResults": "검색과 일치하는 아이콘이 없습니다",
+      "currentSection": "현재",
+      "inUse": "사용 중",
+      "inUseDescription": "이 서버에 현재 설정된 아이콘",
+      "autoDetected": "자동 감지 (저장됨)",
+      "autoDetectedDescription": "서버 추가 시 처음 감지됨",
+      "matchesServer": "서버와 일치",
+      "onServer": "서버에",
+      "onServerDescription": "서버를 스캔하여 방금 감지됨",
+      "scanning": "서버 스캔 중...",
+      "scanningDescription": "현재 파비콘 검색 중"
     }
   }
 }

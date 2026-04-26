@@ -4023,6 +4023,27 @@
       "manualConfig": "Konfigurasi Manual",
       "configPaths": "Lokasi File Konfigurasi",
       "docs": "Dokumentasi"
+    },
+    "iconPicker": {
+      "title": "Pilih ikon",
+      "tabShipped": "Ikon penyedia",
+      "tabCustom": "Ikon kustom",
+      "search": "Cari ikon...",
+      "upload": "Unggah ikon",
+      "empty": "Belum ada ikon kustom",
+      "emptyHint": "Unggah ikon pertama Anda untuk mulai membangun pustaka.",
+      "removeIcon": "Hapus dari pustaka",
+      "noResults": "Tidak ada ikon yang cocok dengan pencarian",
+      "currentSection": "Saat ini",
+      "inUse": "Digunakan",
+      "inUseDescription": "Ikon yang saat ini disetel untuk server ini",
+      "autoDetected": "Terdeteksi otomatis (tersimpan)",
+      "autoDetectedDescription": "Awalnya terdeteksi saat server pertama kali ditambahkan",
+      "matchesServer": "Cocok dengan server",
+      "onServer": "Di server",
+      "onServerDescription": "Baru terdeteksi dengan memindai server",
+      "scanning": "Memindai server...",
+      "scanningDescription": "Mencari favicon saat ini"
     }
   }
 }

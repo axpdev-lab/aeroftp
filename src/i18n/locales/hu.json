@@ -4023,6 +4023,27 @@
       "manualConfig": "Manuális konfiguráció",
       "configPaths": "Konfigurációs fájl helye",
       "docs": "Dokumentáció"
+    },
+    "iconPicker": {
+      "title": "Ikon választása",
+      "tabShipped": "Szolgáltatói ikonok",
+      "tabCustom": "Egyéni ikonok",
+      "search": "Ikonok keresése...",
+      "upload": "Ikon feltöltése",
+      "empty": "Még nincsenek egyéni ikonok",
+      "emptyHint": "Töltse fel első ikonját a könyvtár felépítéséhez.",
+      "removeIcon": "Eltávolítás a könyvtárból",
+      "noResults": "Egyetlen ikon sem felel meg a keresésnek",
+      "currentSection": "Jelenlegi",
+      "inUse": "Használatban",
+      "inUseDescription": "A kiszolgálóhoz jelenleg beállított ikon",
+      "autoDetected": "Auto-felismert (mentett)",
+      "autoDetectedDescription": "Eredetileg felismerve a kiszolgáló hozzáadásakor",
+      "matchesServer": "Megegyezik a kiszolgálóval",
+      "onServer": "A kiszolgálón",
+      "onServerDescription": "Most felismerve a kiszolgáló átvizsgálásával",
+      "scanning": "Kiszolgáló átvizsgálása...",
+      "scanningDescription": "Keresem a jelenlegi favicont"
     }
   }
 }
