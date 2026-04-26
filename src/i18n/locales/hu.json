@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Kiválasztva Cross-Profile forrásként",
       "crossProfileDestinationSelected": "Kiválasztva Cross-Profile célként",
       "crossProfileOpenWithSource": "Cross-Profile Transfer megnyitása (forrás kész)",
-      "crossProfileOpenWithPair": "Cross-Profile Transfer megnyitása (forrás + cél kész)"
+      "crossProfileOpenWithPair": "Cross-Profile Transfer megnyitása (forrás + cél kész)",
+      "newConnection": "Új",
+      "getStarted": "Kezdés",
+      "addFirstServer": "Első kiszolgáló hozzáadása",
+      "browseCategory": "Vagy böngészés kategória szerint"
     },
     "gitlab": {
       "projectPath": "Projekt utvonal",

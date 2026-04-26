@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Odabrano kao Cross-Profile izvor",
       "crossProfileDestinationSelected": "Odabrano kao Cross-Profile odredište",
       "crossProfileOpenWithSource": "Otvori Cross-Profile Transfer (izvor spreman)",
-      "crossProfileOpenWithPair": "Otvori Cross-Profile Transfer (izvor + odredište spremni)"
+      "crossProfileOpenWithPair": "Otvori Cross-Profile Transfer (izvor + odredište spremni)",
+      "newConnection": "Novo",
+      "getStarted": "Započni",
+      "addFirstServer": "Dodajte svoj prvi poslužitelj",
+      "browseCategory": "Ili pregledaj po kategoriji"
     },
     "gitlab": {
       "projectPath": "Putanja projekta",

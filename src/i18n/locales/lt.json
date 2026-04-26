@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Pasirinkta kaip Cross-Profile šaltinis",
       "crossProfileDestinationSelected": "Pasirinkta kaip Cross-Profile paskirties vieta",
       "crossProfileOpenWithSource": "Atidaryti Cross-Profile Transfer (šaltinis paruoštas)",
-      "crossProfileOpenWithPair": "Atidaryti Cross-Profile Transfer (šaltinis + paskirties vieta paruošti)"
+      "crossProfileOpenWithPair": "Atidaryti Cross-Profile Transfer (šaltinis + paskirties vieta paruošti)",
+      "newConnection": "Naujas",
+      "getStarted": "Pradėti",
+      "addFirstServer": "Pridėti pirmąjį serverį",
+      "browseCategory": "Arba naršykite pagal kategoriją"
     },
     "gitlab": {
       "projectPath": "Projekto kelias",

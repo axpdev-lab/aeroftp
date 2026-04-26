@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Vybráno jako zdroj Cross-Profile",
       "crossProfileDestinationSelected": "Vybráno jako cíl Cross-Profile",
       "crossProfileOpenWithSource": "Otevřít Cross-Profile Transfer (zdroj připraven)",
-      "crossProfileOpenWithPair": "Otevřít Cross-Profile Transfer (zdroj + cíl připraveny)"
+      "crossProfileOpenWithPair": "Otevřít Cross-Profile Transfer (zdroj + cíl připraveny)",
+      "newConnection": "Nový",
+      "getStarted": "Začít",
+      "addFirstServer": "Přidat první server",
+      "browseCategory": "Nebo procházet podle kategorie"
     },
     "gitlab": {
       "projectPath": "Cesta k projektu",

@@ -3994,7 +3994,11 @@
       "crossProfileSourceSelected": "Seleccionat com a origen Cross-Profile",
       "crossProfileDestinationSelected": "Seleccionat com a destinació Cross-Profile",
       "crossProfileOpenWithSource": "Obre Cross-Profile Transfer (origen llest)",
-      "crossProfileOpenWithPair": "Obre Cross-Profile Transfer (origen + destinació llestos)"
+      "crossProfileOpenWithPair": "Obre Cross-Profile Transfer (origen + destinació llestos)",
+      "newConnection": "Nou",
+      "getStarted": "Comença",
+      "addFirstServer": "Afegeix el teu primer servidor",
+      "browseCategory": "O navega per categoria"
     },
     "gitlab": {
       "projectPath": "Ruta del projecte",

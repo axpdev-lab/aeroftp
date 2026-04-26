@@ -3965,7 +3965,11 @@
       "crossProfileSourceSelected": "Cross-Profile のソースとして選択中",
       "crossProfileDestinationSelected": "Cross-Profile の宛先として選択中",
       "crossProfileOpenWithSource": "Cross-Profile Transfer を開く (ソース準備完了)",
-      "crossProfileOpenWithPair": "Cross-Profile Transfer を開く (ソース + 宛先 準備完了)"
+      "crossProfileOpenWithPair": "Cross-Profile Transfer を開く (ソース + 宛先 準備完了)",
+      "newConnection": "新規",
+      "getStarted": "始める",
+      "addFirstServer": "最初のサーバーを追加",
+      "browseCategory": "またはカテゴリで検索"
     },
     "gitlab": {
       "projectPath": "プロジェクトパス",

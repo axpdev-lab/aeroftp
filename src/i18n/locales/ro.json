@@ -3965,7 +3965,11 @@
       "crossProfileSourceSelected": "Selectat ca sursa Cross-Profile",
       "crossProfileDestinationSelected": "Selectat ca destinatie Cross-Profile",
       "crossProfileOpenWithSource": "Deschide Cross-Profile Transfer (sursa gata)",
-      "crossProfileOpenWithPair": "Deschide Cross-Profile Transfer (sursa + destinatie gata)"
+      "crossProfileOpenWithPair": "Deschide Cross-Profile Transfer (sursa + destinatie gata)",
+      "newConnection": "Nou",
+      "getStarted": "Începe",
+      "addFirstServer": "Adaugă primul server",
+      "browseCategory": "Sau navighează pe categorii"
     },
     "gitlab": {
       "projectPath": "Calea proiectului",

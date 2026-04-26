@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Da chon lam nguon Cross-Profile",
       "crossProfileDestinationSelected": "Da chon lam dich Cross-Profile",
       "crossProfileOpenWithSource": "Mo Cross-Profile Transfer (nguon san sang)",
-      "crossProfileOpenWithPair": "Mo Cross-Profile Transfer (nguon + dich san sang)"
+      "crossProfileOpenWithPair": "Mo Cross-Profile Transfer (nguon + dich san sang)",
+      "newConnection": "Mới",
+      "getStarted": "Bắt đầu",
+      "addFirstServer": "Thêm máy chủ đầu tiên",
+      "browseCategory": "Hoặc duyệt theo danh mục"
     },
     "gitlab": {
       "projectPath": "Duong dan du an",

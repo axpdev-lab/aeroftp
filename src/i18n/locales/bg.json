@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Избран като източник за Cross-Profile",
       "crossProfileDestinationSelected": "Избран като дестинация за Cross-Profile",
       "crossProfileOpenWithSource": "Отвори Cross-Profile Transfer (източникът е готов)",
-      "crossProfileOpenWithPair": "Отвори Cross-Profile Transfer (източникът и дестинацията са готови)"
+      "crossProfileOpenWithPair": "Отвори Cross-Profile Transfer (източникът и дестинацията са готови)",
+      "newConnection": "Нов",
+      "getStarted": "Започнете",
+      "addFirstServer": "Добавете първия си сървър",
+      "browseCategory": "Или разгледайте по категория"
     },
     "gitlab": {
       "projectPath": "Път на проекта",

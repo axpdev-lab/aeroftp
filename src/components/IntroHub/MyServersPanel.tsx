@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../../types';
-import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
+import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
 import { ServerCard } from './ServerCard';
 import { useTranslation } from '../../i18n';
@@ -92,6 +92,8 @@ interface MyServersPanelProps {
     onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => void | Promise<void>;
     onEdit: (profile: ServerProfile) => void;
     onQuickConnect: () => void;
+    /** Jump to Discover tab pre-filtered on a specific category. */
+    onJumpToCategory?: (categoryId: CatalogCategoryId) => void;
     lastUpdate?: number;
     onOpenExportImport?: () => void;
     onServersChange?: (count: number) => void;
@@ -99,10 +101,20 @@ interface MyServersPanelProps {
     onOpenCrossProfile?: (opts?: { sourceId?: string; sourcePath?: string; destId?: string; destPath?: string }) => void;
 }
 
+const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: React.ReactNode; iconColor: string }[] = [
+    { id: 'protocols', labelKey: 'introHub.category.protocols', icon: <ServerIcon size={18} />, iconColor: 'text-blue-500 dark:text-blue-400' },
+    { id: 'object-storage', labelKey: 'introHub.category.objectStorage', icon: <Database size={18} />, iconColor: 'text-orange-500 dark:text-orange-400' },
+    { id: 'webdav', labelKey: 'introHub.category.webdav', icon: <Globe size={18} />, iconColor: 'text-emerald-500 dark:text-emerald-400' },
+    { id: 'cloud-storage', labelKey: 'introHub.category.cloudStorage', icon: <Cloud size={18} />, iconColor: 'text-sky-500 dark:text-sky-400' },
+    { id: 'media-services', labelKey: 'introHub.category.mediaServices', icon: <Camera size={18} />, iconColor: 'text-pink-500 dark:text-pink-400' },
+    { id: 'developer', labelKey: 'introHub.category.developer', icon: <Code size={18} />, iconColor: 'text-gray-500 dark:text-gray-400' },
+];
+
 export function MyServersPanel({
     onConnect,
     onEdit,
     onQuickConnect,
+    onJumpToCategory,
     lastUpdate,
     onOpenExportImport,
     onServersChange,
@@ -163,6 +175,15 @@ export function MyServersPanel({
     useEffect(() => {
         setServers(getSavedServers());
     }, [lastUpdate]);
+
+    // Cross-Profile Transfer needs at least 2 servers. When the list drops below
+    // that (e.g. user deletes their last server), purge any stale selection so the
+    // toolbar badge and selection rings don't linger pointing at deleted ids.
+    useEffect(() => {
+        if (servers.length < 2 && crossProfileSelection.length > 0) {
+            setCrossProfileSelection([]);
+        }
+    }, [servers.length, crossProfileSelection.length]);
 
     useEffect(() => {
         localStorage.setItem(VIEW_MODE_KEY, viewMode);
@@ -518,7 +539,7 @@ export function MyServersPanel({
             { label: t('common.duplicate'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
             { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: <Star size={14} />, action: () => toggleFavorite(server.id) },
         ];
-        if (onOpenCrossProfile) {
+        if (onOpenCrossProfile && servers.length > 1) {
             items.push({
                 label: t('introHub.setAsCrossProfileSource'),
                 icon: <ArrowUpRight size={14} className="text-indigo-500" />,
@@ -536,7 +557,7 @@ export function MyServersPanel({
             { label: t('common.delete'), icon: <Trash2 size={14} />, action: () => handleDelete(server), danger: true },
         );
         showContextMenu(e, items);
-    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination]);
+    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length]);
 
     return (
         <div className="h-full flex flex-col">
@@ -554,32 +575,63 @@ export function MyServersPanel({
                 chipCounts={chipCounts}
                 onOpenExportImport={onOpenExportImport}
                 onHealthCheck={() => setHealthCheckTarget('all')}
-                onOpenCrossProfile={onOpenCrossProfile ? handleOpenCrossProfile : undefined}
+                onOpenCrossProfile={onOpenCrossProfile && servers.length > 1 ? handleOpenCrossProfile : undefined}
                 crossProfileSelectionCount={crossProfileSelection.length}
             />
 
             {filteredServers.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
-                    <ServerIcon size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
+                <div className="flex-1 flex flex-col items-center justify-center py-10 px-4">
                     {servers.length === 0 ? (
-                        <>
-                            <p className="text-gray-500 dark:text-gray-400 mb-2">{t('introHub.noServers')}</p>
-                            <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">{t('introHub.noServersHint')}</p>
+                        <div className="w-full max-w-2xl flex flex-col items-center text-center">
+                            <ServerIcon size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-1">
+                                {t('introHub.getStarted')}
+                            </h2>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                                {t('introHub.noServersHint')}
+                            </p>
                             <button
                                 onClick={onQuickConnect}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors"
+                                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors mb-8"
                             >
-                                <Plus size={16} />
-                                {t('introHub.quickConnect')}
+                                <Plus size={18} />
+                                {t('introHub.addFirstServer')}
                             </button>
-                        </>
+
+                            {onJumpToCategory && (
+                                <>
+                                    <div className="w-full flex items-center gap-3 mb-4">
+                                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                                        <span className="text-xs uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
+                                            {t('introHub.browseCategory')}
+                                        </span>
+                                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 w-full">
+                                        {EMPTY_STATE_CATEGORIES.map((cat) => (
+                                            <button
+                                                key={cat.id}
+                                                onClick={() => onJumpToCategory(cat.id)}
+                                                className="flex items-center gap-2.5 px-3.5 py-2.5 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-500/50 rounded-lg text-sm text-left transition-colors"
+                                            >
+                                                <span className={`shrink-0 ${cat.iconColor}`}>{cat.icon}</span>
+                                                <span className="text-gray-700 dark:text-gray-200 font-medium truncate">
+                                                    {t(cat.labelKey)}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     ) : (
-                        <>
+                        <div className="text-center">
+                            <ServerIcon size={48} className="text-gray-300 dark:text-gray-600 mb-4 mx-auto" />
                             <p className="text-gray-500 dark:text-gray-400 mb-1">{t('introHub.noResults')}</p>
                             <p className="text-sm text-gray-400 dark:text-gray-500">
                                 {t('introHub.noResultsHint', { query: searchQuery })}
                             </p>
-                        </>
+                        </div>
                     )}
                 </div>
             ) : viewMode === 'grid' ? (
@@ -626,7 +678,7 @@ export function MyServersPanel({
                                     onDrop={canDrag ? handleDrop(realIdx) : undefined}
                                     onDragEnd={canDrag ? handleDragEnd : undefined}
                                     selectionRole={selectionRole}
-                                    onSelect={handleSelectServer}
+                                    onSelect={servers.length > 1 ? handleSelectServer : undefined}
                                 />
                             );
                         })}

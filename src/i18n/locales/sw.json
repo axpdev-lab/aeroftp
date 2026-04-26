@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Imechaguliwa kama chanzo cha Cross-Profile",
       "crossProfileDestinationSelected": "Imechaguliwa kama lengo la Cross-Profile",
       "crossProfileOpenWithSource": "Fungua Cross-Profile Transfer (chanzo tayari)",
-      "crossProfileOpenWithPair": "Fungua Cross-Profile Transfer (chanzo + lengo tayari)"
+      "crossProfileOpenWithPair": "Fungua Cross-Profile Transfer (chanzo + lengo tayari)",
+      "newConnection": "Mpya",
+      "getStarted": "Anza",
+      "addFirstServer": "Ongeza seva yako ya kwanza",
+      "browseCategory": "Au vinjari kwa kategoria"
     },
     "gitlab": {
       "projectPath": "Njia ya mradi",

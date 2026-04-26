@@ -3994,7 +3994,11 @@
       "crossProfileSourceSelected": "Valið sem Cross-Profile uppruni",
       "crossProfileDestinationSelected": "Valið sem Cross-Profile áfangastaður",
       "crossProfileOpenWithSource": "Opna Cross-Profile Transfer (uppruni tilbúinn)",
-      "crossProfileOpenWithPair": "Opna Cross-Profile Transfer (uppruni + áfangastaður tilbúin)"
+      "crossProfileOpenWithPair": "Opna Cross-Profile Transfer (uppruni + áfangastaður tilbúin)",
+      "newConnection": "Nýtt",
+      "getStarted": "Byrja",
+      "addFirstServer": "Bættu við fyrsta þjóninum þínum",
+      "browseCategory": "Eða skoðaðu eftir flokki"
     },
     "gitlab": {
       "projectPath": "Verkefnisslóð",

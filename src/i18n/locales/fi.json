@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Valittu Cross-Profile-lähteeksi",
       "crossProfileDestinationSelected": "Valittu Cross-Profile-kohteeksi",
       "crossProfileOpenWithSource": "Avaa Cross-Profile Transfer (lähde valmis)",
-      "crossProfileOpenWithPair": "Avaa Cross-Profile Transfer (lähde + kohde valmiina)"
+      "crossProfileOpenWithPair": "Avaa Cross-Profile Transfer (lähde + kohde valmiina)",
+      "newConnection": "Uusi",
+      "getStarted": "Aloita",
+      "addFirstServer": "Lisää ensimmäinen palvelin",
+      "browseCategory": "Tai selaa kategorian mukaan"
     },
     "gitlab": {
       "projectPath": "Projektipolku",

@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "เลือกเป็นต้นทาง Cross-Profile แล้ว",
       "crossProfileDestinationSelected": "เลือกเป็นปลายทาง Cross-Profile แล้ว",
       "crossProfileOpenWithSource": "เปิด Cross-Profile Transfer (ต้นทางพร้อม)",
-      "crossProfileOpenWithPair": "เปิด Cross-Profile Transfer (ต้นทาง + ปลายทางพร้อม)"
+      "crossProfileOpenWithPair": "เปิด Cross-Profile Transfer (ต้นทาง + ปลายทางพร้อม)",
+      "newConnection": "ใหม่",
+      "getStarted": "เริ่มต้น",
+      "addFirstServer": "เพิ่มเซิร์ฟเวอร์แรกของคุณ",
+      "browseCategory": "หรือเรียกดูตามหมวดหมู่"
     },
     "gitlab": {
       "projectPath": "เส้นทางโปรเจกต์",

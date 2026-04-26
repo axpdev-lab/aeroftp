@@ -3889,6 +3889,10 @@
         "discover": "Discover Services"
       },
       "quickConnect": "Quick Connect",
+      "newConnection": "New",
+      "getStarted": "Get started",
+      "addFirstServer": "Add your first server",
+      "browseCategory": "Or browse by category",
       "search": "Search...",
       "searchServers": "Search servers...",
       "viewGrid": "Grid view",

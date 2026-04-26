@@ -3965,7 +3965,11 @@
       "crossProfileSourceSelected": "Wybrano jako zrodlo Cross-Profile",
       "crossProfileDestinationSelected": "Wybrano jako miejsce docelowe Cross-Profile",
       "crossProfileOpenWithSource": "Otworz Cross-Profile Transfer (zrodlo gotowe)",
-      "crossProfileOpenWithPair": "Otworz Cross-Profile Transfer (zrodlo + miejsce docelowe gotowe)"
+      "crossProfileOpenWithPair": "Otworz Cross-Profile Transfer (zrodlo + miejsce docelowe gotowe)",
+      "newConnection": "Nowy",
+      "getStarted": "Rozpocznij",
+      "addFirstServer": "Dodaj swój pierwszy serwer",
+      "browseCategory": "Lub przeglądaj według kategorii"
     },
     "gitlab": {
       "projectPath": "Sciezka projektu",

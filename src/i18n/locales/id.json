@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Dipilih sebagai sumber Cross-Profile",
       "crossProfileDestinationSelected": "Dipilih sebagai tujuan Cross-Profile",
       "crossProfileOpenWithSource": "Buka Cross-Profile Transfer (sumber siap)",
-      "crossProfileOpenWithPair": "Buka Cross-Profile Transfer (sumber + tujuan siap)"
+      "crossProfileOpenWithPair": "Buka Cross-Profile Transfer (sumber + tujuan siap)",
+      "newConnection": "Baru",
+      "getStarted": "Mulai",
+      "addFirstServer": "Tambahkan server pertama Anda",
+      "browseCategory": "Atau jelajahi berdasarkan kategori"
     },
     "gitlab": {
       "projectPath": "Jalur Proyek",

@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Cross-Profile উৎস হিসেবে নির্বাচিত",
       "crossProfileDestinationSelected": "Cross-Profile গন্তব্য হিসেবে নির্বাচিত",
       "crossProfileOpenWithSource": "Cross-Profile Transfer খুলুন (উৎস প্রস্তুত)",
-      "crossProfileOpenWithPair": "Cross-Profile Transfer খুলুন (উৎস + গন্তব্য প্রস্তুত)"
+      "crossProfileOpenWithPair": "Cross-Profile Transfer খুলুন (উৎস + গন্তব্য প্রস্তুত)",
+      "newConnection": "নতুন",
+      "getStarted": "শুরু করুন",
+      "addFirstServer": "আপনার প্রথম সার্ভার যোগ করুন",
+      "browseCategory": "অথবা বিভাগ অনুসারে ব্রাউজ করুন"
     },
     "gitlab": {
       "projectPath": "প্রকল্পের পাথ",

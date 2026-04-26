@@ -12,6 +12,7 @@ import { getProviderById } from '../../providers';
 import { useTranslation } from '../../i18n';
 import { secureStoreAndClean } from '../../utils/secureStorage';
 import type { ProviderType } from '../../types';
+import type { CatalogCategoryId } from '../../types/catalog';
 
 const TAB_STATE_KEY = 'aeroftp-intro-active-tab';
 
@@ -118,6 +119,14 @@ export function IntroHub(props: IntroHubProps) {
 
     // "+ New" button -> switch to Discover
     const handleNewConnection = useCallback(() => {
+        setActiveTab('discover');
+    }, []);
+
+    // Jump to Discover preselected on a specific category (used by empty-state shortcuts).
+    // DiscoverPanel reads `aeroftp-discover-category` from localStorage on mount, and it
+    // remounts on tab switch — so writing the key BEFORE switching tabs is enough.
+    const handleJumpToCategory = useCallback((categoryId: CatalogCategoryId) => {
+        try { localStorage.setItem('aeroftp-discover-category', categoryId); } catch { /* ignore */ }
         setActiveTab('discover');
     }, []);
 
@@ -324,6 +333,7 @@ export function IntroHub(props: IntroHubProps) {
                         onConnect={onSavedServerConnect}
                         onEdit={handleEdit}
                         onQuickConnect={handleNewConnection}
+                        onJumpToCategory={handleJumpToCategory}
                         lastUpdate={serversRefreshKey}
                         onOpenExportImport={() => setShowExportImport(true)}
                         onServersChange={() => {

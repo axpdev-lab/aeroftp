@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Ընտրված է որպես Cross-Profile աղբյուր",
       "crossProfileDestinationSelected": "Ընտրված է որպես Cross-Profile նպատակակետ",
       "crossProfileOpenWithSource": "Բացել Cross-Profile Transfer (աղբյուրը պատրաստ է)",
-      "crossProfileOpenWithPair": "Բացել Cross-Profile Transfer (աղբյուր + նպատակակետ պատրաստ են)"
+      "crossProfileOpenWithPair": "Բացել Cross-Profile Transfer (աղբյուր + նպատակակետ պատրաստ են)",
+      "newConnection": "Նոր",
+      "getStarted": "Սկսել",
+      "addFirstServer": "Ավելացրեք ձեր առաջին սերվերը",
+      "browseCategory": "Կամ թերթեք ըստ կատեգորիայի"
     },
     "gitlab": {
       "projectPath": "Նախագծի ուղի",

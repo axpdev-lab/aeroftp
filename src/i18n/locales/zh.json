@@ -3965,7 +3965,11 @@
       "crossProfileSourceSelected": "已选为 Cross-Profile 源",
       "crossProfileDestinationSelected": "已选为 Cross-Profile 目标",
       "crossProfileOpenWithSource": "打开 Cross-Profile Transfer（源已就绪）",
-      "crossProfileOpenWithPair": "打开 Cross-Profile Transfer（源 + 目标已就绪）"
+      "crossProfileOpenWithPair": "打开 Cross-Profile Transfer（源 + 目标已就绪）",
+      "newConnection": "新建",
+      "getStarted": "开始使用",
+      "addFirstServer": "添加您的第一个服务器",
+      "browseCategory": "或按类别浏览"
     },
     "gitlab": {
       "projectPath": "项目路径",

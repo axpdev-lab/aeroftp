@@ -3994,7 +3994,11 @@
       "crossProfileSourceSelected": "Wedi'i ddewis fel ffynhonnell Cross-Profile",
       "crossProfileDestinationSelected": "Wedi'i ddewis fel cyrchfan Cross-Profile",
       "crossProfileOpenWithSource": "Agor Cross-Profile Transfer (ffynhonnell yn barod)",
-      "crossProfileOpenWithPair": "Agor Cross-Profile Transfer (ffynhonnell + cyrchfan yn barod)"
+      "crossProfileOpenWithPair": "Agor Cross-Profile Transfer (ffynhonnell + cyrchfan yn barod)",
+      "newConnection": "Newydd",
+      "getStarted": "Dechrau",
+      "addFirstServer": "Ychwanegwch eich gweinydd cyntaf",
+      "browseCategory": "Neu pori yn ôl categori"
     },
     "gitlab": {
       "projectPath": "Llwybr y prosiect",

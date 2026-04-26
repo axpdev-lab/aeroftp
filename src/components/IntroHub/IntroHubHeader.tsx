@@ -113,10 +113,11 @@ export function IntroHubHeader({
             {/* + New button (opens Discover) */}
             <button
                 onClick={onNewConnection}
-                className="flex items-center gap-1.5 p-1.5 ml-1.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:text-gray-700 dark:hover:text-gray-300 transition-colors border border-dashed border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 shrink-0"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 ml-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:text-gray-700 dark:hover:text-gray-200 transition-colors border border-dashed border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 shrink-0"
                 title="Ctrl+N"
             >
                 <Plus size={13} />
+                <span>{t('introHub.newConnection')}</span>
             </button>
 
             {/* Dynamic form tabs */}

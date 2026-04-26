@@ -3994,7 +3994,11 @@
       "crossProfileSourceSelected": "បានជ្រើសរើសជាប្រភព Cross-Profile",
       "crossProfileDestinationSelected": "បានជ្រើសរើសជាគោលដៅ Cross-Profile",
       "crossProfileOpenWithSource": "បើក Cross-Profile Transfer (ប្រភពរួចរាល់)",
-      "crossProfileOpenWithPair": "បើក Cross-Profile Transfer (ប្រភព + គោលដៅរួចរាល់)"
+      "crossProfileOpenWithPair": "បើក Cross-Profile Transfer (ប្រភព + គោលដៅរួចរាល់)",
+      "newConnection": "ថ្មី",
+      "getStarted": "ចាប់ផ្ដើម",
+      "addFirstServer": "បន្ថែមម៉ាស៊ីនមេដំបូងរបស់អ្នក",
+      "browseCategory": "ឬរុករកតាមប្រភេទ"
     },
     "gitlab": {
       "projectPath": "ផ្លូវគម្រោង",

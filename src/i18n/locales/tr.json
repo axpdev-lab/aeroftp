@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Cross-Profile kaynagi olarak secildi",
       "crossProfileDestinationSelected": "Cross-Profile hedefi olarak secildi",
       "crossProfileOpenWithSource": "Cross-Profile Transfer'i ac (kaynak hazir)",
-      "crossProfileOpenWithPair": "Cross-Profile Transfer'i ac (kaynak + hedef hazir)"
+      "crossProfileOpenWithPair": "Cross-Profile Transfer'i ac (kaynak + hedef hazir)",
+      "newConnection": "Yeni",
+      "getStarted": "Başla",
+      "addFirstServer": "İlk sunucunuzu ekleyin",
+      "browseCategory": "Veya kategoriye göre göz atın"
     },
     "gitlab": {
       "projectPath": "Proje Yolu",

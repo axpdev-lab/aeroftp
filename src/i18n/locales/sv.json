@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Vald som Cross-Profile-kalla",
       "crossProfileDestinationSelected": "Vald som Cross-Profile-destination",
       "crossProfileOpenWithSource": "Oppna Cross-Profile Transfer (kalla redo)",
-      "crossProfileOpenWithPair": "Oppna Cross-Profile Transfer (kalla + destination redo)"
+      "crossProfileOpenWithPair": "Oppna Cross-Profile Transfer (kalla + destination redo)",
+      "newConnection": "Ny",
+      "getStarted": "Kom igång",
+      "addFirstServer": "Lägg till din första server",
+      "browseCategory": "Eller bläddra efter kategori"
     },
     "gitlab": {
       "projectPath": "Projektsokvag",

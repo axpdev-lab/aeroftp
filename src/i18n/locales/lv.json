@@ -3975,7 +3975,11 @@
       "crossProfileSourceSelected": "Atlasīts kā Cross-Profile avots",
       "crossProfileDestinationSelected": "Atlasīts kā Cross-Profile mērķis",
       "crossProfileOpenWithSource": "Atvērt Cross-Profile Transfer (avots gatavs)",
-      "crossProfileOpenWithPair": "Atvērt Cross-Profile Transfer (avots + mērķis gatavi)"
+      "crossProfileOpenWithPair": "Atvērt Cross-Profile Transfer (avots + mērķis gatavi)",
+      "newConnection": "Jauns",
+      "getStarted": "Sākt",
+      "addFirstServer": "Pievienot pirmo serveri",
+      "browseCategory": "Vai pārlūkot pēc kategorijas"
     },
     "gitlab": {
       "projectPath": "Projekta ceļš",

@@ -3994,7 +3994,11 @@
       "crossProfileSourceSelected": "Valgt som Cross-Profile-kilde",
       "crossProfileDestinationSelected": "Valgt som Cross-Profile-mål",
       "crossProfileOpenWithSource": "Åpne Cross-Profile Transfer (kilde klar)",
-      "crossProfileOpenWithPair": "Åpne Cross-Profile Transfer (kilde + mål klare)"
+      "crossProfileOpenWithPair": "Åpne Cross-Profile Transfer (kilde + mål klare)",
+      "newConnection": "Ny",
+      "getStarted": "Kom i gang",
+      "addFirstServer": "Legg til din første server",
+      "browseCategory": "Eller bla etter kategori"
     },
     "gitlab": {
       "projectPath": "Prosjektsti",

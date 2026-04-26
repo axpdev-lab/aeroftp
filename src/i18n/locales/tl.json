@@ -3994,7 +3994,11 @@
       "crossProfileSourceSelected": "Napili bilang pinagmulan ng Cross-Profile",
       "crossProfileDestinationSelected": "Napili bilang patutunguhan ng Cross-Profile",
       "crossProfileOpenWithSource": "Buksan ang Cross-Profile Transfer (handa na ang pinagmulan)",
-      "crossProfileOpenWithPair": "Buksan ang Cross-Profile Transfer (handa na ang pinagmulan + patutunguhan)"
+      "crossProfileOpenWithPair": "Buksan ang Cross-Profile Transfer (handa na ang pinagmulan + patutunguhan)",
+      "newConnection": "Bago",
+      "getStarted": "Magsimula",
+      "addFirstServer": "Idagdag ang iyong unang server",
+      "browseCategory": "O mag-browse ayon sa kategorya"
     },
     "gitlab": {
       "projectPath": "Path ng Project",
