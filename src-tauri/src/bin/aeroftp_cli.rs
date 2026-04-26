@@ -28,6 +28,8 @@
 //!   aeroftp rcat <url> <remote>               Upload stdin directly to remote file
 //!   aeroftp serve http <url> [path]           Serve remote files over local HTTP
 //!   aeroftp serve webdav <url> [path]          Serve remote files over local WebDAV (read-write)
+//!   aeroftp speed <url> [-s 10M]              Benchmark upload/download (random + SHA-256 + TTFB)
+//!   aeroftp speed-compare <url1> <url2>...    Rank multiple servers side-by-side
 //!
 //! URL format: protocol://user:pass@host:port/path
 //! Add --json for machine-readable output.
@@ -682,12 +684,12 @@ enum Commands {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Test file size (e.g. 1M, 8M, 64M). Also accepts --size / -s.
+        /// Test file size (e.g. 1M, 8M, 64M, 1G). Also accepts --size / -s.
         #[arg(
             long = "test-size",
             visible_alias = "size",
             short = 's',
-            default_value = "8M"
+            default_value = "10M"
         )]
         test_size: String,
         /// Number of upload/download iterations
@@ -696,6 +698,36 @@ enum Commands {
         /// Remote path override for the temporary benchmark file
         #[arg(long)]
         remote_path: Option<String>,
+        /// Skip SHA-256 integrity verification (faster but less rigorous)
+        #[arg(long)]
+        no_integrity: bool,
+        /// Write a JSON v1 report to this path
+        #[arg(long)]
+        json_out: Option<String>,
+    },
+    /// Benchmark and rank multiple servers side-by-side.
+    SpeedCompare {
+        /// Two or more server URLs to compare
+        #[arg(required = true, num_args = 1..)]
+        urls: Vec<String>,
+        /// Test file size (e.g. 10M, 100M)
+        #[arg(long = "test-size", visible_alias = "size", short = 's', default_value = "10M")]
+        test_size: String,
+        /// Maximum parallel runs (1-4, default 2)
+        #[arg(long, default_value = "2")]
+        parallel: u8,
+        /// Skip SHA-256 integrity verification
+        #[arg(long)]
+        no_integrity: bool,
+        /// Write a JSON v1 compare report to this path
+        #[arg(long)]
+        json_out: Option<String>,
+        /// Write a CSV report to this path
+        #[arg(long)]
+        csv_out: Option<String>,
+        /// Write a Markdown report to this path
+        #[arg(long)]
+        md_out: Option<String>,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -1407,12 +1439,46 @@ struct CliTransferResult {
 #[derive(Serialize)]
 struct CliSpeedResult {
     status: &'static str,
+    schema: &'static str,
     remote_path: String,
     test_size: u64,
     iterations: u32,
     upload_speed_bps: u64,
     download_speed_bps: u64,
+    upload_mbps: f64,
+    download_mbps: f64,
+    download_ttfb_ms: Option<u64>,
+    /// True when SHA-256 integrity check actually ran (vs explicitly skipped).
+    integrity_checked: bool,
+    /// True only when the check ran AND hashes matched.
+    integrity_verified: bool,
+    upload_sha256: String,
+    download_sha256: String,
+    cleanup_ok: bool,
+    cleanup_error: Option<String>,
     elapsed_secs: f64,
+    protocol: String,
+}
+
+#[derive(Serialize)]
+struct CliSpeedCompareEntry {
+    rank: u32,
+    url: String,
+    protocol: String,
+    score: f64,
+    result: Option<CliSpeedResult>,
+    error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct CliSpeedCompareReport {
+    status: &'static str,
+    schema: &'static str,
+    test_size: u64,
+    parallel: u8,
+    started_at_ms: u64,
+    finished_at_ms: u64,
+    results: Vec<CliSpeedCompareEntry>,
 }
 
 #[derive(Serialize)]
@@ -11602,35 +11668,146 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     0
 }
 
-fn write_speed_test_file(path: &Path, size: u64) -> Result<(), String> {
+/// Write a non-compressible random payload to `path` and return its hex SHA-256.
+///
+/// Uses `rand::thread_rng()` to generate high-entropy bytes (~8 bits/byte),
+/// preventing TLS or transport-level compression from skewing the benchmark.
+/// This is *high-entropy random* in the benchmarking sense, not a cryptographic
+/// secrecy guarantee — the bytes are read back over the wire and hashed.
+fn write_speed_test_file_random(path: &Path, size: u64) -> Result<String, String> {
+    use rand::RngCore;
+    use sha2::{Digest, Sha256};
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("Cannot create speed test payload: {}", e))?;
-    let chunk = vec![0u8; 1024 * 1024];
+    let mut rng = rand::thread_rng();
+    let mut hasher = Sha256::new();
+    let mut chunk = vec![0u8; 1024 * 1024];
     let mut remaining = size;
     while remaining > 0 {
         let next = remaining.min(chunk.len() as u64) as usize;
+        rng.fill_bytes(&mut chunk[..next]);
         file.write_all(&chunk[..next])
             .map_err(|e| format!("Cannot write speed test payload: {}", e))?;
+        hasher.update(&chunk[..next]);
         remaining -= next as u64;
     }
     file.flush()
         .map_err(|e| format!("Cannot flush speed test payload: {}", e))?;
-    Ok(())
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// Redact userinfo password from a URL for safe display in logs / reports.
+/// Returns `protocol://user@host[:port]/path` when the URL is parseable, or a
+/// best-effort manual redaction otherwise. Never returns the original password.
+fn redact_url_for_display(raw: &str) -> String {
+    if let Ok(mut parsed) = url::Url::parse(raw) {
+        if parsed.password().is_some() {
+            let _ = parsed.set_password(None);
+        }
+        return parsed.to_string();
+    }
+    // Manual fallback for inputs that don't parse: strip ":password@" from "://user:password@".
+    if let Some(scheme_idx) = raw.find("://") {
+        let after_scheme = &raw[scheme_idx + 3..];
+        if let Some(at_idx) = after_scheme.find('@') {
+            let userinfo = &after_scheme[..at_idx];
+            let rest = &after_scheme[at_idx..];
+            if let Some(colon_idx) = userinfo.find(':') {
+                let user = &userinfo[..colon_idx];
+                return format!("{}://{}{}", &raw[..scheme_idx], user, rest);
+            }
+        }
+    }
+    raw.to_string()
+}
+
+/// CSV-safe cell encoding: quotes the value, doubles inner quotes, and
+/// neutralizes spreadsheet-formula leading characters (`= + - @`) by
+/// prefixing with a single quote inside the quoted cell. Mitigates CSV
+/// injection in tools like Excel/Numbers that auto-evaluate cells.
+fn csv_cell_safe(value: &str) -> String {
+    let mut s = String::with_capacity(value.len() + 4);
+    s.push('"');
+    let mut chars = value.chars();
+    if let Some(first) = chars.next() {
+        if matches!(first, '=' | '+' | '-' | '@' | '\t' | '\r') {
+            s.push('\'');
+        }
+        if first == '"' {
+            s.push('"');
+            s.push('"');
+        } else {
+            s.push(first);
+        }
+        for c in chars {
+            if c == '"' {
+                s.push('"');
+                s.push('"');
+            } else {
+                s.push(c);
+            }
+        }
+    }
+    s.push('"');
+    s
+}
+
+/// Markdown-cell-safe encoding: escapes pipe and newline characters that
+/// would break GitHub Flavored Markdown table rows. Backslashes are also
+/// escaped so the output remains literal.
+fn md_cell_safe(value: &str) -> String {
+    let mut s = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '\\' => s.push_str("\\\\"),
+            '|' => s.push_str("\\|"),
+            '\n' | '\r' => s.push(' '),
+            other => s.push(other),
+        }
+    }
+    s
+}
+
+/// Stream-hash a file from disk in 1 MB chunks. Returns hex SHA-256.
+fn hash_file_streaming(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| format!("Cannot open: {}", e))?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| format!("Read: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Maximum CLI speed test size. Mirrors GUI hard cap (1 GiB).
+const CLI_SPEED_MAX_SIZE: u64 = 1024 * 1024 * 1024;
+
+#[allow(clippy::too_many_arguments)]
 async fn cmd_speed(
     url: &str,
     test_size: &str,
     iterations: u32,
     remote_path: Option<&str>,
+    no_integrity: bool,
+    json_out: Option<&str>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
     let iterations = iterations.clamp(1, 10);
     let size = match parse_size_filter(test_size) {
-        Ok(size) if size > 0 => size,
-        Ok(_) => {
+        Ok(size) if size > 0 && size <= CLI_SPEED_MAX_SIZE => size,
+        Ok(0) => {
             print_error(format, "Speed test size must be greater than zero", 5);
+            return 5;
+        }
+        Ok(_) => {
+            print_error(format, "Speed test size cannot exceed 1 GiB", 5);
             return 5;
         }
         Err(e) => {
@@ -11641,131 +11818,486 @@ async fn cmd_speed(
 
     let remote_test_path = remote_path
         .map(|path| path.to_string())
-        .unwrap_or_else(|| format!("/aeroftp_speed_test_{}.bin", uuid::Uuid::new_v4()));
+        .unwrap_or_else(|| format!("/.aeroftp-speedtest-{}.bin", uuid::Uuid::new_v4()));
+
+    let outcome = run_single_speed_test(
+        url,
+        size,
+        iterations,
+        &remote_test_path,
+        !no_integrity,
+        cli,
+        format,
+    )
+    .await;
+
+    let result = match outcome {
+        Ok(r) => r,
+        Err((msg, code)) => {
+            // For connection errors, the inner create_and_connect has already
+            // emitted a structured error to JSON / a friendly message to text.
+            // Avoid duplicating: only print here if the failure happened later.
+            if !msg.starts_with("Connect failed for ") {
+                print_error(format, &msg, code);
+            }
+            return code;
+        }
+    };
+
+    if let Some(path) = json_out {
+        if let Err(e) = std::fs::write(path, serde_json::to_string_pretty(&result).unwrap_or_default()) {
+            eprintln!("warning: could not write JSON report to {}: {}", path, e);
+        }
+    }
+
+    // Exit code 4 only when an integrity check ran AND failed.
+    // If integrity was explicitly skipped, that is not an error.
+    let exit_code = if !result.integrity_checked || result.integrity_verified { 0 } else { 4 };
+
+    match format {
+        OutputFormat::Text => {
+            if !cli.quiet {
+                println!(
+                    "Speed test complete ({} iteration(s), {}, {})",
+                    result.iterations,
+                    format_size(result.test_size),
+                    result.protocol.to_uppercase(),
+                );
+                println!("  Upload:    {}  ({:.2} Mbps)", format_speed(result.upload_speed_bps), result.upload_mbps);
+                println!("  Download:  {}  ({:.2} Mbps)", format_speed(result.download_speed_bps), result.download_mbps);
+                if let Some(ttfb) = result.download_ttfb_ms {
+                    println!("  TTFB:      {} ms", ttfb);
+                }
+                let integrity_label = if !result.integrity_checked {
+                    "skipped"
+                } else if result.integrity_verified {
+                    "verified"
+                } else {
+                    "CORRUPTED"
+                };
+                println!("  Integrity: {}", integrity_label);
+                println!(
+                    "  Cleanup:   {}",
+                    if result.cleanup_ok { "removed".to_string() } else { format!("manual: {}", result.remote_path) }
+                );
+                println!("  Remote:    {}", result.remote_path);
+            }
+        }
+        OutputFormat::Json => print_json(&result),
+    }
+
+    exit_code
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_single_speed_test(
+    url: &str,
+    size: u64,
+    iterations: u32,
+    remote_test_path: &str,
+    verify_integrity: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<CliSpeedResult, (String, i32)> {
+    // Allocate BOTH local tempfiles BEFORE opening any network connection.
+    // Failure here cannot leak a remote file or a live provider connection.
+    let local_upload = NamedTempFile::new()
+        .map_err(|e| (format!("Cannot create upload temp: {}", e), 5))?;
+    let upload_sha256 = write_speed_test_file_random(local_upload.path(), size)
+        .map_err(|e| (e, 5))?;
+    let local_download = NamedTempFile::new()
+        .map_err(|e| (format!("Cannot create download temp: {}", e), 5))?;
+    let download_path = local_download.path().to_path_buf();
 
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(code) => return code,
+        Err(code) => return Err((
+            format!("Connect failed for {}", redact_url_for_display(url)),
+            code,
+        )),
     };
 
-    let local_upload = match NamedTempFile::new() {
-        Ok(file) => file,
-        Err(e) => {
-            print_error(format, &format!("Cannot create temp file: {}", e), 5);
-            let _ = provider.disconnect().await;
-            return 5;
-        }
-    };
-    if let Err(e) = write_speed_test_file(local_upload.path(), size) {
-        print_error(format, &e, 5);
-        let _ = provider.disconnect().await;
-        return 5;
-    }
+    let protocol = provider.provider_type().to_string();
 
-    let mut upload_total = 0u64;
-    let mut download_total = 0u64;
+    let mut upload_total: f64 = 0.0;
+    let mut download_total: f64 = 0.0;
+    let mut last_ttfb_ms: Option<u64> = None;
     let start = Instant::now();
+    let mut final_download_sha = String::new();
+    // Tri-state: when verify_integrity is false, the check did not run.
+    // We must NOT report `verified` for runs where SHA-256 wasn't compared.
+    let integrity_checked = verify_integrity;
+    let mut integrity_verified = false;
 
     for iteration in 0..iterations {
         let upload_start = Instant::now();
         if let Err(e) = provider
             .upload(
                 local_upload.path().to_string_lossy().as_ref(),
-                &remote_test_path,
+                remote_test_path,
                 None,
             )
             .await
         {
-            print_error(
-                format,
-                &format!(
-                    "speed test upload failed on iteration {}: {}",
-                    iteration + 1,
-                    e
-                ),
-                provider_error_to_exit_code(&e),
-            );
-            let _ = provider.delete(&remote_test_path).await;
+            let _ = provider.delete(remote_test_path).await;
             let _ = provider.disconnect().await;
-            return provider_error_to_exit_code(&e);
+            return Err((
+                format!("speed test upload failed on iteration {}: {}", iteration + 1, e),
+                provider_error_to_exit_code(&e),
+            ));
         }
-        let upload_elapsed = upload_start.elapsed().as_secs_f64();
-        if upload_elapsed > 0.0 {
-            upload_total += (size as f64 / upload_elapsed) as u64;
-        }
+        let upload_elapsed = upload_start.elapsed().as_secs_f64().max(0.0001);
+        upload_total += size as f64 / upload_elapsed;
 
-        let local_download = match NamedTempFile::new() {
-            Ok(file) => file,
-            Err(e) => {
-                print_error(format, &format!("Cannot create temp file: {}", e), 5);
-                let _ = provider.delete(&remote_test_path).await;
-                let _ = provider.disconnect().await;
-                return 5;
+        let phase_start = Instant::now();
+        let ttfb = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let ttfb_cb = std::sync::Arc::clone(&ttfb);
+        let progress = Box::new(move |transferred: u64, _total: u64| {
+            if transferred > 0 && ttfb_cb.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+                let ms = phase_start.elapsed().as_millis() as u64;
+                ttfb_cb.store(ms.max(1), std::sync::atomic::Ordering::Relaxed);
             }
-        };
+        });
 
         let download_start = Instant::now();
         if let Err(e) = provider
             .download(
-                &remote_test_path,
-                local_download.path().to_string_lossy().as_ref(),
-                None,
+                remote_test_path,
+                download_path.to_string_lossy().as_ref(),
+                Some(progress),
             )
             .await
         {
-            print_error(
-                format,
-                &format!(
-                    "speed test download failed on iteration {}: {}",
-                    iteration + 1,
-                    e
-                ),
-                provider_error_to_exit_code(&e),
-            );
-            let _ = provider.delete(&remote_test_path).await;
+            let _ = provider.delete(remote_test_path).await;
             let _ = provider.disconnect().await;
-            return provider_error_to_exit_code(&e);
+            return Err((
+                format!("speed test download failed on iteration {}: {}", iteration + 1, e),
+                provider_error_to_exit_code(&e),
+            ));
         }
-        let download_elapsed = download_start.elapsed().as_secs_f64();
-        if download_elapsed > 0.0 {
-            download_total += (size as f64 / download_elapsed) as u64;
+        let download_elapsed = download_start.elapsed().as_secs_f64().max(0.0001);
+        download_total += size as f64 / download_elapsed;
+        let ttfb_value = ttfb.load(std::sync::atomic::Ordering::Relaxed);
+        if ttfb_value > 0 {
+            last_ttfb_ms = Some(ttfb_value);
+        }
+        // Hash the downloaded file while it's still alive (NamedTempFile drops at iter end).
+        if iteration == iterations - 1 && verify_integrity {
+            final_download_sha = hash_file_streaming(&download_path).unwrap_or_default();
+            integrity_verified =
+                !final_download_sha.is_empty() && final_download_sha == upload_sha256;
         }
     }
 
-    let _ = provider.delete(&remote_test_path).await;
+    finalize_speed_result(
+        provider,
+        remote_test_path,
+        size,
+        iterations,
+        upload_total,
+        download_total,
+        last_ttfb_ms,
+        upload_sha256,
+        final_download_sha,
+        integrity_checked,
+        integrity_verified,
+        protocol,
+        start.elapsed().as_secs_f64(),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn finalize_speed_result(
+    mut provider: Box<dyn StorageProvider>,
+    remote_test_path: &str,
+    size: u64,
+    iterations: u32,
+    upload_total: f64,
+    download_total: f64,
+    download_ttfb_ms: Option<u64>,
+    upload_sha256: String,
+    download_sha256: String,
+    integrity_checked: bool,
+    integrity_verified: bool,
+    protocol: String,
+    elapsed_secs: f64,
+) -> Result<CliSpeedResult, (String, i32)> {
+    let (cleanup_ok, cleanup_error) = match provider.delete(remote_test_path).await {
+        Ok(()) => (true, None),
+        Err(e) => (false, Some(e.to_string())),
+    };
     let _ = provider.disconnect().await;
 
-    let upload_speed = upload_total / iterations as u64;
-    let download_speed = download_total / iterations as u64;
-    let elapsed = start.elapsed().as_secs_f64();
+    let avg_up = (upload_total / iterations.max(1) as f64) as u64;
+    let avg_dn = (download_total / iterations.max(1) as f64) as u64;
+    Ok(CliSpeedResult {
+        status: "ok",
+        schema: "aeroftp.speedtest.v1",
+        remote_path: remote_test_path.to_string(),
+        test_size: size,
+        iterations,
+        upload_speed_bps: avg_up,
+        download_speed_bps: avg_dn,
+        upload_mbps: avg_up as f64 * 8.0 / 1_000_000.0,
+        download_mbps: avg_dn as f64 * 8.0 / 1_000_000.0,
+        download_ttfb_ms,
+        integrity_checked,
+        integrity_verified,
+        upload_sha256,
+        download_sha256,
+        cleanup_ok,
+        cleanup_error,
+        elapsed_secs,
+        protocol,
+    })
+}
 
-    match format {
-        OutputFormat::Text => {
-            if !cli.quiet {
-                println!(
-                    "Speed test complete ({} iteration(s), {})",
-                    iterations,
-                    format_size(size)
-                );
-                println!("  Upload:   {}", format_speed(upload_speed));
-                println!("  Download: {}", format_speed(download_speed));
-                println!("  Remote:   {}", remote_test_path);
-            }
+#[allow(clippy::too_many_arguments)]
+async fn cmd_speed_compare(
+    urls: &[String],
+    test_size: &str,
+    parallel: u8,
+    no_integrity: bool,
+    json_out: Option<&str>,
+    csv_out: Option<&str>,
+    md_out: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if urls.len() < 2 {
+        print_error(format, "speed-compare requires at least 2 URLs", 5);
+        return 5;
+    }
+    let parallel = parallel.clamp(1, 4);
+    let size = match parse_size_filter(test_size) {
+        Ok(size) if size > 0 && size <= CLI_SPEED_MAX_SIZE => size,
+        Ok(0) => {
+            print_error(format, "Speed test size must be greater than zero", 5);
+            return 5;
         }
-        OutputFormat::Json => {
-            print_json(&CliSpeedResult {
-                status: "ok",
-                remote_path: remote_test_path,
-                test_size: size,
-                iterations,
-                upload_speed_bps: upload_speed,
-                download_speed_bps: download_speed,
-                elapsed_secs: elapsed,
-            });
+        Ok(_) => {
+            print_error(format, "Speed test size cannot exceed 1 GiB", 5);
+            return 5;
+        }
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    let started_at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    // Use buffer_unordered to avoid tokio::spawn Send bound (some provider futures
+    // hold non-Send OAuth helpers). buffer_unordered polls within the current task.
+    let cli_ref = cli;
+    let test_futures = urls.iter().map(|url| async move {
+        let raw_url = url.clone();
+        let display_url = redact_url_for_display(&raw_url);
+        let remote_test_path = format!("/.aeroftp-speedtest-{}.bin", uuid::Uuid::new_v4());
+        let result = run_single_speed_test(
+            &raw_url,
+            size,
+            1,
+            &remote_test_path,
+            !no_integrity,
+            cli_ref,
+            OutputFormat::Json, // suppress per-test text output during compare
+        )
+        .await;
+        (display_url, result)
+    });
+    type CompareEntry = (String, Result<CliSpeedResult, (String, i32)>);
+    let mut entries: Vec<CompareEntry> = Vec::with_capacity(urls.len());
+    let mut stream = futures_util::stream::iter(test_futures).buffer_unordered(parallel as usize);
+    while let Some(pair) = futures_util::StreamExt::next(&mut stream).await {
+        entries.push(pair);
+    }
+
+    let finished_at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    let max_dl: f64 = entries
+        .iter()
+        .filter_map(|(_, r)| r.as_ref().ok().map(|r| r.download_mbps))
+        .fold(0.0, f64::max);
+    let max_ul: f64 = entries
+        .iter()
+        .filter_map(|(_, r)| r.as_ref().ok().map(|r| r.upload_mbps))
+        .fold(0.0, f64::max);
+
+    let mut compare_entries: Vec<CliSpeedCompareEntry> = entries
+        .into_iter()
+        .map(|(url, res)| match res {
+            Ok(r) => {
+                let nd = if max_dl > 0.0 { (r.download_mbps / max_dl).clamp(0.0, 1.0) } else { 0.0 };
+                let nu = if max_ul > 0.0 { (r.upload_mbps / max_ul).clamp(0.0, 1.0) } else { 0.0 };
+                // Tri-state: skipped integrity contributes 0.5 (neutral), not 1.0 (verified).
+                let ni = if !r.integrity_checked {
+                    0.5
+                } else if r.integrity_verified {
+                    1.0
+                } else {
+                    0.0
+                };
+                let nc = if r.cleanup_ok { 1.0 } else { 0.0 };
+                let score = 0.45 * nd + 0.35 * nu + 0.10 * ni + 0.10 * nc;
+                let protocol = r.protocol.clone();
+                CliSpeedCompareEntry {
+                    rank: 0,
+                    url,
+                    protocol,
+                    score,
+                    result: Some(r),
+                    error: None,
+                }
+            }
+            Err((msg, _)) => CliSpeedCompareEntry {
+                rank: 0,
+                url,
+                protocol: "?".to_string(),
+                score: 0.0,
+                result: None,
+                error: Some(msg),
+            },
+        })
+        .collect();
+
+    compare_entries.sort_by(|a, b| {
+        if a.result.is_some() && b.result.is_none() { return std::cmp::Ordering::Less; }
+        if a.result.is_none() && b.result.is_some() { return std::cmp::Ordering::Greater; }
+        b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut rank = 0u32;
+    for e in compare_entries.iter_mut() {
+        if e.result.is_some() {
+            rank += 1;
+            e.rank = rank;
         }
     }
 
-    0
+    let report = CliSpeedCompareReport {
+        status: "ok",
+        schema: "aeroftp.speedtest.v1",
+        test_size: size,
+        parallel,
+        started_at_ms,
+        finished_at_ms,
+        results: compare_entries,
+    };
+
+    // Optional file exports
+    if let Some(path) = json_out {
+        if let Err(e) = std::fs::write(path, serde_json::to_string_pretty(&report).unwrap_or_default()) {
+            eprintln!("warning: could not write JSON report to {}: {}", path, e);
+        }
+    }
+    if let Some(path) = csv_out {
+        let mut csv = String::from(
+            "rank,url,protocol,size_bytes,upload_mbps,download_mbps,download_ttfb_ms,integrity,cleanup,score,error\n",
+        );
+        for e in report.results.iter() {
+            if let Some(r) = e.result.as_ref() {
+                let integrity = if !r.integrity_checked {
+                    "skipped"
+                } else if r.integrity_verified {
+                    "verified"
+                } else {
+                    "corrupted"
+                };
+                csv.push_str(&format!(
+                    "{},{},{},{},{:.2},{:.2},{},{},{},{:.1},{}\n",
+                    e.rank,
+                    csv_cell_safe(&e.url),
+                    csv_cell_safe(&r.protocol),
+                    r.test_size, r.upload_mbps, r.download_mbps,
+                    r.download_ttfb_ms.map(|v| v.to_string()).unwrap_or_default(),
+                    integrity,
+                    r.cleanup_ok as u8, e.score * 100.0,
+                    "",
+                ));
+            } else {
+                csv.push_str(&format!(
+                    ",{},,,,,,,,,{}\n",
+                    csv_cell_safe(&e.url),
+                    csv_cell_safe(e.error.as_deref().unwrap_or("")),
+                ));
+            }
+        }
+        if let Err(e) = std::fs::write(path, csv) {
+            eprintln!("warning: could not write CSV report to {}: {}", path, e);
+        }
+    }
+    if let Some(path) = md_out {
+        let mut md = String::from("# AeroFTP Speed Test (compare)\n\n");
+        md.push_str(&format!("- Size: {}\n- Parallel: {}\n\n", format_size(size), parallel));
+        md.push_str("| # | URL | Protocol | Down (Mbps) | Up (Mbps) | TTFB (ms) | Integ. | Clean. | Score |\n");
+        md.push_str("|---:|---|---|---:|---:|---:|:---:|:---:|---:|\n");
+        for e in report.results.iter() {
+            if let Some(r) = e.result.as_ref() {
+                let integ = if !r.integrity_checked {
+                    "—"
+                } else if r.integrity_verified {
+                    "✓"
+                } else {
+                    "✗"
+                };
+                md.push_str(&format!(
+                    "| {} | {} | {} | {:.2} | {:.2} | {} | {} | {} | {:.0} |\n",
+                    e.rank,
+                    md_cell_safe(&e.url),
+                    md_cell_safe(&r.protocol.to_uppercase()),
+                    r.download_mbps, r.upload_mbps,
+                    r.download_ttfb_ms.map(|v| v.to_string()).unwrap_or_else(|| "—".into()),
+                    integ,
+                    if r.cleanup_ok { "✓" } else { "✗" },
+                    e.score * 100.0,
+                ));
+            } else {
+                md.push_str(&format!(
+                    "| — | {} | — | — | — | — | — | — | error: {} |\n",
+                    md_cell_safe(&e.url),
+                    md_cell_safe(e.error.as_deref().unwrap_or("")),
+                ));
+            }
+        }
+        if let Err(e) = std::fs::write(path, md) {
+            eprintln!("warning: could not write Markdown report to {}: {}", path, e);
+        }
+    }
+
+    match format {
+        OutputFormat::Json => print_json(&report),
+        OutputFormat::Text => {
+            if !cli.quiet {
+                println!("Speed compare ({}, parallel {})", format_size(size), parallel);
+                println!("{:>3}  {:<48}  {:<7}  {:>12}  {:>12}  {:>8}  {:>5}",
+                    "#", "URL", "PROTO", "DOWN Mbps", "UP Mbps", "TTFB ms", "SCORE");
+                for e in report.results.iter() {
+                    if let Some(r) = e.result.as_ref() {
+                        let url_disp = if e.url.len() > 48 { format!("{}...", &e.url[..45]) } else { e.url.clone() };
+                        println!(
+                            "{:>3}  {:<48}  {:<7}  {:>12.2}  {:>12.2}  {:>8}  {:>5.0}",
+                            e.rank, url_disp, r.protocol.to_uppercase(),
+                            r.download_mbps, r.upload_mbps,
+                            r.download_ttfb_ms.map(|v| v.to_string()).unwrap_or_else(|| "—".into()),
+                            e.score * 100.0,
+                        );
+                    } else {
+                        println!("ERR  {}  -> {}", e.url, e.error.clone().unwrap_or_default());
+                    }
+                }
+            }
+        }
+    }
+
+    let any_failed = report.results.iter().any(|e| e.result.is_none() || e.result.as_ref().map(|r| !r.integrity_verified && !no_integrity).unwrap_or(true));
+    if any_failed { 4 } else { 0 }
 }
 
 async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: OutputFormat) -> i32 {
@@ -23715,6 +24247,8 @@ async fn main() {
             test_size,
             iterations,
             remote_path,
+            no_integrity,
+            json_out,
         } => {
             let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 "_"
@@ -23726,6 +24260,30 @@ async fn main() {
                 test_size,
                 *iterations,
                 remote_path.as_deref(),
+                *no_integrity,
+                json_out.as_deref(),
+                &cli,
+                format,
+            )
+            .await
+        }
+        Commands::SpeedCompare {
+            urls,
+            test_size,
+            parallel,
+            no_integrity,
+            json_out,
+            csv_out,
+            md_out,
+        } => {
+            cmd_speed_compare(
+                urls,
+                test_size,
+                *parallel,
+                *no_integrity,
+                json_out.as_deref(),
+                csv_out.as_deref(),
+                md_out.as_deref(),
                 &cli,
                 format,
             )
@@ -24016,6 +24574,80 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn redact_url_strips_password_for_well_formed_inputs() {
+        assert_eq!(
+            redact_url_for_display("ftp://alice:s3cret@example.com/path"),
+            "ftp://alice@example.com/path"
+        );
+        assert_eq!(
+            redact_url_for_display("sftp://bob:hunter2@10.0.0.1:2222/home/bob"),
+            "sftp://bob@10.0.0.1:2222/home/bob"
+        );
+    }
+
+    #[test]
+    fn redact_url_keeps_user_only_form_intact() {
+        assert_eq!(
+            redact_url_for_display("ftp://alice@example.com/path"),
+            "ftp://alice@example.com/path"
+        );
+    }
+
+    #[test]
+    fn redact_url_no_userinfo_unchanged() {
+        assert_eq!(
+            redact_url_for_display("https://example.com/foo"),
+            "https://example.com/foo"
+        );
+    }
+
+    #[test]
+    fn redact_url_fallback_on_unparseable_input() {
+        // Malformed URL still has password stripped via the manual fallback.
+        let redacted = redact_url_for_display("notaurl://u:secret@host");
+        assert!(!redacted.contains("secret"), "redaction failed: {}", redacted);
+    }
+
+    #[test]
+    fn csv_cell_neutralizes_formula_prefixes() {
+        assert_eq!(csv_cell_safe("=cmd|"), "\"'=cmd|\"");
+        assert_eq!(csv_cell_safe("+1+2"), "\"'+1+2\"");
+        assert_eq!(csv_cell_safe("-evil"), "\"'-evil\"");
+        assert_eq!(csv_cell_safe("@SUM(A1)"), "\"'@SUM(A1)\"");
+        assert_eq!(csv_cell_safe("normal"), "\"normal\"");
+    }
+
+    #[test]
+    fn csv_cell_doubles_quotes() {
+        assert_eq!(csv_cell_safe("a\"b"), "\"a\"\"b\"");
+    }
+
+    #[test]
+    fn md_cell_escapes_pipes_and_newlines() {
+        assert_eq!(md_cell_safe("a|b"), "a\\|b");
+        assert_eq!(md_cell_safe("line1\nline2"), "line1 line2");
+        assert_eq!(md_cell_safe("\\path\\"), "\\\\path\\\\");
+    }
+
+    #[test]
+    fn redact_url_never_returns_password() {
+        let inputs = [
+            "ftp://u:p@h",
+            "ftps://u:p@h:21",
+            "sftp://u:complex%40pwd@h",
+            "s3://AKIA:SECRET@bucket.s3.amazonaws.com",
+            "webdav://user:hunter2@dav.example.com/",
+        ];
+        for s in inputs {
+            let r = redact_url_for_display(s);
+            assert!(!r.contains("p@"), "leaked: {}", r);
+            assert!(!r.contains("SECRET"), "leaked: {}", r);
+            assert!(!r.contains("hunter2"), "leaked: {}", r);
+            assert!(!r.contains("complex"), "leaked: {}", r);
+        }
+    }
 
     fn test_cli() -> Cli {
         Cli {

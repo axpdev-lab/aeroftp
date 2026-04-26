@@ -11429,6 +11429,19 @@ pub fn run() {
                 }
             }
 
+            // Initialize Speed Test History SQLite database
+            match speedtest::init_history_db(app.handle()) {
+                Ok(conn) => {
+                    app.manage(speedtest::SpeedTestHistoryDb(std::sync::Mutex::new(conn)));
+                }
+                Err(e) => {
+                    log::error!("Speed test history DB init failed: {e}");
+                    let conn = rusqlite::Connection::open_in_memory().expect("in-memory SQLite");
+                    let _ = speedtest::init_history_schema(&conn);
+                    app.manage(speedtest::SpeedTestHistoryDb(std::sync::Mutex::new(conn)));
+                }
+            }
+
             // Initialize Vault History SQLite database
             {
                 let config_dir = app.path().app_config_dir().unwrap_or_default();
@@ -12513,7 +12526,12 @@ pub fn run() {
             server_health::server_health_check_batch,
             // Server Speed Test
             speedtest::speedtest_run,
+            speedtest::speedtest_compare,
             speedtest::speedtest_cancel,
+            speedtest::speedtest_history_record,
+            speedtest::speedtest_history_list,
+            speedtest::speedtest_history_summary,
+            speedtest::speedtest_history_clear,
             // AeroImage
             image_edit::process_image,
             // InfiniCloud REST API
