@@ -9,4 +9,16 @@
     </magic>
     <icon name="application-x-aerovault"/>
   </mime-type>
+  <mime-type type="application/x-aeroftp">
+    <comment>AeroFTP Server Profile Export</comment>
+    <comment xml:lang="it">Esportazione profili server AeroFTP</comment>
+    <glob pattern="*.aeroftp"/>
+    <icon name="application-x-aeroftp"/>
+  </mime-type>
+  <mime-type type="application/x-aeroftp-keystore">
+    <comment>AeroFTP Keystore Bundle (profiles + settings)</comment>
+    <comment xml:lang="it">Bundle keystore AeroFTP (profili + impostazioni)</comment>
+    <glob pattern="*.aeroftp-keystore"/>
+    <icon name="application-x-aeroftp-keystore"/>
+  </mime-type>
 </mime-info>

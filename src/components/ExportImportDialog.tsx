@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, Server, RefreshCw, FolderInput, AlertTriangle } from 'lucide-react';
+import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { ServerProfile } from '../types';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
@@ -890,7 +891,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                             />
 
-                            {/* Password strength indicator */}
+                            {/* Password strength indicator (0-100 score, parity with AeroVault) */}
+                            {password.length > 0 && (
+                                <PasswordStrengthBar password={password} />
+                            )}
                             {password.length > 0 && password.length < 8 && (
                                 <div className="text-xs text-amber-600 dark:text-amber-400">
                                     {t('settings.passwordTooShort')}

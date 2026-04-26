@@ -65,6 +65,14 @@
             {
                 "ext": ["aerovault"],
                 "contentTypes": ["application/x-aerovault"]
+            },
+            {
+                "ext": ["aeroftp"],
+                "contentTypes": ["application/x-aeroftp"]
+            },
+            {
+                "ext": ["aeroftp-keystore"],
+                "contentTypes": ["application/x-aeroftp-keystore"]
             }
         ],
         "linux": {
