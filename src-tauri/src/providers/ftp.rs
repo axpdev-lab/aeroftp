@@ -568,9 +568,19 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
-        // Navigate to initial path if specified
+        // Navigate to initial path if specified.
+        //
+        // Skip CWD on bare "/" so we don't override the server-provided
+        // post-login working directory. For non-chroot FTP servers
+        // (vsftpd, ProFTPD with default config) PWD post-login returns
+        // the user's home (e.g. /home/user), which is where rclone, lftp,
+        // FileZilla, ftp(1) and curl all default to. Issuing CWD / would
+        // jump to the filesystem root, which is typically not writable
+        // by the authenticated user and breaks `put`/`mkdir` of relative
+        // paths. Profiles that genuinely need a non-home base set a
+        // non-"/" `initial_path` explicitly.
         if let Some(ref initial_path) = self.config.initial_path {
-            if !initial_path.is_empty() {
+            if !initial_path.is_empty() && initial_path != "/" {
                 stream
                     .cwd(initial_path)
                     .await

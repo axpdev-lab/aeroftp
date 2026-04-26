@@ -5941,18 +5941,23 @@ fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
         }
     }
     let base = initial_path.trim();
-    // No meaningful initial_path — treat user_path as relative
-    // Strip leading `/` so that `/front/includes` and `front/includes` behave
-    // identically: both resolve relative to the current FTP working directory.
+    // No meaningful initial_path — pass user_path through with minimal
+    // rewriting:
+    //   - empty user_path -> "" so the provider applies its canonical
+    //     default (FTP/SFTP home, bucket root, configured current_path),
+    //     instead of being coerced to absolute "/".
+    //   - bare "/" with no other content -> same as empty (provider default).
+    //   - otherwise the original path (relative or absolute) is preserved
+    //     verbatim, so `/etc` on a non-chroot FTP still targets the
+    //     filesystem root and `foo/bar` resolves against cwd.
     if base.is_empty() || base == "/" {
         if user_path.is_empty() {
-            return "/".to_string();
+            return String::new();
         }
-        let relative = user_path.trim_start_matches('/');
-        if relative.is_empty() {
-            return "/".to_string();
+        if user_path.trim_start_matches('/').is_empty() {
+            return String::new();
         }
-        return relative.to_string();
+        return user_path.to_string();
     }
     let base_normalized = base.trim_end_matches('/');
 
@@ -9858,15 +9863,25 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
     let path = &resolve_cli_remote_path(&initial_path, path);
 
     if parents {
-        // Create parent directories as needed, no error if already exists
+        // Create parent directories as needed, no error if already exists.
+        // Preserve absolute-vs-relative input: a path starting with '/' must
+        // emit absolute path components ("/a", "/a/b"), while a relative path
+        // emits relative components ("a", "a/b"). Always-prefixing with '/'
+        // would make `mkdir -p relative/sub` send `MKD /relative` to FTP,
+        // which fails for users without write access to the filesystem root.
+        let is_absolute = path.starts_with('/');
         let components: Vec<&str> = path
             .trim_start_matches('/')
             .split('/')
             .filter(|c| !c.is_empty())
             .collect();
-        let mut current = String::new();
+        let mut current = if is_absolute { "/".to_string() } else { String::new() };
         for component in &components {
-            current = format!("{}/{}", current, component);
+            if current.is_empty() || current == "/" {
+                current = format!("{}{}", current, component);
+            } else {
+                current = format!("{}/{}", current, component);
+            }
             match provider.mkdir(&current).await {
                 Ok(()) => {}
                 Err(ProviderError::AlreadyExists(_)) => {}
