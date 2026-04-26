@@ -4446,7 +4446,7 @@ fn build_agent_task_router(
 
 #[allow(clippy::too_many_arguments)]
 fn cmd_agent_bootstrap(
-    _cli: &Cli,
+    cli: &Cli,
     format: OutputFormat,
     task: Option<AgentBootstrapTask>,
     path: Option<&str>,
@@ -4458,10 +4458,25 @@ fn cmd_agent_bootstrap(
     local_path: Option<&str>,
     remote_path: Option<&str>,
 ) -> i32 {
+    // Inline profile inventory so agents have ready-to-use targets in the
+    // first JSON payload they read, instead of having to chain a follow-up
+    // `profiles --json` call. `vault_unavailable` distinguishes "no vault"
+    // (status:locked) from "vault open but empty" (status:ok, count:0).
+    let (profiles, profile_status) = match safe_vault_profiles(cli) {
+        Ok(p) => (p, "ok"),
+        Err(_) => (vec![], "vault_unavailable"),
+    };
+
     let bootstrap = serde_json::json!({
         "status": "ok",
         "entrypoint": "aeroftp-cli agent-bootstrap --json",
         "goal": "Give AI agents the shortest path to the correct AeroFTP command without repository-specific guesswork",
+        "profiles": {
+            "status": profile_status,
+            "count": profiles.len(),
+            "list_command": "aeroftp-cli profiles --json",
+            "servers": profiles,
+        },
         "first_steps": [
             {
                 "step": 1,
