@@ -765,7 +765,9 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
         </div>
     );
 
-    const renderCompareControls = () => (
+    const renderCompareControls = () => {
+        const selectedServerProfiles = supportedServers.filter(s => compareSelected.has(s.id));
+        return (
         <div className="px-5 py-4 space-y-4">
             <div>
                 <div className="flex items-center justify-between mb-2">
@@ -792,6 +794,31 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                         </button>
                     </div>
                 </div>
+
+                {selectedServerProfiles.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                        {selectedServerProfiles.map(s => (
+                            <span
+                                key={s.id}
+                                className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[11px] font-medium border border-indigo-200/60 dark:border-indigo-800/60"
+                            >
+                                <span className="truncate max-w-[12rem]">{s.name || s.host}</span>
+                                <span className="text-indigo-500/80 dark:text-indigo-400/80 text-[10px] uppercase tracking-wide">
+                                    {(s.protocol || 'ftp')}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => toggleCompareServer(s.id)}
+                                    disabled={anyRunning}
+                                    className="ml-0.5 rounded-full hover:bg-indigo-200/60 dark:hover:bg-indigo-800/60 p-0.5 disabled:opacity-50"
+                                    title={t('common.remove')}
+                                >
+                                    <X size={11} />
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                )}
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-56 overflow-auto divide-y divide-gray-100 dark:divide-gray-700">
                     {supportedServers.map(server => {
                         const checked = compareSelected.has(server.id);
@@ -936,7 +963,8 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                 </div>
             )}
         </div>
-    );
+        );
+    };
 
     return (
         <div
@@ -993,9 +1021,9 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                                     <div className="relative" ref={exportMenuRef}>
                                         <button
                                             onClick={() => setExportMenuOpen(o => !o)}
-                                            className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-1.5"
+                                            className="px-4 py-2 text-sm font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-1.5"
                                         >
-                                            {copied ? <Check size={13} className="text-emerald-500" /> : <FileJson size={13} />}
+                                            {copied ? <Check size={14} className="text-emerald-500" /> : <FileJson size={14} />}
                                             {copied ? t('speedTest.copied') : t('speedTest.exportReport')}
                                         </button>
                                         {exportMenuOpen && (
@@ -1043,7 +1071,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                                                 ? (mode === 'single' ? handleRun : handleRunCompare)
                                                 : onClose
                                     }
-                                    className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                                    className="px-4 py-2 text-sm font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
                                 >
                                     {anyRunning
                                         ? t('speedTest.cancel')
@@ -1055,9 +1083,9 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                                     <button
                                         onClick={mode === 'single' ? handleRun : handleRunCompare}
                                         disabled={!canSubmit}
-                                        className="px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-1.5"
+                                        className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-1.5"
                                     >
-                                        <Gauge size={13} />
+                                        <Gauge size={14} />
                                         {mode === 'single' ? t('speedTest.start') : t('speedTest.startCompare')}
                                     </button>
                                 )}
