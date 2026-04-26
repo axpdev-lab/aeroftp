@@ -6,6 +6,7 @@
 //! Copies files between two remote profiles using a local temp-file bridge.
 //! No destructive operations (no delete, no move, no sync).
 
+use crate::delta_sync_rsync::{try_delta_transfer, SyncDirection};
 use crate::providers::{ProviderError, StorageProvider};
 use filetime::FileTime;
 use serde::{Deserialize, Serialize};
@@ -71,6 +72,13 @@ pub struct CrossProfileTransferResult {
 ///
 /// The temp file is automatically cleaned up when `NamedTempFile` is dropped.
 /// Parent directories on the destination are created if missing.
+///
+/// When `dest` is an SFTP provider with key-based auth and a remote rsync
+/// helper, the upload step is replaced by AeroRsync delta transfer — only
+/// the bytes that differ from any pre-existing file at `dest_path` go on the
+/// wire. Hard errors (host-key mismatch, protocol invariant violation) are
+/// propagated unchanged; soft fallbacks ("file too small", "no key on disk")
+/// transparently route back to the classic upload.
 pub async fn copy_one_file(
     source: &mut dyn StorageProvider,
     dest: &mut dyn StorageProvider,
@@ -91,7 +99,25 @@ pub async fn copy_one_file(
     // Ensure parent directory exists on destination
     ensure_parent_dir(dest, dest_path).await;
 
-    // Upload from temp file to destination
+    // Try delta transfer first (SFTP-only today). Returns None for non-SFTP
+    // destinations or when downcast/probe declines — in both cases we proceed
+    // to the classic upload below.
+    if let Some(result) = try_delta_transfer(dest, SyncDirection::Upload, tmp.path(), dest_path).await {
+        if result.used_delta {
+            // Delta path completed the transfer; we're done.
+            return Ok(());
+        }
+        if let Some(err) = result.hard_error {
+            // Hard error must surface — never silently retry the classic path
+            // when the delta layer rejected for a security/protocol reason.
+            return Err(ProviderError::TransferFailed(format!(
+                "delta transfer rejected: {err}"
+            )));
+        }
+        // fallback_reason set: declined gracefully, fall through to classic.
+    }
+
+    // Classic upload: from temp file to destination
     dest.upload(&tmp_path, dest_path, None).await?;
 
     // tmp is dropped here, removing the temp file

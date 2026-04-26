@@ -6313,6 +6313,32 @@ async fn save_remote_file(
     if provider_connected {
         let mut guard = provider_state.provider.lock().await;
         if let Some(provider) = guard.as_mut() {
+            // Try AeroRsync delta upload first when the destination is an
+            // SFTP provider with key-based auth and a remote rsync helper.
+            // This makes editor saves of large files (CSS, JSON, logs, code)
+            // ship only the changed bytes instead of the full content.
+            // try_delta_transfer returns None for non-SFTP providers, so the
+            // classic upload is the natural fallback.
+            if let Some(delta) = crate::delta_sync_rsync::try_delta_transfer(
+                provider.as_mut(),
+                crate::delta_sync_rsync::SyncDirection::Upload,
+                &temp_path,
+                &path,
+            )
+            .await
+            {
+                if delta.used_delta {
+                    let _ = tokio::fs::remove_file(&temp_path).await;
+                    return Ok(());
+                }
+                if let Some(err) = delta.hard_error {
+                    let _ = tokio::fs::remove_file(&temp_path).await;
+                    return Err(format!("delta save rejected: {err}"));
+                }
+                // fallback_reason set: declined gracefully, fall through to
+                // the classic upload below.
+            }
+
             let result = provider.upload(&temp_path_str, &path, None).await;
             let _ = tokio::fs::remove_file(&temp_path).await;
             return result.map_err(|e| format!("Failed to save file: {}", e));
