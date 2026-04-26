@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Zaženi pomanjšano v sistemsko vrstico",
             "startMinimizedOnAutostartDesc": "Ob samodejnem zagonu skrij glavno okno. AeroFTP še naprej teče v sistemski vrstici, odpri ga prek ikone, ko ga potrebuješ.",
             "disableUpdateChecks": "Ne preverjaj posodobitev",
-            "disableUpdateChecksDesc": "Preskoči samodejno preverjanje posodobitev ob zagonu in dnevno preverjanje. Uporabno, ko AeroFTP upravljaš prek WinGet, AUR ali drugega zunanjega upravitelja paketov. Ročna preverjanja zgoraj še naprej delujejo."
+            "disableUpdateChecksDesc": "Preskoči samodejno preverjanje posodobitev ob zagonu in dnevno preverjanje. Uporabno, ko AeroFTP upravljaš prek WinGet, AUR ali drugega zunanjega upravitelja paketov. Ročna preverjanja zgoraj še naprej delujejo.",
+            "closeToTray": "Skrij v sistemsko vrstico namesto izhoda",
+            "closeToTrayDesc": "Ko kliknete gumb za zapiranje okna, se AeroFTP skrije v sistemsko vrstico namesto da bi se zaprl. Opravila v ozadju, kot je sinhronizacija AeroCloud, se nadaljujejo. Za izhod uporabite meni v sistemski vrstici."
         },
         "devtools": {
             "title": "AeroTools",

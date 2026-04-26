@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Starta minimerad i aktivitetsfältet",
             "startMinimizedOnAutostartDesc": "Dölj huvudfönstret vid automatisk start. AeroFTP fortsätter att köras i systemfältet, öppna det från ikonen när du behöver det.",
             "disableUpdateChecks": "Sök inte efter uppdateringar",
-            "disableUpdateChecksDesc": "Hoppa över den automatiska uppdateringskontrollen vid start och dagligen. Användbart när du hanterar AeroFTP via WinGet, AUR eller en annan extern pakethanterare. Manuella kontroller ovan fungerar fortfarande."
+            "disableUpdateChecksDesc": "Hoppa över den automatiska uppdateringskontrollen vid start och dagligen. Användbart när du hanterar AeroFTP via WinGet, AUR eller en annan extern pakethanterare. Manuella kontroller ovan fungerar fortfarande.",
+            "closeToTray": "Minimera till aktivitetsfältet i stället för att avsluta",
+            "closeToTrayDesc": "När du klickar på stäng-knappen göms AeroFTP i systemfältet i stället för att avslutas. Bakgrundsuppgifter som AeroCloud-synkronisering fortsätter att köras. Använd menyn i systemfältet för att avsluta."
         },
         "devtools": {
             "title": "AeroTools",

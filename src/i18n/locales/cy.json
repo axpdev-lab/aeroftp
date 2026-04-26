@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Cychwyn wedi'i leihau i'r hambwrdd",
             "startMinimizedOnAutostartDesc": "Cuddio'r prif ffenestr wrth gychwyn yn awtomatig. Mae AeroFTP yn parhau i redeg yn hambwrdd y system, agorwch ef o'r eicon hambwrdd pan fydd ei angen arnoch.",
             "disableUpdateChecks": "Peidio â gwirio am ddiweddariadau",
-            "disableUpdateChecksDesc": "Hepgor y gwiriad diweddariadau awtomatig wrth gychwyn ac yn ddyddiol. Defnyddiol pan fyddwch yn rheoli AeroFTP trwy WinGet, AUR neu reolwr pecynnau allanol arall. Mae gwiriadau â llaw uchod yn dal i weithio."
+            "disableUpdateChecksDesc": "Hepgor y gwiriad diweddariadau awtomatig wrth gychwyn ac yn ddyddiol. Defnyddiol pan fyddwch yn rheoli AeroFTP trwy WinGet, AUR neu reolwr pecynnau allanol arall. Mae gwiriadau â llaw uchod yn dal i weithio.",
+            "closeToTray": "Cau i'r hambwrdd yn lle gadael",
+            "closeToTrayDesc": "Pan fyddwch yn clicio botwm cau'r ffenestr, mae AeroFTP yn cuddio i hambwrdd y system yn lle gadael. Mae tasgau cefndir fel cysoni AeroCloud yn parhau i redeg. Defnyddiwch ddewislen yr hambwrdd i adael."
         },
         "devtools": {
             "title": "AeroTools",

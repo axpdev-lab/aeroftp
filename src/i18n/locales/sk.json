@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Spustiť minimalizované do oznamovacej oblasti",
             "startMinimizedOnAutostartDesc": "Skryť hlavné okno pri automatickom spustení. AeroFTP beží ďalej v oznamovacej oblasti, otvor ho cez ikonu v lište, keď ho budeš potrebovať.",
             "disableUpdateChecks": "Nekontrolovať aktualizácie",
-            "disableUpdateChecksDesc": "Preskočí automatickú kontrolu aktualizácií pri spustení aj dennú kontrolu. Užitočné, keď AeroFTP spravuješ cez WinGet, AUR alebo iného externého správcu balíkov. Ručné kontroly vyššie naďalej fungujú."
+            "disableUpdateChecksDesc": "Preskočí automatickú kontrolu aktualizácií pri spustení aj dennú kontrolu. Užitočné, keď AeroFTP spravuješ cez WinGet, AUR alebo iného externého správcu balíkov. Ručné kontroly vyššie naďalej fungujú.",
+            "closeToTray": "Zavrieť do lišty namiesto ukončenia",
+            "closeToTrayDesc": "Po kliknutí na tlačidlo zatvorenia okna sa AeroFTP skryje do systémovej lišty namiesto úplného ukončenia. Úlohy na pozadí, ako napríklad synchronizácia AeroCloud, budú pokračovať. Na ukončenie aplikácie použite ponuku v systémovej lište."
         },
         "devtools": {
             "title": "AeroTools",

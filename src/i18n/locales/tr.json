@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Sistem tepsisine simge durumunda başlat",
             "startMinimizedOnAutostartDesc": "Otomatik başlatmada ana pencereyi gizle. AeroFTP sistem tepsisinde çalışmaya devam eder, ihtiyaç duyduğunuzda tepsi simgesinden açın.",
             "disableUpdateChecks": "Güncellemeleri kontrol etme",
-            "disableUpdateChecksDesc": "Otomatik başlangıç ve günlük güncelleme kontrolünü atla. AeroFTP'yi WinGet, AUR veya başka bir harici paket yöneticisi ile yönettiğinizde kullanışlıdır. Yukarıdaki manuel kontroller yine çalışır."
+            "disableUpdateChecksDesc": "Otomatik başlangıç ve günlük güncelleme kontrolünü atla. AeroFTP'yi WinGet, AUR veya başka bir harici paket yöneticisi ile yönettiğinizde kullanışlıdır. Yukarıdaki manuel kontroller yine çalışır.",
+            "closeToTray": "Kapatmak yerine sistem tepsisine küçült",
+            "closeToTrayDesc": "Pencere kapatma düğmesine tıkladığınızda AeroFTP kapanmak yerine sistem tepsisine gizlenir. AeroCloud senkronizasyonu gibi arka plan görevleri çalışmaya devam eder. Uygulamadan tamamen çıkmak için tepsi menüsünü kullanın."
         },
         "devtools": {
             "title": "AeroTools",

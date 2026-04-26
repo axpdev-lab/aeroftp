@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Iniciar minimitzat a la safata",
             "startMinimizedOnAutostartDesc": "Amaga la finestra principal en iniciar automàticament. AeroFTP continua executant-se a la safata del sistema, obre'l des de la icona de la safata quan el necessitis.",
             "disableUpdateChecks": "No comprovar actualitzacions",
-            "disableUpdateChecksDesc": "Omet la comprovació automàtica d'actualitzacions a l'inici i diària. Útil quan gestiones AeroFTP mitjançant WinGet, AUR o un altre gestor de paquets extern. Les comprovacions manuals de dalt continuen funcionant."
+            "disableUpdateChecksDesc": "Omet la comprovació automàtica d'actualitzacions a l'inici i diària. Útil quan gestiones AeroFTP mitjançant WinGet, AUR o un altre gestor de paquets extern. Les comprovacions manuals de dalt continuen funcionant.",
+            "closeToTray": "Minimitza a la safata en lloc de sortir",
+            "closeToTrayDesc": "Quan feu clic al botó de tancar la finestra, AeroFTP es minimitza a la safata del sistema en lloc de tancar-se. Les tasques en segon pla com la sincronització d'AeroCloud continuen funcionant. Utilitzeu el menú de la safata per sortir."
         },
         "devtools": {
             "title": "AeroTools",

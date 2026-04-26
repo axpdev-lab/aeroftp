@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Ræsa lágmarkað í kerfisbakka",
             "startMinimizedOnAutostartDesc": "Fela aðalgluggann við sjálfvirka ræsingu. AeroFTP heldur áfram að keyra í kerfisbakkanum, opnaðu það úr bakkatákninu þegar þú þarft á því að halda.",
             "disableUpdateChecks": "Ekki leita að uppfærslum",
-            "disableUpdateChecksDesc": "Sleppa sjálfvirkri ræsingu og daglegri uppfærsluleit. Gagnlegt þegar þú stjórnar AeroFTP í gegnum WinGet, AUR eða annan utanaðkomandi pakkastjóra. Handvirkar leitir hér að ofan virka enn."
+            "disableUpdateChecksDesc": "Sleppa sjálfvirkri ræsingu og daglegri uppfærsluleit. Gagnlegt þegar þú stjórnar AeroFTP í gegnum WinGet, AUR eða annan utanaðkomandi pakkastjóra. Handvirkar leitir hér að ofan virka enn.",
+            "closeToTray": "Loka í kerfisbakka í stað þess að hætta",
+            "closeToTrayDesc": "Þegar þú smellir á lokunarhnapp gluggans er AeroFTP falið í kerfisbakkanum í stað þess að hætta. Bakgrunnsverkefni eins og AeroCloud samstilling halda áfram að keyra. Notaðu valmynd kerfisbakkans til að hætta."
         },
         "devtools": {
             "title": "AeroTools",

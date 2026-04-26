@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "트레이로 최소화하여 시작",
             "startMinimizedOnAutostartDesc": "자동 시작 시 메인 창을 숨깁니다. AeroFTP는 시스템 트레이에서 계속 실행되므로 필요할 때 트레이 아이콘에서 열 수 있습니다.",
             "disableUpdateChecks": "업데이트 확인 안 함",
-            "disableUpdateChecksDesc": "시작 시 및 매일 자동 업데이트 확인을 건너뜁니다. WinGet, AUR 또는 다른 외부 패키지 관리자를 통해 AeroFTP를 관리할 때 유용합니다. 위의 수동 확인은 계속 작동합니다."
+            "disableUpdateChecksDesc": "시작 시 및 매일 자동 업데이트 확인을 건너뜁니다. WinGet, AUR 또는 다른 외부 패키지 관리자를 통해 AeroFTP를 관리할 때 유용합니다. 위의 수동 확인은 계속 작동합니다.",
+            "closeToTray": "종료하지 않고 트레이로 닫기",
+            "closeToTrayDesc": "창 닫기 버튼을 누르면 AeroFTP가 종료되지 않고 시스템 트레이로 숨겨집니다. AeroCloud 동기화와 같은 백그라운드 작업은 계속 실행됩니다. 종료하려면 트레이 메뉴를 사용하세요."
         },
         "devtools": {
             "title": "AeroTools",

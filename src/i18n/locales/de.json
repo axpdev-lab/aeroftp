@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Minimiert in den Infobereich starten",
             "startMinimizedOnAutostartDesc": "Hauptfenster beim automatischen Start ausblenden. AeroFTP läuft im Infobereich weiter, öffne es bei Bedarf über das Tray-Symbol.",
             "disableUpdateChecks": "Nicht nach Updates suchen",
-            "disableUpdateChecksDesc": "Überspringt die automatische Update-Prüfung beim Start und die tägliche Prüfung. Nützlich, wenn du AeroFTP über WinGet, AUR oder einen anderen externen Paketmanager verwaltest. Manuelle Prüfungen oben funktionieren weiterhin."
+            "disableUpdateChecksDesc": "Überspringt die automatische Update-Prüfung beim Start und die tägliche Prüfung. Nützlich, wenn du AeroFTP über WinGet, AUR oder einen anderen externen Paketmanager verwaltest. Manuelle Prüfungen oben funktionieren weiterhin.",
+            "closeToTray": "In Infobereich minimieren statt beenden",
+            "closeToTrayDesc": "Wenn Sie auf die Schließen-Schaltfläche klicken, wird AeroFTP in den Infobereich minimiert, anstatt beendet zu werden. Hintergrundaufgaben wie die AeroCloud-Synchronisierung laufen weiter. Verwenden Sie das Menü im Infobereich, um die App zu beenden."
         },
         "devtools": {
             "title": "AeroTools",

@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Indítás kis méretben a tálcára",
             "startMinimizedOnAutostartDesc": "A főablak elrejtése automatikus indításkor. Az AeroFTP tovább fut a rendszertálcán, nyisd meg a tálcaikonról, amikor szükséged van rá.",
             "disableUpdateChecks": "Ne keressen frissítéseket",
-            "disableUpdateChecksDesc": "Az automatikus indításkori és napi frissítés-ellenőrzés kihagyása. Hasznos, ha az AeroFTP-t WinGet, AUR vagy más külső csomagkezelőn keresztül kezeled. A fenti kézi ellenőrzések továbbra is működnek."
+            "disableUpdateChecksDesc": "Az automatikus indításkori és napi frissítés-ellenőrzés kihagyása. Hasznos, ha az AeroFTP-t WinGet, AUR vagy más külső csomagkezelőn keresztül kezeled. A fenti kézi ellenőrzések továbbra is működnek.",
+            "closeToTray": "Bezárás a tálcára kilépés helyett",
+            "closeToTrayDesc": "Amikor az ablak bezárása gombra kattintasz, az AeroFTP a rendszertálcára kerül kilépés helyett. A háttérfeladatok, mint az AeroCloud szinkronizáció, tovább futnak. A kilépéshez használd a tálca menüjét."
         },
         "devtools": {
             "title": "AeroTools",

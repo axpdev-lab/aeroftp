@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Käynnistä pienennettynä ilmaisinalueelle",
             "startMinimizedOnAutostartDesc": "Piilota pääikkuna automaattisen käynnistyksen yhteydessä. AeroFTP jatkaa toimintaansa ilmaisinalueella, avaa se ilmaisinalueen kuvakkeesta kun tarvitset sitä.",
             "disableUpdateChecks": "Älä tarkista päivityksiä",
-            "disableUpdateChecksDesc": "Ohita automaattinen käynnistyksen ja päivittäinen päivitystarkistus. Hyödyllinen, kun hallitset AeroFTP:tä WinGetin, AUR:n tai muun ulkoisen pakettienhallinnan kautta. Yllä olevat manuaaliset tarkistukset toimivat edelleen."
+            "disableUpdateChecksDesc": "Ohita automaattinen käynnistyksen ja päivittäinen päivitystarkistus. Hyödyllinen, kun hallitset AeroFTP:tä WinGetin, AUR:n tai muun ulkoisen pakettienhallinnan kautta. Yllä olevat manuaaliset tarkistukset toimivat edelleen.",
+            "closeToTray": "Piilota ilmoitusalueelle sulkemisen sijaan",
+            "closeToTrayDesc": "Kun napsautat ikkunan sulkemispainiketta, AeroFTP piilotetaan ilmoitusalueelle sulkemisen sijaan. Taustatehtävät, kuten AeroCloud-synkronointi, jatkavat toimintaansa. Sulje sovellus ilmoitusalueen valikosta."
         },
         "devtools": {
             "title": "AeroTools",

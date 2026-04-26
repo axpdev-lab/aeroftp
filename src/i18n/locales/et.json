@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Käivita minimeerituna salve",
             "startMinimizedOnAutostartDesc": "Peida peaaken automaatsel käivitamisel. AeroFTP jätkab töötamist süsteemisalves, ava see salveikoonilt, kui seda vajad.",
             "disableUpdateChecks": "Ära kontrolli uuendusi",
-            "disableUpdateChecksDesc": "Jäta vahele automaatne käivitumise ja igapäevane uuenduste kontroll. Kasulik, kui haldad AeroFTP-d WinGeti, AUR-i või mõne muu välise paketihalduri kaudu. Käsitsi kontrollid ülal töötavad endiselt."
+            "disableUpdateChecksDesc": "Jäta vahele automaatne käivitumise ja igapäevane uuenduste kontroll. Kasulik, kui haldad AeroFTP-d WinGeti, AUR-i või mõne muu välise paketihalduri kaudu. Käsitsi kontrollid ülal töötavad endiselt.",
+            "closeToTray": "Peida tegumiribale väljumise asemel",
+            "closeToTrayDesc": "Kui klõpsate akna sulgemise nuppu, peidab AeroFTP end väljumise asemel süsteemisalve. Taustatööd nagu AeroCloud sünkroonimine jätkavad töötamist. Väljumiseks kasutage süsteemisalve menüüd."
         },
         "devtools": {
             "title": "AeroTools",

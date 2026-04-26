@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "启动时最小化到托盘",
             "startMinimizedOnAutostartDesc": "在自动启动时隐藏主窗口。AeroFTP 会在系统托盘中持续运行,需要时可从托盘图标打开。",
             "disableUpdateChecks": "不检查更新",
-            "disableUpdateChecksDesc": "跳过启动时和每日的自动更新检查。当您通过 WinGet、AUR 或其他外部包管理器管理 AeroFTP 时很有用。上方的手动检查仍然可用。"
+            "disableUpdateChecksDesc": "跳过启动时和每日的自动更新检查。当您通过 WinGet、AUR 或其他外部包管理器管理 AeroFTP 时很有用。上方的手动检查仍然可用。",
+            "closeToTray": "关闭时最小化到系统托盘而非退出",
+            "closeToTrayDesc": "当您点击窗口关闭按钮时，AeroFTP 将隐藏到系统托盘而不是退出。AeroCloud 同步等后台任务会继续运行。如需退出，请使用托盘菜单。"
         },
         "devtools": {
             "title": "AeroTools",

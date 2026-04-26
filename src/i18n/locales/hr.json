@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Pokreni smanjeno u traku obavijesti",
             "startMinimizedOnAutostartDesc": "Sakrij glavni prozor kod automatskog pokretanja. AeroFTP nastavlja raditi u traci obavijesti, otvori ga preko ikone kada ti zatreba.",
             "disableUpdateChecks": "Ne provjeravaj ažuriranja",
-            "disableUpdateChecksDesc": "Preskače automatsku provjeru ažuriranja pri pokretanju i dnevnu provjeru. Korisno kada AeroFTP-om upravljaš preko WinGet, AUR ili drugog vanjskog upravitelja paketa. Ručne provjere iznad i dalje rade."
+            "disableUpdateChecksDesc": "Preskače automatsku provjeru ažuriranja pri pokretanju i dnevnu provjeru. Korisno kada AeroFTP-om upravljaš preko WinGet, AUR ili drugog vanjskog upravitelja paketa. Ručne provjere iznad i dalje rade.",
+            "closeToTray": "Sakrij u traku sustava umjesto izlaza",
+            "closeToTrayDesc": "Kada kliknete gumb za zatvaranje prozora, AeroFTP se sakriva u traku sustava umjesto da se zatvori. Pozadinski zadaci poput AeroCloud sinkronizacije nastavljaju s radom. Za izlaz koristite izbornik trake sustava."
         },
         "devtools": {
             "title": "AeroTools",

@@ -6365,6 +6365,16 @@ async fn save_remote_file(
 /// does not re-show the main window after the user has already closed it.
 static APP_READY_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// User preference: when true, clicking the window close button hides to the
+/// system tray instead of quitting the app. Set by the frontend via
+/// `set_close_to_tray` on startup and whenever the user toggles the option.
+static CLOSE_TO_TRAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[tauri::command]
+fn set_close_to_tray(enabled: bool) {
+    CLOSE_TO_TRAY.store(enabled, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Timestamp when splash screen was created — used to enforce minimum display time.
 static SPLASH_CREATED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
@@ -11849,11 +11859,14 @@ pub fn run() {
             if window.label() != "main" {
                 return;
             }
-            // Hide window instead of closing when AeroCloud is enabled
+            // Hide window instead of closing when AeroCloud is enabled or the
+            // user has opted into "close to tray" in Settings.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let cloud_config = cloud_config::load_cloud_config();
-                if cloud_config.enabled {
-                    info!("Window close requested, hiding to tray (AeroCloud enabled)");
+                let close_to_tray = CLOSE_TO_TRAY.load(std::sync::atomic::Ordering::SeqCst);
+                if cloud_config.enabled || close_to_tray {
+                    let reason = if close_to_tray { "close-to-tray setting" } else { "AeroCloud enabled" };
+                    info!("Window close requested, hiding to tray ({})", reason);
                     let _ = window.hide();
                     api.prevent_close();
                 } else {
@@ -11888,6 +11901,7 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             app_ready,
+            set_close_to_tray,
             is_autostart_launch,
             copy_to_clipboard,
             resolve_hostname,

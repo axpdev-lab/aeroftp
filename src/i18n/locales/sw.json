@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Anzisha ukiwa umepunguzwa kwenye treya",
             "startMinimizedOnAutostartDesc": "Ficha dirisha kuu wakati wa uzinduzi wa kiotomatiki. AeroFTP huendelea kufanya kazi kwenye treya ya mfumo, ifungue kutoka kwa aikoni ya treya unapoihitaji.",
             "disableUpdateChecks": "Usiangalie masasisho",
-            "disableUpdateChecksDesc": "Ruka ukaguzi wa masasisho wa kiotomatiki wa kuanzisha na wa kila siku. Ni muhimu unaposimamia AeroFTP kupitia WinGet, AUR, au kidhibiti kingine cha pakiti cha nje. Ukaguzi wa mwongozo hapo juu bado unafanya kazi."
+            "disableUpdateChecksDesc": "Ruka ukaguzi wa masasisho wa kiotomatiki wa kuanzisha na wa kila siku. Ni muhimu unaposimamia AeroFTP kupitia WinGet, AUR, au kidhibiti kingine cha pakiti cha nje. Ukaguzi wa mwongozo hapo juu bado unafanya kazi.",
+            "closeToTray": "Ficha kwenye treya badala ya kutoka",
+            "closeToTrayDesc": "Unapobonyeza kitufe cha kufunga dirisha, ficha AeroFTP kwenye treya ya mfumo badala ya kutoka kabisa. Kazi za chinichini kama vile usawazishaji wa AeroCloud zinaendelea kufanya kazi. Tumia menyu ya treya kutoka kabisa."
         },
         "devtools": {
             "title": "AeroTools",

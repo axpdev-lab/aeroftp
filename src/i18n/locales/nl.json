@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Geminimaliseerd starten in systeemvak",
             "startMinimizedOnAutostartDesc": "Hoofdvenster verbergen bij automatisch opstarten. AeroFTP blijft draaien in het systeemvak, open het via het pictogram wanneer je het nodig hebt.",
             "disableUpdateChecks": "Niet controleren op updates",
-            "disableUpdateChecksDesc": "Slaat de automatische controle bij opstarten en de dagelijkse controle over. Handig als je AeroFTP beheert via WinGet, AUR of een andere externe pakketbeheerder. Handmatige controles hierboven blijven werken."
+            "disableUpdateChecksDesc": "Slaat de automatische controle bij opstarten en de dagelijkse controle over. Handig als je AeroFTP beheert via WinGet, AUR of een andere externe pakketbeheerder. Handmatige controles hierboven blijven werken.",
+            "closeToTray": "Sluiten naar systeemvak in plaats van afsluiten",
+            "closeToTrayDesc": "Wanneer je op de sluitknop van het venster klikt, wordt AeroFTP verborgen in het systeemvak in plaats van afgesloten. Achtergrondtaken zoals AeroCloud-synchronisatie blijven actief. Gebruik het menu van het systeemvak om af te sluiten."
         },
         "devtools": {
             "title": "AeroTools",

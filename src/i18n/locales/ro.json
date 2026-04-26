@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Pornește minimizat în bara de sistem",
             "startMinimizedOnAutostartDesc": "Ascunde fereastra principală la pornirea automată. AeroFTP continuă să ruleze în bara de sistem, deschide-l din pictograma barei când ai nevoie de el.",
             "disableUpdateChecks": "Nu verifica actualizările",
-            "disableUpdateChecksDesc": "Omite verificarea automată la pornire și cea zilnică pentru actualizări. Util când gestionezi AeroFTP prin WinGet, AUR sau un alt manager extern de pachete. Verificările manuale de mai sus funcționează în continuare."
+            "disableUpdateChecksDesc": "Omite verificarea automată la pornire și cea zilnică pentru actualizări. Util când gestionezi AeroFTP prin WinGet, AUR sau un alt manager extern de pachete. Verificările manuale de mai sus funcționează în continuare.",
+            "closeToTray": "Minimizează în bară în loc de a închide",
+            "closeToTrayDesc": "Când apeși butonul de închidere a ferestrei, ascunde AeroFTP în bara de sistem în loc să închizi aplicația. Sarcinile din fundal, precum sincronizarea AeroCloud, continuă să ruleze. Folosește meniul din bara de sistem pentru a închide complet."
         },
         "devtools": {
             "title": "AeroTools",

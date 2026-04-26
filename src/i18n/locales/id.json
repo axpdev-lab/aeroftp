@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Mulai diminimalkan ke baki",
             "startMinimizedOnAutostartDesc": "Sembunyikan jendela utama saat peluncuran otomatis. AeroFTP tetap berjalan di baki sistem, buka dari ikon baki saat Anda membutuhkannya.",
             "disableUpdateChecks": "Jangan periksa pembaruan",
-            "disableUpdateChecksDesc": "Lewati pemeriksaan pembaruan otomatis saat startup dan harian. Berguna saat Anda mengelola AeroFTP melalui WinGet, AUR, atau pengelola paket eksternal lainnya. Pemeriksaan manual di atas tetap berfungsi."
+            "disableUpdateChecksDesc": "Lewati pemeriksaan pembaruan otomatis saat startup dan harian. Berguna saat Anda mengelola AeroFTP melalui WinGet, AUR, atau pengelola paket eksternal lainnya. Pemeriksaan manual di atas tetap berfungsi.",
+            "closeToTray": "Tutup ke tray, bukan keluar",
+            "closeToTrayDesc": "Saat kamu menekan tombol tutup jendela, AeroFTP disembunyikan ke tray sistem alih-alih ditutup. Tugas latar belakang seperti sinkronisasi AeroCloud tetap berjalan. Gunakan menu tray untuk keluar."
         },
         "devtools": {
             "title": "AeroTools",

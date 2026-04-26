@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Paleisti sumažintą į dėklą",
             "startMinimizedOnAutostartDesc": "Slėpti pagrindinį langą automatinio paleidimo metu. AeroFTP toliau veikia sistemos dėkle, atverkite jį iš dėklo piktogramos, kai jo prireiks.",
             "disableUpdateChecks": "Netikrinti atnaujinimų",
-            "disableUpdateChecksDesc": "Praleisti automatinį paleidimo ir kasdienį atnaujinimų tikrinimą. Naudinga, kai AeroFTP tvarkote per WinGet, AUR ar kitą išorinį paketų tvarkyklę. Rankiniai tikrinimai aukščiau vis dar veikia."
+            "disableUpdateChecksDesc": "Praleisti automatinį paleidimo ir kasdienį atnaujinimų tikrinimą. Naudinga, kai AeroFTP tvarkote per WinGet, AUR ar kitą išorinį paketų tvarkyklę. Rankiniai tikrinimai aukščiau vis dar veikia.",
+            "closeToTray": "Užverti į dėklą, o ne išjungti",
+            "closeToTrayDesc": "Paspaudus lango uždarymo mygtuką, AeroFTP paslepiamas sistemos dėkle, o ne uždaromas. Foninės užduotys, tokios kaip AeroCloud sinchronizavimas, toliau veikia. Norėdami išjungti, naudokite dėklo meniu."
         },
         "devtools": {
             "title": "AeroTools",

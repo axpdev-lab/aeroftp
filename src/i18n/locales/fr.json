@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Démarrer réduit dans la barre d'état",
             "startMinimizedOnAutostartDesc": "Masquer la fenêtre principale au démarrage automatique. AeroFTP continue de fonctionner dans la barre d'état système, ouvre-le depuis l'icône quand tu en as besoin.",
             "disableUpdateChecks": "Ne pas vérifier les mises à jour",
-            "disableUpdateChecksDesc": "Ignorer la vérification automatique au démarrage et la vérification quotidienne. Utile lorsque tu gères AeroFTP via WinGet, AUR ou un autre gestionnaire de paquets externe. Les vérifications manuelles ci-dessus restent disponibles."
+            "disableUpdateChecksDesc": "Ignorer la vérification automatique au démarrage et la vérification quotidienne. Utile lorsque tu gères AeroFTP via WinGet, AUR ou un autre gestionnaire de paquets externe. Les vérifications manuelles ci-dessus restent disponibles.",
+            "closeToTray": "Réduire dans la barre d'état système au lieu de quitter",
+            "closeToTrayDesc": "Lorsque vous cliquez sur le bouton de fermeture de la fenêtre, AeroFTP est réduit dans la barre d'état système au lieu d'être fermé. Les tâches en arrière-plan comme la synchronisation AeroCloud continuent de s'exécuter. Utilisez le menu de la barre d'état système pour quitter."
         },
         "devtools": {
             "title": "AeroTools",

@@ -285,9 +285,12 @@ const App: React.FC = () => {
         // keep the main window hidden — the app lives in the tray on boot.
         let startMinimized = false;
         try {
+          const stored = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
+          if (stored?.closeToTray !== undefined) {
+            invoke('set_close_to_tray', { enabled: !!stored.closeToTray }).catch(() => {});
+          }
           const isAutostart = await invoke<boolean>('is_autostart_launch');
           if (isAutostart) {
-            const stored = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
             startMinimized = !!stored?.startMinimizedOnAutostart;
           }
         } catch { /* fall through with startMinimized=false */ }
@@ -1267,6 +1270,12 @@ interface UpdateVerificationInfo {
       else if (showSettingsPanel) setShowSettingsPanel(false);
       else if (inputDialog) setInputDialog(null);
       else if (confirmDialog) setConfirmDialog(null);
+      else if (selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0) {
+        setSelectedRemoteFiles(new Set());
+        setSelectedLocalFiles(new Set());
+        setLastSelectedRemoteIndex(null);
+        setLastSelectedLocalIndex(null);
+      }
     }
   }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
     universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,

@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Khởi động thu nhỏ vào khay",
             "startMinimizedOnAutostartDesc": "Ẩn cửa sổ chính khi khởi động tự động. AeroFTP vẫn chạy trong khay hệ thống, mở từ biểu tượng khay khi bạn cần.",
             "disableUpdateChecks": "Không kiểm tra cập nhật",
-            "disableUpdateChecksDesc": "Bỏ qua kiểm tra cập nhật tự động khi khởi động và hàng ngày. Hữu ích khi bạn quản lý AeroFTP qua WinGet, AUR hoặc trình quản lý gói bên ngoài khác. Các kiểm tra thủ công ở trên vẫn hoạt động."
+            "disableUpdateChecksDesc": "Bỏ qua kiểm tra cập nhật tự động khi khởi động và hàng ngày. Hữu ích khi bạn quản lý AeroFTP qua WinGet, AUR hoặc trình quản lý gói bên ngoài khác. Các kiểm tra thủ công ở trên vẫn hoạt động.",
+            "closeToTray": "Thu nhỏ vào khay hệ thống thay vì thoát",
+            "closeToTrayDesc": "Khi bạn nhấn nút đóng cửa sổ, AeroFTP sẽ được ẩn vào khay hệ thống thay vì thoát hẳn. Các tác vụ nền như đồng bộ AeroCloud vẫn tiếp tục chạy. Dùng menu trên khay hệ thống để thoát ứng dụng."
         },
         "devtools": {
             "title": "AeroTools",

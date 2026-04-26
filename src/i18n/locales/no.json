@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Start minimert til systemstatusfeltet",
             "startMinimizedOnAutostartDesc": "Skjul hovedvinduet ved automatisk oppstart. AeroFTP fortsetter å kjøre i systemstatusfeltet, åpne det fra ikonet når du trenger det.",
             "disableUpdateChecks": "Ikke se etter oppdateringer",
-            "disableUpdateChecksDesc": "Hopp over den automatiske oppstart- og daglige oppdateringssjekken. Nyttig når du administrerer AeroFTP gjennom WinGet, AUR eller en annen ekstern pakkebehandler. Manuelle sjekker ovenfor fungerer fortsatt."
+            "disableUpdateChecksDesc": "Hopp over den automatiske oppstart- og daglige oppdateringssjekken. Nyttig når du administrerer AeroFTP gjennom WinGet, AUR eller en annen ekstern pakkebehandler. Manuelle sjekker ovenfor fungerer fortsatt.",
+            "closeToTray": "Lukk til systemstatusfeltet i stedet for å avslutte",
+            "closeToTrayDesc": "Når du klikker på lukkeknappen for vinduet, skjules AeroFTP i systemstatusfeltet i stedet for å avslutte. Bakgrunnsoppgaver som AeroCloud-synkronisering fortsetter å kjøre. Bruk menyen i systemstatusfeltet for å avslutte."
         },
         "devtools": {
             "title": "AeroTools",

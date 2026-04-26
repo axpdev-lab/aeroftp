@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Magsimulang naka-minimize sa tray",
             "startMinimizedOnAutostartDesc": "Itago ang pangunahing window kapag autostart. Patuloy na tumatakbo ang AeroFTP sa system tray, buksan ito mula sa tray icon kapag kailangan mo.",
             "disableUpdateChecks": "Huwag tumingin ng mga update",
-            "disableUpdateChecksDesc": "Laktawan ang awtomatikong pagsusuri ng update sa pagsisimula at araw-araw. Kapaki-pakinabang kapag pinamamahalaan mo ang AeroFTP sa pamamagitan ng WinGet, AUR, o iba pang panlabas na package manager. Gumagana pa rin ang manu-manong pagsusuri sa itaas."
+            "disableUpdateChecksDesc": "Laktawan ang awtomatikong pagsusuri ng update sa pagsisimula at araw-araw. Kapaki-pakinabang kapag pinamamahalaan mo ang AeroFTP sa pamamagitan ng WinGet, AUR, o iba pang panlabas na package manager. Gumagana pa rin ang manu-manong pagsusuri sa itaas.",
+            "closeToTray": "Itago sa system tray sa halip na isara",
+            "closeToTrayDesc": "Kapag pinindot mo ang close button ng window, itatago ang AeroFTP sa system tray sa halip na isara. Patuloy na tatakbo ang mga gawain sa background tulad ng AeroCloud sync. Gamitin ang tray menu para isara nang lubusan."
         },
         "devtools": {
             "title": "AeroTools",

@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Покрени умањено у системску траку",
             "startMinimizedOnAutostartDesc": "Сакриј главни прозор при аутоматском покретању. AeroFTP наставља да ради у системској траци, отвори га преко иконе када ти затреба.",
             "disableUpdateChecks": "Не проверавај ажурирања",
-            "disableUpdateChecksDesc": "Прескаче аутоматску проверу ажурирања при покретању и дневну проверу. Корисно када AeroFTP-ом управљаш преко WinGet, AUR или другог спољног менаџера пакета. Ручне провере изнад и даље раде."
+            "disableUpdateChecksDesc": "Прескаче аутоматску проверу ажурирања при покретању и дневну проверу. Корисно када AeroFTP-ом управљаш преко WinGet, AUR или другог спољног менаџера пакета. Ручне провере изнад и даље раде.",
+            "closeToTray": "Sakrij u trej umesto izlaska",
+            "closeToTrayDesc": "Kada kliknete na dugme za zatvaranje prozora, AeroFTP će se sakriti u sistemski trej umesto da se zatvori. Pozadinski zadaci kao što je sinhronizacija AeroCloud-a nastavljaju da rade. Za izlaz iz aplikacije koristite meni u treju."
         },
         "devtools": {
             "title": "AeroTools",

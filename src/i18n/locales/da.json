@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Start minimeret til proceslinjen",
             "startMinimizedOnAutostartDesc": "Skjul hovedvinduet ved automatisk start. AeroFTP fortsætter med at køre i systembakken, åbn det fra bakkeikonet, når du har brug for det.",
             "disableUpdateChecks": "Søg ikke efter opdateringer",
-            "disableUpdateChecksDesc": "Spring den automatiske opstart og daglige opdateringskontrol over. Nyttigt, når du administrerer AeroFTP via WinGet, AUR eller en anden ekstern pakkehåndtering. Manuelle kontroller ovenfor virker stadig."
+            "disableUpdateChecksDesc": "Spring den automatiske opstart og daglige opdateringskontrol over. Nyttigt, når du administrerer AeroFTP via WinGet, AUR eller en anden ekstern pakkehåndtering. Manuelle kontroller ovenfor virker stadig.",
+            "closeToTray": "Skjul i proceslinjen i stedet for at afslutte",
+            "closeToTrayDesc": "Når du klikker på knappen for at lukke vinduet, skjules AeroFTP i systembakken i stedet for at afslutte. Baggrundsopgaver som AeroCloud-synkronisering fortsætter. Brug menuen i systembakken for at afslutte."
         },
         "devtools": {
             "title": "AeroTools",

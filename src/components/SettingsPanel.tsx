@@ -209,6 +209,7 @@ interface AppSettings {
     // Startup
     launchOnStartup: boolean;
     startMinimizedOnAutostart: boolean;
+    closeToTray: boolean;
     // Updates
     disableUpdateChecks: boolean;
 }
@@ -242,6 +243,7 @@ const defaultSettings: AppSettings = {
     analyticsEnabled: false,
     launchOnStartup: false,
     startMinimizedOnAutostart: false,
+    closeToTray: false,
     disableUpdateChecks: false,
 };
 
@@ -898,6 +900,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         }
                                                     />
                                                 </div>
+                                                <Checkbox
+                                                    checked={settings.closeToTray}
+                                                    onChange={(v) => {
+                                                        updateSetting('closeToTray', v);
+                                                        invoke('set_close_to_tray', { enabled: v }).catch(() => {});
+                                                    }}
+                                                    label={
+                                                        <div>
+                                                            <p className="text-sm">{t('settings.closeToTray')}</p>
+                                                            <p className="text-xs text-gray-500">{t('settings.closeToTrayDesc')}</p>
+                                                        </div>
+                                                    }
+                                                />
                                             </div>
                                         </div>
 

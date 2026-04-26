@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Mula diminimumkan ke dulang",
             "startMinimizedOnAutostartDesc": "Sembunyikan tetingkap utama semasa pelancaran automula. AeroFTP terus berjalan dalam dulang sistem, buka dari ikon dulang apabila anda memerlukannya.",
             "disableUpdateChecks": "Jangan semak kemas kini",
-            "disableUpdateChecksDesc": "Langkau semakan kemas kini automatik semasa permulaan dan harian. Berguna apabila anda mengurus AeroFTP melalui WinGet, AUR, atau pengurus pakej luaran yang lain. Semakan manual di atas masih berfungsi."
+            "disableUpdateChecksDesc": "Langkau semakan kemas kini automatik semasa permulaan dan harian. Berguna apabila anda mengurus AeroFTP melalui WinGet, AUR, atau pengurus pakej luaran yang lain. Semakan manual di atas masih berfungsi.",
+            "closeToTray": "Tutup ke dulang, bukan keluar",
+            "closeToTrayDesc": "Apabila anda klik butang tutup tetingkap, AeroFTP disembunyikan ke dulang sistem dan bukannya ditutup. Tugas latar belakang seperti penyegerakan AeroCloud terus berjalan. Gunakan menu dulang untuk keluar."
         },
         "devtools": {
             "title": "AeroTools",

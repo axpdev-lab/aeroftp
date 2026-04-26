@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Uruchamiaj zminimalizowane do zasobnika",
             "startMinimizedOnAutostartDesc": "Ukryj główne okno przy automatycznym uruchomieniu. AeroFTP nadal działa w zasobniku systemowym, otwórz go ikoną w zasobniku, gdy będzie potrzebny.",
             "disableUpdateChecks": "Nie sprawdzaj aktualizacji",
-            "disableUpdateChecksDesc": "Pomija automatyczne sprawdzanie aktualizacji przy starcie oraz codzienne. Przydatne, gdy zarządzasz AeroFTP przez WinGet, AUR lub inny zewnętrzny menedżer pakietów. Ręczne sprawdzanie powyżej nadal działa."
+            "disableUpdateChecksDesc": "Pomija automatyczne sprawdzanie aktualizacji przy starcie oraz codzienne. Przydatne, gdy zarządzasz AeroFTP przez WinGet, AUR lub inny zewnętrzny menedżer pakietów. Ręczne sprawdzanie powyżej nadal działa.",
+            "closeToTray": "Zamknij do zasobnika zamiast zakończyć",
+            "closeToTrayDesc": "Po kliknięciu przycisku zamykania okna ukryj AeroFTP w zasobniku systemowym zamiast zamykać aplikację. Zadania w tle, takie jak synchronizacja AeroCloud, będą nadal działać. Aby zamknąć aplikację, użyj menu zasobnika."
         },
         "devtools": {
             "title": "AeroTools",

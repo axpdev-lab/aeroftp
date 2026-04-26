@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "Iniciar minimizado en la bandeja",
             "startMinimizedOnAutostartDesc": "Ocultar la ventana principal al inicio automático. AeroFTP sigue ejecutándose en la bandeja del sistema, ábrelo desde el icono cuando lo necesites.",
             "disableUpdateChecks": "No buscar actualizaciones",
-            "disableUpdateChecksDesc": "Omite la comprobación automática al inicio y la diaria. Útil si gestionas AeroFTP mediante WinGet, AUR u otro gestor de paquetes externo. Las comprobaciones manuales de arriba siguen funcionando."
+            "disableUpdateChecksDesc": "Omite la comprobación automática al inicio y la diaria. Útil si gestionas AeroFTP mediante WinGet, AUR u otro gestor de paquetes externo. Las comprobaciones manuales de arriba siguen funcionando.",
+            "closeToTray": "Minimizar a la bandeja en lugar de salir",
+            "closeToTrayDesc": "Cuando haces clic en el botón de cerrar la ventana, AeroFTP se oculta en la bandeja del sistema en lugar de cerrarse. Las tareas en segundo plano como la sincronización de AeroCloud siguen ejecutándose. Usa el menú de la bandeja para salir."
         },
         "devtools": {
             "title": "AeroTools",

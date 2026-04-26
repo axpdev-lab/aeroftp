@@ -1193,7 +1193,9 @@
       "startMinimizedOnAutostart": "Avvia ridotto nella tray",
       "startMinimizedOnAutostartDesc": "Nascondi la finestra principale all'avvio automatico. AeroFTP continua a funzionare nella tray di sistema, aprilo dall'icona quando ti serve.",
       "disableUpdateChecks": "Non controllare gli aggiornamenti",
-      "disableUpdateChecksDesc": "Salta il controllo automatico all'avvio e quello giornaliero. Utile quando gestisci AeroFTP tramite WinGet, AUR o un altro gestore di pacchetti esterno. I controlli manuali qui sopra continuano a funzionare."
+      "disableUpdateChecksDesc": "Salta il controllo automatico all'avvio e quello giornaliero. Utile quando gestisci AeroFTP tramite WinGet, AUR o un altro gestore di pacchetti esterno. I controlli manuali qui sopra continuano a funzionare.",
+      "closeToTray": "Chiudi nella tray invece di uscire",
+      "closeToTrayDesc": "Quando premi il pulsante di chiusura della finestra, AeroFTP viene nascosto nella tray di sistema invece di terminare. Le attività in background come la sincronizzazione AeroCloud continuano a funzionare. Usa il menu della tray per uscire."
     },
     "appearance": {
       "patternCross": "Croce",

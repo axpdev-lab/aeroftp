@@ -919,7 +919,9 @@
             "startMinimizedOnAutostart": "トレイに最小化して起動",
             "startMinimizedOnAutostartDesc": "自動起動時にメインウィンドウを非表示にします。AeroFTP はシステムトレイで動作を続けるので、必要なときにトレイアイコンから開いてください。",
             "disableUpdateChecks": "更新を確認しない",
-            "disableUpdateChecksDesc": "起動時および毎日の自動更新チェックをスキップします。WinGet、AUR、その他の外部パッケージマネージャーで AeroFTP を管理している場合に便利です。上の手動チェックは引き続き使用できます。"
+            "disableUpdateChecksDesc": "起動時および毎日の自動更新チェックをスキップします。WinGet、AUR、その他の外部パッケージマネージャーで AeroFTP を管理している場合に便利です。上の手動チェックは引き続き使用できます。",
+            "closeToTray": "終了せずにトレイに格納",
+            "closeToTrayDesc": "ウィンドウの閉じるボタンを押すと、AeroFTPは終了せずにシステムトレイに格納されます。AeroCloudの同期などのバックグラウンドタスクは引き続き実行されます。終了するにはトレイメニューを使用してください。"
         },
         "devtools": {
             "title": "AeroTools",
