@@ -439,16 +439,18 @@ impl JottacloudProvider {
     /// Build full JFS URL: /jfs/{username}/{device}/{mountpoint}/{path}
     fn jfs_url(&self, path: &str) -> String {
         let clean = path.trim_start_matches('/');
+        let user = urlencoding::encode(&self.username);
+        let device = urlencoding::encode(&self.config.device);
+        let mount = urlencoding::encode(&self.config.mountpoint);
         if clean.is_empty() {
-            format!(
-                "{}/{}/{}/{}",
-                JFS_BASE, self.username, self.config.device, self.config.mountpoint
-            )
+            format!("{}/{}/{}/{}", JFS_BASE, user, device, mount)
         } else {
-            format!(
-                "{}/{}/{}/{}/{}",
-                JFS_BASE, self.username, self.config.device, self.config.mountpoint, clean
-            )
+            let encoded_path: String = clean
+                .split('/')
+                .map(|s| urlencoding::encode(s).into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            format!("{}/{}/{}/{}/{}", JFS_BASE, user, device, mount, encoded_path)
         }
     }
 
@@ -1594,10 +1596,16 @@ impl JottacloudProvider {
     /// Build JFS URL for the trash: /jfs/{username}/Trash/{path}
     fn trash_url(&self, path: &str) -> String {
         let clean = path.trim_start_matches('/');
+        let user = urlencoding::encode(&self.username);
         if clean.is_empty() {
-            format!("{}/{}/Trash", JFS_BASE, self.username)
+            format!("{}/{}/Trash", JFS_BASE, user)
         } else {
-            format!("{}/{}/Trash/{}", JFS_BASE, self.username, clean)
+            let encoded_path: String = clean
+                .split('/')
+                .map(|s| urlencoding::encode(s).into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            format!("{}/{}/Trash/{}", JFS_BASE, user, encoded_path)
         }
     }
 
@@ -1969,6 +1977,30 @@ mod tests {
         assert_eq!(
             p.jfs_url("no-slash/path"),
             format!("{}/user123/Jotta/Archive/no-slash/path", JFS_BASE)
+        );
+    }
+
+    #[test]
+    fn jfs_url_url_encodes_segments_for_special_chars() {
+        // Names with `+`, `#`, `%`, ` `, `&` must be percent-encoded so the
+        // server doesn't see `+` as space, `#` as fragment, etc.
+        let p = test_provider();
+        assert_eq!(
+            p.jfs_url("/folder/a+b=c.txt"),
+            format!("{}/user123/Jotta/Archive/folder/a%2Bb%3Dc.txt", JFS_BASE)
+        );
+        assert_eq!(
+            p.jfs_url("/folder/cool#1.txt"),
+            format!("{}/user123/Jotta/Archive/folder/cool%231.txt", JFS_BASE)
+        );
+        assert_eq!(
+            p.jfs_url("/folder/100%.txt"),
+            format!("{}/user123/Jotta/Archive/folder/100%25.txt", JFS_BASE)
+        );
+        // Slash separators must NOT be encoded; only segment contents.
+        assert_eq!(
+            p.jfs_url("/a&b/c d.txt"),
+            format!("{}/user123/Jotta/Archive/a%26b/c%20d.txt", JFS_BASE)
         );
     }
 

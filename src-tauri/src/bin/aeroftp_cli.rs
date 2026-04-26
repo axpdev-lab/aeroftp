@@ -981,7 +981,11 @@ enum Commands {
         shell: clap_complete::Shell,
     },
     /// List saved server profiles from the encrypted vault
-    Profiles,
+    Profiles {
+        /// Optional `list` keyword for parity with `<tool> profiles list` muscle memory; ignored.
+        #[arg(hide = true)]
+        _ignored: Vec<String>,
+    },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
     /// Show the canonical task-oriented quick-start for AI agents
@@ -23399,7 +23403,7 @@ async fn main() {
                 }
             }
         }
-        Commands::Profiles => list_vault_profiles(&cli, format),
+        Commands::Profiles { _ignored: _ } => list_vault_profiles(&cli, format),
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentBootstrap {
             task,
@@ -23694,7 +23698,9 @@ mod tests {
             immutable: false,
             no_check_dest: false,
             max_depth: None,
-            command: Commands::Profiles,
+            command: Commands::Profiles {
+                _ignored: Vec::new(),
+            },
         }
     }
 
