@@ -1024,6 +1024,28 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             surfaces: remote_surfaces,
         },
         ToolDef {
+            name: "aeroftp_agent_connect",
+            description: "Single-shot agent connect surface. Returns one JSON payload with per-block status (`connect`, `capabilities`, `quota`, `path`) so the agent can decide go/no-go and gracefully degrade. Replaces the boilerplate sequence of `connect → about → df → ls /`. `connect.status` is the critical signal; `unsupported`/`unavailable`/`error` on other blocks are non-fatal.",
+            input_schema: json!({
+                "type": "object",
+                "properties": { "server": {"type": "string", "description": "Server name or ID (exact match preferred; unique substring also accepted)"} },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "agent_connect",
+            description: "Alias of aeroftp_agent_connect.",
+            input_schema: json!({
+                "type": "object",
+                "properties": { "server": {"type": "string"} },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
             name: "server_exec",
             description: "Execute a vault-backed server operation without exposing credentials.",
             input_schema: json!({
@@ -1272,6 +1294,9 @@ pub async fn dispatch_tool(
         | "remote_rename"
         | "aeroftp_storage_quota"
         | "remote_storage_quota"
+        | "aeroftp_agent_connect"
+        | "agent_connect"
+        | "remote_agent_connect"
         | "server_exec" => remote_tools::dispatch_remote_tool(ctx, tool_name, args).await,
         // ─── Area D: rag_*, agent_memory_* ──────────────────────────────────
         "rag_index" => agent_tools::rag_index(ctx, args).await,

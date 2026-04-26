@@ -86,6 +86,7 @@ mod provider_commands;
 mod provider_transfer_executor;
 pub mod providers;
 pub mod profile_auth_state;
+pub mod agent_session;
 mod pty;
 mod rclone_crypt;
 pub mod rclone_import;

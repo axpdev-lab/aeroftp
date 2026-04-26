@@ -90,6 +90,7 @@ fn alias_name(tool_name: &str) -> &str {
         "remote_search" | "remote_search_files" => "aeroftp_search_files",
         "remote_storage_quota" => "aeroftp_storage_quota",
         "remote_list_servers" | "server_list_saved" => "aeroftp_list_servers",
+        "remote_agent_connect" | "agent_connect" => "aeroftp_agent_connect",
         other => other,
     }
 }
@@ -156,6 +157,7 @@ pub async fn dispatch_remote_tool(
         "aeroftp_delete_many" => delete_many(ctx, args).await,
         "aeroftp_rename" => rename(ctx, args).await,
         "aeroftp_storage_quota" => storage_quota(ctx, args).await,
+        "aeroftp_agent_connect" => agent_connect(ctx, args).await,
         "server_exec" => server_exec(ctx, args).await,
         _ => Err(ToolError::NotMigrated(tool_name.to_string())),
     }
@@ -573,6 +575,57 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         "used_bytes": info.used,
         "total_bytes": info.total,
         "free_bytes": info.available,
+    }))
+}
+
+async fn agent_connect(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    use crate::agent_session;
+    let server = normalize_server(args)?;
+
+    // Local-only profile lookup. Distinct top-level shape on miss so the
+    // agent can branch without parsing the per-block payload.
+    let profile = match agent_session::lookup_profile(&server) {
+        Ok(p) => p,
+        Err(e) => return Ok(agent_session::lookup_error_payload(&server, &e)),
+    };
+
+    let path = agent_session::path_block(&profile);
+    let capabilities = agent_session::capabilities_block(&profile.protocol);
+
+    // `remote_backend()` opens (or reuses) the pooled connection — its
+    // outcome IS the "connect" block. No separate connect() call needed.
+    let started = std::time::Instant::now();
+    let backend_result = ctx.remote_backend(&server).await;
+    let elapsed_ms = started.elapsed().as_millis();
+
+    let (connect, quota) = match backend_result {
+        Ok(backend) => {
+            let connect = agent_session::connect_block_ok(&profile.id, elapsed_ms);
+            let quota = match backend.storage_info().await {
+                Ok(q) => agent_session::quota_block_ok(q.used, q.total, q.available),
+                Err(msg) => {
+                    let lower = msg.to_ascii_lowercase();
+                    if lower.contains("not supported") || lower.contains("notsupported") {
+                        agent_session::quota_block_unsupported(&profile.protocol)
+                    } else {
+                        agent_session::quota_block_unavailable(&msg)
+                    }
+                }
+            };
+            (connect, quota)
+        }
+        Err(msg) => (
+            agent_session::connect_block_error(&msg),
+            agent_session::quota_block_unavailable("connect failed"),
+        ),
+    };
+
+    Ok(json!({
+        "profile": agent_session::profile_block(&profile),
+        "connect": connect,
+        "capabilities": capabilities,
+        "quota": quota,
+        "path": path,
     }))
 }
 

@@ -373,6 +373,17 @@ enum Commands {
         /// Show all files (including hidden)
         #[arg(short, long)]
         all: bool,
+        /// Cap the number of entries returned (after sort). When the
+        /// listing is truncated, JSON output sets `summary.truncated:
+        /// true` so agents can detect partial results.
+        #[arg(long)]
+        limit: Option<usize>,
+        /// List only files (skip directories). Applied after sort.
+        #[arg(long)]
+        files_only: bool,
+        /// List only directories (skip files). Applied after sort.
+        #[arg(long, conflicts_with = "files_only")]
+        dirs_only: bool,
     },
     /// Download file(s) from remote server
     Get {
@@ -529,6 +540,11 @@ enum Commands {
         /// Number of lines to print (default: 20)
         #[arg(short = 'n', long, default_value = "20")]
         lines: usize,
+        /// Print the first N bytes instead of N lines. Mutually
+        /// exclusive with --lines (--bytes wins when both present).
+        /// Useful for "first 4KB" previews on binary or huge files.
+        #[arg(short = 'c', long)]
+        bytes: Option<u64>,
     },
     /// Print last N lines of a remote file
     Tail {
@@ -630,9 +646,24 @@ enum Commands {
         /// Base path to search from
         #[arg(default_value = "/")]
         path: String,
-        /// Search pattern (glob-style)
+        /// Search pattern (glob-style). Positional; `--name` is an
+        /// equivalent flag form for agents that expect named args.
         #[arg(default_value = "*")]
         pattern: String,
+        /// Glob pattern alias for the positional argument. When both
+        /// the positional pattern and `--name` are set, `--name` wins.
+        #[arg(long, value_name = "GLOB")]
+        name: Option<String>,
+        /// Match only files (skip directories)
+        #[arg(long)]
+        files_only: bool,
+        /// Match only directories (skip files)
+        #[arg(long, conflicts_with = "files_only")]
+        dirs_only: bool,
+        /// Cap matches returned. JSON output sets `summary.truncated:
+        /// true` when this trims results.
+        #[arg(long)]
+        limit: Option<usize>,
     },
     /// Show storage quota/usage
     Df {
@@ -1020,6 +1051,26 @@ enum Commands {
     },
     /// Show CLI capabilities for AI agent discovery (always JSON)
     AgentInfo,
+    /// Single-shot connect surface for agents: returns per-block status
+    /// (connect/capabilities/quota/path) in one JSON call. Replaces the
+    /// boilerplate `connect → about → df → ls /` sequence.
+    ///
+    /// Live-connect allowlist: FTP, FTPS, SFTP, WebDAV, S3, GitHub,
+    /// GitLab. For other protocols (pCloud, Dropbox, OneDrive, Box,
+    /// Filen, MEGA, Koofr, kDrive, Jottacloud, Drime, FileLu, Yandex,
+    /// 4shared, Internxt, Swift, Azure, Google Drive, ZohoWorkDrive,
+    /// Immich) the response still includes valid `capabilities`, `path`,
+    /// and `profile` blocks; only the `connect` block reports
+    /// `status: "unsupported"` and the CLI returns exit code 0 — the
+    /// payload is still actionable, just use protocol-specific commands
+    /// like `link`, `ls`, `put` directly.
+    ///
+    /// Exit codes: 0 = ok or unsupported (capabilities valid),
+    /// 1 = connect tried and failed, 2 = profile lookup failed.
+    AgentConnect {
+        /// Profile name or ID (exact match preferred; unique substring also accepted)
+        profile: String,
+    },
     /// Background daemon for persistent mounts, jobs, and watch
     Daemon {
         #[command(subcommand)]
@@ -2553,9 +2604,15 @@ fn effective_parallel_workers(cli: &Cli) -> usize {
 static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
 /// Print "Using profile: ..." only once per session (avoids noise from parallel workers).
 static PROFILE_INFO_PRINTED: AtomicBool = AtomicBool::new(false);
+/// Set early in main() when the user passed `--json` or `--format json`.
+/// Used to suppress informational stderr output (banners, "Using
+/// profile:") that an agent capturing combined stdout+stderr would
+/// see as JSON corruption. Surfaced by the 4-Sonnet agent
+/// friendliness audit (2026-04-26, all 4 batteries flagged this).
+static JSON_MODE: AtomicBool = AtomicBool::new(false);
 
 fn print_profile_banner_once(name: &str, details: String, quiet: bool) {
-    if quiet {
+    if quiet || JSON_MODE.load(Ordering::Relaxed) {
         return;
     }
     if !PROFILE_INFO_PRINTED.swap(true, Ordering::Relaxed) {
@@ -4276,6 +4333,45 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
             "pcloud", "zohoworkdrive", "fourshared", "drime", "swift"
         ],
+        // Per-protocol capability matrix — answers "which protocols
+        // support feature X" in one call instead of N agent-connect
+        // round-trips. Tokens align with the StorageProvider trait
+        // `supports_*` methods. Conservative lower bound: a feature
+        // listed here is reliably supported by the protocol family;
+        // absence means "ask the provider directly".
+        "protocol_features": {
+            "ftp": ftp_client_gui_lib::agent_session::capabilities_for_protocol("ftp"),
+            "ftps": ftp_client_gui_lib::agent_session::capabilities_for_protocol("ftps"),
+            "sftp": ftp_client_gui_lib::agent_session::capabilities_for_protocol("sftp"),
+            "webdav": ftp_client_gui_lib::agent_session::capabilities_for_protocol("webdav"),
+            "s3": ftp_client_gui_lib::agent_session::capabilities_for_protocol("s3"),
+            "azure": ftp_client_gui_lib::agent_session::capabilities_for_protocol("azure"),
+            "googledrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("googledrive"),
+            "googlephotos": ftp_client_gui_lib::agent_session::capabilities_for_protocol("googlephotos"),
+            "dropbox": ftp_client_gui_lib::agent_session::capabilities_for_protocol("dropbox"),
+            "onedrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("onedrive"),
+            "box": ftp_client_gui_lib::agent_session::capabilities_for_protocol("box"),
+            "pcloud": ftp_client_gui_lib::agent_session::capabilities_for_protocol("pcloud"),
+            "mega": ftp_client_gui_lib::agent_session::capabilities_for_protocol("mega"),
+            "filen": ftp_client_gui_lib::agent_session::capabilities_for_protocol("filen"),
+            "internxt": ftp_client_gui_lib::agent_session::capabilities_for_protocol("internxt"),
+            "kdrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("kdrive"),
+            "jottacloud": ftp_client_gui_lib::agent_session::capabilities_for_protocol("jottacloud"),
+            "zohoworkdrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("zohoworkdrive"),
+            "yandexdisk": ftp_client_gui_lib::agent_session::capabilities_for_protocol("yandexdisk"),
+            "koofr": ftp_client_gui_lib::agent_session::capabilities_for_protocol("koofr"),
+            "opendrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("opendrive"),
+            "drime": ftp_client_gui_lib::agent_session::capabilities_for_protocol("drime"),
+            "filelu": ftp_client_gui_lib::agent_session::capabilities_for_protocol("filelu"),
+            "fourshared": ftp_client_gui_lib::agent_session::capabilities_for_protocol("fourshared"),
+            "swift": ftp_client_gui_lib::agent_session::capabilities_for_protocol("swift"),
+            "immich": ftp_client_gui_lib::agent_session::capabilities_for_protocol("immich"),
+            "github": ftp_client_gui_lib::agent_session::capabilities_for_protocol("github"),
+            "gitlab": ftp_client_gui_lib::agent_session::capabilities_for_protocol("gitlab")
+        },
+        "agent_connect_supported_protocols": [
+            "ftp", "ftps", "sftp", "webdav", "s3", "github", "gitlab"
+        ],
         "safety_rules": [
             "Always use --profile instead of passwords in URLs",
             "Use --dry-run before sync operations",
@@ -4297,6 +4393,56 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
         serde_json::to_string_pretty(&info).unwrap_or_default()
     );
     0
+}
+
+async fn cmd_agent_connect(cli: &Cli, query: &str) -> i32 {
+    // Vault must be unlocked before lookup_profile() can read
+    // `config_server_profiles`. Mirror the auto/env/prompt flow other
+    // CLI commands use; surface unlock failure as a structured payload
+    // so agents see the same shape regardless of the failure stage.
+    if let Err(msg) = open_vault(cli) {
+        let payload = serde_json::json!({
+            "query": query,
+            "lookup": {
+                "status": "error",
+                "kind": "vault_closed",
+                "message": msg,
+            }
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).unwrap_or_default()
+        );
+        return 2;
+    }
+
+    let payload = ftp_client_gui_lib::agent_session::build_agent_connect_payload(query).await;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&payload).unwrap_or_default()
+    );
+    // Exit code reflects only the critical block: connect.status.
+    //   ok          → 0 (live connection succeeded)
+    //   unsupported → 0 (protocol outside agent-connect's allowlist;
+    //                   capabilities/path/profile blocks are still
+    //                   actionable, so a non-zero code would mislead
+    //                   exit-gating agents into discarding usable
+    //                   data — flagged by the agent-friendliness
+    //                   audit, Battery D)
+    //   error       → 1 (real connection failure)
+    //   lookup err  → 2 (profile not found / vault locked)
+    let connect_status = payload
+        .get("connect")
+        .and_then(|c| c.get("status"))
+        .and_then(|s| s.as_str());
+    let lookup_failed = payload.get("lookup").is_some();
+    if lookup_failed {
+        2
+    } else if matches!(connect_status, Some("ok") | Some("unsupported")) {
+        0
+    } else {
+        1
+    }
 }
 
 fn shell_double_quote(value: &str) -> String {
@@ -8332,6 +8478,9 @@ async fn cmd_ls(
     sort: &str,
     reverse: bool,
     all: bool,
+    limit: Option<usize>,
+    files_only: bool,
+    dirs_only: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -8416,7 +8565,32 @@ async fn cmd_ls(
         entries.reverse();
     }
 
-    // Summary
+    // --files-only / --dirs-only filter (mutually exclusive at clap
+    // level). Cuts client-side post-processing for agents iterating
+    // by type. Surfaced as a friction point by the agent audit
+    // (P12, Battery A).
+    if files_only {
+        entries.retain(|e| !e.is_dir);
+    } else if dirs_only {
+        entries.retain(|e| e.is_dir);
+    }
+
+    // --limit N: trim AFTER sort/filter so the cap is meaningful.
+    // Tracks pre-trim length so summary can report `truncated: true`
+    // (P11/P13, Battery A+B).
+    let total_before_limit = entries.len();
+    let truncated = if let Some(n) = limit {
+        if entries.len() > n {
+            entries.truncate(n);
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // Summary (post-filter, post-limit)
     let file_count = entries.iter().filter(|e| !e.is_dir).count();
     let dir_count = entries.iter().filter(|e| e.is_dir).count();
     let total_bytes: u64 = entries.iter().filter(|e| !e.is_dir).map(|e| e.size).sum();
@@ -8494,6 +8668,8 @@ async fn cmd_ls(
                     "files": file_count,
                     "dirs": dir_count,
                     "total_bytes": total_bytes,
+                    "truncated": truncated,
+                    "total_before_limit": total_before_limit,
                 },
                 "suggested_next_command": suggest_ls_followup(cli, effective_path),
             }));
@@ -8552,6 +8728,26 @@ async fn cmd_get(
     } else {
         filename
     };
+    // Audit-friendly overwrite warning. When the resolved destination
+    // already exists locally, surface a clear stderr line so the agent
+    // (or human) can decide rather than silently lose data. Suppressed
+    // under --quiet, --immutable (which has its own skip path), and
+    // when output is JSON (the json envelope already includes the
+    // destination — agents can diff against their own state).
+    // Caught by the agent-friendliness audit (P8, Battery C: a `get`
+    // to a directory containing a same-named local file overwrote it
+    // without warning).
+    if !cli.quiet
+        && !cli.immutable
+        && !matches!(format, OutputFormat::Json)
+        && Path::new(local_path).exists()
+    {
+        eprintln!(
+            "Warning: local '{}' already exists and will be overwritten. \
+             Pass --immutable to skip, or rename the destination.",
+            local_path
+        );
+    }
     // --immutable: skip if local file already exists
     if cli.immutable && Path::new(local_path).exists() {
         let _ = provider.disconnect().await;
@@ -9908,6 +10104,12 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
 
     let path = &resolve_cli_remote_path(&initial_path, path);
 
+    // Track whether the leaf path was already a directory before this
+    // call. Idempotent mkdir -p reports `already_existed: true` for an
+    // audit-friendly distinction between "I created it" and "it was
+    // already there" — caught by the agent-friendliness audit
+    // (Battery C, P14).
+    let mut leaf_already_existed = false;
     if parents {
         // Create parent directories as needed, no error if already exists.
         // Preserve absolute-vs-relative input: a path starting with '/' must
@@ -9921,22 +10123,32 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
             .split('/')
             .filter(|c| !c.is_empty())
             .collect();
+        let last_idx = components.len().saturating_sub(1);
         let mut current = if is_absolute { "/".to_string() } else { String::new() };
-        for component in &components {
+        for (idx, component) in components.iter().enumerate() {
             if current.is_empty() || current == "/" {
                 current = format!("{}{}", current, component);
             } else {
                 current = format!("{}/{}", current, component);
             }
+            let is_leaf = idx == last_idx;
             match provider.mkdir(&current).await {
                 Ok(()) => {}
-                Err(ProviderError::AlreadyExists(_)) => {}
+                Err(ProviderError::AlreadyExists(_)) => {
+                    if is_leaf {
+                        leaf_already_existed = true;
+                    }
+                }
                 Err(e) => {
                     // Some providers don't return AlreadyExists — they may
                     // return ServerError or Other for existing directories.
                     // Probe with stat: if the path is a directory, it's fine.
                     match provider.stat(&current).await {
-                        Ok(entry) if entry.is_dir => {}
+                        Ok(entry) if entry.is_dir => {
+                            if is_leaf {
+                                leaf_already_existed = true;
+                            }
+                        }
                         _ => {
                             print_error(
                                 format,
@@ -9950,16 +10162,23 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
                 }
             }
         }
+        let message = if leaf_already_existed {
+            format!("Directory already existed: {}", path)
+        } else {
+            format!("Created directory: {}", path)
+        };
         match format {
             OutputFormat::Text => {
                 if !cli.quiet {
-                    eprintln!("Created directory: {}", path);
+                    eprintln!("{}", message);
                 }
             }
-            OutputFormat::Json => print_json(&CliOk {
-                status: "ok",
-                message: format!("Created directory: {}", path),
-            }),
+            OutputFormat::Json => print_json(&serde_json::json!({
+                "status": "ok",
+                "message": message,
+                "path": path,
+                "already_existed": leaf_already_existed,
+            })),
         }
         let _ = provider.disconnect().await;
         0
@@ -9972,10 +10191,12 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
                             eprintln!("Created directory: {}", path);
                         }
                     }
-                    OutputFormat::Json => print_json(&CliOk {
-                        status: "ok",
-                        message: format!("Created directory: {}", path),
-                    }),
+                    OutputFormat::Json => print_json(&serde_json::json!({
+                        "status": "ok",
+                        "message": format!("Created directory: {}", path),
+                        "path": path,
+                        "already_existed": false,
+                    })),
                 }
                 let _ = provider.disconnect().await;
                 0
@@ -11119,18 +11340,36 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
             0
         }
         Err(e) => {
-            print_error(
-                format,
-                &format!("stat failed: {}", e),
-                provider_error_to_exit_code(&e),
-            );
+            // Flatten cascaded "Path not found: File not found: No such
+            // file: No such file" chain into a single canonical message
+            // so machine parsers don't have to peel layers. The
+            // provider-side wrapping is hard to fix in place (each
+            // protocol crate adds its own prefix); this is the cheapest
+            // place to dedupe.
+            let exit = provider_error_to_exit_code(&e);
+            let msg = if exit == 2 {
+                format!("stat failed: {} not found", path)
+            } else {
+                format!("stat failed: {}", e)
+            };
+            print_error(format, &msg, exit);
             let _ = provider.disconnect().await;
-            provider_error_to_exit_code(&e)
+            exit
         }
     }
 }
 
-async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: OutputFormat) -> i32 {
+#[allow(clippy::too_many_arguments)]
+async fn cmd_find(
+    url: &str,
+    path: &str,
+    pattern: &str,
+    files_only: bool,
+    dirs_only: bool,
+    limit: Option<usize>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -11138,7 +11377,7 @@ async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: Outpu
 
     let path = &resolve_cli_remote_path(&initial_path, path);
     // Try provider.find() first, fallback to recursive list + glob
-    let results = match provider.find(path, pattern).await {
+    let mut results = match provider.find(path, pattern).await {
         Ok(entries) => entries,
         Err(ProviderError::NotSupported(_)) => {
             // Fallback: recursive list + glob filter
@@ -11194,15 +11433,35 @@ async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: Outpu
         }
     };
 
+    // --files-only / --dirs-only filter applied after the provider
+    // returns. P12 from the agent-friendliness audit.
+    if files_only {
+        results.retain(|e| !e.is_dir);
+    } else if dirs_only {
+        results.retain(|e| e.is_dir);
+    }
+
+    // --limit N: applied last so it's deterministic with respect to the
+    // filter. P11/P13.
+    let total_before_limit = results.len();
+    let truncated = if let Some(n) = limit {
+        if results.len() > n {
+            results.truncate(n);
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
     match format {
         OutputFormat::Text => {
             for e in &results {
                 println!("{}", sanitize_filename(&e.path));
             }
             if !cli.quiet {
-                eprintln!("\n{} matches", results.len());
-                // No trailing `Next:` hint: read-only listing has no useful
-                // next step. See ls for the same reasoning.
+                eprintln!("\n{} matches{}", results.len(), if truncated { " (truncated by --limit)" } else { "" });
             }
         }
         OutputFormat::Json => {
@@ -11222,6 +11481,8 @@ async fn cmd_find(url: &str, path: &str, pattern: &str, cli: &Cli, format: Outpu
                     "files": file_count,
                     "dirs": dir_count,
                     "total_bytes": total_bytes,
+                    "truncated": truncated,
+                    "total_before_limit": total_before_limit,
                 },
                 "suggested_next_command": suggest_find_followup(cli, path),
             }));
@@ -17483,36 +17744,80 @@ async fn cmd_sync_doctor(
 
 // ── Head / Tail / Touch / Hashsum / Check ─────────────────────────
 
-async fn cmd_head(url: &str, path: &str, lines: usize, cli: &Cli, format: OutputFormat) -> i32 {
+async fn cmd_head(
+    url: &str,
+    path: &str,
+    lines: usize,
+    bytes: Option<u64>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
     let path = &resolve_cli_remote_path(&initial_path, path);
     match provider.download_to_bytes(path).await {
-        Ok(data) => match String::from_utf8(data) {
-            Ok(text) => {
-                let result: Vec<&str> = text.lines().take(lines).collect();
-                let output = result.join("\n");
+        Ok(data) => {
+            // --bytes: byte-range mode. Doesn't require UTF-8; works
+            // for binaries. Returns base64 in JSON when content is not
+            // valid UTF-8 to keep the JSON envelope clean. Surfaced by
+            // the agent audit (P7, Battery A).
+            if let Some(n) = bytes {
+                let take = (n as usize).min(data.len());
+                let truncated = data.len() > take;
+                let slice = &data[..take];
                 if matches!(format, OutputFormat::Json) {
+                    let (content, encoding) = match std::str::from_utf8(slice) {
+                        Ok(s) => (s.to_string(), "utf8"),
+                        Err(_) => (
+                            base64::engine::general_purpose::STANDARD.encode(slice),
+                            "base64",
+                        ),
+                    };
                     print_json(&serde_json::json!({
                         "status": "ok",
                         "path": path,
-                        "lines": result.len(),
-                        "content": output,
+                        "bytes_returned": take,
+                        "total_size": data.len(),
+                        "truncated": truncated,
+                        "encoding": encoding,
+                        "content": content,
                     }));
                 } else {
-                    println!("{}", output);
+                    let stdout = io::stdout();
+                    let mut handle = stdout.lock();
+                    let _ = handle.write_all(slice);
+                    let _ = handle.flush();
                 }
                 let _ = provider.disconnect().await;
-                0
+                return 0;
             }
-            Err(_) => {
-                print_error(format, "File is not valid UTF-8 text", 5);
-                let _ = provider.disconnect().await;
-                5
+            // Default: line mode (legacy behaviour).
+            match String::from_utf8(data) {
+                Ok(text) => {
+                    let result: Vec<&str> = text.lines().take(lines).collect();
+                    let output = result.join("\n");
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "path": path,
+                            "lines": result.len(),
+                            "content": output,
+                        }));
+                    } else {
+                        println!("{}", output);
+                    }
+                    let _ = provider.disconnect().await;
+                    0
+                }
+                Err(_) => {
+                    print_error(format, "File is not valid UTF-8 text. Pass --bytes to read raw bytes.", 5);
+                    let _ = provider.disconnect().await;
+                    5
+                }
             }
-        },
+        }
         Err(e) => {
             let code = provider_error_to_exit_code(&e);
             print_error(format, &format!("head failed: {}", e), code);
@@ -19035,7 +19340,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 };
                 let path = if parts.len() > 1 { parts[1] } else { "/" };
                 let long = parts.contains(&"-l");
-                exit_code = cmd_ls(&url, path, long, "name", false, true, cli, format).await;
+                exit_code = cmd_ls(&url, path, long, "name", false, true, None, false, false, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -19095,7 +19400,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     eprintln!("Line {}: FIND requires <path> <pattern>", line_num + 1);
                     return 5;
                 }
-                exit_code = cmd_find(&url, parts[1], parts[2], cli, format).await;
+                exit_code = cmd_find(&url, parts[1], parts[2], false, false, None, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -22684,6 +22989,13 @@ async fn main() {
     let cli = Cli::parse_from(args);
     let format = cli.output_format();
 
+    // Stash JSON-mode globally so banner-emitting helpers far down
+    // the stack can suppress without threading `format` through every
+    // call site. Set BEFORE any vault open or connect can fire.
+    if matches!(format, OutputFormat::Json) {
+        JSON_MODE.store(true, Ordering::Relaxed);
+    }
+
     // Setup tracing based on verbosity
     if cli.verbose >= 2 {
         tracing_subscriber::fmt()
@@ -22728,13 +23040,20 @@ async fn main() {
             sort,
             reverse,
             all,
+            limit,
+            files_only,
+            dirs_only,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_ls(u, p, *long, sort, *reverse, *all, &cli, format).await
+            cmd_ls(
+                u, p, *long, sort, *reverse, *all, *limit, *files_only, *dirs_only,
+                &cli, format,
+            )
+            .await
         }
         Commands::Pget {
             url,
@@ -23075,13 +23394,13 @@ async fn main() {
                 .await
             }
         },
-        Commands::Head { url, path, lines } => {
+        Commands::Head { url, path, lines, bytes } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_head(u, p, *lines, &cli, format).await
+            cmd_head(u, p, *lines, *bytes, &cli, format).await
         }
         Commands::Tail { url, path, lines } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -23165,13 +23484,18 @@ async fn main() {
             };
             cmd_stat(u, p, &cli, format).await
         }
-        Commands::Find { url, path, pattern } => {
+        Commands::Find { url, path, pattern, name, files_only, dirs_only, limit } => {
+            // `--name` overrides the positional pattern when both
+            // present. Picked as the natural agent-facing form
+            // (V2 verification flagged the positional-only as a
+            // first-attempt friction).
+            let pattern_str = name.as_deref().unwrap_or(pattern.as_str());
             let (u, p, pat) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), path.as_str())
             } else {
-                (url.as_str(), path.as_str(), pattern.as_str())
+                (url.as_str(), path.as_str(), pattern_str)
             };
-            cmd_find(u, p, pat, &cli, format).await
+            cmd_find(u, p, pat, *files_only, *dirs_only, *limit, &cli, format).await
         }
         Commands::Df { url } => cmd_df(url, &cli, format).await,
         Commands::Tree { url, path, depth } => {
@@ -23471,6 +23795,7 @@ async fn main() {
             remote_path.as_deref(),
         ),
         Commands::AgentInfo => cmd_agent_info(&cli),
+        Commands::AgentConnect { profile } => cmd_agent_connect(&cli, profile).await,
         Commands::Crypt { command } => {
             let resolve_crypt_password = |p: &Option<String>| -> Option<String> {
                 if let Some(pw) = p {
