@@ -74,9 +74,10 @@ const ScoreGauge: React.FC<{ score: number; size?: number; legendTooltip?: strin
                     strokeLinecap="round"
                     style={{ transition: 'stroke-dashoffset 0.8s ease-out' }} />
             </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-xs font-bold"
+            <span className="absolute inset-0 flex flex-col items-center justify-center font-bold leading-none"
                 style={{ color }}>
-                {score}
+                <span className="text-xs">{score}</span>
+                <span className="text-[7px] opacity-70 mt-0.5">/100</span>
             </span>
         </div>
     );
@@ -358,8 +359,23 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
                         <div>
                             <h2 className="text-base font-semibold">{t('healthCheck.title')}</h2>
                             <p className="text-xs text-gray-500">{t('healthCheck.subtitle')}</p>
-                            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5" title={t('healthCheck.scoreLegendDetail')}>
-                                {t('healthCheck.scoreLegend')}
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                                <span className="font-medium">{t('healthCheck.scoreLegend')}</span>
+                                <span className="mx-1.5 text-gray-300 dark:text-gray-600">·</span>
+                                <span className="inline-flex items-center gap-1">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
+                                    80+
+                                </span>
+                                <span className="mx-1 text-gray-300 dark:text-gray-600">·</span>
+                                <span className="inline-flex items-center gap-1">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                                    50-79
+                                </span>
+                                <span className="mx-1 text-gray-300 dark:text-gray-600">·</span>
+                                <span className="inline-flex items-center gap-1">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500" />
+                                    {'< 50'}
+                                </span>
                             </p>
                         </div>
                     </div>
