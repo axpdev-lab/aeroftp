@@ -248,7 +248,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                     ) : (
                         <div
                             className="grid gap-2"
-                            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}
+                            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
                         >
                             {activeItems.map((item) => (
                                 <ServiceCard
