@@ -54,6 +54,7 @@ pub mod sftp;
 pub mod swift;
 pub mod types;
 pub mod webdav;
+pub mod xml_text;
 pub mod yandex_disk;
 pub mod zoho_workdrive;
 

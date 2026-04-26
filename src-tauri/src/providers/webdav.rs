@@ -595,10 +595,13 @@ impl WebDavProvider {
                                     .to_string();
                                 entries.push(NextcloudTrashEntry {
                                     id,
-                                    name: trash_filename.clone(),
-                                    original_path: trash_location.clone(),
-                                    deleted_at: trash_deletion_time.parse::<u64>().unwrap_or(0),
-                                    size: content_length.parse::<u64>().unwrap_or(0),
+                                    name: trash_filename.trim().to_string(),
+                                    original_path: trash_location.trim().to_string(),
+                                    deleted_at: trash_deletion_time
+                                        .trim()
+                                        .parse::<u64>()
+                                        .unwrap_or(0),
+                                    size: content_length.trim().parse::<u64>().unwrap_or(0),
                                     is_dir: is_collection,
                                 });
                             }
@@ -613,14 +616,30 @@ impl WebDavProvider {
                 }
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-                        if !text.is_empty() {
+                        let raw = String::from_utf8_lossy(e.as_ref()).to_string();
+                        if !raw.is_empty() {
                             match tag.as_str() {
-                                "href" => href = text,
-                                "trashbin-filename" => trash_filename = text,
-                                "trashbin-original-location" => trash_location = text,
-                                "trashbin-deletion-time" => trash_deletion_time = text,
-                                "getcontentlength" => content_length = text,
+                                "href" => href.push_str(&raw),
+                                "trashbin-filename" => trash_filename.push_str(&raw),
+                                "trashbin-original-location" => trash_location.push_str(&raw),
+                                "trashbin-deletion-time" => trash_deletion_time.push_str(&raw),
+                                "getcontentlength" => content_length.push_str(&raw),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                Ok(Event::GeneralRef(ref e)) => {
+                    // Decode XML entities (&amp; &apos; &lt; &gt; &quot;) so file
+                    // names containing these characters are not silently truncated.
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        if let Some(ref tag) = current_tag {
+                            match tag.as_str() {
+                                "href" => href.push_str(&ch),
+                                "trashbin-filename" => trash_filename.push_str(&ch),
+                                "trashbin-original-location" => trash_location.push_str(&ch),
+                                "trashbin-deletion-time" => trash_deletion_time.push_str(&ch),
+                                "getcontentlength" => content_length.push_str(&ch),
                                 _ => {}
                             }
                         }
@@ -846,11 +865,11 @@ impl WebDavProvider {
                             let is_dir =
                                 is_collection || is_collection_by_iscollection || href_ends_slash;
 
-                            let size: u64 = getcontentlength.parse().unwrap_or(0);
-                            let modified = if getlastmodified.is_empty() {
+                            let size: u64 = getcontentlength.trim().parse().unwrap_or(0);
+                            let modified = if getlastmodified.trim().is_empty() {
                                 None
                             } else {
-                                Some(getlastmodified.clone())
+                                Some(getlastmodified.trim().to_string())
                             };
 
                             // Extract name: prefer displayname, fallback to href
@@ -914,18 +933,34 @@ impl WebDavProvider {
 
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-                        if !text.is_empty() {
+                        let raw = String::from_utf8_lossy(e.as_ref()).to_string();
+                        if !raw.is_empty() {
                             match tag.as_str() {
-                                "href" => href = text,
-                                "displayname" => displayname = text,
-                                "getcontentlength" => getcontentlength = text,
-                                "getlastmodified" => getlastmodified = text,
-                                "getcontenttype" => getcontenttype = text,
-                                "getetag" => getetag = text,
-                                "iscollection" if text == "1" => {
+                                "href" => href.push_str(&raw),
+                                "displayname" => displayname.push_str(&raw),
+                                "getcontentlength" => getcontentlength.push_str(&raw),
+                                "getlastmodified" => getlastmodified.push_str(&raw),
+                                "getcontenttype" => getcontenttype.push_str(&raw),
+                                "getetag" => getetag.push_str(&raw),
+                                "iscollection" if raw.trim() == "1" => {
                                     is_collection_by_iscollection = true;
                                 }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                Ok(Event::GeneralRef(ref e)) => {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        if let Some(ref tag) = current_tag {
+                            match tag.as_str() {
+                                "href" => href.push_str(&ch),
+                                "displayname" => displayname.push_str(&ch),
+                                "getcontentlength" => getcontentlength.push_str(&ch),
+                                "getlastmodified" => getlastmodified.push_str(&ch),
+                                "getcontenttype" => getcontenttype.push_str(&ch),
+                                "getetag" => getetag.push_str(&ch),
                                 _ => {}
                             }
                         }
@@ -1005,12 +1040,15 @@ impl WebDavProvider {
                 }
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-                        if !text.is_empty() {
-                            if tag == "iscollection" && text == "1" {
+                        let raw = String::from_utf8_lossy(e.as_ref()).to_string();
+                        if !raw.is_empty() {
+                            if tag == "iscollection" && raw.trim() == "1" {
                                 props.insert("_is_collection".to_string(), "true".to_string());
                             }
-                            props.insert(tag.clone(), text);
+                            props
+                                .entry(tag.clone())
+                                .and_modify(|v| v.push_str(&raw))
+                                .or_insert_with(|| raw.clone());
                         }
                     }
                 }
@@ -1022,6 +1060,16 @@ impl WebDavProvider {
                                 props.insert("_is_collection".to_string(), "true".to_string());
                             }
                             props.insert(tag.clone(), text);
+                        }
+                    }
+                }
+                Ok(Event::GeneralRef(ref e)) => {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        if let Some(ref tag) = current_tag {
+                            props
+                                .entry(tag.clone())
+                                .and_modify(|v| v.push_str(&ch))
+                                .or_insert_with(|| ch.to_string());
                         }
                     }
                 }

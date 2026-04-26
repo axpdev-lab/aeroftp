@@ -564,7 +564,7 @@ impl JottacloudProvider {
                     if tag == "mountPoint" {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
-                                let name = String::from_utf8_lossy(&attr.value).to_string();
+                                let name = super::xml_text::attr_value(&attr);
                                 if !name.is_empty() {
                                     names.push(name);
                                 }
@@ -711,7 +711,7 @@ impl JottacloudProvider {
                             let mut is_deleted = false;
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    name = String::from_utf8_lossy(&attr.value).to_string();
+                                    name = super::xml_text::attr_value(&attr);
                                 }
                                 if attr.key.as_ref() == b"deleted" {
                                     is_deleted = true;
@@ -751,7 +751,7 @@ impl JottacloudProvider {
                             current_deleted = false;
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    current_name = String::from_utf8_lossy(&attr.value).to_string();
+                                    current_name = super::xml_text::attr_value(&attr);
                                 }
                             }
                         }
@@ -776,7 +776,7 @@ impl JottacloudProvider {
                         let mut is_deleted = false;
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
-                                name = String::from_utf8_lossy(&attr.value).to_string();
+                                name = super::xml_text::attr_value(&attr);
                             }
                             if attr.key.as_ref() == b"deleted" {
                                 is_deleted = true;
@@ -1774,7 +1774,7 @@ impl JottacloudProvider {
                             let mut name = String::new();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    name = String::from_utf8_lossy(&attr.value).to_string();
+                                    name = super::xml_text::attr_value(&attr);
                                 }
                             }
                             if !name.is_empty() {
@@ -1803,7 +1803,7 @@ impl JottacloudProvider {
                             current_state.clear();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    current_name = String::from_utf8_lossy(&attr.value).to_string();
+                                    current_name = super::xml_text::attr_value(&attr);
                                 }
                             }
                         }
@@ -1825,7 +1825,7 @@ impl JottacloudProvider {
                         let mut name = String::new();
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
-                                name = String::from_utf8_lossy(&attr.value).to_string();
+                                name = super::xml_text::attr_value(&attr);
                             }
                         }
                         if !name.is_empty() {

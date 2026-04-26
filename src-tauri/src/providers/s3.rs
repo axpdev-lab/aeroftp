@@ -562,32 +562,78 @@ impl S3Provider {
                     }
                 }
                 Ok(Event::Text(ref e)) => {
-                    let text = String::from_utf8_lossy(e.as_ref()).trim().to_string();
-
-                    if text.is_empty() {
+                    // Do NOT trim — leading/trailing whitespace inside an
+                    // S3 Key is significant. Trimming the whole-element text
+                    // is also wrong for entity-split fragments (see below):
+                    // for a key like "a&b.txt" quick-xml emits
+                    //   Text("a") + GeneralRef("amp") + Text("b.txt")
+                    // and trimming each piece is fine, but blindly assigning
+                    // the last fragment overwrites the preceding "a" — which
+                    // is exactly how `a&b.txt` was being shown as `b.txt`.
+                    let raw = String::from_utf8_lossy(e.as_ref()).to_string();
+                    if raw.is_empty() {
                         buf.clear();
                         continue;
                     }
 
                     if in_next_token {
-                        top_next_token = Some(text.clone());
+                        top_next_token
+                            .get_or_insert_with(String::new)
+                            .push_str(&raw);
                     }
 
                     match context {
                         Context::CommonPrefixes => {
                             if current_tag == "Prefix" {
-                                cp_prefix = Some(text);
+                                cp_prefix.get_or_insert_with(String::new).push_str(&raw);
                             }
                         }
                         Context::Contents => match current_tag.as_str() {
-                            "Key" => c_key = Some(text),
-                            "Size" => c_size = Some(text),
-                            "LastModified" => c_modified = Some(text),
-                            "ETag" => c_etag = Some(text),
-                            "StorageClass" => c_storage_class = Some(text),
+                            "Key" => c_key.get_or_insert_with(String::new).push_str(&raw),
+                            "Size" => c_size.get_or_insert_with(String::new).push_str(&raw),
+                            "LastModified" => {
+                                c_modified.get_or_insert_with(String::new).push_str(&raw)
+                            }
+                            "ETag" => c_etag.get_or_insert_with(String::new).push_str(&raw),
+                            "StorageClass" => c_storage_class
+                                .get_or_insert_with(String::new)
+                                .push_str(&raw),
                             _ => {}
                         },
                         Context::None => {}
+                    }
+                }
+                // S3 keys with `&`, `'`, `<`, `>`, `"` arrive XML-escaped as
+                // `&amp;`, `&apos;`, etc. quick-xml surfaces these as a
+                // separate `GeneralRef` event between the surrounding text
+                // fragments. Without this branch the entity is dropped and
+                // the key is rebuilt with a hole — which is the actual root
+                // cause of "a&b.txt" being listed as "b.txt".
+                Ok(Event::GeneralRef(ref e)) => {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        if in_next_token {
+                            top_next_token.get_or_insert_with(String::new).push_str(&ch);
+                        }
+                        match context {
+                            Context::CommonPrefixes => {
+                                if current_tag == "Prefix" {
+                                    cp_prefix.get_or_insert_with(String::new).push_str(&ch);
+                                }
+                            }
+                            Context::Contents => match current_tag.as_str() {
+                                "Key" => c_key.get_or_insert_with(String::new).push_str(&ch),
+                                "Size" => c_size.get_or_insert_with(String::new).push_str(&ch),
+                                "LastModified" => {
+                                    c_modified.get_or_insert_with(String::new).push_str(&ch)
+                                }
+                                "ETag" => c_etag.get_or_insert_with(String::new).push_str(&ch),
+                                "StorageClass" => c_storage_class
+                                    .get_or_insert_with(String::new)
+                                    .push_str(&ch),
+                                _ => {}
+                            },
+                            Context::None => {}
+                        }
                     }
                 }
                 Ok(Event::End(ref e)) => {

@@ -68,12 +68,22 @@ fn parse_azure_xml_error(body: &str) -> String {
             Ok(Event::Text(ref e)) => {
                 let text = String::from_utf8_lossy(e.as_ref()).into_owned();
                 match current_tag.as_str() {
-                    "Code" if code.is_empty() => code = text,
-                    "Message" if message.is_empty() => {
-                        // Azure messages often end with technical details after \n
-                        message = text.lines().next().unwrap_or(&text).to_string();
+                    "Code" => code.push_str(&text),
+                    "Message" if message.lines().count() <= 1 => {
+                        // Azure messages often end with technical details after \n;
+                        // keep only the first line of the FIRST text fragment.
+                        message.push_str(text.lines().next().unwrap_or(&text));
                     }
                     _ => {}
+                }
+            }
+            Ok(Event::GeneralRef(ref e)) => {
+                if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                    match current_tag.as_str() {
+                        "Code" => code.push_str(&ch),
+                        "Message" if message.lines().count() <= 1 => message.push_str(&ch),
+                        _ => {}
+                    }
                 }
             }
             Ok(Event::Eof) | Err(_) => break,
@@ -337,21 +347,39 @@ impl AzureProvider {
                     let text = String::from_utf8_lossy(e.as_ref()).into_owned();
                     match state {
                         ParseState::BlobPrefixName => {
-                            current_name = text;
+                            current_name.push_str(&text);
                         }
                         ParseState::BlobName => {
-                            current_name = text;
+                            current_name.push_str(&text);
                         }
                         ParseState::BlobContentLength => {
-                            current_size = text.parse().unwrap_or(0);
+                            current_size = text.trim().parse().unwrap_or(current_size);
                         }
                         ParseState::BlobLastModified if !text.is_empty() => {
-                            current_modified = Some(text);
+                            current_modified
+                                .get_or_insert_with(String::new)
+                                .push_str(&text);
                         }
                         ParseState::NextMarker if !text.is_empty() => {
-                            next_marker = Some(text);
+                            next_marker.get_or_insert_with(String::new).push_str(&text);
                         }
                         _ => {}
+                    }
+                }
+                Ok(Event::GeneralRef(ref e)) => {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        match state {
+                            ParseState::BlobPrefixName | ParseState::BlobName => {
+                                current_name.push_str(&ch);
+                            }
+                            ParseState::BlobLastModified => {
+                                current_modified.get_or_insert_with(String::new).push_str(&ch);
+                            }
+                            ParseState::NextMarker => {
+                                next_marker.get_or_insert_with(String::new).push_str(&ch);
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 Ok(Event::End(ref e)) => match e.name().as_ref() {
@@ -1688,18 +1716,37 @@ impl AzureProvider {
                         let text = String::from_utf8_lossy(e.as_ref()).into_owned();
                         if in_blob {
                             match tag_name.as_str() {
-                                "Name" => blob_name = text,
-                                "Deleted" => is_deleted = text == "true",
+                                "Name" => blob_name.push_str(&text),
+                                "Deleted" => is_deleted = text.trim() == "true",
                                 "Content-Length" => {
-                                    blob_size = text.parse().unwrap_or(0);
+                                    blob_size = text.trim().parse().unwrap_or(blob_size);
                                 }
                                 "Last-Modified" => {
-                                    blob_modified = Some(text);
+                                    blob_modified
+                                        .get_or_insert_with(String::new)
+                                        .push_str(&text);
                                 }
                                 _ => {}
                             }
                         } else if tag_name == "NextMarker" && !text.is_empty() {
-                            next_marker = Some(text);
+                            next_marker.get_or_insert_with(String::new).push_str(&text);
+                        }
+                    }
+                    Ok(quick_xml::events::Event::GeneralRef(ref e)) => {
+                        if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                            if in_blob {
+                                match tag_name.as_str() {
+                                    "Name" => blob_name.push_str(&ch),
+                                    "Last-Modified" => {
+                                        blob_modified
+                                            .get_or_insert_with(String::new)
+                                            .push_str(&ch);
+                                    }
+                                    _ => {}
+                                }
+                            } else if tag_name == "NextMarker" {
+                                next_marker.get_or_insert_with(String::new).push_str(&ch);
+                            }
                         }
                     }
                     Ok(quick_xml::events::Event::End(ref e))
