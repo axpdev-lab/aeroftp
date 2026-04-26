@@ -242,7 +242,8 @@
       "immichServerUrl": "Սերվերի URL",
       "immichApiKeyPlaceholder": "Տեղադրեք ձեր API բանալին այստեղ",
       "immichApiKeyHelp": "Ստեղծեք API բանալի Immich → User Settings → API Keys-ում",
-      "immichOps": "Դիտարկել, վերբեռնել, ներբեռնել, ջնջել, ալբոմներ, որոնել, համաօգտագործման հղմնակներ։ Վերանվանումը և տեղափոխումը չեն աջակցվում։"
+      "immichOps": "Դիտարկել, վերբեռնել, ներբեռնել, ջնջել, ալբոմներ, որոնել, համաօգտագործման հղմնակներ։ Վերանվանումը և տեղափոխումը չեն աջակցվում։",
+      "generatePassword": "Ստեղծել գաղտնաբառ"
     },
     "browser": {
       "remote": "Հեռավոր",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP պատասխան",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Միավոր 0-100, ավելի բարձրը ավելի լավ",
+      "scoreLegendDetail": "80+ առողջ · 50-79 վատացած · 50-ից ցածր խնդիրներով"
     },
     "scanning": {
       "deleting": "Ջնջում",

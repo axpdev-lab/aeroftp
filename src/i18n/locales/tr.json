@@ -242,7 +242,8 @@
       "immichServerUrl": "Sunucu URL'si",
       "immichApiKeyPlaceholder": "API anahtarınızı buraya yapıştırın",
       "immichApiKeyHelp": "Immich → User Settings → API Keys bölümünde bir API anahtarı oluşturun",
-      "immichOps": "Göz at, yükle, indir, sil, albümler, ara, paylaşım bağlantıları. Yeniden adlandırma ve taşıma desteklenmiyor."
+      "immichOps": "Göz at, yükle, indir, sil, albümler, ara, paylaşım bağlantıları. Yeniden adlandırma ve taşıma desteklenmiyor.",
+      "generatePassword": "Parola oluştur"
     },
     "browser": {
       "remote": "Uzak",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP yanıtı",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Skor 0-100, daha yüksek daha iyi",
+      "scoreLegendDetail": "80+ sağlıklı · 50-79 düşük · 50 altı sorunlu"
     },
     "scanning": {
       "deleting": "Siliniyor",

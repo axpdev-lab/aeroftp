@@ -242,7 +242,8 @@
       "immichServerUrl": "सर्वर URL",
       "immichApiKeyPlaceholder": "अपनी API कुंजी यहां पेस्ट करें",
       "immichApiKeyHelp": "Immich → User Settings → API Keys में एक API कुंजी बनाएं",
-      "immichOps": "ब्राउज़, अपलोड, डाउनलोड, हटाएं, एल्बम, खोज, शेयर लिंक। नाम बदलना और स्थानांतरित करना समर्थित नहीं है।"
+      "immichOps": "ब्राउज़, अपलोड, डाउनलोड, हटाएं, एल्बम, खोज, शेयर लिंक। नाम बदलना और स्थानांतरित करना समर्थित नहीं है।",
+      "generatePassword": "पासवर्ड जेनरेट करें"
     },
     "browser": {
       "remote": "दूरस्थ",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP प्रतिक्रिया",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "स्कोर 0-100, उच्च बेहतर है",
+      "scoreLegendDetail": "80+ स्वस्थ · 50-79 घटा · 50 से कम में समस्याएँ"
     },
     "scanning": {
       "deleting": "हटाया जा रहा है",

@@ -56,14 +56,14 @@ const STATUS_CONFIG = {
 };
 
 /** Animated radial score gauge */
-const ScoreGauge: React.FC<{ score: number; size?: number }> = ({ score, size = 48 }) => {
+const ScoreGauge: React.FC<{ score: number; size?: number; legendTooltip?: string }> = ({ score, size = 48, legendTooltip }) => {
     const radius = (size - 6) / 2;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (score / 100) * circumference;
     const color = score >= 80 ? '#22c55e' : score >= 50 ? '#eab308' : '#ef4444';
 
     return (
-        <div className="relative" style={{ width: size, height: size }}>
+        <div className="relative" style={{ width: size, height: size }} title={legendTooltip}>
             <svg width={size} height={size} className="-rotate-90">
                 <circle cx={size / 2} cy={size / 2} r={radius}
                     stroke="currentColor" className="text-gray-200 dark:text-gray-700"
@@ -358,6 +358,9 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
                         <div>
                             <h2 className="text-base font-semibold">{t('healthCheck.title')}</h2>
                             <p className="text-xs text-gray-500">{t('healthCheck.subtitle')}</p>
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5" title={t('healthCheck.scoreLegendDetail')}>
+                                {t('healthCheck.scoreLegend')}
+                            </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -479,7 +482,10 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
                                     {/* Score gauge */}
                                     <div className="flex-shrink-0">
                                         {result && !isChecking ? (
-                                            <ScoreGauge score={result.score} />
+                                            <ScoreGauge
+                                                score={result.score}
+                                                legendTooltip={`${t('healthCheck.scoreLegend')} — ${t('healthCheck.scoreLegendDetail')}`}
+                                            />
                                         ) : isChecking ? (
                                             <div className="w-12 h-12 flex items-center justify-center">
                                                 <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />

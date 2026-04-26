@@ -242,7 +242,8 @@
       "immichServerUrl": "URL เซิร์ฟเวอร์",
       "immichApiKeyPlaceholder": "วาง API key ของคุณที่นี่",
       "immichApiKeyHelp": "สร้าง API key ใน Immich → User Settings → API Keys",
-      "immichOps": "เรียกดู อัปโหลด ดาวน์โหลด ลบ อัลบั้ม ค้นหา ลิงก์แชร์ ไม่รองรับการเปลี่ยนชื่อและย้าย"
+      "immichOps": "เรียกดู อัปโหลด ดาวน์โหลด ลบ อัลบั้ม ค้นหา ลิงก์แชร์ ไม่รองรับการเปลี่ยนชื่อและย้าย",
+      "generatePassword": "สร้างรหัสผ่าน"
     },
     "browser": {
       "remote": "ระยะไกล",
@@ -3719,7 +3720,9 @@
       "httpResponse": "การตอบกลับ HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "คะแนน 0-100 สูงกว่าดีกว่า",
+      "scoreLegendDetail": "80+ ดี · 50-79 ลดลง · ต่ำกว่า 50 มีปัญหา"
     },
     "scanning": {
       "deleting": "กำลังลบ",

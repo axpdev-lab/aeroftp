@@ -353,6 +353,37 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
 
             {/* Right: Toolbar buttons + Window controls */}
             <div className="flex items-center gap-0.5">
+                {/* Connect / Disconnect — kept at the leftmost position so its
+                    appearance doesn't push the fixed icons (Vault, Lock, Settings)
+                    around. Without this, repeated toggling pushed those icons
+                    enough that an aimed click on Disconnect could land on Lock or
+                    Settings instead. (Issue #129, @EhudKirsh) */}
+                {isConnected ? (
+                    <>
+                        <button
+                            onClick={onDisconnect}
+                            className="h-6 px-2 mr-1 flex items-center gap-1.5 text-xs rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
+                            title={t('common.disconnect')}
+                        >
+                            <LogOut size={11} />
+                            <span>{t('common.disconnect')}</span>
+                        </button>
+                        <div className="w-px h-4 bg-[var(--color-border)] mr-1" />
+                    </>
+                ) : !showConnectionScreen ? (
+                    <>
+                        <button
+                            onClick={onShowConnectionScreen}
+                            className="h-6 px-2 mr-1 flex items-center gap-1.5 text-xs rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer"
+                            title={t('common.connect')}
+                        >
+                            <Cloud size={11} />
+                            <span>{t('common.connect')}</span>
+                        </button>
+                        <div className="w-px h-4 bg-[var(--color-border)] mr-1" />
+                    </>
+                ) : null}
+
                 {/* Cyber Toolkit — cyber theme only */}
                 {appTheme === 'cyber' && (
                     <button
@@ -400,27 +431,6 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                 >
                     <Settings size={14} className="text-[var(--color-text-secondary)]" />
                 </button>
-
-                {/* Connect / Disconnect */}
-                {isConnected ? (
-                    <button
-                        onClick={onDisconnect}
-                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-xs rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
-                        title={t('common.disconnect')}
-                    >
-                        <LogOut size={11} />
-                        <span>{t('common.disconnect')}</span>
-                    </button>
-                ) : !showConnectionScreen && (
-                    <button
-                        onClick={onShowConnectionScreen}
-                        className="h-6 px-2 ml-1 flex items-center gap-1.5 text-xs rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer"
-                        title={t('common.connect')}
-                    >
-                        <Cloud size={11} />
-                        <span>{t('common.connect')}</span>
-                    </button>
-                )}
 
                 <div className="w-px h-4 bg-[var(--color-border)] mx-1" />
 

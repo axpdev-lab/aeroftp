@@ -242,7 +242,8 @@
       "immichServerUrl": "Server-URL",
       "immichApiKeyPlaceholder": "Plak hier uw API-sleutel",
       "immichApiKeyHelp": "Maak een API-sleutel aan in Immich → User Settings → API Keys",
-      "immichOps": "Bladeren, uploaden, downloaden, verwijderen, albums, zoeken, deellinks. Hernoemen en verplaatsen worden niet ondersteund."
+      "immichOps": "Bladeren, uploaden, downloaden, verwijderen, albums, zoeken, deellinks. Hernoemen en verplaatsen worden niet ondersteund.",
+      "generatePassword": "Wachtwoord genereren"
     },
     "browser": {
       "remote": "Extern",
@@ -3709,7 +3710,9 @@
       "httpResponse": "HTTP-respons",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Score 0-100, hoger is beter",
+      "scoreLegendDetail": "80+ gezond · 50-79 verminderd · onder 50 problemen"
     },
     "scanning": {
       "deleting": "Verwijderen",

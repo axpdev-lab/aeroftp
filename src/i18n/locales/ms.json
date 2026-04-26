@@ -242,7 +242,8 @@
       "immichServerUrl": "URL Pelayan",
       "immichApiKeyPlaceholder": "Tampal kunci API anda di sini",
       "immichApiKeyHelp": "Jana kunci API di Immich → User Settings → API Keys",
-      "immichOps": "Semak imbas, muat naik, muat turun, padam, album, cari, pautan kongsi. Namakan semula dan alih tidak disokong."
+      "immichOps": "Semak imbas, muat naik, muat turun, padam, album, cari, pautan kongsi. Namakan semula dan alih tidak disokong.",
+      "generatePassword": "Jana kata laluan"
     },
     "browser": {
       "remote": "Jauh",
@@ -3719,7 +3720,9 @@
       "httpResponse": "Respons HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Skor 0-100, lebih tinggi lebih baik",
+      "scoreLegendDetail": "80+ sihat · 50-79 merosot · bawah 50 ada masalah"
     },
     "scanning": {
       "deleting": "Memadam",

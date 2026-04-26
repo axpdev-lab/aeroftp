@@ -1075,6 +1075,7 @@
       "duplicateServer": "Duplicate Server",
       "dismiss": "Dismiss",
       "createAccount": "Create Account",
+      "generatePassword": "Generate password",
       "docs": "Docs",
       "downloadMegacmd": "Download MEGAcmd",
       "editServer": "Edit Server",
@@ -1578,7 +1579,9 @@
       "httpResponse": "HTTP Response",
       "copyResults": "Copy Results",
       "copied": "Copied!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Score 0-100, higher is better",
+      "scoreLegendDetail": "80+ healthy · 50-79 degraded · below 50 has issues"
     },
     "folderOverwrite": {
       "description": "The destination folder already exists. Choose how to handle files inside:",

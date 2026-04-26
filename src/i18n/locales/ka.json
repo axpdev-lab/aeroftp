@@ -242,7 +242,8 @@
       "immichServerUrl": "სერვერის URL",
       "immichApiKeyPlaceholder": "ჩასვით თქვენი API გასაღები აქ",
       "immichApiKeyHelp": "შექმენით API გასაღები Immich → User Settings → API Keys-ში",
-      "immichOps": "დათვალიერება, ატვირთვა, ჩამოტვირთვა, წაშლა, ალბომები, ძიება, გაზიარების ბმულები. სახელის შეცვლა და გადატანა არ არის მხარდაჭერილი."
+      "immichOps": "დათვალიერება, ატვირთვა, ჩამოტვირთვა, წაშლა, ალბომები, ძიება, გაზიარების ბმულები. სახელის შეცვლა და გადატანა არ არის მხარდაჭერილი.",
+      "generatePassword": "პაროლის გენერაცია"
     },
     "browser": {
       "remote": "დისტანციური",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP პასუხი",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "ქულა 0-100, მაღალი უკეთესია",
+      "scoreLegendDetail": "80+ ჯანსაღი · 50-79 დეგრადირებული · 50-ზე ქვემოთ პრობლემები"
     },
     "scanning": {
       "deleting": "წაშლა",

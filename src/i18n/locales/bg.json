@@ -242,7 +242,8 @@
       "immichServerUrl": "URL на сървъра",
       "immichApiKeyPlaceholder": "Поставете вашия API ключ тук",
       "immichApiKeyHelp": "Генерирайте API ключ в Immich → User Settings → API Keys",
-      "immichOps": "Разглеждане, качване, изтегляне, изтриване, албуми, търсене, споделени връзки. Преименуване и преместване не се поддържат."
+      "immichOps": "Разглеждане, качване, изтегляне, изтриване, албуми, търсене, споделени връзки. Преименуване и преместване не се поддържат.",
+      "generatePassword": "Генериране на парола"
     },
     "browser": {
       "remote": "Отдалечен",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP отговор",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Резултат 0-100, по-високо е по-добре",
+      "scoreLegendDetail": "80+ здрав · 50-79 деградиран · под 50 има проблеми"
     },
     "scanning": {
       "deleting": "Изтриване",

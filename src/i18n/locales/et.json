@@ -242,7 +242,8 @@
       "immichServerUrl": "Serveri URL",
       "immichApiKeyPlaceholder": "Kleepige oma API võti siia",
       "immichApiKeyHelp": "Looge API võti Immich → User Settings → API Keys",
-      "immichOps": "Sirvimine, üleslaadimine, allalaadimine, kustutamine, albumid, otsing, jagamislingid. Ümbernimetamine ja teisaldamine ei ole toetatud."
+      "immichOps": "Sirvimine, üleslaadimine, allalaadimine, kustutamine, albumid, otsing, jagamislingid. Ümbernimetamine ja teisaldamine ei ole toetatud.",
+      "generatePassword": "Genereeri parool"
     },
     "browser": {
       "remote": "Kaugserver",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP-vastus",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Tulemus 0-100, kõrgem on parem",
+      "scoreLegendDetail": "80+ tervis · 50-79 halvenenud · alla 50 probleemidega"
     },
     "scanning": {
       "deleting": "Kustutamine",

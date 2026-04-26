@@ -242,7 +242,8 @@
       "immichServerUrl": "URL сервера",
       "immichApiKeyPlaceholder": "Налепите свој API кључ овде",
       "immichApiKeyHelp": "Генеришите API кључ у Immich → User Settings → API Keys",
-      "immichOps": "Претраживање, отпремање, преузимање, брисање, албуми, претрага, линкови за дељење. Преименовање и премештање нису подржани."
+      "immichOps": "Претраживање, отпремање, преузимање, брисање, албуми, претрага, линкови за дељење. Преименовање и премештање нису подржани.",
+      "generatePassword": "Генериши лозинку"
     },
     "browser": {
       "remote": "Удаљено",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP odgovor",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Резултат 0-100, веће је боље",
+      "scoreLegendDetail": "80+ здрав · 50-79 деградиран · испод 50 са проблемима"
     },
     "scanning": {
       "deleting": "Брисање",

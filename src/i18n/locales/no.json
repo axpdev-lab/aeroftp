@@ -242,7 +242,8 @@
       "immichServerUrl": "Server-URL",
       "immichApiKeyPlaceholder": "Lim inn API-nøkkelen din her",
       "immichApiKeyHelp": "Generer en API-nøkkel i Immich → User Settings → API Keys",
-      "immichOps": "Bla gjennom, last opp, last ned, slett, album, søk, delingslenker. Gi nytt navn og flytt støttes ikke."
+      "immichOps": "Bla gjennom, last opp, last ned, slett, album, søk, delingslenker. Gi nytt navn og flytt støttes ikke.",
+      "generatePassword": "Generer passord"
     },
     "browser": {
       "remote": "Ekstern",
@@ -3738,7 +3739,9 @@
       "httpResponse": "HTTP-respons",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Poengsum 0-100, høyere er bedre",
+      "scoreLegendDetail": "80+ sunn · 50-79 forringet · under 50 har problemer"
     },
     "scanning": {
       "deleting": "Sletter",

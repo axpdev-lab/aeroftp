@@ -242,7 +242,8 @@
       "immichServerUrl": "URL ya seva",
       "immichApiKeyPlaceholder": "Bandika ufunguo wako wa API hapa",
       "immichApiKeyHelp": "Tengeneza ufunguo wa API katika Immich → User Settings → API Keys",
-      "immichOps": "Vinjari, pakia, pakua, futa, albamu, tafuta, viungo vya kushiriki. Kubadilisha jina na kuhamisha havitumiki."
+      "immichOps": "Vinjari, pakia, pakua, futa, albamu, tafuta, viungo vya kushiriki. Kubadilisha jina na kuhamisha havitumiki.",
+      "generatePassword": "Tengeneza nenosiri"
     },
     "browser": {
       "remote": "Mbali",
@@ -3719,7 +3720,9 @@
       "httpResponse": "Jibu la HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Alama 0-100, juu zaidi ni bora",
+      "scoreLegendDetail": "80+ afya · 50-79 imeshuka · chini ya 50 ina shida"
     },
     "scanning": {
       "deleting": "Inafuta",

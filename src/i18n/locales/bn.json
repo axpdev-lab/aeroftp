@@ -242,7 +242,8 @@
       "immichServerUrl": "সার্ভার URL",
       "immichApiKeyPlaceholder": "আপনার API কী এখানে পেস্ট করুন",
       "immichApiKeyHelp": "Immich → User Settings → API Keys-এ একটি API কী তৈরি করুন",
-      "immichOps": "ব্রাউজ, আপলোড, ডাউনলোড, মুছুন, অ্যালবাম, অনুসন্ধান, শেয়ার লিংক। রিনেম এবং মুভ সমর্থিত নয়।"
+      "immichOps": "ব্রাউজ, আপলোড, ডাউনলোড, মুছুন, অ্যালবাম, অনুসন্ধান, শেয়ার লিংক। রিনেম এবং মুভ সমর্থিত নয়।",
+      "generatePassword": "পাসওয়ার্ড জেনারেট করুন"
     },
     "browser": {
       "remote": "রিমোট",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP প্রতিক্রিয়া",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "স্কোর 0-100, বেশি ভালো",
+      "scoreLegendDetail": "80+ স্বাস্থ্যকর · 50-79 অবনত · 50 এর নিচে সমস্যা আছে"
     },
     "scanning": {
       "deleting": "মুছে ফেলা হচ্ছে",

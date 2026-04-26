@@ -242,7 +242,8 @@
       "immichServerUrl": "URL διακομιστή",
       "immichApiKeyPlaceholder": "Επικολλήστε το κλειδί API εδώ",
       "immichApiKeyHelp": "Δημιουργήστε ένα κλειδί API στο Immich → User Settings → API Keys",
-      "immichOps": "Περιήγηση, μεταφόρτωση, λήψη, διαγραφή, άλμπουμ, αναζήτηση, σύνδεσμοι κοινής χρήσης. Η μετονομασία και η μετακίνηση δεν υποστηρίζονται."
+      "immichOps": "Περιήγηση, μεταφόρτωση, λήψη, διαγραφή, άλμπουμ, αναζήτηση, σύνδεσμοι κοινής χρήσης. Η μετονομασία και η μετακίνηση δεν υποστηρίζονται.",
+      "generatePassword": "Δημιουργία κωδικού"
     },
     "browser": {
       "remote": "Απομακρυσμένο",
@@ -3719,7 +3720,9 @@
       "httpResponse": "Απόκριση HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Βαθμολογία 0-100, υψηλότερη είναι καλύτερη",
+      "scoreLegendDetail": "80+ υγιής · 50-79 υποβαθμισμένος · κάτω από 50 με προβλήματα"
     },
     "scanning": {
       "deleting": "Διαγραφή",

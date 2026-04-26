@@ -242,7 +242,8 @@
       "immichServerUrl": "Szerver URL",
       "immichApiKeyPlaceholder": "Illessze be az API-kulcsát ide",
       "immichApiKeyHelp": "Hozzon létre egy API-kulcsot az Immich → User Settings → API Keys menüben",
-      "immichOps": "Böngészés, feltöltés, letöltés, törlés, albumok, keresés, megosztási linkek. Az átnevezés és áthelyezés nem támogatott."
+      "immichOps": "Böngészés, feltöltés, letöltés, törlés, albumok, keresés, megosztási linkek. Az átnevezés és áthelyezés nem támogatott.",
+      "generatePassword": "Jelszó generálása"
     },
     "browser": {
       "remote": "Távoli",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP válasz",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Pontszám 0-100, magasabb a jobb",
+      "scoreLegendDetail": "80+ egészséges · 50-79 csökkent · 50 alatt problémás"
     },
     "scanning": {
       "deleting": "Törlés",

@@ -3770,6 +3770,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </a>
                                         </>
                                     )}
+                                    {selectedProvider.passwordGenUrl && (
+                                        <>
+                                            <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+                                            <a
+                                                href={selectedProvider.passwordGenUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                                            >
+                                                <KeyRound size={10} />
+                                                {t('connection.generatePassword')}
+                                            </a>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         );

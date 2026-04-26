@@ -975,6 +975,7 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         healthCheckUrl: 'https://app.koofr.net/dav/Koofr',
+        passwordGenUrl: 'https://app.koofr.net/app/admin/preferences/password',
         helpUrl: 'https://app.koofr.net/help/webdav',
         signupUrl: 'https://app.koofr.net/signup',
     },

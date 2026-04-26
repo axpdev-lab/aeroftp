@@ -242,7 +242,8 @@
       "immichServerUrl": "Zerbitzariaren URLa",
       "immichApiKeyPlaceholder": "Itsatsi zure API gakoa hemen",
       "immichApiKeyHelp": "Sortu API gako bat Immich → User Settings → API Keys-en",
-      "immichOps": "Arakatu, igo, deskargatu, ezabatu, albumak, bilatu, partekatzeko estekak. Berrizendatzea eta mugitzea ez dira onartzen."
+      "immichOps": "Arakatu, igo, deskargatu, ezabatu, albumak, bilatu, partekatzeko estekak. Berrizendatzea eta mugitzea ez dira onartzen.",
+      "generatePassword": "Sortu pasahitza"
     },
     "browser": {
       "remote": "Urrunekoa",
@@ -3738,7 +3739,9 @@
       "httpResponse": "HTTP erantzuna",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Puntuazioa 0-100, altuagoa hobe",
+      "scoreLegendDetail": "80+ osasuntsua · 50-79 degradatua · 50etik behera arazoekin"
     },
     "scanning": {
       "deleting": "Ezabatzen",

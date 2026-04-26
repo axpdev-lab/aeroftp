@@ -242,7 +242,8 @@
       "immichServerUrl": "URL serwera",
       "immichApiKeyPlaceholder": "Wklej swój klucz API tutaj",
       "immichApiKeyHelp": "Wygeneruj klucz API w Immich → User Settings → API Keys",
-      "immichOps": "Przeglądanie, przesyłanie, pobieranie, usuwanie, albumy, wyszukiwanie, linki udostępniania. Zmiana nazwy i przenoszenie nie są obsługiwane."
+      "immichOps": "Przeglądanie, przesyłanie, pobieranie, usuwanie, albumy, wyszukiwanie, linki udostępniania. Zmiana nazwy i przenoszenie nie są obsługiwane.",
+      "generatePassword": "Wygeneruj hasło"
     },
     "browser": {
       "remote": "Zdalny",
@@ -3709,7 +3710,9 @@
       "httpResponse": "Odpowiedź HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Wynik 0-100, wyższy lepszy",
+      "scoreLegendDetail": "80+ zdrowy · 50-79 obniżony · poniżej 50 z problemami"
     },
     "scanning": {
       "deleting": "Usuwanie",

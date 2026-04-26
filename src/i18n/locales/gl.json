@@ -242,7 +242,8 @@
       "immichServerUrl": "URL do servidor",
       "immichApiKeyPlaceholder": "Pegue a súa clave API aquí",
       "immichApiKeyHelp": "Xere unha clave API en Immich → User Settings → API Keys",
-      "immichOps": "Explorar, subir, descargar, eliminar, álbums, buscar, ligazóns compartidas. Non se admite renomear nin mover."
+      "immichOps": "Explorar, subir, descargar, eliminar, álbums, buscar, ligazóns compartidas. Non se admite renomear nin mover.",
+      "generatePassword": "Xerar contrasinal"
     },
     "browser": {
       "remote": "Remoto",
@@ -3738,7 +3739,9 @@
       "httpResponse": "Resposta HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Puntuación 0-100, máis alto é mellor",
+      "scoreLegendDetail": "80+ saudable · 50-79 degradado · por debaixo de 50 con problemas"
     },
     "scanning": {
       "deleting": "Eliminando",

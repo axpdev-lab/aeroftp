@@ -242,7 +242,8 @@
       "immichServerUrl": "URL þjóns",
       "immichApiKeyPlaceholder": "Límdu API-lykilinn þinn hér",
       "immichApiKeyHelp": "Búðu til API-lykil í Immich → User Settings → API Keys",
-      "immichOps": "Vafra, hlaða upp, hlaða niður, eyða, plötur, leita, deilihlekkir. Endurnefning og færsla eru ekki studd."
+      "immichOps": "Vafra, hlaða upp, hlaða niður, eyða, plötur, leita, deilihlekkir. Endurnefning og færsla eru ekki studd.",
+      "generatePassword": "Búa til lykilorð"
     },
     "browser": {
       "remote": "Fjartengdur",
@@ -3738,7 +3739,9 @@
       "httpResponse": "HTTP svar",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Stig 0-100, hærra er betra",
+      "scoreLegendDetail": "80+ heilbrigt · 50-79 skert · undir 50 með vandamál"
     },
     "scanning": {
       "deleting": "Eyðir",

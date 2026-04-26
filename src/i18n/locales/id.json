@@ -242,7 +242,8 @@
       "immichServerUrl": "URL Server",
       "immichApiKeyPlaceholder": "Tempelkan kunci API Anda di sini",
       "immichApiKeyHelp": "Buat kunci API di Immich → User Settings → API Keys",
-      "immichOps": "Jelajah, unggah, unduh, hapus, album, cari, tautan berbagi. Ganti nama dan pindahkan tidak didukung."
+      "immichOps": "Jelajah, unggah, unduh, hapus, album, cari, tautan berbagi. Ganti nama dan pindahkan tidak didukung.",
+      "generatePassword": "Buat kata sandi"
     },
     "browser": {
       "remote": "Jarak Jauh",
@@ -3719,7 +3720,9 @@
       "httpResponse": "Respons HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Skor 0-100, lebih tinggi lebih baik",
+      "scoreLegendDetail": "80+ sehat · 50-79 menurun · di bawah 50 bermasalah"
     },
     "scanning": {
       "deleting": "Menghapus",

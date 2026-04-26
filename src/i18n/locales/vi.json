@@ -242,7 +242,8 @@
       "immichServerUrl": "URL máy chủ",
       "immichApiKeyPlaceholder": "Dán khóa API của bạn vào đây",
       "immichApiKeyHelp": "Tạo khóa API trong Immich → User Settings → API Keys",
-      "immichOps": "Duyệt, tải lên, tải xuống, xóa, album, tìm kiếm, liên kết chia sẻ. Không hỗ trợ đổi tên và di chuyển."
+      "immichOps": "Duyệt, tải lên, tải xuống, xóa, album, tìm kiếm, liên kết chia sẻ. Không hỗ trợ đổi tên và di chuyển.",
+      "generatePassword": "Tạo mật khẩu"
     },
     "browser": {
       "remote": "Từ xa",
@@ -3719,7 +3720,9 @@
       "httpResponse": "Phản hồi HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Điểm 0-100, cao hơn tốt hơn",
+      "scoreLegendDetail": "80+ tốt · 50-79 giảm · dưới 50 có vấn đề"
     },
     "scanning": {
       "deleting": "Đang xóa",

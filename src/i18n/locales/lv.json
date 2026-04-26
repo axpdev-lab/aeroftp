@@ -242,7 +242,8 @@
       "immichServerUrl": "Servera URL",
       "immichApiKeyPlaceholder": "Ielīmējiet savu API atslēgu šeit",
       "immichApiKeyHelp": "Izveidojiet API atslēgu Immich → User Settings → API Keys",
-      "immichOps": "Pārlūkošana, augšupielāde, lejupielāde, dzēšana, albumi, meklēšana, kopīgošanas saites. Pārdēvēšana un pārvietošana netiek atbalstīta."
+      "immichOps": "Pārlūkošana, augšupielāde, lejupielāde, dzēšana, albumi, meklēšana, kopīgošanas saites. Pārdēvēšana un pārvietošana netiek atbalstīta.",
+      "generatePassword": "Ģenerēt paroli"
     },
     "browser": {
       "remote": "Attālināts",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP atbilde",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Rezultāts 0-100, augstāks ir labāks",
+      "scoreLegendDetail": "80+ vesels · 50-79 pasliktināts · zem 50 ar problēmām"
     },
     "scanning": {
       "deleting": "Dzēšana",

@@ -242,7 +242,8 @@
       "immichServerUrl": "Server-URL",
       "immichApiKeyPlaceholder": "Klistra in din API-nyckel här",
       "immichApiKeyHelp": "Skapa en API-nyckel i Immich → User Settings → API Keys",
-      "immichOps": "Bläddra, ladda upp, ladda ner, radera, album, sök, delningslänkar. Namnbyte och flytt stöds inte."
+      "immichOps": "Bläddra, ladda upp, ladda ner, radera, album, sök, delningslänkar. Namnbyte och flytt stöds inte.",
+      "generatePassword": "Generera lösenord"
     },
     "browser": {
       "remote": "Fjärr",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP-svar",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Poäng 0-100, högre är bättre",
+      "scoreLegendDetail": "80+ frisk · 50-79 försämrad · under 50 har problem"
     },
     "scanning": {
       "deleting": "Tar bort",

@@ -242,7 +242,8 @@
       "immichServerUrl": "URL servera",
       "immichApiKeyPlaceholder": "Vložte svoj API kľúč sem",
       "immichApiKeyHelp": "Vygenerujte API kľúč v Immich → User Settings → API Keys",
-      "immichOps": "Prehľadávanie, nahrávanie, sťahovanie, mazanie, albumy, vyhľadávanie, zdieľacie odkazy. Premenovanie a presun nie sú podporované."
+      "immichOps": "Prehľadávanie, nahrávanie, sťahovanie, mazanie, albumy, vyhľadávanie, zdieľacie odkazy. Premenovanie a presun nie sú podporované.",
+      "generatePassword": "Vygenerovať heslo"
     },
     "browser": {
       "remote": "Vzdialený",
@@ -3719,7 +3720,9 @@
       "httpResponse": "Odpoveď HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Skóre 0-100, vyššie je lepšie",
+      "scoreLegendDetail": "80+ zdravý · 50-79 degradovaný · pod 50 s problémami"
     },
     "scanning": {
       "deleting": "Odstranovanie",

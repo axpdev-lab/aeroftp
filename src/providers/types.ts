@@ -143,6 +143,12 @@ export interface ProviderConfig {
     /** Sign-up / Create account URL */
     signupUrl?: string;
 
+    /** Direct deep-link to the provider's app/API password generation page.
+     *  When set, the connection form surfaces a small "Generate password"
+     *  button next to the password field — saves the user from hunting
+     *  through provider preferences for the right screen. (#129) */
+    passwordGenUrl?: string;
+
     /** Whether this provider is fully tested/stable */
     stable?: boolean;
 

@@ -242,7 +242,8 @@
       "immichServerUrl": "Palvelimen URL",
       "immichApiKeyPlaceholder": "Liitä API-avaimesi tähän",
       "immichApiKeyHelp": "Luo API-avain kohdassa Immich → User Settings → API Keys",
-      "immichOps": "Selaa, lataa, lataa, poista, albumit, haku, jakolinkit. Uudelleennimeämistä ja siirtämistä ei tueta."
+      "immichOps": "Selaa, lataa, lataa, poista, albumit, haku, jakolinkit. Uudelleennimeämistä ja siirtämistä ei tueta.",
+      "generatePassword": "Luo salasana"
     },
     "browser": {
       "remote": "Etä",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP-vastaus",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Pisteet 0-100, korkeampi on parempi",
+      "scoreLegendDetail": "80+ terve · 50-79 heikentynyt · alle 50 ongelmia"
     },
     "scanning": {
       "deleting": "Poistetaan",

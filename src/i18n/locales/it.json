@@ -270,7 +270,8 @@
       "immichServerUrl": "URL del server",
       "immichApiKeyPlaceholder": "Incolla la tua chiave API qui",
       "immichApiKeyHelp": "Genera una chiave API in Immich → User Settings → API Keys",
-      "immichOps": "Sfoglia, carica, scarica, elimina, album, cerca, link di condivisione. Rinomina e sposta non supportati."
+      "immichOps": "Sfoglia, carica, scarica, elimina, album, cerca, link di condivisione. Rinomina e sposta non supportati.",
+      "generatePassword": "Genera password"
     },
     "protocol": {
       "selectProtocol": "Seleziona protocollo...",
@@ -3715,7 +3716,9 @@
       "httpResponse": "Risposta HTTP",
       "copyResults": "Copia risultati",
       "copied": "Copiato!",
-      "batchChecking": "Verifica di {count} server in corso, attendere..."
+      "batchChecking": "Verifica di {count} server in corso, attendere...",
+      "scoreLegend": "Punteggio 0-100, più alto è meglio",
+      "scoreLegendDetail": "80+ salute · 50-79 degradato · sotto 50 con problemi"
     },
     "github": {
       "ownerRepo": "Proprietario / Repository",

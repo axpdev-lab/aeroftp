@@ -242,7 +242,8 @@
       "immichServerUrl": "URL do servidor",
       "immichApiKeyPlaceholder": "Cole a sua chave API aqui",
       "immichApiKeyHelp": "Gere uma chave API em Immich → User Settings → API Keys",
-      "immichOps": "Navegar, enviar, descarregar, eliminar, álbuns, pesquisar, links de partilha. Renomear e mover não são suportados."
+      "immichOps": "Navegar, enviar, descarregar, eliminar, álbuns, pesquisar, links de partilha. Renomear e mover não são suportados.",
+      "generatePassword": "Gerar senha"
     },
     "browser": {
       "remote": "Remoto",
@@ -3709,7 +3710,9 @@
       "httpResponse": "Resposta HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Pontuação 0-100, maior é melhor",
+      "scoreLegendDetail": "80+ saudável · 50-79 degradado · abaixo de 50 com problemas"
     },
     "scanning": {
       "deleting": "Excluindo",

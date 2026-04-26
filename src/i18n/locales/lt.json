@@ -242,7 +242,8 @@
       "immichServerUrl": "Serverio URL",
       "immichApiKeyPlaceholder": "Įklijuokite savo API raktą čia",
       "immichApiKeyHelp": "Sugeneruokite API raktą Immich → User Settings → API Keys",
-      "immichOps": "Naršymas, įkėlimas, atsisiuntimas, trynimas, albumai, paieška, bendrinimo nuorodos. Pervadinimas ir perkėlimas nepalaikomi."
+      "immichOps": "Naršymas, įkėlimas, atsisiuntimas, trynimas, albumai, paieška, bendrinimo nuorodos. Pervadinimas ir perkėlimas nepalaikomi.",
+      "generatePassword": "Generuoti slaptažodį"
     },
     "browser": {
       "remote": "Nuotolinis",
@@ -3719,7 +3720,9 @@
       "httpResponse": "HTTP atsakymas",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Rezultatas 0-100, didesnis geriau",
+      "scoreLegendDetail": "80+ sveikas · 50-79 sumažėjęs · žemiau 50 su problemomis"
     },
     "scanning": {
       "deleting": "Trinama",

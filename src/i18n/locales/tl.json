@@ -242,7 +242,8 @@
       "immichServerUrl": "URL ng server",
       "immichApiKeyPlaceholder": "I-paste ang iyong API key dito",
       "immichApiKeyHelp": "Gumawa ng API key sa Immich → User Settings → API Keys",
-      "immichOps": "Mag-browse, mag-upload, mag-download, magtanggal, album, maghanap, mga link ng pagbabahagi. Hindi sinusuportahan ang pagpapalit ng pangalan at paglipat."
+      "immichOps": "Mag-browse, mag-upload, mag-download, magtanggal, album, maghanap, mga link ng pagbabahagi. Hindi sinusuportahan ang pagpapalit ng pangalan at paglipat.",
+      "generatePassword": "Bumuo ng password"
     },
     "browser": {
       "remote": "Remote",
@@ -3738,7 +3739,9 @@
       "httpResponse": "HTTP Response",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Iskor 0-100, mas mataas mas mabuti",
+      "scoreLegendDetail": "80+ malusog · 50-79 humina · mas mababa sa 50 may problema"
     },
     "scanning": {
       "deleting": "Binubura",

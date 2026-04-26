@@ -242,7 +242,8 @@
       "immichServerUrl": "URL сервера",
       "immichApiKeyPlaceholder": "Вставьте ваш API-ключ сюда",
       "immichApiKeyHelp": "Создайте API-ключ в Immich → User Settings → API Keys",
-      "immichOps": "Обзор, загрузка, скачивание, удаление, альбомы, поиск, ссылки для обмена. Переименование и перемещение не поддерживаются."
+      "immichOps": "Обзор, загрузка, скачивание, удаление, альбомы, поиск, ссылки для обмена. Переименование и перемещение не поддерживаются.",
+      "generatePassword": "Сгенерировать пароль"
     },
     "browser": {
       "remote": "Удалённый",
@@ -3709,7 +3710,9 @@
       "httpResponse": "Ответ HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Оценка 0-100, выше лучше",
+      "scoreLegendDetail": "80+ здоровый · 50-79 ухудшен · ниже 50 проблемы"
     },
     "scanning": {
       "deleting": "Удаление",

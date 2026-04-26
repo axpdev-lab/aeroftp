@@ -242,7 +242,8 @@
       "immichServerUrl": "URL ម៉ាស៊ីនមេ",
       "immichApiKeyPlaceholder": "បិទភ្ជាប់សោ API របស់អ្នកនៅទីនេះ",
       "immichApiKeyHelp": "បង្កើតសោ API នៅក្នុង Immich → User Settings → API Keys",
-      "immichOps": "រុករក, ផ្ទុកឡើង, ទាញយក, លុប, អាល់ប៊ុម, ស្វែងរក, តំណចែករំលែក។ ការប្តូរឈ្មោះ និងការផ្លាស់ទីមិនត្រូវបានគាំទ្រ។"
+      "immichOps": "រុករក, ផ្ទុកឡើង, ទាញយក, លុប, អាល់ប៊ុម, ស្វែងរក, តំណចែករំលែក។ ការប្តូរឈ្មោះ និងការផ្លាស់ទីមិនត្រូវបានគាំទ្រ។",
+      "generatePassword": "បង្កើតពាក្យសម្ងាត់"
     },
     "browser": {
       "remote": "ពីចម្ងាយ",
@@ -3738,7 +3739,9 @@
       "httpResponse": "ការ​ឆ្លើយតប HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "ពិន្ទុ 0-100 ខ្ពស់ជាងគឺល្អជាង",
+      "scoreLegendDetail": "80+ ល្អ · 50-79 ធ្លាក់ · ក្រោម 50 មានបញ្ហា"
     },
     "scanning": {
       "deleting": "កំពុងលុប",

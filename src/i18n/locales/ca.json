@@ -242,7 +242,8 @@
       "immichServerUrl": "URL del servidor",
       "immichApiKeyPlaceholder": "Enganxeu la vostra clau API aquí",
       "immichApiKeyHelp": "Genereu una clau API a Immich → User Settings → API Keys",
-      "immichOps": "Navega, puja, baixa, elimina, àlbums, cerca, enllaços compartits. No es pot canviar el nom ni moure."
+      "immichOps": "Navega, puja, baixa, elimina, àlbums, cerca, enllaços compartits. No es pot canviar el nom ni moure.",
+      "generatePassword": "Generar contrasenya"
     },
     "browser": {
       "remote": "Remot",
@@ -3738,7 +3739,9 @@
       "httpResponse": "Resposta HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Puntuació 0-100, més alt és millor",
+      "scoreLegendDetail": "80+ saludable · 50-79 degradat · per sota 50 té problemes"
     },
     "scanning": {
       "deleting": "Eliminant",

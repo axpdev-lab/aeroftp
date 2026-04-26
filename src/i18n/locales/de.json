@@ -242,7 +242,8 @@
       "immichServerUrl": "Server-URL",
       "immichApiKeyPlaceholder": "Fügen Sie Ihren API-Schlüssel hier ein",
       "immichApiKeyHelp": "Erstellen Sie einen API-Schlüssel in Immich → User Settings → API Keys",
-      "immichOps": "Durchsuchen, Hochladen, Herunterladen, Löschen, Alben, Suche, Freigabelinks. Umbenennen und Verschieben werden nicht unterstützt."
+      "immichOps": "Durchsuchen, Hochladen, Herunterladen, Löschen, Alben, Suche, Freigabelinks. Umbenennen und Verschieben werden nicht unterstützt.",
+      "generatePassword": "Passwort generieren"
     },
     "browser": {
       "remote": "Remote",
@@ -3709,7 +3710,9 @@
       "httpResponse": "HTTP-Antwort",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Punktzahl 0-100, höher ist besser",
+      "scoreLegendDetail": "80+ gesund · 50-79 beeinträchtigt · unter 50 mit Problemen"
     },
     "scanning": {
       "deleting": "Löschen",

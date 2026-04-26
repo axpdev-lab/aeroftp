@@ -242,7 +242,8 @@
       "immichServerUrl": "URL y gweinydd",
       "immichApiKeyPlaceholder": "Gludiwch eich allwedd API yma",
       "immichApiKeyHelp": "Cynhyrchwch allwedd API yn Immich → User Settings → API Keys",
-      "immichOps": "Pori, uwchlwytho, lawrlwytho, dileu, albymau, chwilio, dolenni rhannu. Ni chefnogir ailenwi na symud."
+      "immichOps": "Pori, uwchlwytho, lawrlwytho, dileu, albymau, chwilio, dolenni rhannu. Ni chefnogir ailenwi na symud.",
+      "generatePassword": "Cynhyrchu cyfrinair"
     },
     "browser": {
       "remote": "Pell",
@@ -3738,7 +3739,9 @@
       "httpResponse": "Ymateb HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Sgôr 0-100, mae uwch yn well",
+      "scoreLegendDetail": "80+ iach · 50-79 wedi diraddio · o dan 50 mae problemau"
     },
     "scanning": {
       "deleting": "Dileu",

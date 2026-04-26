@@ -242,7 +242,8 @@
       "immichServerUrl": "URL сервера",
       "immichApiKeyPlaceholder": "Вставте свій API-ключ тут",
       "immichApiKeyHelp": "Створіть API-ключ у Immich → User Settings → API Keys",
-      "immichOps": "Перегляд, завантаження, завантаження, видалення, альбоми, пошук, посилання для спільного доступу. Перейменування та переміщення не підтримуються."
+      "immichOps": "Перегляд, завантаження, завантаження, видалення, альбоми, пошук, посилання для спільного доступу. Перейменування та переміщення не підтримуються.",
+      "generatePassword": "Створити пароль"
     },
     "browser": {
       "remote": "Віддалений",
@@ -3709,7 +3710,9 @@
       "httpResponse": "Відповідь HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Оцінка 0-100, вище — краще",
+      "scoreLegendDetail": "80+ здоровий · 50-79 знижений · нижче 50 з проблемами"
     },
     "scanning": {
       "deleting": "Видалення",

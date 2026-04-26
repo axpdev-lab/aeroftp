@@ -242,7 +242,8 @@
       "immichServerUrl": "URL strežnika",
       "immichApiKeyPlaceholder": "Prilepite svoj API ključ tukaj",
       "immichApiKeyHelp": "Ustvarite API ključ v Immich → User Settings → API Keys",
-      "immichOps": "Brskanje, nalaganje, prenos, brisanje, albumi, iskanje, povezave za skupno rabo. Preimenovanje in premikanje nista podprta."
+      "immichOps": "Brskanje, nalaganje, prenos, brisanje, albumi, iskanje, povezave za skupno rabo. Preimenovanje in premikanje nista podprta.",
+      "generatePassword": "Ustvari geslo"
     },
     "browser": {
       "remote": "Oddaljeno",
@@ -3719,7 +3720,9 @@
       "httpResponse": "Odziv HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Rezultat 0-100, višje je boljše",
+      "scoreLegendDetail": "80+ zdrav · 50-79 oslabljen · pod 50 s težavami"
     },
     "scanning": {
       "deleting": "Brisanje",

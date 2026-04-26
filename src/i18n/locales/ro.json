@@ -242,7 +242,8 @@
       "immichServerUrl": "URL server",
       "immichApiKeyPlaceholder": "Lipiți cheia API aici",
       "immichApiKeyHelp": "Generați o cheie API în Immich → User Settings → API Keys",
-      "immichOps": "Navigare, încărcare, descărcare, ștergere, albume, căutare, linkuri de partajare. Redenumirea și mutarea nu sunt acceptate."
+      "immichOps": "Navigare, încărcare, descărcare, ștergere, albume, căutare, linkuri de partajare. Redenumirea și mutarea nu sunt acceptate.",
+      "generatePassword": "Generează parolă"
     },
     "browser": {
       "remote": "La distanță",
@@ -3709,7 +3710,9 @@
       "httpResponse": "Răspuns HTTP",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "Scor 0-100, mai mare este mai bun",
+      "scoreLegendDetail": "80+ sănătos · 50-79 degradat · sub 50 are probleme"
     },
     "scanning": {
       "deleting": "Se sterge",

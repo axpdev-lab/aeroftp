@@ -242,7 +242,8 @@
       "immichServerUrl": "サーバーURL",
       "immichApiKeyPlaceholder": "APIキーをここに貼り付けてください",
       "immichApiKeyHelp": "Immich → User Settings → API Keysで APIキーを生成してください",
-      "immichOps": "閲覧、アップロード、ダウンロード、削除、アルバム、検索、共有リンク。名前の変更と移動はサポートされていません。"
+      "immichOps": "閲覧、アップロード、ダウンロード、削除、アルバム、検索、共有リンク。名前の変更と移動はサポートされていません。",
+      "generatePassword": "パスワードを生成"
     },
     "browser": {
       "remote": "リモート",
@@ -3709,7 +3710,9 @@
       "httpResponse": "HTTP レスポンス",
       "copyResults": "Copy Results",
       "copied": "Copied\\!",
-      "batchChecking": "Checking {count} servers, please wait..."
+      "batchChecking": "Checking {count} servers, please wait...",
+      "scoreLegend": "スコア 0-100、高いほど良い",
+      "scoreLegendDetail": "80以上 健全 · 50-79 低下 · 50未満 問題あり"
     },
     "scanning": {
       "deleting": "削除中",
