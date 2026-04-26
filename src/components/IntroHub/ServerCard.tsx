@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Folder, HardDrive } from 'lucide-react';
-import { ServerProfile, ProviderType } from '../../types';
+import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Folder, HardDrive, Check, X } from 'lucide-react';
+import { ServerProfile, ProviderType, getProtocolClass } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { maskCredential } from '../../utils/maskCredential';
@@ -23,6 +23,18 @@ function ServerBadges({ server }: { server: ServerProfile }) {
     const gitHubBadge = proto === 'github' ? getGitHubConnectionBadge(server.options) : null;
     const megaBadge = proto === 'mega' ? getMegaConnectionBadge(server.options) : null;
     const infiniCloudBadge = server.providerId === 'infinicloud' ? getInfiniCloudConnectionBadge(server.options) : null;
+    const protocolClass = getProtocolClass(proto as ProviderType);
+    // Skip class badge when it duplicates the brand badge (FTP/FTPS/SFTP show protocol uppercase already)
+    const showClassBadge = !['FTP', 'FTPS', 'SFTP'].includes(protocolClass);
+    const classBadgeColor: Record<string, string> = {
+        OAuth: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
+        API: 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300',
+        WebDAV: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
+        E2E: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+        S3: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
+        Azure: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
+        AeroCloud: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
+    };
 
     const badgeClass = isFtps
         ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
@@ -42,6 +54,11 @@ function ServerBadges({ server }: { server: ServerProfile }) {
             ) : (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase ${badgeClass}`}>
                     {displayProto}
+                </span>
+            )}
+            {showClassBadge && server.providerId !== 'felicloud' && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${classBadgeColor[protocolClass] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                    {protocolClass}
                 </span>
             )}
             {certVerified && (
@@ -91,6 +108,10 @@ interface ServerCardProps {
     onDelete: (server: ServerProfile) => void;
     onToggleFavorite: (server: ServerProfile) => void;
     onContextMenu?: (e: React.MouseEvent, server: ServerProfile) => void;
+    onHoverChange?: (server: ServerProfile | null) => void;
+    isRenaming?: boolean;
+    onRenameSubmit?: (server: ServerProfile, newName: string) => void;
+    onRenameCancel?: () => void;
     viewMode: 'grid' | 'list';
     index?: number; // For zebra striping in list view
     isDraggable?: boolean;
@@ -101,6 +122,64 @@ interface ServerCardProps {
     onDragOver?: (e: React.DragEvent) => void;
     onDrop?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
+}
+
+function RenameInput({
+    initialValue,
+    onSubmit,
+    onCancel,
+    sizeClass,
+}: {
+    initialValue: string;
+    onSubmit: (value: string) => void;
+    onCancel: () => void;
+    sizeClass: string;
+}) {
+    const t = useTranslation();
+    const [value, setValue] = React.useState(initialValue);
+    const inputRef = React.useRef<HTMLInputElement>(null);
+    React.useEffect(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+    }, []);
+    const submit = () => {
+        const trimmed = value.trim();
+        if (trimmed && trimmed !== initialValue) {
+            onSubmit(trimmed);
+        } else {
+            onCancel();
+        }
+    };
+    return (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <input
+                ref={inputRef}
+                type="text"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+                    if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+                }}
+                onBlur={submit}
+                className={`flex-1 min-w-0 px-1.5 py-0.5 ${sizeClass} font-semibold bg-white dark:bg-gray-700 border border-blue-400 dark:border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500`}
+            />
+            <button
+                onMouseDown={(e) => { e.preventDefault(); submit(); }}
+                className="p-0.5 rounded text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/30"
+                title={t('common.confirm')}
+            >
+                <Check size={13} />
+            </button>
+            <button
+                onMouseDown={(e) => { e.preventDefault(); onCancel(); }}
+                className="p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                title={t('common.cancel')}
+            >
+                <X size={13} />
+            </button>
+        </div>
+    );
 }
 
 function getServerIcon(server: ServerProfile, size = 20): React.ReactNode {
@@ -149,6 +228,10 @@ export const ServerCard = React.memo(function ServerCard({
     onDelete,
     onToggleFavorite,
     onContextMenu,
+    onHoverChange,
+    isRenaming = false,
+    onRenameSubmit,
+    onRenameCancel,
     viewMode,
     index = 0,
     isDraggable,
@@ -163,6 +246,8 @@ export const ServerCard = React.memo(function ServerCard({
     const t = useTranslation();
     const proto = server.protocol || 'ftp';
     const timeAgo = getTimeAgo(server.lastConnected);
+    const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
+    const handleMouseLeave = onHoverChange ? () => onHoverChange(null) : undefined;
 
     const subtitle = React.useMemo(() => {
         const shouldMask = credentialsMasked && server.protocol !== 'github';
@@ -190,6 +275,8 @@ export const ServerCard = React.memo(function ServerCard({
                 onDragEnd={onDragEnd}
                 className={`group flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 transition-colors ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''}`}
                 onContextMenu={(e) => onContextMenu?.(e, server)}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
             >
                 {/* Drag handle */}
                 {isDraggable && (
@@ -209,7 +296,16 @@ export const ServerCard = React.memo(function ServerCard({
 
                 {/* Col: Name */}
                 <div className="flex-1 min-w-0 max-w-[200px]">
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{server.name}</div>
+                    {isRenaming ? (
+                        <RenameInput
+                            initialValue={server.name}
+                            onSubmit={(v) => onRenameSubmit?.(server, v)}
+                            onCancel={() => onRenameCancel?.()}
+                            sizeClass="text-sm"
+                        />
+                    ) : (
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{server.name}</div>
+                    )}
                 </div>
 
                 {/* Col: Badge */}
@@ -285,6 +381,8 @@ export const ServerCard = React.memo(function ServerCard({
             onDragEnd={onDragEnd}
             className={`group relative bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border rounded-lg p-3.5 transition-colors shadow-sm dark:shadow-md ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'opacity-40 scale-[0.97] shadow-lg ring-2 ring-blue-400/50 border-blue-400' : 'border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30'} ${isDragTarget ? '!border-blue-500 !border-2 bg-blue-50 dark:bg-blue-900/30 shadow-inner' : ''}`}
             onContextMenu={(e) => onContextMenu?.(e, server)}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
         >
             {/* Top row: clickable icon + name + badge */}
             <div className="flex items-start gap-3">
@@ -298,7 +396,16 @@ export const ServerCard = React.memo(function ServerCard({
                     {isConnecting ? <Loader2 size={18} className="animate-spin text-blue-500" /> : getServerIcon(server)}
                 </button>
                 <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{server.name}</div>
+                    {isRenaming ? (
+                        <RenameInput
+                            initialValue={server.name}
+                            onSubmit={(v) => onRenameSubmit?.(server, v)}
+                            onCancel={() => onRenameCancel?.()}
+                            sizeClass="text-sm"
+                        />
+                    ) : (
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{server.name}</div>
+                    )}
                     <div className="flex items-center gap-1.5 mt-0.5">
                         <ServerBadges server={server} />
                         {timeAgo && (

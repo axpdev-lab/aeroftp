@@ -73,6 +73,23 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
   return type === "aerocloud";
 };
 
+// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / S3 / Azure)
+export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud";
+
+export const getProtocolClass = (type: ProviderType): ProtocolClass => {
+  if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
+  if (isAeroCloudProvider(type)) return "AeroCloud";
+  if (type === "filen" || type === "internxt" || type === "mega") return "E2E";
+  if (type === "webdav") return "WebDAV";
+  if (type === "ftps") return "FTPS";
+  if (type === "ftp") return "FTP";
+  if (type === "sftp") return "SFTP";
+  if (type === "s3") return "S3";
+  if (type === "azure") return "Azure";
+  // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu, Yandex, GitHub, GitLab, Swift, Immich)
+  return "API";
+};
+
 // Check if a provider uses non-FTP backend (provider_* Tauri commands)
 export const isNonFtpProvider = (type: ProviderType): boolean => {
   return [

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -130,6 +130,8 @@ export function MyServersPanel({
             return stored ? new Set(JSON.parse(stored)) : new Set();
         } catch { return new Set(); }
     });
+    const [renamingId, setRenamingId] = useState<string | null>(null);
+    const hoveredServerRef = useRef<ServerProfile | null>(null);
     const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
     const scrollTimeout = useRef<number | null>(null);
@@ -405,6 +407,45 @@ export function MyServersPanel({
         setDeleteTarget(server);
     }, []);
 
+    const handleRenameStart = useCallback((server: ServerProfile) => {
+        setRenamingId(server.id);
+    }, []);
+
+    const handleRenameSubmit = useCallback((server: ServerProfile, newName: string) => {
+        const trimmed = newName.trim();
+        if (trimmed && trimmed !== server.name) {
+            const updated = servers.map(s => s.id === server.id ? { ...s, name: trimmed } : s);
+            setServers(updated);
+            secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+        }
+        setRenamingId(null);
+    }, [servers]);
+
+    const handleRenameCancel = useCallback(() => {
+        setRenamingId(null);
+    }, []);
+
+    const handleHoverChange = useCallback((server: ServerProfile | null) => {
+        hoveredServerRef.current = server;
+    }, []);
+
+    // F2 hotkey: rename hovered server (skip if renaming or focus is in an input/textarea)
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key !== 'F2') return;
+            if (renamingId) return;
+            const target = e.target as HTMLElement | null;
+            const tag = target?.tagName?.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+            const hovered = hoveredServerRef.current;
+            if (!hovered) return;
+            e.preventDefault();
+            setRenamingId(hovered.id);
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [renamingId]);
+
     const confirmDelete = useCallback(() => {
         if (!deleteTarget) return;
         const updated = servers.filter(s => s.id !== deleteTarget.id);
@@ -421,13 +462,14 @@ export function MyServersPanel({
         const items: ContextMenuItem[] = [
             { label: t('common.connect'), icon: <Play size={14} />, action: () => handleConnect(server) },
             { label: t('common.edit'), icon: <Edit2 size={14} />, action: () => onEdit(server) },
+            { label: t('introHub.renameWithHotkey'), icon: <PencilLine size={14} />, action: () => handleRenameStart(server) },
             { label: t('common.duplicate'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
             { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: <Star size={14} />, action: () => toggleFavorite(server.id) },
             { label: t('healthCheck.title'), icon: <Activity size={14} />, action: () => setHealthCheckTarget(server.id), divider: true },
             { label: t('common.delete'), icon: <Trash2 size={14} />, action: () => handleDelete(server), danger: true },
         ];
         showContextMenu(e, items);
-    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, toggleFavorite, favorites, showContextMenu]);
+    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu]);
 
     return (
         <div className="h-full flex flex-col">
@@ -493,6 +535,10 @@ export function MyServersPanel({
                                     onDelete={handleDelete}
                                     onToggleFavorite={handleToggleFavorite}
                                     onContextMenu={handleContextMenu}
+                                    onHoverChange={handleHoverChange}
+                                    isRenaming={renamingId === server.id}
+                                    onRenameSubmit={handleRenameSubmit}
+                                    onRenameCancel={handleRenameCancel}
                                     viewMode="grid"
                                     isDraggable={canDrag}
                                     isDragging={dragIdx === realIdx}
@@ -527,6 +573,10 @@ export function MyServersPanel({
                                 onDelete={handleDelete}
                                 onToggleFavorite={handleToggleFavorite}
                                 onContextMenu={handleContextMenu}
+                                onHoverChange={handleHoverChange}
+                                isRenaming={renamingId === server.id}
+                                onRenameSubmit={handleRenameSubmit}
+                                onRenameCancel={handleRenameCancel}
                                 viewMode="list"
                                 index={idx}
                                 isDraggable={canDrag}

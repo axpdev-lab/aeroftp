@@ -195,6 +195,13 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
 
   const [wantToSave, setWantToSave] = useState(saveConnection);
   const [saveName, setSaveName] = useState(connectionName);
+  // Sync save state when parent updates (e.g. entering edit mode from My Servers)
+  useEffect(() => {
+    setWantToSave(saveConnection);
+  }, [saveConnection]);
+  useEffect(() => {
+    setSaveName(connectionName);
+  }, [connectionName]);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [wantsNewAccount, setWantsNewAccount] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
@@ -412,6 +419,39 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Save Connection toggle — visible in active state too so users can rename or save an existing OAuth session */}
+        <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+          <Checkbox
+            checked={wantToSave}
+            onChange={(v) => {
+              setWantToSave(v);
+              onSaveConnectionChange?.(v);
+            }}
+            label={<div className="flex-1">
+              <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
+              <p className="text-xs text-gray-500">{t('connection.oauth.quickConnectNextTime')}</p>
+            </div>}
+          />
+          <Save size={16} className="text-gray-400" />
+        </div>
+
+        {/* Connection Name (editable for OAuth — renaming a saved server only changes the local label, not the OAuth tokens) */}
+        {wantToSave && (
+          <div>
+            <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
+            <input
+              type="text"
+              value={saveName}
+              onChange={(e) => {
+                setSaveName(e.target.value);
+                onConnectionNameChange?.(e.target.value);
+              }}
+              placeholder={t('connection.oauth.myProvider', { provider: providerNames[provider] })}
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+            />
+          </div>
+        )}
 
         {/* Quick Connect Button */}
         <button

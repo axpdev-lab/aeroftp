@@ -1651,7 +1651,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     if (saveConnection) {
                                         const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
                                         const saveName = connectionName || displayName;
-                                        const duplicate = existingServers.find(s => s.name === saveName && s.protocol === protocol);
+                                        // Prefer editingProfileId match to support rename (user changed the name in edit mode)
+                                        const editTarget = editingProfileId ? existingServers.find(s => s.id === editingProfileId) : undefined;
+                                        const duplicate = editTarget || existingServers.find(s => s.name === saveName && s.protocol === protocol);
                                         if (!duplicate) {
                                             const newServer: ServerProfile = {
                                                 id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -1671,6 +1673,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             const updated = existingServers.map(s =>
                                                 s.id === duplicate.id ? {
                                                     ...s,
+                                                    name: saveName || s.name,
                                                     localInitialPath: quickConnectDirs.localDir,
                                                     lastConnected: new Date().toISOString(),
                                                     ...(extraOptions?.region && { options: { ...s.options, region: extraOptions.region } }),
