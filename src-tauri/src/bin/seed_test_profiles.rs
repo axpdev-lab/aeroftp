@@ -1,6 +1,35 @@
 // Test helper: seeds docker harness profiles into the encrypted vault.
 // Additive-only — does not touch runtime code paths.
 // Run: cargo run --bin seed_test_profiles
+//
+// Optional: set `AEROFTP_SEED_AERORSYNC_E2E=1` to also seed two SFTP profiles
+// pointed at a `linuxserver/openssh-server` container with rsync installed,
+// for end-to-end verification of the AeroRsync delta path on top of the
+// cross-profile transfer flow. Container setup required:
+//
+//   docker run -d --name bench-ssh-rsync -p 127.0.0.1:2242:2222 \
+//     -e PUBLIC_KEY="$(cat ~/.ssh/id_ed25519.pub)" \
+//     -e USER_NAME=testuser \
+//     linuxserver/openssh-server:latest
+//   docker exec bench-ssh-rsync apk add --no-cache rsync
+//   docker exec bench-ssh-rsync sh -c '
+//     rm -f /config/ssh_host_keys/ssh_host_rsa_key* \
+//           /config/ssh_host_keys/ssh_host_ecdsa_key*'
+//   docker restart bench-ssh-rsync
+//   docker exec bench-ssh-rsync mkdir -p /config/source /config/dest
+//
+// The non-ed25519 host key removal is mandatory: libssh2 (used by classic
+// SFTP) and russh (used by the AeroRsync probe) negotiate different host
+// key algorithms when multiple are present, which trips the U-02 host-key
+// fingerprint pinning gate and forces a soft fallback. Removing the rsa
+// and ecdsa keys forces both libraries onto the same ed25519 key.
+//
+// Then enable the runtime toggle: `echo "enabled = true" >
+// ~/.config/aeroftp/native_rsync.toml`. Verify with:
+//   aeroftp-cli transfer 'AeroRsync E2E A' 'AeroRsync E2E B' \
+//     /config/source/<file> /config/dest/<file>
+// and look for `delta sync Upload ok: transport=aerorsync-proto-31` in -vv
+// output.
 
 use ftp_client_gui_lib::credential_store::CredentialStore;
 use serde_json::{json, Value};
@@ -18,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let existing = store.get(PROFILES_KEY).unwrap_or_else(|_| "[]".to_string());
     let mut profiles: Vec<Value> = serde_json::from_str(&existing).unwrap_or_default();
 
-    let seeds = vec![
+    let mut seeds = vec![
         json!({
             "id": profile_id("ftp_docker"),
             "name": "Docker FTP",
@@ -94,6 +123,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
     ];
 
+    // AeroRsync E2E pair — opt-in via env flag. See header comment for the
+    // container setup required for the native delta path to actually trigger.
+    if std::env::var("AEROFTP_SEED_AERORSYNC_E2E").is_ok() {
+        let key_path = std::env::var("HOME")
+            .map(|h| format!("{}/.ssh/id_ed25519", h))
+            .map_err(|_| "HOME not set; cannot resolve SSH key path")?;
+        seeds.push(json!({
+            "id": profile_id("aerorsync_e2e_a"),
+            "name": "AeroRsync E2E A",
+            "protocol": "sftp",
+            "host": "127.0.0.1",
+            "port": 2242,
+            "username": "testuser",
+            "initialPath": "/config/source",
+            "options": {
+                "private_key_path": key_path,
+                "trust_unknown_hosts": "true",
+            }
+        }));
+        seeds.push(json!({
+            "id": profile_id("aerorsync_e2e_b"),
+            "name": "AeroRsync E2E B",
+            "protocol": "sftp",
+            "host": "127.0.0.1",
+            "port": 2242,
+            "username": "testuser",
+            "initialPath": "/config/dest",
+            "options": {
+                "private_key_path": key_path,
+                "trust_unknown_hosts": "true",
+            }
+        }));
+    }
+
+    let seed_count = seeds.len();
     for seed in seeds {
         let new_id = seed
             .get("id")
@@ -118,11 +182,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let serialized = serde_json::to_string(&profiles)?;
     store.store(PROFILES_KEY, &serialized)?;
 
-    println!("Seeded {} docker test profiles", 6);
+    println!("Seeded {} docker test profiles", seed_count);
     println!("Use: aeroftp-cli -P 'Docker FTP' ls /");
     println!("     aeroftp-cli -P 'Docker FTPS' --insecure ls /");
     println!("     aeroftp-cli -P 'Docker SFTP ed25519' ls /");
     println!("     aeroftp-cli -P 'Docker WebDAV' ls /");
     println!("     aeroftp-cli -P 'Docker MinIO' ls /");
+    if std::env::var("AEROFTP_SEED_AERORSYNC_E2E").is_ok() {
+        println!("     aeroftp-cli -P 'AeroRsync E2E A' ls /");
+        println!("     aeroftp-cli -P 'AeroRsync E2E B' ls /");
+    }
     Ok(())
 }
