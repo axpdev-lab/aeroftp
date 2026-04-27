@@ -1,7 +1,7 @@
-# AeroFTP CLI — User Guide
+# AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v3.6.1 (April 2026) — last reviewed 25 April 2026
+> **Version reference**: v3.6.1 (April 2026) - last reviewed 25 April 2026
 > **License**: GPL-3.0
 
 ---
@@ -93,7 +93,7 @@ Passwords can be provided in several ways (in order of preference):
 1. **stdin** (most secure): `echo "password" | aeroftp --password-stdin connect sftp://user@host`
 2. **Environment variable**: `AEROFTP_TOKEN=mytoken aeroftp-cli connect jottacloud://user@host`
 3. **Interactive prompt**: If no password is provided, the CLI prompts on TTY
-4. **URL** (least secure): `sftp://user:password@host` — a warning is displayed
+4. **URL** (least secure): `sftp://user:password@host` - a warning is displayed
 
 > **Security**: stdin passwords are limited to 4 KB. A warning is shown when passwords appear in URLs.
 
@@ -101,7 +101,7 @@ Passwords can be provided in several ways (in order of preference):
 
 ## Server Profiles (`--profile`)
 
-The most powerful way to use the CLI. Connect to any saved server from the AeroFTP encrypted vault — **zero credentials exposed** in the command line, shell history, or process list.
+The most powerful way to use the CLI. Connect to any saved server from the AeroFTP encrypted vault - **zero credentials exposed** in the command line, shell history, or process list.
 
 ### Setup
 
@@ -133,7 +133,7 @@ aeroftp-cli profiles --json
 The CLI matches profiles in this order:
 1. **Exact name** (case-insensitive)
 2. **Exact ID** (internal UUID)
-3. **Substring match** — if only one profile matches, it connects. If multiple match, an error lists the candidates
+3. **Substring match** - if only one profile matches, it connects. If multiple match, an error lists the candidates
 
 ```bash
 $ aeroftp-cli ls --profile "SSH" /
@@ -148,7 +148,7 @@ Browser-authorized and profile-backed API providers (Google Drive, Dropbox, OneD
 # After authorizing Google Drive in the GUI:
 aeroftp-cli ls --profile "My Google Drive" /
 
-# pCloud (long-lived tokens — works immediately)
+# pCloud (long-lived tokens - works immediately)
 aeroftp-cli ls --profile "pCloud" /
 
 # Dropbox
@@ -167,7 +167,7 @@ AEROFTP_MASTER_PASSWORD=secret aeroftp-cli ls --profile "server" /
 aeroftp-cli ls --profile "server" /
 # Master password: ********
 
-# Via flag (visible in process list — use env var instead)
+# Via flag (visible in process list - use env var instead)
 aeroftp-cli ls --profile "server" --master-password secret /
 ```
 
@@ -176,10 +176,10 @@ aeroftp-cli ls --profile "server" --master-password secret /
 The `--profile` flag is designed for AI coding agents (Claude Code, Cursor, Codex, Devin). The agent never sees credentials:
 
 ```bash
-# Agent runs this — no password anywhere
+# Agent runs this - no password anywhere
 aeroftp-cli put --profile "Production" ./dist/app.js /var/www/app.js
 
-# Agent can list, upload, download, sync — all credential-free
+# Agent can list, upload, download, sync - all credential-free
 aeroftp-cli sync --profile "Staging" ./build/ /var/www/ --dry-run
 ```
 
@@ -187,7 +187,7 @@ aeroftp-cli sync --profile "Staging" ./build/ /var/www/ --dry-run
 
 ## Commands
 
-### connect — Test Connection
+### connect - Test Connection
 
 ```bash
 aeroftp-cli connect sftp://user@myserver.com
@@ -195,7 +195,7 @@ aeroftp-cli connect sftp://user@myserver.com
 
 Connects to the server, displays server info (type, version, storage quota if available), and disconnects. Useful for verifying credentials and connectivity.
 
-### ls — List Files
+### ls - List Files
 
 ```bash
 # Basic listing
@@ -211,7 +211,7 @@ aeroftp-cli ls sftp://user@host / -l --sort size --reverse
 aeroftp-cli ls sftp://user@host / --all
 ```
 
-### get — Download Files
+### get - Download Files
 
 ```bash
 # Download a single file
@@ -220,7 +220,7 @@ aeroftp-cli get sftp://user@host /var/www/index.html
 # Download to specific local path
 aeroftp-cli get sftp://user@host /var/www/index.html ./local-copy.html
 
-# Glob pattern — download all CSV files
+# Glob pattern - download all CSV files
 aeroftp-cli get sftp://user@host "/data/*.csv"
 
 # Recursive directory download
@@ -229,26 +229,41 @@ aeroftp-cli get sftp://user@host /var/www/ ./backup/ -r
 
 > **Glob patterns**: Quote the remote path to prevent shell expansion. The CLI expands `*` and `?` patterns server-side.
 
-### put — Upload Files
+### pget - Segmented Parallel Download
+
+```bash
+# Default: 4 parallel segments
+aeroftp-cli pget --profile "AWS S3" /backup/big.tar.gz ./big.tar.gz
+
+# Tune segment count (range 2-16)
+aeroftp-cli pget --profile "AWS S3" /backup/big.tar.gz --segments 8
+
+# JSON progress output
+aeroftp-cli pget --profile "AWS S3" /backup/big.tar.gz --json
+```
+
+Alias of `get` with a parallel-segments preset. Splits a single file into N byte ranges and downloads them concurrently, then stitches them back together. Useful when latency or per-connection throughput is the bottleneck (large `.tar.gz` archives, S3 buckets from far regions). Falls back to a single sequential stream when the provider does not advertise range-request support.
+
+### put - Upload Files
 
 ```bash
 # Upload a single file
 aeroftp-cli put sftp://user@host ./report.pdf /uploads/
 
-# Glob pattern — upload all JSON files
+# Glob pattern - upload all JSON files
 aeroftp-cli put sftp://user@host "./*.json" /data/
 
 # Recursive upload
 aeroftp-cli put sftp://user@host ./project/ /var/www/project/ -r
 ```
 
-### mkdir — Create Directory
+### mkdir - Create Directory
 
 ```bash
 aeroftp-cli mkdir sftp://user@host /var/www/new-folder
 ```
 
-### rm — Delete File or Directory
+### rm - Delete File or Directory
 
 ```bash
 # Delete a file
@@ -258,13 +273,13 @@ aeroftp-cli rm sftp://user@host /var/www/old-file.txt
 aeroftp-cli rm sftp://user@host /var/www/old-folder/ -rf
 ```
 
-### mv — Rename / Move
+### mv - Rename / Move
 
 ```bash
 aeroftp-cli mv sftp://user@host /var/www/old-name.txt /var/www/new-name.txt
 ```
 
-### cp — Server-Side Copy
+### cp - Server-Side Copy
 
 ```bash
 aeroftp-cli cp --profile "server" /var/www/app.js /var/www/app.backup.js
@@ -272,7 +287,7 @@ aeroftp-cli cp --profile "server" /var/www/app.js /var/www/app.backup.js
 
 Copies a remote file or object on the server side when the provider supports it. Returns exit code 7 when server-side copy is unavailable for that provider.
 
-### link — Create Share Link
+### link - Create Share Link
 
 ```bash
 aeroftp-cli link --profile "server" /public/report.pdf
@@ -280,7 +295,7 @@ aeroftp-cli link --profile "server" /public/report.pdf
 
 Creates a share link for a remote file when the provider supports share URLs. The returned link is printed to stdout or emitted as JSON with `--json`.
 
-### edit — Remote Find/Replace
+### edit - Remote Find/Replace
 
 ```bash
 # Replace all occurrences
@@ -292,7 +307,7 @@ aeroftp-cli edit --profile "server" /var/www/index.html "Old Title" "New Title" 
 
 This is a scripted remote text edit flow, not an interactive `$EDITOR` session. The CLI downloads the remote UTF-8 file, applies a deterministic find/replace, then uploads the modified content.
 
-### cat — Print File Content
+### cat - Print File Content
 
 ```bash
 # Print file to stdout
@@ -307,7 +322,7 @@ aeroftp-cli cat sftp://user@host /data/export.csv > local.csv
 
 > **Safety**: Files larger than 256 MB are rejected to prevent OOM.
 
-### stat — File Metadata
+### stat - File Metadata
 
 ```bash
 aeroftp-cli stat sftp://user@host /var/www/index.html
@@ -315,7 +330,7 @@ aeroftp-cli stat sftp://user@host /var/www/index.html
 
 Displays: name, path, type (file/directory), size, permissions, owner, group, modification date.
 
-### find — Search Files
+### find - Search Files
 
 ```bash
 aeroftp-cli find sftp://user@host /var/www/ "*.php"
@@ -323,7 +338,7 @@ aeroftp-cli find sftp://user@host /var/www/ "*.php"
 
 Searches recursively for files matching the glob pattern. Uses server-side search when available, falls back to BFS traversal.
 
-### df — Storage Quota
+### df - Storage Quota
 
 ```bash
 aeroftp-cli df sftp://user@host
@@ -331,7 +346,7 @@ aeroftp-cli df sftp://user@host
 
 Displays used/total storage with a visual progress bar. Returns exit code 7 if the protocol doesn't support storage info.
 
-### tree — Directory Tree
+### tree - Directory Tree
 
 ```bash
 # Full tree
@@ -343,7 +358,7 @@ aeroftp-cli tree sftp://user@host /var/www/ -d 2
 
 Renders a tree with Unicode connectors (├──, └──) showing the directory hierarchy. Cycle-safe with visited-path tracking.
 
-### head — First N Lines
+### head - First N Lines
 
 ```bash
 # Print first 20 lines (default)
@@ -358,7 +373,7 @@ aeroftp-cli head --profile "server" /path/file.txt -n 3 --json
 
 Prints the first N lines of a remote text file. Default: 20 lines. Files larger than 256 MB are rejected. Binary files return exit code 5.
 
-### tail — Last N Lines
+### tail - Last N Lines
 
 ```bash
 # Print last 20 lines (default)
@@ -370,7 +385,7 @@ aeroftp-cli tail sftp://user@host /var/log/app.log -n 5
 
 Similar to `head` but prints the last N lines. Useful for viewing log files.
 
-### touch — Create Empty File
+### touch - Create Empty File
 
 ```bash
 # Create a new empty file
@@ -382,7 +397,7 @@ aeroftp-cli touch --profile "server" /remote/path/existing.txt
 
 Creates an empty file if it doesn't exist. If the file already exists, confirms it without error (exit code 0).
 
-### hashsum — Compute File Hash
+### hashsum - Compute File Hash
 
 ```bash
 # SHA-256 hash
@@ -400,7 +415,7 @@ aeroftp-cli hashsum --profile "server" sha256 /file.txt --json
 
 Supported algorithms: `md5`, `sha1`, `sha256`, `sha512`, `blake3`. Output format matches standard `sha256sum` format: `<hash>  <path>`.
 
-### check — Verify Local/Remote Match
+### check - Verify Local/Remote Match
 
 ```bash
 # Compare local and remote directories
@@ -418,7 +433,7 @@ aeroftp-cli check --profile "server" /local/ /remote/ --json
 
 Verifies that a local directory and remote directory are identical. Compares by file size (default) or SHA-256 checksum (`--checksum`). Reports: matches, differences, files missing on either side.
 
-### about — Server Info & Storage Quota
+### about - Server Info & Storage Quota
 
 ```bash
 # Detailed server info with storage quota
@@ -428,9 +443,9 @@ aeroftp-cli about --profile "server"
 aeroftp-cli about --profile "server" --json
 ```
 
-Shows provider name, type, server info, and storage quota (used/free/total) when available. More detailed than `df` — includes protocol version, server software, and connection parameters alongside quota information. Some object-storage providers do not expose quota via the upstream API, so `about` and `df` may return provider info without quota fields.
+Shows provider name, type, server info, and storage quota (used/free/total) when available. More detailed than `df` - includes protocol version, server software, and connection parameters alongside quota information. Some object-storage providers do not expose quota via the upstream API, so `about` and `df` may return provider info without quota fields.
 
-### dedupe — Find Duplicate Files
+### dedupe - Find Duplicate Files
 
 ```bash
 # Scan for duplicate files (report only)
@@ -445,7 +460,7 @@ aeroftp-cli dedupe --profile "server" /data --dry-run --json
 
 Finds duplicate files by content hash (SHA-256). Groups files by size first (fast pre-filter), then hashes to confirm. Modes: `skip` (report only), `newest` (keep newest), `oldest` (keep oldest), `largest` (keep largest), `smallest` (keep smallest), `rename` (rename duplicates with numeric suffix), `interactive` (prompt per group), `list` (list without action).
 
-### cleanup -- Remove Orphaned Temp Files
+### cleanup - Remove Orphaned Temp Files
 
 ```bash
 # Dry-run: list orphaned .aerotmp files without deleting
@@ -457,7 +472,7 @@ aeroftp-cli cleanup --profile "server" /remote/path/ --force
 
 Scans a remote directory recursively for `.aerotmp` files left behind by interrupted downloads. Dry-run by default. Use `--force` to delete. JSON output includes `orphans`, `bytes`, and `bytes_freed`.
 
-### sync — Synchronize Directories
+### sync - Synchronize Directories
 
 ```bash
 # Preview what would be synced
@@ -565,7 +580,7 @@ With `--json`, each cycle emits one NDJSON object on stdout with `cycle`, `trigg
 
 Anti-loop protection: events are suppressed during active syncs and within the cooldown window. Editor temp files (`.swp`, `.tmp`, `~`, `.aerotmp`) are automatically filtered.
 
-### reconcile — Categorized Local/Remote Diff
+### reconcile - Categorized Local/Remote Diff
 
 ```bash
 # Detailed diff with all 4 categories (matches / differs / missing-remote / missing-local)
@@ -580,7 +595,7 @@ aeroftp-cli sync --profile "server" ./local /remote --from-reconcile diff.json -
 
 `reconcile` returns a structured diff in 4 buckets, designed for AI agents and CI pipelines that need to *plan* a sync before executing it. Pair with `sync --from-reconcile` to skip the rescan.
 
-### sync-doctor — Pre-Sync Preflight Checks
+### sync-doctor - Pre-Sync Preflight Checks
 
 ```bash
 # Preflight: risks + suggested next command
@@ -589,7 +604,7 @@ aeroftp-cli sync-doctor --profile "server" ./local /remote --json
 
 Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `next_command` field with the exact `aeroftp-cli sync ...` invocation that matches the preflight. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
 
-### transfer — Cross-Profile Transfer
+### transfer - Cross-Profile Transfer
 
 Copy files directly between two saved profiles without exposing credentials in the shell.
 
@@ -604,9 +619,21 @@ aeroftp-cli transfer "FTP Aruba" "AWS S3" /www.site.it /backup/site --recursive
 aeroftp-cli transfer "Cloudflare R2" "Wasabi" /logs /archive/logs --recursive --skip-existing
 ```
 
-`transfer` uses two vault-backed profiles, one for the source and one for the destination. `transfer-doctor` is the recommended preflight for automation and agent workflows because it returns the planned copy, risk summary, and suggested next command.
+`transfer` uses two vault-backed profiles, one for the source and one for the destination.
 
-### mount — FUSE Virtual Filesystem
+### transfer-doctor - Cross-Profile Preflight
+
+```bash
+# JSON preflight before transfer (recommended for automation/agents)
+aeroftp-cli transfer-doctor "FTP Aruba" "AWS S3" /www.site.it /backup/site --json
+
+# Recursive preflight
+aeroftp-cli transfer-doctor "Cloudflare R2" "Wasabi" /logs /archive/logs --recursive --json
+```
+
+Same arguments as `transfer`, no side effects. Returns the planned copy (file list and total bytes), a risk summary (overwrites, missing source paths, destination quota pressure), and a suggested next command. Recommended preflight for automation pipelines and AI agent workflows because the output is structured and the exit code maps to risk severity.
+
+### mount - FUSE Virtual Filesystem
 
 Mount any remote as a local directory. Any application can then access remote files with standard tools.
 
@@ -631,7 +658,7 @@ Supported operations: ls, cat, cp, vim, grep, mkdir, rm, touch, mv, df. All file
 - **Windows**: WebDAV bridge mapped as network drive (zero extra software)
 - Unmount: `fusermount -u /mnt/cloud` or Ctrl+C
 
-### ncdu — Interactive Disk Usage Explorer
+### ncdu - Interactive Disk Usage Explorer
 
 ```bash
 # Interactive TUI (navigate with keyboard)
@@ -649,7 +676,7 @@ aeroftp-cli --profile "server" ncdu / --json
 
 TUI controls: Up/Down navigate, Enter opens directory, Backspace goes back, q quits.
 
-### serve — Expose Remote as Local Server
+### serve - Expose Remote as Local Server
 
 #### serve http (read-only)
 
@@ -681,7 +708,7 @@ aeroftp-cli --profile "server" serve sftp _ / --addr 0.0.0.0:2222
 
 All serve modes expose any AeroFTP provider (S3, MEGA, WebDAV, FTP, etc.) as a local server of the chosen protocol. Anonymous access, Ctrl+C to stop.
 
-### daemon — Background Service
+### daemon - Background Service
 
 ```bash
 # Start daemon (HTTP API on port 14320)
@@ -696,7 +723,7 @@ aeroftp-cli daemon stop
 
 The daemon enables persistent mounts, scheduled transfers, and job management via HTTP RC API at `http://localhost:14320`.
 
-### jobs — Background Transfer Jobs
+### jobs - Background Transfer Jobs
 
 ```bash
 # Add a job (requires daemon running)
@@ -714,7 +741,7 @@ aeroftp-cli jobs cancel <id>
 
 Jobs are persisted in SQLite (`~/.config/aeroftp/jobs.db`).
 
-### crypt — Zero-Knowledge Encrypted Storage
+### crypt - Zero-Knowledge Encrypted Storage
 
 ```bash
 # Initialize encrypted overlay on a remote directory
@@ -735,7 +762,7 @@ AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted
 
 Encryption: AES-256-GCM (content, 64KB blocks) + AES-256-SIV (filenames) + Argon2id (key derivation). The cloud provider never sees file names or content.
 
-### batch — Execute Script
+### batch - Execute Script
 
 ```bash
 aeroftp-cli batch deploy.aeroftp
@@ -743,7 +770,7 @@ aeroftp-cli batch deploy.aeroftp
 
 Executes a `.aeroftp` script file containing a sequence of commands. See [Batch Scripting](#batch-scripting) below.
 
-### rcat — Upload stdin Directly
+### rcat - Upload stdin Directly
 
 ```bash
 printf 'hello from stdin\n' | aeroftp-cli rcat --profile "server" /remote/path/message.txt
@@ -751,7 +778,7 @@ printf 'hello from stdin\n' | aeroftp-cli rcat --profile "server" /remote/path/m
 
 Reads stdin and uploads it directly to a remote file. Useful for pipelines, generated content, and agent workflows where creating a temporary local file would be unnecessary.
 
-### alias — Manage Command Aliases
+### alias - Manage Command Aliases
 
 ```bash
 # Create or update an alias
@@ -769,7 +796,7 @@ aeroftp-cli alias remove prod-ls
 
 Aliases are stored in the CLI `config.toml` file and expanded before command parsing. Alias expansion is cycle-protected.
 
-### agent — AeroAgent from the CLI
+### agent - AeroAgent from the CLI
 
 ```bash
 # One-shot prompt
@@ -784,7 +811,7 @@ aeroftp-cli agent --mcp
 
 Runs AeroAgent through the shared Rust backend. It supports one-shot prompts, interactive runs, orchestration mode, and MCP server mode for external agent clients.
 
-### mcp — MCP Server (top-level shortcut)
+### mcp - MCP Server (top-level shortcut)
 
 ```bash
 # Start the MCP server on stdin/stdout (used by the official VS Code extension)
@@ -793,7 +820,7 @@ aeroftp-cli mcp
 
 `aeroftp-cli mcp` is a top-level alias for `aeroftp-cli agent --mcp` (added in v3.5.4). The official VS Code extension `axpdev-lab.aeroftp-mcp` registers exactly this argv, so the shortcut keeps the extension self-contained without nested subcommands. The server initializes the Universal Vault automatically (or falls back to `AEROFTP_MASTER_PASSWORD` when set) so saved profiles work out-of-the-box, serializes per-profile tool calls, and validates `inputSchema.required` before dispatch.
 
-### speed — Bandwidth Benchmark
+### speed - Bandwidth Benchmark
 
 ```bash
 # Default test (10 MB synthetic file)
@@ -808,7 +835,27 @@ aeroftp-cli speed --profile "server" --size 50M --json
 
 Uploads a synthetic file, downloads it back, and reports upload/download MB/s, latency, and round-trip time. Useful for diagnosing slow connections or comparing providers.
 
-### import rclone — Import rclone Configuration
+### speed-compare - Multi-Server Benchmark
+
+```bash
+# Rank two or more servers side-by-side
+aeroftp-cli speed-compare sftp://user@host1 sftp://user@host2 sftp://user@host3
+
+# Custom test size and parallelism
+aeroftp-cli speed-compare --size 100M --parallel 4 sftp://user@host1 sftp://user@host2
+
+# Persist reports to disk (JSON v1 + CSV + Markdown)
+aeroftp-cli speed-compare sftp://user@host1 sftp://user@host2 \
+    --json-out report.json --csv-out report.csv --md-out report.md
+```
+
+Benchmarks two or more servers in parallel and emits a ranked comparison table with download/upload throughput, TTFB, and SHA-256 integrity status. Up to 4 parallel runs (`--parallel`, default 2). Schema `aeroftp.speedtest.v1` stable across single (`speed`) and multi-server (`speed-compare`) reports. Passwords are redacted from every output path; CSV cells are spreadsheet-formula-safe; Markdown cells escape pipes/newlines/backslashes.
+
+### import - Import Server Profiles
+
+`import` ingests server profiles from external tools and stores them in the AeroFTP encrypted vault. Three sources today: `rclone`, `winscp`, `filezilla`. Use `--json` on any subcommand for scripting; passwords are decoded from each tool's native obfuscation and re-wrapped in AES-256-GCM by the vault on commit (commit happens through the GUI import flow today).
+
+#### import rclone
 
 ```bash
 # Auto-detect rclone.conf and list importable remotes
@@ -821,11 +868,39 @@ aeroftp-cli import rclone /path/to/rclone.conf
 aeroftp-cli import rclone --json
 ```
 
-Imports server profiles from rclone configuration files. Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme and can be stored in the AES-256-GCM encrypted vault via the GUI import flow. See the full [rclone Integration Guide](https://docs.aeroftp.app/features/rclone) for the complete backend mapping table and security comparison.
+Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme. See the full [rclone Integration Guide](https://docs.aeroftp.app/features/rclone) for the complete backend mapping table and security comparison. For existing `rclone crypt` remotes (read-only interop), see [rclone crypt interoperability](https://docs.aeroftp.app/features/rclone-crypt).
 
-For compatibility guidance on existing `rclone crypt` remotes, see [rclone crypt interoperability](https://docs.aeroftp.app/features/rclone-crypt).
+#### import winscp
 
-### completions — Generate Shell Completion Scripts
+```bash
+# Auto-detect WinSCP.ini on Windows
+aeroftp-cli import winscp
+
+# Specify path explicitly
+aeroftp-cli import winscp /path/to/WinSCP.ini
+
+# JSON output
+aeroftp-cli import winscp --json
+```
+
+Imports saved sessions from WinSCP. Supports SFTP, SCP, FTP, FTPS (implicit and explicit TLS), WebDAV (HTTP/HTTPS), and S3. Passwords are decoded from WinSCP's XOR obfuscation. See the [WinSCP Bridge guide](https://docs.aeroftp.app/features/winscp).
+
+#### import filezilla
+
+```bash
+# Auto-detect sitemanager.xml
+aeroftp-cli import filezilla
+
+# Specify path explicitly
+aeroftp-cli import filezilla /path/to/sitemanager.xml
+
+# JSON output
+aeroftp-cli import filezilla --json
+```
+
+Imports sites from FileZilla's `sitemanager.xml`. Supports FTP, SFTP, FTPS (implicit and explicit), and S3. Passwords are decoded from base64 and upgraded to AES-256-GCM on commit. See the [FileZilla Bridge guide](https://docs.aeroftp.app/features/filezilla).
+
+### completions - Generate Shell Completion Scripts
 
 ```bash
 aeroftp-cli completions bash
@@ -834,13 +909,59 @@ aeroftp-cli completions zsh
 
 Generates completion scripts for `bash`, `zsh`, `fish`, `elvish`, and `powershell`.
 
-### agent-info — AI Agent Discovery Metadata
+### profiles - List Saved Profiles
+
+```bash
+# Print saved profiles (text format)
+aeroftp-cli profiles
+
+# Same payload as JSON for scripting
+aeroftp-cli profiles --json
+```
+
+Lists every server profile in the encrypted vault: display name, protocol, host, optional saved path, and a credential indicator (passwords are never printed). The JSON form is the canonical input for AI agents that need to discover what's available before running anything else.
+
+### ai-models - List Configured AI Providers
+
+```bash
+aeroftp-cli ai-models
+aeroftp-cli ai-models --json
+```
+
+Lists every AI provider configured in the encrypted vault with its associated models. API keys are never printed. Useful for verifying which providers are wired up before invoking `agent --provider <id>`.
+
+### agent-bootstrap - Canonical Quick-Start for AI Agents
+
+```bash
+# General intro payload
+aeroftp-cli agent-bootstrap --json
+
+# Task-tailored variants
+aeroftp-cli agent-bootstrap --task explore --path /var/www --json
+aeroftp-cli agent-bootstrap --task verify-file --remote-path /a.txt --local-path ./a.txt --json
+aeroftp-cli agent-bootstrap --task transfer \
+    --source-profile "FTP Aruba" --dest-profile "AWS S3" \
+    --source-path /www --dest-path /backup/www --json
+```
+
+Returns the canonical task-oriented quick-start that agents should follow before issuing real commands. The payload includes the recommended workflow, profile inventory with per-profile auth state (`valid` / `expired` / `needs_refresh` / `no_credentials` / `unknown`), and ready-to-run command templates for each supported task. Tasks: `explore`, `verify-file`, `transfer`, `backup`, `reconcile`.
+
+### agent-connect - Single-Shot Agent Connect
+
+```bash
+# One JSON payload covering connect, capabilities, quota, and root listing
+aeroftp-cli agent-connect "AWS S3" --json
+```
+
+Replaces the boilerplate `connect -> about -> df -> ls /` sequence agents would otherwise run. Returns a single JSON envelope with four blocks: `connect`, `capabilities`, `quota`, `path`. Each block carries one of `ok` / `unsupported` / `unavailable` / `error`. Live-connect allowlist: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab. For other providers (pCloud, Dropbox, OneDrive, Box, Filen, MEGA, Koofr, kDrive, Jottacloud, Drime, FileLu, Yandex, 4shared, Internxt, Swift, Azure, Google Drive, Zoho WorkDrive, Immich) the `connect` block returns `status: "unsupported"` but `capabilities`, `path`, and `profile` stay actionable, and the CLI exits 0. Exit codes: `0` ok or unsupported with valid capabilities, `1` connect attempted and failed, `2` profile lookup failed.
+
+### agent-info - AI Agent Discovery Metadata
 
 ```bash
 aeroftp-cli agent-info --json
 ```
 
-Prints structured JSON describing safe/modify/destructive command groups, credential model, output hygiene, and saved profile status. This is the recommended discovery surface for AI coding agents.
+Prints structured JSON describing safe/modify/destructive command groups, credential model, output hygiene, saved profile inventory with per-profile auth state, and a `protocol_features` map keyed by protocol (share_links, resume, server_copy, versions, thumbnails, change_tracking) plus an `agent_connect_supported_protocols` array. This is the recommended discovery surface for AI coding agents and the canonical input for capability-aware tool routing.
 
 ---
 
@@ -1106,7 +1227,7 @@ aeroftp-cli cat github://token:YOUR_PAT@owner/repo /README.md
 # Delete file → creates Git commit
 aeroftp-cli rm github://token:YOUR_PAT@owner/repo /old-file.txt
 
-# Using saved profile (recommended — no token exposed)
+# Using saved profile (recommended - no token exposed)
 aeroftp-cli ls --profile "My GitHub Repo" /src/ -l
 aeroftp-cli put --profile "My GitHub Repo" ./app.js /dist/app.js
 
@@ -1201,7 +1322,7 @@ The CLI implements the same security standards as the GUI:
 - **ANSI sanitization**: Filenames from servers are stripped of ANSI escape sequences and control characters
 - **OOM protection**: `cat` limited to 256 MB, `tree`/`find` limited to 500,000 entries
 - **BFS cycle detection**: `tree` and `find` use visited-path tracking to prevent infinite loops
-- **Output hygiene**: Data on stdout, messages on stderr — safe for piping
+- **Output hygiene**: Data on stdout, messages on stderr - safe for piping
 - **NO_COLOR compliance**: Respects `NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE` environment variables
 
 ---
@@ -1319,17 +1440,17 @@ The following providers have been tested live via CLI with `--profile`:
 | Provider | Protocol | connect | ls | put/get | head/tail | hashsum | check | about | dedupe | track-renames | bwlimit | touch | tree | df |
 |----------|----------|---------|----|---------|-----------|---------||-------|--------|---------------|---------|-------|------|------|
 | WD MyCloud NAS | SFTP | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS |
-| axpdev.it | FTP | PASS | PASS | — | PASS | PASS | — | PASS | — | — | PASS | — | — | — |
-| Playground | GitHub | PASS | PASS | PASS | PASS | PASS | — | PASS | — | — | — | PASS | PASS | — |
-| MEGA.nz | MEGA | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
-| OpenDrive | OpenDrive | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
-| Filen | Filen (E2E) | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
-| Koofr | WebDAV | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
-| Koofr | Native API | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
-| WD MyCloud NAS | WebDAV | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
-| Backblaze B2 | S3 | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
-| Azure | Azure Blob | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | — |
-| 4shared | OAuth 1.0 | PASS | PASS | — | — | — | — | PASS | — | — | — | — | — | PASS |
+| axpdev.it | FTP | PASS | PASS | - | PASS | PASS | - | PASS | - | - | PASS | - | - | - |
+| Playground | GitHub | PASS | PASS | PASS | PASS | PASS | - | PASS | - | - | - | PASS | PASS | - |
+| MEGA.nz | MEGA | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | - |
+| OpenDrive | OpenDrive | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | PASS |
+| Filen | Filen (E2E) | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | PASS |
+| Koofr | WebDAV | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | - |
+| Koofr | Native API | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | PASS |
+| WD MyCloud NAS | WebDAV | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | - |
+| Backblaze B2 | S3 | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | - |
+| Azure | Azure Blob | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | - |
+| 4shared | OAuth 1.0 | PASS | PASS | - | - | - | - | PASS | - | - | - | - | - | PASS |
 
 **12 providers tested**, all core operations verified. `about` tested on all 12 providers. `dedupe`, `track-renames`, and `bwlimit` tested on SFTP.
 
@@ -1337,13 +1458,13 @@ The following providers have been tested live via CLI with `--profile`:
 
 ## Recent Highlights
 
-- **v3.6.1 — Windows first-class delta sync**: native rsync protocol 31 in pure Rust (`aerorsync`), no `rsync.exe` bundle, no WSL requirement. The Windows binary now performs delta uploads byte-identical to stock rsync 3.4.1 in CI.
-- **v3.5.4 — MCP hardening**: `aeroftp-cli mcp` top-level alias, vault auto-init in MCP, per-profile serialization, schema validation, S3 bucket fix, FTP/SFTP/WebDAV/Filen/FileLu/Drime/Immich error message hardening.
-- **v3.5.3 — Continuous bidirectional `sync --watch`**: native filesystem watcher (inotify/FSEvents/ReadDirectoryChangesW) with anti-loop cooldown, periodic rescan, NDJSON output. First CLI on the market with this feature natively (rclone doesn't ship it).
-- **v3.5.3 — Agent-friendly flags**: `--files-from`, `--immutable`, `--no-check-dest`, `--max-depth`, `--inplace`, `--fast-list` (S3), `--compare-dest`/`--copy-dest`, `cleanup` for orphan `.aerotmp`.
-- **v3.5.2 — Determinism & threat model**: 12 structured exit codes mapping all `ProviderError` variants, `mkdir --parents`, `rm --force`, `put --no-clobber`, `--chunk-size`/`--buffer-size` overrides, [`docs/THREAT-MODEL.md`](THREAT-MODEL.md), [`docs/LLM-INTEGRATION-GUIDE.md`](LLM-INTEGRATION-GUIDE.md).
-- **v3.3.4 — Local server bridges**: `serve http` (read-only HTTP, Range requests), `serve webdav` (read-write, axum-based), `serve ftp` / `serve sftp` (anonymous read-write).
+- **v3.6.1 - Windows first-class delta sync**: native rsync protocol 31 in pure Rust (`aerorsync`), no `rsync.exe` bundle, no WSL requirement. The Windows binary now performs delta uploads byte-identical to stock rsync 3.4.1 in CI.
+- **v3.5.4 - MCP hardening**: `aeroftp-cli mcp` top-level alias, vault auto-init in MCP, per-profile serialization, schema validation, S3 bucket fix, FTP/SFTP/WebDAV/Filen/FileLu/Drime/Immich error message hardening.
+- **v3.5.3 - Continuous bidirectional `sync --watch`**: native filesystem watcher (inotify/FSEvents/ReadDirectoryChangesW) with anti-loop cooldown, periodic rescan, NDJSON output. First CLI on the market with this feature natively (rclone doesn't ship it).
+- **v3.5.3 - Agent-friendly flags**: `--files-from`, `--immutable`, `--no-check-dest`, `--max-depth`, `--inplace`, `--fast-list` (S3), `--compare-dest`/`--copy-dest`, `cleanup` for orphan `.aerotmp`.
+- **v3.5.2 - Determinism & threat model**: 12 structured exit codes mapping all `ProviderError` variants, `mkdir --parents`, `rm --force`, `put --no-clobber`, `--chunk-size`/`--buffer-size` overrides, [`docs/THREAT-MODEL.md`](THREAT-MODEL.md), [`docs/LLM-INTEGRATION-GUIDE.md`](LLM-INTEGRATION-GUIDE.md).
+- **v3.3.4 - Local server bridges**: `serve http` (read-only HTTP, Range requests), `serve webdav` (read-write, axum-based), `serve ftp` / `serve sftp` (anonymous read-write).
 
 ---
 
-*AeroFTP CLI is part of the [AeroFTP](https://github.com/axpdev-lab/aeroftp) project — GPL-3.0*
+*AeroFTP CLI is part of the [AeroFTP](https://github.com/axpdev-lab/aeroftp) project - GPL-3.0*
