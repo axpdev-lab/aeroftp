@@ -953,6 +953,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdd35008169921d80bc60d3d0ab416eecb028c4cd653352907921d95084790be"
 dependencies = [
  "hybrid-array",
+ "zeroize",
 ]
 
 [[package]]
@@ -2286,6 +2287,7 @@ dependencies = [
  "const-oid 0.10.2",
  "crypto-common 0.2.1",
  "ctutils",
+ "zeroize",
 ]
 
 [[package]]
@@ -12239,20 +12241,20 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.5.1"
+version = "8.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcab981e19633ebcf0b001ddd37dd802996098bc1864f90b7c5d970ce76c1d59"
+checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
 dependencies = [
- "aes 0.8.4",
+ "aes 0.9.0",
  "constant_time_eq 0.4.2",
  "crc32fast",
  "flate2",
  "getrandom 0.4.2",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "indexmap 2.14.0",
  "memchr",
- "pbkdf2 0.12.2",
- "sha1 0.10.6",
+ "pbkdf2 0.13.0",
+ "sha1 0.11.0",
  "typed-path 0.12.3",
  "zeroize",
  "zopfli",
