@@ -7445,7 +7445,7 @@ interface UpdateVerificationInfo {
               }
               setPropertiesDialog(null);
             }}
-            onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512') => {
+            onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3') => {
               if (!propertiesDialog || propertiesDialog.isRemote) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {

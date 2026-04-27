@@ -278,6 +278,7 @@ export interface FileProperties {
         sha1?: string;
         sha256?: string;
         sha512?: string;
+        blake3?: string;
         calculating?: boolean;
     };
 }
@@ -285,7 +286,7 @@ export interface FileProperties {
 interface PropertiesDialogProps {
     file: FileProperties;
     onClose: () => void;
-    onCalculateChecksum?: (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512') => void;
+    onCalculateChecksum?: (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3') => void;
     onCalculateFolderSize?: () => void;
     folderSize?: { total_bytes: number; file_count: number; dir_count: number } | null;
     folderSizeCalculating?: boolean;
@@ -394,17 +395,20 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
         </div>
     );
 
-    // Checksum row helper
-    const ChecksumRow: React.FC<{ label: string; value?: string; algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512'; truncate?: boolean }> =
-        ({ label, value, algorithm, truncate: shouldTruncate = false }) => (
-        <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs text-gray-500 w-16 shrink-0">{label}:</span>
+    // Checksum row helper. Hash is rendered with `break-all` so the full digest
+    // is readable without truncation; the dialog widens (see modal class) to
+    // accommodate SHA-512 (128 hex) and BLAKE3 (64 hex) on a single line where
+    // possible, wrapping cleanly otherwise.
+    const ChecksumRow: React.FC<{ label: string; value?: string; algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3' }> =
+        ({ label, value, algorithm }) => (
+        <div className="flex items-start gap-2 mb-2">
+            <span className="text-xs text-gray-500 w-20 shrink-0 pt-1">{label}:</span>
             {value ? (
                 <code
-                    className="flex-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded truncate"
+                    className="flex-1 text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded break-all leading-relaxed"
                     title={value}
                 >
-                    {shouldTruncate && value.length > 32 ? `${value.substring(0, 32)}...` : value}
+                    {value}
                 </code>
             ) : (
                 <button
@@ -418,7 +422,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
             {value && (
                 <button
                     onClick={() => copyToClipboard(value, label)}
-                    className="text-gray-400 hover:text-blue-500 shrink-0"
+                    className="text-gray-400 hover:text-blue-500 shrink-0 pt-1"
                 >
                     {copiedField === label ? (
                         <span className="text-green-500 text-[10px]">{t('common.copied')}</span>
@@ -433,7 +437,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={file.name} onClick={onClose}>
             <div
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[420px] max-h-[80vh] overflow-hidden animate-scale-in"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[560px] max-w-[92vw] max-h-[85vh] overflow-hidden animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -661,9 +665,10 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                         {t('properties.checksumVerification')}
                                     </div>
                                     <ChecksumRow label="MD5" value={file.checksum?.md5} algorithm="md5" />
-                                    <ChecksumRow label="SHA-1" value={file.checksum?.sha1} algorithm="sha1" truncate />
-                                    <ChecksumRow label="SHA-256" value={file.checksum?.sha256} algorithm="sha256" truncate />
-                                    <ChecksumRow label="SHA-512" value={file.checksum?.sha512} algorithm="sha512" truncate />
+                                    <ChecksumRow label="SHA-1" value={file.checksum?.sha1} algorithm="sha1" />
+                                    <ChecksumRow label="SHA-256" value={file.checksum?.sha256} algorithm="sha256" />
+                                    <ChecksumRow label="SHA-512" value={file.checksum?.sha512} algorithm="sha512" />
+                                    <ChecksumRow label="BLAKE3" value={file.checksum?.blake3} algorithm="blake3" />
                                 </div>
                             ) : file.is_dir ? (
                                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">

@@ -4977,8 +4977,25 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
             let result = hasher.finalize();
             Ok(hex::encode(result))
         }
+        "blake3" | "b3" => {
+            let mut hasher = blake3::Hasher::new();
+            let mut buffer = vec![0u8; 64 * 1024];
+
+            loop {
+                let bytes_read = file
+                    .read(&mut buffer)
+                    .await
+                    .map_err(|e| format!("Failed to read file: {}", e))?;
+                if bytes_read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..bytes_read]);
+            }
+
+            Ok(hasher.finalize().to_hex().to_string())
+        }
         _ => Err(format!(
-            "Unsupported algorithm: {}. Use 'md5', 'sha1', 'sha256', or 'sha512'",
+            "Unsupported algorithm: {}. Use 'md5', 'sha1', 'sha256', 'sha512', or 'blake3'",
             algorithm
         )),
     }
