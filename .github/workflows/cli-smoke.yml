@@ -120,10 +120,19 @@ jobs:
           # Just confirm the --verify flag is wired into the link subcommand;
           # actual live probes against real providers require credentialed
           # profiles and run on the operator's machine, not in CI.
-          "$CLI_BIN" link --help | grep -q -- '--verify' || {
+          # Capture help to a tempfile so `set -o pipefail` cannot bite us
+          # on macOS, where `clap` writes the long form to stdout but the
+          # tail of a piped paginator-style buffer was being dropped before
+          # grep could see it.
+          HELP_OUT=$(mktemp)
+          "$CLI_BIN" link --help > "$HELP_OUT" 2>&1
+          if ! grep -q -- '--verify' "$HELP_OUT"; then
             echo "::error::aeroftp link is missing --verify flag"
+            echo "--- link --help dump (last 30 lines) ---"
+            tail -30 "$HELP_OUT"
+            echo "--- end ---"
             exit 1
-          }
+          fi
 
       - name: Shell completions smoke
         working-directory: src-tauri
