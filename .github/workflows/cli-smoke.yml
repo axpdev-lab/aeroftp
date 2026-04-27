@@ -112,6 +112,7 @@ jobs:
           "$CLI_BIN" batch smoke-test.aeroftp > /dev/null
 
       - name: Share link verify flag smoke
+        working-directory: src-tauri
         shell: bash
         env:
           CLI_BIN: ${{ matrix.cli_bin }}
