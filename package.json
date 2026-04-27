@@ -39,7 +39,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
-    "react-virtuoso": "^4.18.5",
+    "react-virtuoso": "^4.18.6",
     "react-window": "^2.2.7",
     "remark-gfm": "^4.0.1"
   },
