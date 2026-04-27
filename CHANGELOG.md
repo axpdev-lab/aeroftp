@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.7] - 2026-04-27
+
+### Share-link reliability and UX paper cuts
+
+A focused patch release. The headline is a silent regression on MEGA Native share-link generation that surfaced during an interoperability test session against MEGA's own infrastructure: the URL we built used the internal node handle instead of the public handle returned by the API, so links opened on `mega.nz` with "File cannot be accessed". Same encryption key, wrong path component, no error from our side. The fix lands together with a CLI verification flag and a few small UX wins voted up on the v3.6.7 wishlist.
+
+### Fixed
+
+- **MEGA Native share link** — `aeroftp-cli link --profile <mega-native>` was building `mega.nz/file/<internal-node-handle>#<key>` instead of `mega.nz/file/<public-handle>#<key>`. The encryption key portion was always correct, only the 8-character handle in the path was wrong, so generated links opened on a "File cannot be accessed" page on `mega.nz`. Fix: capture the public handle returned by the MEGA API `l` (export) command and use that in the URL. `mega_native.rs::create_share_link`.
+- **S3 explicit endpoint precedence** — when a saved server profile has both a configured S3 endpoint and a host populated by the GUI, the explicit endpoint now wins. Also detects bucket-addressing errors and reports them as `ProviderError::Configuration` so they are actionable on the CLI side. (commit `27d2ccc8`, originally merged via #132 into the local tree, formally rolled into this release.)
+
+### Changed (FTP layer — suppaftp 8.0.1 to 8.0.3)
+
+- **suppaftp upgraded from 8.0.1 to 8.0.3** after a fresh upstream review (analysis archived in `docs/dev/reports/2026-04-27-suppaftp-upgrade-analysis.md`). The pin held since 8.0.2 introduced an ungated `std::os::fd::AsFd` call that broke Windows builds. Upstream still ships that code in 8.0.3, but it is feature-gated behind `tokio-async-native-tls`, which AeroFTP does not enable (we use `tokio-rustls-aws-lc-rs`). Verified by reading `tokio_ftp/tls/native_tls.rs` in the upstream 8.0.3 source. The legacy `FTP_CLIENT` crate stays pinned at 8.0.1 because it uses the broken feature.
+- The upgrade brings 14 upstream fixes that affect AeroFTP's hot path: undefined behavior in the tokio TLS `tcp_stream()` borrow chain (PR 135); replaced `unwrap()` panics on server-controlled EPSV / SIZE / MDTM responses with proper error handling (PR 146); infinite loop in async `feat()` on mid-response disconnect (PR 137) and the same fix for `read_response_in()` on multiline + disconnect (PR 138); `data_connection_open` flag now set only after successful open, removing a class of false `DataConnectionAlreadyOpen` errors (PR 136); MLSX parser accepts `cdir` / `pdir` per RFC 3659 (PR 139) and 4-digit `unix.mode` like `0755` (PR 140); DOS LIST parser handles sizes with commas like `1,234,567` (PR 142); `parse_lstime` adjusts year for future dates the way GNU `ls` does (PR 143); DOS time parser handles a space before AM/PM (PR 144); `abort()` no longer appends when the server sends a direct 226 (PR 141); active mode uses EPRT for IPv6 (PR 145); `cwd()` accepts `200 Command OK` in addition to `250` for non-RFC-959 servers (PR 153). All `cargo check` / `cargo clippy --all-targets -- -D warnings` clean.
+
+### Added
+
+- **`aeroftp-cli link --verify`** — optional reachability probe. After the share link is generated, the CLI runs an HTTP GET against the URL with a 15-second timeout, follows up to 5 redirects, and reports the resulting status code. Exits with code 4 on a non-2xx/3xx status. JSON output gains a `verified: { http_status, ok }` block. Useful in CI smoke tests and post-release validation to catch silent regressions like the MEGA one above. Uses GET, not HEAD: SigV4-presigned URLs across S3-compatible providers reject HEAD when only `host` is in `SignedHeaders`.
+- **CLI smoke step for `--verify` flag** — `cli-smoke.yml` now asserts that `aeroftp-cli link --help` advertises `--verify`, so removing the flag accidentally fails CI on every supported OS (Linux / macOS / Windows). Live reachability probes against credentialed profiles stay an operator-side check; the smoke verifies surface, not transport.
+- **BLAKE3 in the File Properties Checksum tab** — fifth row alongside MD5 / SHA-1 / SHA-256 / SHA-512. The `blake3` crate was already vendored for the Hash Forge Cyber tool, so this is purely surface plumbing: backend `calculate_checksum` accepts `"blake3"` (alias `"b3"`), the dialog renders a new row, the props type widens accordingly. Output is the standard hex-encoded digest.
+- **Esc clears narrowing on My Servers** — pressing Escape while focused on the My Servers grid (no input selected, no modal open) clears the search query and resets the active filter chip back to "All". Mirrors the v3.6.6 Esc gesture that clears file selections in AeroFile panels and answers a wishlist follow-up.
+
+### Changed
+
+- **File Properties dialog widened** from 420 px to 560 px (capped at 92 vw), and the Checksum row no longer truncates the digest. SHA-512 (128 hex characters) and BLAKE3 (64 hex characters) are now readable on a single line where the viewport allows, wrapping cleanly otherwise. The `(label / value / copy)` row uses `break-all` and `items-start` so long hashes do not overflow the column or push the copy button off-screen.
+
 ## [3.6.6] - 2026-04-27
 
 ### Agent surface, onboarding polish, server speedtest, community wishlist
