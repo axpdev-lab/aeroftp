@@ -1,9 +1,15 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 25 April 2026
-> Version: v3.6.1
+> Last Updated: 27 April 2026
+> Version: v3.6.6
 >
-> **Note**: AeroFTP currently ships **22 production protocols** (FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive) plus three repository/media-specific backends — **GitHub** (Git-as-filesystem with PEM key vault storage and PR workflow), **Immich** (photo/video library REST API), and **Drime Cloud** (dev-only). Feature matrix tables below cover the 22 production protocols; GitHub and Immich are documented inline with their dedicated sections.
+> **Note**: AeroFTP organizes integrations on three tiers:
+>
+> 1. **7 transport protocols** (FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift) - native wire-level support;
+> 2. **20+ native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, Google Photos, GitHub, GitLab, Immich);
+> 3. **40+ pre-configured presets** in the Discover catalog (S3-compatible endpoints, WebDAV-compatible servers, SourceForge, etc.).
+>
+> The feature matrix tables below cover the core production set. GitHub, GitLab, and Immich have repository / media-specific semantics and are documented inline in their dedicated sections.
 
 ---
 
@@ -183,11 +189,11 @@ Box exposes management and collaboration features beyond generic file operations
 |--------|----------|---------|--------|-------------------|------------|--------|---------|
 | **ZIP** | Yes | Yes | Yes | Yes | AES-256 (read+write) | Store/Fast/Normal/Max | `zip` v7.2 |
 | **7z** | Yes | Yes | Yes | Yes | AES-256 (read+write) | Fast/Normal/Max | `sevenz-rust` v0.6 |
-| **TAR** | Yes | Yes | Yes | Yes | No | — | `tar` v0.4 |
+| **TAR** | Yes | Yes | Yes | Yes | No | - | `tar` v0.4 |
 | **TAR.GZ** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `flate2` v1.0 |
 | **TAR.XZ** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `xz2` v0.1 |
 | **TAR.BZ2** | Yes | Yes | Yes | Yes | No | Fast/Normal/Max | `tar` + `bzip2` v0.6 |
-| **RAR** | No | Yes | Yes | Yes | Password support | — | `unrar` v0.5 |
+| **RAR** | No | Yes | Yes | Yes | Password support | - | `unrar` v0.5 |
 
 **Archive Browser** (v1.7.0): Browse archive contents in-app without extracting. Password dialog for encrypted ZIP/7z/RAR. Selective extraction of individual files.
 
@@ -197,7 +203,7 @@ Box exposes management and collaboration features beyond generic file operations
 
 ## Client-Side Encryption (v1.8.0)
 
-### AeroVault v2 — Military-Grade Containers
+### AeroVault v2 - Military-Grade Containers
 
 | Component | Algorithm | RFC/Standard | Notes |
 |-----------|-----------|--------------|-------|
@@ -207,7 +213,7 @@ Box exposes management and collaboration features beyond generic file operations
 | **Key derivation** | Argon2id | IETF draft | 128 MiB / 4 iterations / 4 parallelism |
 | **Header integrity** | HMAC-SHA512 | RFC 2104 | 512-bit MAC, detects tampering |
 | **Cascade mode** | ChaCha20-Poly1305 | RFC 8439 | Optional double encryption |
-| **Chunk size** | 64 KB | — | Per-chunk nonce + auth tag |
+| **Chunk size** | 64 KB | - | Per-chunk nonce + auth tag |
 
 ### AeroVault v2 vs Cryptomator
 
@@ -430,7 +436,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 47 tools work identically across the 22 production protocols (and the GitHub/Immich backends) via the `StorageProvider` trait:
+All 52 tools work identically across the 7 transport protocols and 20+ native provider integrations via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -527,7 +533,7 @@ All 47 tools work identically across the 22 production protocols (and the GitHub
 | GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
 | Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A | N/A | N/A | N/A |
 
-### AeroAgent Tool Categories (47 tools)
+### AeroAgent Tool Categories (52 tools)
 
 | Category | Tools | Danger Level |
 |----------|-------|-------------|
@@ -607,20 +613,20 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v1.8.7 | File clipboard (cut/copy/paste), cross-panel paste, Ubuntu/macOS audits | Done |
 | v1.8.8 | Vision/multimodal AI, auto panel refresh, XSS hardening, security audit | Done |
 | v1.9.0 | **Unified Keystore** (localStorage to vault migration), **keystore backup/restore** (.aeroftp-keystore), **migration wizard**, AI multi-step tools, Ollama auto-detection, conversation export, Monaco bidirectional sync, terminal command execution | Done |
-| v2.0.0 | **AeroAgent Pro** — Provider Intelligence (7 provider profiles, model registry, parameter presets), Advanced Tool Execution (DAG pipeline, diff preview, intelligent retry, tool validation, composite macros, progress indicators), Context Intelligence (project detection, file dependency graph, persistent agent memory, conversation branching, smart context injection, token budget optimizer), Professional UX (streaming markdown, code block actions, thought visualization, prompt templates, multi-file diff, cost budget, chat search), Provider Features (Anthropic caching/thinking, OpenAI strict outputs, Ollama templates/pull/GPU, Gemini code execution) | Done |
+| v2.0.0 | **AeroAgent Pro** - Provider Intelligence (7 provider profiles, model registry, parameter presets), Advanced Tool Execution (DAG pipeline, diff preview, intelligent retry, tool validation, composite macros, progress indicators), Context Intelligence (project detection, file dependency graph, persistent agent memory, conversation branching, smart context injection, token budget optimizer), Professional UX (streaming markdown, code block actions, thought visualization, prompt templates, multi-file diff, cost budget, chat search), Provider Features (Anthropic caching/thinking, OpenAI strict outputs, Ollama templates/pull/GPU, Gemini code execution) | Done |
 | v2.0.1 | **3 Asian AI Providers** (Kimi, Qwen, DeepSeek) with thinking modes, web search, FIM, context caching, file analysis. **AeroFile Pro** Places Sidebar, BreadcrumbBar, Large Icons, drive detection, custom sidebar locations. Official SVG provider logos for all 10 providers | Done |
 | v2.0.5 | **4shared native REST API** (OAuth 1.0, 14th protocol), CloudMe WebDAV preset, Places Sidebar GVFS/unmounted partitions, Autostart, Windows Explorer badges, OwnCloud removal | Done |
-| v2.5.0 | **AeroFile Pro** — LocalFilePanel extraction, local path tabs (12 max, drag-to-reorder), file tags SQLite (7 Finder-style labels), FileTagBadge, tags context menu, sidebar filter, macOS FinderSync, event-driven volume detection, keyboard navigation, ARIA accessibility | Done |
-| v2.5.2 | **AeroImage** — Built-in image editor (crop, resize, rotate, flip, color adjustments, effects, 6 output formats) | Done |
-| v2.6.0 | **AeroAgent Ecosystem** — 4 new AI providers (AI21, Cerebras, SambaNova, Fireworks), Command Palette, Plugin Registry with GitHub-based browser, plugin hooks, context menu AI, AI status widget, drag & drop to agent | Done |
-| v2.7.0 | **FileLu native REST API** — 19th protocol, file/folder passwords, privacy toggle, server-side clone, trash manager, remote URL upload | Done |
-| v2.7.4 | **Complete Provider Integration** — Box (trash, move, comments, collaborations, watermark, folder locks, tags), Google Drive (starring, comments, properties), Dropbox (tags, trash UI), OneDrive (trash lifecycle). 33 new commands, PRO badge system | Done |
+| v2.5.0 | **AeroFile Pro** - LocalFilePanel extraction, local path tabs (12 max, drag-to-reorder), file tags SQLite (7 Finder-style labels), FileTagBadge, tags context menu, sidebar filter, macOS FinderSync, event-driven volume detection, keyboard navigation, ARIA accessibility | Done |
+| v2.5.2 | **AeroImage** - Built-in image editor (crop, resize, rotate, flip, color adjustments, effects, 6 output formats) | Done |
+| v2.6.0 | **AeroAgent Ecosystem** - 4 new AI providers (AI21, Cerebras, SambaNova, Fireworks), Command Palette, Plugin Registry with GitHub-based browser, plugin hooks, context menu AI, AI status widget, drag & drop to agent | Done |
+| v2.7.0 | **FileLu native REST API** - 19th protocol, file/folder passwords, privacy toggle, server-side clone, trash manager, remote URL upload | Done |
+| v2.7.4 | **Complete Provider Integration** - Box (trash, move, comments, collaborations, watermark, folder locks, tags), Google Drive (starring, comments, properties), Dropbox (tags, trash UI), OneDrive (trash lifecycle). 33 new commands, PRO badge system | Done |
 | v2.8.0 | **Koofr Native API** (20th protocol), **Production CLI** (13 commands, 20 protocols), **AeroAgent Server Exec** (2 new tools, vault-secured), Ed25519 license foundation | Done |
-| v2.9.2 | **CLI Expansion** — Batch scripting engine (17 commands), glob transfers, tree command, exit codes, path traversal protection, BFS caps, NO_COLOR, SIGPIPE | Done |
-| v2.9.4 | **Server Health Check** — DNS/TCP/TLS/HTTP probes, latency gauge, batch diagnostics. Download mtime preservation. AeroVault Pro modular refactor, recent vaults, folder encryption | Done |
-| v2.9.5 | **Dual-Engine Security Audit** — Claude Opus 4.6 + GPT-5.4 (117 findings), DOMPurify, vault write safety, shell denylist expansion, TOTP-before-cache. Yandex Object Storage S3 preset | Done |
-| v2.9.6 | **Remote Timestamp Timezone Fix** — MLSD/SFTP/cloud UTC→local conversion, sync comparison fix, 11 provider backends updated | Done |
-| v2.9.7 | **Share Links for FTP/SFTP/WebDAV** — Per-server Public URL Base mapping, folder scan progress toast, update install overlay, security audit remediation | Done |
+| v2.9.2 | **CLI Expansion** - Batch scripting engine (17 commands), glob transfers, tree command, exit codes, path traversal protection, BFS caps, NO_COLOR, SIGPIPE | Done |
+| v2.9.4 | **Server Health Check** - DNS/TCP/TLS/HTTP probes, latency gauge, batch diagnostics. Download mtime preservation. AeroVault Pro modular refactor, recent vaults, folder encryption | Done |
+| v2.9.5 | **Dual-Engine Security Audit** - Claude Opus 4.6 + GPT-5.4 (117 findings), DOMPurify, vault write safety, shell denylist expansion, TOTP-before-cache. Yandex Object Storage S3 preset | Done |
+| v2.9.6 | **Remote Timestamp Timezone Fix** - MLSD/SFTP/cloud UTC→local conversion, sync comparison fix, 11 provider backends updated | Done |
+| v2.9.7 | **Share Links for FTP/SFTP/WebDAV** - Per-server Public URL Base mapping, folder scan progress toast, update install overlay, security audit remediation | Done |
 | v2.9.8 | **OpenDrive Native API** (22nd protocol), Settings OAuth for Yandex/Zoho, protocol count update to 21 | Done |
 | v3.0.5 | **SFTP upload 0-byte fix** (russh→ssh2/SCP backend on embedded SFTP servers), atomic downloads (`.aerotmp` rename) on all 22 providers, **GitHub PEM vault** (AES-256-GCM encrypted in vault on import), GitHub token expiry badges, 0 B file alert badge | Done |
 | v3.1.x | Filen Encrypted Notes (Beta), CSP Phase 2 prep, biometric unlock investigation | Done |
@@ -630,7 +636,7 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v3.5.4 | **MCP hardening**: top-level `aeroftp mcp` subcommand, shared `profile_loader` for CLI+MCP, S3 bucket fix from vault, vault auto-init in MCP, per-profile serialization mutex, shutdown drain, schema validation, FTP/SFTP/WebDAV/Filen/FileLu/Drime/Immich error message + retry hardening, CLI `hashsum --algorithm`, `speed --size` aliases | Done |
 | v3.5.8 / v3.5.9 | MCP pool auto-reset, `delete_many`, `list_servers` filter, `read_file preview_kb`, `upload_file create_parents`, `sync_tree plan[]`, two-sided checksum, CLI parent explainer, scan reconnect, ssh2 OpenSSL Windows CI quirks | Done |
 | v3.6.0 | MCP `read_file` soft-truncate, `check_tree compare_method`, cluster doc reorg | Done |
-| v3.6.1 | **Windows first-class delta sync** — native rsync protocol 31 in pure Rust, no rsync.exe bundle, no WSL requirement (`aerorsync` cross-OS, `#![cfg(unix)]` removed surgically) | Done |
+| v3.6.1 | **Windows first-class delta sync** - native rsync protocol 31 in pure Rust, no rsync.exe bundle, no WSL requirement (`aerorsync` cross-OS, `#![cfg(unix)]` removed surgically) | Done |
 
 ### Planned
 
