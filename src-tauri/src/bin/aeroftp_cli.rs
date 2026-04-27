@@ -503,6 +503,12 @@ enum Commands {
         /// Permission level: view, edit, comment (provider support required)
         #[arg(long, default_value = "view")]
         permissions: String,
+        /// Probe the generated URL with a follow-redirects HTTP GET and report
+        /// whether it is reachable. Exit code 4 if the probe fails. Useful in
+        /// CI smoke tests to catch silent regressions where the URL is built
+        /// but does not actually resolve.
+        #[arg(long)]
+        verify: bool,
     },
     /// Find and replace text in a remote UTF-8 file
     Edit {
@@ -10482,12 +10488,14 @@ fn parse_expires(s: &str) -> Option<u64> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_link(
     url: &str,
     path: &str,
     expires: Option<&str>,
     password: Option<&str>,
     permissions: &str,
+    verify: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -10526,6 +10534,43 @@ async fn cmd_link(
 
     match provider.create_share_link(path, options).await {
         Ok(result) => {
+            // Optional reachability probe so callers (and CI smoke tests) can
+            // detect silent regressions where we build a URL that does not
+            // actually resolve (e.g. wrong public handle, stale signature).
+            // We use GET, not HEAD: SigV4 presigned URLs are signed for a
+            // specific method and HEAD typically returns 403 against them.
+            let probe_status = if verify {
+                match probe_share_link(&result.url).await {
+                    Ok(code) => Some(code),
+                    Err(e) => {
+                        print_error(
+                            format,
+                            &format!("link verify failed: {}", e),
+                            4,
+                        );
+                        let _ = provider.disconnect().await;
+                        return 4;
+                    }
+                }
+            } else {
+                None
+            };
+            if verify {
+                if let Some(code) = probe_status {
+                    if !(200..400).contains(&code) {
+                        print_error(
+                            format,
+                            &format!(
+                                "link verify failed: HTTP {} from generated URL",
+                                code
+                            ),
+                            4,
+                        );
+                        let _ = provider.disconnect().await;
+                        return 4;
+                    }
+                }
+            }
             match format {
                 OutputFormat::Text => {
                     println!("{}", result.url);
@@ -10535,15 +10580,25 @@ async fn cmd_link(
                     if let Some(ref exp) = result.expires_at {
                         eprintln!("Expires: {}", exp);
                     }
+                    if let Some(code) = probe_status {
+                        eprintln!("Verified: HTTP {}", code);
+                    }
                 }
                 OutputFormat::Json => {
-                    print_json(&serde_json::json!({
+                    let mut payload = serde_json::json!({
                         "status": "ok",
                         "path": path,
                         "url": result.url,
                         "password": result.password,
                         "expires_at": result.expires_at,
-                    }));
+                    });
+                    if let Some(code) = probe_status {
+                        payload["verified"] = serde_json::json!({
+                            "http_status": code,
+                            "ok": (200..400).contains(&code),
+                        });
+                    }
+                    print_json(&payload);
                 }
             }
             let _ = provider.disconnect().await;
@@ -10559,6 +10614,27 @@ async fn cmd_link(
             provider_error_to_exit_code(&e)
         }
     }
+}
+
+/// Probe a generated share-link URL with an HTTP GET (no body download) and
+/// return the resulting status code. We use GET because SigV4 presigned URLs
+/// reject HEAD when only `host` is in `SignedHeaders`. We follow up to 5
+/// redirects and use a short timeout so CI does not hang on a misconfigured
+/// provider.
+async fn probe_share_link(url: &str) -> Result<u16, String> {
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP client init failed: {}", e))?;
+
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("GET {}: {}", url, e))?;
+
+    Ok(resp.status().as_u16())
 }
 
 async fn cmd_edit(
@@ -23771,6 +23847,7 @@ async fn main() {
             expires,
             password,
             permissions,
+            verify,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -23783,6 +23860,7 @@ async fn main() {
                 expires.as_deref(),
                 password.as_deref(),
                 permissions.as_str(),
+                *verify,
                 &cli,
                 format,
             )

@@ -111,6 +111,19 @@ jobs:
           EOF
           "$CLI_BIN" batch smoke-test.aeroftp > /dev/null
 
+      - name: Share link verify flag smoke
+        shell: bash
+        env:
+          CLI_BIN: ${{ matrix.cli_bin }}
+        run: |
+          # Just confirm the --verify flag is wired into the link subcommand;
+          # actual live probes against real providers require credentialed
+          # profiles and run on the operator's machine, not in CI.
+          "$CLI_BIN" link --help | grep -q -- '--verify' || {
+            echo "::error::aeroftp link is missing --verify flag"
+            exit 1
+          }
+
       - name: Shell completions smoke
         working-directory: src-tauri
         shell: bash
