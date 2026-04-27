@@ -132,6 +132,16 @@ impl S3Provider {
             .unwrap_or(false)
     }
 
+    fn bucket_addressing_error(xml: &str) -> Option<ProviderError> {
+        if xml.contains("<ListAllMyBucketsResult") {
+            Some(ProviderError::InvalidConfig(
+                "S3 request returned the account bucket list instead of the configured bucket. Check the endpoint and Path-style setting.".to_string(),
+            ))
+        } else {
+            None
+        }
+    }
+
     async fn verify_copy_target_exists(&self, to: &str) -> Result<(), ProviderError> {
         let to_key = to.trim_start_matches('/');
         let mut last_status: Option<StatusCode> = None;
@@ -1373,6 +1383,10 @@ impl StorageProvider for S3Provider {
                         xml.clone()
                     };
                     debug!("S3 LIST response XML:\n{}", xml_preview);
+
+                    if let Some(error) = Self::bucket_addressing_error(&xml) {
+                        return Err(error);
+                    }
 
                     let (entries, next_token) = self.parse_list_response(&xml)?;
                     info!("S3 LIST parsed {} entries from response", entries.len());
@@ -3088,6 +3102,10 @@ impl S3Provider {
                         .await
                         .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
+                    if let Some(error) = Self::bucket_addressing_error(&xml) {
+                        return Err(error);
+                    }
+
                     let (entries, next_token) = self.parse_list_response(&xml)?;
                     all_entries.extend(entries);
 
@@ -3158,5 +3176,37 @@ mod tests {
             provider.build_url("path/to/file.txt"),
             "https://my-bucket.s3.us-west-2.amazonaws.com/path/to/file.txt"
         );
+    }
+
+    #[test]
+    fn test_build_url_custom_virtual_hosted_endpoint() {
+        let provider = S3Provider::new(S3Config {
+            endpoint: Some("http://s3.garage.localhost:3900".to_string()),
+            region: "garage".to_string(),
+            access_key_id: "key".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            bucket: "test".to_string(),
+            prefix: None,
+            path_style: false,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+        })
+        .expect("Failed to create S3Provider");
+
+        assert_eq!(
+            provider.build_url("folder-blue.svg"),
+            "http://test.s3.garage.localhost:3900/folder-blue.svg"
+        );
+    }
+
+    #[test]
+    fn test_bucket_listing_response_is_addressing_error() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult><Buckets><Bucket><Name>test</Name></Bucket></Buckets></ListAllMyBucketsResult>"#;
+
+        assert!(matches!(
+            S3Provider::bucket_addressing_error(xml),
+            Some(ProviderError::InvalidConfig(_))
+        ));
     }
 }

@@ -412,16 +412,18 @@ impl S3Config {
             .trim()
             .to_string();
 
-        let endpoint_raw = if !config.host.is_empty() && config.host != "s3.amazonaws.com" {
-            Some(config.host.trim().to_string())
-        } else {
-            // Fallback: endpoint resolved by frontend (e.g. from endpointTemplate for Wasabi)
-            config
-                .extra
-                .get("endpoint")
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-        };
+        let explicit_endpoint = config
+            .extra
+            .get("endpoint")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let endpoint_raw = explicit_endpoint.or_else(|| {
+            if !config.host.is_empty() && config.host != "s3.amazonaws.com" {
+                Some(config.host.trim().to_string())
+            } else {
+                None
+            }
+        });
         tracing::debug!(
             "S3Config: host={:?}, port={:?}, extra_endpoint={:?}",
             config.host,
@@ -1324,6 +1326,33 @@ mod tests {
         assert_eq!(
             s3_config.endpoint.as_deref(),
             Some("https://s3.example.com")
+        );
+        assert!(!s3_config.path_style);
+    }
+
+    #[test]
+    fn test_s3_explicit_endpoint_overrides_gui_host() {
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "test".to_string());
+        extra.insert("region".to_string(), "garage".to_string());
+        extra.insert("endpoint".to_string(), "s3.garage.localhost".to_string());
+        extra.insert("path_style".to_string(), "false".to_string());
+
+        let config = ProviderConfig {
+            name: "Garage".to_string(),
+            provider_type: ProviderType::S3,
+            host: "http://localhost".to_string(),
+            port: Some(3900),
+            username: Some("access".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra,
+        };
+
+        let s3_config = S3Config::from_provider_config(&config).unwrap();
+        assert_eq!(
+            s3_config.endpoint.as_deref(),
+            Some("http://s3.garage.localhost:3900")
         );
         assert!(!s3_config.path_style);
     }

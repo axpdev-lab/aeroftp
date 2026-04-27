@@ -6174,6 +6174,10 @@ async fn detect_provider_favicon(
             .as_mut()
             .ok_or("Not connected to any provider")?;
 
+        if provider.provider_type() == providers::ProviderType::S3 {
+            return Ok(None);
+        }
+
         for base in &search_paths {
             // 1) Try icon files in order of preference
             for (filename, mime, use_magic) in &[
