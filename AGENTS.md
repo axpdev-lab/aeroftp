@@ -1,4 +1,4 @@
-# AeroFTP CLI — Agent Integration Guide
+# AeroFTP CLI - Agent Integration Guide
 
 > This file is for AI coding agents (Claude Code, Cursor, Codex, Devin, OpenClaw).
 > It describes how to use AeroFTP CLI for remote operations without credentials.
@@ -27,13 +27,13 @@ aeroftp-cli transfer "Source Server" "Destination Server" /src/path /dst/path --
 
 ## How Credentials Work
 
-You do NOT need passwords, tokens, or API keys. The user has saved their servers in an encrypted vault. Use `--profile "Name"` to connect — credentials are resolved internally by the Rust backend and never exposed to your process.
+You do NOT need passwords, tokens, or API keys. The user has saved their servers in an encrypted vault. Use `--profile "Name"` to connect - credentials are resolved internally by the Rust backend and never exposed to your process.
 
 ```bash
-# WRONG — do not ask the user for passwords
+# WRONG - do not ask the user for passwords
 aeroftp-cli ls sftp://user:password@host /path/
 
-# RIGHT — use saved profiles
+# RIGHT - use saved profiles
 aeroftp-cli ls --profile "My Server" /path/
 ```
 
@@ -138,10 +138,10 @@ The `profiles --json` output:
 Always use `--json` when parsing output programmatically:
 
 ```bash
-# Structured JSON — parse with jq or directly
+# Structured JSON - parse with jq or directly
 aeroftp-cli ls --profile "Server" /path/ --json
 
-# Plain text — human-readable, for display to user
+# Plain text - human-readable, for display to user
 aeroftp-cli ls --profile "Server" /path/ -l
 ```
 
@@ -186,7 +186,7 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 - `rm`, `rm -rf`, `sync --delete`, `cleanup --force`, `dedupe --mode newest/oldest/largest/smallest`
 
 ### Never do
-- Do not ask the user for passwords — use `--profile`
+- Do not ask the user for passwords - use `--profile`
 - Do not pass credentials in URLs
 - Do not pass crypt passwords directly on the command line when `AEROFTP_CRYPT_PASSWORD` can be used
 - Do not read the vault files directly
@@ -197,13 +197,13 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 Profiles match by name (case-insensitive). Use exact names to avoid ambiguity:
 
 ```bash
-# Good — exact name
+# Good - exact name
 aeroftp-cli ls --profile "Production Server" /
 
-# Risky — substring match, may be ambiguous
+# Risky - substring match, may be ambiguous
 aeroftp-cli ls --profile "prod" /
 
-# Best for scripting — use profile index number
+# Best for scripting - use profile index number
 aeroftp-cli ls --profile 1 /
 ```
 
@@ -258,7 +258,7 @@ aeroftp-cli df --profile "Production" --json
 
 ## AeroAgent Orchestration
 
-External AI agents can invoke AeroAgent as a subprocess to perform AI-driven multi-step operations with credential isolation. AeroAgent resolves credentials from the vault, executes tool chains autonomously, and returns results — the orchestrating agent never sees passwords or tokens.
+External AI agents can invoke AeroAgent as a subprocess to perform AI-driven multi-step operations with credential isolation. AeroAgent resolves credentials from the vault, executes tool chains autonomously, and returns results - the orchestrating agent never sees passwords or tokens.
 
 ### Discover AI Providers
 
@@ -284,9 +284,9 @@ If `--provider` is omitted, the CLI auto-detects from environment variables or v
 
 The agent has two tools for vault-backed server operations:
 
-**`server_list_saved`** — Lists all saved server profiles (names, protocols, hosts). No credentials exposed.
+**`server_list_saved`** - Lists all saved server profiles (names, protocols, hosts). No credentials exposed.
 
-**`server_exec`** — Executes operations on any saved server. Credentials resolved internally.
+**`server_exec`** - Executes operations on any saved server. Credentials resolved internally.
 
 | Operation | Description |
 |-----------|-------------|
@@ -322,7 +322,7 @@ aeroftp-cli agent -p xai -m "Compute SHA-256 of /var/www/app.js" -y --json
 - Credentials are never in command arguments, environment, stdout, or AI model context
 - Shell denylist blocks 35 dangerous command patterns even with `--auto-approve all`
 - Path validation blocks traversal, null bytes, and sensitive paths (`~/.ssh/`, vault files)
-- The agent cannot read the vault database directly — path validator blocks it
+- The agent cannot read the vault database directly - path validator blocks it
 
 ### Native MCP Server
 
@@ -342,7 +342,7 @@ Use this mode for Claude Desktop, Cursor, VS Code, or any other MCP client that 
 
 ### Coming Soon
 
-- **Mutative server operations**: Available as dedicated tools — `remote_upload`, `remote_download`, `remote_mkdir`, `remote_delete`, `remote_rename`
+- **Mutative server operations**: Available as dedicated tools - `remote_upload`, `remote_download`, `remote_mkdir`, `remote_delete`, `remote_rename`
 - **JSON-RPC orchestration**: `aeroftp-cli agent --orchestrate` for programmatic agent-to-agent integration
 - **Cross-server operations**: `server_diff`, `server_sync` between two remote servers
 - **Agent session tokens**: Pre-authorized scoped sessions for headless automation
@@ -361,4 +361,4 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 ---
 
-*AeroFTP CLI v3.5.3 — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v3.5.3 - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*

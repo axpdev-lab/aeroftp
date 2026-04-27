@@ -6,7 +6,7 @@
 
 ## Overview
 
-AeroFTP treats GitHub repositories as remote filesystems. Every repository write operation — upload, rename, delete, folder creation — produces a real Git commit. You can browse code, manage release assets, and work with branches from the same interface you use for FTP, SFTP, S3, WebDAV, and the rest of AeroFTP's supported providers.
+AeroFTP treats GitHub repositories as remote filesystems. Every repository write operation - upload, rename, delete, folder creation - produces a real Git commit. You can browse code, manage release assets, and work with branches from the same interface you use for FTP, SFTP, S3, WebDAV, and the rest of AeroFTP's supported providers.
 
 This is not a Git client. AeroFTP does not clone repositories, manage staging areas, or handle merge conflicts. It is a file manager that happens to speak the GitHub API, making repository content accessible through the same workflow you already use for every other server.
 
@@ -48,15 +48,15 @@ This website flow should be considered a separate GitHub surface from the deskto
 
 Navigate any GitHub repository as if it were a remote directory:
 
-- **Browse** — list files and folders, navigate into subdirectories, view file metadata
-- **Read** — open files directly, preview content, download to local disk
-- **Upload** — drag a file from local to remote, a Git commit is created automatically
-- **Delete** — remove a file, a Git commit records the deletion
-- **Rename / Move** — rename or move files between directories through API-backed content operations
-- **Create folders** — directories are created with a `.gitkeep` placeholder (Git does not track empty directories)
-- **Batch-friendly commit prompts** — in the GUI, multi-upload and multi-delete flows ask once for a commit message; batch upload/delete flows can be committed atomically
-- **Search** — find files by name pattern across the entire repository tree
-- **Tree view** — visualize the repository structure
+- **Browse** - list files and folders, navigate into subdirectories, view file metadata
+- **Read** - open files directly, preview content, download to local disk
+- **Upload** - drag a file from local to remote, a Git commit is created automatically
+- **Delete** - remove a file, a Git commit records the deletion
+- **Rename / Move** - rename or move files between directories through API-backed content operations
+- **Create folders** - directories are created with a `.gitkeep` placeholder (Git does not track empty directories)
+- **Batch-friendly commit prompts** - in the GUI, multi-upload and multi-delete flows ask once for a commit message; batch upload/delete flows can be committed atomically
+- **Search** - find files by name pattern across the entire repository tree
+- **Tree view** - visualize the repository structure
 
 ### Release Asset Management
 
@@ -73,9 +73,9 @@ In AeroFTP, releases are exposed through the virtual directory `/.github-release
 
 AeroFTP detects whether a branch is writable:
 
-- **Direct push** — the branch accepts commits directly. Your changes are committed immediately.
-- **Protected branch** — the branch has protection rules. AeroFTP automatically creates a working branch (`aeroftp/{user}/{base-branch}`) and commits there instead of failing or pretending direct push is possible.
-- **Read-only** — the token does not have write access. You can browse and download, but not modify.
+- **Direct push** - the branch accepts commits directly. Your changes are committed immediately.
+- **Protected branch** - the branch has protection rules. AeroFTP automatically creates a working branch (`aeroftp/{user}/{base-branch}`) and commits there instead of failing or pretending direct push is possible.
+- **Read-only** - the token does not have write access. You can browse and download, but not modify.
 
 The UI also exposes the current GitHub write mode and active branch so it is clear when you are writing directly, writing to a working branch, or browsing in read-only mode.
 
@@ -162,7 +162,7 @@ Installation-token mode is supported and audited, but commit attribution is impl
 
 - Authentication identity: your GitHub App installation token
 - Token management: automatic (1-hour tokens generated from .pem on demand)
-- PEM key storage: encrypted in vault (AES-256-GCM) after first import — original .pem file can be deleted
+- PEM key storage: encrypted in vault (AES-256-GCM) after first import - original .pem file can be deleted
 - Token expiry: dynamic badge shows valid/expiring/expired state with auto-refresh on connect
 
 If you need exact reviewer validation of how your app appears in the GitHub web UI, use a test repository and inspect the resulting commit metadata directly on GitHub.
@@ -184,7 +184,7 @@ Security-sensitive details relevant to reviewers:
 When an AI coding agent uses `--profile "GitHub"` from the CLI, it never sees the token. It receives only the operation result: a directory listing, a commit confirmation, a file download.
 
 ```bash
-# AI agent commits code — zero credentials exposed
+# AI agent commits code - zero credentials exposed
 aeroftp-cli put --profile "GitHub/myproject" ./fix.py /src/fix.py
 ```
 
@@ -342,4 +342,4 @@ The implementation was cross-reviewed during the March 2026 GitHub remediation c
 
 ---
 
-*AeroFTP — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp) — GPL-3.0*
+*AeroFTP - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp) - GPL-3.0*

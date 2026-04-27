@@ -1,4 +1,4 @@
-# AeroAgent — AI Assistant Documentation
+# AeroAgent - AI Assistant Documentation
 
 **Status**: Public architecture overview
 **Tool catalog**: Built-in tool suite + extensible via plugins
@@ -7,19 +7,19 @@
 
 ## Overview
 
-AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage files, edit code, search content, interact with remote servers, and automate workflows — all through natural language conversation. It supports 19 AI providers and executes operations across local files plus the AeroFTP remote provider backends.
+AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage files, edit code, search content, interact with remote servers, and automate workflows - all through natural language conversation. It supports 24 AI providers and executes operations across local files plus the AeroFTP remote provider backends.
 
 ### Key Capabilities
 
 - **Built-in provider-agnostic tools** spanning file management, code editing, archives, sync, and system operations
-- **19 AI providers**: OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21, Cerebras, SambaNova, Fireworks AI, Custom
+- **24 AI providers**: OpenAI, Anthropic, Gemini, xAI, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21, Cerebras, SambaNova, Fireworks AI, Nvidia, Z.AI, Hyperbolic, Novita, Yi, Custom
 - **Multi-step autonomous execution** with DAG-based parallel pipeline
 - **3-level safety system**: safe (auto-execute), medium (confirm), high (explicit approval)
 - **Vision/multimodal** support for GPT-4o, Gemini, Claude
 - **RAG integration** for project-aware context
 - **Persistent agent memory** across sessions
 - **Plugin system** for custom tool extensions
-- **Backend-agnostic architecture** — same tools work in GUI and CLI
+- **Backend-agnostic architecture** - same tools work in GUI and CLI
 
 ---
 
@@ -271,13 +271,13 @@ AeroAgent automatically detects project type and injects relevant context:
 
 The system prompt is dynamically composed from:
 
-1. **Base personality** — AeroAgent identity and behavioral rules
-2. **Provider profile** — Optimized for each AI provider's strengths
-3. **Connection context** — Current protocol, server, path, mode (AeroCloud/Server/AeroFile)
-4. **Tool definitions** — Full tool list with JSON Schema parameters
-5. **Project context** — Language, framework, dependencies
-6. **RAG context** — Indexed file content matching the user's query
-7. **Agent memory** — Persistent notes from previous sessions
+1. **Base personality** - AeroAgent identity and behavioral rules
+2. **Provider profile** - Optimized for each AI provider's strengths
+3. **Connection context** - Current protocol, server, path, mode (AeroCloud/Server/AeroFile)
+4. **Tool definitions** - Full tool list with JSON Schema parameters
+5. **Project context** - Language, framework, dependencies
+6. **RAG context** - Indexed file content matching the user's query
+7. **Agent memory** - Persistent notes from previous sessions
 
 ### Token Budget Management
 

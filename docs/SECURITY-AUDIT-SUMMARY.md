@@ -1,4 +1,4 @@
-# AeroFTP — Independent Security & Quality Audit Reports
+# AeroFTP - Independent Security & Quality Audit Reports
 
 > **Classification**: Public
 > **Last Updated**: 14 April 2026
@@ -7,13 +7,13 @@ This document contains all public security and quality audit reports for AeroFTP
 
 ---
 
-## v2.9.4 / v2.9.5 — Dual-Engine Parallel Independent Audit Round 2 (13 March 2026)
+## v2.9.4 / v2.9.5 - Dual-Engine Parallel Independent Audit Round 2 (13 March 2026)
 
-> **Subject**: AeroFTP Desktop File Transfer Client v2.9.4 — Full Codebase
+> **Subject**: AeroFTP Desktop File Transfer Client v2.9.4 - Full Codebase
 > **Methodology**: Parallel Independent Audit with cross-comparison (PIA Round 2)
 > **Auditors**: Claude Opus 4.6 (autonomous, 8-area, 8 parallel agents) + GPT-5.4 (autonomous, 8-area, independent)
-> **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` — shared methodology, independent execution
-> **Scope**: Full codebase — ~115,000+ lines across ~160 files (Rust backend + React/TypeScript frontend)
+> **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` - shared methodology, independent execution
+> **Scope**: Full codebase - ~115,000+ lines across ~160 files (Rust backend + React/TypeScript frontend)
 > **Documentation**: 12 documents (8 area reports + README + consolidation + merge + GPT brief)
 
 ### Executive Summary
@@ -50,20 +50,20 @@ AeroFTP v2.9.4 underwent a second round parallel independent audit by two separa
 | ID | Finding | Engine | Status |
 |----|---------|--------|--------|
 | A3-01 | OAuth2 client_secret in cloud_config.json | Claude (Critical) | TODO comment + permissions hardened |
-| A6-02 | SSH password as React prop | Claude (Critical) | Documented — session handle pattern planned |
+| A6-02 | SSH password as React prop | Claude (Critical) | Documented - session handle pattern planned |
 | A1-01 | server_exec/vault_manage not in NEVER_AUTO_APPROVE | Claude (High) | Fixed |
-| A6-08 | dangerouslySetInnerHTML without DOMPurify | Claude (High) | Fixed — DOMPurify.sanitize() applied |
-| A1-05/GPT-A1-01 | Shell denylist incomplete | Both | Fixed — redirects, substitution, rm -r |
-| A1-09/GPT-A1-02 | Tool approval frontend-only | Both | Documented — backend enforcement planned |
+| A6-08 | dangerouslySetInnerHTML without DOMPurify | Claude (High) | Fixed - DOMPurify.sanitize() applied |
+| A1-05/GPT-A1-01 | Shell denylist incomplete | Both | Fixed - redirects, substitution, rm -r |
+| A1-09/GPT-A1-02 | Tool approval frontend-only | Both | Documented - backend enforcement planned |
 | A8-03/GPT-A8-01 | CSP unsafe-inline + fs scope | Both | Accepted risk (file manager) |
-| A7-05/GPT-A7-01 | vault_v2_upload_remote path confinement | Both | Fixed — canonicalize + starts_with |
-| A2-01/GPT-A2-01 | Vault writes without fsync | Both | Fixed — fsync + dir fsync + error propagation |
-| GPT-A1-03 | Plugin registry without crypto auth | GPT-5.4 (High) | Planned — plugin signing (P3) |
+| A7-05/GPT-A7-01 | vault_v2_upload_remote path confinement | Both | Fixed - canonicalize + starts_with |
+| A2-01/GPT-A2-01 | Vault writes without fsync | Both | Fixed - fsync + dir fsync + error propagation |
+| GPT-A1-03 | Plugin registry without crypto auth | GPT-5.4 (High) | Planned - plugin signing (P3) |
 
 ### Key Remediation Highlights
 
 - **DOMPurify**: All `dangerouslySetInnerHTML` sanitized in MarkdownRenderer and TextViewer
-- **fsync crash durability**: `fsync_file_and_parent()` helper — file sync + parent directory sync, errors propagated
+- **fsync crash durability**: `fsync_file_and_parent()` helper - file sync + parent directory sync, errors propagated
 - **Keystore import rollback**: All-or-nothing with original value restoration on failure
 - **Shell denylist**: Redirect operators, command substitution, home/root rm -r blocked
 - **TOTP-before-cache**: Vault cached only after successful 2FA verification
@@ -82,8 +82,8 @@ AeroFTP v2.9.4 underwent a second round parallel independent audit by two separa
 
 | Check | Result |
 |-------|--------|
-| `cargo clippy --all-targets -- -D warnings` | Pass — 0 errors |
-| `npm run build` | Pass — production bundle |
+| `cargo clippy --all-targets -- -D warnings` | Pass - 0 errors |
+| `npm run build` | Pass - production bundle |
 | GPT-5.4 counter-review | 3 incomplete fixes caught and resolved |
 
 Evidence pack: `docs/security-evidence/SECURITY-EVIDENCE-v2.9.5.md`
@@ -91,13 +91,13 @@ Audit documents: `docs/dev/archive/audit/CLAUDE-OPUS-4.6-v2/` + `docs/dev/archiv
 
 ---
 
-## v2.8.6 / v2.8.7 — Dual-Engine Parallel Independent Audit (6-7 March 2026)
+## v2.8.6 / v2.8.7 - Dual-Engine Parallel Independent Audit (6-7 March 2026)
 
-> **Subject**: AeroFTP Desktop File Transfer Client v2.8.6 — Full Codebase
+> **Subject**: AeroFTP Desktop File Transfer Client v2.8.6 - Full Codebase
 > **Methodology**: Parallel Independent Audit with cross-comparison (PIA)
 > **Auditors**: Claude Opus 4.6 (autonomous, 8-area) + GPT-5.4 (autonomous, 8-area)
-> **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` — shared methodology, independent execution
-> **Scope**: Full codebase — ~110,000+ lines across ~150 files (Rust backend + React/TypeScript frontend)
+> **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` - shared methodology, independent execution
+> **Scope**: Full codebase - ~110,000+ lines across ~150 files (Rust backend + React/TypeScript frontend)
 > **Documentation**: 22 documents total (11 per engine + schema + cross-comparison)
 
 ### Executive Summary
@@ -135,23 +135,23 @@ The dual-engine approach identified **~82 unique findings** after deduplication 
 
 | ID | Finding | Engines | Severity |
 |----|---------|---------|----------|
-| A8-03 | Updater downloads/installs without integrity or provenance verification — RCE chain via XSS→download→pkexec | Both (GPT=HIGH, Claude=CRITICAL) | **CRITICAL** |
+| A8-03 | Updater downloads/installs without integrity or provenance verification - RCE chain via XSS→download→pkexec | Both (GPT=HIGH, Claude=CRITICAL) | **CRITICAL** |
 | A8-01/A1-01 | `fs:scope` wildcard `**` nullifies least-privilege principle | Both | HIGH |
 | A8-02 | `dangerousDisableAssetCspModification` neutralizes CSP | Claude | HIGH |
-| A2-01 | Vault.db/vault.key writes not atomic — crash = total credential loss | Both (GPT=MEDIUM) | HIGH |
-| A3-02 | FTP TLS downgrade silent — credentials sent in cleartext without user consent | Both (GPT=HIGH) | HIGH |
+| A2-01 | Vault.db/vault.key writes not atomic - crash = total credential loss | Both (GPT=MEDIUM) | HIGH |
+| A3-02 | FTP TLS downgrade silent - credentials sent in cleartext without user consent | Both (GPT=HIGH) | HIGH |
 
 ### Architectural Clusters (7 identified by Claude)
 
 | Cluster | Findings | Pattern | Blast Radius |
 |---------|----------|---------|--------------|
-| Non-atomic writes | 9 | `std::fs::write()` without temp+rename | High — data corruption on crash |
-| Missing zeroization | 7 | Keys/passwords as plain `String` without `Zeroize` on drop | Medium — defense-in-depth |
-| Inconsistent validate_path | 6 | `validate_path()` not applied uniformly across modules | High — path traversal class |
-| CSP & runtime trust boundary | 4 | fs:scope + CSP disabled + fixed port + connect-src wildcard | Maximum — XSS→RCE distance |
-| Sync engine duplication | 3 | Two engines (frontend-driven vs backend CloudService) with feature gap | Medium — behavioral divergence |
-| Plugin hooks security | 3 | Hooks lack integrity verification and meta-char filtering vs plugin tools | Medium — unguarded execution |
-| Stale closures & effect deps | 4 | `eslint-disable` on critical effects, uncancelled streaming | Low — intermittent UX bugs |
+| Non-atomic writes | 9 | `std::fs::write()` without temp+rename | High - data corruption on crash |
+| Missing zeroization | 7 | Keys/passwords as plain `String` without `Zeroize` on drop | Medium - defense-in-depth |
+| Inconsistent validate_path | 6 | `validate_path()` not applied uniformly across modules | High - path traversal class |
+| CSP & runtime trust boundary | 4 | fs:scope + CSP disabled + fixed port + connect-src wildcard | Maximum - XSS→RCE distance |
+| Sync engine duplication | 3 | Two engines (frontend-driven vs backend CloudService) with feature gap | Medium - behavioral divergence |
+| Plugin hooks security | 3 | Hooks lack integrity verification and meta-char filtering vs plugin tools | Medium - unguarded execution |
+| Stale closures & effect deps | 4 | `eslint-disable` on critical effects, uncancelled streaming | Low - intermittent UX bugs |
 
 ### Cross-Engine Agreement (21 Findings)
 
@@ -183,10 +183,10 @@ Both engines independently identified these issues, providing high confidence:
 
 | Finding | GPT-5.4 | Claude | Final Decision |
 |---------|---------|--------|----------------|
-| Updater (A8-03) | HIGH | CRITICAL | **CRITICAL** — XSS→download→pkexec root = RCE with privilege escalation |
-| Vault.db atomic (A2-01) | MEDIUM | HIGH | **HIGH** — corruption = loss of ALL credentials |
-| FTP TLS downgrade (A3-02) | HIGH | MEDIUM | **HIGH** — credentials in cleartext, MITM-forceable |
-| Localhost port (A8-05) | LOW | MEDIUM | **MEDIUM** — SSRF/DNS rebinding on predictable port |
+| Updater (A8-03) | HIGH | CRITICAL | **CRITICAL** - XSS→download→pkexec root = RCE with privilege escalation |
+| Vault.db atomic (A2-01) | MEDIUM | HIGH | **HIGH** - corruption = loss of ALL credentials |
+| FTP TLS downgrade (A3-02) | HIGH | MEDIUM | **HIGH** - credentials in cleartext, MITM-forceable |
+| Localhost port (A8-05) | LOW | MEDIUM | **MEDIUM** - SSRF/DNS rebinding on predictable port |
 
 ### Unique Contributions by Engine
 
@@ -221,7 +221,7 @@ Both engines produced fix roadmaps organized by architectural leverage:
 |--------|-------|--------------|
 | Claude Opus 4.6 | **B-** (pre-remediation) | 8.5/10 audit quality |
 | GPT-5.4 | N/A (no grades assigned) | 4.7/10 audit quality |
-| **Cumulative project assessment** | **B-** | — |
+| **Cumulative project assessment** | **B-** | - |
 
 ### Gap Analysis (Claude)
 
@@ -231,7 +231,7 @@ Both engines produced fix roadmaps organized by architectural leverage:
 3. AI streaming parser (SSE/NDJSON in `ai_stream.rs`)
 4. Chat history SQLite (WAL mode correctness, retention logic)
 5. AeroPlayer WebGL shaders (GPU DoS)
-6. License verification (`license.rs` — removed in v2.8.7)
+6. License verification (`license.rs` - removed in v2.8.7)
 7. Supabase Edge Functions (server-side, out of scope)
 
 ### Recommendations for Future Audits
@@ -246,12 +246,12 @@ Evidence pack & remediation details: [SECURITY-EVIDENCE-v2.8.7.md](https://githu
 
 ---
 
-## v2.6.4 — Dual-Engine Comprehensive Security Audit (24 February 2026)
+## v2.6.4 - Dual-Engine Comprehensive Security Audit (24 February 2026)
 
-> **Subject**: AeroFTP Desktop File Transfer Client v2.6.4 — Full Codebase
+> **Subject**: AeroFTP Desktop File Transfer Client v2.6.4 - Full Codebase
 > **Methodology**: Dual-Engine Independent Audit (DEIA)
 > **Auditors**: 8 Claude Opus 4.6 specialist agents (parallel) + 1 GPT-5.3-Codex agent (sequential 8-area)
-> **Scope**: Full codebase — ~100,000+ lines across ~140 files (Rust backend + React/TypeScript frontend)
+> **Scope**: Full codebase - ~100,000+ lines across ~140 files (Rust backend + React/TypeScript frontend)
 
 ### Executive Summary
 
@@ -266,20 +266,20 @@ The dual-engine approach identified **148 unique findings** after deduplication 
 | Critical | 7 | 7 | 0 | 0 |
 | High | 27 | 27 | 0 | 0 |
 | Medium | 57 | 54 | 2 | 1 |
-| Low/Info | 56 | 6 | — | — |
+| Low/Info | 56 | 6 | - | - |
 | **Total** | **147** | **94** | **2** | **1** |
 
 ### Critical Findings (All Remediated)
 
 | ID | Finding | Engine | Status |
 | -- | ------- | ------ | ------ |
-| C1 | Azure HeaderValue `unwrap()` panic (17 locations) | Opus | Fixed — `map_err()?` |
-| C2 | Box bearer_header `unwrap()` panic | Opus | Fixed — `Result` return |
-| C3 | React state mutation in connectToFtp | Opus | Fixed — local copy pattern |
-| C4 | HTML preview iframe without sandbox (JS execution) | Both | Fixed — `sandbox="allow-same-origin"` + path validation |
-| C5 | TAR/7z/RAR extraction without path traversal guard | GPT | Fixed — `is_safe_archive_entry()` centralized |
-| C6 | 2FA not enforced in lock/unlock path | GPT | Fixed — TOTP gate + `2FA_REQUIRED` flow |
-| C7 | FS scope wildcard + CSP disabled | Both | Documented — design trade-off for file manager |
+| C1 | Azure HeaderValue `unwrap()` panic (17 locations) | Opus | Fixed - `map_err()?` |
+| C2 | Box bearer_header `unwrap()` panic | Opus | Fixed - `Result` return |
+| C3 | React state mutation in connectToFtp | Opus | Fixed - local copy pattern |
+| C4 | HTML preview iframe without sandbox (JS execution) | Both | Fixed - `sandbox="allow-same-origin"` + path validation |
+| C5 | TAR/7z/RAR extraction without path traversal guard | GPT | Fixed - `is_safe_archive_entry()` centralized |
+| C6 | 2FA not enforced in lock/unlock path | GPT | Fixed - TOTP gate + `2FA_REQUIRED` flow |
+| C7 | FS scope wildcard + CSP disabled | Both | Documented - design trade-off for file manager |
 
 ### Key Remediation Highlights
 
@@ -313,17 +313,17 @@ Both engines independently identified these issues, providing high confidence:
 
 | Engine | Pre-Remediation | Post-Remediation |
 | ------ | --------------- | ---------------- |
-| Opus (8 agents) | B+ | — |
-| GPT-5.3-Codex | C+ | — |
+| Opus (8 agents) | B+ | - |
+| GPT-5.3-Codex | C+ | - |
 | **Merged** | **B** | **A-** |
 
 ### Verification
 
 | Check | Result |
 | ----- | ------ |
-| `cargo check` | Pass — 0 errors |
-| `npm run build` | Pass — production bundle |
-| `npm run i18n:validate` | Pass — 47 languages at 100% |
+| `cargo check` | Pass - 0 errors |
+| `npm run build` | Pass - production bundle |
+| `npm run i18n:validate` | Pass - 47 languages at 100% |
 | Point-by-point verification | 5 independent agents verified all 91 C/H/M findings |
 
 Full merged audit report: `docs/dev/archive/audit/v2.6.4/MERGED-FINAL-AUDIT.md`
@@ -331,9 +331,9 @@ Evidence pack: `docs/security-evidence/SECURITY-EVIDENCE-v2.6.4.md`
 
 ---
 
-## v2.6.0 — Provider Security Audit (22 February 2026)
+## v2.6.0 - Provider Security Audit (22 February 2026)
 
-> **Subject**: 8 Cloud Storage Providers — Post-Release Security & Quality Audit
+> **Subject**: 8 Cloud Storage Providers - Post-Release Security & Quality Audit
 > **Methodology**: Per-Provider Independent Parallel Review
 > **Auditors**: 8 Independent AI Code Review Agents (Claude Opus 4.6)
 > **Scope**: S3, pCloud, kDrive, Azure Blob, 4shared, Filen, Internxt, MEGA (~6,500 lines Rust)
@@ -362,7 +362,7 @@ The audit identified **147 findings** across all 8 providers. **All 147 findings
 
 | Check | Result |
 |-------|--------|
-| `cargo check` | Pass — 0 errors, 2 warnings (pre-existing dead_code) |
+| `cargo check` | Pass - 0 errors, 2 warnings (pre-existing dead_code) |
 | Provider connectivity | Azure Blob + OneDrive verified end-to-end on Windows 11 |
 
 ### Additional Fixes (Post-Audit)
@@ -373,12 +373,12 @@ The audit identified **147 findings** across all 8 providers. **All 147 findings
 
 ---
 
-## v2.5.0 — 6-Domain Independent Audit (20 February 2026)
+## v2.5.0 - 6-Domain Independent Audit (20 February 2026)
 
 > **Subject**: AeroFTP Desktop File Transfer Client v2.5.0
 > **Methodology**: Parallel Independent Multi-Domain Review (PIMDR)
 > **Auditors**: 6 Independent AI Code Review Agents (Claude Opus 4.6)
-> **Scope**: Full codebase — ~35,000 lines Rust backend, ~25,000 lines React/TypeScript frontend
+> **Scope**: Full codebase - ~35,000 lines Rust backend, ~25,000 lines React/TypeScript frontend
 
 ### Summary
 
@@ -406,7 +406,7 @@ The audit identified **86 findings** across all severity levels (9 Critical, 17 
 
 | Attribute | Value |
 |-----------|-------|
-| Application | AeroFTP — Multi-Protocol File Transfer Client |
+| Application | AeroFTP - Multi-Protocol File Transfer Client |
 | Version | 2.5.0 |
 | License | GPL-3.0-or-later (OSI-approved) |
 | Architecture | Tauri 2 (Rust backend) + React 18 (TypeScript frontend) |
@@ -433,9 +433,9 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 
 ## 2. Domain Reports
 
-### 2.1 Security & Cryptography — Grade: A-
+### 2.1 Security & Cryptography - Grade: A-
 
-**Scope**: All Rust source files — cryptographic implementations, credential handling, injection vectors, XSS pipeline, TLS configuration, random number generation.
+**Scope**: All Rust source files - cryptographic implementations, credential handling, injection vectors, XSS pipeline, TLS configuration, random number generation.
 
 #### Key Findings (Pre-Remediation)
 
@@ -444,7 +444,7 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 | SEC-H01 | HIGH | Gemini API key transmitted as URL query parameter | Remediated |
 | SEC-H02 | HIGH | `thread_rng()` used for cryptographic nonce generation instead of `OsRng` | Remediated |
 | SEC-M01 | MEDIUM | TOTP rate limiter state not persisted across restarts | Accepted risk |
-| SEC-M02 | MEDIUM | SHA-1 in Cryptomator compatibility (required by vault format 8) | N/A — protocol requirement |
+| SEC-M02 | MEDIUM | SHA-1 in Cryptomator compatibility (required by vault format 8) | N/A - protocol requirement |
 | SEC-M03 | MEDIUM | No certificate pinning for OAuth2 connections | Documented |
 | SEC-M04 | MEDIUM | Vault v2 `read_to_end` loads entire vault into memory | Planned for v2.6.0 |
 | SEC-M05 | MEDIUM | FTP cleartext fallback when TLS upgrade fails | Warning logged |
@@ -454,12 +454,12 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 - **Exemplary key management**: AES-256-GCM-SIV (RFC 8452) with nonce-misuse resistance, Argon2id KDF exceeding OWASP 2024 parameters (128 MiB, t=4, p=4)
 - **Universal SecretString adoption**: All 16 providers wrap tokens with zeroize-on-drop
 - **SQL injection prevention**: All SQLite queries use parameterized statements
-- **Path traversal prevention**: All 45 AI tools validate paths — rejects null bytes, `..` traversal, sensitive system paths
+- **Path traversal prevention**: All 45 AI tools validate paths - rejects null bytes, `..` traversal, sensitive system paths
 - **Shell command sandboxing**: Denylist with 10+ regex patterns, 30s/120s timeout, 512KB output cap, environment isolation
 
 ---
 
-### 2.2 Rust Code Quality — Grade: B+
+### 2.2 Rust Code Quality - Grade: B+
 
 **Scope**: 60 Rust source files, Cargo.toml dependencies, error handling, memory safety, concurrency.
 
@@ -467,19 +467,19 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 
 | ID | Severity | Finding | Status |
 |----|----------|---------|--------|
-| RCQ-C01 | CRITICAL | `thread_rng()` for cryptographic nonces | Remediated — `OsRng` |
-| RCQ-C02 | CRITICAL | `thread_rng()` for WebDAV Digest Auth cnonce | Remediated — `OsRng` |
-| RCQ-H01 | HIGH | 12+ `.unwrap()` on provider access — fragile pattern | Remediated — safe `match` |
-| RCQ-H02 | HIGH | `.expect()` on HTTP client init — panic on TLS failure | Remediated — `map_err` |
-| RCQ-H03 | HIGH | `.expect("app config dir")` — panic if path resolver fails | Remediated — `Result<PathBuf>` |
+| RCQ-C01 | CRITICAL | `thread_rng()` for cryptographic nonces | Remediated - `OsRng` |
+| RCQ-C02 | CRITICAL | `thread_rng()` for WebDAV Digest Auth cnonce | Remediated - `OsRng` |
+| RCQ-H01 | HIGH | 12+ `.unwrap()` on provider access - fragile pattern | Remediated - safe `match` |
+| RCQ-H02 | HIGH | `.expect()` on HTTP client init - panic on TLS failure | Remediated - `map_err` |
+| RCQ-H03 | HIGH | `.expect("app config dir")` - panic if path resolver fails | Remediated - `Result<PathBuf>` |
 | RCQ-H04 | HIGH | ~100+ `#[allow(dead_code)]` annotations | Documented |
-| RCQ-M01 | MEDIUM | `filter_map(\|r\| r.ok())` silently discards errors | Remediated — `tracing::warn!` |
+| RCQ-M01 | MEDIUM | `filter_map(\|r\| r.ok())` silently discards errors | Remediated - `tracing::warn!` |
 | RCQ-M02 | MEDIUM | `unsafe` blocks without SAFETY documentation | Remediated |
 | RCQ-M03 | MEDIUM | `lib.rs` monolithic at 6,750+ lines | Documented for v2.6.0 |
 
 #### Positive Findings
 
-- **Zero `todo!()` or `unimplemented!()`** — all functions fully implemented
+- **Zero `todo!()` or `unimplemented!()`** - all functions fully implemented
 - **Exemplary Mutex poison recovery** consistently applied
 - **Resource exhaustion limits**: 1M entry cap, 50MB stream buffer, 8-stream transfer pool
 - **In-memory SQLite fallback** for graceful degradation
@@ -487,7 +487,7 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 
 ---
 
-### 2.3 CI/CD & Build Pipeline — Grade: C+ → B+ (Post-Remediation)
+### 2.3 CI/CD & Build Pipeline - Grade: C+ → B+ (Post-Remediation)
 
 **Scope**: GitHub Actions workflows, build scripts, test infrastructure, dependency management.
 
@@ -495,9 +495,9 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 
 | ID | Severity | Finding | Status |
 |----|----------|---------|--------|
-| CI-C01 | CRITICAL | No `cargo test` in CI — 96 tests never executed | Remediated |
-| CI-C02 | CRITICAL | No `cargo clippy` in CI — no Rust static analysis | Remediated |
-| CI-C03 | CRITICAL | No dependency vulnerability auditing | Remediated — Dependabot |
+| CI-C01 | CRITICAL | No `cargo test` in CI - 96 tests never executed | Remediated |
+| CI-C02 | CRITICAL | No `cargo clippy` in CI - no Rust static analysis | Remediated |
+| CI-C03 | CRITICAL | No dependency vulnerability auditing | Remediated - Dependabot |
 | CI-H01 | HIGH | No frontend linting | `tsc --noEmit` added |
 | CI-H02 | HIGH | GitHub Actions on mutable tags | Documented for SHA pinning |
 
@@ -509,7 +509,7 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 
 ---
 
-### 2.4 Documentation & OpenSSF Compliance — Grade: B+ → A-
+### 2.4 Documentation & OpenSSF Compliance - Grade: B+ → A-
 
 **Scope**: All documentation against OpenSSF Best Practices "Passing" criteria.
 
@@ -529,7 +529,7 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 
 ---
 
-### 2.5 Performance & Resource Management — Grade: B
+### 2.5 Performance & Resource Management - Grade: B
 
 **Scope**: Hot paths (transfers, sync, vault, AI streaming) and React rendering.
 
@@ -537,21 +537,21 @@ Post-audit, findings are deduplicated, prioritized, and remediated. A verificati
 
 | ID | Severity | Finding | Status |
 |----|----------|---------|--------|
-| PERF-C01 | CRITICAL | AeroVault `read_to_end` — full vault in RAM | Planned for v2.6.0 |
-| PERF-C02 | CRITICAL | AI download without size limit | Remediated — 50MB cap |
+| PERF-C01 | CRITICAL | AeroVault `read_to_end` - full vault in RAM | Planned for v2.6.0 |
+| PERF-C02 | CRITICAL | AI download without size limit | Remediated - 50MB cap |
 | PERF-H01 | HIGH | App.tsx: 84 useState, insufficient memoization | Documented |
-| PERF-H02 | HIGH | AI streaming without session timeout | Remediated — idle timeout |
+| PERF-H02 | HIGH | AI streaming without session timeout | Remediated - idle timeout |
 
 #### Positive Findings
 
 - **Transfer state isolation**: `useRef` pattern prevents re-renders during transfers
 - **Bounded scanning**: 1M entry cap with semaphore-bounded parallel SHA-256
-- **Progress throttling**: 150ms/2% delta — 90% IPC reduction
+- **Progress throttling**: 150ms/2% delta - 90% IPC reduction
 - **Atomic journal writes**: temp + rename prevents corruption
 
 ---
 
-### 2.6 Frontend Quality & Accessibility — Grade: B
+### 2.6 Frontend Quality & Accessibility - Grade: B
 
 **Scope**: React components, TypeScript types, ARIA, i18n, themes, state management.
 
@@ -642,10 +642,10 @@ All cryptographic algorithms are published, peer-reviewed standards implemented 
 
 | Check | Result |
 |-------|--------|
-| `cargo check` | Pass — zero errors |
-| `cargo test --lib` | Pass — 96/96 tests |
-| `npx tsc --noEmit` | Pass — zero type errors |
-| `npm run build` | Pass — production bundle |
+| `cargo check` | Pass - zero errors |
+| `cargo test --lib` | Pass - 96/96 tests |
+| `npx tsc --noEmit` | Pass - zero type errors |
+| `npm run build` | Pass - production bundle |
 
 ---
 

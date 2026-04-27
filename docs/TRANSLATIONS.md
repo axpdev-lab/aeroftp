@@ -214,11 +214,11 @@ Split languages into **independent groups** so multiple agents can work in paral
 | **Nordic + Mediterranean** | sv, da, no, fi, is, tr, el, ro, hu | 9 |
 | **Other** | hi, bn, hy, ka, et, lv, lt, sw | 8 |
 
-**Key rule**: Each agent works on **different locale files** — never two agents writing to the same `.json` file simultaneously.
+**Key rule**: Each agent works on **different locale files** - never two agents writing to the same `.json` file simultaneously.
 
 ### Step-by-Step Process
 
-1. **Audit** — Run a Python script to detect "silent intruders" (values identical to English without `[NEEDS TRANSLATION]` marker):
+1. **Audit** - Run a Python script to detect "silent intruders" (values identical to English without `[NEEDS TRANSLATION]` marker):
    ```python
    # Compare each locale to en.json, find identical values
    for key in en_keys:
@@ -226,15 +226,15 @@ Split languages into **independent groups** so multiple agents can work in paral
            intruders.append(key)
    ```
 
-2. **Group by section** — Organize keys into thematic sections (common, connection, migration, settings, etc.) for coherent translation batches.
+2. **Group by section** - Organize keys into thematic sections (common, connection, migration, settings, etc.) for coherent translation batches.
 
-3. **Create Python translation scripts** — Each script:
+3. **Create Python translation scripts** - Each script:
    - Reads the locale JSON file
    - Only replaces values that **exactly match the English** (idempotent)
    - Writes back with `ensure_ascii=False, indent=4` + trailing newline
    - Saved to `/tmp/translate_{section}_{group}.py`
 
-4. **Launch parallel agents** — One per language group:
+4. **Launch parallel agents** - One per language group:
    ```
    Agent 1: West EU (9 langs)     → /tmp/translate_section_westeu.py
    Agent 2: East Asian (9 langs)  → /tmp/translate_section_asian.py
@@ -243,9 +243,9 @@ Split languages into **independent groups** so multiple agents can work in paral
    Agent 5: Other (8 langs)       → /tmp/translate_section_other.py
    ```
 
-5. **Verify idempotency** — Each script is run twice. Second run must show 0 replacements.
+5. **Verify idempotency** - Each script is run twice. Second run must show 0 replacements.
 
-6. **Validate** — `npm run i18n:validate` after each batch, `npm run build` at the end.
+6. **Validate** - `npm run i18n:validate` after each batch, `npm run build` at the end.
 
 ### Non-Latin Script Handling
 
@@ -266,7 +266,7 @@ When delegating translation work to external contributors or parallel workflows:
    - English reference values
    - Translation rules (tech terms, placeholders, etc.)
    - Delivery format (batch JSON files)
-2. **Do NOT duplicate the delegated work locally** — wait for delivery
+2. **Do NOT duplicate the delegated work locally** - wait for delivery
 3. Apply the delivery with a merge script
 4. Fill gaps only if the delivery is incomplete
 

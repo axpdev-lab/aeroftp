@@ -48,7 +48,7 @@ AeroFTP does not integrate with any advertising, analytics, or tracking services
 
 ## Data Sharing
 
-We do not share, sell, or transfer any user data to third parties. AeroFTP has no server-side component — all operations happen locally or directly between your machine and the services you connect to.
+We do not share, sell, or transfer any user data to third parties. AeroFTP has no server-side component - all operations happen locally or directly between your machine and the services you connect to.
 
 ## Children's Privacy
 
@@ -71,4 +71,4 @@ For privacy-related questions or concerns:
 
 ---
 
-*AeroFTP v3.5.0 — An open source project by axpdev*
+*AeroFTP v3.5.0 - An open source project by axpdev*

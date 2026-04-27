@@ -1,12 +1,12 @@
-# AeroAgent — AI-Powered File Management
+# AeroAgent - AI-Powered File Management
 
-AeroAgent is AeroFTP's integrated AI assistant with **47 tools** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
+AeroAgent is AeroFTP's integrated AI assistant with **52 tools** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
 
 > Full test results, prompt examples, and provider compatibility matrix available at [docs.aeroftp.app/aeroagent](https://docs.aeroftp.app/aeroagent)
 
 ## Supported AI Providers
 
-AeroAgent works with **19 AI providers** — choose your preferred model:
+AeroAgent works with **24 AI providers** - choose your preferred model:
 
 | Provider | Tool Calling | Streaming | Vision | Thinking |
 |----------|:---:|:---:|:---:|:---:|
@@ -15,20 +15,25 @@ AeroAgent works with **19 AI providers** — choose your preferred model:
 | Google Gemini | Yes | Yes | Yes | Yes |
 | xAI (Grok) | Yes | Yes | Yes | Yes |
 | Cohere (Command A) | Yes | Yes | Yes | Yes |
-| DeepSeek | Yes | Yes | — | Yes |
-| Mistral | Yes | Yes | — | — |
-| Groq | Yes | Yes | — | — |
+| DeepSeek | Yes | Yes | - | Yes |
+| Mistral | Yes | Yes | - | - |
+| Groq | Yes | Yes | - | - |
 | Qwen (Alibaba) | Yes | Yes | Yes | Yes |
-| Kimi (Moonshot) | Yes | Yes | — | — |
+| Kimi (Moonshot) | Yes | Yes | - | - |
 | Ollama (Local) | Yes | Yes | Varies | Varies |
 | OpenRouter | Yes | Yes | Varies | Varies |
-| Together AI | Yes | Yes | — | — |
-| Perplexity | — | Yes | — | — |
-| AI21 Labs | Yes | Yes | — | — |
-| Cerebras | Yes | Yes | — | — |
-| SambaNova | Yes | Yes | — | — |
-| Fireworks AI | Yes | Yes | — | — |
-| Custom (OpenAI-compatible) | Yes | Yes | — | — |
+| Together AI | Yes | Yes | - | - |
+| Perplexity | - | Yes | - | - |
+| AI21 Labs | Yes | Yes | - | - |
+| Cerebras | Yes | Yes | - | - |
+| SambaNova | Yes | Yes | - | - |
+| Fireworks AI | Yes | Yes | - | - |
+| Nvidia (NIM) | Yes | Yes | - | - |
+| Z.AI (GLM) | Yes | Yes | - | Yes |
+| Hyperbolic | Yes | Yes | - | - |
+| Novita | Yes | Yes | - | - |
+| Yi (01.AI) | Yes | Yes | - | - |
+| Custom (OpenAI-compatible) | Yes | Yes | - | - |
 
 ## Tool Categories
 
@@ -96,7 +101,7 @@ Execute system commands with captured stdout/stderr and exit codes.
 > Run "uname -a" to check the system info
 ```
 ```
-AeroAgent: uname -a — exit code 0
+AeroAgent: uname -a - exit code 0
   Linux server 6.17.0-19-generic #19~24.04.2-Ubuntu SMP x86_64
 ```
 
@@ -118,8 +123,8 @@ Grep, head, tail, diff, tree, file info, disk usage, find duplicates.
 ```
 ```
 AeroAgent: 2 match(es) in 3 files for "TODO"
-  app.js:15 — // TODO: add error handling
-  config.json:3 — // TODO: update API key
+  app.js:15 - // TODO: add error handling
+  config.json:3 - // TODO: update API key
 
   project/
   ├── app.js (1.2 KB)
@@ -136,9 +141,9 @@ RAG indexing and semantic search across your workspace.
 ```
 ```
 AeroAgent: Indexed 45 files. Found 3 matches for "authentication":
-  - auth.ts:12 — export function validateToken()
-  - middleware.ts:8 — const authGuard = ...
-  - config.ts:25 — AUTH_ENDPOINT: "https://..."
+  - auth.ts:12 - export function validateToken()
+  - middleware.ts:8 - const authGuard = ...
+  - config.ts:25 - AUTH_ENDPOINT: "https://..."
 ```
 
 ## Multi-Step Workflows
@@ -173,7 +178,7 @@ Validated with real-world file operations (create, read, edit, upload, server co
 
 > Full provider compatibility matrix and test results: [docs.aeroftp.app/aeroagent/providers](https://docs.aeroftp.app/aeroagent/providers)
 
-## Complete Tool List (47 tools)
+## Complete Tool List (52 tools)
 
 <details>
 <summary>Click to expand</summary>

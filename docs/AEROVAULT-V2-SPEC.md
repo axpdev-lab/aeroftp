@@ -239,7 +239,7 @@ Nested directories use `/` as the path separator (e.g., `docs/notes`). Implement
 
 ### 5.7 Path Constraints
 
-- Path separator: `/` (forward slash only — backslash `\` is forbidden)
+- Path separator: `/` (forward slash only - backslash `\` is forbidden)
 - Maximum path length: 4096 bytes
 - Forbidden sequences: `..` (parent traversal), null bytes (`\0`)
 - Forbidden characters: `\` (backslash, any position)
@@ -283,12 +283,12 @@ The AAD binding prevents chunk reordering attacks: a chunk encrypted at index 0 
 
 When cascade mode is enabled (flag bit 0), each chunk undergoes double encryption:
 
-**Layer 1 — AES-256-GCM-SIV** (same as standard mode):
+**Layer 1 - AES-256-GCM-SIV** (same as standard mode):
 ```
 inner = nonce_aes (12) || AES-GCM-SIV(master_key, nonce_aes, aad=chunk_index, plaintext)
 ```
 
-**Layer 2 — ChaCha20-Poly1305**:
+**Layer 2 - ChaCha20-Poly1305**:
 ```
 outer = nonce_chacha (12) || ChaCha20-Poly1305(chacha_key, nonce_chacha, aad=chunk_index, inner)
 ```
@@ -349,7 +349,7 @@ The last chunk of a file may be smaller than `chunk_size`.
 4. Derive `kek_master` and `kek_mac` via HKDF
 5. Unwrap `master_key` and `mac_key` via AES-256-KW (fails if wrong password)
 6. Verify header MAC using constant-time comparison (fails if tampered)
-7. Vault is unlocked — manifest can now be read and decrypted
+7. Vault is unlocked - manifest can now be read and decrypted
 
 ### 7.3 Adding Files
 
@@ -430,7 +430,7 @@ Compare vault contents against a local directory:
 
 ### 8.1 Nonce Misuse Resistance
 
-AES-256-GCM-SIV (RFC 8452) is the primary content cipher. Unlike AES-GCM, if a nonce is accidentally reused, only the equality of plaintexts encrypted under the same nonce is revealed — no key material is compromised.
+AES-256-GCM-SIV (RFC 8452) is the primary content cipher. Unlike AES-GCM, if a nonce is accidentally reused, only the equality of plaintexts encrypted under the same nonce is revealed - no key material is compromised.
 
 ### 8.2 Chunk Binding
 
@@ -554,7 +554,7 @@ CREATE INDEX IF NOT EXISTS idx_recent_vaults_opened
 - Parameterized SQL queries (no injection risk)
 - Mutex with poison recovery
 - In-memory fallback if SQLite file cannot be opened
-- Vault paths stored in cleartext (accepted risk — attacker with FS access can already `find *.aerovault`)
+- Vault paths stored in cleartext (accepted risk - attacker with FS access can already `find *.aerovault`)
 
 ### 9.3 Security Levels
 
@@ -575,7 +575,7 @@ A client-side password strength meter provides real-time feedback during vault c
 - **Scoring** (0-100): Length (max 40pt), character variety (4 categories × 10pt), mixing bonus, penalties for repetition and sequential characters
 - **Visual**: 4 animated segments with staggered CSS transitions (50ms delay per segment)
 - **Levels**: Too short (gray) → Weak (red) → Fair (orange) → Strong (emerald) → Excellent (blue)
-- **Zero external dependencies** — lightweight inline calculation, no zxcvbn
+- **Zero external dependencies** - lightweight inline calculation, no zxcvbn
 
 ### 9.5 Remote Vault
 

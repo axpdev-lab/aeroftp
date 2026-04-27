@@ -1,6 +1,6 @@
-# Universal Credential Vault — Technical Documentation
+# Universal Credential Vault - Technical Documentation
 
-> AeroFTP v3.5.0 — April 2026
+> AeroFTP v3.5.0 - April 2026
 
 ---
 
@@ -16,7 +16,7 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 2. **Cross-platform reliability**: No dependency on OS keyring services (gnome-keyring, Windows Credential Manager, macOS Keychain)
 3. **Optional master password**: Users who want extra protection can enable a master password at any time
 4. **Simple architecture**: One code path, no fallback chains, no health probes
-5. **Complete coverage** (v1.9.0): No sensitive data in localStorage — everything encrypted in vault
+5. **Complete coverage** (v1.9.0): No sensitive data in localStorage - everything encrypted in vault
 6. **Portable backups** (v1.9.0): Full vault export/import for disaster recovery and device migration
 
 ---
@@ -37,7 +37,7 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 
 | Mode | vault.key contains | User interaction | Use case |
 |------|-------------------|------------------|----------|
-| **Auto** (default) | Passphrase in cleartext | None — fully transparent | Most users |
+| **Auto** (default) | Passphrase in cleartext | None - fully transparent | Most users |
 | **Master** (optional) | Passphrase encrypted with user password | Enter password on app start | Security-conscious users |
 
 ### Security Model
@@ -337,7 +337,7 @@ Activity updated on:
 
 ### Motivation
 
-Before v1.9.0, the Universal Vault stored only credential secrets (passwords, tokens, API keys). Server profile metadata (host, port, username, protocol), AI provider settings (model selection, temperature), and application preferences remained in browser localStorage — unencrypted and accessible to any code running in the webview.
+Before v1.9.0, the Universal Vault stored only credential secrets (passwords, tokens, API keys). Server profile metadata (host, port, username, protocol), AI provider settings (model selection, temperature), and application preferences remained in browser localStorage - unencrypted and accessible to any code running in the webview.
 
 The Unified Keystore moves **all sensitive data** into `vault.db`, eliminating the last unencrypted storage surface.
 

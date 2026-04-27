@@ -16,7 +16,7 @@ That's it! GitHub Actions handles everything else automatically.
 
 ## Pre-Release Checklist (12 files)
 
-### Version Files (7 files — MUST be identical)
+### Version Files (7 files - MUST be identical)
 
 | # | File | Field | Notes |
 |---|------|-------|-------|
@@ -50,7 +50,7 @@ That's it! GitHub Actions handles everything else automatically.
 npm run i18n:sync        # Propagate new keys to all 47 languages
 npm run i18n:validate    # Verify 100% coverage
 
-# Rust (MUST pass — CI runs this exact command)
+# Rust (MUST pass - CI runs this exact command)
 cd src-tauri && cargo clippy --all-targets -- -D warnings
 
 # Frontend
@@ -91,7 +91,7 @@ sha256sum /tmp/aeroftp-icon.png
 
 ### 2. Update aur/PKGBUILD and aur/.SRCINFO
 
-- Replace all 3 `sha256sums` (AppImage, .desktop, .png) — never leave `SKIP`
+- Replace all 3 `sha256sums` (AppImage, .desktop, .png) - never leave `SKIP`
 - Update `pkgver`, `pkgdesc`, source URLs, `noextract` in `.SRCINFO`
 
 ### 3. Push to AUR

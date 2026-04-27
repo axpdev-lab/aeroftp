@@ -6,7 +6,7 @@
 
 ## The Problem
 
-AI coding agents — whether integrated into IDEs (Claude Code, Cursor, Codex, Devin) or running autonomously via CLI — increasingly need to interact with remote servers. Deploying a website, synchronizing a build folder, downloading logs, or inspecting remote configurations are routine tasks that agents can automate effectively.
+AI coding agents - whether integrated into IDEs (Claude Code, Cursor, Codex, Devin) or running autonomously via CLI - increasingly need to interact with remote servers. Deploying a website, synchronizing a build folder, downloading logs, or inspecting remote configurations are routine tasks that agents can automate effectively.
 
 However, every such operation requires authentication. The agent needs credentials to connect to the server. In current workflows, this means one of the following:
 
@@ -15,7 +15,7 @@ However, every such operation requires authentication. The agent needs credentia
 - The credentials are stored in a plaintext configuration file accessible to the agent's process
 - The agent is given a URL containing embedded credentials, visible in shell history and process listings
 
-In each case, the authentication material is exposed to the agent. The agent may log it, include it in context sent to the AI model, persist it in conversation history, or inadvertently surface it in error messages. This is not a theoretical concern — it is the common behavior of file transfer tools that rely on plaintext config files, environment variables, or directly exposed command-line credentials.
+In each case, the authentication material is exposed to the agent. The agent may log it, include it in context sent to the AI model, persist it in conversation history, or inadvertently surface it in error messages. This is not a theoretical concern - it is the common behavior of file transfer tools that rely on plaintext config files, environment variables, or directly exposed command-line credentials.
 
 ---
 
@@ -41,7 +41,7 @@ AeroFTP implements credential isolation at the architecture level, not as an add
 
 ### The Vault
 
-All server credentials — passwords, API keys, OAuth access tokens, OAuth refresh tokens, and client secrets — are stored in an encrypted vault (`vault.db`) using AES-256-GCM with keys derived via Argon2id (128 MiB memory, 4 iterations, 4 lanes). The vault is a single encrypted file in the user's configuration directory, protected by either an auto-generated 512-bit passphrase (default) or a user-chosen master password.
+All server credentials - passwords, API keys, OAuth access tokens, OAuth refresh tokens, and client secrets - are stored in an encrypted vault (`vault.db`) using AES-256-GCM with keys derived via Argon2id (128 MiB memory, 4 iterations, 4 lanes). The vault is a single encrypted file in the user's configuration directory, protected by either an auto-generated 512-bit passphrase (default) or a user-chosen master password.
 
 The vault is not a wrapper around the OS keystore. It is a self-contained encrypted database that works identically across Linux, macOS, and Windows.
 
@@ -53,7 +53,7 @@ When an AI agent needs to operate on a remote server, it never receives the cred
 2. The Rust backend receives the request with only the profile name and the operation to perform
 3. The backend opens the encrypted vault, loads the credential material, and authenticates to the remote server
 4. The operation executes entirely within the Rust process
-5. The agent receives only the result — a directory listing, a transfer confirmation, file content — with no credential material attached
+5. The agent receives only the result - a directory listing, a transfer confirmation, file content - with no credential material attached
 
 The credential material exists only inside the Rust process memory during the operation. It never appears in:
 
@@ -89,7 +89,7 @@ The built-in AI assistant uses the same isolation architecture through two dedic
 - **`server_list_saved`**: Returns profile names, protocols, hosts, and paths. Never includes passwords or tokens.
 - **`server_exec`**: Accepts a server name and an operation (ls, cat, get, put, mkdir, rm, mv, stat, find, df). The Rust backend resolves credentials from the vault and executes the operation. The AI model sees only the result.
 
-This means a developer can instruct AeroAgent: *"Upload the build folder to the staging server and verify the deployment"* — and the agent completes the entire workflow without any credential material entering the AI context.
+This means a developer can instruct AeroAgent: *"Upload the build folder to the staging server and verify the deployment"* - and the agent completes the entire workflow without any credential material entering the AI context.
 
 ### Protocol Coverage
 
@@ -168,4 +168,4 @@ The architecture has been reviewed by 10 independent auditors (5 Claude Opus 4.6
 
 ---
 
-*AeroFTP — [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp) — GPL-3.0*
+*AeroFTP - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp) - GPL-3.0*

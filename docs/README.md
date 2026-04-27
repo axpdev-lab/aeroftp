@@ -13,10 +13,10 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix and protocol capability notes |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
-| **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant — architecture, tool catalog, safety system, CLI/MCP modes |
-| **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.1 encrypted container format — cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, Tauri commands reference) |
-| **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI — command guide, profiles, batch scripting, aliases, completions, agent integration |
-| **[PROVIDER-INTEGRATION-GUIDE.md](./PROVIDER-INTEGRATION-GUIDE.md)** | Provider integration reference — StorageProvider trait, auth patterns, upload/pagination/XML parsing, adding new providers |
+| **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant - architecture, tool catalog, safety system, CLI/MCP modes |
+| **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.1 encrypted container format - cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, Tauri commands reference) |
+| **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI - command guide, profiles, batch scripting, aliases, completions, agent integration |
+| **[PROVIDER-INTEGRATION-GUIDE.md](./PROVIDER-INTEGRATION-GUIDE.md)** | Provider integration reference - StorageProvider trait, auth patterns, upload/pagination/XML parsing, adding new providers |
 | **[security-evidence/README.md](./security-evidence/README.md)** | Public security evidence index and release packs |
 
 ---
@@ -73,11 +73,11 @@ Currently supported: **47 languages** at 100% coverage
 
 ## Security Audits
 
-### v2.6.0 — Provider Security Audit (147 findings)
+### v2.6.0 - Provider Security Audit (147 findings)
 
 Post-release audit covering all 8 cloud storage providers (S3, pCloud, kDrive, Azure Blob, 4shared, Filen, Internxt, MEGA). **147 findings remediated**: URL injection, SSRF endpoint validation, path traversal, OAuth token handling, XML entity limits, E2E key derivation hardening, pagination safeguards, and more. All fixes verified via `cargo check` (0 errors).
 
-### v2.5.0 — 6-Domain Independent Audit (86 findings)
+### v2.5.0 - 6-Domain Independent Audit (86 findings)
 
 Comprehensive 6-domain independent audit covering Security & Cryptography, Rust Code Quality, CI/CD, Documentation & OpenSSF, Performance, and Frontend Quality. All 86 findings (9 Critical, 17 High, 28 Medium, 19 Low, 13 Info) were remediated. Post-remediation composite grade: **A-**. See **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** for the full report.
 
@@ -93,12 +93,12 @@ Production command-line client with direct URL mode for core protocols plus vaul
 
 ## AeroAgent
 
-AeroAgent provides a broad built-in tool catalog across local files, remote operations, archives, search, sync control, clipboard, shell execution, and persistent memory, with support for 19 AI providers. It also includes a Command Palette, plugin registry, tool execution safety system, and CLI/MCP integration paths.
+AeroAgent provides a broad built-in tool catalog across local files, remote operations, archives, search, sync control, clipboard, shell execution, and persistent memory, with support for 24 AI providers. It also includes a Command Palette, plugin registry, tool execution safety system, and CLI/MCP integration paths.
 
 ---
 
-- **Documentation Version**: 3.5.3
-- **Last Update**: 16 April 2026
+- **Documentation Version**: 3.6.6
+- **Last Update**: 27 April 2026
 
 ---
 

@@ -181,10 +181,10 @@ Providers opt-in to additional features by overriding paired `supports_*()` + me
 | Capability | Check Method | Action Method | Providers |
 |-----------|-------------|---------------|-----------|
 | File permissions | `supports_chmod()` | `chmod()` | SFTP |
-| Symlinks | `supports_symlinks()` | — | SFTP |
+| Symlinks | `supports_symlinks()` | - | SFTP |
 | Server-side copy | `supports_server_copy()` | `server_copy()` | S3 |
 | Share links | `supports_share_links()` | `create_share_link()` | Google, Dropbox, OneDrive, Box, Zoho |
-| Storage quota | — | `storage_info()` | Google, Dropbox, OneDrive, Box, pCloud, Zoho |
+| Storage quota | - | `storage_info()` | Google, Dropbox, OneDrive, Box, pCloud, Zoho |
 | Resume transfer | `supports_resume()` | `resume_download()` / `resume_upload()` | FTP, SFTP, Koofr |
 | File versions | `supports_versions()` | `list_versions()` / `download_version()` | Google, OneDrive, Box, Zoho |
 | File locking | `supports_locking()` | `lock_file()` / `unlock_file()` | WebDAV |
@@ -194,7 +194,7 @@ Providers opt-in to additional features by overriding paired `supports_*()` + me
 | Remote URL upload | `supports_remote_upload()` | `remote_upload()` | FileLu |
 | Change tracking | `supports_change_tracking()` | `get_change_token()` / `list_changes()` | Google |
 | Delta sync | `supports_delta_sync()` | `read_range()` | SFTP |
-| Speed limits | — | `set_speed_limit()` / `get_speed_limit()` | FTP |
+| Speed limits | - | `set_speed_limit()` / `get_speed_limit()` | FTP |
 
 ### RemoteEntry
 
@@ -420,7 +420,7 @@ Tokens are stored with a 3-tier fallback:
 
 1. **Encrypted vault** (`credential_store.rs`): AES-256-GCM + Argon2id in `vault.db`
 2. **Auto-initialized vault**: If vault not open, try creating one without master password
-3. **In-memory only** (`MEMORY_TOKEN_CACHE`): When vault requires master password — tokens survive the session but are never written to disk
+3. **In-memory only** (`MEMORY_TOKEN_CACHE`): When vault requires master password - tokens survive the session but are never written to disk
 
 ```rust
 // Priority 1: Vault
@@ -570,7 +570,7 @@ let signature = base64::encode(
 
 ### 3.5 API Key / Bearer Token
 
-The simplest pattern — used by providers with key-based or token-based authentication:
+The simplest pattern - used by providers with key-based or token-based authentication:
 
 ```rust
 // API Key (FileLu)
@@ -624,7 +624,7 @@ Three providers implement client-side encryption where the server never sees pla
 |----------|---------------|----------------|---------------------|
 | **MEGA** | PBKDF2 → AES-128 master key | AES-128-ECB (per-file key) | AES-128 (file attributes) |
 | **Filen** | PBKDF2 → master key | AES-256-GCM (per-file key) | AES-256-GCM (metadata) |
-| **Internxt** | — | XChaCha20-Poly1305 | Encrypted JSON metadata |
+| **Internxt** | - | XChaCha20-Poly1305 | Encrypted JSON metadata |
 
 #### MEGA Pattern
 
@@ -695,7 +695,7 @@ async fn upload(&mut self, local_path: &str, remote_path: &str,
         .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
     let file_size = file.metadata().await?.len();
 
-    // Stream the file — reqwest reads chunks on demand
+    // Stream the file - reqwest reads chunks on demand
     let stream = tokio_util::io::ReaderStream::new(file);
     let body = reqwest::Body::wrap_stream(stream);
 
@@ -852,7 +852,7 @@ if file_size <= RESUMABLE_THRESHOLD {
 | Box | 50 MB | Chunked upload session | 20 MB |
 | S3 | 5 GB (single PUT) | Multipart upload | 5 MB |
 | Azure | 256 MB | Block upload + PutBlockList | 4 MB |
-| pCloud | Unlimited | Single PUT | — |
+| pCloud | Unlimited | Single PUT | - |
 | Filen | Unlimited | Encrypt + single PUT per chunk | 1 MB |
 | OpenDrive | Unlimited | `create_file` → `open_file_upload` → `upload_file_chunk2` → `close_file_upload` | Provider-defined single/few chunks |
 
@@ -961,14 +961,14 @@ loop {
 | S3 | Token | `NextContinuationToken` | 1000 | `list-type=2` required |
 | Azure | Marker | `NextMarker` in XML | 5000 | Enum results XML parsing |
 | Box | Offset | `offset` + `limit` | 1000 | Total count in response |
-| pCloud | — | None (full list) | — | Returns all files at once |
+| pCloud | - | None (full list) | - | Returns all files at once |
 | Zoho WorkDrive | Offset | `start_index` + `count` | 200 | Zero-based indexing |
 | 4shared | ID-based | `pageNumber` | 1000 | Per-folder, not cursor |
 | kDrive | Cursor | `cursor` | 500 | Opaque cursor token |
 | FileLu | Offset | `pageNo` | 100 | 1-based page numbers |
-| Jottacloud | — | None (XML listing) | — | Full list per folder |
-| Koofr | — | None (full list) | — | Returns all files at once |
-| OpenDrive | — | None (full list) | — | Returns folders/files for a folder ID in one response |
+| Jottacloud | - | None (XML listing) | - | Full list per folder |
+| Koofr | - | None (full list) | - | Returns all files at once |
+| OpenDrive | - | None (full list) | - | Returns folders/files for a folder ID in one response |
 
 > **Lesson**: Never assume a provider returns all results in one call. Always implement pagination, even if the current test folder is small.
 
@@ -1098,7 +1098,7 @@ pub fn sanitize_api_error(body: &str) -> String {
 
     // Redact credentials that might leak in error messages
     if truncated.contains("Bearer ") || truncated.contains("eyJ") {
-        "API error (response contained credentials — redacted)".to_string()
+        "API error (response contained credentials - redacted)".to_string()
     } else {
         truncated
     }
@@ -1123,7 +1123,7 @@ fn map_http_error(status: u16, body: &str) -> ProviderError {
         401 | 403 => ProviderError::AuthenticationFailed(sanitize_api_error(body)),
         404      => ProviderError::NotFound(sanitize_api_error(body)),
         409      => ProviderError::AlreadyExists(sanitize_api_error(body)),
-        429      => ProviderError::Other("Rate limited — try again later".into()),
+        429      => ProviderError::Other("Rate limited - try again later".into()),
         500..=599 => ProviderError::Other(format!("Server error ({})", status)),
         _        => ProviderError::Other(sanitize_api_error(body)),
     }
@@ -1563,7 +1563,7 @@ Automated checks that run in CI on every push:
 ### Clippy Enforcement
 
 ```bash
-# Exact command used in CI — zero warnings allowed
+# Exact command used in CI - zero warnings allowed
 cd src-tauri && cargo clippy --all-targets -- -D warnings
 ```
 
@@ -1594,7 +1594,7 @@ mod tests {
     fn test_error_sanitization() {
         let raw = "Error: Bearer eyJhbGciOiJSUzI1NiJ9.invalid.token";
         let sanitized = sanitize_api_error(raw);
-        assert_eq!(sanitized, "API error (response contained credentials — redacted)");
+        assert_eq!(sanitized, "API error (response contained credentials - redacted)");
     }
 }
 ```
@@ -1681,7 +1681,7 @@ AeroFTP implements S3 signing manually (SigV4) instead of using `aws-sdk-s3` bec
 
 ### Security
 
-15. **Never store tokens in localStorage**: Desktop app — use encrypted vault (AES-256-GCM + Argon2id). Only model names and base URLs go in localStorage.
+15. **Never store tokens in localStorage**: Desktop app - use encrypted vault (AES-256-GCM + Argon2id). Only model names and base URLs go in localStorage.
 
 16. **TLS downgrade detection**: When FTP `ExplicitIfAvailable` falls back to plaintext, set a `tls_downgraded` flag and show a security warning to the user.
 

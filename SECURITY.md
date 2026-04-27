@@ -57,7 +57,7 @@ For the full encryption architecture, cipher comparison tables, and AeroVault v2
 
 ### Connection Protocols
 
-AeroFTP supports 27 protocols with appropriate transport security:
+AeroFTP supports 7 transport protocols and 20+ native provider integrations with appropriate transport security:
 
 | Category | Protocols |
 | -------- | --------- |
@@ -72,7 +72,7 @@ Plain FTP connections display a prominent insecure warning badge. WebDAV support
 
 ### AI Tool Security
 
-AeroAgent (47 tools) operates under backend-enforced security controls:
+AeroAgent (52 tools) operates under backend-enforced security controls:
 
 - **Grant system**: Mutative tools require a cryptographic grant verified by the Rust backend
 - **Native OS confirmation**: Grant approval triggers an operating system dialog that cannot be bypassed by web frontend compromise or prompt injection
@@ -101,7 +101,7 @@ For Sigstore verification commands and CI/CD security controls, see [Supply Chai
 ### Memory Safety
 
 - `zeroize` and `secrecy` crates clear passwords, keys, and tokens from memory after use
-- All provider credentials wrapped in `SecretString` across all 22 providers
+- All provider credentials wrapped in `SecretString` across every provider integration
 - Rust ownership model prevents use-after-free and buffer overflows
 - Passwords are never logged or written to disk in plain text
 - Activity log and UI credential masking: usernames, emails, and access keys are masked at the source (`maskCredential`) before reaching log entries or display subtitles, preventing accidental exposure in bug reports and screenshots
