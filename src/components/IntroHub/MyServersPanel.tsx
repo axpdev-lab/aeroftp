@@ -522,6 +522,30 @@ export function MyServersPanel({
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [renamingId]);
 
+    // Esc: clear active narrowing on the My Servers grid (search query + filter chip).
+    // Mirrors the v3.6.6 Esc gesture that clears file selections in AeroFile panels.
+    // Skipped when an input/textarea is focused so native Esc-to-clear behavior wins.
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            const target = e.target as HTMLElement | null;
+            const tag = target?.tagName?.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+            if (renamingId) return;
+            if (deleteTarget || healthCheckTarget !== false || speedTestTarget !== false) return;
+            const hasNarrowing = searchQuery !== '' || activeFilter !== 'all';
+            if (!hasNarrowing) return;
+            e.preventDefault();
+            if (searchQuery) setSearchQuery('');
+            if (activeFilter !== 'all') {
+                setActiveFilter('all');
+                localStorage.setItem('aeroftp_myservers_filter', 'all');
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [searchQuery, activeFilter, renamingId, deleteTarget, healthCheckTarget, speedTestTarget]);
+
     const confirmDelete = useCallback(() => {
         if (!deleteTarget) return;
         const updated = servers.filter(s => s.id !== deleteTarget.id);
