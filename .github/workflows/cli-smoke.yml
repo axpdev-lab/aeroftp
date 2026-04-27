@@ -185,7 +185,7 @@ jobs:
           cargo llvm-cov report --summary-only --fail-under-lines 10 | tee coverage-summary.txt
 
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-linux
           path: |
