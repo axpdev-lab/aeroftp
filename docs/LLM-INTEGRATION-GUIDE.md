@@ -1,7 +1,7 @@
 # AeroFTP LLM Integration Guide
 
-> Version: 1.0
-> Date: 2026-04-15
+> Version: 1.1
+> Date: 2026-04-27
 > For: LLM/AI agent developers integrating with AeroFTP CLI or MCP server
 
 ---
@@ -14,7 +14,7 @@ AeroFTP exposes 3 integration points for LLMs:
 |---------|----------|----------|
 | **CLI** (`aeroftp-cli`) | stdin/stdout + exit codes | Tool use / function calling (any LLM) |
 | **MCP Server** (`aeroftp-cli mcp`) | JSON-RPC over stdin/stdout | Claude Desktop, Cursor, VS Code Copilot |
-| **AeroAgent** (built-in) | Tauri IPC | Desktop app users (19 AI providers) |
+| **AeroAgent** (built-in) | Tauri IPC | Desktop app users (24 AI providers) |
 
 ---
 
@@ -171,8 +171,8 @@ aeroftp-cli ls --profile "Server" /data/ --json 2>/dev/null | jq '.[] | select(.
 ### DO NOT: Chain Shell Commands via shell_execute
 
 ```bash
-# BAD - injection risk, no error handling
-aeroftp-cli agent --connect "Server" "run: ls /data && rm -rf /tmp/*"
+# BAD - shell injection risk, no error handling, mixes data and control
+aeroftp-cli agent --provider ollama --message "run: ls /data && rm -rf /tmp/*"
 
 # GOOD - use batch files for multi-step operations
 cat > workflow.aeroftp << 'EOF'
@@ -231,46 +231,56 @@ Install the [AeroFTP MCP Server](https://marketplace.visualstudio.com/items?item
 ### Starting the MCP Server
 
 ```bash
-aeroftp-cli mcp --profile "Server"
+aeroftp-cli mcp
 ```
 
-The MCP server communicates via JSON-RPC over stdin/stdout.
+The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-server by design: every tool call carries a `server` argument naming a saved profile, so a single MCP process can route operations across the whole vault. Auto-initializes the Universal Vault, or falls back to `AEROFTP_MASTER_PASSWORD` when set. Per-profile tool calls are serialized.
 
 ### Rate Limits
 
-| Category | Limit | Tools |
-|----------|-------|-------|
-| List/Read | 60/min | list_directory, read_file, stat, search |
-| Write | 30/min | upload_file, create_directory, rename |
-| Delete | 10/min | delete_file, delete_directory |
+| Category | Limit | Examples |
+|----------|-------|----------|
+| ReadOnly | 60/min | `aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_file_info`, `aeroftp_search_files`, `aeroftp_storage_quota`, `aeroftp_list_servers`, `aeroftp_check_tree`, `aeroftp_agent_connect`, `aeroftp_mcp_info` |
+| Mutative | 30/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection` |
+| Destructive | 10/min | `aeroftp_delete`, `aeroftp_delete_many` |
 
-### Available Tools (16)
+### Available Tools (19 canonical)
 
-| Tool | Danger | Description |
-|------|--------|-------------|
-| list_directory | safe | List files in a directory |
-| read_file | safe | Read file content (text, with size limit) |
-| stat | safe | Get file/directory metadata |
-| search | safe | Search for files by name pattern |
-| get_quota | safe | Get storage quota info |
-| download_file | medium | Download file to local path |
-| upload_file | medium | Upload local file to remote |
-| create_directory | medium | Create a remote directory |
-| rename | medium | Rename/move a file or directory |
-| copy | medium | Server-side copy (if supported) |
-| delete_file | high | Delete a remote file |
-| delete_directory | high | Delete a remote directory |
-| list_profiles | safe | List saved server profiles |
-| connect | safe | Connect to a saved profile |
-| disconnect | safe | Disconnect from current server |
-| server_info | safe | Get server/protocol information |
+The canonical MCP tool set uses the `aeroftp_` prefix. Legacy aliases without the prefix (`remote_list`, `server_exec`, etc.) are also exposed by the server for backward compatibility but new integrations should target the canonical names.
+
+| Tool | Category | Description |
+|------|----------|-------------|
+| `aeroftp_list_servers` | ReadOnly | List saved server profiles in the vault |
+| `aeroftp_agent_connect` | ReadOnly | Single-shot connect probe: connect / capabilities / quota / path in one envelope |
+| `aeroftp_mcp_info` | ReadOnly | MCP process diagnostics (started_at, uptime_secs, protocol coverage) |
+| `aeroftp_list_files` | ReadOnly | List files in a remote directory |
+| `aeroftp_read_file` | ReadOnly | Read a remote text file (size-capped preview) |
+| `aeroftp_file_info` | ReadOnly | Stat a remote file or directory (size, mtime, type) |
+| `aeroftp_search_files` | ReadOnly | Search remote tree by name pattern (glob) |
+| `aeroftp_storage_quota` | ReadOnly | Storage quota / usage where the protocol exposes it |
+| `aeroftp_check_tree` | ReadOnly | Compare local vs remote tree, returns differ / missing-local / missing-remote groups |
+| `aeroftp_upload_file` | Mutative | Upload one local file to a remote path |
+| `aeroftp_upload_many` | Mutative | Batch upload multiple local files in one call |
+| `aeroftp_download_file` | Mutative | Download one remote file to a local path |
+| `aeroftp_create_directory` | Mutative | Create a remote directory (idempotent with `create_parents`) |
+| `aeroftp_rename` | Mutative | Rename / move a remote file or directory |
+| `aeroftp_edit` | Mutative | Find-and-replace on a remote UTF-8 text file (no full download) |
+| `aeroftp_sync_tree` | Mutative | Sync a local directory with a remote one (upload / download / both, plus delta savings) |
+| `aeroftp_close_connection` | Mutative | Close a pooled server connection explicitly |
+| `aeroftp_delete` | Destructive | Delete a remote file or empty directory |
+| `aeroftp_delete_many` | Destructive | Batch delete multiple remote paths in one call |
+
+### MCP Resources
+
+In addition to tools, the server exposes the resource URI `aeroftp://connections` so clients can introspect the active connection pool (server name, protocol, last-used timestamp) without invoking a tool. Useful for clients that surface a "running tasks" panel.
 
 ### MCP Best Practices
 
-1. **Always specify absolute paths** - relative paths resolved against server root
-2. **Use list_directory before write operations** - verify target exists
-3. **Prefer stat over list_directory for single files** - lower overhead
-4. **Check server_info for capabilities** - not all operations supported everywhere
+1. **Always specify absolute paths** - relative paths are resolved against the server's working directory, which varies by protocol.
+2. **Run `aeroftp_agent_connect` first** when targeting a saved profile - one round trip returns connect / capabilities / quota / path in a single envelope.
+3. **Use `aeroftp_check_tree` before `aeroftp_sync_tree`** when the agent needs to confirm what would change.
+4. **Prefer batch tools** (`aeroftp_upload_many`, `aeroftp_delete_many`) over loops to amortize connection setup and let the server pace the per-item backoff.
+5. **Listen for `notifications/progress`** during uploads, downloads, and sync operations when you pass a `progressToken` in the request - the server emits coalesced progress samples through the lifetime of the call.
 
 ---
 
@@ -313,12 +323,14 @@ aeroftp-cli agent-info --json 2>/dev/null
 ```
 
 Returns:
-- Available commands with syntax
-- Supported protocols (28)
+- Available commands with syntax (49 subcommands)
+- Supported protocols and provider integrations (7 transport protocols + 20+ native provider integrations)
+- Per-protocol `protocol_features` map (`share_links`, `resume`, `server_copy`, `versions`, `thumbnails`, `change_tracking`)
+- `agent_connect_supported_protocols` array for the live-connect allowlist
 - Exit code definitions
 - Safety rules
 - Credential model
-- Saved server profiles (names only, no passwords)
+- Saved server profiles with per-profile `auth_state` (names only, no passwords)
 
 ---
 
@@ -357,4 +369,4 @@ aeroftp-cli get --profile "S3" /data/large.bin ./local/ --segments 4
 
 ---
 
-*For the full threat model, see [THREAT-MODEL.md](THREAT-MODEL.md). For AI tool schema, see [TOOL-SCHEMA.md](TOOL-SCHEMA.md).*
+*For the full threat model see [THREAT-MODEL.md](THREAT-MODEL.md). For the AeroAgent tool surface and end-to-end agent capabilities see [AEROAGENT.md](AEROAGENT.md) and [AEROAGENT-CAPABILITIES.md](AEROAGENT-CAPABILITIES.md). For the per-provider feature matrix see [PROTOCOL-FEATURES.md](PROTOCOL-FEATURES.md).*
