@@ -27,8 +27,8 @@
 <!-- Row 2: App Features -->
 <p align="center">
   <img src="https://img.shields.io/badge/support-multi--protocol-green" alt="Multi-Protocol Support" />
-  <img src="https://img.shields.io/badge/AI%20providers-19-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
-  <img src="https://img.shields.io/badge/AI%20tools-47-ff6600" alt="AI Tools" />
+  <img src="https://img.shields.io/badge/AI%20providers-24-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
+  <img src="https://img.shields.io/badge/AI%20tools-52-ff6600" alt="AI Tools" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
   <img src="https://img.shields.io/badge/CLI-ready-blue?logo=gnubash&logoColor=white" alt="CLI Ready" />
@@ -85,7 +85,11 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ## Integrations
 
-Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAuth2, Immich, and native APIs.
+AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague:
+
+1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift.
+2. **Native provider integrations (20+):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking) are first-class instead of best-effort.
+3. **Pre-configured presets (40+):** server URL, port, base path, password-generation deep-link filled in automatically for compatible services on top of the protocols above (S3-compatible endpoints, WebDAV-compatible servers, etc.).
 
 <table align="center">
   <tr>
@@ -153,10 +157,6 @@ Connect to 40+ cloud providers and services via FTP, FTPS, SFTP, WebDAV, S3, OAu
 
 > See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
 
-### rclone Bridge
-
-AeroFTP and rclone work together. Import and export server profiles between the two tools freely - 17 backend types mapped (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure, Swift, and more). Credentials are automatically upgraded to AES-256-GCM encrypted vault storage on import, and re-obfuscated on export for full rclone compatibility. Available in the GUI (Settings > Export/Import) and CLI (`aeroftp import rclone`). AeroFTP also documents compatibility workflows for existing `rclone crypt` remotes. See the **[rclone Bridge Guide](https://docs.aeroftp.app/features/rclone)** and **[rclone crypt page](https://docs.aeroftp.app/features/rclone-crypt)**.
-
 ### Profile Bridge (rclone, WinSCP, FileZilla)
 
 AeroFTP bridges profiles with the three most widely used file transfer tools. Import and export server profiles freely through a unified interface in the GUI (Settings > Export/Import > Bridge) and CLI (`aeroftp import rclone|winscp|filezilla`). Credentials are automatically upgraded to AES-256-GCM encrypted vault on import, and re-encoded in the target format on export. Duplicate detection shows which servers already exist, with the option to update credentials on re-import.
@@ -166,6 +166,8 @@ AeroFTP bridges profiles with the three most widely used file transfer tools. Im
 | **rclone** | `rclone.conf` (INI) | 17 backend types | AES-256-CTR (published key) | **[rclone Bridge](https://docs.aeroftp.app/features/rclone)** |
 | **WinSCP** | `WinSCP.ini` (INI) | SFTP, SCP, FTP, FTPS, WebDAV, S3 | XOR obfuscation | **[WinSCP Bridge](https://docs.aeroftp.app/features/winscp)** |
 | **FileZilla** | `sitemanager.xml` (XML) | FTP, SFTP, FTPS, S3 | Base64 (plaintext) | **[FileZilla Bridge](https://docs.aeroftp.app/features/filezilla)** |
+
+> **rclone crypt interop (read-only):** in addition to profile import/export, AeroFTP can decrypt and browse existing `rclone crypt` remotes natively. Write support is on the roadmap. See the **[rclone crypt page](https://docs.aeroftp.app/features/rclone-crypt)**.
 
 ### Hosting Provider Integration
 
@@ -179,12 +181,13 @@ Web hosting providers can generate encrypted `.aeroftp` connection profiles from
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (27 protocols, sync, share)
+├── AeroCloud    - Personal cloud (7 transport protocols + 20+ native providers, sync, share)
 ├── AeroFile     - Professional file manager
 ├── AeroSync     - Bidirectional sync engine
+│   └── AeroRsync    - Native Rust delta sync (clean-room rsync protocol 31)
 ├── AeroVault    - Military-grade encryption
 ├── AeroTools    - Code editor + Terminal + AI chat
-│   └── AeroAgent    - AI-powered assistant (47 tools, 19 providers)
+│   └── AeroAgent    - AI-powered assistant (52 tools, 24 providers)
 ├── AeroFTP CLI  - Production command-line client (vault profiles, JSON output, batch scripting, daemon, FUSE mount, crypt, ncdu, agent discovery)
 └── AeroPlayer   - Media player with visualizers
 ```
@@ -195,7 +198,7 @@ AeroFTP
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
-Turn **any server** into a private personal cloud. Connect to 27 protocols with bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. Background tray sync with native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
+Turn **any server** into a private personal cloud. Connect through 7 transport protocols and 20+ native provider integrations with bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. Background tray sync with native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
 
 ---
 
@@ -212,6 +215,22 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 > [Full documentation →](https://docs.aeroftp.app/features/aerosync.html)
 
 Enterprise-grade file synchronization built for real-world reliability. Three sync profiles (Mirror, Two-way, Backup), conflict resolution center with per-file strategies, SHA-256 checksum verification, transfer journal with checkpoint/resume, configurable retry with exponential backoff, bandwidth control, post-transfer verification (4 policies), and structured error taxonomy with 10 categories. Integrates with AeroCloud for background tray sync.
+
+---
+
+### AeroRsync - Native Rust Delta Sync
+
+> [Full documentation →](https://docs.aeroftp.app/features/aerorsync.html)
+
+Independent clean-room Rust implementation of the rsync wire protocol 31. AeroRsync ships byte-level delta sync without bundling or replacing the `rsync` binary, so cross-platform deployments (Windows first-class) get the same wire-compatible delta transport as Unix.
+
+In v3.6.6 the delta path is wired into:
+
+- **AeroSync** delta transfers (the original entry point).
+- **Cross-Profile Transfer** SFTP to SFTP with key-based auth, so only the bytes that differ from the destination travel on the wire.
+- **AeroTools Code Editor** save against a remote SFTP file, so a one-line change to a 5 MB file ships only the diff.
+
+Current scope is single-file transfers over SSH on SFTP destinations with key-based auth. Other providers and the classic `rsync` binary path on Unix coexist on the same `DeltaTransport` trait surface. The Cargo feature `aerorsync` is compiled by default; the runtime toggle (Settings -> Advanced) is OFF pending the host-key algorithm negotiation asymmetry fix. Soft fallbacks (file too small, no key on disk, missing remote helper) silently route back to the classic upload path.
 
 ---
 
@@ -254,7 +273,7 @@ Integrated development panel with three tools in a tabbed interface: **Monaco Ed
 
 #### AeroAgent - AI-Powered Assistant
 
-An AI assistant with **47 tools** that work across local files and remote providers. Supports **19 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, and 12 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode, and Command Palette (Ctrl+Shift+P).
+An AI assistant with **52 tools** that work across local files and remote providers. Supports **24 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 13 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode, and Command Palette (Ctrl+Shift+P).
 
 ---
 
@@ -266,7 +285,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 **For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp` batch scripts make AeroFTP a first-class tool in any agent's toolkit. External agents can also invoke `aeroftp-cli agent` to orchestrate AeroAgent as a credential-isolating proxy for multi-server operations. See [Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration) for the full orchestration guide, CLI reference, and a verified field test report.
 
-**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 47 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 19 AI providers.
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 52 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 24 AI providers.
 
 ---
 
@@ -274,7 +293,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 38 subcommands, 27 protocols, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 49 subcommands across 7 transport protocols and 20+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, and native MCP server mode for AI integration.
 
 ```bash
 aeroftp-cli ls --profile "My Server" /var/www/ -l        # Vault profile (no credentials exposed)
