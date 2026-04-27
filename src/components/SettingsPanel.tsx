@@ -2189,6 +2189,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                                                                         />
                                                                     </div>
+                                                                    {/* Path-Style URLs checkbox (parity with QuickConnect ProtocolSelector) */}
+                                                                    <div>
+                                                                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={!!editingServer.options?.pathStyle}
+                                                                                onChange={(e) =>
+                                                                                    setEditingServer({
+                                                                                        ...editingServer,
+                                                                                        options: {
+                                                                                            ...editingServer.options,
+                                                                                            pathStyle: e.target.checked,
+                                                                                        },
+                                                                                    })
+                                                                                }
+                                                                                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500"
+                                                                            />
+                                                                            <span className="text-gray-700 dark:text-gray-200">{t('protocol.pathStyle')}</span>
+                                                                        </label>
+                                                                    </div>
                                                                 </>
                                                             )}
 
@@ -2271,27 +2291,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     <FolderOpen size={16} />
                                                                 </button>
                                                             </div>
-                                                            {/* Public URL Base for share links (FTP/SFTP/WebDAV) */}
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1.5">
-                                                                    <Link2 size={12} />
-                                                                    {t('settings.publicUrlBase')}
-                                                                    <span className="text-gray-400 font-normal">({t('common.optional')})</span>
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="https://www.example.com/"
-                                                                    value={editingServer.publicUrlBase || ''}
-                                                                    onChange={(e) =>
-                                                                        setEditingServer({
-                                                                            ...editingServer,
-                                                                            publicUrlBase: e.target.value || undefined,
-                                                                        })
-                                                                    }
-                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                />
-                                                                <p className="text-xs text-gray-400 mt-1">{t('settings.publicUrlBaseDesc')}</p>
-                                                            </div>
+                                                            {/* Public URL Base for share links — only meaningful for protocols
+                                                                that serve a file tree mappable to plain HTTP URLs
+                                                                (FTP/FTPS/SFTP/WebDAV). Hidden for S3, Azure, MEGA, Filen,
+                                                                GitHub and OAuth-based providers, which build their own
+                                                                share links via provider APIs. */}
+                                                            {(protocol === 'ftp' || protocol === 'sftp' || protocol === 'webdav') && (
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1.5">
+                                                                        <Link2 size={12} />
+                                                                        {t('settings.publicUrlBase')}
+                                                                        <span className="text-gray-400 font-normal">({t('common.optional')})</span>
+                                                                    </label>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="https://www.example.com/"
+                                                                        value={editingServer.publicUrlBase || ''}
+                                                                        onChange={(e) =>
+                                                                            setEditingServer({
+                                                                                ...editingServer,
+                                                                                publicUrlBase: e.target.value || undefined,
+                                                                            })
+                                                                        }
+                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                                                                    />
+                                                                    <p className="text-xs text-gray-400 mt-1">{t('settings.publicUrlBaseDesc')}</p>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         <div className="flex gap-2 justify-end">
                                                             <button
