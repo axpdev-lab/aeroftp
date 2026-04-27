@@ -1529,30 +1529,31 @@ impl StorageProvider for MegaNativeProvider {
             ));
         }
 
-        // MEGA share link = export the node via `l` command, then build URL with file key
-        // Step 1: Set share (export) on the node
-        let _: Value = self
+        // MEGA share link = export the node via `l` command, then build URL using
+        // the public handle returned by the API (NOT the internal node handle).
+        // The `l` command response is the 8-character base64 public handle.
+        let public_handle: String = self
             .command_with_retry(json!({
                 "a": "l",
                 "n": handle,
                 "i": self.sequence_number.clone().unwrap_or_default(),
             }))
-            .await?;
+            .await
+            .map_err(|e| {
+                ProviderError::ServerError(format!("MEGA `l` (export) command failed: {e}"))
+            })?;
 
-        // Step 2: Build the link with the file/folder key
-        // For files: key is 32 bytes (file_key + nonce + metamac), export key = file_key
-        // For folders: key is 16 bytes, export key = folder_key
-        let export_key = if node.key.len() == 32 {
-            // File: export all 32 bytes (MEGA web client uses the full compound key)
-            mega_base64_encode(&node.key)
-        } else {
-            mega_base64_encode(&node.key)
-        };
+        if public_handle.is_empty() {
+            return Err(ProviderError::ServerError(
+                "MEGA `l` command returned empty public handle".into(),
+            ));
+        }
 
+        let export_key = mega_base64_encode(&node.key);
         let link_type = if node.is_file() { "file" } else { "folder" };
         let _ = &options; // acknowledge usage
         Ok(ShareLinkResult {
-            url: format!("https://mega.nz/{}/{}#{}", link_type, handle, export_key),
+            url: format!("https://mega.nz/{link_type}/{public_handle}#{export_key}"),
             password: None,
             expires_at: None,
         })
