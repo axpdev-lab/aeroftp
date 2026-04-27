@@ -1438,7 +1438,7 @@ The CLI sanitizes filenames with ANSI escape sequences. If filenames appear trun
 The following providers have been tested live via CLI with `--profile`:
 
 | Provider | Protocol | connect | ls | put/get | head/tail | hashsum | check | about | dedupe | track-renames | bwlimit | touch | tree | df |
-|----------|----------|---------|----|---------|-----------|---------||-------|--------|---------------|---------|-------|------|------|
+|----------|----------|---------|----|---------|-----------|---------|-------|-------|--------|---------------|---------|-------|------|------|
 | WD MyCloud NAS | SFTP | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS |
 | axpdev.it | FTP | PASS | PASS | - | PASS | PASS | - | PASS | - | - | PASS | - | - | - |
 | Playground | GitHub | PASS | PASS | PASS | PASS | PASS | - | PASS | - | - | - | PASS | PASS | - |
