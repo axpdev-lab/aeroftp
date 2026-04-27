@@ -166,7 +166,7 @@ jobs:
             librsvg2-dev
 
       - name: Build & start password-auth docker fixture
-        uses: nick-fields/retry@7152eba30c6575329ac0576536151aca5a72780e # v3
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v3
         with:
           timeout_minutes: 5
           max_attempts: 2
