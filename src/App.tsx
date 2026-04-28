@@ -186,6 +186,7 @@ import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from 
 import { useActivityLog } from './hooks/useActivityLog';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useSettings } from './hooks/useSettings';
+import { useMouseBackButton } from './hooks/useMouseBackButton';
 import { useAutoUpdate } from './hooks/useAutoUpdate';
 import { usePreview } from './hooks/usePreview';
 import { useOverwriteCheck } from './hooks/useOverwriteCheck';
@@ -221,6 +222,11 @@ import { useFaviconDetection } from './hooks/useFaviconDetection';
 //   - Cloud sync events (~98 lines)
 // ============================================================================
 const App: React.FC = () => {
+  // Mouse Back button (button code 3) → synthetic Escape, so any open
+  // modal / dialog / dropdown closes via its existing Esc handler. See
+  // hooks/useMouseBackButton.ts for the full rationale.
+  useMouseBackButton();
+
   // === Settings (persisted in localStorage, live-reloaded) ===
   const settings = useSettings();
   const {
