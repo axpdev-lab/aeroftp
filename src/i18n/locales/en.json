@@ -4035,6 +4035,8 @@
       "empty": "No custom icons yet",
       "emptyHint": "Upload your first icon to start building your library.",
       "removeIcon": "Remove from library",
+      "confirmDelete": "Remove \"{name}\" from your custom icon library?",
+      "dropHere": "Drop file to upload",
       "noResults": "No icons match your search",
       "currentSection": "Current",
       "inUse": "In use",

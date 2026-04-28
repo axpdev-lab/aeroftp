@@ -4114,6 +4114,8 @@
       "empty": "Nessuna icona personalizzata",
       "emptyHint": "Carica la tua prima icona per iniziare a costruire la libreria.",
       "removeIcon": "Rimuovi dalla libreria",
+      "confirmDelete": "Rimuovere \"{name}\" dalla libreria di icone personalizzate?",
+      "dropHere": "Rilascia il file per caricarlo",
       "noResults": "Nessuna icona corrisponde alla ricerca",
       "currentSection": "Attuale",
       "inUse": "In uso",

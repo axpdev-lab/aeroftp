@@ -99,7 +99,15 @@ function reactLogoToSvgDataUrl(LogoComp: React.FC<{ size?: number }>): string | 
         }
         const svg = container.querySelector('svg');
         if (!svg) {
-            logger.warn(`icon-picker: no <svg> found after render for ${compName}`);
+            // Logos that render as <img> (PNG-backed providers like Hetzner,
+            // MinIO, Koofr, FileLu, Blomp, OpenDrive...) used to silently fail
+            // here, leaving the click as a no-op. Fall back to the image src
+            // so the selection still works for the whole shipped catalog.
+            const img = container.querySelector('img');
+            if (img && img.src) {
+                return img.src;
+            }
+            logger.warn(`icon-picker: no <svg> or <img> found after render for ${compName}`);
             return null;
         }
         if (!svg.hasAttribute('xmlns')) {
@@ -258,11 +266,99 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
 
     const handleDeleteCustom = useCallback((id: string) => {
         setCustomIcons(prev => {
+            const target = prev.find(i => i.id === id);
+            // Confirm before removing — the library is small and easy to lose
+            // an upload by accident. window.confirm is intentional here: same
+            // surface as the existing profile delete dialog and zero new i18n.
+            const label = target?.name || t('iconPicker.removeIcon');
+            if (!window.confirm(t('iconPicker.confirmDelete', { name: label }))) {
+                return prev;
+            }
             const next = prev.filter(i => i.id !== id);
             persistCustomIcons(next);
             return next;
         });
+    }, [t]);
+
+    // Shared ingestion path for both file-picker uploads and drag & drop.
+    // Accepts a Uint8Array of file bytes plus the original filename so we can
+    // derive the extension and human-readable label the same way regardless
+    // of how the file was supplied.
+    const ingestIconBytes = useCallback(async (bytes: Uint8Array, filename: string) => {
+        const ext = filename.split('.').pop()?.toLowerCase() || 'png';
+        const baseName = filename.replace(/\.[^.]+$/, '') || 'Icon';
+
+        let dataUrl: string | null = null;
+        let type: 'svg' | 'raster' = 'raster';
+
+        if (ext === 'svg') {
+            let svgText: string;
+            try {
+                svgText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+            } catch { return; }
+            if (!svgText.trim().toLowerCase().includes('<svg')) return;
+            dataUrl = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgText)))}`;
+            type = 'svg';
+        } else {
+            const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon' };
+            const mime = mimeMap[ext] || 'image/png';
+            const blob = new Blob([new Uint8Array(bytes)], { type: mime });
+            const url = URL.createObjectURL(blob);
+            dataUrl = await new Promise<string | null>((resolve) => {
+                const img = new window.Image();
+                const timeout = setTimeout(() => { URL.revokeObjectURL(url); resolve(null); }, 10000);
+                img.onload = () => {
+                    clearTimeout(timeout);
+                    const canvas = document.createElement('canvas');
+                    const size = 128;
+                    canvas.width = size; canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) { URL.revokeObjectURL(url); resolve(null); return; }
+                    const scale = Math.min(size / img.width, size / img.height);
+                    const w = img.width * scale, h = img.height * scale;
+                    ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+                    URL.revokeObjectURL(url);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(url); resolve(null); };
+                img.src = url;
+            });
+        }
+
+        if (!dataUrl) return;
+        const newIcon: CustomIcon = {
+            id: `icon_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            name: baseName,
+            dataUrl,
+            type,
+            createdAt: new Date().toISOString(),
+        };
+        setCustomIcons(prev => {
+            const next = [newIcon, ...prev];
+            persistCustomIcons(next);
+            return next;
+        });
+        setTab('custom');
     }, []);
+
+    const [dragActive, setDragActive] = useState(false);
+    const handleDrop = useCallback(async (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+        if (uploading) return;
+        const file = e.dataTransfer?.files?.[0];
+        if (!file) return;
+        const allowed = /\.(svg|png|jpe?g|gif|webp|ico)$/i;
+        if (!allowed.test(file.name)) return;
+        setUploading(true);
+        try {
+            const arr = new Uint8Array(await file.arrayBuffer());
+            await ingestIconBytes(arr, file.name);
+        } finally {
+            setUploading(false);
+        }
+    }, [uploading, ingestIconBytes]);
 
     const handleUpload = useCallback(async () => {
         if (uploading) return;
@@ -275,64 +371,12 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
             if (!selected) return;
             const filePath = Array.isArray(selected) ? selected[0] : selected;
             const bytes = await readFile(filePath);
-            const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-            const baseName = filePath.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') || 'Icon';
-
-            let dataUrl: string | null = null;
-            let type: 'svg' | 'raster' = 'raster';
-
-            if (ext === 'svg') {
-                let svgText: string;
-                try {
-                    svgText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-                } catch { return; }
-                if (!svgText.trim().toLowerCase().includes('<svg')) return;
-                dataUrl = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgText)))}`;
-                type = 'svg';
-            } else {
-                const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon' };
-                const mime = mimeMap[ext] || 'image/png';
-                const blob = new Blob([bytes], { type: mime });
-                const url = URL.createObjectURL(blob);
-                dataUrl = await new Promise<string | null>((resolve) => {
-                    const img = new window.Image();
-                    const timeout = setTimeout(() => { URL.revokeObjectURL(url); resolve(null); }, 10000);
-                    img.onload = () => {
-                        clearTimeout(timeout);
-                        const canvas = document.createElement('canvas');
-                        const size = 128;
-                        canvas.width = size; canvas.height = size;
-                        const ctx = canvas.getContext('2d');
-                        if (!ctx) { URL.revokeObjectURL(url); resolve(null); return; }
-                        const scale = Math.min(size / img.width, size / img.height);
-                        const w = img.width * scale, h = img.height * scale;
-                        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-                        URL.revokeObjectURL(url);
-                        resolve(canvas.toDataURL('image/png'));
-                    };
-                    img.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(url); resolve(null); };
-                    img.src = url;
-                });
-            }
-
-            if (!dataUrl) return;
-            const newIcon: CustomIcon = {
-                id: `icon_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                name: baseName,
-                dataUrl,
-                type,
-                createdAt: new Date().toISOString(),
-            };
-            setCustomIcons(prev => {
-                const next = [newIcon, ...prev];
-                persistCustomIcons(next);
-                return next;
-            });
-            setTab('custom');
+            const filename = filePath.split(/[/\\]/).pop() || 'icon.png';
+            await ingestIconBytes(bytes, filename);
         } finally {
             setUploading(false);
         }
-    }, [uploading]);
+    }, [uploading, ingestIconBytes]);
 
     // Esc closes
     useEffect(() => {
@@ -447,10 +491,18 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                             <button
                                 onClick={handleUpload}
                                 disabled={uploading}
-                                className="flex items-center justify-center gap-2 w-full px-4 py-3 mb-3 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500/60 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-50"
+                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+                                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); }}
+                                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+                                onDrop={handleDrop}
+                                className={`flex items-center justify-center gap-2 w-full px-4 py-3 mb-3 border-2 border-dashed rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+                                    dragActive
+                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300'
+                                        : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500/60 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-600 dark:text-gray-300'
+                                }`}
                             >
                                 <Upload size={16} />
-                                {t('iconPicker.upload')}
+                                {dragActive ? t('iconPicker.dropHere') : t('iconPicker.upload')}
                                 <span className="text-[11px] text-gray-400 dark:text-gray-500 font-normal">
                                     SVG, PNG, JPG, WEBP, GIF, ICO
                                 </span>
@@ -525,11 +577,19 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                             )}
 
                             {customIcons.length === 0 ? (
-                                <div className="text-center py-10 text-gray-400 dark:text-gray-500">
-                                    <ImageIcon size={32} className="mx-auto mb-3 opacity-50" />
-                                    <p className="text-sm mb-1">{t('iconPicker.empty')}</p>
-                                    <p className="text-xs">{t('iconPicker.emptyHint')}</p>
-                                </div>
+                                // Suppress the "No custom icons yet" placeholder
+                                // when the Current/On-server section above is
+                                // already showing something — otherwise users
+                                // who upgraded from an older release see both
+                                // their existing icon AND a contradictory
+                                // "library is empty" message at the same time.
+                                (currentIcon || onServerIcon) ? null : (
+                                    <div className="text-center py-10 text-gray-400 dark:text-gray-500">
+                                        <ImageIcon size={32} className="mx-auto mb-3 opacity-50" />
+                                        <p className="text-sm mb-1">{t('iconPicker.empty')}</p>
+                                        <p className="text-xs">{t('iconPicker.emptyHint')}</p>
+                                    </div>
+                                )
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
                                     {customIcons.map(icon => (
