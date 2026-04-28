@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -13,6 +13,8 @@ interface MyServersToolbarProps {
     onViewModeChange: (mode: MyServersViewMode) => void;
     credentialsMasked: boolean;
     onToggleMask: () => void;
+    hideUsername: boolean;
+    onToggleHideUsername: () => void;
     serverCount: number;
     filteredCount: number;
     chipCounts: Record<MyServersFilterBy, number>;
@@ -34,6 +36,8 @@ export function MyServersToolbar({
     onViewModeChange,
     credentialsMasked,
     onToggleMask,
+    hideUsername,
+    onToggleHideUsername,
     serverCount,
     filteredCount,
     chipCounts,
@@ -131,6 +135,19 @@ export function MyServersToolbar({
                 title={credentialsMasked ? t('savedServers.showCredentials') : t('savedServers.hideCredentials')}
             >
                 {credentialsMasked ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+
+            {/* Hide username toggle */}
+            <button
+                onClick={onToggleHideUsername}
+                className={`p-2 rounded-lg transition-colors ${
+                    hideUsername
+                        ? 'text-gray-300 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'
+                }`}
+                title={hideUsername ? t('savedServers.showUsername') : t('savedServers.hideUsername')}
+            >
+                <AtSign size={15} />
             </button>
 
             {/* Cross-Profile Transfer - always visible, brightness scales with selection */}

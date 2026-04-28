@@ -103,6 +103,8 @@ interface ServerCardProps {
     server: ServerProfile;
     isConnecting: boolean;
     credentialsMasked: boolean;
+    /** Hide username (left side of user@host) on the card. Toggled from MyServersToolbar. */
+    hideUsername?: boolean;
     isFavorite: boolean;
     onConnect: (server: ServerProfile) => void;
     onEdit: (server: ServerProfile) => void;
@@ -227,6 +229,7 @@ export const ServerCard = React.memo(function ServerCard({
     server,
     isConnecting,
     credentialsMasked,
+    hideUsername = false,
     isFavorite,
     onConnect,
     onEdit,
@@ -287,11 +290,12 @@ export const ServerCard = React.memo(function ServerCard({
         const host = shouldMask && server.host
             ? maskCredential(server.host)
             : server.host;
+        if (hideUsername) return host || '\u00A0';
         if (user && host) return `${user}@${host}`;
         if (host) return host;
         if (user) return user;
         return '\u00A0';
-    }, [server.username, server.host, credentialsMasked, server.protocol]);
+    }, [server.username, server.host, credentialsMasked, server.protocol, hideUsername]);
 
     // ===== LIST VIEW (table-like columns) =====
     if (viewMode === 'list') {

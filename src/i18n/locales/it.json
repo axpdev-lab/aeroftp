@@ -3483,6 +3483,8 @@
       "opendriveDisplay": "OpenDrive {username}",
       "hideCredentials": "Nascondi credenziali",
       "showCredentials": "Mostra credenziali",
+      "showUsername": "Mostra username sulle card",
+      "hideUsername": "Nascondi username sulle card",
       "webdavDisplay": "{username}@{host}",
       "standardDisplay": "{username}@{host}:{port}",
       "oauthConfigError": "Configura le credenziali {provider} in Impostazioni > Provider Cloud.",

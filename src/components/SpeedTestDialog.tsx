@@ -968,11 +968,11 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm animate-fade-in"
+            className="fixed inset-0 z-50 flex items-start justify-center pt-[2vh] pb-[2vh] bg-black/50 backdrop-blur-sm animate-fade-in"
             onClick={(e) => { if (e.target === e.currentTarget && !anyRunning) onClose(); }}
         >
             <div
-                className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in max-h-[90vh] flex flex-col"
+                className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in max-h-[96vh] flex flex-col"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">

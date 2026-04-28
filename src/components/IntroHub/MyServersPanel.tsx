@@ -136,6 +136,16 @@ export function MyServersPanel({
         return (stored === 'list' ? 'list' : 'grid') as MyServersViewMode;
     });
     const [credentialsMasked, setCredentialsMasked] = useState(true);
+    const [hideUsername, setHideUsername] = useState<boolean>(() => {
+        return localStorage.getItem('aeroftp_hide_server_username') === '1';
+    });
+    const toggleHideUsername = React.useCallback(() => {
+        setHideUsername(prev => {
+            const next = !prev;
+            try { localStorage.setItem('aeroftp_hide_server_username', next ? '1' : '0'); } catch { /* noop */ }
+            return next;
+        });
+    }, []);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
     const [speedTestTarget, setSpeedTestTarget] = useState<string | undefined | false>(false);
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
@@ -603,6 +613,8 @@ export function MyServersPanel({
                 onViewModeChange={setViewMode}
                 credentialsMasked={credentialsMasked}
                 onToggleMask={() => setCredentialsMasked(prev => !prev)}
+                hideUsername={hideUsername}
+                onToggleHideUsername={toggleHideUsername}
                 serverCount={servers.length}
                 filteredCount={filteredServers.length}
                 chipCounts={chipCounts}
@@ -691,6 +703,7 @@ export function MyServersPanel({
                                     server={server}
                                     isConnecting={connectingId === server.id || oauthConnecting === server.id}
                                     credentialsMasked={credentialsMasked}
+                                    hideUsername={hideUsername}
                                     isFavorite={favorites.has(server.id)}
                                     onConnect={handleConnect}
                                     onEdit={onEdit}
@@ -734,6 +747,7 @@ export function MyServersPanel({
                                 server={server}
                                 isConnecting={connectingId === server.id || oauthConnecting === server.id}
                                 credentialsMasked={credentialsMasked}
+                                hideUsername={hideUsername}
                                 isFavorite={favorites.has(server.id)}
                                 onConnect={handleConnect}
                                 onEdit={onEdit}
