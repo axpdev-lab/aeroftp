@@ -10,8 +10,6 @@
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use std::path::Path;
-#[cfg(not(windows))]
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 /// Windows: hide the console window that flashes when spawning .bat/.exe MEGAcmd commands.
@@ -232,8 +230,25 @@ impl MegaCmdProvider {
     }
 
     /// Internal login logic — used by connect() and re-auth.
-    /// On Windows, .bat wrappers don't forward stdin so password must be passed as CLI argument.
-    /// On Unix, password is piped via stdin to avoid process-list exposure (AUTH-01).
+    ///
+    /// MEGAcmd's `mega-login` one-shot wrapper runs against the background
+    /// `mega-cmd-server` and is NON-interactive. In that mode it does not
+    /// read stdin at all and rejects calls with email but no password with:
+    ///
+    ///   "Extra args required in non-interactive mode. Usage: login [...]
+    ///    email password | exportedfolderurl#key | session"
+    ///
+    /// The stdin-pipe trick only works inside the `mega-cmd` interactive
+    /// shell (where `login email` then prompts), not from the one-shot
+    /// wrappers AeroFTP launches. We therefore pass email + password as
+    /// CLI arguments on every platform.
+    ///
+    /// Tradeoff: arguments are visible to other processes via `ps` /
+    /// `/proc/<pid>/cmdline` for the duration of the login call (~1s).
+    /// This matches what every other MEGAcmd integration does (rclone,
+    /// the official MEGA Sync, etc.); the alternatives (env var or
+    /// password file) have the same exposure surface in
+    /// `/proc/<pid>/environ` or on disk and are not safer in practice.
     async fn do_login(&mut self) -> Result<(), ProviderError> {
         let password = self.config.password.expose_secret().to_string();
         let resolved_cmd = Self::resolve_mega_cmd("mega-login");
@@ -241,7 +256,6 @@ impl MegaCmdProvider {
         let login_future = async {
             #[cfg(windows)]
             let output = {
-                // Windows: .bat wrappers don't forward stdin — pass as CLI argument
                 // CREATE_NO_WINDOW prevents cmd.exe console flash
                 use std::os::windows::process::CommandExt;
                 Command::new(&resolved_cmd)
@@ -261,36 +275,19 @@ impl MegaCmdProvider {
             };
 
             #[cfg(not(windows))]
-            let output = {
-                // Unix: password via stdin pipe (AUTH-01 — not exposed in process list)
-                let mut child = Command::new(&resolved_cmd)
-                    .arg(&self.config.email)
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .spawn()
-                    .map_err(|e| {
-                        ProviderError::ConnectionFailed(format!(
-                            "Failed to spawn mega-login: {}",
-                            e
-                        ))
-                    })?;
-
-                if let Some(mut stdin) = child.stdin.take() {
-                    stdin.write_all(password.as_bytes()).await.map_err(|e| {
-                        ProviderError::ConnectionFailed(format!(
-                            "Failed to write password to stdin: {}",
-                            e
-                        ))
-                    })?;
-                    stdin.write_all(b"\n").await.ok();
-                    drop(stdin);
-                }
-
-                child.wait_with_output().await.map_err(|e| {
-                    ProviderError::ConnectionFailed(format!("mega-login wait failed: {}", e))
-                })?
-            };
+            let output = Command::new(&resolved_cmd)
+                .arg(&self.config.email)
+                .arg(&password)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .await
+                .map_err(|e| {
+                    ProviderError::ConnectionFailed(format!(
+                        "Failed to execute mega-login: {}",
+                        e
+                    ))
+                })?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
