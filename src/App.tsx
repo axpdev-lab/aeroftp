@@ -844,6 +844,36 @@ const App: React.FC = () => {
   const humanLog = useHumanizedLog();
   const activityLog = useActivityLog();
 
+  // Activity Log badge counter respects the same filter selected inside ActivityLogPanel.
+  // The panel writes filter state to localStorage and emits CustomEvents on every change,
+  // so the badge stays in sync without lifting state up.
+  const [activityLogFilterType, setActivityLogFilterType] = useState<string>(() => {
+    return localStorage.getItem('aeroftp_activitylog_filter') || 'ALL';
+  });
+  const [activityLogShowCloudSync, setActivityLogShowCloudSync] = useState<boolean>(() => {
+    return localStorage.getItem('aeroftp_activitylog_show_cloudsync') !== '0';
+  });
+  useEffect(() => {
+    const onFilter = (e: Event) => setActivityLogFilterType(String((e as CustomEvent).detail || 'ALL'));
+    const onCloud = (e: Event) => setActivityLogShowCloudSync(Boolean((e as CustomEvent).detail));
+    window.addEventListener('activity-log-filter-changed', onFilter);
+    window.addEventListener('activity-log-cloudsync-changed', onCloud);
+    return () => {
+      window.removeEventListener('activity-log-filter-changed', onFilter);
+      window.removeEventListener('activity-log-cloudsync-changed', onCloud);
+    };
+  }, []);
+  const activityLogFilteredCount = useMemo(() => {
+    let result = activityLog.entries;
+    if (activityLogFilterType !== 'ALL') {
+      result = result.filter(e => e.operation === activityLogFilterType);
+    }
+    if (!activityLogShowCloudSync) {
+      result = result.filter(e => !e.message.toLowerCase().includes('aerocloud'));
+    }
+    return result.length;
+  }, [activityLog.entries, activityLogFilterType, activityLogShowCloudSync]);
+
   useEffect(() => {
     const protocol = connectionParams.protocol;
     const isFtpFamily = protocol === 'ftp' || protocol === 'ftps';
@@ -9437,7 +9467,7 @@ interface UpdateVerificationInfo {
             transferToastActive={hasActiveTransfer || transferQueue.hasActiveTransfers}
             onReopenTransferToast={reopenTransferToast}
             showActivityLog={showActivityLog}
-            activityLogCount={activityLog.entries.length}
+            activityLogCount={activityLogFilteredCount}
             onToggleActivityLog={() => setShowActivityLog(!showActivityLog)}
             updateAvailable={updateAvailable}
             onShowUpdateToast={() => setUpdateToastDismissed(false)}

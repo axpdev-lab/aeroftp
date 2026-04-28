@@ -474,8 +474,26 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     const scrollRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [autoScroll, setAutoScroll] = useState(true);
-    const [filterType, setFilterType] = useState<OperationType | 'ALL'>('ALL');
-    const [showCloudSync, setShowCloudSync] = useState(true);  // Toggle to show/hide AeroCloud sync messages
+    const [filterType, setFilterType] = useState<OperationType | 'ALL'>(() => {
+        const stored = localStorage.getItem('aeroftp_activitylog_filter');
+        return (stored as OperationType | 'ALL') || 'ALL';
+    });
+    useEffect(() => {
+        try {
+            localStorage.setItem('aeroftp_activitylog_filter', filterType);
+            // Notify StatusBar (and any other listener) so the badge can re-count.
+            window.dispatchEvent(new CustomEvent('activity-log-filter-changed', { detail: filterType }));
+        } catch { /* noop */ }
+    }, [filterType]);
+    const [showCloudSync, setShowCloudSync] = useState<boolean>(() => {
+        return localStorage.getItem('aeroftp_activitylog_show_cloudsync') !== '0';
+    });
+    useEffect(() => {
+        try {
+            localStorage.setItem('aeroftp_activitylog_show_cloudsync', showCloudSync ? '1' : '0');
+            window.dispatchEvent(new CustomEvent('activity-log-cloudsync-changed', { detail: showCloudSync }));
+        } catch { /* noop */ }
+    }, [showCloudSync]);
     const [height, setHeight] = useState(initialHeight);
 
 
