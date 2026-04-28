@@ -373,7 +373,9 @@ impl AzureProvider {
                                 current_name.push_str(&ch);
                             }
                             ParseState::BlobLastModified => {
-                                current_modified.get_or_insert_with(String::new).push_str(&ch);
+                                current_modified
+                                    .get_or_insert_with(String::new)
+                                    .push_str(&ch);
                             }
                             ParseState::NextMarker => {
                                 next_marker.get_or_insert_with(String::new).push_str(&ch);
@@ -1738,9 +1740,7 @@ impl AzureProvider {
                                 match tag_name.as_str() {
                                     "Name" => blob_name.push_str(&ch),
                                     "Last-Modified" => {
-                                        blob_modified
-                                            .get_or_insert_with(String::new)
-                                            .push_str(&ch);
+                                        blob_modified.get_or_insert_with(String::new).push_str(&ch);
                                     }
                                     _ => {}
                                 }

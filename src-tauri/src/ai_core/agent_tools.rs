@@ -22,8 +22,8 @@ fn map_str_err(e: String) -> ToolError {
 
 const TEXT_EXTENSIONS: &[&str] = &[
     "rs", "ts", "tsx", "js", "jsx", "py", "json", "toml", "yaml", "yml", "md", "txt", "html",
-    "css", "sh", "sql", "xml", "csv", "env", "cfg", "ini", "conf", "log", "go", "java", "c",
-    "cpp", "h", "hpp", "rb", "php", "swift", "kt",
+    "css", "sh", "sql", "xml", "csv", "env", "cfg", "ini", "conf", "log", "go", "java", "c", "cpp",
+    "h", "hpp", "rb", "php", "swift", "kt",
 ];
 
 fn is_text_file(path: &std::path::Path) -> bool {

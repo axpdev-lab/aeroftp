@@ -102,7 +102,11 @@ pub fn auth_state_from_cache(profile_id: &str, protocol: &str) -> &'static str {
     let Some(store) = CredentialStore::from_cache() else {
         return "unknown";
     };
-    let accounts: HashSet<String> = store.list_accounts().unwrap_or_default().into_iter().collect();
+    let accounts: HashSet<String> = store
+        .list_accounts()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
     derive_profile_auth_state(&store, &accounts, profile_id, protocol)
 }
 
@@ -115,16 +119,40 @@ mod tests {
         // Documented OAuth providers must each map to a stable vault key.
         // If the OAuth2Manager enum gets a new variant, this test should
         // grow with it.
-        assert_eq!(oauth_vault_key_for_protocol("googledrive"), Some("oauth_google"));
-        assert_eq!(oauth_vault_key_for_protocol("googlephotos"), Some("oauth_googlephotos"));
-        assert_eq!(oauth_vault_key_for_protocol("dropbox"), Some("oauth_dropbox"));
-        assert_eq!(oauth_vault_key_for_protocol("onedrive"), Some("oauth_onedrive"));
+        assert_eq!(
+            oauth_vault_key_for_protocol("googledrive"),
+            Some("oauth_google")
+        );
+        assert_eq!(
+            oauth_vault_key_for_protocol("googlephotos"),
+            Some("oauth_googlephotos")
+        );
+        assert_eq!(
+            oauth_vault_key_for_protocol("dropbox"),
+            Some("oauth_dropbox")
+        );
+        assert_eq!(
+            oauth_vault_key_for_protocol("onedrive"),
+            Some("oauth_onedrive")
+        );
         assert_eq!(oauth_vault_key_for_protocol("box"), Some("oauth_box"));
         assert_eq!(oauth_vault_key_for_protocol("pcloud"), Some("oauth_pcloud"));
-        assert_eq!(oauth_vault_key_for_protocol("zohoworkdrive"), Some("oauth_zohoworkdrive"));
-        assert_eq!(oauth_vault_key_for_protocol("yandexdisk"), Some("oauth_yandexdisk"));
-        assert_eq!(oauth_vault_key_for_protocol("fourshared"), Some("oauth_fourshared"));
-        assert_eq!(oauth_vault_key_for_protocol("jottacloud"), Some("jottacloud_refresh"));
+        assert_eq!(
+            oauth_vault_key_for_protocol("zohoworkdrive"),
+            Some("oauth_zohoworkdrive")
+        );
+        assert_eq!(
+            oauth_vault_key_for_protocol("yandexdisk"),
+            Some("oauth_yandexdisk")
+        );
+        assert_eq!(
+            oauth_vault_key_for_protocol("fourshared"),
+            Some("oauth_fourshared")
+        );
+        assert_eq!(
+            oauth_vault_key_for_protocol("jottacloud"),
+            Some("jottacloud_refresh")
+        );
     }
 
     #[test]
@@ -144,8 +172,22 @@ mod tests {
         // Password-based protocols use `server_<id>` per profile and
         // have no protocol-level OAuth blob.
         for proto in [
-            "ftp", "ftps", "sftp", "webdav", "s3", "azure", "filen", "internxt", "filelu", "koofr",
-            "kdrive", "opendrive", "drime", "github", "mega", "swift",
+            "ftp",
+            "ftps",
+            "sftp",
+            "webdav",
+            "s3",
+            "azure",
+            "filen",
+            "internxt",
+            "filelu",
+            "koofr",
+            "kdrive",
+            "opendrive",
+            "drime",
+            "github",
+            "mega",
+            "swift",
         ] {
             assert_eq!(
                 oauth_vault_key_for_protocol(proto),

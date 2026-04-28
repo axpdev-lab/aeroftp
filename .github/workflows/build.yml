@@ -155,10 +155,18 @@ jobs:
           echo "AppImage re-packaged: ${ORIG_SIZE}MB -> ${NEW_SIZE}MB (system libs only)"
 
       # Build Snap package using Snapcraft (Tauri doesn't generate .snap)
+      # NOTE 2026-04-28: snapcore/action-build@3bdaa03e is currently dying
+      # silently during LXD setup on ubuntu-22.04 runners (3 reruns of v3.6.9
+      # all silent-OOM at the same point). Marked continue-on-error so the
+      # rest of the Linux release pipeline (deb/rpm/AppImage signing and
+      # upload) does not get blocked. The Snap Store stays on the previous
+      # release until we either pin a newer action ref or move the Snap
+      # build to its own job. Tracked for v3.7.0 cleanup.
       - name: Build Snap package
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
         uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
         id: snap-build
+        continue-on-error: true
 
       # Create portable ZIP for Windows (no installer needed)
       - name: Create Windows portable ZIP

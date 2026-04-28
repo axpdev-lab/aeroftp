@@ -364,8 +364,8 @@ async fn run_speedtest_inner(
         tokio::task::spawn_blocking(move || create_random_temp_file(size))
             .await
             .map_err(|e| format!("Payload task panicked: {}", e))??;
-    let download_target = NamedTempFile::new()
-        .map_err(|e| format!("Failed to create download tmp: {}", e))?;
+    let download_target =
+        NamedTempFile::new().map_err(|e| format!("Failed to create download tmp: {}", e))?;
     let download_target_path = download_target.path().to_path_buf();
 
     let mut config = request.connection.to_provider_config()?;
@@ -374,7 +374,12 @@ async fn run_speedtest_inner(
         .map_err(|e| format!("Failed to create provider: {}", e))?;
     config.zeroize_password();
 
-    run_cancelable(token.clone(), provider.connect(), "Test cancelled while connecting").await?;
+    run_cancelable(
+        token.clone(),
+        provider.connect(),
+        "Test cancelled while connecting",
+    )
+    .await?;
 
     let temp_file_name = format!(".aeroftp-speedtest-{}.bin", Uuid::new_v4());
     let remote_path = join_remote_path(&request.remote_dir, &temp_file_name);
@@ -418,10 +423,21 @@ async fn run_speedtest_inner(
                 Some(bps),
             );
             if token_for_progress.is_cancelled() {
-                warn!("speedtest: cancellation requested during upload (test_id={})", test_id_for_progress);
+                warn!(
+                    "speedtest: cancellation requested during upload (test_id={})",
+                    test_id_for_progress
+                );
             }
         });
-        emit_progress(&app, &test_id, server_name.as_deref(), "uploading", 0, request.size_bytes, None);
+        emit_progress(
+            &app,
+            &test_id,
+            server_name.as_deref(),
+            "uploading",
+            0,
+            request.size_bytes,
+            None,
+        );
         run_cancelable(
             token.clone(),
             provider.upload(
@@ -437,8 +453,15 @@ async fn run_speedtest_inner(
     let remote_may_exist = true;
 
     if let Err(err) = upload_result {
-        let (cleaned, cleanup_error) =
-            cleanup_remote(&app, provider.as_mut(), &remote_path, remote_may_exist, &test_id, server_name.as_deref()).await;
+        let (cleaned, cleanup_error) = cleanup_remote(
+            &app,
+            provider.as_mut(),
+            &remote_path,
+            remote_may_exist,
+            &test_id,
+            server_name.as_deref(),
+        )
+        .await;
         let _ = provider.disconnect().await;
         if cleaned {
             return Err(err);
@@ -451,7 +474,15 @@ async fn run_speedtest_inner(
     }
 
     if token.is_cancelled() {
-        let _ = cleanup_remote(&app, provider.as_mut(), &remote_path, remote_may_exist, &test_id, server_name.as_deref()).await;
+        let _ = cleanup_remote(
+            &app,
+            provider.as_mut(),
+            &remote_path,
+            remote_may_exist,
+            &test_id,
+            server_name.as_deref(),
+        )
+        .await;
         let _ = provider.disconnect().await;
         return Err("Test cancelled".to_string());
     }
@@ -459,7 +490,15 @@ async fn run_speedtest_inner(
     // ---------------------- DOWNLOAD (streaming) ----------------------
     // download_target / download_target_path were pre-allocated before connect.
     let download_started_at = Instant::now();
-    emit_progress(&app, &test_id, server_name.as_deref(), "downloading", 0, request.size_bytes, None);
+    emit_progress(
+        &app,
+        &test_id,
+        server_name.as_deref(),
+        "downloading",
+        0,
+        request.size_bytes,
+        None,
+    );
 
     let ttfb_ms: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
     let download_result = {
@@ -498,7 +537,10 @@ async fn run_speedtest_inner(
                 Some(bps),
             );
             if token_for_progress.is_cancelled() {
-                warn!("speedtest: cancellation requested during download (test_id={})", test_id_for_progress);
+                warn!(
+                    "speedtest: cancellation requested during download (test_id={})",
+                    test_id_for_progress
+                );
             }
         });
 
@@ -514,12 +556,23 @@ async fn run_speedtest_inner(
         .await
     };
     let ttfb_value = ttfb_ms.load(Ordering::Relaxed);
-    let download_ttfb_ms = if ttfb_value > 0 { Some(ttfb_value) } else { None };
+    let download_ttfb_ms = if ttfb_value > 0 {
+        Some(ttfb_value)
+    } else {
+        None
+    };
     let download_duration_ms = elapsed_ms(download_started_at);
 
     if let Err(err) = download_result {
-        let (cleaned, cleanup_error) =
-            cleanup_remote(&app, provider.as_mut(), &remote_path, remote_may_exist, &test_id, server_name.as_deref()).await;
+        let (cleaned, cleanup_error) = cleanup_remote(
+            &app,
+            provider.as_mut(),
+            &remote_path,
+            remote_may_exist,
+            &test_id,
+            server_name.as_deref(),
+        )
+        .await;
         let _ = provider.disconnect().await;
         if cleaned {
             return Err(err);
@@ -564,11 +617,26 @@ async fn run_speedtest_inner(
         (String::new(), false)
     };
 
-    let (temp_file_cleaned, cleanup_error) =
-        cleanup_remote(&app, provider.as_mut(), &remote_path, remote_may_exist, &test_id, server_name.as_deref()).await;
+    let (temp_file_cleaned, cleanup_error) = cleanup_remote(
+        &app,
+        provider.as_mut(),
+        &remote_path,
+        remote_may_exist,
+        &test_id,
+        server_name.as_deref(),
+    )
+    .await;
     let _ = provider.disconnect().await;
 
-    emit_progress(&app, &test_id, server_name.as_deref(), "done", request.size_bytes, request.size_bytes, None);
+    emit_progress(
+        &app,
+        &test_id,
+        server_name.as_deref(),
+        "done",
+        request.size_bytes,
+        request.size_bytes,
+        None,
+    );
 
     let upload_bytes_per_sec = bytes_per_sec(request.size_bytes, upload_duration_ms);
     let download_bytes_per_sec = bytes_per_sec(request.size_bytes, download_duration_ms);
@@ -828,10 +896,18 @@ mod tests {
     #[test]
     fn supported_protocols() {
         for p in ["ftp", "ftps", "sftp", "s3", "webdav", "FTP", "S3"] {
-            assert!(validate_supported_protocol(p).is_ok(), "{} should be supported", p);
+            assert!(
+                validate_supported_protocol(p).is_ok(),
+                "{} should be supported",
+                p
+            );
         }
         for p in ["dropbox", "github", "mega", "azure"] {
-            assert!(validate_supported_protocol(p).is_err(), "{} should be rejected", p);
+            assert!(
+                validate_supported_protocol(p).is_err(),
+                "{} should be rejected",
+                p
+            );
         }
     }
 }

@@ -1,8 +1,12 @@
-use serde_json::{json, Value};
-use tauri::{Manager, Emitter};
 use crate::ai_core::local_tools::{get_str_opt, resolve_local_path, validate_path};
 use crate::ai_core::tools::ToolError;
-use crate::ai_tools::{has_provider, has_ftp, download_from_provider, load_saved_servers, find_server_by_name_or_id, create_temp_provider, validate_remote_path, path_basename, join_remote_path, emit_tool_progress};
+use crate::ai_tools::{
+    create_temp_provider, download_from_provider, emit_tool_progress, find_server_by_name_or_id,
+    has_ftp, has_provider, join_remote_path, load_saved_servers, path_basename,
+    validate_remote_path,
+};
+use serde_json::{json, Value};
+use tauri::{Emitter, Manager};
 
 fn get_str_s(args: &Value, key: &str) -> Result<String, String> {
     crate::ai_core::local_tools::get_str(args, key).map_err(|e| e.to_string())
@@ -11,8 +15,14 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
     crate::ai_core::local_tools::value_as_string_array(args, key).map_err(|e| e.to_string())
 }
 
-pub async fn dispatch_gui_tool(ctx: &dyn crate::ai_core::tools::ToolCtx, tool_name: &str, args: &Value) -> Result<Value, ToolError> {
-    let app = ctx.tauri_app_handle().ok_or_else(|| ToolError::Exec("Requires GUI".into()))?;
+pub async fn dispatch_gui_tool(
+    ctx: &dyn crate::ai_core::tools::ToolCtx,
+    tool_name: &str,
+    args: &Value,
+) -> Result<Value, ToolError> {
+    let app = ctx
+        .tauri_app_handle()
+        .ok_or_else(|| ToolError::Exec("Requires GUI".into()))?;
     let state = app.state::<crate::provider_commands::ProviderState>();
     let app_state = app.state::<crate::AppState>();
     let context_local_path = ctx.context_local_path().map(|s| s.to_string());

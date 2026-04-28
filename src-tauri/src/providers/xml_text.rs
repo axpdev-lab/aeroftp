@@ -76,4 +76,3 @@ pub fn attr_value(attr: &quick_xml::events::attributes::Attribute) -> String {
         .map(|s| s.into_owned())
         .unwrap_or_else(|_| String::from_utf8_lossy(&attr.value).to_string())
 }
-

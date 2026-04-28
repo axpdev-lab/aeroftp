@@ -260,7 +260,13 @@ pub(crate) async fn has_ftp(app_state: &AppState) -> bool {
 }
 
 /// Emit tool progress event for iterative operations
-pub(crate) fn emit_tool_progress(app: &tauri::AppHandle, tool: &str, current: u32, total: u32, item: &str) {
+pub(crate) fn emit_tool_progress(
+    app: &tauri::AppHandle,
+    tool: &str,
+    current: u32,
+    total: u32,
+    item: &str,
+) {
     let _ = app.emit(
         "ai-tool-progress",
         json!({
@@ -1653,4 +1659,3 @@ pub async fn execute_ai_tool(
         .await
         .map_err(|e| e.to_string())
 }
-

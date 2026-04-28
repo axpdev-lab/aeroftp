@@ -205,7 +205,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
     // Skip names that the legacy MCP_TOOL_DEFS already provides (richer
     // descriptions and nested schemas the unified registry intentionally
     // simplifies — see aeroftp_upload_many / aeroftp_edit / aeroftp_sync_tree).
-    use crate::ai_core::tools::{Surfaces, DangerLevel, TOOL_DEFINITIONS};
+    use crate::ai_core::tools::{DangerLevel, Surfaces, TOOL_DEFINITIONS};
     let already_defined: std::collections::HashSet<&'static str> =
         defs.iter().map(|d| d.name).collect();
     for core_def in TOOL_DEFINITIONS.iter() {
@@ -230,7 +230,6 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
 
     defs
 }
-
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -638,14 +637,11 @@ pub async fn execute_tool(
 
     match tool_name {
         "aeroftp_mcp_info" => {
-
             // No server/path validation: this tool has no external I/O.
             let result = ok(build_mcp_info());
             finish(tool_name, None, None, result, start)
-        
         }
         "aeroftp_close_connection" => {
-
             let server = match get_str(args, "server") {
                 Ok(s) => s,
                 Err(e) => return finish(tool_name, None, None, err(e), start),
@@ -682,10 +678,8 @@ pub async fn execute_tool(
                 })),
             };
             finish(tool_name, Some(&server), None, result, start)
-        
         }
         "aeroftp_check_tree" => {
-
             use crate::sync_core::{compare_trees, scan_local_tree, scan_remote_tree, ScanOptions};
 
             let server = match get_str(args, "server") {
@@ -852,10 +846,8 @@ pub async fn execute_tool(
                 }
             };
             finish(tool_name, Some(&server), Some(&remote_dir), result, start)
-        
         }
         "aeroftp_sync_tree" => {
-
             use crate::sync_core::{
                 sync_tree_core, ConflictMode, DeltaPolicy, ScanOptions, SyncDirection, SyncOptions,
             };
@@ -1256,9 +1248,14 @@ pub async fn execute_tool(
                 }
             };
             finish(tool_name, Some(&server), Some(&remote_dir), result, start)
-        
         }
-        _ => finish(tool_name, None, None, err(format!("Unknown tool: {}", tool_name)), start),
+        _ => finish(
+            tool_name,
+            None,
+            None,
+            err(format!("Unknown tool: {}", tool_name)),
+            start,
+        ),
     }
 }
 

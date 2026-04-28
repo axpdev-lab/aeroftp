@@ -4,10 +4,10 @@
 //! MEGA protocol cryptography — AES-128, RSA, KDF v1/v2, node key management.
 //! Implements the MEGA file encryption protocol as specified in APPENDIX-N/N2.
 
-use aes::cipher::{generic_array::GenericArray, BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit, generic_array::GenericArray};
 use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use ctr::cipher::{KeyIvInit as CtrKeyIvInit, StreamCipher};
 use num_bigint_dig::BigUint;
@@ -252,23 +252,18 @@ pub fn aes_ctr_apply_inplace(buf: &mut [u8], key: &[u8; 16], nonce: &[u8; 8], of
 // ─── Node key management ──────────────────────────────────────────────────
 
 /// Compute the AES key used for node attribute encryption.
-/// For file nodes (32-byte packed key): XOR the four 32-bit words.
+/// For file nodes (32-byte packed key), MEGA stores an obfuscated file key:
+/// [k0^n0, k1^n1, k2^m0, k3^m1, n0, n1, m0, m1] as eight big-endian u32 words.
+/// The AES key used for both file data and attributes is recovered by XORing
+/// the first four words with the last four words.
 /// For folder nodes (16-byte key): use directly.
 pub fn compute_attr_key(key: &[u8]) -> MegaCryptoResult<[u8; 16]> {
     match key.len() {
         32 => {
-            // File node: key is 32 bytes = file_key(16) || nonce(8) || meta_mac(8)
-            // Attr key = file_key[0..4] XOR nonce[0..4], file_key[4..8] XOR nonce[4..8],
-            //            file_key[8..12] XOR meta_mac[0..4], file_key[12..16] XOR meta_mac[4..8]
-            let mut attr_key = [0u8; 16];
-            for i in 0..16 {
-                attr_key[i] = key[i] ^ key[16 + (i % 16).min(15)];
-            }
-            // More precisely: XOR the two 16-byte halves
-            for i in 0..16 {
-                attr_key[i] = key[i] ^ key[i + 16];
-            }
-            Ok(attr_key)
+            let packed = <[u8; 32]>::try_from(key)
+                .map_err(|_| ProviderError::ParseError("file key slice error".into()))?;
+            let (file_key, _) = unpack_node_key(&packed)?;
+            Ok(file_key)
         }
         16 => {
             let mut attr_key = [0u8; 16];
@@ -284,28 +279,57 @@ pub fn compute_attr_key(key: &[u8]) -> MegaCryptoResult<[u8; 16]> {
 
 /// Unpack a 32-byte MEGA file node key into (file_key[16], nonce[8]).
 pub fn unpack_node_key(packed: &[u8; 32]) -> MegaCryptoResult<([u8; 16], [u8; 8])> {
-    // packed = encrypted_key[0..8] XOR encrypted_key[16..24], encrypted_key[8..16] XOR encrypted_key[24..32]
-    // After AES-ECB decryption of the 32-byte block, the layout is:
-    // [file_key(16)] [nonce(8)] [meta_mac_fragment(8)]
+    let (file_key, nonce, _) = unpack_node_key_with_mac(packed)?;
+    Ok((file_key, nonce))
+}
+
+/// Unpack a 32-byte MEGA file node key into (file_key[16], nonce[8], meta_mac[8]).
+pub fn unpack_node_key_with_mac(
+    packed: &[u8; 32],
+) -> MegaCryptoResult<([u8; 16], [u8; 8], [u8; 8])> {
+    let mut file_key = [0u8; 16];
+    for i in 0..16 {
+        file_key[i] = packed[i] ^ packed[i + 16];
+    }
+
+    let mut nonce = [0u8; 8];
+    nonce.copy_from_slice(&packed[16..24]);
+
+    let mut meta_mac = [0u8; 8];
+    meta_mac.copy_from_slice(&packed[24..32]);
+
+    Ok((file_key, nonce, meta_mac))
+}
+
+/// Unpack the pre-v3.5.4 AeroFTP non-canonical file node key.
+/// Those uploads stored [file_key, nonce, meta_mac] directly. AeroFTP could read
+/// them because its download path made the same mistake, while official MEGA
+/// clients derived a different AES key and showed ciphertext-like output.
+pub fn unpack_node_key_legacy(packed: &[u8; 32]) -> MegaCryptoResult<([u8; 16], [u8; 8], [u8; 8])> {
     let mut file_key = [0u8; 16];
     file_key.copy_from_slice(&packed[..16]);
 
     let mut nonce = [0u8; 8];
     nonce.copy_from_slice(&packed[16..24]);
 
-    Ok((file_key, nonce))
+    let mut meta_mac = [0u8; 8];
+    meta_mac.copy_from_slice(&packed[24..32]);
+
+    Ok((file_key, nonce, meta_mac))
 }
 
-/// Pack file_key + nonce + meta_mac into a 32-byte MEGA node key.
+/// Pack file_key + nonce + meta_mac into MEGA's 32-byte file node key format.
 pub fn pack_node_key(
     key: &[u8; 16],
     nonce: &[u8; 8],
     meta_mac: &[u8; 8],
 ) -> MegaCryptoResult<[u8; 32]> {
     let mut packed = [0u8; 32];
-    packed[..16].copy_from_slice(key);
     packed[16..24].copy_from_slice(nonce);
     packed[24..32].copy_from_slice(meta_mac);
+    for i in 0..16 {
+        packed[i] = key[i] ^ packed[i + 16];
+    }
     Ok(packed)
 }
 
@@ -387,8 +411,32 @@ pub fn chunk_mac(data: &[u8], key: &[u8; 16], nonce: &[u8; 8]) -> MegaCryptoResu
 }
 
 /// Compute meta MAC from individual chunk MACs.
-/// Condensed MAC: AES-CBC chain of all chunk MACs, then extract [0..4] and [8..12].
+/// Condensed MAC: AES-CBC chain of all chunk MACs, then XOR the two u32 pairs:
+/// [mac[0..4]^mac[4..8], mac[8..12]^mac[12..16]].
 pub fn meta_mac(chunk_macs: &[[u8; 16]], key: &[u8; 16]) -> MegaCryptoResult<[u8; 8]> {
+    let cipher = Aes128::new(GenericArray::from_slice(key));
+    let mut mac = [0u8; 16];
+
+    for cmac in chunk_macs {
+        for j in 0..16 {
+            mac[j] ^= cmac[j];
+        }
+        let mut block = GenericArray::clone_from_slice(&mac);
+        cipher.encrypt_block(&mut block);
+        mac.copy_from_slice(&block);
+    }
+
+    let mut result = [0u8; 8];
+    for i in 0..4 {
+        result[i] = mac[i] ^ mac[i + 4];
+        result[i + 4] = mac[i + 8] ^ mac[i + 12];
+    }
+    Ok(result)
+}
+
+/// Legacy AeroFTP meta-MAC condenser kept only to read files uploaded by the
+/// old non-canonical MEGA Native implementation.
+pub fn meta_mac_legacy(chunk_macs: &[[u8; 16]], key: &[u8; 16]) -> MegaCryptoResult<[u8; 8]> {
     let cipher = Aes128::new(GenericArray::from_slice(key));
     let mut mac = [0u8; 16];
 

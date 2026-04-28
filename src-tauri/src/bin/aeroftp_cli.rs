@@ -96,10 +96,23 @@ use tokio::sync::Mutex as AsyncMutex;
 /// help line and the "Unsupported protocol" error derive from this slice
 /// so the two cannot drift apart again (issue #125 polish).
 const SUPPORTED_URL_SCHEMES: &[&str] = &[
-    "ftp", "ftps", "sftp", "webdav", "webdavs",
-    "s3", "mega", "azure", "filen", "internxt",
-    "jottacloud", "filelu", "koofr", "opendrive", "yandexdisk",
-    "github", "gitlab",
+    "ftp",
+    "ftps",
+    "sftp",
+    "webdav",
+    "webdavs",
+    "s3",
+    "mega",
+    "azure",
+    "filen",
+    "internxt",
+    "jottacloud",
+    "filelu",
+    "koofr",
+    "opendrive",
+    "yandexdisk",
+    "github",
+    "gitlab",
 ];
 
 #[derive(Parser)]
@@ -153,7 +166,13 @@ struct Cli {
     container: Option<String>,
 
     /// Bearer/API token (kDrive, Jottacloud, FileLu)
-    #[arg(long, global = true, env = "AEROFTP_TOKEN", hide_env_values = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        env = "AEROFTP_TOKEN",
+        hide_env_values = true,
+        help_heading = "Connection options"
+    )]
     token: Option<String>,
 
     /// FTP TLS mode: none, explicit, implicit, explicit_if_available
@@ -169,7 +188,13 @@ struct Cli {
     trust_host_key: bool,
 
     /// 2FA code (Filen, Internxt)
-    #[arg(long, global = true, env = "AEROFTP_2FA", hide_env_values = true, help_heading = "Connection options")]
+    #[arg(
+        long,
+        global = true,
+        env = "AEROFTP_2FA",
+        hide_env_values = true,
+        help_heading = "Connection options"
+    )]
     two_factor: Option<String>,
 
     /// Use a saved server profile instead of URL (name or ID)
@@ -190,7 +215,13 @@ struct Cli {
     verbose: u8,
 
     /// Quiet mode (errors only)
-    #[arg(short, long, global = true, conflicts_with = "verbose", help_heading = "Output options")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        conflicts_with = "verbose",
+        help_heading = "Output options"
+    )]
     quiet: bool,
 
     /// Speed limit (e.g., "1M", "500K")
@@ -717,7 +748,12 @@ enum Commands {
         #[arg(required = true, num_args = 1..)]
         urls: Vec<String>,
         /// Test file size (e.g. 10M, 100M)
-        #[arg(long = "test-size", visible_alias = "size", short = 's', default_value = "10M")]
+        #[arg(
+            long = "test-size",
+            visible_alias = "size",
+            short = 's',
+            default_value = "10M"
+        )]
         test_size: String,
         /// Maximum parallel runs (1-4, default 2)
         #[arg(long, default_value = "2")]
@@ -3507,11 +3543,13 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
 
             return Ok((config, "/".to_string()));
         }
-        _ => return Err(format!(
-            "Unsupported protocol: {}. Supported: {}",
-            scheme,
-            SUPPORTED_URL_SCHEMES.join(", ")
-        )),
+        _ => {
+            return Err(format!(
+                "Unsupported protocol: {}. Supported: {}",
+                scheme,
+                SUPPORTED_URL_SCHEMES.join(", ")
+            ))
+        }
     };
 
     let username = if url_obj.username().is_empty() {
@@ -8308,11 +8346,9 @@ mod serve_sftp {
         // russh 0.60 requires a CryptoRng from rand_core 0.10. The legacy
         // `rand::thread_rng()` (rand 0.8) no longer satisfies that bound;
         // use `rand_010::rng()` (rand 0.10 alias) for this single call site.
-        let key = russh::keys::PrivateKey::random(
-            &mut rand_010::rng(),
-            russh::keys::Algorithm::Ed25519,
-        )
-        .expect("generate ed25519 key");
+        let key =
+            russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+                .expect("generate ed25519 key");
 
         let config = Arc::new(russh::server::Config {
             methods: if auth_credentials.is_some() {
@@ -10196,7 +10232,11 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
             .filter(|c| !c.is_empty())
             .collect();
         let last_idx = components.len().saturating_sub(1);
-        let mut current = if is_absolute { "/".to_string() } else { String::new() };
+        let mut current = if is_absolute {
+            "/".to_string()
+        } else {
+            String::new()
+        };
         for (idx, component) in components.iter().enumerate() {
             if current.is_empty() || current == "/" {
                 current = format!("{}{}", current, component);
@@ -10543,11 +10583,7 @@ async fn cmd_link(
                 match probe_share_link(&result.url).await {
                     Ok(code) => Some(code),
                     Err(e) => {
-                        print_error(
-                            format,
-                            &format!("link verify failed: {}", e),
-                            4,
-                        );
+                        print_error(format, &format!("link verify failed: {}", e), 4);
                         let _ = provider.disconnect().await;
                         return 4;
                     }
@@ -10560,10 +10596,7 @@ async fn cmd_link(
                     if !(200..400).contains(&code) {
                         print_error(
                             format,
-                            &format!(
-                                "link verify failed: HTTP {} from generated URL",
-                                code
-                            ),
+                            &format!("link verify failed: HTTP {} from generated URL", code),
                             4,
                         );
                         let _ = provider.disconnect().await;
@@ -11603,7 +11636,15 @@ async fn cmd_find(
                 println!("{}", sanitize_filename(&e.path));
             }
             if !cli.quiet {
-                eprintln!("\n{} matches{}", results.len(), if truncated { " (truncated by --limit)" } else { "" });
+                eprintln!(
+                    "\n{} matches{}",
+                    results.len(),
+                    if truncated {
+                        " (truncated by --limit)"
+                    } else {
+                        ""
+                    }
+                );
             }
         }
         OutputFormat::Json => {
@@ -11921,14 +11962,21 @@ async fn cmd_speed(
     };
 
     if let Some(path) = json_out {
-        if let Err(e) = std::fs::write(path, serde_json::to_string_pretty(&result).unwrap_or_default()) {
+        if let Err(e) = std::fs::write(
+            path,
+            serde_json::to_string_pretty(&result).unwrap_or_default(),
+        ) {
             eprintln!("warning: could not write JSON report to {}: {}", path, e);
         }
     }
 
     // Exit code 4 only when an integrity check ran AND failed.
     // If integrity was explicitly skipped, that is not an error.
-    let exit_code = if !result.integrity_checked || result.integrity_verified { 0 } else { 4 };
+    let exit_code = if !result.integrity_checked || result.integrity_verified {
+        0
+    } else {
+        4
+    };
 
     match format {
         OutputFormat::Text => {
@@ -11939,8 +11987,16 @@ async fn cmd_speed(
                     format_size(result.test_size),
                     result.protocol.to_uppercase(),
                 );
-                println!("  Upload:    {}  ({:.2} Mbps)", format_speed(result.upload_speed_bps), result.upload_mbps);
-                println!("  Download:  {}  ({:.2} Mbps)", format_speed(result.download_speed_bps), result.download_mbps);
+                println!(
+                    "  Upload:    {}  ({:.2} Mbps)",
+                    format_speed(result.upload_speed_bps),
+                    result.upload_mbps
+                );
+                println!(
+                    "  Download:  {}  ({:.2} Mbps)",
+                    format_speed(result.download_speed_bps),
+                    result.download_mbps
+                );
                 if let Some(ttfb) = result.download_ttfb_ms {
                     println!("  TTFB:      {} ms", ttfb);
                 }
@@ -11954,7 +12010,11 @@ async fn cmd_speed(
                 println!("  Integrity: {}", integrity_label);
                 println!(
                     "  Cleanup:   {}",
-                    if result.cleanup_ok { "removed".to_string() } else { format!("manual: {}", result.remote_path) }
+                    if result.cleanup_ok {
+                        "removed".to_string()
+                    } else {
+                        format!("manual: {}", result.remote_path)
+                    }
                 );
                 println!("  Remote:    {}", result.remote_path);
             }
@@ -11977,20 +12037,22 @@ async fn run_single_speed_test(
 ) -> Result<CliSpeedResult, (String, i32)> {
     // Allocate BOTH local tempfiles BEFORE opening any network connection.
     // Failure here cannot leak a remote file or a live provider connection.
-    let local_upload = NamedTempFile::new()
-        .map_err(|e| (format!("Cannot create upload temp: {}", e), 5))?;
-    let upload_sha256 = write_speed_test_file_random(local_upload.path(), size)
-        .map_err(|e| (e, 5))?;
-    let local_download = NamedTempFile::new()
-        .map_err(|e| (format!("Cannot create download temp: {}", e), 5))?;
+    let local_upload =
+        NamedTempFile::new().map_err(|e| (format!("Cannot create upload temp: {}", e), 5))?;
+    let upload_sha256 =
+        write_speed_test_file_random(local_upload.path(), size).map_err(|e| (e, 5))?;
+    let local_download =
+        NamedTempFile::new().map_err(|e| (format!("Cannot create download temp: {}", e), 5))?;
     let download_path = local_download.path().to_path_buf();
 
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
-        Err(code) => return Err((
-            format!("Connect failed for {}", redact_url_for_display(url)),
-            code,
-        )),
+        Err(code) => {
+            return Err((
+                format!("Connect failed for {}", redact_url_for_display(url)),
+                code,
+            ))
+        }
     };
 
     let protocol = provider.provider_type().to_string();
@@ -12018,7 +12080,11 @@ async fn run_single_speed_test(
             let _ = provider.delete(remote_test_path).await;
             let _ = provider.disconnect().await;
             return Err((
-                format!("speed test upload failed on iteration {}: {}", iteration + 1, e),
+                format!(
+                    "speed test upload failed on iteration {}: {}",
+                    iteration + 1,
+                    e
+                ),
                 provider_error_to_exit_code(&e),
             ));
         }
@@ -12047,7 +12113,11 @@ async fn run_single_speed_test(
             let _ = provider.delete(remote_test_path).await;
             let _ = provider.disconnect().await;
             return Err((
-                format!("speed test download failed on iteration {}: {}", iteration + 1, e),
+                format!(
+                    "speed test download failed on iteration {}: {}",
+                    iteration + 1,
+                    e
+                ),
                 provider_error_to_exit_code(&e),
             ));
         }
@@ -12211,8 +12281,16 @@ async fn cmd_speed_compare(
         .into_iter()
         .map(|(url, res)| match res {
             Ok(r) => {
-                let nd = if max_dl > 0.0 { (r.download_mbps / max_dl).clamp(0.0, 1.0) } else { 0.0 };
-                let nu = if max_ul > 0.0 { (r.upload_mbps / max_ul).clamp(0.0, 1.0) } else { 0.0 };
+                let nd = if max_dl > 0.0 {
+                    (r.download_mbps / max_dl).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let nu = if max_ul > 0.0 {
+                    (r.upload_mbps / max_ul).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
                 // Tri-state: skipped integrity contributes 0.5 (neutral), not 1.0 (verified).
                 let ni = if !r.integrity_checked {
                     0.5
@@ -12245,9 +12323,15 @@ async fn cmd_speed_compare(
         .collect();
 
     compare_entries.sort_by(|a, b| {
-        if a.result.is_some() && b.result.is_none() { return std::cmp::Ordering::Less; }
-        if a.result.is_none() && b.result.is_some() { return std::cmp::Ordering::Greater; }
-        b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
+        if a.result.is_some() && b.result.is_none() {
+            return std::cmp::Ordering::Less;
+        }
+        if a.result.is_none() && b.result.is_some() {
+            return std::cmp::Ordering::Greater;
+        }
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
     let mut rank = 0u32;
     for e in compare_entries.iter_mut() {
@@ -12269,7 +12353,10 @@ async fn cmd_speed_compare(
 
     // Optional file exports
     if let Some(path) = json_out {
-        if let Err(e) = std::fs::write(path, serde_json::to_string_pretty(&report).unwrap_or_default()) {
+        if let Err(e) = std::fs::write(
+            path,
+            serde_json::to_string_pretty(&report).unwrap_or_default(),
+        ) {
             eprintln!("warning: could not write JSON report to {}: {}", path, e);
         }
     }
@@ -12291,10 +12378,15 @@ async fn cmd_speed_compare(
                     e.rank,
                     csv_cell_safe(&e.url),
                     csv_cell_safe(&r.protocol),
-                    r.test_size, r.upload_mbps, r.download_mbps,
-                    r.download_ttfb_ms.map(|v| v.to_string()).unwrap_or_default(),
+                    r.test_size,
+                    r.upload_mbps,
+                    r.download_mbps,
+                    r.download_ttfb_ms
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
                     integrity,
-                    r.cleanup_ok as u8, e.score * 100.0,
+                    r.cleanup_ok as u8,
+                    e.score * 100.0,
                     "",
                 ));
             } else {
@@ -12311,7 +12403,11 @@ async fn cmd_speed_compare(
     }
     if let Some(path) = md_out {
         let mut md = String::from("# AeroFTP Speed Test (compare)\n\n");
-        md.push_str(&format!("- Size: {}\n- Parallel: {}\n\n", format_size(size), parallel));
+        md.push_str(&format!(
+            "- Size: {}\n- Parallel: {}\n\n",
+            format_size(size),
+            parallel
+        ));
         md.push_str("| # | URL | Protocol | Down (Mbps) | Up (Mbps) | TTFB (ms) | Integ. | Clean. | Score |\n");
         md.push_str("|---:|---|---|---:|---:|---:|:---:|:---:|---:|\n");
         for e in report.results.iter() {
@@ -12328,8 +12424,11 @@ async fn cmd_speed_compare(
                     e.rank,
                     md_cell_safe(&e.url),
                     md_cell_safe(&r.protocol.to_uppercase()),
-                    r.download_mbps, r.upload_mbps,
-                    r.download_ttfb_ms.map(|v| v.to_string()).unwrap_or_else(|| "—".into()),
+                    r.download_mbps,
+                    r.upload_mbps,
+                    r.download_ttfb_ms
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "—".into()),
                     integ,
                     if r.cleanup_ok { "✓" } else { "✗" },
                     e.score * 100.0,
@@ -12343,7 +12442,10 @@ async fn cmd_speed_compare(
             }
         }
         if let Err(e) = std::fs::write(path, md) {
-            eprintln!("warning: could not write Markdown report to {}: {}", path, e);
+            eprintln!(
+                "warning: could not write Markdown report to {}: {}",
+                path, e
+            );
         }
     }
 
@@ -12351,17 +12453,32 @@ async fn cmd_speed_compare(
         OutputFormat::Json => print_json(&report),
         OutputFormat::Text => {
             if !cli.quiet {
-                println!("Speed compare ({}, parallel {})", format_size(size), parallel);
-                println!("{:>3}  {:<48}  {:<7}  {:>12}  {:>12}  {:>8}  {:>5}",
-                    "#", "URL", "PROTO", "DOWN Mbps", "UP Mbps", "TTFB ms", "SCORE");
+                println!(
+                    "Speed compare ({}, parallel {})",
+                    format_size(size),
+                    parallel
+                );
+                println!(
+                    "{:>3}  {:<48}  {:<7}  {:>12}  {:>12}  {:>8}  {:>5}",
+                    "#", "URL", "PROTO", "DOWN Mbps", "UP Mbps", "TTFB ms", "SCORE"
+                );
                 for e in report.results.iter() {
                     if let Some(r) = e.result.as_ref() {
-                        let url_disp = if e.url.len() > 48 { format!("{}...", &e.url[..45]) } else { e.url.clone() };
+                        let url_disp = if e.url.len() > 48 {
+                            format!("{}...", &e.url[..45])
+                        } else {
+                            e.url.clone()
+                        };
                         println!(
                             "{:>3}  {:<48}  {:<7}  {:>12.2}  {:>12.2}  {:>8}  {:>5.0}",
-                            e.rank, url_disp, r.protocol.to_uppercase(),
-                            r.download_mbps, r.upload_mbps,
-                            r.download_ttfb_ms.map(|v| v.to_string()).unwrap_or_else(|| "—".into()),
+                            e.rank,
+                            url_disp,
+                            r.protocol.to_uppercase(),
+                            r.download_mbps,
+                            r.upload_mbps,
+                            r.download_ttfb_ms
+                                .map(|v| v.to_string())
+                                .unwrap_or_else(|| "—".into()),
                             e.score * 100.0,
                         );
                     } else {
@@ -12372,8 +12489,18 @@ async fn cmd_speed_compare(
         }
     }
 
-    let any_failed = report.results.iter().any(|e| e.result.is_none() || e.result.as_ref().map(|r| !r.integrity_verified && !no_integrity).unwrap_or(true));
-    if any_failed { 4 } else { 0 }
+    let any_failed = report.results.iter().any(|e| {
+        e.result.is_none()
+            || e.result
+                .as_ref()
+                .map(|r| !r.integrity_verified && !no_integrity)
+                .unwrap_or(true)
+    });
+    if any_failed {
+        4
+    } else {
+        0
+    }
 }
 
 async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: OutputFormat) -> i32 {
@@ -18420,7 +18547,11 @@ async fn cmd_head(
                     0
                 }
                 Err(_) => {
-                    print_error(format, "File is not valid UTF-8 text. Pass --bytes to read raw bytes.", 5);
+                    print_error(
+                        format,
+                        "File is not valid UTF-8 text. Pass --bytes to read raw bytes.",
+                        5,
+                    );
                     let _ = provider.disconnect().await;
                     5
                 }
@@ -19948,7 +20079,10 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                 };
                 let path = if parts.len() > 1 { parts[1] } else { "/" };
                 let long = parts.contains(&"-l");
-                exit_code = cmd_ls(&url, path, long, "name", false, true, None, false, false, cli, format).await;
+                exit_code = cmd_ls(
+                    &url, path, long, "name", false, true, None, false, false, cli, format,
+                )
+                .await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -20008,7 +20142,8 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     eprintln!("Line {}: FIND requires <path> <pattern>", line_num + 1);
                     return 5;
                 }
-                exit_code = cmd_find(&url, parts[1], parts[2], false, false, None, cli, format).await;
+                exit_code =
+                    cmd_find(&url, parts[1], parts[2], false, false, None, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -23658,8 +23793,17 @@ async fn main() {
                 (url.as_str(), path.as_str())
             };
             cmd_ls(
-                u, p, *long, sort, *reverse, *all, *limit, *files_only, *dirs_only,
-                &cli, format,
+                u,
+                p,
+                *long,
+                sort,
+                *reverse,
+                *all,
+                *limit,
+                *files_only,
+                *dirs_only,
+                &cli,
+                format,
             )
             .await
         }
@@ -23683,17 +23827,8 @@ async fn main() {
             let max_transfer_limit = resolve_max_transfer(&cli);
             let mut last_code = 0i32;
             for attempt in 1..=max_attempts {
-                last_code = cmd_get(
-                    u,
-                    r,
-                    l,
-                    false,
-                    *segments,
-                    &cli,
-                    format,
-                    cancelled.clone(),
-                )
-                .await;
+                last_code =
+                    cmd_get(u, r, l, false, *segments, &cli, format, cancelled.clone()).await;
                 if !is_retryable_exit(last_code)
                     || session_transfer_exceeded(max_transfer_limit)
                     || attempt == max_attempts
@@ -24004,7 +24139,12 @@ async fn main() {
                 .await
             }
         },
-        Commands::Head { url, path, lines, bytes } => {
+        Commands::Head {
+            url,
+            path,
+            lines,
+            bytes,
+        } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
@@ -24094,7 +24234,15 @@ async fn main() {
             };
             cmd_stat(u, p, &cli, format).await
         }
-        Commands::Find { url, path, pattern, name, files_only, dirs_only, limit } => {
+        Commands::Find {
+            url,
+            path,
+            pattern,
+            name,
+            files_only,
+            dirs_only,
+            limit,
+        } => {
             // `--name` overrides the positional pattern when both
             // present. Picked as the natural agent-facing form
             // (V2 verification flagged the positional-only as a
@@ -24685,7 +24833,11 @@ mod tests {
     fn redact_url_fallback_on_unparseable_input() {
         // Malformed URL still has password stripped via the manual fallback.
         let redacted = redact_url_for_display("notaurl://u:secret@host");
-        assert!(!redacted.contains("secret"), "redaction failed: {}", redacted);
+        assert!(
+            !redacted.contains("secret"),
+            "redaction failed: {}",
+            redacted
+        );
     }
 
     #[test]

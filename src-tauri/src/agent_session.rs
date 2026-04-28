@@ -14,7 +14,9 @@
 //! Block status values: `ok`, `unsupported`, `unavailable`, `error`.
 
 use crate::credential_store::CredentialStore;
-use crate::providers::{ProviderConfig, ProviderError, ProviderFactory, ProviderType, StorageProvider};
+use crate::providers::{
+    ProviderConfig, ProviderError, ProviderFactory, ProviderType, StorageProvider,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -130,7 +132,11 @@ pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
 
     let query_lower = query.to_lowercase();
     let exact_match = profiles.iter().find(|p| {
-        let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+        let name = p
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_lowercase();
         let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
         name == query_lower || id == query
     });
@@ -141,7 +147,11 @@ pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
         let partials: Vec<&Value> = profiles
             .iter()
             .filter(|p| {
-                let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+                let name = p
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_lowercase();
                 name.contains(&query_lower)
             })
             .collect();
@@ -162,12 +172,35 @@ pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
     };
 
     Ok(ProfileSummary {
-        id: matched.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        name: matched.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        protocol: matched.get("protocol").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        host: matched.get("host").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        username: matched.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        port: matched.get("port").and_then(|v| v.as_u64()).map(|p| p as u16),
+        id: matched
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        name: matched
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        protocol: matched
+            .get("protocol")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        host: matched
+            .get("host")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        username: matched
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        port: matched
+            .get("port")
+            .and_then(|v| v.as_u64())
+            .map(|p| p as u16),
         initial_path: matched
             .get("initialPath")
             .and_then(|v| v.as_str())
@@ -464,7 +497,11 @@ async fn connect_provider(profile: &ProfileSummary) -> ConnectOutcome {
         } else {
             Some(profile.username.clone())
         },
-        password: if password.is_empty() { None } else { Some(password) },
+        password: if password.is_empty() {
+            None
+        } else {
+            Some(password)
+        },
         initial_path: Some(profile.initial_path.clone()),
         extra,
     };
@@ -553,7 +590,10 @@ mod tests {
         // empty for the headline protocols.
         for proto in ["ftp", "sftp", "s3", "webdav", "googledrive", "dropbox"] {
             let feats = capabilities_for_protocol(proto);
-            assert!(!feats.is_empty(), "{proto} should have at least one feature");
+            assert!(
+                !feats.is_empty(),
+                "{proto} should have at least one feature"
+            );
         }
     }
 
@@ -595,7 +635,10 @@ mod tests {
         let v = quota_block_ok(0, 0, 0);
         assert_eq!(v["status"], "unsupported");
         assert_eq!(v["reason"], "server_returned_zero_total");
-        assert!(v.get("used_bytes").is_none(), "should NOT carry zero counters");
+        assert!(
+            v.get("used_bytes").is_none(),
+            "should NOT carry zero counters"
+        );
     }
 
     #[test]
@@ -674,9 +717,6 @@ mod tests {
         };
         let payload = lookup_error_payload("prod", &err);
         assert_eq!(payload["lookup"]["kind"], "ambiguous");
-        assert_eq!(
-            payload["lookup"]["candidates"],
-            json!(["prod-a", "prod-b"])
-        );
+        assert_eq!(payload["lookup"]["candidates"], json!(["prod-a", "prod-b"]));
     }
 }

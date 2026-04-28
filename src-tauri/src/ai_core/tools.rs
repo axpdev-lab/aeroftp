@@ -1303,9 +1303,18 @@ pub async fn dispatch_tool(
         "rag_search" => agent_tools::rag_search(ctx, args).await,
         "agent_memory_write" => agent_tools::agent_memory_write(ctx, args).await,
         // GUI-specific legacy tools
-        "set_theme" | "app_info" | "sync_control" | "vault_peek" | "cross_profile_transfer" | 
-        "preview_edit" | "hash_file" | "generate_transfer_plan" | "upload_files" | "download_files" | 
-        "sync_preview" | "remote_edit" => crate::ai_core::gui_tools::dispatch_gui_tool(ctx, tool_name, args).await,
+        "set_theme"
+        | "app_info"
+        | "sync_control"
+        | "vault_peek"
+        | "cross_profile_transfer"
+        | "preview_edit"
+        | "hash_file"
+        | "generate_transfer_plan"
+        | "upload_files"
+        | "download_files"
+        | "sync_preview"
+        | "remote_edit" => crate::ai_core::gui_tools::dispatch_gui_tool(ctx, tool_name, args).await,
 
         // Tool presente nel registry ma non ancora wired nel dispatcher.
         _ => Err(ToolError::NotMigrated(tool_name.to_string())),

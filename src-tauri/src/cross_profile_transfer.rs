@@ -102,7 +102,9 @@ pub async fn copy_one_file(
     // Try delta transfer first (SFTP-only today). Returns None for non-SFTP
     // destinations or when downcast/probe declines — in both cases we proceed
     // to the classic upload below.
-    if let Some(result) = try_delta_transfer(dest, SyncDirection::Upload, tmp.path(), dest_path).await {
+    if let Some(result) =
+        try_delta_transfer(dest, SyncDirection::Upload, tmp.path(), dest_path).await
+    {
         if result.used_delta {
             // Delta path completed the transfer; we're done.
             return Ok(());

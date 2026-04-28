@@ -66,6 +66,7 @@ pub mod util;
 // Does not affect production builds. See `src/aerorsync/README.md`.
 #[cfg(feature = "aerorsync")]
 pub mod aerorsync;
+pub mod agent_session;
 mod file_tags;
 mod file_watcher;
 mod filesystem;
@@ -81,12 +82,11 @@ mod master_password;
 pub mod mcp;
 mod plugin_registry;
 mod plugins;
+pub mod profile_auth_state;
 mod profile_export;
 mod provider_commands;
 mod provider_transfer_executor;
 pub mod providers;
-pub mod profile_auth_state;
-pub mod agent_session;
 mod pty;
 mod rclone_crypt;
 pub mod rclone_import;
@@ -161,8 +161,8 @@ mod speech {
 mod cloud_filter_badge;
 mod image_edit;
 mod server_health;
-mod speedtest;
 mod settings;
+mod speedtest;
 mod vault_history;
 
 use filesystem::validate_path;
@@ -11886,7 +11886,11 @@ pub fn run() {
                 let cloud_config = cloud_config::load_cloud_config();
                 let close_to_tray = CLOSE_TO_TRAY.load(std::sync::atomic::Ordering::SeqCst);
                 if cloud_config.enabled || close_to_tray {
-                    let reason = if close_to_tray { "close-to-tray setting" } else { "AeroCloud enabled" };
+                    let reason = if close_to_tray {
+                        "close-to-tray setting"
+                    } else {
+                        "AeroCloud enabled"
+                    };
                     info!("Window close requested, hiding to tray ({})", reason);
                     let _ = window.hide();
                     api.prevent_close();

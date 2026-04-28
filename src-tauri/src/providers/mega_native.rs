@@ -8,23 +8,23 @@ use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use zeroize::Zeroize;
 
 use super::{
+    MegaConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
+    StorageInfo, StorageProvider,
     mega_crypto::{
         aes_ctr_apply_inplace, aes_ctr_decrypt, aes_ecb_decrypt_block, aes_ecb_encrypt_block,
         aes_ecb_encrypt_multi, chunk_mac, compute_chunk_boundaries, decrypt_node_attrs,
         decrypt_node_key_xor, decrypt_rsa_privkey, encrypt_node_attrs, kdf_v1, kdf_v2,
-        mega_base64_decode, mega_base64_encode, meta_mac, pack_node_key, rsa_decrypt_csid,
-        unpack_node_key, username_hash_v1,
+        mega_base64_decode, mega_base64_encode, meta_mac, meta_mac_legacy, pack_node_key,
+        rsa_decrypt_csid, unpack_node_key_legacy, unpack_node_key_with_mac, username_hash_v1,
     },
-    MegaConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider,
 };
 
 const MEGA_API_BASE_URL: &str = "https://g.api.mega.co.nz/cs";
@@ -252,9 +252,10 @@ impl MegaApiClient {
         // E_RATE) with text/plain or no Content-Type at all, which makes the
         // helper bail with "error decoding response body" before we ever see
         // the actual payload (issue #128 dev-test report).
-        let raw = response.text().await.map_err(|err| {
-            ProviderError::NetworkError(format!("MEGA API read failed: {err}"))
-        })?;
+        let raw = response
+            .text()
+            .await
+            .map_err(|err| ProviderError::NetworkError(format!("MEGA API read failed: {err}")))?;
         let trimmed = raw.trim();
 
         // MEGA replies as `[<value>]` for normal commands, but for global
@@ -1019,6 +1020,123 @@ impl MegaNativeProvider {
     fn invalidate_nodes(&mut self) {
         self.nodes_loaded = false;
     }
+
+    fn verify_chunk_macs(
+        chunk_macs: &[[u8; 16]],
+        file_key: &[u8; 16],
+        expected_meta_mac: &[u8; 8],
+        legacy: bool,
+    ) -> Result<bool, ProviderError> {
+        let actual = if legacy {
+            meta_mac_legacy(chunk_macs, file_key)?
+        } else {
+            meta_mac(chunk_macs, file_key)?
+        };
+        Ok(&actual == expected_meta_mac)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn download_to_path_with_key(
+        &self,
+        download_url: &str,
+        total_size: u64,
+        actual_size: u64,
+        file_key: &[u8; 16],
+        nonce: &[u8; 8],
+        expected_meta_mac: &[u8; 8],
+        legacy_mac: bool,
+        local_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<bool, ProviderError> {
+        let response = self
+            .api_client
+            .client
+            .get(download_url)
+            .send()
+            .await
+            .map_err(map_reqwest_error)?;
+
+        if !response.status().is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "Download HTTP {}",
+                response.status()
+            )));
+        }
+
+        let chunks = compute_chunk_boundaries(total_size);
+        let mut stream = response.bytes_stream();
+        use futures_util::StreamExt;
+
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let mut downloaded: u64 = 0;
+        let mut chunk_idx = 0usize;
+        let mut chunk_buf: Vec<u8> = Vec::new();
+        let mut chunk_macs = Vec::with_capacity(chunks.len());
+
+        while let Some(chunk_result) = stream.next().await {
+            let http_chunk = chunk_result.map_err(|e| {
+                ProviderError::TransferFailed(format!("Download stream error: {e}"))
+            })?;
+            chunk_buf.extend_from_slice(&http_chunk);
+
+            while chunk_idx < chunks.len() {
+                let (mega_offset, mega_size) = chunks[chunk_idx];
+                if chunk_buf.len() < mega_size {
+                    break;
+                }
+
+                let mut mega_chunk: Vec<u8> = chunk_buf.drain(..mega_size).collect();
+                aes_ctr_apply_inplace(&mut mega_chunk, file_key, nonce, mega_offset);
+
+                let write_end = if mega_offset + mega_size as u64 > actual_size {
+                    actual_size.saturating_sub(mega_offset) as usize
+                } else {
+                    mega_size
+                };
+                let plain = &mega_chunk[..write_end];
+                chunk_macs.push(chunk_mac(plain, file_key, nonce)?);
+
+                atomic.write_all(plain).await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Write chunk failed: {e}"))
+                })?;
+
+                downloaded += write_end as u64;
+                if let Some(ref cb) = on_progress {
+                    cb(std::cmp::min(downloaded, actual_size), actual_size);
+                }
+
+                chunk_idx += 1;
+            }
+        }
+
+        if !chunk_buf.is_empty() && chunk_idx < chunks.len() {
+            let (mega_offset, _) = chunks[chunk_idx];
+            let mut remaining = chunk_buf;
+            aes_ctr_apply_inplace(&mut remaining, file_key, nonce, mega_offset);
+            let write_end = if mega_offset + remaining.len() as u64 > actual_size {
+                actual_size.saturating_sub(mega_offset) as usize
+            } else {
+                remaining.len()
+            };
+            let plain = &remaining[..write_end];
+            chunk_macs.push(chunk_mac(plain, file_key, nonce)?);
+            atomic.write_all(plain).await.map_err(|e| {
+                ProviderError::TransferFailed(format!("Write final chunk failed: {e}"))
+            })?;
+        }
+
+        if !Self::verify_chunk_macs(&chunk_macs, file_key, expected_meta_mac, legacy_mac)? {
+            return Ok(false);
+        }
+
+        atomic.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {e}"))
+        })?;
+
+        Ok(true)
+    }
 }
 
 // ─── StorageProvider implementation ───────────────────────────────────────
@@ -1190,7 +1308,9 @@ impl StorageProvider for MegaNativeProvider {
         let packed_key: [u8; 32] = node.key[..32]
             .try_into()
             .map_err(|_| ProviderError::ParseError("key conversion failed".into()))?;
-        let (file_key, nonce) = unpack_node_key(&packed_key)?;
+        let (file_key, nonce, expected_meta_mac) = unpack_node_key_with_mac(&packed_key)?;
+        let (legacy_file_key, legacy_nonce, legacy_expected_meta_mac) =
+            unpack_node_key_legacy(&packed_key)?;
 
         // Get download URL
         let dl_resp: GetDownloadUrlResponseWire = self
@@ -1200,99 +1320,49 @@ impl StorageProvider for MegaNativeProvider {
         let total_size = dl_resp.s;
         let actual_size = node.size;
 
-        let response = self
-            .api_client
-            .client
-            .get(&dl_resp.g)
-            .send()
-            .await
-            .map_err(map_reqwest_error)?;
-
-        if !response.status().is_success() {
-            return Err(ProviderError::TransferFailed(format!(
-                "Download HTTP {}",
-                response.status()
-            )));
+        if self
+            .download_to_path_with_key(
+                &dl_resp.g,
+                total_size,
+                actual_size,
+                &file_key,
+                &nonce,
+                &expected_meta_mac,
+                false,
+                local_path,
+                on_progress,
+            )
+            .await?
+        {
+            return Ok(());
         }
 
-        // Streaming download: decrypt each MEGA chunk and write directly to disk.
-        // Peak memory = 1 MEGA chunk (max 1 MB) instead of 3x file size.
-        let chunks = compute_chunk_boundaries(total_size);
-        let mut stream = response.bytes_stream();
-        use futures_util::StreamExt;
+        tracing::warn!(
+            "[MEGA Native] canonical MAC verification failed for '{}'; trying legacy AeroFTP key layout",
+            remote_path
+        );
 
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-        let mut downloaded: u64 = 0;
-        let mut chunk_idx = 0usize;
-        let mut chunk_buf: Vec<u8> = Vec::new();
-
-        while let Some(chunk_result) = stream.next().await {
-            let http_chunk = chunk_result.map_err(|e| {
-                ProviderError::TransferFailed(format!("Download stream error: {e}"))
-            })?;
-            chunk_buf.extend_from_slice(&http_chunk);
-
-            // Process all complete MEGA chunks accumulated in the buffer
-            while chunk_idx < chunks.len() {
-                let (mega_offset, mega_size) = chunks[chunk_idx];
-                if chunk_buf.len() < mega_size {
-                    break; // need more HTTP data
-                }
-
-                // Take exactly one MEGA chunk from the buffer
-                let mut mega_chunk: Vec<u8> = chunk_buf.drain(..mega_size).collect();
-
-                // Decrypt in-place (zero extra allocation)
-                aes_ctr_apply_inplace(&mut mega_chunk, &file_key, &nonce, mega_offset);
-
-                // Truncate last chunk to actual file size
-                let write_end = if mega_offset + mega_size as u64 > actual_size {
-                    actual_size.saturating_sub(mega_offset) as usize
-                } else {
-                    mega_size
-                };
-
-                atomic
-                    .write_all(&mega_chunk[..write_end])
-                    .await
-                    .map_err(|e| {
-                        ProviderError::TransferFailed(format!("Write chunk failed: {e}"))
-                    })?;
-
-                downloaded += mega_size as u64;
-                if let Some(ref cb) = on_progress {
-                    cb(std::cmp::min(downloaded, actual_size), actual_size);
-                }
-
-                chunk_idx += 1;
-            }
+        if self
+            .download_to_path_with_key(
+                &dl_resp.g,
+                total_size,
+                actual_size,
+                &legacy_file_key,
+                &legacy_nonce,
+                &legacy_expected_meta_mac,
+                true,
+                local_path,
+                None,
+            )
+            .await?
+        {
+            return Ok(());
         }
 
-        // Flush any remaining partial chunk (should not happen with valid MEGA data)
-        if !chunk_buf.is_empty() && chunk_idx < chunks.len() {
-            let (mega_offset, _) = chunks[chunk_idx];
-            let mut remaining = chunk_buf;
-            aes_ctr_apply_inplace(&mut remaining, &file_key, &nonce, mega_offset);
-            let write_end = if mega_offset + remaining.len() as u64 > actual_size {
-                actual_size.saturating_sub(mega_offset) as usize
-            } else {
-                remaining.len()
-            };
-            atomic
-                .write_all(&remaining[..write_end])
-                .await
-                .map_err(|e| {
-                    ProviderError::TransferFailed(format!("Write final chunk failed: {e}"))
-                })?;
-        }
-
-        atomic.commit().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to finalize download: {e}"))
-        })?;
-
-        Ok(())
+        Err(ProviderError::TransferFailed(
+            "MEGA decryption failed: file MAC did not match canonical or legacy AeroFTP key layout"
+                .to_string(),
+        ))
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
@@ -1796,7 +1866,9 @@ impl MegaNativeProvider {
         let packed_key: [u8; 32] = node.key[..32]
             .try_into()
             .map_err(|_| ProviderError::ParseError("key conversion failed".into()))?;
-        let (file_key, nonce) = unpack_node_key(&packed_key)?;
+        let (file_key, nonce, expected_meta_mac) = unpack_node_key_with_mac(&packed_key)?;
+        let (legacy_file_key, legacy_nonce, legacy_expected_meta_mac) =
+            unpack_node_key_legacy(&packed_key)?;
 
         // Get download URL
         let dl_resp: GetDownloadUrlResponseWire = self
@@ -1835,16 +1907,59 @@ impl MegaNativeProvider {
             }
         }
 
-        // Decrypt
-        let decrypted = aes_ctr_decrypt(&encrypted, &file_key, &nonce, 0)?;
-
-        // Truncate to actual file size (MEGA pads to AES block boundary)
         let actual_size = node.size as usize;
-        if decrypted.len() >= actual_size {
-            Ok(decrypted[..actual_size].to_vec())
+        let chunks = compute_chunk_boundaries(node.size);
+
+        let decrypted = aes_ctr_decrypt(&encrypted, &file_key, &nonce, 0)?;
+        let plain = if decrypted.len() >= actual_size {
+            decrypted[..actual_size].to_vec()
         } else {
-            Ok(decrypted)
+            decrypted
+        };
+        let chunk_macs: Result<Vec<_>, _> = chunks
+            .iter()
+            .map(|(offset, size)| {
+                let start = *offset as usize;
+                let end = std::cmp::min(start + *size, plain.len());
+                chunk_mac(&plain[start..end], &file_key, &nonce)
+            })
+            .collect();
+        if Self::verify_chunk_macs(&chunk_macs?, &file_key, &expected_meta_mac, false)? {
+            return Ok(plain);
         }
+
+        tracing::warn!(
+            "[MEGA Native] canonical MAC verification failed for '{}'; trying legacy AeroFTP key layout",
+            remote_path
+        );
+
+        let legacy_decrypted = aes_ctr_decrypt(&encrypted, &legacy_file_key, &legacy_nonce, 0)?;
+        let legacy_plain = if legacy_decrypted.len() >= actual_size {
+            legacy_decrypted[..actual_size].to_vec()
+        } else {
+            legacy_decrypted
+        };
+        let legacy_chunk_macs: Result<Vec<_>, _> = chunks
+            .iter()
+            .map(|(offset, size)| {
+                let start = *offset as usize;
+                let end = std::cmp::min(start + *size, legacy_plain.len());
+                chunk_mac(&legacy_plain[start..end], &legacy_file_key, &legacy_nonce)
+            })
+            .collect();
+        if Self::verify_chunk_macs(
+            &legacy_chunk_macs?,
+            &legacy_file_key,
+            &legacy_expected_meta_mac,
+            true,
+        )? {
+            return Ok(legacy_plain);
+        }
+
+        Err(ProviderError::TransferFailed(
+            "MEGA decryption failed: file MAC did not match canonical or legacy AeroFTP key layout"
+                .to_string(),
+        ))
     }
 }
 

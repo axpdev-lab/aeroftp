@@ -450,7 +450,10 @@ impl JottacloudProvider {
                 .map(|s| urlencoding::encode(s).into_owned())
                 .collect::<Vec<_>>()
                 .join("/");
-            format!("{}/{}/{}/{}/{}", JFS_BASE, user, device, mount, encoded_path)
+            format!(
+                "{}/{}/{}/{}/{}",
+                JFS_BASE, user, device, mount, encoded_path
+            )
         }
     }
 
