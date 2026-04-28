@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Ielīmējiet savu API atslēgu šeit",
       "immichApiKeyHelp": "Izveidojiet API atslēgu Immich → User Settings → API Keys",
       "immichOps": "Pārlūkošana, augšupielāde, lejupielāde, dzēšana, albumi, meklēšana, kopīgošanas saites. Pārdēvēšana un pārvietošana netiek atbalstīta.",
-      "generatePassword": "Ģenerēt paroli"
+      "generatePassword": "Ģenerēt paroli",
+      "saveAndConnect": "Saglabāt un savienot",
+      "saveDisabledTotp": "TOTP kodi ir vienreizēji. Izmantojiet Saglabāt un savienot, lai lietotu šo kodu tagad."
     },
     "browser": {
       "remote": "Attālināts",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Meklē pašreizējo favicon",
       "confirmDelete": "Noņemt “{name}” no jūsu pielāgotās ikonu bibliotēkas?",
       "dropHere": "Nometiet failu, lai augšupielādētu"
+    },
+    "twoFactor": {
+      "title": "Nepieciešama divfaktoru autentifikācija",
+      "description": "Lai turpinātu savienojumu, ievadiet 6 ciparu kodu no autentifikācijas lietotnes.",
+      "hint": "Atveriet autentifikācijas lietotni (Authy, Google Authenticator u.c.) un nokopējiet pašreizējo kodu.",
+      "connect": "Savienot",
+      "connecting": "Savienojas..."
     }
   }
 }

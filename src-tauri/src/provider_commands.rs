@@ -269,8 +269,14 @@ impl ProviderConnectionParams {
             // account_name comes from username field
         }
 
-        // Add Filen/Internxt-specific options
-        if provider_type == ProviderType::Filen || provider_type == ProviderType::Internxt {
+        // 2FA TOTP forwarding for E2E providers + MEGA. The frontend ships
+        // the 6-digit code on connectionParams.options.two_factor_code; we
+        // only insert it into extra when actually present so that profiles
+        // without 2FA enabled don't send empty fields to the API.
+        if provider_type == ProviderType::Filen
+            || provider_type == ProviderType::Internxt
+            || provider_type == ProviderType::Mega
+        {
             if let Some(ref code) = self.two_factor_code {
                 if !code.is_empty() {
                     extra.insert("two_factor_code".to_string(), code.clone());

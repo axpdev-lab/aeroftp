@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Dán khóa API của bạn vào đây",
       "immichApiKeyHelp": "Tạo khóa API trong Immich → User Settings → API Keys",
       "immichOps": "Duyệt, tải lên, tải xuống, xóa, album, tìm kiếm, liên kết chia sẻ. Không hỗ trợ đổi tên và di chuyển.",
-      "generatePassword": "Tạo mật khẩu"
+      "generatePassword": "Tạo mật khẩu",
+      "saveAndConnect": "Lưu và Kết nối",
+      "saveDisabledTotp": "Mã TOTP chỉ dùng được một lần. Hãy dùng Lưu và Kết nối để áp dụng mã này ngay bây giờ."
     },
     "browser": {
       "remote": "Từ xa",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Đang tìm favicon hiện tại",
       "confirmDelete": "Xóa \"{name}\" khỏi thư viện biểu tượng tùy chỉnh của bạn?",
       "dropHere": "Thả tệp để tải lên"
+    },
+    "twoFactor": {
+      "title": "Yêu cầu Xác thực Hai Yếu tố",
+      "description": "Nhập mã 6 chữ số từ ứng dụng xác thực của bạn để tiếp tục kết nối.",
+      "hint": "Mở ứng dụng xác thực của bạn (Authy, Google Authenticator, v.v.) và sao chép mã hiện tại.",
+      "connect": "Kết nối",
+      "connecting": "Đang kết nối..."
     }
   }
 }

@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "APIキーをここに貼り付けてください",
       "immichApiKeyHelp": "Immich → User Settings → API Keysで APIキーを生成してください",
       "immichOps": "閲覧、アップロード、ダウンロード、削除、アルバム、検索、共有リンク。名前の変更と移動はサポートされていません。",
-      "generatePassword": "パスワードを生成"
+      "generatePassword": "パスワードを生成",
+      "saveAndConnect": "保存して接続",
+      "saveDisabledTotp": "TOTPコードは1回限り有効です。このコードを今すぐ適用するには「保存して接続」を使用してください。"
     },
     "browser": {
       "remote": "リモート",
@@ -4131,6 +4133,13 @@
       "scanningDescription": "現在のファビコンを探しています",
       "confirmDelete": "カスタムアイコンライブラリから「{name}」を削除しますか？",
       "dropHere": "ファイルをドロップしてアップロード"
+    },
+    "twoFactor": {
+      "title": "二要素認証が必要です",
+      "description": "接続を続行するには、認証アプリの6桁のコードを入力してください。",
+      "hint": "認証アプリ(Authy、Google Authenticator など)を開き、現在のコードをコピーしてください。",
+      "connect": "接続",
+      "connecting": "接続中..."
     }
   }
 }

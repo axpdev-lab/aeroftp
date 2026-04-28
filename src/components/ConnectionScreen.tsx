@@ -863,6 +863,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
+    /**
+     * Edit mode helper for 2FA-aware providers (MEGA, Filen, Internxt).
+     * Saves the profile (TOTP stripped from the persisted options because it
+     * is single-use and rotates every 30s) and immediately triggers a connect
+     * with `connectionParams` still in memory, so the freshly-typed TOTP
+     * reaches the backend on this attempt and the server validates 2FA
+     * properly. Without this, "Save" + click on the saved card connects
+     * without the TOTP and either resumes the old session or fails with
+     * E_MFAREQUIRED. Issue #128.
+     */
+    const handleSaveAndConnect = async () => {
+        if (editingProfileId) {
+            await saveToServers();
+            // Don't reset the form — onConnect drives the route change that
+            // closes the panel; resetting here would race connectionParams
+            // away before the connect call can read the TOTP.
+        }
+        onConnect();
+    };
+
     const handleSaveAsNew = async () => {
         if (!protocol || !editingProfileId) return;
         // Validate name is different
@@ -2700,18 +2720,47 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div className="pt-2">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.secureLogin')}</>
-                                                )}
-                                            </button>
+                                            {editingProfileId ? (
+                                                (() => {
+                                                    const hasFreshTotp = !!connectionParams.options?.two_factor_code;
+                                                    return (
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={handleConnectAndSave}
+                                                                disabled={loading || !connectionParams.username || !connectionParams.password || hasFreshTotp}
+                                                                title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
+                                                                className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
+                                                            >
+                                                                <Save size={18} /> {t('connection.saveChanges')}
+                                                            </button>
+                                                            <button
+                                                                onClick={handleSaveAndConnect}
+                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
+                                                                className={`flex-1 py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                            >
+                                                                {loading ? (
+                                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                                ) : (
+                                                                    <>{ConnectIcon} {t('connection.saveAndConnect')}</>
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })()
+                                            ) : (
+                                                <button
+                                                    onClick={handleConnectAndSave}
+                                                    disabled={loading || !connectionParams.username || !connectionParams.password}
+                                                    className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                    ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                >
+                                                    {loading ? (
+                                                        <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                    ) : (
+                                                        <>{ConnectIcon} {t('connection.secureLogin')}</>
+                                                    )}
+                                                </button>
+                                            )}
                                             <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
                                                 <Lock size={12} /> {t('connection.endToEndAes')}
                                             </p>
@@ -2846,18 +2895,47 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div className="pt-2">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.secureLogin')}</>
-                                                )}
-                                            </button>
+                                            {editingProfileId ? (
+                                                (() => {
+                                                    const hasFreshTotp = !!connectionParams.options?.two_factor_code;
+                                                    return (
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={handleConnectAndSave}
+                                                                disabled={loading || !connectionParams.username || !connectionParams.password || hasFreshTotp}
+                                                                title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
+                                                                className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
+                                                            >
+                                                                <Save size={18} /> {t('connection.saveChanges')}
+                                                            </button>
+                                                            <button
+                                                                onClick={handleSaveAndConnect}
+                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
+                                                                className={`flex-1 py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                                                            >
+                                                                {loading ? (
+                                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                                ) : (
+                                                                    <>{ConnectIcon} {t('connection.saveAndConnect')}</>
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })()
+                                            ) : (
+                                                <button
+                                                    onClick={handleConnectAndSave}
+                                                    disabled={loading || !connectionParams.username || !connectionParams.password}
+                                                    className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                    ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                                                >
+                                                    {loading ? (
+                                                        <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                    ) : (
+                                                        <>{ConnectIcon} {t('connection.secureLogin')}</>
+                                                    )}
+                                                </button>
+                                            )}
                                             <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
                                                 <Lock size={12} /> {t('connection.endToEndAes')}
                                             </p>
@@ -3210,20 +3288,49 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div className="pt-2">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : saveConnection ? (
-                                                    <><Save size={18} /> {t('common.save')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.secureLogin')}</>
-                                                )}
-                                            </button>
+                                            {editingProfileId ? (
+                                                (() => {
+                                                    const hasFreshTotp = !!connectionParams.options?.two_factor_code;
+                                                    return (
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={handleConnectAndSave}
+                                                                disabled={loading || !connectionParams.username || !connectionParams.password || hasFreshTotp}
+                                                                title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
+                                                                className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
+                                                            >
+                                                                <Save size={18} /> {t('connection.saveChanges')}
+                                                            </button>
+                                                            <button
+                                                                onClick={handleSaveAndConnect}
+                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
+                                                                className={`flex-1 py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
+                                                            >
+                                                                {loading ? (
+                                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                                ) : (
+                                                                    <>{ConnectIcon} {t('connection.saveAndConnect')}</>
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })()
+                                            ) : (
+                                                <button
+                                                    onClick={handleConnectAndSave}
+                                                    disabled={loading || !connectionParams.username || !connectionParams.password}
+                                                    className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
+                                                    ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
+                                                >
+                                                    {loading ? (
+                                                        <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                                                    ) : saveConnection ? (
+                                                        <><Save size={18} /> {t('common.save')}</>
+                                                    ) : (
+                                                        <>{ConnectIcon} {t('connection.secureLogin')}</>
+                                                    )}
+                                                </button>
+                                            )}
                                             <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
                                                 <Lock size={12} /> {t('connection.endToEndEncrypted')}
                                             </p>

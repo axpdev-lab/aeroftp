@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Bandika ufunguo wako wa API hapa",
       "immichApiKeyHelp": "Tengeneza ufunguo wa API katika Immich → User Settings → API Keys",
       "immichOps": "Vinjari, pakia, pakua, futa, albamu, tafuta, viungo vya kushiriki. Kubadilisha jina na kuhamisha havitumiki.",
-      "generatePassword": "Tengeneza nenosiri"
+      "generatePassword": "Tengeneza nenosiri",
+      "saveAndConnect": "Hifadhi na Unganisha",
+      "saveDisabledTotp": "Misimbo ya TOTP ni ya matumizi ya mara moja. Tumia Hifadhi na Unganisha kutumia msimbo huu sasa."
     },
     "browser": {
       "remote": "Mbali",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Inatafuta favicon ya sasa",
       "confirmDelete": "Ondoa \"{name}\" kutoka kwenye maktaba yako ya aikoni maalum?",
       "dropHere": "Dondosha faili ili kupakia"
+    },
+    "twoFactor": {
+      "title": "Uthibitishaji wa Mambo Mawili Unahitajika",
+      "description": "Weka msimbo wa tarakimu 6 kutoka kwa programu yako ya uthibitishaji ili kuendelea kuunganisha.",
+      "hint": "Fungua programu yako ya uthibitishaji (Authy, Google Authenticator, n.k.) na nakili msimbo wa sasa.",
+      "connect": "Unganisha",
+      "connecting": "Inaunganisha..."
     }
   }
 }

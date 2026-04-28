@@ -173,6 +173,8 @@
       "saveToServers": "Salva nei Server Salvati",
       "connectionNamePlaceholder": "Nome Connessione (es. Il Mio Filen Cloud)",
       "secureLogin": "Login Sicuro",
+      "saveAndConnect": "Salva e Connetti",
+      "saveDisabledTotp": "I codici TOTP sono monouso. Usa Salva e Connetti per applicare il codice ora.",
       "endToEndAes": "Crittografia end-to-end con AES-256-GCM",
       "megaConnectionMode": "Backend di connessione",
       "megaModeNative": "API native",
@@ -272,6 +274,13 @@
       "immichApiKeyHelp": "Genera una chiave API in Immich → User Settings → API Keys",
       "immichOps": "Sfoglia, carica, scarica, elimina, album, cerca, link di condivisione. Rinomina e sposta non supportati.",
       "generatePassword": "Genera password"
+    },
+    "twoFactor": {
+      "title": "Autenticazione a due fattori richiesta",
+      "description": "Inserisci il codice a 6 cifre dalla tua app authenticator per continuare la connessione.",
+      "hint": "Apri la tua app authenticator (Authy, Google Authenticator, ecc.) e copia il codice corrente.",
+      "connect": "Connetti",
+      "connecting": "Connessione..."
     },
     "protocol": {
       "selectProtocol": "Seleziona protocollo...",

@@ -104,6 +104,13 @@ fn reset_rate_limit(inner: &mut TotpInner) {
 }
 
 /// Build a TOTP instance from a base32-encoded secret.
+///
+/// Issuer / account_name choice:
+/// - Authenticator apps render the entry as "<issuer>: <account_name>". Using
+///   issuer "AeroFTP" + account_name "AeroFTP Vault" produced the awkward
+///   "AeroFTP : AeroFTP Vault" duplication the user reported. We now use a
+///   short, human-readable account name so Authy / Google Authenticator /
+///   1Password show a clean "AeroFTP : Desktop 2FA".
 fn build_totp(secret_base32: &str) -> Result<TOTP, String> {
     let secret = Secret::Encoded(secret_base32.to_string())
         .to_bytes()
@@ -115,9 +122,47 @@ fn build_totp(secret_base32: &str) -> Result<TOTP, String> {
         30,
         secret,
         Some("AeroFTP".to_string()),
-        "AeroFTP Vault".to_string(),
+        "Desktop 2FA".to_string(),
     )
     .map_err(|e| format!("TOTP creation failed: {}", e))
+}
+
+/// Public URL of the AeroFTP logo, served from the docs site (GitHub Pages).
+/// Embedded into the otpauth URI as `image=` so authenticator apps that
+/// honor the Google extension (FreeOTP+, Yubico Authenticator, Bitwarden,
+/// 1Password, recent Google Authenticator) can show the logo.
+///
+/// NOTE on Authy: Twilio's app does NOT read this field. It looks up issuer
+/// names against an internal Twilio database, so adding our logo there would
+/// require a submission to Twilio support. Until then, Authy will show a
+/// generic icon — this is a vendor limitation, not something the URI can
+/// override.
+const AEROFTP_LOGO_URL: &str = "https://docs.aeroftp.app/web-app-manifest-512x512.png";
+
+/// Append `image=` query parameter to a totp-rs generated URI.
+fn append_image_param(uri: &str) -> String {
+    let encoded = url_encode_image(AEROFTP_LOGO_URL);
+    let separator = if uri.contains('?') { '&' } else { '?' };
+    format!("{}{}image={}", uri, separator, encoded)
+}
+
+/// Minimal RFC 3986 percent-encoding for the `image` URL value. We only need
+/// to encode the characters that conflict with otpauth URI grammar (`:`, `/`,
+/// `?`, `&`, `=`, `#`, plus space). Everything else is left as-is which is
+/// safe for the docs.aeroftp.app URL.
+fn url_encode_image(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() + 8);
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => {
+                out.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    out
 }
 
 /// Generate a random 20-byte secret encoded as base32.
@@ -139,7 +184,7 @@ fn generate_secret_base32() -> String {
 pub fn totp_setup_start(state: State<'_, TotpState>) -> Result<serde_json::Value, String> {
     let secret_base32 = generate_secret_base32();
     let totp = build_totp(&secret_base32)?;
-    let uri = totp.get_url();
+    let uri = append_image_param(&totp.get_url());
 
     let mut inner = lock_state(&state)?;
     // Return the secret to the frontend for QR code display, then wrap in SecretString
@@ -415,6 +460,29 @@ mod tests {
         reset_rate_limit(&mut inner);
         assert_eq!(inner.failed_attempts, 0);
         assert!(inner.lockout_until.is_none());
+    }
+
+    #[test]
+    fn append_image_param_adds_amp_when_query_present() {
+        let base = "otpauth://totp/AeroFTP:Desktop%202FA?secret=ABC&issuer=AeroFTP";
+        let result = append_image_param(base);
+        assert!(result.starts_with(base));
+        assert!(result.contains("&image=https%3A%2F%2Fdocs.aeroftp.app"));
+    }
+
+    #[test]
+    fn url_encode_image_handles_reserved_chars() {
+        let encoded = url_encode_image("https://x.test/a b?c=d");
+        assert_eq!(encoded, "https%3A%2F%2Fx.test%2Fa%20b%3Fc%3Dd");
+    }
+
+    #[test]
+    fn build_totp_uses_clean_account_name() {
+        let secret = generate_secret_base32();
+        let totp = build_totp(&secret).unwrap();
+        let url = totp.get_url();
+        assert!(url.contains("AeroFTP:Desktop%202FA") || url.contains("AeroFTP:Desktop 2FA"));
+        assert!(!url.contains("AeroFTP%20Vault"));
     }
 
     #[test]

@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "在此粘贴您的 API 密钥",
       "immichApiKeyHelp": "在 Immich → User Settings → API Keys 中生成 API 密钥",
       "immichOps": "浏览、上传、下载、删除、相册、搜索、共享链接。不支持重命名和移动。",
-      "generatePassword": "生成密码"
+      "generatePassword": "生成密码",
+      "saveAndConnect": "保存并连接",
+      "saveDisabledTotp": "TOTP 验证码为一次性使用。请使用“保存并连接”立即应用此验证码。"
     },
     "browser": {
       "remote": "远程",
@@ -4131,6 +4133,13 @@
       "scanningDescription": "正在查找当前 favicon",
       "confirmDelete": "从您的自定义图标库中移除“{name}”吗？",
       "dropHere": "拖放文件以上传"
+    },
+    "twoFactor": {
+      "title": "需要双因素身份验证",
+      "description": "输入身份验证器应用中的 6 位数代码以继续连接。",
+      "hint": "打开您的身份验证器应用(Authy、Google Authenticator 等)并复制当前代码。",
+      "connect": "连接",
+      "connecting": "正在连接..."
     }
   }
 }

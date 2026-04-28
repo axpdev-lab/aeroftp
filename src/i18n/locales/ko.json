@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "여기에 API 키를 붙여넣으세요",
       "immichApiKeyHelp": "Immich → User Settings → API Keys에서 API 키를 생성하세요",
       "immichOps": "탐색, 업로드, 다운로드, 삭제, 앨범, 검색, 공유 링크. 이름 바꾸기와 이동은 지원되지 않습니다.",
-      "generatePassword": "비밀번호 생성"
+      "generatePassword": "비밀번호 생성",
+      "saveAndConnect": "저장 및 연결",
+      "saveDisabledTotp": "TOTP 코드는 일회용입니다. 이 코드를 지금 적용하려면 저장 및 연결을 사용하세요."
     },
     "browser": {
       "remote": "원격",
@@ -4131,6 +4133,13 @@
       "scanningDescription": "현재 파비콘 검색 중",
       "confirmDelete": "사용자 지정 아이콘 라이브러리에서 \"{name}\"을(를) 제거하시겠습니까?",
       "dropHere": "파일을 놓아 업로드"
+    },
+    "twoFactor": {
+      "title": "2단계 인증 필요",
+      "description": "연결을 계속하려면 인증 앱에서 6자리 코드를 입력하세요.",
+      "hint": "인증 앱(Authy, Google Authenticator 등)을 열고 현재 코드를 복사하세요.",
+      "connect": "연결",
+      "connecting": "연결 중..."
     }
   }
 }

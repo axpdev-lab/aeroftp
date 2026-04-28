@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Vložte svoj API kľúč sem",
       "immichApiKeyHelp": "Vygenerujte API kľúč v Immich → User Settings → API Keys",
       "immichOps": "Prehľadávanie, nahrávanie, sťahovanie, mazanie, albumy, vyhľadávanie, zdieľacie odkazy. Premenovanie a presun nie sú podporované.",
-      "generatePassword": "Vygenerovať heslo"
+      "generatePassword": "Vygenerovať heslo",
+      "saveAndConnect": "Uložiť a pripojiť",
+      "saveDisabledTotp": "Kódy TOTP sú jednorazové. Použite Uložiť a pripojiť na okamžité použitie tohto kódu."
     },
     "browser": {
       "remote": "Vzdialený",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Hľadám aktuálnu favicon",
       "confirmDelete": "Odstrániť „{name}“ z vašej knižnice vlastných ikon?",
       "dropHere": "Pustite súbor na nahranie"
+    },
+    "twoFactor": {
+      "title": "Vyžaduje sa dvojfaktorové overenie",
+      "description": "Pre pokračovanie v pripojení zadajte 6-miestny kód z autentifikačnej aplikácie.",
+      "hint": "Otvorte autentifikačnú aplikáciu (Authy, Google Authenticator atď.) a skopírujte aktuálny kód.",
+      "connect": "Pripojiť",
+      "connecting": "Pripája sa..."
     }
   }
 }

@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Įklijuokite savo API raktą čia",
       "immichApiKeyHelp": "Sugeneruokite API raktą Immich → User Settings → API Keys",
       "immichOps": "Naršymas, įkėlimas, atsisiuntimas, trynimas, albumai, paieška, bendrinimo nuorodos. Pervadinimas ir perkėlimas nepalaikomi.",
-      "generatePassword": "Generuoti slaptažodį"
+      "generatePassword": "Generuoti slaptažodį",
+      "saveAndConnect": "Įrašyti ir prisijungti",
+      "saveDisabledTotp": "TOTP kodai yra vienkartiniai. Naudokite Įrašyti ir prisijungti, kad pritaikytumėte šį kodą dabar."
     },
     "browser": {
       "remote": "Nuotolinis",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Ieškau dabartinės favicon",
       "confirmDelete": "Pašalinti „{name}“ iš jūsų pasirinktinės piktogramų bibliotekos?",
       "dropHere": "Numeskite failą įkėlimui"
+    },
+    "twoFactor": {
+      "title": "Reikalingas dviejų veiksnių autentifikavimas",
+      "description": "Norėdami tęsti prisijungimą, įveskite 6 skaitmenų kodą iš autentifikavimo programėlės.",
+      "hint": "Atidarykite autentifikavimo programėlę (Authy, Google Authenticator ir kt.) ir nukopijuokite dabartinį kodą.",
+      "connect": "Prisijungti",
+      "connecting": "Jungiamasi..."
     }
   }
 }

@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Zalijepite svoj API ključ ovdje",
       "immichApiKeyHelp": "Generirajte API ključ u Immich → User Settings → API Keys",
       "immichOps": "Pregledavanje, prijenos, preuzimanje, brisanje, albumi, pretraživanje, dijeljeni linkovi. Preimenovanje i premještanje nisu podržani.",
-      "generatePassword": "Generiraj lozinku"
+      "generatePassword": "Generiraj lozinku",
+      "saveAndConnect": "Spremi i poveži",
+      "saveDisabledTotp": "TOTP kodovi su jednokratni. Koristite Spremi i poveži za primjenu ovog koda sada."
     },
     "browser": {
       "remote": "Udaljeno",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Tražim trenutnu favicon",
       "confirmDelete": "Ukloniti „{name}“ iz vaše knjižnice prilagođenih ikona?",
       "dropHere": "Ispustite datoteku za prijenos"
+    },
+    "twoFactor": {
+      "title": "Potrebna je dvofaktorska autentifikacija",
+      "description": "Unesite 6-znamenkasti kod iz aplikacije za autentifikaciju za nastavak povezivanja.",
+      "hint": "Otvorite aplikaciju za autentifikaciju (Authy, Google Authenticator itd.) i kopirajte trenutni kod.",
+      "connect": "Poveži",
+      "connecting": "Povezivanje..."
     }
   }
 }

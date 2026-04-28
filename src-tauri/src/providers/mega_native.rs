@@ -246,13 +246,47 @@ impl MegaApiClient {
             )));
         }
 
-        let payload: Vec<Value> = response.json().await.map_err(|err| {
-            ProviderError::ParseError(format!("Invalid JSON response from MEGA API: {err}"))
+        // Read body as text first instead of going through reqwest's .json()
+        // helper. The helper requires Content-Type: application/json, but MEGA
+        // sometimes returns global error codes (E_MFAREQUIRED, E_BLOCKED,
+        // E_RATE) with text/plain or no Content-Type at all, which makes the
+        // helper bail with "error decoding response body" before we ever see
+        // the actual payload (issue #128 dev-test report).
+        let raw = response.text().await.map_err(|err| {
+            ProviderError::NetworkError(format!("MEGA API read failed: {err}"))
+        })?;
+        let trimmed = raw.trim();
+
+        // MEGA replies as `[<value>]` for normal commands, but for global
+        // failures it can also reply with a bare negative integer (e.g. `-26`)
+        // as the entire body. Try the simple integer path first.
+        if let Ok(code) = trimmed.parse::<i64>() {
+            if code < 0 {
+                return Err(map_mega_error_code(code));
+            }
+        }
+
+        let payload: Value = serde_json::from_str(trimmed).map_err(|err| {
+            // Surface the first 200 bytes of the body so dev-mode can see what
+            // MEGA actually returned without dumping secrets to the log.
+            let preview: String = trimmed.chars().take(200).collect();
+            ProviderError::ParseError(format!(
+                "Invalid JSON response from MEGA API: {err} (body: {preview})"
+            ))
         })?;
 
-        let first = payload.into_iter().next().ok_or_else(|| {
-            ProviderError::ParseError("MEGA API returned an empty response array".to_string())
-        })?;
+        if let Some(code) = payload.as_i64() {
+            if code < 0 {
+                return Err(map_mega_error_code(code));
+            }
+        }
+
+        let first = payload
+            .as_array()
+            .and_then(|arr| arr.first().cloned())
+            .ok_or_else(|| {
+                ProviderError::ParseError("MEGA API returned an empty response array".to_string())
+            })?;
 
         decode_command_response(first)
     }
@@ -293,7 +327,23 @@ fn map_mega_error_code(code: i64) -> ProviderError {
         -9 => ProviderError::NotFound("MEGA resource not found".to_string()),
         -13 => ProviderError::AuthenticationFailed("MEGA session expired".to_string()),
         -14 => ProviderError::AuthenticationFailed("MEGA account not confirmed".to_string()),
+        -15 => ProviderError::AuthenticationFailed("MEGA session ID invalid".to_string()),
         -16 => ProviderError::ServerError("MEGA over quota".to_string()),
+        // MEGA two-factor authentication error codes:
+        //   -26 EMFAREQUIRED — account has 2FA enabled and the request was
+        //                       missing the `mfa` field
+        //   -27 EMASTERONLY  — operation needs master account access
+        //   -28 EBUSINESSPASTDUE
+        //   -29 EPAYWALL
+        //   -22 ENOTOKEN     — the supplied 2FA token was not accepted
+        // The user-facing message must be specific so the UI can prompt
+        // the user to enter or re-enter their TOTP.
+        -22 => ProviderError::AuthenticationFailed(
+            "Wrong or already-used 2FA code. Generate a fresh code from your authenticator app.".to_string(),
+        ),
+        -26 => ProviderError::AuthenticationFailed(
+            "This MEGA account has two-factor authentication enabled. Open Edit on the saved profile, fill the 2FA Code field with a fresh 6-digit code from your authenticator app, then click Connect from the form.".to_string(),
+        ),
         other => ProviderError::ServerError(format!("MEGA API error {other}")),
     }
 }
@@ -986,7 +1036,17 @@ impl StorageProvider for MegaNativeProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        if self.try_resume_session().await? {
+        // When the user supplies a fresh TOTP, force a real login flow.
+        // Without this guard, try_resume_session() would short-circuit on a
+        // persisted session_id from a previous (pre-2FA) connect, and the
+        // server-side `mfa` validation in login_v1 / login_v2 would never run
+        // (issue #128 — reported during v3.6.8 dev testing). The TOTP is
+        // single-use and only kept in memory for one connect attempt, so its
+        // presence is a clear "I want a fresh authentication" signal.
+        if self.config.two_factor_code.is_some() {
+            let _ = self.clear_persisted_session();
+            self.clear_runtime_session();
+        } else if self.try_resume_session().await? {
             return Ok(());
         }
 

@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Cole a sua chave API aqui",
       "immichApiKeyHelp": "Gere uma chave API em Immich → User Settings → API Keys",
       "immichOps": "Navegar, enviar, descarregar, eliminar, álbuns, pesquisar, links de partilha. Renomear e mover não são suportados.",
-      "generatePassword": "Gerar senha"
+      "generatePassword": "Gerar senha",
+      "saveAndConnect": "Salvar e conectar",
+      "saveDisabledTotp": "Os códigos TOTP são de uso único. Use Salvar e conectar para aplicar este código agora."
     },
     "browser": {
       "remote": "Remoto",
@@ -4131,6 +4133,13 @@
       "scanningDescription": "À procura da favicon atual",
       "confirmDelete": "Remover \"{name}\" da sua biblioteca de ícones personalizada?",
       "dropHere": "Solte o ficheiro para enviar"
+    },
+    "twoFactor": {
+      "title": "Autenticação de dois fatores necessária",
+      "description": "Insira o código de 6 dígitos do seu aplicativo autenticador para continuar a conexão.",
+      "hint": "Abra seu aplicativo autenticador (Authy, Google Authenticator, etc.) e copie o código atual.",
+      "connect": "Conectar",
+      "connecting": "Conectando..."
     }
   }
 }

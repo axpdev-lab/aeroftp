@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Kleepige oma API võti siia",
       "immichApiKeyHelp": "Looge API võti Immich → User Settings → API Keys",
       "immichOps": "Sirvimine, üleslaadimine, allalaadimine, kustutamine, albumid, otsing, jagamislingid. Ümbernimetamine ja teisaldamine ei ole toetatud.",
-      "generatePassword": "Genereeri parool"
+      "generatePassword": "Genereeri parool",
+      "saveAndConnect": "Salvesta ja ühenda",
+      "saveDisabledTotp": "TOTP-koodid on ühekordsed. Kasuta Salvesta ja ühenda, et see kood kohe rakendada."
     },
     "browser": {
       "remote": "Kaugserver",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Otsib praegust favicon-i",
       "confirmDelete": "Kas eemaldada „{name}“ teie kohandatud ikoonide kogust?",
       "dropHere": "Kukuta fail üleslaadimiseks"
+    },
+    "twoFactor": {
+      "title": "Vajalik on kaheastmeline autentimine",
+      "description": "Ühenduse jätkamiseks sisestage autentimisrakenduse 6-kohaline kood.",
+      "hint": "Avage oma autentimisrakendus (Authy, Google Authenticator vms) ja kopeerige praegune kood.",
+      "connect": "Ühenda",
+      "connecting": "Ühendamine..."
     }
   }
 }

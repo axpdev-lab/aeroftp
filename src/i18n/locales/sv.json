@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Klistra in din API-nyckel här",
       "immichApiKeyHelp": "Skapa en API-nyckel i Immich → User Settings → API Keys",
       "immichOps": "Bläddra, ladda upp, ladda ner, radera, album, sök, delningslänkar. Namnbyte och flytt stöds inte.",
-      "generatePassword": "Generera lösenord"
+      "generatePassword": "Generera lösenord",
+      "saveAndConnect": "Spara och anslut",
+      "saveDisabledTotp": "TOTP-koder är engångskoder. Använd Spara och anslut för att tillämpa denna kod nu."
     },
     "browser": {
       "remote": "Fjärr",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Letar efter den aktuella favicon",
       "confirmDelete": "Ta bort \"{name}\" från ditt anpassade ikonbibliotek?",
       "dropHere": "Släpp fil för att ladda upp"
+    },
+    "twoFactor": {
+      "title": "Tvåfaktorsautentisering krävs",
+      "description": "Ange den 6-siffriga koden från din autentiseringsapp för att fortsätta ansluta.",
+      "hint": "Öppna din autentiseringsapp (Authy, Google Authenticator osv.) och kopiera den aktuella koden.",
+      "connect": "Anslut",
+      "connecting": "Ansluter..."
     }
   }
 }

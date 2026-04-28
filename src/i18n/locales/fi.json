@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Liitä API-avaimesi tähän",
       "immichApiKeyHelp": "Luo API-avain kohdassa Immich → User Settings → API Keys",
       "immichOps": "Selaa, lataa, lataa, poista, albumit, haku, jakolinkit. Uudelleennimeämistä ja siirtämistä ei tueta.",
-      "generatePassword": "Luo salasana"
+      "generatePassword": "Luo salasana",
+      "saveAndConnect": "Tallenna ja yhdistä",
+      "saveDisabledTotp": "TOTP-koodit ovat kertakäyttöisiä. Käytä Tallenna ja yhdistä -toimintoa ottaaksesi tämän koodin käyttöön nyt."
     },
     "browser": {
       "remote": "Etä",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Etsitään nykyistä favicon-kuvaketta",
       "confirmDelete": "Poistetaanko ”{name}” mukautettujen kuvakkeiden kirjastosta?",
       "dropHere": "Pudota tiedosto ladataksesi"
+    },
+    "twoFactor": {
+      "title": "Kaksivaiheinen todennus vaaditaan",
+      "description": "Jatka yhteyden muodostamista syöttämällä 6-numeroinen koodi todennussovelluksestasi.",
+      "hint": "Avaa todennussovelluksesi (Authy, Google Authenticator jne.) ja kopioi nykyinen koodi.",
+      "connect": "Yhdistä",
+      "connecting": "Yhdistetään..."
     }
   }
 }

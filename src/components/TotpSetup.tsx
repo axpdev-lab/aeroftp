@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { Shield, Copy, Check, X, AlertCircle } from 'lucide-react';
@@ -142,6 +143,19 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
                         <p className="text-sm text-gray-500 dark:text-gray-400">
                             {t('security.totp.scanQr')}
                         </p>
+
+                        {uri && (
+                            <div className="flex justify-center">
+                                <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                                    <QRCodeSVG
+                                        value={uri}
+                                        size={180}
+                                        level="M"
+                                        includeMargin={false}
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                             <div className="flex items-center justify-between gap-2">

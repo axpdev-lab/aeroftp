@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Enganxeu la vostra clau API aquí",
       "immichApiKeyHelp": "Genereu una clau API a Immich → User Settings → API Keys",
       "immichOps": "Navega, puja, baixa, elimina, àlbums, cerca, enllaços compartits. No es pot canviar el nom ni moure.",
-      "generatePassword": "Generar contrasenya"
+      "generatePassword": "Generar contrasenya",
+      "saveAndConnect": "Desa i connecta",
+      "saveDisabledTotp": "Els codis TOTP són d'un sol ús. Utilitzeu Desa i connecta per aplicar aquest codi ara."
     },
     "browser": {
       "remote": "Remot",
@@ -4160,6 +4162,13 @@
       "scanningDescription": "Cercant la favicon actual",
       "confirmDelete": "Voleu eliminar «{name}» de la vostra biblioteca d'icones personalitzada?",
       "dropHere": "Deixa anar el fitxer per pujar-lo"
+    },
+    "twoFactor": {
+      "title": "Cal autenticació de dos factors",
+      "description": "Introduïu el codi de 6 dígits de la vostra aplicació d'autenticació per continuar la connexió.",
+      "hint": "Obriu la vostra aplicació d'autenticació (Authy, Google Authenticator, etc.) i copieu el codi actual.",
+      "connect": "Connecta",
+      "connecting": "Connectant..."
     }
   }
 }

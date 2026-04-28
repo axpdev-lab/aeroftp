@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Tampal kunci API anda di sini",
       "immichApiKeyHelp": "Jana kunci API di Immich → User Settings → API Keys",
       "immichOps": "Semak imbas, muat naik, muat turun, padam, album, cari, pautan kongsi. Namakan semula dan alih tidak disokong.",
-      "generatePassword": "Jana kata laluan"
+      "generatePassword": "Jana kata laluan",
+      "saveAndConnect": "Simpan & Sambung",
+      "saveDisabledTotp": "Kod TOTP adalah untuk kegunaan sekali sahaja. Gunakan Simpan & Sambung untuk menggunakan kod ini sekarang."
     },
     "browser": {
       "remote": "Jauh",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Mencari favicon semasa",
       "confirmDelete": "Alih keluar \"{name}\" daripada pustaka ikon tersuai anda?",
       "dropHere": "Lepaskan fail untuk muat naik"
+    },
+    "twoFactor": {
+      "title": "Pengesahan Dua Faktor Diperlukan",
+      "description": "Masukkan kod 6 digit daripada aplikasi pengesah anda untuk meneruskan sambungan.",
+      "hint": "Buka aplikasi pengesah anda (Authy, Google Authenticator, dll.) dan salin kod semasa.",
+      "connect": "Sambung",
+      "connecting": "Menyambung..."
     }
   }
 }

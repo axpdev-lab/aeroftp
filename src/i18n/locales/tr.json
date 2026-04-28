@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "API anahtarınızı buraya yapıştırın",
       "immichApiKeyHelp": "Immich → User Settings → API Keys bölümünde bir API anahtarı oluşturun",
       "immichOps": "Göz at, yükle, indir, sil, albümler, ara, paylaşım bağlantıları. Yeniden adlandırma ve taşıma desteklenmiyor.",
-      "generatePassword": "Parola oluştur"
+      "generatePassword": "Parola oluştur",
+      "saveAndConnect": "Kaydet ve Bağlan",
+      "saveDisabledTotp": "TOTP kodları tek kullanımlıktır. Bu kodu şimdi uygulamak için Kaydet ve Bağlan'ı kullanın."
     },
     "browser": {
       "remote": "Uzak",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Mevcut favicon aranıyor",
       "confirmDelete": "\"{name}\" özel simge kitaplığınızdan kaldırılsın mı?",
       "dropHere": "Yüklemek için dosyayı bırakın"
+    },
+    "twoFactor": {
+      "title": "İki Faktörlü Kimlik Doğrulama Gerekli",
+      "description": "Bağlantıya devam etmek için kimlik doğrulayıcı uygulamanızdan 6 haneli kodu girin.",
+      "hint": "Kimlik doğrulayıcı uygulamanızı (Authy, Google Authenticator vb.) açın ve mevcut kodu kopyalayın.",
+      "connect": "Bağlan",
+      "connecting": "Bağlanıyor..."
     }
   }
 }

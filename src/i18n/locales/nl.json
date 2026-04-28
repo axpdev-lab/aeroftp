@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Plak hier uw API-sleutel",
       "immichApiKeyHelp": "Maak een API-sleutel aan in Immich → User Settings → API Keys",
       "immichOps": "Bladeren, uploaden, downloaden, verwijderen, albums, zoeken, deellinks. Hernoemen en verplaatsen worden niet ondersteund.",
-      "generatePassword": "Wachtwoord genereren"
+      "generatePassword": "Wachtwoord genereren",
+      "saveAndConnect": "Opslaan en verbinden",
+      "saveDisabledTotp": "TOTP-codes zijn eenmalig bruikbaar. Gebruik Opslaan en verbinden om deze code nu toe te passen."
     },
     "browser": {
       "remote": "Extern",
@@ -4131,6 +4133,13 @@
       "scanningDescription": "Op zoek naar de huidige favicon",
       "confirmDelete": "\"{name}\" verwijderen uit je aangepaste pictogrammenbibliotheek?",
       "dropHere": "Bestand neerzetten om te uploaden"
+    },
+    "twoFactor": {
+      "title": "Tweefactorauthenticatie vereist",
+      "description": "Voer de 6-cijferige code uit je authenticator-app in om verbinding te blijven maken.",
+      "hint": "Open je authenticator-app (Authy, Google Authenticator, enz.) en kopieer de huidige code.",
+      "connect": "Verbinden",
+      "connecting": "Verbinden..."
     }
   }
 }

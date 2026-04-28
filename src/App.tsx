@@ -53,6 +53,7 @@ import { ToastContainer, useToast } from './components/Toast';
 import { ContextMenu, useContextMenu, ContextMenuItem } from './components/ContextMenu';
 import { SavedServers } from './components/SavedServers';
 import { ConnectionScreen } from './components/ConnectionScreen';
+import { TwoFactorPromptDialog } from './components/TwoFactorPromptDialog';
 import { IntroHub } from './components/IntroHub';
 import { AboutDialog } from './components/AboutDialog';
 import McpDialog from './components/McpDialog';
@@ -2677,6 +2678,64 @@ interface UpdateVerificationInfo {
     setHostKeyDialog({ visible: false, info: null, host: '', port: 22, resolve: null });
   };
 
+  // 2FA prompt state. When a connect attempt to MEGA / Filen / Internxt
+  // fails because the server requires a TOTP, we surface a small modal so
+  // the user can type the 6-digit code without going through Edit. The
+  // pending params are kept around so the retry just re-runs connectToFtp
+  // with the code injected into options.two_factor_code (issue #128).
+  const [twoFactorPrompt, setTwoFactorPrompt] = useState<{
+    open: boolean;
+    providerKey: string;
+    accountLabel: string;
+    lastError: string | null;
+    pendingParams: ConnectionParams;
+    loading: boolean;
+  } | null>(null);
+
+  /**
+   * Pattern-match an error from a provider_connect failure and, if it looks
+   * like a 2FA challenge from MEGA / Filen / Internxt, open the TOTP prompt.
+   * Returns true when the modal was opened, so the caller can suppress the
+   * normal error toast.
+   */
+  const tryShowTwoFactorPrompt = (
+    error: unknown,
+    params: ConnectionParams,
+    accountLabel: string,
+  ): boolean => {
+    const protocol = params.protocol;
+    if (protocol !== 'mega' && protocol !== 'filen' && protocol !== 'internxt') return false;
+    const msg = String(error);
+    // Match the messages produced by the backend's map_mega_error_code
+    // (E_MFAREQUIRED, ENOTOKEN) and the equivalent Filen / Internxt strings.
+    const matches2fa = /two-factor authentication enabled|already-used 2FA code|Wrong Two Factor|EMFAREQUIRED|two.factor.code|MFA required/i.test(msg);
+    if (!matches2fa) return false;
+    setTwoFactorPrompt({
+      open: true,
+      providerKey: protocol,
+      accountLabel,
+      lastError: msg,
+      pendingParams: params,
+      loading: false,
+    });
+    return true;
+  };
+
+  /** Modal callback. Closes the prompt; if the retry triggers another 2FA
+   *  failure, the catch handler will reopen the prompt with the new error. */
+  const handleTwoFactorSubmit = async (code: string) => {
+    if (!twoFactorPrompt) return;
+    const newParams: ConnectionParams = {
+      ...twoFactorPrompt.pendingParams,
+      options: {
+        ...(twoFactorPrompt.pendingParams.options || {}),
+        two_factor_code: code,
+      },
+    };
+    setTwoFactorPrompt(null);
+    await connectToFtp(newParams);
+  };
+
   // FTP operations
   const connectToFtp = async (overrideParams?: ConnectionParams) => {
     // Parse host:port from server field if user entered it inline
@@ -2872,6 +2931,12 @@ interface UpdateVerificationInfo {
         fetchStorageQuota(protocol, sessionParams);
       } catch (error) {
         humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
+        // Issue #128 — if the server is asking for a 2FA TOTP, surface the
+        // dedicated prompt instead of a generic "connection failed" toast.
+        if (tryShowTwoFactorPrompt(error, effectiveParams, maskedProviderName)) {
+          setLoading(false);
+          return;
+        }
         notify.error(t('connection.connectionFailed'), String(error));
       }
       finally { setLoading(false); }
@@ -3314,6 +3379,10 @@ interface UpdateVerificationInfo {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
       // Even on error, ensure local path is set correctly from session cache
       setCurrentLocalPath(targetSession.localPath);
+      // Issue #128 — when reconnect fails because the saved session is stale
+      // and the provider now wants a fresh TOTP, surface the 2FA prompt so
+      // the user can supply the code without re-opening Edit on the profile.
+      tryShowTwoFactorPrompt(e, targetSession.connectionParams, targetSession.serverName);
     }
   };
 
@@ -7641,6 +7710,17 @@ interface UpdateVerificationInfo {
           onAccept={handleHostKeyAccept}
           onReject={handleHostKeyReject}
         />
+        {twoFactorPrompt && (
+          <TwoFactorPromptDialog
+            isOpen={twoFactorPrompt.open}
+            providerKey={twoFactorPrompt.providerKey}
+            accountLabel={twoFactorPrompt.accountLabel}
+            lastError={twoFactorPrompt.lastError}
+            loading={twoFactorPrompt.loading}
+            onSubmit={handleTwoFactorSubmit}
+            onCancel={() => setTwoFactorPrompt(null)}
+          />
+        )}
         <OverwriteDialog
           isOpen={overwriteDialog.isOpen}
           source={overwriteDialog.source!}
@@ -8161,6 +8241,11 @@ interface UpdateVerificationInfo {
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
                   } catch (error) {
                     humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
+                    // Issue #128 — surface dedicated 2FA prompt for MEGA / Filen / Internxt
+                    if (tryShowTwoFactorPrompt(error, normalizedParams, maskedProviderName)) {
+                      setLoading(false);
+                      return;
+                    }
                     notify.error(t('connection.connectionFailed'), String(error));
                   } finally {
                     setLoading(false);

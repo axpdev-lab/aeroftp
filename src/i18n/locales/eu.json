@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Itsatsi zure API gakoa hemen",
       "immichApiKeyHelp": "Sortu API gako bat Immich → User Settings → API Keys-en",
       "immichOps": "Arakatu, igo, deskargatu, ezabatu, albumak, bilatu, partekatzeko estekak. Berrizendatzea eta mugitzea ez dira onartzen.",
-      "generatePassword": "Sortu pasahitza"
+      "generatePassword": "Sortu pasahitza",
+      "saveAndConnect": "Gorde eta konektatu",
+      "saveDisabledTotp": "TOTP kodeak erabilera bakarrekoak dira. Erabili Gorde eta konektatu kode hau orain aplikatzeko."
     },
     "browser": {
       "remote": "Urrunekoa",
@@ -4160,6 +4162,13 @@
       "scanningDescription": "Uneko favicon-a bilatzen",
       "confirmDelete": "«{name}» zure ikono pertsonalizatuen liburutegitik kendu?",
       "dropHere": "Jaregin fitxategia kargatzeko"
+    },
+    "twoFactor": {
+      "title": "Bi faktoreko autentifikazioa behar da",
+      "description": "Sartu zure autentifikazio-aplikazioko 6 digituko kodea konexioarekin jarraitzeko.",
+      "hint": "Ireki zure autentifikazio-aplikazioa (Authy, Google Authenticator, etab.) eta kopiatu uneko kodea.",
+      "connect": "Konektatu",
+      "connecting": "Konektatzen..."
     }
   }
 }

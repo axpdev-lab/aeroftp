@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Lipiți cheia API aici",
       "immichApiKeyHelp": "Generați o cheie API în Immich → User Settings → API Keys",
       "immichOps": "Navigare, încărcare, descărcare, ștergere, albume, căutare, linkuri de partajare. Redenumirea și mutarea nu sunt acceptate.",
-      "generatePassword": "Generează parolă"
+      "generatePassword": "Generează parolă",
+      "saveAndConnect": "Salvează și conectează",
+      "saveDisabledTotp": "Codurile TOTP sunt de unică folosință. Folosiți Salvează și conectează pentru a aplica acest cod acum."
     },
     "browser": {
       "remote": "La distanță",
@@ -4131,6 +4133,13 @@
       "scanningDescription": "Caut favicon-ul curent",
       "confirmDelete": "Eliminați „{name}” din biblioteca dvs. de pictograme personalizate?",
       "dropHere": "Plasați fișierul pentru încărcare"
+    },
+    "twoFactor": {
+      "title": "Este necesară autentificarea cu doi factori",
+      "description": "Introduceți codul din 6 cifre din aplicația de autentificare pentru a continua conectarea.",
+      "hint": "Deschideți aplicația de autentificare (Authy, Google Authenticator etc.) și copiați codul curent.",
+      "connect": "Conectare",
+      "connecting": "Se conectează..."
     }
   }
 }

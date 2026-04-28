@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Gludiwch eich allwedd API yma",
       "immichApiKeyHelp": "Cynhyrchwch allwedd API yn Immich → User Settings → API Keys",
       "immichOps": "Pori, uwchlwytho, lawrlwytho, dileu, albymau, chwilio, dolenni rhannu. Ni chefnogir ailenwi na symud.",
-      "generatePassword": "Cynhyrchu cyfrinair"
+      "generatePassword": "Cynhyrchu cyfrinair",
+      "saveAndConnect": "Cadw a Chysylltu",
+      "saveDisabledTotp": "Mae codau TOTP yn rhai un-defnydd. Defnyddiwch Cadw a Chysylltu i gymhwyso'r cod hwn nawr."
     },
     "browser": {
       "remote": "Pell",
@@ -4160,6 +4162,13 @@
       "scanningDescription": "Yn chwilio am y favicon cyfredol",
       "confirmDelete": "Tynnu \"{name}\" o'ch llyfrgell eiconau personol?",
       "dropHere": "Gollyngwch ffeil i'w llwytho"
+    },
+    "twoFactor": {
+      "title": "Mae angen Dilysu Dau Ffactor",
+      "description": "Rhowch y cod 6 digid o'ch ap dilysu i barhau i gysylltu.",
+      "hint": "Agorwch eich ap dilysu (Authy, Google Authenticator, ac ati) a chopïwch y cod cyfredol.",
+      "connect": "Cysylltu",
+      "connecting": "Cysylltu..."
     }
   }
 }

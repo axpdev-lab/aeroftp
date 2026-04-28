@@ -1205,6 +1205,8 @@
       "searchServers": "Search servers...",
       "secretAccessKey": "Secret Access Key",
       "secureLogin": "Secure Login",
+      "saveAndConnect": "Save & Connect",
+      "saveDisabledTotp": "TOTP codes are single-use. Use Save & Connect to apply this code now.",
       "securityEncryption": "Optional master password with Argon2id key derivation",
       "securityKeyring": "AES-256-GCM encrypted vault — stored locally on your device",
       "securityNoSend": "No cloud sync, no telemetry — your data stays on your machine",
@@ -1225,6 +1227,13 @@
       "twoFactorOptional": "6-digit code (optional)",
       "username": "Username",
       "usernamePlaceholder": "your-username"
+    },
+    "twoFactor": {
+      "title": "Two-Factor Authentication Required",
+      "description": "Enter the 6-digit code from your authenticator app to continue connecting.",
+      "hint": "Open your authenticator app (Authy, Google Authenticator, etc.) and copy the current code.",
+      "connect": "Connect",
+      "connecting": "Connecting..."
     },
     "commandPalette": {
       "category": {

@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Illessze be az API-kulcsát ide",
       "immichApiKeyHelp": "Hozzon létre egy API-kulcsot az Immich → User Settings → API Keys menüben",
       "immichOps": "Böngészés, feltöltés, letöltés, törlés, albumok, keresés, megosztási linkek. Az átnevezés és áthelyezés nem támogatott.",
-      "generatePassword": "Jelszó generálása"
+      "generatePassword": "Jelszó generálása",
+      "saveAndConnect": "Mentés és csatlakozás",
+      "saveDisabledTotp": "A TOTP kódok egyszer használatosak. Használja a Mentés és csatlakozás gombot a kód azonnali alkalmazásához."
     },
     "browser": {
       "remote": "Távoli",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Keresem a jelenlegi favicont",
       "confirmDelete": "Eltávolítja a(z) „{name}” elemet az egyéni ikonkönyvtárból?",
       "dropHere": "Engedje ide a fájlt a feltöltéshez"
+    },
+    "twoFactor": {
+      "title": "Kétfaktoros hitelesítés szükséges",
+      "description": "Adja meg a hitelesítő alkalmazás 6 jegyű kódját a kapcsolódás folytatásához.",
+      "hint": "Nyissa meg a hitelesítő alkalmazást (Authy, Google Authenticator stb.), és másolja ki az aktuális kódot.",
+      "connect": "Kapcsolódás",
+      "connecting": "Kapcsolódás..."
     }
   }
 }

@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Tempelkan kunci API Anda di sini",
       "immichApiKeyHelp": "Buat kunci API di Immich → User Settings → API Keys",
       "immichOps": "Jelajah, unggah, unduh, hapus, album, cari, tautan berbagi. Ganti nama dan pindahkan tidak didukung.",
-      "generatePassword": "Buat kata sandi"
+      "generatePassword": "Buat kata sandi",
+      "saveAndConnect": "Simpan & Sambungkan",
+      "saveDisabledTotp": "Kode TOTP hanya untuk sekali pakai. Gunakan Simpan & Sambungkan untuk menerapkan kode ini sekarang."
     },
     "browser": {
       "remote": "Jarak Jauh",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Mencari favicon saat ini",
       "confirmDelete": "Hapus \"{name}\" dari pustaka ikon kustom Anda?",
       "dropHere": "Lepaskan file untuk mengunggah"
+    },
+    "twoFactor": {
+      "title": "Autentikasi Dua Faktor Diperlukan",
+      "description": "Masukkan kode 6 digit dari aplikasi autentikator Anda untuk melanjutkan koneksi.",
+      "hint": "Buka aplikasi autentikator Anda (Authy, Google Authenticator, dll.) dan salin kode saat ini.",
+      "connect": "Hubungkan",
+      "connecting": "Menghubungkan..."
     }
   }
 }

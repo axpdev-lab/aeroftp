@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Indsæt din API-nøgle her",
       "immichApiKeyHelp": "Generer en API-nøgle i Immich → User Settings → API Keys",
       "immichOps": "Gennemse, upload, download, slet, album, søg, delingslinks. Omdøbning og flytning understøttes ikke.",
-      "generatePassword": "Generer adgangskode"
+      "generatePassword": "Generer adgangskode",
+      "saveAndConnect": "Gem og opret forbindelse",
+      "saveDisabledTotp": "TOTP-koder er engangskoder. Brug Gem og opret forbindelse for at anvende denne kode nu."
     },
     "browser": {
       "remote": "Ekstern",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "Leder efter den aktuelle favicon",
       "confirmDelete": "Fjern \"{name}\" fra dit brugerdefinerede ikonbibliotek?",
       "dropHere": "Slip fil for at uploade"
+    },
+    "twoFactor": {
+      "title": "Tofaktorgodkendelse påkrævet",
+      "description": "Indtast den 6-cifrede kode fra din autentificeringsapp for at fortsætte forbindelsen.",
+      "hint": "Åbn din autentificeringsapp (Authy, Google Authenticator osv.) og kopiér den aktuelle kode.",
+      "connect": "Tilslut",
+      "connecting": "Tilslutter..."
     }
   }
 }

@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "Límdu API-lykilinn þinn hér",
       "immichApiKeyHelp": "Búðu til API-lykil í Immich → User Settings → API Keys",
       "immichOps": "Vafra, hlaða upp, hlaða niður, eyða, plötur, leita, deilihlekkir. Endurnefning og færsla eru ekki studd.",
-      "generatePassword": "Búa til lykilorð"
+      "generatePassword": "Búa til lykilorð",
+      "saveAndConnect": "Vista og tengja",
+      "saveDisabledTotp": "TOTP-kóðar eru einnota. Notaðu Vista og tengja til að beita þessum kóða núna."
     },
     "browser": {
       "remote": "Fjartengdur",
@@ -4160,6 +4162,13 @@
       "scanningDescription": "Leita að núverandi favicon",
       "confirmDelete": "Fjarlægja „{name}“ úr sérsniðnu táknasafni þínu?",
       "dropHere": "Slepptu skrá til að hlaða upp"
+    },
+    "twoFactor": {
+      "title": "Tveggja þátta auðkenningar krafist",
+      "description": "Sláðu inn 6 stafa kóðann úr auðkenningarforritinu þínu til að halda áfram tengingu.",
+      "hint": "Opnaðu auðkenningarforritið þitt (Authy, Google Authenticator o.s.frv.) og afritaðu núverandi kóða.",
+      "connect": "Tengjast",
+      "connecting": "Tengist..."
     }
   }
 }

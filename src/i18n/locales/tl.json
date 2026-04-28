@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "I-paste ang iyong API key dito",
       "immichApiKeyHelp": "Gumawa ng API key sa Immich → User Settings → API Keys",
       "immichOps": "Mag-browse, mag-upload, mag-download, magtanggal, album, maghanap, mga link ng pagbabahagi. Hindi sinusuportahan ang pagpapalit ng pangalan at paglipat.",
-      "generatePassword": "Bumuo ng password"
+      "generatePassword": "Bumuo ng password",
+      "saveAndConnect": "I-save at Kumonekta",
+      "saveDisabledTotp": "Ang mga TOTP code ay isang beses lang magagamit. Gamitin ang I-save at Kumonekta upang ilapat ang code na ito ngayon."
     },
     "browser": {
       "remote": "Remote",
@@ -4160,6 +4162,13 @@
       "scanningDescription": "Hinahanap ang kasalukuyang favicon",
       "confirmDelete": "Alisin ang \"{name}\" sa iyong custom na library ng icon?",
       "dropHere": "I-drop ang file para mag-upload"
+    },
+    "twoFactor": {
+      "title": "Kailangan ng Two-Factor Authentication",
+      "description": "Ilagay ang 6-digit na code mula sa iyong authenticator app upang magpatuloy sa pagkonekta.",
+      "hint": "Buksan ang iyong authenticator app (Authy, Google Authenticator, atbp.) at kopyahin ang kasalukuyang code.",
+      "connect": "Kumonekta",
+      "connecting": "Kumokonekta..."
     }
   }
 }

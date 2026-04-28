@@ -243,7 +243,9 @@
       "immichApiKeyPlaceholder": "วาง API key ของคุณที่นี่",
       "immichApiKeyHelp": "สร้าง API key ใน Immich → User Settings → API Keys",
       "immichOps": "เรียกดู อัปโหลด ดาวน์โหลด ลบ อัลบั้ม ค้นหา ลิงก์แชร์ ไม่รองรับการเปลี่ยนชื่อและย้าย",
-      "generatePassword": "สร้างรหัสผ่าน"
+      "generatePassword": "สร้างรหัสผ่าน",
+      "saveAndConnect": "บันทึกและเชื่อมต่อ",
+      "saveDisabledTotp": "รหัส TOTP ใช้ได้ครั้งเดียว ใช้ บันทึกและเชื่อมต่อ เพื่อใช้รหัสนี้ตอนนี้"
     },
     "browser": {
       "remote": "ระยะไกล",
@@ -4141,6 +4143,13 @@
       "scanningDescription": "กำลังค้นหา favicon ปัจจุบัน",
       "confirmDelete": "ลบ \"{name}\" ออกจากคลังไอคอนที่กำหนดเองของคุณ?",
       "dropHere": "วางไฟล์เพื่ออัปโหลด"
+    },
+    "twoFactor": {
+      "title": "ต้องใช้การยืนยันตัวตนแบบสองปัจจัย",
+      "description": "ป้อนรหัส 6 หลักจากแอปยืนยันตัวตนของคุณเพื่อเชื่อมต่อต่อไป",
+      "hint": "เปิดแอปยืนยันตัวตน (Authy, Google Authenticator ฯลฯ) แล้วคัดลอกรหัสปัจจุบัน",
+      "connect": "เชื่อมต่อ",
+      "connecting": "กำลังเชื่อมต่อ..."
     }
   }
 }
