@@ -267,7 +267,6 @@ async fn check_tls(host: &str, port: u16) -> CheckDetail {
     let start = Instant::now();
 
     let client = match reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
         .timeout(Duration::from_secs(5))
         .build()
     {
@@ -334,7 +333,6 @@ async fn check_http(url: &str, is_cloud: bool) -> CheckDetail {
     let start = Instant::now();
 
     let client = match reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
         .timeout(Duration::from_secs(8))
         .redirect(reqwest::redirect::Policy::limited(3))
         .build()

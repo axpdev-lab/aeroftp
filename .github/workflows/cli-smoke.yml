@@ -171,7 +171,7 @@ jobs:
             librsvg2-dev
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@9baf7c20ae8e70a5220bd48d08870afb205ab1ed # cargo-llvm-cov
 
       - name: Generate coverage
         working-directory: src-tauri
@@ -185,7 +185,7 @@ jobs:
           cargo llvm-cov report --summary-only --fail-under-lines 10 | tee coverage-summary.txt
 
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: coverage-linux
           path: |
@@ -193,7 +193,7 @@ jobs:
             src-tauri/coverage-summary.txt
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6
         with:
           files: src-tauri/lcov.info
           fail_ci_if_error: false

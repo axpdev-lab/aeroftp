@@ -25639,11 +25639,10 @@ mod tests {
         bearer.insert(AUTHORIZATION, HeaderValue::from_static("Bearer test-token"));
         assert!(request_is_authorized(&bearer, Some("test-token")));
 
+        let basic_token = base64::engine::general_purpose::STANDARD.encode("user:test-token");
+        let basic_header = format!("Basic {}", basic_token);
         let mut basic = HeaderMap::new();
-        basic.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Basic dXNlcjp0ZXN0LXRva2Vu"),
-        );
+        basic.insert(AUTHORIZATION, HeaderValue::from_str(&basic_header).unwrap());
         assert!(request_is_authorized(&basic, Some("test-token")));
         assert!(!request_is_authorized(&basic, Some("wrong-token")));
     }

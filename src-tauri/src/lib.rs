@@ -4097,6 +4097,19 @@ async fn open_in_file_manager(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn open_local_file(path: String) -> Result<(), String> {
+    validate_path(&path)?;
+    let metadata =
+        std::fs::metadata(&path).map_err(|_| "Failed to read file metadata".to_string())?;
+    if !metadata.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+
+    open::that(&path).map_err(|e| format!("Failed to open file: {}", e))?;
+    Ok(())
+}
+
 // ============ File Operations Commands ============
 
 /// Delete a remote file or folder with detailed event emission for each deleted item.
@@ -11950,6 +11963,7 @@ pub fn run() {
             is_running_as_snap,
             get_local_files,
             open_in_file_manager,
+            open_local_file,
             delete_remote_file,
             rename_remote_file,
             create_remote_folder,

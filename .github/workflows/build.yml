@@ -9,13 +9,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Required permissions for creating releases
 permissions:
-  contents: write
-  id-token: write    # Required for Sigstore keyless signing via GitHub OIDC
+  contents: read
 
 jobs:
   build-and-release:
+    # Required for creating releases and Sigstore keyless signing via GitHub OIDC.
+    permissions:
+      contents: write
+      id-token: write
+
     strategy:
       fail-fast: false
       matrix:

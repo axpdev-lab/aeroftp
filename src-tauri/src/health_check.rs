@@ -44,7 +44,6 @@ async fn check_one(url: &str) -> (&'static str, u64) {
     let client = match reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
-        .danger_accept_invalid_certs(true)
         .redirect(reqwest::redirect::Policy::limited(3))
         .no_proxy()
         .build()

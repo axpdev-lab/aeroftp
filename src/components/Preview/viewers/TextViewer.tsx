@@ -13,7 +13,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { FileText, Copy, Check, Download, WrapText, Eye, Code2, Smartphone, Tablet, Monitor, ZoomIn, ZoomOut, ExternalLink, Pipette, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-shell';
 import { ViewerBaseProps } from '../types';
 import { MarkdownRenderer } from '../../DevTools/MarkdownRenderer';
 import Prism from 'prismjs';
@@ -26,6 +25,14 @@ interface TextViewerProps extends ViewerBaseProps {
 
 const isHTMLFile = (name: string) => /\.html?$/i.test(name);
 const isMarkdownFile = (name: string) => /\.(?:md|markdown|mdown|mkd)$/i.test(name);
+
+function isBlobPreviewUrl(url: string): boolean {
+    try {
+        return new URL(url).protocol === 'blob:';
+    } catch {
+        return false;
+    }
+}
 
 /** Map file extension → Prism grammar name */
 const EXT_TO_LANG: Record<string, string> = {
@@ -170,7 +177,11 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                 if (typeof file.content === 'string' && file.content.length > 0) {
                     setContent(file.content);
                 } else if (file.blobUrl) {
-                    const response = await fetch(file.blobUrl);
+                    if (!isBlobPreviewUrl(file.blobUrl)) {
+                        throw new Error('Refusing to fetch non-blob preview URL');
+                    }
+                    const previewBlobUrl = file.blobUrl;
+                    const response = await fetch(previewBlobUrl);
                     const text = await response.text();
                     setContent(text);
                 } else {
@@ -253,7 +264,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
     // Open in system browser
     const openInBrowser = async () => {
         try {
-            await open(`file://${file.path}`);
+            await invoke('open_local_file', { path: file.path });
         } catch {
             // Fallback: write temp and open
         }
