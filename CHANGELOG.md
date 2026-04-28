@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.6.8] - 2026-04-28
 
-### Community wishlist quick wins
+### Community wishlist quick wins + MEGA 2FA + Filen TOTP persistence
 
-A focused patch release built around the v3.6.8 wishlist thread (issue #133). Ten Tier 1 items reported by @EhudKirsh land together as a quick-win batch, so the rest of the thread can be triaged on a fresh baseline. No protocol changes, no MCP surface changes; the VS Code extension does not need a bump.
+A focused patch release built around the v3.6.8 wishlist thread (issue #133) plus two long-standing items from issue #128 (MEGA 2FA TOTP and the Filen TOTP-persisted-after-save bug). Twelve community-reported items land together so the rest of the thread can be triaged on a fresh baseline. No MCP surface changes; the VS Code extension does not need a bump.
 
 ### Fixed
 
@@ -21,6 +21,7 @@ A focused patch release built around the v3.6.8 wishlist thread (issue #133). Te
 - **Activity Log badge counter ignored the active filter** — the bottom-bar Log badge counted every emitted event, so it crept up to 99+ even when the panel was filtered to Errors only. The panel now persists `filterType` and `showCloudSync` in localStorage and broadcasts CustomEvents on every change; App.tsx subscribes and recomputes the badge using the same filter predicates as the panel. (reported by @EhudKirsh)
 - **Provider icons in the Choose Icon dialog silently failed to select** — Hetzner, MinIO, Koofr, FileLu, Blomp, OpenDrive, FeliCloud, Pixelunion, Aspnix, DriveHQ, Quotaless, Jianguoyun, Yandex Disk, Immich and other PNG-backed provider logos render as `<img>`, but `reactLogoToSvgDataUrl()` searched for an `<svg>` and returned `null`, so the click was a no-op. Added an `<img>` fallback that returns the image src as the data URL — works unchanged with the existing `customIconUrl` consumer. (reported by @EhudKirsh)
 - **Custom icons "No custom icons yet" placeholder shown next to an existing icon** — the empty-state copy contradicted the Current / On-server section above when a user had already picked an icon. The placeholder is now suppressed when either is non-empty. (reported by @EhudKirsh)
+- **Filen TOTP code persisted across reconnects (issue #128)** — the 6-digit 2FA Code field was saved into the profile's `options.two_factor_code` on connect, so a reconnect a few minutes later replayed yesterday's code and the API rejected it with "Wrong Two Factor Authentication code". TOTPs are single-use and rotate every 30 seconds; the saved-profile path now strips `two_factor_code` from `optionsToSave` on both Edit and New Server flows, the same way Filen / Internxt / MEGA web clients ask for the code on every login. (reported by @EhudKirsh)
 
 ### Added
 
@@ -28,6 +29,7 @@ A focused patch release built around the v3.6.8 wishlist thread (issue #133). Te
 - **Drag and drop on Custom icons upload box** — files dropped on the box are ingested through the same `ingestIconBytes()` path as the file picker. Visual feedback while a file is hovered: solid blue border and a "Drop file to upload" label. Allowed extensions: SVG, PNG, JPG / JPEG, GIF, WEBP, ICO. (reported by @EhudKirsh)
 - **Custom icons delete confirmation** — removing an icon from the library now goes through a confirmation prompt that includes the icon's own name in the message, same surface as the existing profile delete dialog. (reported by @EhudKirsh)
 - **Activity Log multi-select filter** — the single-pick `<select>` dropdown is gone, replaced by a button + popover with one checkbox per operation (Connect, Disconnect, Upload, Download, Delete, Restore, Navigate, Errors) plus an "All" reset entry at the top. Empty selection is the new "show all" state, so users can mix Errors + File operations without losing one when they pick the other. State migrates automatically from the legacy single-pick value. (reported by @EhudKirsh)
+- **MEGA 2FA TOTP support (issue #128)** — Quick Connect MEGA gains a "2FA Code" field below Password, mirroring the Filen / Internxt block (6-digit numeric, `inputMode="numeric"`, `autoComplete="one-time-code"`). Backend: `MegaConfig` extended with `two_factor_code: Option<String>` deserialized from `extra["two_factor_code"]`; both `login_v1` and `login_v2` inject `"mfa": <code>` into the `us` (login) request when present. Server returns `-26` (E_MFAREQUIRED) when the field is absent on a 2FA-enabled account, and `-9` / `-16` on a wrong code; both surface to the user as the same generic auth failure as a wrong password, with no extra plumbing required. (reported by @EhudKirsh)
 
 ### Changed
 

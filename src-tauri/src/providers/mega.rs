@@ -1133,6 +1133,7 @@ mod tests {
         let config = MegaConfig {
             email: "u@example.com".to_string(),
             password: secrecy::SecretString::from("pw".to_string()),
+            two_factor_code: None,
             save_session: false,
             logout_on_disconnect: Some(true),
             connection_mode: MegaConnectionMode::MegaCmd,

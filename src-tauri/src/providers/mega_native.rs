@@ -604,13 +604,22 @@ impl MegaNativeProvider {
         let user_hash_b64 = mega_base64_encode(&user_hash);
 
         let login_result: Result<(), ProviderError> = async {
-            let response: MegaLoginResponseWire = self
-                .command_with_retry(json!({
-                    "a": "us",
-                    "user": self.config.email.trim().to_lowercase(),
-                    "uh": user_hash_b64,
-                }))
-                .await?;
+            // Build the `us` (user-session) request, optionally with the TOTP
+            // 2FA code under the `mfa` field. Server returns -26 (E_MFAREQUIRED)
+            // when the account has 2FA on and the field is absent, and -9
+            // (E_NOENT) / -16 (E_BLOCKED) on a wrong code; both surface to the
+            // user as the same generic auth failure as a wrong password.
+            let mut us_request = json!({
+                "a": "us",
+                "user": self.config.email.trim().to_lowercase(),
+                "uh": user_hash_b64,
+            });
+            if let Some(mfa) = self.config.two_factor_code.as_deref() {
+                if let Some(obj) = us_request.as_object_mut() {
+                    obj.insert("mfa".into(), json!(mfa));
+                }
+            }
+            let response: MegaLoginResponseWire = self.command_with_retry(us_request).await?;
 
             let enc_mk = mega_base64_decode(&response.encrypted_master_key)?;
             let enc_mk_arr = <[u8; 16]>::try_from(enc_mk.as_slice())
@@ -671,13 +680,18 @@ impl MegaNativeProvider {
         let uh_b64 = mega_base64_encode(&email_hash);
 
         let login_result: Result<(), ProviderError> = async {
-            let response: MegaLoginResponseWire = self
-                .command_with_retry(json!({
-                    "a": "us",
-                    "user": self.config.email.trim().to_lowercase(),
-                    "uh": uh_b64,
-                }))
-                .await?;
+            // Same TOTP 2FA path as login_v2 above.
+            let mut us_request = json!({
+                "a": "us",
+                "user": self.config.email.trim().to_lowercase(),
+                "uh": uh_b64,
+            });
+            if let Some(mfa) = self.config.two_factor_code.as_deref() {
+                if let Some(obj) = us_request.as_object_mut() {
+                    obj.insert("mfa".into(), json!(mfa));
+                }
+            }
+            let response: MegaLoginResponseWire = self.command_with_retry(us_request).await?;
 
             let enc_mk = mega_base64_decode(&response.encrypted_master_key)?;
             let enc_mk_arr = <[u8; 16]>::try_from(enc_mk.as_slice())

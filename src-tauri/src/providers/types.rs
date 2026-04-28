@@ -604,6 +604,12 @@ pub enum MegaConnectionMode {
 pub struct MegaConfig {
     pub email: String,
     pub password: secrecy::SecretString,
+    /// 6-digit TOTP for accounts with two-factor authentication enabled.
+    /// MEGA's `us` (login) command accepts an optional `mfa` field; we forward
+    /// it when set and let the server reject with E_MFAREQUIRED / E_FAILED if
+    /// the code is missing or wrong. Single-use, never persisted in profile
+    /// options after a successful connect.
+    pub two_factor_code: Option<String>,
     /// Whether to save session for reconnection (used in future session persistence)
     #[allow(dead_code)]
     pub save_session: bool,
@@ -652,9 +658,16 @@ impl MegaConfig {
             None => MegaConnectionMode::MegaCmd,
         };
 
+        let two_factor_code = config
+            .extra
+            .get("two_factor_code")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
         Ok(Self {
             email,
             password: password.into(),
+            two_factor_code,
             save_session,
             logout_on_disconnect,
             connection_mode,

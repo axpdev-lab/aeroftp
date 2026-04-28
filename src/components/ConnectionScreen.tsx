@@ -721,6 +721,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if ((protocol === 'ftp' || protocol === 'ftps') && !optionsToSave.tlsMode) {
             optionsToSave.tlsMode = protocol === 'ftps' ? 'implicit' : 'explicit';
         }
+        // TOTP 2FA codes are single-use and rotate every 30 seconds, so they
+        // must never be stored in the saved profile. Re-using yesterday's code
+        // tomorrow would always fail with "Wrong Two Factor Authentication
+        // code" (issue #128). The user re-enters it on every reconnect, the
+        // same way Filen / Internxt / MEGA web clients ask for it.
+        if ('two_factor_code' in optionsToSave) {
+            delete optionsToSave.two_factor_code;
+        }
 
         // Try vault first, fallback to localStorage
         const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
@@ -882,6 +890,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const optionsToSave = protocol === 'mega'
             ? normalizeMegaOptions(connectionParams.options)
             : { ...connectionParams.options };
+        // Same TOTP-strip rule as the primary save path: never persist the
+        // single-use 2FA code (issue #128).
+        if ('two_factor_code' in optionsToSave) {
+            delete optionsToSave.two_factor_code;
+        }
 
         const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
@@ -3016,6 +3029,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.twoFactorCode')}</label>
+                                            <input
+                                                type="text"
+                                                value={connectionParams.options?.two_factor_code || ''}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: { ...connectionParams.options, two_factor_code: e.target.value || undefined }
+                                                })}
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                placeholder={t('connection.twoFactorOptional')}
+                                                maxLength={6}
+                                                inputMode="numeric"
+                                                autoComplete="one-time-code"
+                                            />
                                         </div>
 
                                         <div className="space-y-2">
