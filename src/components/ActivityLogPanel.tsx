@@ -474,17 +474,49 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     const scrollRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [autoScroll, setAutoScroll] = useState(true);
-    const [filterType, setFilterType] = useState<OperationType | 'ALL'>(() => {
-        const stored = localStorage.getItem('aeroftp_activitylog_filter');
-        return (stored as OperationType | 'ALL') || 'ALL';
+    // Multi-select filter — empty Set means "show all". Persisted as a JSON
+    // array so future ops can be added without bumping the storage schema.
+    // Falls back to the legacy single-value key on first load so users who
+    // had an active filter before the upgrade keep their selection.
+    const [filterTypes, setFilterTypes] = useState<Set<OperationType>>(() => {
+        try {
+            const raw = localStorage.getItem('aeroftp_activitylog_filters');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return new Set(parsed as OperationType[]);
+            }
+            // Legacy single-value fallback.
+            const legacy = localStorage.getItem('aeroftp_activitylog_filter');
+            if (legacy && legacy !== 'ALL') {
+                return new Set([legacy as OperationType]);
+            }
+        } catch { /* noop */ }
+        return new Set<OperationType>();
     });
+    const [filterMenuOpen, setFilterMenuOpen] = useState(false);
     useEffect(() => {
         try {
-            localStorage.setItem('aeroftp_activitylog_filter', filterType);
+            const arr = Array.from(filterTypes);
+            localStorage.setItem('aeroftp_activitylog_filters', JSON.stringify(arr));
+            // Keep the legacy single-value key roughly in sync so the badge
+            // counter logic in App.tsx (and any external reader) keeps working
+            // until everyone has migrated.
+            if (arr.length === 1) {
+                localStorage.setItem('aeroftp_activitylog_filter', arr[0]);
+            } else {
+                localStorage.setItem('aeroftp_activitylog_filter', 'ALL');
+            }
             // Notify StatusBar (and any other listener) so the badge can re-count.
-            window.dispatchEvent(new CustomEvent('activity-log-filter-changed', { detail: filterType }));
+            window.dispatchEvent(new CustomEvent('activity-log-filter-changed', { detail: arr }));
         } catch { /* noop */ }
-    }, [filterType]);
+    }, [filterTypes]);
+    const toggleFilterType = useCallback((op: OperationType) => {
+        setFilterTypes(prev => {
+            const next = new Set(prev);
+            if (next.has(op)) next.delete(op); else next.add(op);
+            return next;
+        });
+    }, []);
     const [showCloudSync, setShowCloudSync] = useState<boolean>(() => {
         return localStorage.getItem('aeroftp_activitylog_show_cloudsync') !== '0';
     });
@@ -534,22 +566,20 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
         onResizePointerDown(e);
     }, [height, onResizePointerDown]);
 
-    // Filter entries
+    // Filter entries — empty filterTypes = show all operation types.
     const filteredEntries = useMemo(() => {
         let result = entries;
 
-        // Filter by operation type
-        if (filterType !== 'ALL') {
-            result = result.filter(e => e.operation === filterType);
+        if (filterTypes.size > 0) {
+            result = result.filter(e => filterTypes.has(e.operation));
         }
 
-        // Filter out AeroCloud sync messages if disabled
         if (!showCloudSync) {
             result = result.filter(e => !e.message.toLowerCase().includes('aerocloud'));
         }
 
         return result;
-    }, [entries, filterType, showCloudSync]);
+    }, [entries, filterTypes, showCloudSync]);
 
     // Find the latest entry for typewriter effect
     const latestEntryId = entries.length > 0 ? entries[entries.length - 1].id : null;
@@ -635,22 +665,61 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                         <Cloud size={12} className={showCloudSync ? 'text-[#7dcfff]' : ''} />
                     </button>
 
-                    {/* Filter dropdown */}
-                    <select
-                        value={filterType}
-                        onChange={(e) => setFilterType(e.target.value as OperationType | 'ALL')}
-                        className={`text-[10px] border rounded-sm px-2 py-0.5 focus:outline-none focus:ring-1 uppercase tracking-wider font-mono cursor-pointer transition-colors ${themeConfig.select}`}
-                    >
-                        <option value="ALL">{t('activityPanel.filters.all')}</option>
-                        <option value="CONNECT">{t('activityPanel.filters.connect')}</option>
-                        <option value="DISCONNECT">{t('activityPanel.filters.disconnect')}</option>
-                        <option value="UPLOAD">{t('activityPanel.filters.upload')}</option>
-                        <option value="DOWNLOAD">{t('activityPanel.filters.download')}</option>
-                        <option value="DELETE">{t('activityPanel.filters.delete')}</option>
-                        <option value="RESTORE">{t('activityPanel.filters.restore') || 'RESTORE'}</option>
-                        <option value="NAVIGATE">{t('activityPanel.filters.navigate')}</option>
-                        <option value="ERROR">{t('activityPanel.filters.errors')}</option>
-                    </select>
+                    {/* Multi-select filter dropdown — Q8 from #133.
+                        Replaces the old single-pick <select> so users can
+                        combine "Errors + Uploads" without losing one when
+                        they pick the other. Empty selection = show all. */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setFilterMenuOpen(o => !o)}
+                            className={`text-[10px] border rounded-sm px-2 py-0.5 focus:outline-none focus:ring-1 uppercase tracking-wider font-mono cursor-pointer transition-colors flex items-center gap-1 ${themeConfig.select}`}
+                            title={t('activityPanel.filterMenu.title')}
+                        >
+                            {filterTypes.size === 0
+                                ? t('activityPanel.filters.all')
+                                : filterTypes.size === 1
+                                    ? Array.from(filterTypes)[0]
+                                    : `${filterTypes.size} ${t('activityPanel.filterMenu.selected')}`}
+                            <ChevronDown size={10} />
+                        </button>
+                        {filterMenuOpen && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={() => setFilterMenuOpen(false)}
+                                />
+                                <div className="absolute right-0 mt-1 z-50 min-w-[180px] rounded-md border shadow-lg py-1 text-[11px] bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFilterTypes(new Set())}
+                                        className={`w-full text-left px-3 py-1.5 hover:bg-black/10 dark:hover:bg-white/5 ${filterTypes.size === 0 ? 'font-semibold' : ''}`}
+                                    >
+                                        {t('activityPanel.filters.all')}
+                                    </button>
+                                    <div className="border-t border-current opacity-10 my-1" />
+                                    {(['CONNECT','DISCONNECT','UPLOAD','DOWNLOAD','DELETE','RESTORE','NAVIGATE','ERROR'] as OperationType[]).map(op => {
+                                        const labelKey = `activityPanel.filters.${op === 'ERROR' ? 'errors' : op.toLowerCase()}`;
+                                        const checked = filterTypes.has(op);
+                                        return (
+                                            <label
+                                                key={op}
+                                                className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/10 dark:hover:bg-white/5 cursor-pointer"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checked}
+                                                    onChange={() => toggleFilterType(op)}
+                                                    className="cursor-pointer"
+                                                />
+                                                <span>{t(labelKey) || op}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
+                    </div>
 
                     {/* Copy All button */}
                     <button

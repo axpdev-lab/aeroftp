@@ -847,14 +847,33 @@ const App: React.FC = () => {
   // Activity Log badge counter respects the same filter selected inside ActivityLogPanel.
   // The panel writes filter state to localStorage and emits CustomEvents on every change,
   // so the badge stays in sync without lifting state up.
-  const [activityLogFilterType, setActivityLogFilterType] = useState<string>(() => {
-    return localStorage.getItem('aeroftp_activitylog_filter') || 'ALL';
+  // filterTypes is an array (multi-select). Empty array = show all operations.
+  const [activityLogFilterTypes, setActivityLogFilterTypes] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('aeroftp_activitylog_filters');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map(String);
+      }
+      const legacy = localStorage.getItem('aeroftp_activitylog_filter');
+      if (legacy && legacy !== 'ALL') return [legacy];
+    } catch { /* noop */ }
+    return [];
   });
   const [activityLogShowCloudSync, setActivityLogShowCloudSync] = useState<boolean>(() => {
     return localStorage.getItem('aeroftp_activitylog_show_cloudsync') !== '0';
   });
   useEffect(() => {
-    const onFilter = (e: Event) => setActivityLogFilterType(String((e as CustomEvent).detail || 'ALL'));
+    const onFilter = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (Array.isArray(detail)) {
+        setActivityLogFilterTypes(detail.map(String));
+      } else if (typeof detail === 'string' && detail !== 'ALL') {
+        setActivityLogFilterTypes([detail]);
+      } else {
+        setActivityLogFilterTypes([]);
+      }
+    };
     const onCloud = (e: Event) => setActivityLogShowCloudSync(Boolean((e as CustomEvent).detail));
     window.addEventListener('activity-log-filter-changed', onFilter);
     window.addEventListener('activity-log-cloudsync-changed', onCloud);
@@ -865,14 +884,15 @@ const App: React.FC = () => {
   }, []);
   const activityLogFilteredCount = useMemo(() => {
     let result = activityLog.entries;
-    if (activityLogFilterType !== 'ALL') {
-      result = result.filter(e => e.operation === activityLogFilterType);
+    if (activityLogFilterTypes.length > 0) {
+      const allowed = new Set(activityLogFilterTypes);
+      result = result.filter(e => allowed.has(e.operation));
     }
     if (!activityLogShowCloudSync) {
       result = result.filter(e => !e.message.toLowerCase().includes('aerocloud'));
     }
     return result.length;
-  }, [activityLog.entries, activityLogFilterType, activityLogShowCloudSync]);
+  }, [activityLog.entries, activityLogFilterTypes, activityLogShowCloudSync]);
 
   useEffect(() => {
     const protocol = connectionParams.protocol;

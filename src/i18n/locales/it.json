@@ -3236,6 +3236,10 @@
         "errors": "Errori",
         "restore": "Ripristina"
       },
+      "filterMenu": {
+        "title": "Filtra operazioni",
+        "selected": "selezionati"
+      },
       "copyAllLogs": "Copia tutti i log",
       "clearLog": "Cancella log",
       "close": "Chiudi",

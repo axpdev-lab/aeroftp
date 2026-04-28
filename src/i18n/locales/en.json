@@ -177,6 +177,10 @@
         "restore": "Restore",
         "upload": "Upload"
       },
+      "filterMenu": {
+        "title": "Filter operations",
+        "selected": "selected"
+      },
       "hideCloudSync": "Hide AeroCloud sync messages",
       "jumpToLatest": "LATEST",
       "showCloudSync": "Show AeroCloud sync messages",
