@@ -3479,8 +3479,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                             type="text"
                                                             value={connectionParams.server}
                                                             onChange={(e) => onConnectionParamsChange({ ...connectionParams, server: e.target.value })}
-                                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                            className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm ${hasPresetServer ? 'opacity-70 cursor-not-allowed' : ''}`}
                                                             placeholder={getServerPlaceholder()}
+                                                            readOnly={!!hasPresetServer}
                                                         />
                                                     </div>
                                                     <div className="w-24">
@@ -3489,9 +3490,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                             type="number"
                                                             value={connectionParams.port || getDefaultPort(protocol)}
                                                             onChange={(e) => onConnectionParamsChange({ ...connectionParams, port: parseInt(e.target.value) || getDefaultPort(protocol) })}
-                                                            className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center"
+                                                            className={`w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-center ${hasPresetServer ? 'opacity-70 cursor-not-allowed' : ''}`}
                                                             min={1}
                                                             max={65535}
+                                                            readOnly={!!hasPresetServer}
                                                         />
                                                     </div>
                                                 </div>
@@ -3729,7 +3731,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     </div>
                     {/* Card footer — provider connectVia + links */}
                     {(() => {
-                        if (!selectedProvider || selectedProvider.isGeneric || editingProfileId) return null;
+                        if (!selectedProvider || selectedProvider.isGeneric) return null;
                         const proto = protocol === 's3' ? 'S3' : protocol === 'webdav' ? 'WebDAV' : null;
                         if (!proto) return null;
                         const footerText = selectedProvider.defaults?.basePath && protocol === 'webdav'

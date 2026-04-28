@@ -1022,7 +1022,7 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         features: { shareLink: false, sync: true },
         healthCheckUrl: 'https://webdav.yandex.ru',
-        helpUrl: 'https://yandex.com/support/disk-desktop-windows/start/webdav-client.html',
+        helpUrl: 'https://yandex.com/support/disk/',
         signupUrl: 'https://passport.yandex.com/registration',
         passwordGenUrl: 'https://id.yandex.com/security/app-passwords',
     },
