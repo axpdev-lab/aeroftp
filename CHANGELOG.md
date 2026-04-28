@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.8] - 2026-04-28
+
+### Community wishlist quick wins
+
+A focused patch release built around the v3.6.8 wishlist thread (issue #133). Ten Tier 1 items reported by @EhudKirsh land together as a quick-win batch, so the rest of the thread can be triaged on a fresh baseline. No protocol changes, no MCP surface changes; the VS Code extension does not need a bump.
+
+### Fixed
+
+- **Yandex Disk preset "Docs" link 404** — the registry entry for `yandexdisk-webdav` pointed at `yandex.com/support/disk-desktop-windows/start/webdav-client.html`, which no longer exists. Repointed to `yandex.com/support/disk/` (verified 200 OK). (reported by @EhudKirsh)
+- **WebDAV Edit form helper links** — the provider footer with Create Account / Docs / Generate password buttons was hidden in Edit mode via a `editingProfileId` guard, so users editing a Yandex / OpenDrive / Koofr profile could not jump back to the docs or password generator. The guard is gone; the footer renders the same on first connect and on Edit. (reported by @EhudKirsh)
+- **WebDAV Edit form Server Endpoint URL editable in Edit** — the Server Endpoint URL and Port fields were locked on first connect for pre-configured providers but became editable on Edit, which was easy to break by accident. Both fields are now `readOnly` when `selectedProvider.defaults?.server` is set, with a muted visual state. (reported by @EhudKirsh)
+- **OneDrive logo misshapen at small sizes** — the previous SVG layered three paths on a 24x24 box, producing an outline that did not look like the canonical Microsoft cloud icon, especially in the Discover Services grid. Redrawn with the standard 4-cloud composition on a 32x24 viewBox, four fill stops. (reported by @EhudKirsh)
+- **Speed Test modal "Run comparison" button cropped at large font sizes** — the modal used `pt-[5vh]` + `max-h-[90vh]`, leaving the footer below the fold for users on 19 / 22 px font sizes. Vertical budget expanded to `pt-[2vh] pb-[2vh]` + `max-h-[96vh]`. (reported by @EhudKirsh)
+- **Activity Log badge counter ignored the active filter** — the bottom-bar Log badge counted every emitted event, so it crept up to 99+ even when the panel was filtered to Errors only. The panel now persists `filterType` and `showCloudSync` in localStorage and broadcasts CustomEvents on every change; App.tsx subscribes and recomputes the badge using the same filter predicates as the panel. (reported by @EhudKirsh)
+- **Provider icons in the Choose Icon dialog silently failed to select** — Hetzner, MinIO, Koofr, FileLu, Blomp, OpenDrive, FeliCloud, Pixelunion, Aspnix, DriveHQ, Quotaless, Jianguoyun, Yandex Disk, Immich and other PNG-backed provider logos render as `<img>`, but `reactLogoToSvgDataUrl()` searched for an `<svg>` and returned `null`, so the click was a no-op. Added an `<img>` fallback that returns the image src as the data URL — works unchanged with the existing `customIconUrl` consumer. (reported by @EhudKirsh)
+- **Custom icons "No custom icons yet" placeholder shown next to an existing icon** — the empty-state copy contradicted the Current / On-server section above when a user had already picked an icon. The placeholder is now suppressed when either is non-empty. (reported by @EhudKirsh)
+
+### Added
+
+- **Hide username on My Servers cards** — new toggle in the toolbar (AtSign icon, persists across sessions as `aeroftp_hide_server_username`). When active, the `user@host` subtitle becomes host-only across grid and list views, freeing visual space and removing the email leak. (reported by @EhudKirsh)
+- **Drag and drop on Custom icons upload box** — files dropped on the box are ingested through the same `ingestIconBytes()` path as the file picker. Visual feedback while a file is hovered: solid blue border and a "Drop file to upload" label. Allowed extensions: SVG, PNG, JPG / JPEG, GIF, WEBP, ICO. (reported by @EhudKirsh)
+- **Custom icons delete confirmation** — removing an icon from the library now goes through a confirmation prompt that includes the icon's own name in the message, same surface as the existing profile delete dialog. (reported by @EhudKirsh)
+- **Activity Log multi-select filter** — the single-pick `<select>` dropdown is gone, replaced by a button + popover with one checkbox per operation (Connect, Disconnect, Upload, Download, Delete, Restore, Navigate, Errors) plus an "All" reset entry at the top. Empty selection is the new "show all" state, so users can mix Errors + File operations without losing one when they pick the other. State migrates automatically from the legacy single-pick value. (reported by @EhudKirsh)
+
+### Changed
+
+- **Six new i18n keys** translated to all 47 languages:`savedServers.showUsername`, `savedServers.hideUsername`, `iconPicker.confirmDelete`, `iconPicker.dropHere`, `activityPanel.filterMenu.title`, `activityPanel.filterMenu.selected`. Validation: 46/46 locales clean, 0 missing, 0 orphan, 0 placeholder.
+
 ## [3.6.7] - 2026-04-27
 
 ### Share-link reliability and UX paper cuts
