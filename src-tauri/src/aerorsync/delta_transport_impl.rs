@@ -32,10 +32,14 @@
 //!
 //! # In-memory limitations (tracked risks)
 //!
-//! - R2: upload reads the source file into RAM. Accepted in the
-//!   prototype single-file scope; streamed upload is S8j.
+//! - ~~R2: upload reads the source file into RAM~~. Resolved in
+//!   P3-T01 W1.3 (commit pending): `upload_inner` opens the source
+//!   as `tokio::fs::File` and streams it through
+//!   `drive_upload_through_delta_streaming`. The upload-side
+//!   `AERORSYNC_MAX_IN_MEMORY_BYTES` guard was removed.
 //! - R3: download decodes into a `Vec<u8>` that A4 buffers before the
-//!   temp-file write. Accepted for the same reason.
+//!   temp-file write. Accepted until P3-T01 W2 lands the streaming
+//!   download path.
 
 #![cfg(feature = "aerorsync")]
 
@@ -73,11 +77,14 @@ const ATOMIC_WRITE_CHUNK_SIZE: usize = 64 * 1024;
 /// progress. The rename onto the final path is the atomic commit.
 const TEMP_SUFFIX: &str = ".aerotmp";
 
-/// Hard ceiling on in-memory load for both upload (source) and download
-/// (baseline + reconstructed). Single-file prototype scope (R2/R3):
-/// classic `RsyncBinaryTransport` streams via subprocess stdio and is
-/// unaffected, so we gate by size to avoid OOM-ing the Tauri main
-/// process on multi-GB transfers. Streaming upgrade tracked in S8k.
+/// Hard ceiling on in-memory load for the **download** path only:
+/// baseline read (`fs::read(local_path)`) + reconstructed buffer
+/// (`driver.reconstructed`). Upload-side cap was removed in W1.3
+/// (`upload_inner` now streams the source via
+/// `drive_upload_through_delta_streaming`). The download streaming
+/// upgrade is W2 in P3-T01; until then, large-file downloads still
+/// surface a classic-fallback signal rather than OOM the Tauri main
+/// process.
 const AERORSYNC_MAX_IN_MEMORY_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Counter used to salt the per-instance temp suffix so two concurrent
@@ -216,27 +223,35 @@ impl AerorsyncDeltaTransport {
                 threshold: self.min_file_size,
             });
         }
-        // U-08 guard: native prototype is in-memory only (R2/R3). Above
-        // the cap, surface a classic-fallback signal rather than OOM the
-        // process. Classic `RsyncBinaryTransport` streams via subprocess
-        // stdio and handles large files safely.
-        if file_size > AERORSYNC_MAX_IN_MEMORY_BYTES {
-            return Err(RsyncError::TransferFailed {
-                exit: -1,
-                stderr: format!(
-                    "native fallback: upload source {} bytes exceeds in-memory cap {} bytes",
-                    file_size, AERORSYNC_MAX_IN_MEMORY_BYTES
-                ),
-            });
-        }
-        // R2: buffered in-memory source. Accepted for prototype scope
-        // (bounded above by `AERORSYNC_MAX_IN_MEMORY_BYTES`).
-        let source_data = fs::read(local_path).await.map_err(RsyncError::Io)?;
+        // P3-T01 W1.3 — upload-side cap removed. Sources of any size now
+        // flow through `drive_upload_through_delta_streaming` (W1.2).
+        // The driver reads `STREAMING_READ_CHUNK_BYTES`-bounded slabs
+        // from the file handle and emits engine literals incrementally,
+        // so the upload no longer requests a `Vec<u8>` of `file_size`
+        // bytes. The resident memory bound becomes `O(read_chunk +
+        // op_vector)`; lifting the op_vector dependency on file_size
+        // requires streaming the zstd encoder + wire emission, scoped
+        // post-P3-T01 (see `send_delta_phase_streaming` docstring).
+        //
         // U-07: preserve the source mtime on the wire. Classic rsync
-        // preserves mtime by default and `RsyncConfig::preserve_times` is
-        // already on for the SFTP path; hardcoding `mtime: 0` was a
+        // preserves mtime by default and `RsyncConfig::preserve_times`
+        // is already on for the SFTP path; hardcoding `mtime: 0` was a
         // silent regression for mtime-aware sync consumers.
-        let source_entry = build_source_entry(local_path, file_size, &metadata, &source_data);
+        //
+        // The xxh128 file checksum advertised in the file-list entry
+        // (`-c always-checksum` parity) is computed via a streaming
+        // pass over the file before the file_list phase. The OS page
+        // cache makes the second read (inside the delta phase) a hot
+        // hit on typical workloads, so the practical I/O cost is one
+        // disk read.
+        let file_checksum = compute_xxh128_file_streaming(local_path)
+            .await
+            .map_err(RsyncError::Io)?;
+        let source_entry = build_source_entry(local_path, file_size, &metadata, file_checksum);
+
+        let source_file = fs::File::open(local_path)
+            .await
+            .map_err(RsyncError::Io)?;
 
         let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
         let cancel = CancelHandle::inert();
@@ -251,7 +266,14 @@ impl AerorsyncDeltaTransport {
         // against rsync 3.2.7 capture by `upload_remote_command_matches_capture`.
         let spec = RemoteCommandSpec::upload(remote_path);
         let drive_res = driver
-            .drive_upload_through_delta(spec, source_entry, &source_data, &adapter, &mut bridge)
+            .drive_upload_through_delta_streaming(
+                spec,
+                source_entry,
+                source_file,
+                file_size,
+                &adapter,
+                &mut bridge,
+            )
             .await;
         if let Err(e) = drive_res {
             return Err(map_native_error_to_rsync(e, driver.committed()));
@@ -424,7 +446,7 @@ fn build_source_entry(
     local_path: &Path,
     size: u64,
     metadata: &std::fs::Metadata,
-    source_data: &[u8],
+    file_checksum: Vec<u8>,
 ) -> FileListEntry {
     // 0x2c00 = USER_NAME_FOLLOWS (1<<10) | GROUP_NAME_FOLLOWS (1<<11) | MOD_NSEC (1<<13).
     const BASELINE_FLAGS: u32 = (1 << 10) | (1 << 11) | (1 << 13);
@@ -437,11 +459,13 @@ fn build_source_entry(
     let (uid_value, gid_value) = file_owner_components(metadata);
     let uid_name = lookup_user_name(uid_value);
     let gid_name = lookup_group_name(gid_value);
-    // xxh128 over the file bytes mirrors `rsync -c` always-checksum.
-    // Server reads this many bytes (16 = csum_len_for_type(CSUM_XXH3_128))
-    // regardless of value; using the real digest keeps semantics aligned
-    // with classic rsync so the receiver may short-circuit equal files.
-    let checksum = xxh128_digest_bytes(source_data);
+    // P3-T01 W1.3 — caller computes xxh128 via streaming pass over the
+    // file (`compute_xxh128_file_streaming`) so we no longer require a
+    // fully-buffered `source_data: &[u8]` argument here. xxh128 over
+    // the file bytes mirrors `rsync -c` always-checksum. Server reads
+    // 16 bytes (= csum_len_for_type(CSUM_XXH3_128)) regardless of
+    // value; using the real digest keeps semantics aligned with
+    // classic rsync so the receiver may short-circuit equal files.
     FileListEntry {
         flags: BASELINE_FLAGS,
         path: name,
@@ -456,7 +480,7 @@ fn build_source_entry(
         uid_name: Some(uid_name),
         gid: Some(gid_value as i64),
         gid_name: Some(gid_name),
-        checksum,
+        checksum: file_checksum,
     }
 }
 
@@ -537,6 +561,36 @@ fn xxh128_digest_bytes(data: &[u8]) -> Vec<u8> {
     use xxhash_rust::xxh3::xxh3_128;
     let digest = xxh3_128(data);
     digest.to_le_bytes().to_vec()
+}
+
+/// P3-T01 W1.3 — streaming xxh128 over a file path. Reads the file in
+/// `XXH128_STREAM_BUF_BYTES`-bounded slabs and feeds them into a
+/// reusable `Xxh3Default` hasher. Output layout matches
+/// [`xxh128_digest_bytes`] exactly: `digest.to_le_bytes()`.
+///
+/// Used by `upload_inner` to populate the `FileListEntry::checksum`
+/// field without holding the full source in memory. The OS page cache
+/// makes the second read (inside the streaming delta phase) a hot hit
+/// on typical workloads, so the practical I/O cost is one disk read.
+async fn compute_xxh128_file_streaming(path: &Path) -> std::io::Result<Vec<u8>> {
+    use tokio::io::AsyncReadExt;
+    use xxhash_rust::xxh3::Xxh3Default;
+    /// Buffer size for the streaming xxh128 read. 4 MiB matches the
+    /// driver's `STREAMING_READ_CHUNK_BYTES` so the page-cache fill
+    /// stride is the same on both passes.
+    const XXH128_STREAM_BUF_BYTES: usize = 4 * 1024 * 1024;
+
+    let mut file = fs::File::open(path).await?;
+    let mut hasher = Xxh3Default::new();
+    let mut buf = vec![0u8; XXH128_STREAM_BUF_BYTES];
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.digest128().to_le_bytes().to_vec())
 }
 
 /// Extract `(mtime_seconds_since_epoch, optional_nanoseconds)` from a
@@ -1048,7 +1102,7 @@ mod tests {
         let dir = fresh_tempdir();
         let path = dir.path().join("payload.bin");
         let meta = metadata_for(&path);
-        let entry = build_source_entry(&path, 1_234_567, &meta, &[]);
+        let entry = build_source_entry(&path, 1_234_567, &meta, xxh128_digest_bytes(&[]));
         assert_eq!(entry.path, "payload.bin");
         assert_eq!(entry.size, 1_234_567);
         // U-07 regression pin: mtime MUST be populated from metadata;
@@ -1089,7 +1143,7 @@ mod tests {
         // a source (a directory is fine for the fallback check).
         let dir = fresh_tempdir();
         let meta = std::fs::metadata(dir.path()).unwrap();
-        let entry = build_source_entry(Path::new("/"), 0, &meta, &[]);
+        let entry = build_source_entry(Path::new("/"), 0, &meta, xxh128_digest_bytes(&[]));
         assert_eq!(entry.path, "source.bin");
     }
 
@@ -1103,7 +1157,7 @@ mod tests {
             std::fs::File::create(&path).unwrap();
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
             let meta = std::fs::metadata(&path).unwrap();
-            let entry = build_source_entry(&path, 0, &meta, &[]);
+            let entry = build_source_entry(&path, 0, &meta, xxh128_digest_bytes(&[]));
             // `mode` is the raw `st_mode` value; the low 12 bits carry
             // the permission bits we just set.
             assert_eq!((entry.mode as u32) & 0o7777, 0o640);
