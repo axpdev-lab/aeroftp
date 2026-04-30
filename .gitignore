@@ -69,10 +69,19 @@ CLAUDE.md
 # Native rsync protocol sources live in tree now. Only the
 # multi-hundred-MB capture harness stays out of git (Docker images,
 # rsync reference binaries, fixture transcripts too large to ship).
-src-tauri/src/rsync_native_proto/capture/bin/
-src-tauri/src/rsync_native_proto/capture/artifacts/
-src-tauri/src/rsync_native_proto/capture/artifacts_real/
-src-tauri/src/rsync_native_proto/capture/workspace/
+# Module renamed `rsync_native_proto` -> `aerorsync` on 2026-04-25.
+src-tauri/src/aerorsync/capture/bin/
+src-tauri/src/aerorsync/capture/artifacts/
+src-tauri/src/aerorsync/capture/artifacts_real/
+src-tauri/src/aerorsync/capture/workspace/
+
+# Upstream rsync 3.2.7 source extracted at repo root for CVE inspection
+# during the aerorsync wire saga. Reference material, not shipped.
+/rsync-3.2.7/
+/rsync_3.2.7*
+
+# Kilo IDE plans / scratch
+.kilo/
 
 # Local dev scripts (hardcoded paths)
 run-clean.sh
