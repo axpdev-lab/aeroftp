@@ -169,6 +169,8 @@ AeroFTP bridges profiles with the three most widely used file transfer tools. Im
 
 > **rclone crypt interop (read-only):** in addition to profile import/export, AeroFTP can decrypt and browse existing `rclone crypt` remotes natively. Write support is on the roadmap. See the **[rclone crypt page](https://docs.aeroftp.app/features/rclone-crypt)**.
 
+> **rclone filter conversion:** `aeroftp-cli import rclone-filter <path>` converts an rclone `--filter-from` file (with `+`/`-` rules and `#` comments) into an `.aeroignore` file. Rule order is reversed automatically to preserve rclone's first-match-wins semantics under gitignore last-match-wins. Brace alternation `{a,b}` and `!` reset directives are reported as warnings since they have no direct gitignore equivalent.
+
 ### Hosting Provider Integration
 
 Web hosting providers can generate encrypted `.aeroftp` connection profiles from their control panels, so customers can import pre-configured FTP/SFTP connections with a single click - no manual setup, no credentials in plaintext emails.
@@ -298,6 +300,8 @@ Production CLI sharing the same Rust backend as the GUI. 49 subcommands across 7
 ```bash
 aeroftp-cli ls --profile "My Server" /var/www/ -l        # Vault profile (no credentials exposed)
 aeroftp-cli get sftp://user@host "/data/*.csv"            # Glob download
+aeroftp-cli check --profile "My Server" /local /remote --checksum  # Verify local matches remote
+aeroftp-cli sync --profile "My Server" /local /remote --watch      # Continuous bidirectional sync
 aeroftp-cli serve http sftp://user@host /data             # Serve remote as local HTTP
 aeroftp-cli serve webdav s3://key:secret@s3.aws.com       # Serve remote as local WebDAV
 aeroftp-cli agent --mcp                                   # MCP server for Claude/Cursor/VS Code
@@ -306,7 +310,7 @@ aeroftp-cli ncdu sftp://user@host /data                    # Interactive disk us
 aeroftp-cli daemon start                                   # Background job queue
 ```
 
-**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-11), `.aeroftp` batch scripts, `serve http/webdav/ftp/sftp`, MCP server mode, `cleanup`/`dedupe` commands, `--immutable` append-only mode, `--files-from` selective transfers, `--fast-list` S3 optimization, bisync with `--conflict-mode rename`, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
+**Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-11), `.aeroftp` batch scripts, `check` for local-vs-remote verification (size + optional `--checksum`, JSON-friendly), `dedupe` / `cleanup` for orphan management, `hashsum` for remote file hashing (sha256/md5/blake3), `link` for shareable URLs, `--bwlimit "08:00,512k 18:00,off"` time-based bandwidth schedule (local time), `serve http/webdav/ftp/sftp`, MCP server mode, `--immutable` append-only mode, `--files-from` selective transfers, `--fast-list` S3 optimization, bisync with `--conflict-mode rename`, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
 
 **MCP server (20 tools, v3.5.8+)**: curated tools for agents - remote file ops, tree sync (`aeroftp_sync_tree`), tree diff (`aeroftp_check_tree`), batch delete (`aeroftp_delete_many`), pool introspection (`aeroftp://connections` resource + `aeroftp_close_connection` tool), and real-time `notifications/progress` during uploads, downloads and sync. The pool now auto-recovers from transport-level failures (stale FTP data channels, broken pipes) without manual intervention. Pool reuse gives roughly **14x speedup** vs CLI cold-start on warm calls (measured 13-14 ms vs ~194 ms on Docker SFTP). Run `aeroftp-cli mcp` and plug it into Claude Desktop, Cursor, Windsurf, or VS Code via the [`axpdev-lab.aeroftp-mcp` extension](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp).
 

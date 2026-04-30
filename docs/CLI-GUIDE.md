@@ -900,6 +900,31 @@ aeroftp-cli import filezilla --json
 
 Imports sites from FileZilla's `sitemanager.xml`. Supports FTP, SFTP, FTPS (implicit and explicit), and S3. Passwords are decoded from base64 and upgraded to AES-256-GCM on commit. See the [FileZilla Bridge guide](https://docs.aeroftp.app/features/filezilla).
 
+#### import rclone-filter
+
+```bash
+# Convert an rclone filter file to .aeroignore on stdout
+aeroftp-cli import rclone-filter ~/.config/rclone/filter.txt
+
+# Write directly to a file (refuses to overwrite without --force)
+aeroftp-cli import rclone-filter filter.txt -o /project/.aeroignore
+
+# Read filter rules from stdin (e.g. piping from another tool)
+cat filter.txt | aeroftp-cli import rclone-filter -
+
+# JSON envelope (status, input path, generated text, warnings)
+aeroftp-cli import rclone-filter filter.txt --json
+```
+
+Converts an rclone `--filter-from` file (`+ pattern` / `- pattern` / `# comments` / `! ` reset) into an `.aeroignore` (gitignore syntax). Because rclone uses **first-match-wins** and gitignore uses **last-match-wins**, the generated rules are emitted in **reversed order** to preserve precedence — the highest-priority rclone rule ends up last in the output. Includes (`+ pattern`) become re-include rules (`!pattern`), excludes pass through unchanged.
+
+Two non-fatal warnings are surfaced (text on stderr, JSON in the `warnings` array):
+
+- `! ` reset directive: gitignore has no direct equivalent. The rules above the reset are kept (rclone discards them at runtime) so you can review and prune manually.
+- `{a,b}` brace alternation: gitignore does not support brace expansion natively. The pattern is passed through unchanged; expand manually if the rule must apply.
+
+Exit codes: `0` ok, `2` input file not found, `9` output file exists without `--force`, `11` I/O error reading stdin or writing output.
+
 ### completions - Generate Shell Completion Scripts
 
 ```bash

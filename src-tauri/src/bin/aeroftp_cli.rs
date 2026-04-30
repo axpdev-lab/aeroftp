@@ -1193,6 +1193,21 @@ enum ImportCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Convert an rclone filter file (--filter-from format) into a .aeroignore file
+    #[command(name = "rclone-filter")]
+    RcloneFilter {
+        /// Path to the rclone filter file (or `-` to read from stdin)
+        path: String,
+        /// Output path for the generated .aeroignore. If omitted, prints to stdout.
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Overwrite the output file if it already exists
+        #[arg(long)]
+        force: bool,
+        /// Output a JSON envelope with the converted text and warnings
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2606,18 +2621,24 @@ fn build_filter(cli: &Cli) -> FilterFn {
 /// Resolve the current bandwidth limit from a time-based schedule.
 /// Format: "08:00,512k 12:00,10M 18:00,off" - space-separated entries.
 /// Returns the active rate in bytes/sec, or None if unlimited ("off").
+///
+/// Time entries are interpreted in **local time** (matching rclone's behavior),
+/// so "08:00" means 8 AM in the user's timezone. For the wrap-around rule see
+/// `resolve_bwlimit_schedule_at`.
 fn resolve_bwlimit_schedule(schedule: &str) -> Option<u64> {
-    let now = {
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        // Extract HH:MM from epoch seconds (local time approximation)
-        let local_secs = secs % 86400; // seconds since midnight UTC
-                                       // For proper local time we'd need chrono, but UTC is good enough for scheduling
-        (local_secs / 3600, (local_secs % 3600) / 60) // (hour, minute)
-    };
+    use chrono::{Local, Timelike};
+    let now = Local::now();
+    let now_minutes = now.hour() * 60 + now.minute();
+    resolve_bwlimit_schedule_at(schedule, now_minutes)
+}
 
+/// Pure-logic core of [`resolve_bwlimit_schedule`], parameterised on
+/// `now_minutes` (minutes since midnight, 0..=1439) so tests can pin the clock.
+///
+/// Returns the active rate at `now_minutes`. The active entry is the latest
+/// scheduled time `<= now_minutes`; if `now_minutes` is before the first entry
+/// of the day, the last entry wraps over from the previous day.
+fn resolve_bwlimit_schedule_at(schedule: &str, now_minutes: u32) -> Option<u64> {
     let mut entries: Vec<(u32, Option<u64>)> = Vec::new(); // (minutes_since_midnight, rate)
     for part in schedule.split_whitespace() {
         if let Some((time_str, rate_str)) = part.split_once(',') {
@@ -2625,6 +2646,9 @@ fn resolve_bwlimit_schedule(schedule: &str) -> Option<u64> {
             if time_parts.len() == 2 {
                 if let (Ok(h), Ok(m)) = (time_parts[0].parse::<u32>(), time_parts[1].parse::<u32>())
                 {
+                    if h >= 24 || m >= 60 {
+                        continue; // skip malformed entry
+                    }
                     let minutes = h * 60 + m;
                     let rate = if rate_str == "off" || rate_str == "0" {
                         None
@@ -2642,17 +2666,19 @@ fn resolve_bwlimit_schedule(schedule: &str) -> Option<u64> {
     }
 
     entries.sort_by_key(|(m, _)| *m);
-    let now_minutes = now.0 as u32 * 60 + now.1 as u32;
 
     // Find the last entry whose time <= now
     let mut active_rate: Option<u64> = None;
+    let mut matched = false;
     for (minutes, rate) in &entries {
         if *minutes <= now_minutes {
             active_rate = *rate;
+            matched = true;
         }
     }
-    // If no entry matched (before first entry), use the last entry (wrap around midnight)
-    if active_rate.is_none() && !entries.is_empty() {
+    // If no entry matched (before first entry of the day), wrap around to the
+    // last scheduled entry (= the active rate from the previous day still holds).
+    if !matched {
         active_rate = entries.last().unwrap().1;
     }
 
@@ -5240,6 +5266,7 @@ fn profile_to_provider_config(
         "fourshared" => ProviderType::FourShared,
         "drime" => ProviderType::DrimeCloud,
         "immich" => ProviderType::Immich,
+        "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
         _ => {
             print_error(
                 format,
@@ -11306,6 +11333,135 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
             }
             1
         }
+    }
+}
+
+/// Convert an rclone filter file into a `.aeroignore` file (or stdout).
+///
+/// `path` may be `-` to read from stdin. The conversion preserves rclone's
+/// first-match-wins semantics under gitignore last-match-wins by reversing
+/// the rule order; warnings are reported to the user.
+async fn cmd_import_rclone_filter(
+    path: String,
+    output: Option<String>,
+    force: bool,
+    json: bool,
+) -> i32 {
+    use ftp_client_gui_lib::rclone_filter::rclone_filter_to_aeroignore;
+    use std::io::Read;
+
+    // Read the input file (or stdin if path == "-").
+    let content = if path == "-" {
+        let mut buf = String::new();
+        if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({"error": format!("Failed to read stdin: {}", e)})
+                );
+            } else {
+                eprintln!("Error: failed to read stdin: {}", e);
+            }
+            return 11;
+        }
+        buf
+    } else {
+        match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "error": format!("Failed to read {}: {}", path, e),
+                        })
+                    );
+                } else {
+                    eprintln!("Error: failed to read {}: {}", path, e);
+                }
+                return 2;
+            }
+        }
+    };
+
+    let (aeroignore_text, warnings) = rclone_filter_to_aeroignore(&content);
+    let warning_strings: Vec<String> = warnings.iter().map(|w| w.to_string()).collect();
+
+    // Write to file or stdout.
+    if let Some(ref out_path) = output {
+        let out_path_buf = std::path::PathBuf::from(out_path);
+        if out_path_buf.exists() && !force {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "error": format!("Output file already exists: {}. Use --force to overwrite.", out_path),
+                    })
+                );
+            } else {
+                eprintln!(
+                    "Error: output file already exists: {}. Use --force to overwrite.",
+                    out_path
+                );
+            }
+            return 9;
+        }
+        if let Err(e) = std::fs::write(&out_path_buf, &aeroignore_text) {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({"error": format!("Failed to write {}: {}", out_path, e)})
+                );
+            } else {
+                eprintln!("Error: failed to write {}: {}", out_path, e);
+            }
+            return 11;
+        }
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "status": "ok",
+                    "input": path,
+                    "output": out_path,
+                    "bytes_written": aeroignore_text.len(),
+                    "warnings": warning_strings,
+                })
+            );
+        } else {
+            println!("Wrote {} bytes to {}", aeroignore_text.len(), out_path);
+            if !warning_strings.is_empty() {
+                eprintln!();
+                eprintln!("{} warning(s):", warning_strings.len());
+                for w in &warning_strings {
+                    eprintln!("  - {}", w);
+                }
+            }
+        }
+        0
+    } else {
+        // No --output: print to stdout, warnings to stderr.
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "status": "ok",
+                    "input": path,
+                    "aeroignore": aeroignore_text,
+                    "warnings": warning_strings,
+                })
+            );
+        } else {
+            print!("{}", aeroignore_text);
+            if !warning_strings.is_empty() {
+                eprintln!();
+                eprintln!("{} warning(s):", warning_strings.len());
+                for w in &warning_strings {
+                    eprintln!("  - {}", w);
+                }
+            }
+        }
+        0
     }
 }
 
@@ -24677,6 +24833,12 @@ async fn main() {
             ImportCommands::Filezilla { path, json } => {
                 cmd_import_filezilla(path.clone(), *json).await
             }
+            ImportCommands::RcloneFilter {
+                path,
+                output,
+                force,
+                json,
+            } => cmd_import_rclone_filter(path.clone(), output.clone(), *force, *json).await,
         },
         Commands::Transfer {
             source_profile,
@@ -24937,6 +25099,70 @@ mod tests {
     fn test_parse_speed_limit_megabytes() {
         assert_eq!(parse_speed_limit("1M").unwrap(), 1024 * 1024);
         assert_eq!(parse_speed_limit("10M").unwrap(), 10 * 1024 * 1024);
+    }
+
+    // ── bwlimit schedule (rclone-compatible) ────────────────────────────────
+
+    #[test]
+    fn bwlimit_schedule_picks_active_window() {
+        // Schedule: 08:00 -> 512 KB/s, 12:00 -> 10 MB/s, 18:00 -> off
+        let s = "08:00,512k 12:00,10M 18:00,off";
+
+        // Before first window wraps to last entry of previous day (off => None)
+        assert_eq!(resolve_bwlimit_schedule_at(s, 7 * 60 + 59), None);
+
+        // 08:00 - 11:59 -> 512 KB/s
+        assert_eq!(resolve_bwlimit_schedule_at(s, 8 * 60), Some(512 * 1024));
+        assert_eq!(resolve_bwlimit_schedule_at(s, 11 * 60 + 59), Some(512 * 1024));
+
+        // 12:00 - 17:59 -> 10 MB/s
+        assert_eq!(resolve_bwlimit_schedule_at(s, 12 * 60), Some(10 * 1024 * 1024));
+        assert_eq!(resolve_bwlimit_schedule_at(s, 17 * 60 + 59), Some(10 * 1024 * 1024));
+
+        // 18:00 - 23:59 -> off
+        assert_eq!(resolve_bwlimit_schedule_at(s, 18 * 60), None);
+        assert_eq!(resolve_bwlimit_schedule_at(s, 23 * 60 + 59), None);
+    }
+
+    #[test]
+    fn bwlimit_schedule_simple_rate_when_no_time_entries() {
+        // No commas/colons → treated as plain rate
+        assert_eq!(resolve_bwlimit_schedule_at("1M", 12 * 60), Some(1024 * 1024));
+        assert_eq!(resolve_bwlimit_schedule_at("512k", 0), Some(512 * 1024));
+    }
+
+    #[test]
+    fn bwlimit_schedule_off_during_active_window_returns_none() {
+        // An "off" entry mid-day must not be confused with "no match" (which would
+        // wrap to the last entry). Pin: a literal "off" must stay None.
+        let s = "00:00,1M 10:00,off 14:00,2M";
+        assert_eq!(resolve_bwlimit_schedule_at(s, 0), Some(1024 * 1024));
+        assert_eq!(resolve_bwlimit_schedule_at(s, 10 * 60), None);
+        assert_eq!(resolve_bwlimit_schedule_at(s, 13 * 60 + 59), None);
+        assert_eq!(resolve_bwlimit_schedule_at(s, 14 * 60), Some(2 * 1024 * 1024));
+    }
+
+    #[test]
+    fn bwlimit_schedule_wraps_when_no_entry_at_or_before_now() {
+        // Schedule starts at 09:00; at 06:00 we wrap to the last entry of the day
+        let s = "09:00,1M 18:00,off";
+        assert_eq!(resolve_bwlimit_schedule_at(s, 6 * 60), None); // wrap to 18:00,off
+    }
+
+    #[test]
+    fn bwlimit_schedule_skips_malformed_entries() {
+        // Hour > 23 and minute > 59 are silently skipped (not panic, not crash)
+        let s = "25:00,1M 10:99,2M 12:00,3M";
+        assert_eq!(resolve_bwlimit_schedule_at(s, 12 * 60), Some(3 * 1024 * 1024));
+    }
+
+    #[test]
+    fn bwlimit_schedule_unsorted_entries_are_normalized() {
+        // Caller-provided order shouldn't matter
+        let s = "18:00,off 08:00,512k 12:00,10M";
+        assert_eq!(resolve_bwlimit_schedule_at(s, 9 * 60), Some(512 * 1024));
+        assert_eq!(resolve_bwlimit_schedule_at(s, 13 * 60), Some(10 * 1024 * 1024));
+        assert_eq!(resolve_bwlimit_schedule_at(s, 19 * 60), None);
     }
 
     #[test]

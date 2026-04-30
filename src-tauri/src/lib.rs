@@ -89,6 +89,7 @@ mod provider_transfer_executor;
 pub mod providers;
 mod pty;
 mod rclone_crypt;
+pub mod rclone_filter;
 pub mod rclone_import;
 mod session_commands;
 mod session_manager;
