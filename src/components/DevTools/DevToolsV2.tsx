@@ -190,6 +190,20 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         };
         window.addEventListener('devtools-panel-ensure', handlePanelEnsure);
 
+        // Listen for solo-panel events (View > Editor/Terminal/Agent menu)
+        const handlePanelSolo = (e: Event) => {
+            const panel = (e as CustomEvent).detail as string;
+            if (panel === 'editor' || panel === 'terminal' || panel === 'agent') {
+                const key = panel === 'agent' ? 'chat' : panel;
+                setPanels({
+                    editor: key === 'editor',
+                    terminal: key === 'terminal',
+                    chat: key === 'chat',
+                });
+            }
+        };
+        window.addEventListener('devtools-panel-solo', handlePanelSolo);
+
         // Also use ResizeObserver for container-specific changes
         let observer: ResizeObserver | null = null;
         if (containerRef.current) {
@@ -201,6 +215,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
             window.removeEventListener('resize', updateWidth);
             window.removeEventListener('devtools-panel-toggle', handleMenuToggle);
             window.removeEventListener('devtools-panel-ensure', handlePanelEnsure);
+            window.removeEventListener('devtools-panel-solo', handlePanelSolo);
             observer?.disconnect();
         };
     }, [isOpen]);

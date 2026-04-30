@@ -197,6 +197,7 @@ interface AppSettings {
     swapPanels: boolean;
     fontSize: number;
     fontFamily: string;
+    cardLayout: 'compact' | 'detailed';
     // Columns
     visibleColumns: string[];
     // File browser
@@ -236,6 +237,7 @@ const defaultSettings: AppSettings = {
     swapPanels: false,
     fontSize: 14,
     fontFamily: DEFAULT_APP_FONT_FAMILY,
+    cardLayout: 'compact',
     visibleColumns: ['name', 'size', 'type', 'permissions', 'modified'],
     sortFoldersFirst: true,
     showFileExtensions: true,
@@ -820,9 +822,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                         </div>
 
-                                        <Checkbox checked={settings.showHiddenFiles} onChange={(v) => updateSetting('showHiddenFiles', v)} label={<span className="text-sm">{t('settings.showHiddenFiles')}</span>} />
+                                        <div className="flex flex-wrap gap-x-6 gap-y-3">
+                                            <Checkbox checked={settings.showHiddenFiles} onChange={(v) => updateSetting('showHiddenFiles', v)} label={<span className="text-sm">{t('settings.showHiddenFiles')}</span>} />
 
-                                        <Checkbox checked={settings.confirmBeforeDelete} onChange={(v) => updateSetting('confirmBeforeDelete', v)} label={<span className="text-sm">{t('settings.confirmBeforeDelete')}</span>} />
+                                            <Checkbox checked={settings.confirmBeforeDelete} onChange={(v) => updateSetting('confirmBeforeDelete', v)} label={<span className="text-sm">{t('settings.confirmBeforeDelete')}</span>} />
+                                        </div>
 
                                         <Checkbox
                                             checked={settings.sortFoldersFirst !== false}
@@ -3136,6 +3140,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <div>
                                                         <p className="font-medium">{t('settings.swapPanels')}</p>
                                                         <p className="text-sm text-gray-500">{t('settings.swapPanelsDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
+
+                                            {/* Card layout: compact vs detailed (toggles storage usage bar on My Servers) */}
+                                            <Checkbox
+                                                checked={settings.cardLayout === 'detailed'}
+                                                onChange={(v) => updateSetting('cardLayout', v ? 'detailed' : 'compact')}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium">{t('settings.detailedCards')}</p>
+                                                        <p className="text-sm text-gray-500">{t('settings.detailedCardsDesc')}</p>
                                                     </div>
                                                 }
                                             />

@@ -42,11 +42,11 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'googledrive', name: 'Google Drive', description: 'Google cloud storage (15 GB free)', protocol: 'googledrive', badge: 'OAuth', signupUrl: 'https://drive.google.com', healthCheckUrl: 'https://www.googleapis.com', source: 'protocol' },
     { id: 'onedrive', name: 'OneDrive', description: 'Microsoft cloud storage (5 GB free)', protocol: 'onedrive', badge: 'OAuth', signupUrl: 'https://onedrive.live.com', healthCheckUrl: 'https://graph.microsoft.com', source: 'protocol' },
     { id: 'dropbox', name: 'Dropbox', description: 'File sync and sharing (2 GB free)', protocol: 'dropbox', badge: 'OAuth', signupUrl: 'https://www.dropbox.com', healthCheckUrl: 'https://api.dropboxapi.com', source: 'protocol' },
-    { id: 'mega', name: 'MEGA', description: 'Secure cloud with client-side encryption (20 GB free)', protocol: 'mega', badge: 'E2E', signupUrl: 'https://mega.nz/register', healthCheckUrl: 'https://g.api.mega.co.nz', source: 'protocol' },
+    { id: 'mega', name: 'MEGA', description: 'Secure cloud with client-side encryption (20 GB free)', protocol: 'mega', badge: 'E2E 128', signupUrl: 'https://mega.nz/register', healthCheckUrl: 'https://g.api.mega.co.nz', source: 'protocol' },
     { id: 'box', name: 'Box', description: 'Enterprise cloud content management (10 GB free)', protocol: 'box', badge: 'OAuth', signupUrl: 'https://www.box.com/pricing/individual', healthCheckUrl: 'https://api.box.com', source: 'protocol' },
     { id: 'pcloud', name: 'pCloud', description: 'Swiss cloud storage (10 GB free)', protocol: 'pcloud', badge: 'OAuth', signupUrl: 'https://www.pcloud.com', healthCheckUrl: 'https://api.pcloud.com', source: 'protocol' },
-    { id: 'filen', name: 'Filen', description: 'Zero-knowledge encrypted cloud (10 GB free)', protocol: 'filen', badge: 'E2E', signupUrl: 'https://filen.io', healthCheckUrl: 'https://gateway.filen.io', source: 'protocol' },
-    { id: 'internxt', name: 'Internxt', description: 'Privacy-focused encrypted cloud (1 GB free)', protocol: 'internxt', badge: 'E2E', signupUrl: 'https://internxt.com', healthCheckUrl: 'https://api.internxt.com', source: 'protocol' },
+    { id: 'filen', name: 'Filen', description: 'Zero-knowledge encrypted cloud (10 GB free)', protocol: 'filen', badge: 'E2E 256', signupUrl: 'https://filen.io', healthCheckUrl: 'https://gateway.filen.io', source: 'protocol' },
+    { id: 'internxt', name: 'Internxt', description: 'Privacy-focused encrypted cloud (1 GB free)', protocol: 'internxt', badge: 'E2E 256', signupUrl: 'https://internxt.com', healthCheckUrl: 'https://api.internxt.com', source: 'protocol' },
     { id: 'koofr-cloud', name: 'Koofr', description: 'EU-based privacy-friendly cloud (10 GB free)', protocol: 'koofr', badge: 'API', signupUrl: 'https://koofr.eu', healthCheckUrl: 'https://app.koofr.net', source: 'protocol' },
     { id: 'kdrive', name: 'kDrive', description: 'Infomaniak Swiss cloud (15 GB free)', protocol: 'kdrive', badge: 'API', signupUrl: 'https://www.infomaniak.com/en/kdrive', healthCheckUrl: 'https://api.infomaniak.com', source: 'protocol' },
     { id: 'filelu', name: 'FileLu', description: 'Multi-protocol cloud storage (1 GB free)', protocol: 'filelu', badge: 'API', signupUrl: 'https://filelu.com', healthCheckUrl: 'https://filelu.com/api/', source: 'protocol' },
@@ -85,6 +85,33 @@ const DEVELOPER_ITEMS: DiscoverItem[] = [
     { id: 'github', name: 'GitHub', description: 'Repository file system', protocol: 'github', badge: 'API', healthCheckUrl: 'https://api.github.com', source: 'protocol' },
     { id: 'gitlab', name: 'GitLab', description: 'Repository & CI/CD platform', protocol: 'gitlab', badge: 'API', healthCheckUrl: 'https://gitlab.com', source: 'protocol' },
 ];
+
+/** Reachability probe URL per cloud protocol. Used by My Servers cards to
+ *  drive the Health radial without needing to ping the user-supplied host
+ *  (their saved profile may not even have a usable hostname for OAuth). */
+export const PROVIDER_HEALTH_URLS: Partial<Record<ProviderType, string>> = {
+    googledrive: 'https://www.googleapis.com',
+    googlephotos: 'https://www.googleapis.com',
+    onedrive: 'https://graph.microsoft.com',
+    dropbox: 'https://api.dropboxapi.com',
+    mega: 'https://g.api.mega.co.nz',
+    box: 'https://api.box.com',
+    pcloud: 'https://api.pcloud.com',
+    filen: 'https://gateway.filen.io',
+    internxt: 'https://api.internxt.com',
+    koofr: 'https://app.koofr.net',
+    kdrive: 'https://api.infomaniak.com',
+    filelu: 'https://filelu.com',
+    zohoworkdrive: 'https://www.zohoapis.com',
+    drime: 'https://app.drime.cloud',
+    jottacloud: 'https://jottacloud.com',
+    fourshared: 'https://webdav.4shared.com',
+    opendrive: 'https://dev.opendrive.com',
+    yandexdisk: 'https://cloud-api.yandex.net',
+    github: 'https://api.github.com',
+    gitlab: 'https://gitlab.com',
+    immich: 'https://immich.app',
+};
 
 /** Maps provider/item IDs to i18n keys for translated descriptions */
 export const DISCOVER_DESC_KEYS: Record<string, string> = {

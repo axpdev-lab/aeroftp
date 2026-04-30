@@ -90,6 +90,14 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   return "API";
 };
 
+// Encryption strength (bits) for E2E providers. MEGA uses AES-128 for files;
+// Filen and Internxt use AES-256 zero-knowledge encryption.
+export const getE2EBits = (type: ProviderType): 128 | 256 | null => {
+  if (type === "mega") return 128;
+  if (type === "filen" || type === "internxt") return 256;
+  return null;
+};
+
 // Check if a provider uses non-FTP backend (provider_* Tauri commands)
 export const isNonFtpProvider = (type: ProviderType): boolean => {
   return [
@@ -376,6 +384,10 @@ export interface ServerProfile {
   customIconUrl?: string; // User-chosen custom icon (base64 data URL, highest priority)
   publicUrlBase?: string; // HTTP base URL for share link generation (e.g. https://www.example.com/)
   skipDeltaEligibilityPrompt?: boolean; // Suppress the classic fallback modal for this saved server
+  // Last known storage quota cached after a successful connection. Used by the
+  // detailed My Servers card layout to render a usage bar without requiring
+  // a fresh authentication round-trip on every render.
+  lastQuota?: { used: number; total: number; fetched_at: string };
 }
 
 // Session status for multi-tab management

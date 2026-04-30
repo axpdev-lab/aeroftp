@@ -26,6 +26,14 @@ interface OAuthConnectProps {
   onSaveConnectionChange?: (save: boolean) => void;
   connectionName?: string;
   onConnectionNameChange?: (name: string) => void;
+  /** True when the user opened the form to edit an already-saved profile.
+   *  In edit mode the connection name field stays at the top, the Save toggle
+   *  is implicit, and Client ID / Secret can be revised inline (parity with
+   *  API/E2E/WebDAV edit forms). */
+  isEditing?: boolean;
+  /** Names of other saved profiles, used to compute a collision-aware default
+   *  placeholder (e.g. "Google Drive", "Google Drive 2"). */
+  existingNames?: string[];
 }
 
 // Map our ProviderType to OAuthProvider
@@ -178,6 +186,8 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   onSaveConnectionChange,
   connectionName = '',
   onConnectionNameChange,
+  isEditing = false,
+  existingNames = [],
 }) => {
   const { t } = useI18n();
   const { isAuthenticating, error, startAuth, connect, hasTokens, logout } = useOAuth2();
@@ -207,6 +217,32 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const [showSecret, setShowSecret] = useState(false);
   const [zohoRegion, setZohoRegion] = useState('us');
   const [copiedUri, setCopiedUri] = useState(false);
+  // Edit-mode toggle: reveals Client ID / Secret / Region inputs from the
+  // active state so users can rotate credentials without leaving Edit.
+  const [showEditCredentials, setShowEditCredentials] = useState(false);
+
+  // In edit mode the user is already saving — keep the toggle implicit ON
+  // and never collapse the connection name field. Done once on mount.
+  useEffect(() => {
+    if (isEditing && !wantToSave) {
+      setWantToSave(true);
+      onSaveConnectionChange?.(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
+
+  // Compute a collision-aware default name like "Google Drive" → "Google Drive 2".
+  // Used as input placeholder so the user sees what would be saved if left empty.
+  const defaultName = (() => {
+    const base = providerNames[provider] || provider;
+    const taken = new Set((existingNames || []).map(n => n.trim().toLowerCase()));
+    if (!taken.has(base.toLowerCase())) return base;
+    for (let i = 2; i < 100; i += 1) {
+      const candidate = `${base} ${i}`;
+      if (!taken.has(candidate.toLowerCase())) return candidate;
+    }
+    return base;
+  })();
 
   const isZoho = provider === 'zohoworkdrive';
   const oauthProvider = providerMap[provider];
@@ -370,6 +406,23 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   if (hasExistingTokens && !wantsNewAccount) {
     return (
       <div className="space-y-4">
+        {/* Connection name at top-left (parity with API / E2E / WebDAV edit forms) */}
+        {(wantToSave || isEditing) && (
+          <div>
+            <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
+            <input
+              type="text"
+              value={saveName}
+              onChange={(e) => {
+                setSaveName(e.target.value);
+                onConnectionNameChange?.(e.target.value);
+              }}
+              placeholder={defaultName}
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+            />
+          </div>
+        )}
+
         {/* Active Status Card */}
         <div className={`p-4 rounded-lg border-2 ${provider === 'googledrive' ? 'border-red-500/30 bg-red-500/5' :
           provider === 'dropbox' ? 'border-blue-500/30 bg-blue-500/5' :
@@ -436,22 +489,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           <Save size={16} className="text-gray-400" />
         </div>
 
-        {/* Connection Name (editable for OAuth — renaming a saved server only changes the local label, not the OAuth tokens) */}
-        {wantToSave && (
-          <div>
-            <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
-            <input
-              type="text"
-              value={saveName}
-              onChange={(e) => {
-                setSaveName(e.target.value);
-                onConnectionNameChange?.(e.target.value);
-              }}
-              placeholder={t('connection.oauth.myProvider', { provider: providerNames[provider] })}
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-            />
-          </div>
-        )}
+        {/* Connection name moved above the active status card (top-left) */}
 
         {/* Quick Connect Button */}
         <button
@@ -496,12 +534,23 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           </button>
         </div>
 
-        {/* Account Summary */}
-        {clientId && (
+        {/* Account Summary or inline credentials editor (Edit-mode parity) */}
+        {clientId && !showEditCredentials && (
           <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-gray-500">{t('settings.clientId')}</span>
-              <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{clientId.slice(0, 12)}{'…'}</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">{clientId.slice(0, 12)}{'…'}</span>
+                {isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setShowEditCredentials(true)}
+                    className="shrink-0 text-xs text-blue-500 hover:text-blue-600"
+                  >
+                    {t('common.edit')}
+                  </button>
+                )}
+              </div>
             </div>
             {clientSecret && (
               <div className="flex items-center justify-between">
@@ -515,6 +564,83 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
                 <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{ZOHO_REGIONS.find(r => r.value === zohoRegion)?.label || zohoRegion}</span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Inline editor when isEditing && user clicked Edit on the summary */}
+        {showEditCredentials && (
+          <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium text-sm">{t('connection.oauth.oauth2Credentials')}</h4>
+              <button
+                type="button"
+                onClick={() => setShowEditCredentials(false)}
+                className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+            {isZoho && (
+              <div>
+                <label className="block text-xs font-medium mb-1">{t('connection.oauth.zohoRegion')}</label>
+                <select
+                  value={zohoRegion}
+                  onChange={(e) => setZohoRegion(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                >
+                  {ZOHO_REGIONS.map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
+              <input
+                type="text"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder={t('connection.oauth.enterClientId')}
+                className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
+              <div className="relative">
+                <input
+                  type={showSecret ? 'text' : 'password'}
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder={t('connection.oauth.enterClientSecret')}
+                  className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
+                />
+                <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                  {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                // Persist new credentials, then hide the editor. Tokens stay valid
+                // because we are not re-running the OAuth flow.
+                const credKey = credentialAlias[provider] || provider;
+                try {
+                  await invoke('store_credential', { account: `oauth_${credKey}_client_id`, password: clientId });
+                  await invoke('store_credential', { account: `oauth_${credKey}_client_secret`, password: clientSecret });
+                  if (isZoho) {
+                    await invoke('store_credential', { account: `oauth_${provider}_region`, password: zohoRegion });
+                  }
+                } catch (e) {
+                  console.error('Failed to save credentials', e);
+                }
+                setShowEditCredentials(false);
+              }}
+              disabled={!clientId || !clientSecret}
+              className="w-full py-2 px-3 text-sm text-white font-medium rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
+            >
+              {t('common.save')}
+            </button>
           </div>
         )}
 
@@ -533,6 +659,23 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Connection Name at the top when saving (parity with API/E2E/WebDAV) */}
+      {wantToSave && (
+        <div>
+          <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
+          <input
+            type="text"
+            value={saveName}
+            onChange={(e) => {
+              setSaveName(e.target.value);
+              onConnectionNameChange?.(e.target.value);
+            }}
+            placeholder={defaultName}
+            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+          />
+        </div>
+      )}
+
       {/* Local Path (optional) */}
       <div>
         <label className="block text-sm font-medium mb-1.5">{t('connection.oauth.localFolderOptional')}</label>
@@ -574,22 +717,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
         <Save size={16} className="text-gray-400" />
       </div>
 
-      {/* Connection Name (if saving) */}
-      {wantToSave && (
-        <div>
-          <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
-          <input
-            type="text"
-            value={saveName}
-            onChange={(e) => {
-              setSaveName(e.target.value);
-              onConnectionNameChange?.(e.target.value);
-            }}
-            placeholder={t('connection.oauth.myProvider', { provider: providerNames[provider] })}
-            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-          />
-        </div>
-      )}
+      {/* Connection name moved above (top-left) */}
 
       {/* Error Display */}
       {error && (

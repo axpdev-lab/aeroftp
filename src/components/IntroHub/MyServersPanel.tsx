@@ -16,6 +16,9 @@ import { ServerHealthCheck } from '../ServerHealthCheck';
 import { SpeedTestDialog } from '../SpeedTestDialog';
 import { AlertDialog } from '../Dialogs';
 import { supportsSpeedTest } from '../../utils/speedTest';
+import { useProviderHealth, type HealthTarget } from '../../hooks/useProviderHealth';
+import { useCardLayout } from '../../hooks/useCardLayout';
+import { PROVIDER_HEALTH_URLS } from './discoverData';
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
@@ -320,6 +323,39 @@ export function MyServersPanel({
         }
         return result;
     }, [servers, searchQuery, activeFilter, favorites]);
+
+    // Per-server reachability probe — only meaningful in detailed layout, so
+    // we skip the scan otherwise to avoid burning network on a probe nobody
+    // can see. Scans are throttled and cached for 5 minutes by the hook.
+    const cardLayout = useCardLayout();
+    const { getStatus: getHealthStatus, scanItems: scanHealth, scanning: healthScanning } = useProviderHealth();
+
+    const healthTargets: HealthTarget[] = useMemo(() => {
+        if (cardLayout !== 'detailed') return [];
+        const out: HealthTarget[] = [];
+        for (const s of filteredServers) {
+            const proto = s.protocol;
+            // Prefer the per-protocol API endpoint (works for OAuth where the
+            // user host is empty/internal). Fall back to the saved hostname.
+            const url = (proto && PROVIDER_HEALTH_URLS[proto])
+                || (s.host ? `https://${s.host.split(':')[0]}` : null);
+            if (url) out.push({ id: s.id, url });
+        }
+        return out;
+    }, [cardLayout, filteredServers]);
+
+    // Auto-scan when detailed layout is active and the visible list changes.
+    // 600ms debounce mirrors the Discover tab so the load feels lazy and
+    // does not block the initial paint.
+    useEffect(() => {
+        if (cardLayout !== 'detailed' || healthTargets.length === 0) return;
+        const t = window.setTimeout(() => { void scanHealth(healthTargets); }, 600);
+        return () => window.clearTimeout(t);
+    }, [cardLayout, healthTargets, scanHealth]);
+
+    const handleHealthCheck = useCallback(() => {
+        void scanHealth(healthTargets, true);
+    }, [scanHealth, healthTargets]);
 
     // Chip counts (computed once from full server list, not filtered)
     const chipCounts = useMemo(() => {
@@ -697,6 +733,7 @@ export function MyServersPanel({
                             const selectionIndex = crossProfileSelection.indexOf(server.id);
                             const selectionRole: 'source' | 'destination' | null =
                                 selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
+                            const health = cardLayout === 'detailed' ? getHealthStatus(server.id) : undefined;
                             return (
                                 <ServerCard
                                     key={server.id}
@@ -726,6 +763,8 @@ export function MyServersPanel({
                                     onDragEnd={canDrag ? handleDragEnd : undefined}
                                     selectionRole={selectionRole}
                                     onSelect={servers.length > 1 ? handleSelectServer : undefined}
+                                    healthStatus={health?.status}
+                                    healthLatencyMs={health?.latencyMs}
                                 />
                             );
                         })}
@@ -741,6 +780,7 @@ export function MyServersPanel({
                         const selectionIndex = crossProfileSelection.indexOf(server.id);
                         const selectionRole: 'source' | 'destination' | null =
                             selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
+                        const health = cardLayout === 'detailed' ? getHealthStatus(server.id) : undefined;
                         return (
                             <ServerCard
                                 key={server.id}
@@ -771,6 +811,8 @@ export function MyServersPanel({
                                 onDragEnd={canDrag ? handleDragEnd : undefined}
                                 selectionRole={selectionRole}
                                 onSelect={handleSelectServer}
+                                healthStatus={health?.status}
+                                healthLatencyMs={health?.latencyMs}
                             />
                         );
                     })}

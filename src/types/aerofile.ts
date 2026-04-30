@@ -125,4 +125,6 @@ export interface DetailedFileProperties {
   link_target: string | null;
   inode: number | null;
   hard_links: number | null;
+  is_readonly: boolean | null;
+  is_hidden: boolean | null;
 }

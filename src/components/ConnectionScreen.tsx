@@ -1415,7 +1415,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 const LogoComponent = PROVIDER_LOGOS[logoId];
                                 const display = PROTOCOL_DISPLAY[pid] || PROTOCOL_DISPLAY[protocol || ''];
                                 const providerName = selectedProvider?.name || display?.name || protocol?.toUpperCase() || '';
-                                const providerDesc = selectedProvider?.description || display?.desc;
+                                // Description fallback: registry > PROTOCOL_DISPLAY > i18n protocol.<protocol>Desc
+                                const tryProtocolDesc = (key: string): string | undefined => {
+                                    if (!key) return undefined;
+                                    const i18nKey = `protocol.${key}Desc`;
+                                    const v = t(i18nKey);
+                                    return v && v !== i18nKey ? v : undefined;
+                                };
+                                const providerDesc = selectedProvider?.description
+                                    || display?.desc
+                                    || tryProtocolDesc(pid)
+                                    || tryProtocolDesc(protocol || '');
                                 if (!LogoComponent && !providerName) return null;
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
@@ -1647,6 +1657,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onSaveConnectionChange={setSaveConnection}
                                 connectionName={connectionName}
                                 onConnectionNameChange={setConnectionName}
+                                isEditing={!!editingProfileId}
+                                existingNames={servers.map(s => s.name)}
                                 onConnected={async (displayName, extraOptions) => {
                                     // Save OAuth connection if requested
                                     if (saveConnection) {

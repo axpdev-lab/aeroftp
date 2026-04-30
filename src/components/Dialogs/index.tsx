@@ -272,6 +272,8 @@ export interface FileProperties {
     inode?: number | null;
     hard_links?: number | null;
     permissions_mode?: number | null;
+    is_readonly?: boolean | null;
+    is_hidden?: boolean | null;
     // Checksum (optional, calculated on demand)
     checksum?: {
         md5?: string;
@@ -585,7 +587,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                     {/* Permissions Tab */}
                     {activeTab === 'permissions' && (
                         <>
-                            {(file.permissions || file.permissions_mode != null) ? (
+                            {(file.permissions || file.permissions_mode != null) && (
                                 <>
                                     <PropertyRow
                                         icon={<Shield size={16} />}
@@ -603,14 +605,21 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                         />
                                     )}
                                 </>
-                            ) : (
-                                <div className="flex items-start gap-3 py-2 border-b border-gray-100 dark:border-gray-700">
-                                    <div className="text-gray-400 mt-0.5"><Shield size={16} /></div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">{t('properties.permissions')}</div>
-                                        <div className="text-sm text-gray-500">—</div>
-                                    </div>
-                                </div>
+                            )}
+
+                            {file.is_readonly != null && (
+                                <PropertyRow
+                                    icon={<Lock size={16} />}
+                                    label={t('properties.readOnly')}
+                                    value={file.is_readonly ? t('common.yes') : t('common.no')}
+                                />
+                            )}
+                            {file.is_hidden != null && (
+                                <PropertyRow
+                                    icon={file.is_hidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    label={t('properties.hidden')}
+                                    value={file.is_hidden ? t('common.yes') : t('common.no')}
+                                />
                             )}
 
                             {(file.owner || file.group) && (
@@ -648,7 +657,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                             )}
 
                             {/* Show message when no permission data at all */}
-                            {!file.permissions && file.permissions_mode == null && !file.owner && !file.group && file.inode == null && file.hard_links == null && (
+                            {!file.permissions && file.permissions_mode == null && !file.owner && !file.group && file.inode == null && file.hard_links == null && file.is_readonly == null && file.is_hidden == null && (
                                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
                                     {t('properties.notAvailable')}
                                 </div>

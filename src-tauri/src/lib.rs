@@ -69,6 +69,7 @@ pub mod aerorsync;
 pub mod agent_session;
 mod file_tags;
 mod file_watcher;
+mod local_panel_watcher;
 mod filesystem;
 pub mod filezilla_import;
 mod ftp;
@@ -11513,6 +11514,9 @@ pub fn run() {
             // Start mount watcher — emits 'volumes-changed' events instead of 5s polling
             filesystem::start_mount_watcher(app.handle().clone());
 
+            // Local panel filesystem watcher state (one watcher slot, swapped on path change)
+            app.manage(local_panel_watcher::LocalPanelWatcherState::default());
+
             // Navigate main window from tauri:// to http://localhost to fix
             // WebKitGTK rendering issues with Monaco, xterm.js, and iframes.
             // Linux-only — macOS/Windows use Tauri's default asset protocol.
@@ -11943,6 +11947,8 @@ pub fn run() {
             set_close_to_tray,
             is_autostart_launch,
             copy_to_clipboard,
+            local_panel_watcher::local_panel_watch,
+            local_panel_watcher::local_panel_watch_stop,
             resolve_hostname,
             connect_ftp,
             disconnect_ftp,

@@ -1122,6 +1122,12 @@ pub struct DetailedFileProperties {
     pub link_target: Option<String>,
     pub inode: Option<u64>,
     pub hard_links: Option<u64>,
+    /// Read-only flag. On Windows this is the FILE_ATTRIBUTE_READONLY bit; on
+    /// Unix it is derived from the owner write bit being clear.
+    pub is_readonly: Option<bool>,
+    /// Hidden flag. On Windows this is the FILE_ATTRIBUTE_HIDDEN bit; on Unix
+    /// it is the dotfile convention (name starts with `.`, excluding `.` and `..`).
+    pub is_hidden: Option<bool>,
 }
 
 /// Result of a recursive folder size calculation.
@@ -1236,6 +1242,33 @@ pub async fn get_file_properties(path: String) -> Result<DetailedFileProperties,
     let (permissions_mode, permissions_text, owner, group, inode, hard_links) =
         { (None, None, None, None, None, None) };
 
+    // ── Read-only + hidden flags (cross-platform) ──────────────────────────
+    #[cfg(unix)]
+    let (is_readonly, is_hidden) = {
+        use std::os::unix::fs::MetadataExt;
+        let mode = metadata.mode();
+        // Owner write bit clear → read-only for the current user. Group/other
+        // bits are not considered because uid is what the running app sees.
+        let ro = mode & 0o200 == 0;
+        let hidden = name.starts_with('.') && name != "." && name != "..";
+        (Some(ro), Some(hidden))
+    };
+
+    #[cfg(windows)]
+    let (is_readonly, is_hidden) = {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_READONLY: u32 = 0x0000_0001;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x0000_0002;
+        let attrs = metadata.file_attributes();
+        (
+            Some(attrs & FILE_ATTRIBUTE_READONLY != 0),
+            Some(attrs & FILE_ATTRIBUTE_HIDDEN != 0),
+        )
+    };
+
+    #[cfg(not(any(unix, windows)))]
+    let (is_readonly, is_hidden) = (None, None);
+
     Ok(DetailedFileProperties {
         name,
         path: path.clone(),
@@ -1252,6 +1285,8 @@ pub async fn get_file_properties(path: String) -> Result<DetailedFileProperties,
         link_target,
         inode,
         hard_links,
+        is_readonly,
+        is_hidden,
     })
 }
 

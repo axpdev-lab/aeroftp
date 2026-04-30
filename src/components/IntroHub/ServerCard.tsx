@@ -1,11 +1,46 @@
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Folder, HardDrive, Check, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
-import { ServerProfile, ProviderType, getProtocolClass } from '../../types';
+import { ServerProfile, ProviderType, getProtocolClass, getE2EBits } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { maskCredential } from '../../utils/maskCredential';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
 import { useTranslation } from '../../i18n';
+import { useCardLayout } from '../../hooks/useCardLayout';
+import { formatBytes } from '../../utils/formatters';
+import { HealthRadial } from './HealthRadial';
+
+/** Compact storage usage bar for the detailed card layout. Reads from
+ *  `server.lastQuota` (cached on the last successful connection). Hidden when
+ *  no quota has ever been observed for this profile. */
+function StorageUsageBar({ quota }: { quota: NonNullable<ServerProfile['lastQuota']> }) {
+    const t = useTranslation();
+    const { used, total } = quota;
+    if (!total || total <= 0) return null;
+    const pct = Math.max(0, Math.min(100, (used / total) * 100));
+    const pctLabel = pct >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10;
+    const tone =
+        pct >= 90 ? 'bg-red-500'
+        : pct >= 75 ? 'bg-amber-500'
+        : 'bg-blue-500';
+    return (
+        <div
+            className="mt-2 space-y-1"
+            title={t('introHub.storageUsedOf', { used: formatBytes(used), total: formatBytes(total) })}
+        >
+            <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
+                <span>{formatBytes(used)} / {formatBytes(total)}</span>
+                <span>{pctLabel}%</span>
+            </div>
+            <div className="h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div
+                    className={`h-full ${tone} transition-all`}
+                    style={{ width: `${pct}%` }}
+                />
+            </div>
+        </div>
+    );
+}
 
 function ServerBadges({ server }: { server: ServerProfile }) {
     const t = useTranslation();
@@ -24,6 +59,8 @@ function ServerBadges({ server }: { server: ServerProfile }) {
     const megaBadge = proto === 'mega' ? getMegaConnectionBadge(server.options) : null;
     const infiniCloudBadge = server.providerId === 'infinicloud' ? getInfiniCloudConnectionBadge(server.options) : null;
     const protocolClass = getProtocolClass(proto as ProviderType);
+    const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto as ProviderType) : null;
+    const protocolClassLabel = e2eBits ? `E2E ${e2eBits}` : protocolClass;
     // Skip class badge when it duplicates the brand badge (FTP/FTPS/SFTP show protocol uppercase already)
     const showClassBadge = !['FTP', 'FTPS', 'SFTP'].includes(protocolClass);
     const classBadgeColor: Record<string, string> = {
@@ -60,7 +97,7 @@ function ServerBadges({ server }: { server: ServerProfile }) {
             ) : null}
             {showClassBadge && server.providerId !== 'felicloud' && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${classBadgeColor[protocolClass] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
-                    {protocolClass}
+                    {protocolClassLabel}
                 </span>
             )}
             {certVerified && (
@@ -130,6 +167,9 @@ interface ServerCardProps {
     selectionRole?: 'source' | 'destination' | null;
     /** Toggles this server in the Cross-Profile selection. Triggered by clicking the card body. */
     onSelect?: (server: ServerProfile) => void;
+    /** Reachability probe state, fed by useProviderHealth in detailed layout. */
+    healthStatus?: 'up' | 'slow' | 'down' | 'pending' | 'unknown';
+    healthLatencyMs?: number;
 }
 
 function RenameInput({
@@ -253,8 +293,15 @@ export const ServerCard = React.memo(function ServerCard({
     onDragEnd,
     selectionRole = null,
     onSelect,
+    healthStatus,
+    healthLatencyMs,
 }: ServerCardProps) {
     const t = useTranslation();
+    const cardLayout = useCardLayout();
+    const showRadial = cardLayout === 'detailed' && !!healthStatus && healthStatus !== 'unknown';
+    const radialTitle = healthStatus
+        ? t(`introHub.health.${healthStatus}`) + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
+        : undefined;
     const proto = server.protocol || 'ftp';
     const timeAgo = getTimeAgo(server.lastConnected);
     const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
@@ -387,6 +434,18 @@ export const ServerCard = React.memo(function ServerCard({
                     <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0 text-right flex items-center gap-0.5"><Clock size={9} />{timeAgo}</span>
                 )}
 
+                {/* Col: Health Radial (detailed layout) */}
+                {showRadial && (
+                    <span className="shrink-0 text-gray-300 dark:text-gray-600">
+                        <HealthRadial
+                            status={healthStatus!}
+                            latencyMs={healthLatencyMs}
+                            size={18}
+                            title={radialTitle}
+                        />
+                    </span>
+                )}
+
                 {/* Actions (hover) */}
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                     <button onClick={(e) => { e.stopPropagation(); onEdit(server); }} className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title={t('common.edit')}>
@@ -475,6 +534,23 @@ export const ServerCard = React.memo(function ServerCard({
 
             {/* Subtitle */}
             <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-2 min-h-[1rem]">{subtitle}</div>
+
+            {/* Storage usage bar (detailed layout, when a quota was cached on a previous connection) */}
+            {cardLayout === 'detailed' && server.lastQuota && (
+                <StorageUsageBar quota={server.lastQuota} />
+            )}
+
+            {/* Health Radial (detailed layout) — bottom-right, doesn't overlap actions */}
+            {showRadial && (
+                <div className="absolute bottom-2 right-2 pointer-events-none text-gray-300 dark:text-gray-600">
+                    <HealthRadial
+                        status={healthStatus!}
+                        latencyMs={healthLatencyMs}
+                        size={20}
+                        title={radialTitle}
+                    />
+                </div>
+            )}
 
             {/* Top-right: action buttons (hover) + favorite star (rightmost) */}
             <div className="absolute top-2 right-2 flex items-center gap-0.5">

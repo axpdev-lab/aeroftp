@@ -269,7 +269,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
         </div>
 
         {/* Toggles */}
-        <div className="space-y-2">
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
           <Checkbox
             checked={config.sync_on_change}
             onChange={(v) => setConfig(prev => prev ? { ...prev, sync_on_change: v } : null)}

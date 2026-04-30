@@ -74,6 +74,9 @@ export interface AppSettings {
   lastLocalPath?: string;
   showSystemMenu?: boolean;
   disableUpdateChecks: boolean;
+  /** Layout density for My Servers / Discover cards. `detailed` shows the
+   *  cached storage usage bar; `compact` keeps the legacy minimal card. */
+  cardLayout: 'compact' | 'detailed';
 }
 
 export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
@@ -103,6 +106,7 @@ const DEFAULTS: AppSettings = {
   fileExistsAction: 'ask',
   swapPanels: false,
   disableUpdateChecks: false,
+  cardLayout: 'compact',
 };
 
 export const useSettings = () => {
@@ -130,6 +134,7 @@ export const useSettings = () => {
   const [fileExistsAction, setFileExistsAction] = useState<AppSettings['fileExistsAction']>(DEFAULTS.fileExistsAction);
   const [swapPanels, setSwapPanels] = useState(DEFAULTS.swapPanels);
   const [disableUpdateChecks, setDisableUpdateChecks] = useState(DEFAULTS.disableUpdateChecks);
+  const [cardLayout, setCardLayout] = useState<AppSettings['cardLayout']>(DEFAULTS.cardLayout);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -162,6 +167,9 @@ export const useSettings = () => {
     }
     if (typeof parsed.swapPanels === 'boolean') setSwapPanels(parsed.swapPanels);
     if (typeof parsed.disableUpdateChecks === 'boolean') setDisableUpdateChecks(parsed.disableUpdateChecks);
+    if (parsed.cardLayout === 'compact' || parsed.cardLayout === 'detailed') {
+      setCardLayout(parsed.cardLayout);
+    }
   }, []);
 
   // Load settings on mount + listen for changes
@@ -246,6 +254,7 @@ export const useSettings = () => {
     fileExistsAction,
     swapPanels,
     disableUpdateChecks,
+    cardLayout,
     showSettingsPanel,
 
     // Setters
@@ -273,6 +282,7 @@ export const useSettings = () => {
     setFileExistsAction,
     setSwapPanels,
     setDisableUpdateChecks,
+    setCardLayout,
     setShowSettingsPanel,
 
     // Constants

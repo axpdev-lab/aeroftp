@@ -186,6 +186,7 @@ import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from 
 import { useActivityLog } from './hooks/useActivityLog';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useSettings } from './hooks/useSettings';
+import { useFontSizeShortcuts, FontSizeIndicator } from './hooks/useFontSizeShortcuts';
 import { useMouseBackButton } from './hooks/useMouseBackButton';
 import { useAutoUpdate } from './hooks/useAutoUpdate';
 import { usePreview } from './hooks/usePreview';
@@ -239,9 +240,12 @@ const App: React.FC = () => {
     setShowActivityLog,
     setShowHiddenFiles, debugMode, setDebugMode,
     setSwapPanels,
+    setFontSize,
+    cardLayout,
     disableUpdateChecks,
     SETTINGS_KEY,
   } = settings;
+  const fontSizeIndicator = useFontSizeShortcuts(fontSize, setFontSize);
   const [sessionTransferSpeedPreset, setSessionTransferSpeedPreset] = useState<TransferSpeedPreset>(
     () => deriveTransferSpeedPreset(maxConcurrentTransfers)
   );
@@ -1339,6 +1343,24 @@ interface UpdateVerificationInfo {
     activePanel, currentRemotePath, currentLocalPath, isConnected]);
 
 
+  // Persist last known quota to the saved server profile (best-effort) so the
+  // detailed My Servers card layout can render a usage bar without a fresh
+  // round-trip on every render.
+  const persistQuotaToProfile = async (
+    profileId: string | undefined,
+    quota: { used: number; total: number },
+  ) => {
+    if (!profileId) return;
+    try {
+      const all = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers') || [];
+      const next = all.map(s => s.id === profileId
+        ? { ...s, lastQuota: { used: quota.used, total: quota.total, fetched_at: new Date().toISOString() } }
+        : s
+      );
+      await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', next);
+    } catch { /* best-effort */ }
+  };
+
   // Fetch storage quota for a given protocol (call after successful connection/reconnection)
   const fetchStorageQuota = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
     const version = ++quotaVersionRef.current;
@@ -1360,6 +1382,8 @@ interface UpdateVerificationInfo {
         if (version === quotaVersionRef.current) {
           setStorageQuota({ used: quota.used, total: quota.total, free: quota.available });
         }
+        const profileId = freshSessionParams?.savedServerId || activeSession?.connectionParams?.savedServerId || connectionParams.savedServerId;
+        void persistQuotaToProfile(profileId, { used: quota.used, total: quota.total });
       } catch (e) {
         console.warn('[StorageQuota] InfiniCloud quota failed:', e);
         if (version === quotaVersionRef.current) setStorageQuota(null);
@@ -1374,6 +1398,8 @@ interface UpdateVerificationInfo {
         if (version === quotaVersionRef.current) {
           setStorageQuota(info);
         }
+        const profileId = freshSessionParams?.savedServerId || activeSession?.connectionParams?.savedServerId || connectionParams.savedServerId;
+        void persistQuotaToProfile(profileId, { used: info.used, total: info.total });
       } catch (e) {
         console.warn('[StorageQuota] Failed to fetch:', e);
         if (version === quotaVersionRef.current) {
@@ -1952,6 +1978,41 @@ interface UpdateVerificationInfo {
       return false;
     }
   }, [showHiddenFiles, notify, t]);
+
+  // AeroFile auto-refresh: watch the active local directory and reload its
+  // listing when something changes underneath. Removes the need to hit Refresh
+  // after creating/renaming/deleting files outside AeroFTP (wishlist #133).
+  useEffect(() => {
+    if (!currentLocalPath) return;
+    void invoke('local_panel_watch', { path: currentLocalPath }).catch(() => { /* dir gone or not yet ready */ });
+  }, [currentLocalPath]);
+
+  useEffect(() => {
+    let pending: number | null = null;
+    let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fn = await listen<{ path: string }>('local-fs-changed', (event) => {
+          const expected = currentLocalPathRef.current;
+          if (!expected || event.payload.path !== expected) return;
+          if (pending !== null) window.clearTimeout(pending);
+          pending = window.setTimeout(() => {
+            pending = null;
+            loadLocalFiles(currentLocalPathRef.current).catch(() => { /* swallowed by loader */ });
+          }, 350);
+        });
+        if (cancelled) fn();
+        else unlistenFn = fn;
+      } catch { /* ignore — watcher is best-effort */ }
+    })();
+    return () => {
+      cancelled = true;
+      if (pending !== null) window.clearTimeout(pending);
+      if (unlistenFn) unlistenFn();
+      void invoke('local_panel_watch_stop').catch(() => { /* ignore */ });
+    };
+  }, [loadLocalFiles]);
 
   const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean): Promise<FileListResponse | null> => {
     try {
@@ -6589,6 +6650,8 @@ interface UpdateVerificationInfo {
               link_target: detailed.link_target,
               inode: detailed.inode,
               hard_links: detailed.hard_links,
+              is_readonly: detailed.is_readonly,
+              is_hidden: detailed.is_hidden,
             } : null);
           } catch {
             // Silently fail - basic properties are still shown
@@ -7224,9 +7287,9 @@ interface UpdateVerificationInfo {
           }}
           hasSelection={selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0}
           hasClipboard={hasClipboard}
-          onToggleEditor={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'editor' }))}
-          onToggleTerminal={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'terminal' }))}
-          onToggleAgent={() => window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }))}
+          onToggleEditor={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'editor' })); }}
+          onToggleTerminal={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'terminal' })); }}
+          onToggleAgent={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'agent' })); }}
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
@@ -7234,6 +7297,7 @@ interface UpdateVerificationInfo {
 
         <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
         <ScanningToast state={scanningState} t={t} />
+        <FontSizeIndicator indicator={fontSizeIndicator} />
 
         {/* Update Available Toast with inline download */}
         {updateAvailable?.has_update && !updateToastDismissed && (

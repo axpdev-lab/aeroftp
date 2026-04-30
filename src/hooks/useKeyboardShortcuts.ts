@@ -23,6 +23,33 @@ export const useKeyboardShortcuts = (config: ShortcutConfig, deps: React.Depende
                 }
             }
 
+            // A11y: when an interactive element (button/link/role=button/contenteditable false but focusable)
+            // has focus, Enter and Space must trigger its native click instead of being captured by a global
+            // shortcut. Without this, focus-then-Enter does not activate the button (a wishlist regression
+            // reported by users keyboard-navigating My Servers / Discover / Settings).
+            if (event.key === 'Enter' || event.key === ' ') {
+                const ae = document.activeElement as HTMLElement | null;
+                if (ae) {
+                    const tag = ae.tagName;
+                    const role = ae.getAttribute('role');
+                    const isInteractive =
+                        tag === 'BUTTON' ||
+                        tag === 'A' ||
+                        tag === 'SELECT' ||
+                        role === 'button' ||
+                        role === 'link' ||
+                        role === 'menuitem' ||
+                        role === 'option' ||
+                        role === 'tab' ||
+                        role === 'checkbox' ||
+                        role === 'radio' ||
+                        role === 'switch';
+                    if (isInteractive && !ae.hasAttribute('aria-disabled') && !(ae as HTMLButtonElement).disabled) {
+                        return;
+                    }
+                }
+            }
+
             const keys: string[] = [];
             // Normalize Meta (Cmd on macOS) to Ctrl for cross-platform shortcut matching
             if (event.ctrlKey || event.metaKey) keys.push('Ctrl');

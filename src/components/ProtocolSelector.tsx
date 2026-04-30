@@ -115,6 +115,10 @@ interface ProtocolInfo {
     providerId?: string;  // Auto-select this provider preset on click
 }
 
+// Treat E2E variants ("E2E 128", "E2E 256") as secure badges alongside TLS/SSH/HMAC
+export const isSecureBadge = (badge?: string): boolean =>
+    !!badge && (badge === 'TLS' || badge === 'SSH' || badge === 'HMAC' || badge.startsWith('E2E'));
+
 // Helper to get protocols with translations
 // We define this function outside the component to avoid re-creating the array on every render
 const getProtocols = (t: (key: string, params?: Record<string, string>) => string): ProtocolInfo[] => [
@@ -243,7 +247,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         icon: <MegaLogo size={18} />,
         description: t('protocol.megaDesc'),
         defaultPort: 443,
-        badge: 'E2E',
+        badge: 'E2E 128',
         color: 'text-red-600',
         isCloudStorage: true,
         tooltip: t('protocol.megaTooltip'),
@@ -276,7 +280,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         icon: <FilenLogo size={18} />,
         description: t('protocol.filenDesc'),
         defaultPort: 443,
-        badge: 'E2E',
+        badge: 'E2E 256',
         color: 'text-emerald-600',
         isCloudStorage: true,
         tooltip: t('protocol.filenTooltip'),
@@ -388,7 +392,7 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         icon: <InternxtLogo size={18} />,
         description: t('protocol.internxtDesc'),
         defaultPort: 443,
-        badge: 'E2E',
+        badge: 'E2E 256',
         color: 'text-blue-600',
         isCloudStorage: true,
         tooltip: t('protocol.internxtTooltip'),
@@ -432,10 +436,10 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'googlephotos', name: 'Google Photos', icon: <GooglePhotosLogo size={18} />, description: 'Google Photos (read + upload)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Google Photos Library API' },
     { type: 'onedrive', name: 'OneDrive', icon: <OneDriveLogo size={18} />, description: 'OneDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'OneDrive OAuth2' },
     { type: 'dropbox', name: 'Dropbox', icon: <DropboxLogo size={18} />, description: 'Dropbox (2 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Dropbox OAuth2' },
-    { type: 'mega', name: 'MEGA', icon: <MegaLogo size={18} />, description: 'MEGA (20 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-red-600', isCloudStorage: true, tooltip: 'MEGA E2E encryption' },
+    { type: 'mega', name: 'MEGA', icon: <MegaLogo size={18} />, description: 'MEGA (20 GB free)', defaultPort: 443, badge: 'E2E 128', color: 'text-red-600', isCloudStorage: true, tooltip: 'MEGA E2E encryption' },
     { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Box (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
     { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Zoho WorkDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
-    { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud (10 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption' },
+    { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud (10 GB free)', defaultPort: 443, badge: 'E2E 256', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption' },
     { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Drime Cloud (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud — Bearer Token auth' },
     { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', defaultPort: 443, badge: 'API', color: 'text-sky-500', isCloudStorage: true, tooltip: 'FileLu — API Key auth, 1 GB free' },
     { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '4shared (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
@@ -445,7 +449,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'opendrive', name: 'OpenDrive', icon: <OpenDriveLogo size={18} />, description: 'OpenDrive Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-cyan-500', isCloudStorage: true, tooltip: 'OpenDrive - 5GB free cloud storage, username/password authentication' },
     { type: 'yandexdisk', name: 'Yandex Disk', icon: <YandexDiskLogo size={18} />, description: 'Yandex Disk (5 GB free)', defaultPort: 443, badge: 'OAuth', color: 'text-yellow-500', isCloudStorage: true, tooltip: 'Yandex Disk — OAuth2 token auth' },
     { type: 'github', name: 'GitHub', icon: <GitHubLogo size={18} />, description: 'GitHub Repository (filesystem)', defaultPort: 443, badge: 'API', color: 'text-gray-400', isCloudStorage: true, tooltip: 'Browse GitHub repos as filesystem. Uploads create commits.' },
-    { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
+    { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E 256', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
     { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud — Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
     { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich — Self-hosted photo/video management, API key auth' },
@@ -558,13 +562,13 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                 <div className="text-xs text-gray-500 truncate">{protocol.description}</div>
                             </div>
                             {protocol.badge && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge)
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 flex-shrink-0 ${isSecureBadge(protocol.badge)
                                         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                                         : protocol.badge === 'Soon'
                                             ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
                                             : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                     }`} style={protocol.badge === 'API OCS' ? { backgroundColor: '#0083ce22', color: '#0083ce' } : undefined}>
-                                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge) && <ShieldCheck size={10} />}
+                                    {isSecureBadge(protocol.badge) && <ShieldCheck size={10} />}
                                     {protocol.badge === 'OAuth' && <Lock size={10} />}
                                     {protocol.badge}
                                 </span>
@@ -614,13 +618,13 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
                                             : protocol.badge === 'API'
                                                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                                            : ['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge)
+                                            : isSecureBadge(protocol.badge)
                                                 ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                                                 : protocol.badge === 'Soon'
                                                     ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
                                                     : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                     }`} style={protocol.badge === 'API OCS' ? { backgroundColor: '#0083ce22', color: '#0083ce' } : undefined}>
-                                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(protocol.badge) && <ShieldCheck size={10} />}
+                                    {isSecureBadge(protocol.badge) && <ShieldCheck size={10} />}
                                     {protocol.badge === 'OAuth' && <Lock size={10} />}
                                     {protocol.badge}
                                 </span>
@@ -632,7 +636,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
 
             {/* Badge for selected protocol (hidden when FTP encryption is none) */}
             {value && effectiveBadge && !isOpen && (
-                <span className={`inline-flex items-center gap-1 mt-1.5 text-xs px-2 py-0.5 rounded-full ${['TLS', 'SSH', 'HMAC', 'E2E'].includes(effectiveBadge)
+                <span className={`inline-flex items-center gap-1 mt-1.5 text-xs px-2 py-0.5 rounded-full ${isSecureBadge(effectiveBadge)
                         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                         : effectiveBadge === 'OAuth'
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
@@ -642,7 +646,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                                 ? 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300'
                                 : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                     }`}>
-                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(effectiveBadge) && <ShieldCheck size={12} />}
+                    {isSecureBadge(effectiveBadge) && <ShieldCheck size={12} />}
                     {effectiveBadge === 'OAuth' && <Lock size={12} />}
                     {effectiveBadge}
                 </span>

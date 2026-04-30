@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
-import { ProtocolIcon, ProtocolBadge } from '../ProtocolSelector';
+import { ProtocolIcon, ProtocolBadge, isSecureBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS } from './discoverData';
 import { CatalogCategoryId } from '../../types/catalog';
@@ -82,7 +82,7 @@ function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onS
             {/* Badge - same colors as original ProtocolSelector */}
             {item.badge && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-0.5 font-medium shrink-0 ${
-                    ['TLS', 'SSH', 'E2E'].includes(item.badge)
+                    isSecureBadge(item.badge)
                         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                     : item.badge === 'OAuth'
                         ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
@@ -98,7 +98,7 @@ function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onS
                         ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
                     : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                 }`}>
-                    {['TLS', 'SSH', 'HMAC', 'E2E'].includes(item.badge) && <ShieldCheck size={10} />}
+                    {isSecureBadge(item.badge) && <ShieldCheck size={10} />}
                     {item.badge === 'OAuth' && <Lock size={10} />}
                     {(item.badge === 'API OCS' || item.badge === 'OCS') && <Globe size={10} />}
                     {item.badge}

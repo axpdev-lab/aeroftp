@@ -55,6 +55,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
     const [installing, setInstalling] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [registryDisabled, setRegistryDisabled] = useState(false);
     const searchRef = useRef<HTMLInputElement>(null);
 
     // Fetch registry on open
@@ -63,6 +64,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
         setSearch('');
         setActiveTab('browse');
         setError(null);
+        setRegistryDisabled(false);
         fetchRegistry();
         setTimeout(() => searchRef.current?.focus(), 50);
     }, [isOpen]);
@@ -83,8 +85,18 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
             const entries = await invoke<RegistryEntry[]>('fetch_plugin_registry');
             setRegistry(entries);
             setError(null);
+            setRegistryDisabled(false);
         } catch (err) {
-            setError(String(err));
+            const msg = String(err);
+            // Backend returns this exact phrase when the registry is intentionally disabled.
+            // Don't surface a duplicate red banner — the amber notice above already explains it.
+            if (msg.includes('registry is temporarily disabled')) {
+                setRegistryDisabled(true);
+                setError(null);
+            } else {
+                setError(msg);
+                setRegistryDisabled(false);
+            }
             setRegistry([]);
         } finally {
             setLoading(false);
@@ -92,12 +104,18 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
     };
 
     const installPlugin = async (pluginId: string) => {
+        if (registryDisabled) return;
         setInstalling(pluginId);
         try {
             await invoke('install_plugin_from_registry', { pluginId });
             onInstalled();
         } catch (err) {
-            setError(String(err));
+            const msg = String(err);
+            if (msg.includes('registry is temporarily disabled')) {
+                setRegistryDisabled(true);
+            } else {
+                setError(msg);
+            }
         } finally {
             setInstalling(null);
         }
@@ -277,7 +295,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
                                                     ) : (
                                                         <button
                                                             onClick={() => installPlugin(entry.id)}
-                                                            disabled={isInstalling}
+                                                            disabled={isInstalling || registryDisabled}
                                                             className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium
                                                                 bg-purple-600 text-white hover:bg-purple-700 transition-colors
                                                                 disabled:opacity-50 disabled:cursor-not-allowed"
