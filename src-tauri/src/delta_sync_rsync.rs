@@ -519,6 +519,104 @@ pub async fn check_delta_eligibility(
     Some(check_delta_eligibility_with_transport(transport.as_ref(), &session_key).await)
 }
 
+/// P3-T01 W4 — open a delta-sync batch for the current provider session.
+///
+/// Returns `None` when:
+/// - The provider is not delta-eligible (non-SFTP, password auth, etc.)
+/// - The transport's `begin_batch()` returns a [`NoopBatch`] marker
+///   (transport does not support session reuse — caller should fall
+///   through to the per-file single-shot path).
+/// - `begin_batch()` itself returns an error (logged at warn).
+///
+/// The returned batch holds a single SSH handshake; the sync loop is
+/// expected to call `batch.finalize()` at the end and surface
+/// `BatchStats.session_count` + `bytes_on_wire` via [`SyncReport`].
+///
+/// [`NoopBatch`]: crate::delta_transport::NoopBatch
+/// [`SyncReport`]: crate::sync::SyncReport
+pub async fn open_delta_batch(
+    provider: &mut dyn crate::providers::StorageProvider,
+) -> Option<Box<dyn crate::delta_transport::DeltaBatch>> {
+    let sftp = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::sftp::SftpProvider>()?;
+    let transport = sftp.delta_transport()?;
+    match transport.begin_batch().await {
+        Ok(batch) if !batch.is_noop() => {
+            tracing::info!(
+                "delta batch opened: transport={}, session reuse active",
+                transport.name()
+            );
+            Some(batch)
+        }
+        Ok(_) => {
+            tracing::debug!(
+                "delta batch open: transport={} returned NoopBatch — single-shot path",
+                transport.name()
+            );
+            None
+        }
+        Err(e) => {
+            tracing::warn!(
+                "delta batch open: begin_batch failed on transport={}: {e}",
+                transport.name()
+            );
+            None
+        }
+    }
+}
+
+/// P3-T01 W4.1 — adapter that runs a single file transfer through an
+/// already-open [`DeltaBatch`] handle. The batch keeps an SSH session
+/// alive across N files, so the per-file cost drops from full handshake
+/// to channel-exec open. Returns the same [`DeltaSyncResult`] shape as
+/// [`transfer_with_delta`] so the call site can reuse the existing
+/// fallback / hard-error / used-delta branches.
+///
+/// Pre-conditions:
+/// - `batch` was returned by `transport.begin_batch()` and is_noop() is false.
+/// - The caller decides per-file whether to route through this batch
+///   path or the legacy [`try_delta_transfer`] single-shot path.
+pub async fn try_delta_transfer_with_batch(
+    batch: &mut dyn crate::delta_transport::DeltaBatch,
+    direction: SyncDirection,
+    local_path: &Path,
+    remote_path: &str,
+) -> DeltaSyncResult {
+    let outcome = match direction {
+        SyncDirection::Upload => batch.upload(local_path, remote_path).await,
+        SyncDirection::Download => batch.download(remote_path, local_path).await,
+    };
+
+    match outcome {
+        Ok(stats) => {
+            tracing::info!(
+                "delta batch {:?} ok: sent={}B, received={}B, speedup={:.2}x, duration={}ms",
+                direction,
+                stats.bytes_sent,
+                stats.bytes_received,
+                stats.speedup,
+                stats.duration_ms,
+            );
+            DeltaSyncResult::used(stats)
+        }
+        Err(RsyncError::TooSmall { size, threshold }) => DeltaSyncResult::fallback(format!(
+            "file size {size} bytes is below delta threshold {threshold} bytes"
+        )),
+        Err(RsyncError::HardRejection(msg)) => {
+            tracing::error!(
+                "delta batch {:?} hard rejection: {msg} — classic fallback suppressed",
+                direction,
+            );
+            DeltaSyncResult::hard_error(sanitize_rsync_message(&msg))
+        }
+        Err(e) => {
+            tracing::warn!("delta batch {:?} failed: {e}", direction);
+            DeltaSyncResult::fallback(sanitize_rsync_message(&format!("batch delta failed: {e}")))
+        }
+    }
+}
+
 /// Clear the probe cache. Called on disconnect or explicit user action.
 /// Not strictly required (entries expire after 5 min) but keeps memory clean.
 pub async fn clear_probe_cache() {

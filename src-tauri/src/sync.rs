@@ -359,6 +359,21 @@ pub struct SyncReport {
     /// `delta_files`. `delta_savings` aggregates keep counting past the
     /// cap, so `files_using_delta > delta_files.len()` iff truncated.
     pub delta_files_truncated: bool,
+    /// P3-T01 W4 — `Some(N)` when a delta-sync batch was opened and
+    /// finalized successfully. `1` means the batch reused a single SSH
+    /// session for all eligible files; `> 1` means the session was
+    /// rebuilt mid-batch on a transient failure. `None` when no batch
+    /// was opened (delta policy off, provider not delta-eligible, or
+    /// batch open returned NoopBatch).
+    pub delta_session_count: Option<u32>,
+    /// P3-T01 W4 — cumulative bytes-on-wire across files that went
+    /// through the batch. `None` when no batch was opened. Sums
+    /// `bytes_sent + bytes_received` from each per-file `RsyncStats`.
+    pub delta_bytes_on_wire: Option<u64>,
+    /// P3-T01 W4 — count of files that successfully transferred through
+    /// the batch path. May be less than `uploaded + downloaded` if some
+    /// files fell back to the single-shot or classic path.
+    pub delta_batch_files: Option<u64>,
 }
 
 impl SyncReport {
