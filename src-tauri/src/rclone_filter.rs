@@ -78,7 +78,11 @@ impl fmt::Display for RcloneFilterWarning {
                 write!(f, "line {}: pattern '{}' uses brace alternation '{{a,b}}' which gitignore does not support; passed through unchanged", line, pattern)
             }
             RcloneFilterWarning::UnrecognizedLine { line, content } => {
-                write!(f, "line {}: unrecognized rule '{}' — skipped", line, content)
+                write!(
+                    f,
+                    "line {}: unrecognized rule '{}' — skipped",
+                    line, content
+                )
             }
         }
     }

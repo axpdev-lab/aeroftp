@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-//! Rclone crypt compatibility layer — read-only MVP.
+//! Rclone crypt compatibility layer.
 //!
 //! Decrypts files and filenames produced by `rclone crypt` (XSalsa20-Poly1305
 //! content encryption, EME/AES-256 filename encryption in `standard` mode).
-//! No write path in this MVP.
 
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit as AesKeyInit};
 use aes::Aes256;
 use crypto_secretbox::aead::Aead;
 use crypto_secretbox::XSalsa20Poly1305;
+use rand::RngCore;
 use scrypt::{scrypt, Params as ScryptParams};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -229,6 +229,34 @@ pub fn decrypt_file_content(data: &[u8], data_key: &[u8; 32]) -> Result<Vec<u8>,
     Ok(plaintext)
 }
 
+/// Encrypt plaintext into the rclone-crypt file format.
+///
+/// Output layout: magic header + 24-byte file nonce + XSalsa20-Poly1305 chunks.
+/// The per-chunk nonce follows rclone's counter semantics and is shared with
+/// the decrypt path through `chunk_nonce`.
+pub fn encrypt_file_content(plaintext: &[u8], data_key: &[u8; 32]) -> Result<Vec<u8>, String> {
+    let cipher = XSalsa20Poly1305::new(data_key.into());
+
+    let mut file_nonce = [0u8; FILE_NONCE_SIZE];
+    rand::rngs::OsRng.fill_bytes(&mut file_nonce);
+
+    let mut output = Vec::with_capacity(
+        HEADER_SIZE + plaintext.len() + ((plaintext.len() / CHUNK_DATA_SIZE) + 1) * CHUNK_TAG_SIZE,
+    );
+    output.extend_from_slice(RCLONE_MAGIC);
+    output.extend_from_slice(&file_nonce);
+
+    for (chunk_num, chunk) in plaintext.chunks(CHUNK_DATA_SIZE).enumerate() {
+        let nonce = chunk_nonce(&file_nonce, chunk_num as u64);
+        let encrypted = cipher
+            .encrypt((&nonce).into(), chunk)
+            .map_err(|_| format!("chunk {} encrypt failed", chunk_num))?;
+        output.extend_from_slice(&encrypted);
+    }
+
+    Ok(output)
+}
+
 /// Compute the nonce for a specific chunk by adding chunk_num to the file nonce.
 /// Matches rclone's nonce.add() — treats first 8 bytes as LE u64 counter.
 fn chunk_nonce(file_nonce: &[u8; FILE_NONCE_SIZE], chunk_num: u64) -> [u8; FILE_NONCE_SIZE] {
@@ -270,8 +298,7 @@ pub fn decrypt_name(
     String::from_utf8(plain).map_err(|e| format!("filename not valid UTF-8: {}", e))
 }
 
-/// Encrypt a filename with rclone's `standard` mode (for test verification).
-#[cfg(test)]
+/// Encrypt a filename with rclone's `standard` mode.
 pub fn encrypt_name(
     name_key: &[u8; 32],
     dir_iv: &[u8; 16],
@@ -296,7 +323,6 @@ fn eme_decrypt(key: &[u8; 32], tweak: &[u8; 16], data: &[u8]) -> Result<Vec<u8>,
 }
 
 /// EME-encrypt: encrypts data that is a multiple of 16 bytes.
-#[cfg(test)]
 fn eme_encrypt(key: &[u8; 32], tweak: &[u8; 16], data: &[u8]) -> Result<Vec<u8>, String> {
     eme_transform(key, tweak, data, true)
 }
@@ -436,7 +462,6 @@ fn xor_mut(a: &mut [u8; AES_BLOCK], b: &[u8]) {
 
 // ── PKCS#7 padding ─────────────────────────────────────────────────────────
 
-#[cfg(test)]
 fn pkcs7_pad(data: &[u8]) -> Vec<u8> {
     let pad_len = AES_BLOCK - (data.len() % AES_BLOCK);
     let mut padded = Vec::with_capacity(data.len() + pad_len);
@@ -465,7 +490,6 @@ fn pkcs7_unpad(data: &[u8]) -> Result<Vec<u8>, String> {
 // ── Base32hex encoding (rclone-compatible) ─────────────────────────────────
 
 /// Base32hex encode (uppercase, no padding) — matches rclone's filename encoding.
-#[cfg(test)]
 fn base32hex_encode(data: &[u8]) -> String {
     data_encoding::BASE32HEX_NOPAD.encode(data)
 }
@@ -502,6 +526,12 @@ impl RcloneCryptState {
         Self {
             vaults: Mutex::new(HashMap::new()),
         }
+    }
+}
+
+impl Default for RcloneCryptState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -585,6 +615,28 @@ pub async fn rclone_crypt_decrypt_name(
     decrypt_name(&keys.name_key, &dir_iv, &encrypted_name)
 }
 
+/// Encrypt a single filename using the unlocked keys and a directory IV.
+#[tauri::command]
+pub async fn rclone_crypt_encrypt_name(
+    state: tauri::State<'_, RcloneCryptState>,
+    vault_id: String,
+    dir_iv_base64: String,
+    plain_name: String,
+) -> Result<String, String> {
+    let vaults = state.vaults.lock().await;
+    let keys = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
+
+    if keys.filename_encryption == FilenameEncryption::Off {
+        return Ok(plain_name);
+    }
+    if keys.filename_encryption == FilenameEncryption::Obfuscate {
+        return Err("filename_encryption=obfuscate is not supported in this MVP".to_string());
+    }
+
+    let dir_iv = parse_dir_iv(&dir_iv_base64)?;
+    encrypt_name(&keys.name_key, &dir_iv, &plain_name)
+}
+
 /// Decrypt file content. Takes raw encrypted bytes (base64-encoded from frontend),
 /// returns decrypted bytes as base64.
 #[tauri::command]
@@ -645,6 +697,46 @@ pub async fn rclone_crypt_decrypt_file_path(
     guard.write_all(&plaintext)
 }
 
+/// Encrypt a local plaintext file to a local rclone-crypt formatted file.
+#[tauri::command]
+pub async fn rclone_crypt_encrypt_file_path(
+    state: tauri::State<'_, RcloneCryptState>,
+    vault_id: String,
+    plaintext_file_path: String,
+    encrypted_output_path: String,
+) -> Result<String, String> {
+    crate::filesystem::validate_path(&plaintext_file_path)?;
+
+    let plaintext_meta = std::fs::symlink_metadata(Path::new(&plaintext_file_path))
+        .map_err(|e| format!("failed to inspect plaintext input file: {}", e))?;
+    if plaintext_meta.file_type().is_symlink() {
+        return Err("Plaintext input path cannot be a symlink".to_string());
+    }
+    if !plaintext_meta.is_file() {
+        return Err("Plaintext input path must be a regular file".to_string());
+    }
+    if plaintext_meta.len() > MAX_DECRYPT_INPUT_BYTES as u64 {
+        return Err(format!(
+            "plaintext input too large for MVP encrypt path ({} bytes > {} bytes)",
+            plaintext_meta.len(),
+            MAX_DECRYPT_INPUT_BYTES
+        ));
+    }
+
+    let data_key = {
+        let vaults = state.vaults.lock().await;
+        let keys = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
+        keys.data_key
+    };
+
+    let plaintext =
+        std::fs::read(&plaintext_file_path).map_err(|e| format!("failed to read file: {}", e))?;
+
+    let encrypted = encrypt_file_content(&plaintext, &data_key)?;
+    let guard = OutputPathGuard::new(&encrypted_output_path)?;
+    guard.write_all(&encrypted)
+}
+
 /// Parse a 16-byte dirIV from base64.
 fn parse_dir_iv(base64_str: &str) -> Result<[u8; 16], String> {
     use base64::Engine;
@@ -664,6 +756,34 @@ fn parse_dir_iv(base64_str: &str) -> Result<[u8; 16], String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Golden vectors copied from rclone/backend/crypt/cipher_test.go
+    // (TestEncryptData + TestStandardEncryptFileNameBase32).
+    const RCLONE_GOLDEN_FILE0: &[u8] = &[
+        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+    ];
+    const RCLONE_GOLDEN_FILE1: &[u8] = &[
+        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+        0x09, 0x5b, 0x44, 0x6c, 0xd6, 0x23, 0x7b, 0xbc,
+        0xb0, 0x8d, 0x09, 0xfb, 0x52, 0x4c, 0xe5, 0x65,
+        0xaa,
+    ];
+    const RCLONE_GOLDEN_FILE16: &[u8] = &[
+        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+        0xb9, 0xc4, 0x55, 0x2a, 0x27, 0x10, 0x06, 0x29,
+        0x18, 0x96, 0x0a, 0x3e, 0x60, 0x8c, 0x29, 0xb9,
+        0xaa, 0x8a, 0x5e, 0x1e, 0x16, 0x5b, 0x6d, 0x07,
+        0x5d, 0xe4, 0xe9, 0xbb, 0x36, 0x7f, 0xd6, 0xd4,
+    ];
 
     // ── Phase 1 tests ──
 
@@ -750,6 +870,31 @@ mod tests {
     }
 
     #[test]
+    fn encrypt_empty_file_roundtrip() {
+        let (_, data_key) = derive_keys("empty", "").unwrap();
+        let encrypted = encrypt_file_content(&[], &data_key).unwrap();
+        assert_eq!(&encrypted[..8], RCLONE_MAGIC);
+        assert_eq!(encrypted.len(), HEADER_SIZE);
+
+        let decrypted = decrypt_file_content(&encrypted, &data_key).unwrap();
+        assert!(decrypted.is_empty());
+    }
+
+    #[test]
+    fn golden_rclone_decrypt_file_vectors() {
+        let key = [0u8; 32];
+
+        let out0 = decrypt_file_content(RCLONE_GOLDEN_FILE0, &key).unwrap();
+        assert!(out0.is_empty());
+
+        let out1 = decrypt_file_content(RCLONE_GOLDEN_FILE1, &key).unwrap();
+        assert_eq!(out1, vec![0x01]);
+
+        let out16 = decrypt_file_content(RCLONE_GOLDEN_FILE16, &key).unwrap();
+        assert_eq!(out16, (1u8..=16u8).collect::<Vec<u8>>());
+    }
+
+    #[test]
     fn end_to_end_single_chunk() {
         // Derive keys, encrypt a small payload manually, then decrypt
         let (_, data_key) = derive_keys("test", "").unwrap();
@@ -803,6 +948,54 @@ mod tests {
 
         let decrypted = decrypt_file_content(&file_data, &data_key).unwrap();
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_file_content_roundtrip_single_chunk() {
+        let (_, data_key) = derive_keys("write-single", "salt").unwrap();
+        let plaintext = b"rclone crypt write path";
+
+        let encrypted = encrypt_file_content(plaintext, &data_key).unwrap();
+        assert_eq!(&encrypted[..8], RCLONE_MAGIC);
+        assert!(encrypted.len() > HEADER_SIZE);
+
+        let decrypted = decrypt_file_content(&encrypted, &data_key).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_file_content_roundtrip_multi_chunk() {
+        let (_, data_key) = derive_keys("write-multi", "salt").unwrap();
+        let plaintext: Vec<u8> = (0..(CHUNK_DATA_SIZE * 2 + 257))
+            .map(|i| (i % 251) as u8)
+            .collect();
+
+        let encrypted = encrypt_file_content(&plaintext, &data_key).unwrap();
+        assert_eq!(&encrypted[..8], RCLONE_MAGIC);
+        assert!(encrypted.len() > plaintext.len());
+
+        let decrypted = decrypt_file_content(&encrypted, &data_key).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_file_content_uses_fresh_nonce() {
+        let (_, data_key) = derive_keys("nonce", "salt").unwrap();
+        let plaintext = b"same plaintext";
+
+        let encrypted_a = encrypt_file_content(plaintext, &data_key).unwrap();
+        let encrypted_b = encrypt_file_content(plaintext, &data_key).unwrap();
+
+        assert_ne!(&encrypted_a[8..HEADER_SIZE], &encrypted_b[8..HEADER_SIZE]);
+        assert_ne!(encrypted_a, encrypted_b);
+        assert_eq!(
+            decrypt_file_content(&encrypted_a, &data_key).unwrap(),
+            plaintext
+        );
+        assert_eq!(
+            decrypt_file_content(&encrypted_b, &data_key).unwrap(),
+            plaintext
+        );
     }
 
     // ── Phase 2 tests ──
@@ -904,11 +1097,38 @@ mod tests {
     fn name_encrypt_decrypt_unicode() {
         let (name_key, _) = derive_keys("unicode", "salt").unwrap();
         let dir_iv = [0xAAu8; 16];
-        let name = "photo_2026.jpg";
+        let name = "foto_2026_è.txt";
 
         let encrypted = encrypt_name(&name_key, &dir_iv, name).unwrap();
         let decrypted = decrypt_name(&name_key, &dir_iv, &encrypted).unwrap();
         assert_eq!(decrypted, name);
+    }
+
+    #[test]
+    fn golden_rclone_filename_standard_vectors() {
+        let name_key = [0u8; 32];
+        let dir_iv = [0u8; 16];
+
+        let encrypted_1 = encrypt_name(&name_key, &dir_iv, "1").unwrap();
+        assert_eq!(encrypted_1.to_lowercase(), "p0e52nreeaj0a5ea7s64m4j72s");
+        assert_eq!(
+            decrypt_name(&name_key, &dir_iv, "p0e52nreeaj0a5ea7s64m4j72s").unwrap(),
+            "1"
+        );
+
+        let encrypted_12 = encrypt_name(&name_key, &dir_iv, "12").unwrap();
+        assert_eq!(encrypted_12.to_lowercase(), "l42g6771hnv3an9cgc8cr2n1ng");
+        assert_eq!(
+            decrypt_name(&name_key, &dir_iv, "l42g6771hnv3an9cgc8cr2n1ng").unwrap(),
+            "12"
+        );
+
+        let encrypted_123 = encrypt_name(&name_key, &dir_iv, "123").unwrap();
+        assert_eq!(encrypted_123.to_lowercase(), "qgm4avr35m5loi1th53ato71v0");
+        assert_eq!(
+            decrypt_name(&name_key, &dir_iv, "qgm4avr35m5loi1th53ato71v0").unwrap(),
+            "123"
+        );
     }
 
     #[test]

@@ -261,6 +261,76 @@ pub async fn vault_v2_delete_entries(
     }))
 }
 
+/// Move an entry (file or directory) inside a vault
+#[tauri::command]
+pub async fn vault_v2_move_entry(
+    vault_path: String,
+    password: String,
+    from: String,
+    to: String,
+) -> Result<serde_json::Value, String> {
+    validate_vault_relative_path(&from)?;
+    validate_vault_relative_path(&to)?;
+    let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
+    vault.move_entry(&from, &to).map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "moved": true,
+        "from": from,
+        "to": to
+    }))
+}
+
+/// Rename an entry while keeping the same parent directory
+#[tauri::command]
+pub async fn vault_v2_rename_entry(
+    vault_path: String,
+    password: String,
+    current_name: String,
+    new_name: String,
+) -> Result<serde_json::Value, String> {
+    validate_vault_relative_path(&current_name)?;
+    if new_name.trim().is_empty()
+        || new_name.contains('/')
+        || new_name.contains('\\')
+        || new_name.contains("..")
+        || new_name.contains('\0')
+    {
+        return Err("Invalid new name".to_string());
+    }
+
+    let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
+    vault
+        .rename_entry(&current_name, &new_name)
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "renamed": true,
+        "from": current_name,
+        "to": new_name
+    }))
+}
+
+/// Copy an entry (file or directory) inside a vault
+#[tauri::command]
+pub async fn vault_v2_copy_entry(
+    vault_path: String,
+    password: String,
+    from: String,
+    to: String,
+) -> Result<serde_json::Value, String> {
+    validate_vault_relative_path(&from)?;
+    validate_vault_relative_path(&to)?;
+    let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
+    vault.copy_entry(&from, &to).map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "copied": true,
+        "from": from,
+        "to": to
+    }))
+}
+
 /// Change vault password
 #[tauri::command]
 pub async fn vault_v2_change_password(

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { X, Loader2 } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { VaultIcon } from './icons/VaultIcon';
 import { useTranslation } from '../i18n';
 import { useVaultState, VaultMode, securityLevels, IconProvider } from './vault/useVaultState';
@@ -10,6 +11,7 @@ import { VaultHome } from './vault/VaultHome';
 import { VaultCreate } from './vault/VaultCreate';
 import { VaultOpen } from './vault/VaultOpen';
 import { VaultBrowse } from './vault/VaultBrowse';
+import type { AeroVaultOverlaySession } from '../types';
 
 interface VaultPanelProps {
     onClose: () => void;
@@ -19,11 +21,12 @@ interface VaultPanelProps {
     initialMode?: VaultMode;
     initialFolderPath?: string;
     iconProvider?: IconProvider;
+    onOverlaySessionChange?: (session: AeroVaultOverlaySession | null) => void;
 }
 
 export type { VaultMode } from './vault/useVaultState';
 
-export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, initialFolderPath, iconProvider }) => {
+export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, initialFolderPath, iconProvider, onOverlaySessionChange }) => {
     const t = useTranslation();
 
     const state = useVaultState({
@@ -38,6 +41,83 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
     const vaultName = state.vaultPath.split(/[\\/]/).pop() || 'Vault';
     const currentLevelConfig = state.vaultSecurity ? securityLevels[state.vaultSecurity.level] : null;
     const LevelIcon = currentLevelConfig?.icon || VaultIcon;
+    const overlaySessionRef = React.useRef<{ key: string; sessionId: string } | null>(null);
+
+    React.useEffect(() => {
+        if (!onOverlaySessionChange) return;
+
+        let cancelled = false;
+
+        const syncOverlay = async () => {
+            if (state.mode !== 'browse' || !state.vaultPath || !state.password) {
+                overlaySessionRef.current = null;
+                onOverlaySessionChange(null);
+                return;
+            }
+
+            const source = state.remoteLocalPath ? 'remote' : 'local';
+            const key = [
+                state.vaultPath,
+                source,
+                state.remoteVaultPath || '',
+                state.remoteLocalPath || '',
+            ].join('|');
+
+            if (overlaySessionRef.current?.key === key) {
+                onOverlaySessionChange({
+                    sessionId: overlaySessionRef.current.sessionId,
+                    mode: 'browse',
+                    vaultPath: state.vaultPath,
+                    source,
+                    remoteVaultPath: state.remoteVaultPath || undefined,
+                    remoteLocalPath: state.remoteLocalPath || undefined,
+                    currentPath: state.currentDir ? `/${state.currentDir}` : '/',
+                });
+                return;
+            }
+
+            try {
+                const unlocked = await invoke<{ session_id: string; current_path: string }>('aerovault_overlay_unlock', {
+                    vaultPath: state.vaultPath,
+                    password: state.password,
+                    source,
+                    remoteVaultPath: state.remoteVaultPath || null,
+                    remoteLocalPath: state.remoteLocalPath || null,
+                    idleTimeoutSeconds: 1800,
+                });
+                if (cancelled) return;
+
+                overlaySessionRef.current = { key, sessionId: unlocked.session_id };
+                onOverlaySessionChange({
+                    sessionId: unlocked.session_id,
+                    mode: 'browse',
+                    vaultPath: state.vaultPath,
+                    source,
+                    remoteVaultPath: state.remoteVaultPath || undefined,
+                    remoteLocalPath: state.remoteLocalPath || undefined,
+                    currentPath: unlocked.current_path,
+                });
+            } catch {
+                if (cancelled) return;
+                overlaySessionRef.current = null;
+                onOverlaySessionChange(null);
+            }
+        };
+
+        void syncOverlay();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        onOverlaySessionChange,
+        state.mode,
+        state.vaultPath,
+        state.password,
+        state.currentDir,
+        state.remoteVaultPath,
+        state.remoteLocalPath,
+    ]);
 
     return (
         <div

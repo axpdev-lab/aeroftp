@@ -11,6 +11,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sigstore::bundle::verify::{blocking::Verifier as SigstoreVerifier, policy};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -89,7 +90,7 @@ mod provider_commands;
 mod provider_transfer_executor;
 pub mod providers;
 mod pty;
-mod rclone_crypt;
+pub mod rclone_crypt;
 pub mod rclone_filter;
 pub mod rclone_import;
 mod session_commands;
@@ -174,6 +175,1020 @@ use pty::{create_pty_state, pty_close, pty_resize, pty_write, spawn_shell};
 use ssh_shell::{
     create_ssh_shell_state, ssh_shell_close, ssh_shell_open, ssh_shell_resize, ssh_shell_write,
 };
+
+struct AeroVaultOverlaySessionRuntime {
+    vault_path: String,
+    password: SecretString,
+    source: String,
+    remote_vault_path: Option<String>,
+    remote_local_path: Option<String>,
+    current_dir: String,
+    idle_timeout_secs: u64,
+    last_activity: Instant,
+}
+
+struct AeroVaultOverlayState {
+    sessions: Mutex<HashMap<String, AeroVaultOverlaySessionRuntime>>,
+}
+
+const OVERLAY_IDLE_TIMEOUT_DEFAULT_SECS: u64 = 30 * 60;
+const OVERLAY_IDLE_TIMEOUT_MIN_SECS: u64 = 30;
+const OVERLAY_IDLE_TIMEOUT_MAX_SECS: u64 = 24 * 60 * 60;
+
+impl AeroVaultOverlayState {
+    fn new() -> Self {
+        Self {
+            sessions: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct AeroVaultOverlayUnlockResponse {
+    session_id: String,
+    current_path: String,
+}
+
+#[derive(Serialize)]
+struct AeroVaultOverlayListResponse {
+    current_path: String,
+    files: Vec<RemoteFile>,
+}
+
+fn normalize_overlay_relative_path(input: &str) -> Result<String, String> {
+    let trimmed = input.trim().replace('\\', "/");
+    let trimmed = trimmed.trim_matches('/');
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+    for part in trimmed.split('/') {
+        if part.is_empty() || part == "." || part == ".." {
+            return Err("Invalid overlay path".to_string());
+        }
+        if part.contains('\0') {
+            return Err("Invalid overlay path".to_string());
+        }
+    }
+    Ok(trimmed.to_string())
+}
+
+fn overlay_display_path(path: &str) -> String {
+    if path.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", path)
+    }
+}
+
+fn overlay_join(base: &str, name: &str) -> String {
+    if base.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}/{}", base, name)
+    }
+}
+
+fn resolve_overlay_target(current: &str, target: &str) -> Result<String, String> {
+    let t = target.trim();
+    if t.is_empty() || t == "." {
+        return Ok(current.to_string());
+    }
+    if t == ".." {
+        if current.is_empty() {
+            return Ok(String::new());
+        }
+        return Ok(current
+            .rsplit_once('/')
+            .map(|(parent, _)| parent.to_string())
+            .unwrap_or_default());
+    }
+
+    if t.starts_with('/') {
+        return normalize_overlay_relative_path(t);
+    }
+
+    let next = if current.is_empty() {
+        t.to_string()
+    } else {
+        format!("{}/{}", current, t)
+    };
+    normalize_overlay_relative_path(&next)
+}
+
+fn normalize_overlay_idle_timeout_secs(input: Option<u64>) -> u64 {
+    input
+        .unwrap_or(OVERLAY_IDLE_TIMEOUT_DEFAULT_SECS)
+        .clamp(OVERLAY_IDLE_TIMEOUT_MIN_SECS, OVERLAY_IDLE_TIMEOUT_MAX_SECS)
+}
+
+#[tauri::command]
+async fn aerovault_overlay_unlock(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    vault_path: String,
+    password: String,
+    source: Option<String>,
+    remote_vault_path: Option<String>,
+    remote_local_path: Option<String>,
+    idle_timeout_seconds: Option<u64>,
+) -> Result<AeroVaultOverlayUnlockResponse, String> {
+    validate_path(&vault_path)?;
+    let normalized_source = source.unwrap_or_else(|| "local".to_string());
+    let idle_timeout_secs = normalize_overlay_idle_timeout_secs(idle_timeout_seconds);
+    let now = Instant::now();
+
+    // Validate credentials once and fail early.
+    let _ = aerovault_v2::vault_v2_open(vault_path.clone(), password.clone()).await?;
+
+    let mut sessions = overlay_state.sessions.lock().await;
+    if let Some(existing_id) = sessions
+        .iter()
+        .find(|(_, s)| {
+        s.vault_path == vault_path
+            && s.password.expose_secret() == password
+            && s.source == normalized_source
+            && s.remote_vault_path == remote_vault_path
+            && s.remote_local_path == remote_local_path
+        })
+        .map(|(id, _)| id.clone())
+    {
+        if let Some(existing) = sessions.get_mut(&existing_id) {
+            let is_expired = now.duration_since(existing.last_activity).as_secs() > existing.idle_timeout_secs;
+            if !is_expired {
+                existing.last_activity = now;
+                existing.idle_timeout_secs = idle_timeout_secs;
+                return Ok(AeroVaultOverlayUnlockResponse {
+                    session_id: existing_id,
+                    current_path: overlay_display_path(&existing.current_dir),
+                });
+            }
+        }
+        sessions.remove(&existing_id);
+    }
+
+    let session_id = format!("avol_{}", uuid::Uuid::new_v4());
+    sessions.insert(
+        session_id.clone(),
+        AeroVaultOverlaySessionRuntime {
+            vault_path,
+            password: SecretString::new(password.into_boxed_str()),
+            source: normalized_source,
+            remote_vault_path,
+            remote_local_path,
+            current_dir: String::new(),
+            idle_timeout_secs,
+            last_activity: now,
+        },
+    );
+
+    Ok(AeroVaultOverlayUnlockResponse {
+        session_id,
+        current_path: "/".to_string(),
+    })
+}
+
+#[tauri::command]
+async fn aerovault_overlay_lock(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+) -> Result<bool, String> {
+    let mut sessions = overlay_state.sessions.lock().await;
+    Ok(sessions.remove(&session_id).is_some())
+}
+
+#[tauri::command]
+async fn aerovault_overlay_list(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+    path: Option<String>,
+) -> Result<AeroVaultOverlayListResponse, String> {
+    let (vault_path, password, current_dir) = {
+        let mut sessions = overlay_state.sessions.lock().await;
+        let now = Instant::now();
+        let expired = {
+            let session = sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| "Overlay session not found".to_string())?;
+            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            if !expired {
+                session.last_activity = now;
+            }
+            expired
+        };
+        if expired {
+            sessions.remove(&session_id);
+            return Err("Overlay session expired due to inactivity".to_string());
+        }
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| "Overlay session not found".to_string())?;
+        if let Some(target) = path.as_deref() {
+            session.current_dir = resolve_overlay_target(&session.current_dir, target)?;
+        }
+        (
+            session.vault_path.clone(),
+            session.password.expose_secret().to_string(),
+            session.current_dir.clone(),
+        )
+    };
+
+    let opened = aerovault_v2::vault_v2_open(vault_path, password).await?;
+    let entries = opened
+        .get("files")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Invalid AeroVault open response".to_string())?;
+
+    let prefix = if current_dir.is_empty() {
+        String::new()
+    } else {
+        format!("{}/", current_dir)
+    };
+
+    let mut child_names_seen: HashSet<String> = HashSet::new();
+    let mut files: Vec<RemoteFile> = Vec::new();
+
+    for entry in entries {
+        let full_name = entry
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .replace('\\', "/");
+        if full_name.is_empty() {
+            continue;
+        }
+        if !prefix.is_empty() && !full_name.starts_with(&prefix) {
+            continue;
+        }
+
+        let rel = if prefix.is_empty() {
+            full_name.as_str()
+        } else {
+            &full_name[prefix.len()..]
+        };
+
+        if rel.is_empty() {
+            continue;
+        }
+
+        let mut split = rel.splitn(2, '/');
+        let first = split.next().unwrap_or_default();
+        let has_child = split.next().is_some();
+        if first.is_empty() {
+            continue;
+        }
+
+        if has_child {
+            if child_names_seen.insert(first.to_string()) {
+                files.push(RemoteFile {
+                    name: first.to_string(),
+                    path: format!("/{}", overlay_join(&current_dir, first)),
+                    size: None,
+                    is_dir: true,
+                    modified: None,
+                    permissions: None,
+                });
+            }
+            continue;
+        }
+
+        child_names_seen.insert(first.to_string());
+        let size = entry.get("size").and_then(|v| v.as_u64());
+        let is_dir = entry
+            .get("is_dir")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let modified = entry.get("modified").and_then(|v| {
+            if v.is_null() {
+                None
+            } else if let Some(s) = v.as_str() {
+                Some(s.to_string())
+            } else {
+                Some(v.to_string())
+            }
+        });
+        files.push(RemoteFile {
+            name: first.to_string(),
+            path: format!("/{}", overlay_join(&current_dir, first)),
+            size,
+            is_dir,
+            modified,
+            permissions: None,
+        });
+    }
+
+    files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    Ok(AeroVaultOverlayListResponse {
+        current_path: overlay_display_path(&current_dir),
+        files,
+    })
+}
+
+#[tauri::command]
+async fn aerovault_overlay_extract_entry(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+    entry_path: String,
+    output_path: String,
+) -> Result<String, String> {
+    validate_path(&output_path)?;
+    let entry_name = normalize_overlay_relative_path(&entry_path)?;
+
+    let (vault_path, password) = {
+        let mut sessions = overlay_state.sessions.lock().await;
+        let now = Instant::now();
+        let expired = {
+            let session = sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| "Overlay session not found".to_string())?;
+            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            if !expired {
+                session.last_activity = now;
+            }
+            expired
+        };
+        if expired {
+            sessions.remove(&session_id);
+            return Err("Overlay session expired due to inactivity".to_string());
+        }
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Overlay session not found".to_string())?;
+        (
+            session.vault_path.clone(),
+            session.password.expose_secret().to_string(),
+        )
+    };
+
+    let out_path = std::path::PathBuf::from(&output_path);
+    let out_parent = out_path
+        .parent()
+        .ok_or_else(|| "Invalid output path".to_string())?;
+
+    std::fs::create_dir_all(out_parent)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+
+    let extracted = aerovault_v2::vault_v2_extract_entry(
+        vault_path,
+        password,
+        entry_name,
+        out_parent.to_string_lossy().to_string(),
+    )
+    .await
+    .map(std::path::PathBuf::from)?;
+
+    if extracted != out_path {
+        match std::fs::rename(&extracted, &out_path) {
+            Ok(_) => {}
+            Err(_) => {
+                std::fs::copy(&extracted, &out_path)
+                    .map_err(|e| format!("Failed to move extracted file: {}", e))?;
+                let _ = std::fs::remove_file(&extracted);
+            }
+        }
+    }
+
+    Ok(output_path)
+}
+
+#[tauri::command]
+async fn aerovault_overlay_add_file(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+    local_plaintext_path: String,
+    remote_plain_name: Option<String>,
+) -> Result<String, String> {
+    validate_path(&local_plaintext_path)?;
+    let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_plaintext_path))
+        .map_err(|e| format!("Failed to inspect local file: {}", e))?;
+    if local_meta.file_type().is_symlink() {
+        return Err("Local plaintext path cannot be a symlink".to_string());
+    }
+    if !local_meta.is_file() {
+        return Err("Local plaintext path must be a regular file".to_string());
+    }
+
+    let (vault_path, password, current_dir) = {
+        let mut sessions = overlay_state.sessions.lock().await;
+        let now = Instant::now();
+        let expired = {
+            let session = sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| "Overlay session not found".to_string())?;
+            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            if !expired {
+                session.last_activity = now;
+            }
+            expired
+        };
+        if expired {
+            sessions.remove(&session_id);
+            return Err("Overlay session expired due to inactivity".to_string());
+        }
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Overlay session not found".to_string())?;
+        (
+            session.vault_path.clone(),
+            session.password.expose_secret().to_string(),
+            session.current_dir.clone(),
+        )
+    };
+
+    let file_name = remote_plain_name
+        .and_then(|s| {
+            let trimmed = s.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+        .or_else(|| {
+            std::path::Path::new(&local_plaintext_path)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+        })
+        .ok_or_else(|| "Cannot determine destination filename".to_string())?;
+
+    if file_name.contains('/') || file_name.contains('\\') || file_name.contains('\0') {
+        return Err("Invalid destination filename".to_string());
+    }
+
+    let source_basename = std::path::Path::new(&local_plaintext_path)
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| file_name.clone());
+
+    let mut temp_copy: Option<std::path::PathBuf> = None;
+    let upload_source = if source_basename == file_name {
+        std::path::PathBuf::from(&local_plaintext_path)
+    } else {
+        let temp_path = std::env::temp_dir().join(format!(
+            "aeroftp_aerovault_overlay_{}_{}",
+            chrono::Utc::now().timestamp_millis(),
+            uuid::Uuid::new_v4()
+        ));
+        let target_path = temp_path.with_file_name(file_name.clone());
+        std::fs::copy(&local_plaintext_path, &target_path)
+            .map_err(|e| format!("Failed to prepare renamed upload file: {}", e))?;
+        temp_copy = Some(target_path.clone());
+        target_path
+    };
+
+    let add_result = if current_dir.is_empty() {
+        aerovault_v2::vault_v2_add_files(
+            vault_path.clone(),
+            password.clone(),
+            vec![upload_source.to_string_lossy().to_string()],
+        )
+        .await
+    } else {
+        aerovault_v2::vault_v2_add_files_to_dir(
+            vault_path.clone(),
+            password.clone(),
+            vec![upload_source.to_string_lossy().to_string()],
+            current_dir.clone(),
+        )
+        .await
+    };
+
+    if let Some(path) = temp_copy {
+        let _ = std::fs::remove_file(path);
+    }
+
+    add_result.map_err(|e| e.to_string())?;
+    Ok(format!("/{}", overlay_join(&current_dir, &file_name)))
+}
+
+#[tauri::command]
+async fn aerovault_overlay_create_directory(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+    dir_name: String,
+) -> Result<String, String> {
+    let folder = dir_name.trim();
+    if folder.is_empty()
+        || folder.contains('/')
+        || folder.contains('\\')
+        || folder.contains("..")
+        || folder.contains('\0')
+    {
+        return Err("Invalid directory name".to_string());
+    }
+
+    let (vault_path, password, current_dir) = {
+        let mut sessions = overlay_state.sessions.lock().await;
+        let now = Instant::now();
+        let expired = {
+            let session = sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| "Overlay session not found".to_string())?;
+            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            if !expired {
+                session.last_activity = now;
+            }
+            expired
+        };
+        if expired {
+            sessions.remove(&session_id);
+            return Err("Overlay session expired due to inactivity".to_string());
+        }
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Overlay session not found".to_string())?;
+        (
+            session.vault_path.clone(),
+            session.password.expose_secret().to_string(),
+            session.current_dir.clone(),
+        )
+    };
+
+    let dir_rel = normalize_overlay_relative_path(&overlay_join(&current_dir, folder))?;
+    aerovault_v2::vault_v2_create_directory(vault_path, password, dir_rel.clone()).await?;
+    Ok(format!("/{}", dir_rel))
+}
+
+#[tauri::command]
+async fn aerovault_overlay_delete_entries(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+    entry_paths: Vec<String>,
+    recursive: bool,
+) -> Result<u64, String> {
+    if entry_paths.is_empty() {
+        return Ok(0);
+    }
+
+    let (vault_path, password) = {
+        let mut sessions = overlay_state.sessions.lock().await;
+        let now = Instant::now();
+        let expired = {
+            let session = sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| "Overlay session not found".to_string())?;
+            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            if !expired {
+                session.last_activity = now;
+            }
+            expired
+        };
+        if expired {
+            sessions.remove(&session_id);
+            return Err("Overlay session expired due to inactivity".to_string());
+        }
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Overlay session not found".to_string())?;
+        (
+            session.vault_path.clone(),
+            session.password.expose_secret().to_string(),
+        )
+    };
+
+    let mut normalized: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for path in entry_paths {
+        let p = normalize_overlay_relative_path(&path)?;
+        if seen.insert(p.clone()) {
+            normalized.push(p);
+        }
+    }
+
+    let result = aerovault_v2::vault_v2_delete_entries(vault_path, password, normalized, recursive).await?;
+    let removed = result.get("removed").and_then(|v| v.as_u64()).unwrap_or(0);
+    Ok(removed)
+}
+
+#[tauri::command]
+async fn aerovault_overlay_move_entry(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+    from_path: String,
+    to_path: String,
+) -> Result<String, String> {
+    let from_rel = normalize_overlay_relative_path(&from_path)?;
+    let to_rel = normalize_overlay_relative_path(&to_path)?;
+
+    let (vault_path, password) = {
+        let mut sessions = overlay_state.sessions.lock().await;
+        let now = Instant::now();
+        let expired = {
+            let session = sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| "Overlay session not found".to_string())?;
+            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            if !expired {
+                session.last_activity = now;
+            }
+            expired
+        };
+        if expired {
+            sessions.remove(&session_id);
+            return Err("Overlay session expired due to inactivity".to_string());
+        }
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Overlay session not found".to_string())?;
+        (
+            session.vault_path.clone(),
+            session.password.expose_secret().to_string(),
+        )
+    };
+
+    aerovault_v2::vault_v2_move_entry(vault_path, password, from_rel, to_rel.clone()).await?;
+    Ok(format!("/{}", to_rel))
+}
+
+#[tauri::command]
+async fn aerovault_overlay_rename_entry(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+    entry_path: String,
+    new_name: String,
+) -> Result<String, String> {
+    let entry_rel = normalize_overlay_relative_path(&entry_path)?;
+    if new_name.trim().is_empty()
+        || new_name.contains('/')
+        || new_name.contains('\\')
+        || new_name.contains("..")
+        || new_name.contains('\0')
+    {
+        return Err("Invalid destination filename".to_string());
+    }
+
+    let (vault_path, password) = {
+        let mut sessions = overlay_state.sessions.lock().await;
+        let now = Instant::now();
+        let expired = {
+            let session = sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| "Overlay session not found".to_string())?;
+            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            if !expired {
+                session.last_activity = now;
+            }
+            expired
+        };
+        if expired {
+            sessions.remove(&session_id);
+            return Err("Overlay session expired due to inactivity".to_string());
+        }
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Overlay session not found".to_string())?;
+        (
+            session.vault_path.clone(),
+            session.password.expose_secret().to_string(),
+        )
+    };
+
+    aerovault_v2::vault_v2_rename_entry(
+        vault_path,
+        password,
+        entry_rel.clone(),
+        new_name.trim().to_string(),
+    )
+    .await?;
+
+    let renamed = if let Some((parent, _)) = entry_rel.rsplit_once('/') {
+        format!("{}/{}", parent, new_name.trim())
+    } else {
+        new_name.trim().to_string()
+    };
+    Ok(format!("/{}", renamed))
+}
+
+#[tauri::command]
+async fn aerovault_overlay_copy_entry(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+    from_path: String,
+    to_path: String,
+) -> Result<String, String> {
+    let from_rel = normalize_overlay_relative_path(&from_path)?;
+    let to_rel = normalize_overlay_relative_path(&to_path)?;
+
+    let (vault_path, password) = {
+        let mut sessions = overlay_state.sessions.lock().await;
+        let now = Instant::now();
+        let expired = {
+            let session = sessions
+                .get_mut(&session_id)
+                .ok_or_else(|| "Overlay session not found".to_string())?;
+            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            if !expired {
+                session.last_activity = now;
+            }
+            expired
+        };
+        if expired {
+            sessions.remove(&session_id);
+            return Err("Overlay session expired due to inactivity".to_string());
+        }
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Overlay session not found".to_string())?;
+        (
+            session.vault_path.clone(),
+            session.password.expose_secret().to_string(),
+        )
+    };
+
+    aerovault_v2::vault_v2_copy_entry(vault_path, password, from_rel, to_rel.clone()).await?;
+    Ok(format!("/{}", to_rel))
+}
+
+#[derive(Serialize)]
+struct RcloneCryptBrowserEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    size: u64,
+    modified: Option<String>,
+    permissions: Option<String>,
+    decrypted_name: String,
+    decrypt_ok: bool,
+}
+
+#[derive(Serialize)]
+struct RcloneCryptBrowserListResponse {
+    current_path: String,
+    dir_iv_found: bool,
+    files: Vec<RcloneCryptBrowserEntry>,
+}
+
+fn join_remote_path(base: &str, name: &str) -> String {
+    if base.is_empty() || base == "/" {
+        format!("/{}", name)
+    } else if base.ends_with('/') {
+        format!("{}{}", base, name)
+    } else {
+        format!("{}/{}", base, name)
+    }
+}
+
+#[tauri::command]
+async fn rclone_crypt_provider_list(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    rclone_state: State<'_, rclone_crypt::RcloneCryptState>,
+    vault_id: String,
+    path: Option<String>,
+) -> Result<RcloneCryptBrowserListResponse, String> {
+    let (name_key, mode) = {
+        let vaults = rclone_state.vaults.lock().await;
+        let keys = vaults
+            .get(&vault_id)
+            .ok_or_else(|| "Vault not unlocked".to_string())?;
+        (keys.name_key, keys.filename_encryption)
+    };
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if let Some(target) = path.as_deref() {
+        if target == ".." {
+            provider
+                .cd_up()
+                .await
+                .map_err(|e| format!("Failed to go up: {}", e))?;
+        } else if !target.is_empty() && target != "." {
+            provider
+                .cd(target)
+                .await
+                .map_err(|e| format!("Failed to change directory: {}", e))?;
+        }
+    }
+
+    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let files = provider
+        .list(".")
+        .await
+        .map_err(|e| format!("Failed to list files: {}", e))?;
+
+    let mut dir_iv: Option<[u8; 16]> = None;
+    if mode != rclone_crypt::FilenameEncryption::Off {
+        for marker in ["dirIV", ".diriv", "diriv"] {
+            let marker_path = join_remote_path(&current_path, marker);
+            if let Ok(raw) = provider.download_to_bytes(&marker_path).await {
+                if raw.len() == 16 {
+                    let mut iv = [0u8; 16];
+                    iv.copy_from_slice(&raw);
+                    dir_iv = Some(iv);
+                    break;
+                }
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    for entry in files {
+        if entry.name == "dirIV" || entry.name == ".diriv" || entry.name == "diriv" {
+            continue;
+        }
+
+        let (decrypted_name, decrypt_ok) = match mode {
+            rclone_crypt::FilenameEncryption::Off => (entry.name.clone(), true),
+            rclone_crypt::FilenameEncryption::Standard => {
+                if let Some(iv) = dir_iv {
+                    match rclone_crypt::decrypt_name(&name_key, &iv, &entry.name) {
+                        Ok(name) => (name, true),
+                        Err(_) => (entry.name.clone(), false),
+                    }
+                } else {
+                    (entry.name.clone(), false)
+                }
+            }
+            rclone_crypt::FilenameEncryption::Obfuscate => (entry.name.clone(), false),
+        };
+
+        out.push(RcloneCryptBrowserEntry {
+            name: entry.name.clone(),
+            path: entry.path,
+            is_dir: entry.is_dir,
+            size: entry.size,
+            modified: entry.modified,
+            permissions: entry.permissions,
+            decrypted_name,
+            decrypt_ok,
+        });
+    }
+
+    Ok(RcloneCryptBrowserListResponse {
+        current_path,
+        dir_iv_found: dir_iv.is_some(),
+        files: out,
+    })
+}
+
+#[tauri::command]
+async fn rclone_crypt_provider_download_file(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    rclone_state: State<'_, rclone_crypt::RcloneCryptState>,
+    vault_id: String,
+    remote_encrypted_path: String,
+    output_path: String,
+) -> Result<String, String> {
+    let data_key = {
+        let vaults = rclone_state.vaults.lock().await;
+        let keys = vaults
+            .get(&vault_id)
+            .ok_or_else(|| "Vault not unlocked".to_string())?;
+        keys.data_key
+    };
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let encrypted = provider
+        .download_to_bytes(&remote_encrypted_path)
+        .await
+        .map_err(|e| format!("Failed to download encrypted file: {}", e))?;
+
+    let plaintext = rclone_crypt::decrypt_file_content(&encrypted, &data_key)
+        .map_err(|e| format!("Decryption failed: {}", e))?;
+
+    validate_path(&output_path)?;
+    if let Some(parent) = std::path::Path::new(&output_path).parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+    tokio::fs::write(&output_path, &plaintext)
+        .await
+        .map_err(|e| format!("Failed to write output file: {}", e))?;
+
+    Ok(output_path)
+}
+
+#[tauri::command]
+async fn rclone_crypt_provider_upload_file(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    rclone_state: State<'_, rclone_crypt::RcloneCryptState>,
+    vault_id: String,
+    local_plaintext_path: String,
+    remote_plain_name: Option<String>,
+) -> Result<String, String> {
+    use rand::RngCore;
+
+    validate_path(&local_plaintext_path)?;
+    let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_plaintext_path))
+        .map_err(|e| format!("Failed to inspect local file: {}", e))?;
+    if local_meta.file_type().is_symlink() {
+        return Err("Local plaintext path cannot be a symlink".to_string());
+    }
+    if !local_meta.is_file() {
+        return Err("Local plaintext path must be a regular file".to_string());
+    }
+
+    let (name_key, data_key, mode) = {
+        let vaults = rclone_state.vaults.lock().await;
+        let keys = vaults
+            .get(&vault_id)
+            .ok_or_else(|| "Vault not unlocked".to_string())?;
+        (keys.name_key, keys.data_key, keys.filename_encryption)
+    };
+
+    let plaintext = tokio::fs::read(&local_plaintext_path)
+        .await
+        .map_err(|e| format!("Failed to read local file: {}", e))?;
+    let encrypted_payload = rclone_crypt::encrypt_file_content(&plaintext, &data_key)
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let plain_name = remote_plain_name
+        .and_then(|s| {
+            let trimmed = s.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+        .or_else(|| {
+            std::path::Path::new(&local_plaintext_path)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+        })
+        .ok_or_else(|| "Cannot determine destination filename".to_string())?;
+
+    let encrypted_name = match mode {
+        rclone_crypt::FilenameEncryption::Off => plain_name.clone(),
+        rclone_crypt::FilenameEncryption::Standard => {
+            let mut dir_iv: Option<[u8; 16]> = None;
+            for marker in ["dirIV", ".diriv", "diriv"] {
+                let marker_path = join_remote_path(&current_path, marker);
+                if let Ok(raw) = provider.download_to_bytes(&marker_path).await {
+                    if raw.len() == 16 {
+                        let mut iv = [0u8; 16];
+                        iv.copy_from_slice(&raw);
+                        dir_iv = Some(iv);
+                        break;
+                    }
+                }
+            }
+
+            if dir_iv.is_none() {
+                let mut new_iv = [0u8; 16];
+                rand::rngs::OsRng.fill_bytes(&mut new_iv);
+
+                let marker_temp = std::env::temp_dir().join(format!(
+                    "aeroftp_rclonecrypt_diriv_{}_{}.bin",
+                    chrono::Utc::now().timestamp_millis(),
+                    uuid::Uuid::new_v4()
+                ));
+                tokio::fs::write(&marker_temp, new_iv)
+                    .await
+                    .map_err(|e| format!("Failed to prepare dirIV temp file: {}", e))?;
+
+                let marker_remote = join_remote_path(&current_path, "dirIV");
+                let marker_upload = provider
+                    .upload(&marker_temp.to_string_lossy(), &marker_remote, None)
+                    .await
+                    .map_err(|e| format!("Failed to create dirIV marker: {}", e));
+                let _ = tokio::fs::remove_file(&marker_temp).await;
+                marker_upload?;
+
+                dir_iv = Some(new_iv);
+            }
+
+            rclone_crypt::encrypt_name(&name_key, &dir_iv.expect("dirIV should be set"), &plain_name)
+                .map_err(|e| format!("Filename encryption failed: {}", e))?
+        }
+        rclone_crypt::FilenameEncryption::Obfuscate => {
+            return Err("filename_encryption=obfuscate is not supported in this MVP".to_string());
+        }
+    };
+
+    let remote_encrypted_path = join_remote_path(&current_path, &encrypted_name);
+    let temp_path = std::env::temp_dir().join(format!(
+        "aeroftp_rclonecrypt_upload_{}_{}.bin",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4()
+    ));
+    tokio::fs::write(&temp_path, &encrypted_payload)
+        .await
+        .map_err(|e| format!("Failed to write encrypted temp file: {}", e))?;
+
+    let upload_result = provider
+        .upload(&temp_path.to_string_lossy(), &remote_encrypted_path, None)
+        .await
+        .map_err(|e| format!("Failed to upload encrypted file: {}", e));
+
+    let _ = tokio::fs::remove_file(&temp_path).await;
+    upload_result?;
+    Ok(remote_encrypted_path)
+}
 
 /// Global transfer speed limits (bytes per second, 0 = unlimited)
 pub struct SpeedLimits {
@@ -6763,7 +7778,6 @@ fn rebuild_menu(
 // ============ Sync Commands ============
 
 use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
-use std::collections::HashMap;
 use sync::{
     build_comparison_results_with_index, classify_sync_error, delete_sync_journal,
     journal_sig_filename, load_sync_index, load_sync_journal, save_sync_index, save_sync_journal,
@@ -11934,6 +12948,7 @@ pub fn run() {
     let builder = builder.manage(create_ssh_shell_state());
     let builder = builder.manage(cryptomator::CryptomatorState::new());
     let builder = builder.manage(rclone_crypt::RcloneCryptState::new());
+    let builder = builder.manage(AeroVaultOverlayState::new());
     let builder = builder.manage(cross_profile_commands::CrossProfileState::new());
     // Master Password state for app-level security
     let builder = builder.manage(master_password::MasterPasswordState::new());
@@ -12185,6 +13200,9 @@ pub fn run() {
             aerovault_v2::vault_v2_delete_entry,
             aerovault_v2::vault_v2_create_directory,
             aerovault_v2::vault_v2_delete_entries,
+            aerovault_v2::vault_v2_move_entry,
+            aerovault_v2::vault_v2_rename_entry,
+            aerovault_v2::vault_v2_copy_entry,
             aerovault_v2::vault_v2_add_files_to_dir,
             aerovault_v2::vault_v2_compact,
             aerovault_v2::vault_v2_sync_compare,
@@ -12202,12 +13220,27 @@ pub fn run() {
             cryptomator::cryptomator_decrypt_file,
             cryptomator::cryptomator_encrypt_file,
             cryptomator::cryptomator_create,
-            // Rclone crypt read-only support
+            // Rclone crypt compatibility support
             rclone_crypt::rclone_crypt_unlock,
             rclone_crypt::rclone_crypt_lock,
             rclone_crypt::rclone_crypt_decrypt_name,
+            rclone_crypt::rclone_crypt_encrypt_name,
             rclone_crypt::rclone_crypt_decrypt_file,
             rclone_crypt::rclone_crypt_decrypt_file_path,
+            rclone_crypt::rclone_crypt_encrypt_file_path,
+            rclone_crypt_provider_list,
+            rclone_crypt_provider_download_file,
+            rclone_crypt_provider_upload_file,
+            aerovault_overlay_unlock,
+            aerovault_overlay_lock,
+            aerovault_overlay_list,
+            aerovault_overlay_extract_entry,
+            aerovault_overlay_add_file,
+            aerovault_overlay_create_directory,
+            aerovault_overlay_delete_entries,
+            aerovault_overlay_move_entry,
+            aerovault_overlay_rename_entry,
+            aerovault_overlay_copy_entry,
             // Cross-profile transfer commands
             cross_profile_commands::cross_profile_plan,
             cross_profile_commands::cross_profile_execute,

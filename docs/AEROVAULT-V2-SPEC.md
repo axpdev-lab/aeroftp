@@ -1,8 +1,8 @@
 # AeroVault v2 Format Specification
 
-**Version**: 2.1
+**Version**: 2.2
 **Status**: Stable
-**Date**: 2026-03-12
+**Date**: 2026-05-01
 **Authors**: AXP Development
 
 > Canonical source: [`aerovault` crate on crates.io](https://crates.io/crates/aerovault)
@@ -516,7 +516,7 @@ VaultPanel.tsx (~90 lines, thin orchestrator)
 PasswordStrengthBar.tsx (animated 4-segment strength indicator)
 
 vault_history.rs (SQLite WAL, 4 Tauri commands)
-aerovault_v2.rs (18 Tauri commands including add_directory, scan_directory)
+aerovault_v2.rs (core, directory, sync, and entry-management commands including move/rename/copy)
 ```
 
 ### 9.2 Recent Vaults (History)
@@ -629,6 +629,9 @@ AeroVault actions are available in the file manager context menu:
 | `vault_v2_create_directory` | vault_path, password, dir_name | Create directory |
 | `vault_v2_delete_entry` | vault_path, password, entry_name | Delete single entry |
 | `vault_v2_delete_entries` | vault_path, password, entry_names, recursive | Delete multiple entries |
+| `vault_v2_move_entry` | vault_path, password, from, to | Move or rename an entry path |
+| `vault_v2_rename_entry` | vault_path, password, current_name, new_name | Rename entry inside the same parent |
+| `vault_v2_copy_entry` | vault_path, password, from, to | Copy file or directory recursively |
 | `vault_v2_extract_entry` | vault_path, password, entry_name, dest_path | Extract single entry |
 | `vault_v2_extract_all` | vault_path, password, dest_dir | Extract entire vault |
 | `vault_v2_change_password` | vault_path, old_password, new_password | Change vault password |
@@ -759,7 +762,7 @@ Hex: 2a 00 00 00    (uint32 LE)
 
 | Language | Implementation | Status |
 |----------|---------------|--------|
-| **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production (v0.3.2) |
+| **Rust** | [`aerovault` crate](https://crates.io/crates/aerovault) | Production (v0.3.4) |
 | **Rust** | [AeroFTP Desktop](https://github.com/axpdev-lab/aeroftp) (GUI integration) | Production |
 | **Java** | [AeroFTP Mobile](https://github.com/axpdev-lab/aeroftp-mobile) `VaultPlugin.java` | Production |
 
@@ -772,6 +775,7 @@ Hex: 2a 00 00 00    (uint32 LE)
 | 2.0 | March 2026 | Initial specification |
 | 2.0.1 | March 2026 | Extracted to standalone [`aerovault`](https://crates.io/crates/aerovault) crate with `MIME_TYPE` and `ICON_SVG` constants |
 | 2.1 | March 2026 | **AeroVault Pro**: Recent Vaults history (SQLite WAL), recursive folder encryption with progress events, modular frontend architecture (useVaultState + 4 sub-components), password strength meter, user-friendly error mapping, path validation hardening (backslash rejection, null byte checks on all commands), BFS caps on sync/scan operations, OS integration (MIME type, file association, context menu), 3-auditor security review (21 findings, all resolved) |
+| 2.2 | May 2026 | Entry lifecycle parity in public API: native `move_entry`, `rename_entry`, and recursive `copy_entry` in the `aerovault` crate and Tauri command surface alignment for overlay/main-browser flows |
 
 ---
 

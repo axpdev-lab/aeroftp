@@ -146,7 +146,7 @@ data-encoding = "2"                                                    # Base32/
 jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }         # JWT parsing for vault.cryptomator (CVE-2026-25537 fix)
 
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
-aerovault = "0.3"                                                      # AeroVault v2 standalone crate (crates.io)
+aerovault = "0.3.4"                                                    # AeroVault v2 standalone crate (crates.io)
 chacha20poly1305 = "0.10"                                              # ChaCha20-Poly1305 (used by CryptoLab in cyber_tools)
 hkdf = "0.12"                                                          # HKDF key derivation (used by crypto.rs keystore)
 

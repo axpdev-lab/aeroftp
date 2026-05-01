@@ -572,6 +572,89 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
     }
 }
 
+fn parse_crypt_remote_target(remote_target: &str) -> (String, Option<String>) {
+    if let Some((base, subpath)) = remote_target.split_once(':') {
+        let normalized = subpath.trim().trim_start_matches('/');
+        let initial_path = if normalized.is_empty() {
+            None
+        } else {
+            Some(format!("/{}", normalized))
+        };
+        (base.trim().to_string(), initial_path)
+    } else {
+        (remote_target.trim().to_string(), None)
+    }
+}
+
+fn map_crypt_remote(
+    name: &str,
+    remote: &RcloneRemote,
+    sections: &HashMap<String, RcloneRemote>,
+) -> Option<MappedProfile> {
+    let remote_target = remote.get("remote")?.trim().to_string();
+    if remote_target.is_empty() {
+        return None;
+    }
+
+    let (base_remote_name, crypt_subpath) = parse_crypt_remote_target(&remote_target);
+    let base_remote = sections.get(&base_remote_name)?;
+    let mut mapped = map_remote(&base_remote_name, base_remote)?;
+
+    let get_str = |k: &str| remote.get(k).map(|s| s.as_str());
+    let get_password = |k: &str| {
+        get_str(k).and_then(|v| {
+            if v.is_empty() {
+                None
+            } else {
+                reveal_obscured(v).ok().or_else(|| Some(v.to_string()))
+            }
+        })
+    };
+
+    let mut options = match mapped.options.take() {
+        Some(serde_json::Value::Object(m)) => m,
+        _ => serde_json::Map::new(),
+    };
+
+    options.insert("rcloneCryptEnabled".into(), serde_json::Value::Bool(true));
+    options.insert(
+        "rcloneCryptRemote".into(),
+        serde_json::Value::String(remote_target),
+    );
+    options.insert(
+        "rcloneCryptOverlayName".into(),
+        serde_json::Value::String(name.to_string()),
+    );
+
+    if let Some(pw) = get_password("password") {
+        options.insert("rcloneCryptPassword".into(), serde_json::Value::String(pw));
+    }
+    if let Some(pw2) = get_password("password2") {
+        options.insert("rcloneCryptPassword2".into(), serde_json::Value::String(pw2));
+    }
+    if let Some(mode) = get_str("filename_encryption") {
+        options.insert(
+            "rcloneCryptFilenameEncryption".into(),
+            serde_json::Value::String(mode.to_string()),
+        );
+    }
+    if let Some(v) = get_str("directory_name_encryption") {
+        let dir_enc = v.eq_ignore_ascii_case("true") || v == "1";
+        options.insert(
+            "rcloneCryptDirectoryNameEncryption".into(),
+            serde_json::Value::Bool(dir_enc),
+        );
+    }
+
+    mapped.options = Some(serde_json::Value::Object(options));
+
+    if crypt_subpath.is_some() {
+        mapped.initial_path = crypt_subpath;
+    }
+
+    Some(mapped)
+}
+
 /// Parse a WebDAV URL into (host, basePath, port).
 fn parse_webdav_url(url: &str) -> (String, String, u32) {
     let without_scheme = url
@@ -701,7 +784,13 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     for (name, remote) in &sections {
         let rclone_type = remote.get("type").map(|s| s.as_str()).unwrap_or("unknown");
 
-        match map_remote(name, remote) {
+        let mapped = if rclone_type == "crypt" {
+            map_crypt_remote(name, remote, &sections)
+        } else {
+            map_remote(name, remote)
+        };
+
+        match mapped {
             Some(mapped) => {
                 let id = format!(
                     "rclone-{}-{}",
@@ -1132,6 +1221,57 @@ region = eu-west-1
         remote.insert("type".into(), "fichier".into());
 
         assert!(map_remote("unsupported", &remote).is_none());
+    }
+
+    #[test]
+    fn test_map_crypt_overlay_on_base_remote() {
+        let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
+
+        let mut base = HashMap::new();
+        base.insert("type".into(), "sftp".into());
+        base.insert("host".into(), "192.168.1.10".into());
+        base.insert("port".into(), "22".into());
+        base.insert("user".into(), "admin".into());
+        sections.insert("mynas".into(), base);
+
+        let mut crypt = HashMap::new();
+        crypt.insert("type".into(), "crypt".into());
+        crypt.insert("remote".into(), "mynas:/encrypted".into());
+        crypt.insert("password".into(), "topsecret".into());
+        crypt.insert("password2".into(), "saltsecret".into());
+        crypt.insert("filename_encryption".into(), "standard".into());
+        crypt.insert("directory_name_encryption".into(), "true".into());
+
+        let mapped = map_crypt_remote("mycrypt", &crypt, &sections).expect("should map crypt");
+        assert_eq!(mapped.protocol, "sftp");
+        assert_eq!(mapped.host, "192.168.1.10");
+        assert_eq!(mapped.initial_path.as_deref(), Some("/encrypted"));
+
+        let opts = mapped.options.expect("options should exist");
+        let obj = opts.as_object().expect("options must be object");
+        assert_eq!(obj.get("rcloneCryptEnabled").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            obj.get("rcloneCryptRemote").and_then(|v| v.as_str()),
+            Some("mynas:/encrypted")
+        );
+        assert_eq!(
+            obj.get("rcloneCryptPassword").and_then(|v| v.as_str()),
+            Some("topsecret")
+        );
+        assert_eq!(
+            obj.get("rcloneCryptPassword2").and_then(|v| v.as_str()),
+            Some("saltsecret")
+        );
+        assert_eq!(
+            obj.get("rcloneCryptFilenameEncryption")
+                .and_then(|v| v.as_str()),
+            Some("standard")
+        );
+        assert_eq!(
+            obj.get("rcloneCryptDirectoryNameEncryption")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
     }
 
     #[test]

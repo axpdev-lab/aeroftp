@@ -13,7 +13,8 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink,
+  AeroVaultOverlaySession
 } from './types';
 
 interface DownloadFolderParams {
@@ -32,6 +33,23 @@ interface UploadFolderParams {
   max_concurrent?: number;
   retry_count?: number;
   timeout_seconds?: number;
+}
+
+interface RcloneCryptBrowserEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+  modified: string | null;
+  permissions: string | null;
+  decrypted_name: string;
+  decrypt_ok: boolean;
+}
+
+interface RcloneCryptBrowserListResponse {
+  current_path: string;
+  dir_iv_found: boolean;
+  files: RcloneCryptBrowserEntry[];
 }
 
 type TransferSpeedPreset = 'base' | 'fast' | 'super';
@@ -433,11 +451,22 @@ const App: React.FC = () => {
       deactivateNetworkCapture();
     };
   }, [debugMode]);
+
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
+  const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
+  const [rcloneCryptVaultId, setRcloneCryptVaultId] = useState<string | null>(null);
+  useEffect(() => {
+    if (isConnected || !rcloneCryptVaultId) return;
+    const vaultId = rcloneCryptVaultId;
+    setRcloneCryptVaultId(null);
+    void invoke('rclone_crypt_lock', { vaultId }).catch(() => {
+      // Best effort cleanup: backend may already be cleared.
+    });
+  }, [isConnected, rcloneCryptVaultId]);
   // false → closed; object → open with optional pre-selection (sourceId/destId/sourcePath/destPath).
   // An empty object {} opens the panel with no overrides (active connection seeds source if connected).
   const [showCrossProfilePanel, setShowCrossProfilePanel] = useState<false | {
@@ -2021,13 +2050,42 @@ interface UpdateVerificationInfo {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
+      const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+      const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
       logger.debug('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
-      if (isProvider) {
-        // Use provider API
-        logger.debug('[loadRemoteFiles] Calling provider_list_files...');
-        response = await invoke('provider_list_files', { path: null });
+      if (isAeroVaultOverlay) {
+        response = await invoke<FileListResponse>('aerovault_overlay_list', {
+          sessionId: aeroVaultOverlaySession?.sessionId,
+          path: null,
+        });
+      } else if (isProvider) {
+        if (isRcloneCryptOverlay) {
+          const cryptResponse = await invoke<RcloneCryptBrowserListResponse>('rclone_crypt_provider_list', {
+            vaultId: rcloneCryptVaultId,
+            path: null,
+          });
+          response = {
+            current_path: cryptResponse.current_path,
+            files: cryptResponse.files.map((file) => ({
+              name: file.decrypted_name,
+              path: file.path,
+              is_dir: file.is_dir,
+              size: file.size,
+              modified: file.modified,
+              permissions: file.permissions,
+              metadata: {
+                encrypted_name: file.name,
+                decrypt_ok: file.decrypt_ok ? 'true' : 'false',
+              },
+            })),
+          };
+        } else {
+          // Use provider API
+          logger.debug('[loadRemoteFiles] Calling provider_list_files...');
+          response = await invoke('provider_list_files', { path: null });
+        }
         logger.debug('[loadRemoteFiles] Provider response:', {
           fileCount: response.files?.length ?? 0,
           currentPath: response.current_path,
@@ -2051,6 +2109,29 @@ interface UpdateVerificationInfo {
       setSelectedRemoteFiles(new Set());
       return response;
     } catch (error) {
+      if (String(error).toLowerCase().includes('vault not unlocked')) {
+        setRcloneCryptVaultId(null);
+      }
+      if (String(error).toLowerCase().includes('overlay session not found')) {
+        setAeroVaultOverlaySession(null);
+        if (activeSessionId) {
+          setSessions(prev => prev.map(s =>
+            s.id === activeSessionId
+              ? { ...s, aeroVaultOverlaySession: null }
+              : s
+          ));
+        }
+      }
+      if (String(error).toLowerCase().includes('overlay session expired')) {
+        setAeroVaultOverlaySession(null);
+        if (activeSessionId) {
+          setSessions(prev => prev.map(s =>
+            s.id === activeSessionId
+              ? { ...s, aeroVaultOverlaySession: null }
+              : s
+          ));
+        }
+      }
       console.error('[loadRemoteFiles] Error:', error);
       activityLog.log('ERROR', `Failed to list files: ${error}`, 'error');
       notify.error(t('common.error'), `Failed to list files: ${error}`);
@@ -3070,6 +3151,10 @@ interface UpdateVerificationInfo {
   const disconnectFromFtp = async (reason?: 'button' | 'tab-close' | 'close-all') => {
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
     try {
+      const overlaySessionId = aeroVaultOverlaySession?.sessionId;
+      if (overlaySessionId) {
+        try { await invoke('aerovault_overlay_lock', { sessionId: overlaySessionId }); } catch { }
+      }
       await invoke('disconnect_ftp');
       setIsConnected(false);
       setActivePanel('local');
@@ -3078,6 +3163,7 @@ interface UpdateVerificationInfo {
       // Close all session tabs on disconnect
       setSessions([]);
       setActiveSessionId(null);
+      setAeroVaultOverlaySession(null);
       // Close DevTools panel and clear preview
       setDevToolsOpen(false);
       setDevToolsPreviewFile(null);
@@ -3140,6 +3226,7 @@ interface UpdateVerificationInfo {
       // New sessions start with navigation sync disabled
       isSyncNavigation: false,
       syncBasePaths: null,
+      aeroVaultOverlaySession: null,
     };
     // Reset global sync state for new session
     setIsSyncNavigation(false);
@@ -3189,6 +3276,7 @@ interface UpdateVerificationInfo {
     const capturedLocalPath = currentLocalPath;
     const capturedSyncNav = isSyncNavigation;
     const capturedSyncPaths = syncBasePaths;
+    const capturedVaultOverlay = aeroVaultOverlaySession;
 
     // Save current session state before switching (including sync navigation state)
     setSessions(prev => prev.map(s =>
@@ -3200,7 +3288,8 @@ interface UpdateVerificationInfo {
           remotePath: capturedRemotePath,
           localPath: capturedLocalPath,
           isSyncNavigation: capturedSyncNav,
-          syncBasePaths: capturedSyncPaths
+          syncBasePaths: capturedSyncPaths,
+          aeroVaultOverlaySession: capturedVaultOverlay,
         }
         : s
     ));
@@ -3224,6 +3313,7 @@ interface UpdateVerificationInfo {
     // Restore per-session navigation sync state
     setIsSyncNavigation(targetSession.isSyncNavigation ?? false);
     setSyncBasePaths(targetSession.syncBasePaths ?? null);
+    setAeroVaultOverlaySession(targetSession.aeroVaultOverlaySession ?? null);
 
     // Determine if this is an OAuth provider session
     const protocol = targetSession.connectionParams?.protocol;
@@ -3457,6 +3547,11 @@ interface UpdateVerificationInfo {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
 
+    const overlaySessionId = session.aeroVaultOverlaySession?.sessionId;
+    if (overlaySessionId) {
+      try { await invoke('aerovault_overlay_lock', { sessionId: overlaySessionId }); } catch { }
+    }
+
     // If closing active session, switch to another or disconnect
     if (sessionId === activeSessionId) {
       const remaining = sessions.filter(s => s.id !== sessionId);
@@ -3471,8 +3566,14 @@ interface UpdateVerificationInfo {
   };
 
   const closeAllSessions = async () => {
+    for (const s of sessions) {
+      const overlaySessionId = s.aeroVaultOverlaySession?.sessionId;
+      if (!overlaySessionId) continue;
+      try { await invoke('aerovault_overlay_lock', { sessionId: overlaySessionId }); } catch { }
+    }
     await disconnectFromFtp('close-all');
     setSessions([]);
+    setAeroVaultOverlaySession(null);
   };
 
   const handleNewTabFromSavedServer = () => {
@@ -3483,12 +3584,13 @@ interface UpdateVerificationInfo {
     const capturedLocalPath = currentLocalPath;
     const capturedSyncNav = isSyncNavigation;
     const capturedSyncPaths = syncBasePaths;
+    const capturedVaultOverlay = aeroVaultOverlaySession;
 
     // Mark current session as cached and go to connection screen (including sync state)
     if (activeSessionId) {
       setSessions(prev => prev.map(s =>
         s.id === activeSessionId
-          ? { ...s, status: 'cached', remoteFiles: capturedRemoteFiles, localFiles: capturedLocalFiles, remotePath: capturedRemotePath, localPath: capturedLocalPath, isSyncNavigation: capturedSyncNav, syncBasePaths: capturedSyncPaths }
+          ? { ...s, status: 'cached', remoteFiles: capturedRemoteFiles, localFiles: capturedLocalFiles, remotePath: capturedRemotePath, localPath: capturedLocalPath, isSyncNavigation: capturedSyncNav, syncBasePaths: capturedSyncPaths, aeroVaultOverlaySession: capturedVaultOverlay }
           : s
       ));
     }
@@ -3497,6 +3599,7 @@ interface UpdateVerificationInfo {
     // Reset sync state for new connection
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
+    setAeroVaultOverlaySession(null);
     setIsConnected(false);
     // Reset connection form for a fresh "new server" experience
     setConnectionParams({ server: '', username: '', password: '' });
@@ -3504,6 +3607,39 @@ interface UpdateVerificationInfo {
     // Show the connection screen for selecting a new server
     setShowConnectionScreen(true);
   };
+
+  const handleAeroVaultOverlaySessionChange = useCallback((session: AeroVaultOverlaySession | null) => {
+    setAeroVaultOverlaySession(session);
+    if (!activeSessionId) return;
+    setSessions(prev => prev.map(s =>
+      s.id === activeSessionId
+        ? { ...s, aeroVaultOverlaySession: session }
+        : s
+    ));
+  }, [activeSessionId]);
+
+  const clearAeroVaultOverlaySession = useCallback(async () => {
+    const sessionId = aeroVaultOverlaySession?.sessionId;
+    handleAeroVaultOverlaySessionChange(null);
+    if (sessionId) {
+      try {
+        await invoke('aerovault_overlay_lock', { sessionId });
+      } catch {
+        // Best effort cleanup.
+      }
+    }
+  }, [aeroVaultOverlaySession?.sessionId, handleAeroVaultOverlaySessionChange]);
+
+  const toggleAeroVaultOverlay = useCallback(() => {
+    if (aeroVaultOverlaySession) {
+      void clearAeroVaultOverlaySession();
+      notify.info('AeroVault Overlay', 'Overlay disattivato per la sessione corrente');
+      return;
+    }
+
+    setShowVaultPanel({ mode: 'home' });
+    notify.info('AeroVault Overlay', 'Apri un vault in browse per attivare overlay nella sessione corrente');
+  }, [aeroVaultOverlaySession, clearAeroVaultOverlaySession, notify]);
 
   // Handle click on Cloud Tab - auto-connect to cloud server profile
   // Supports all protocols: FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.
@@ -3777,11 +3913,40 @@ interface UpdateVerificationInfo {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
+      const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+      const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
 
       let response: FileListResponse;
-      if (isProvider) {
-        // Use provider API
-        response = await invoke('provider_change_dir', { path });
+      if (isAeroVaultOverlay) {
+        response = await invoke<FileListResponse>('aerovault_overlay_list', {
+          sessionId: aeroVaultOverlaySession?.sessionId,
+          path,
+        });
+      } else if (isProvider) {
+        if (isRcloneCryptOverlay) {
+          const cryptResponse = await invoke<RcloneCryptBrowserListResponse>('rclone_crypt_provider_list', {
+            vaultId: rcloneCryptVaultId,
+            path,
+          });
+          response = {
+            current_path: cryptResponse.current_path,
+            files: cryptResponse.files.map((file) => ({
+              name: file.decrypted_name,
+              path: file.path,
+              is_dir: file.is_dir,
+              size: file.size,
+              modified: file.modified,
+              permissions: file.permissions,
+              metadata: {
+                encrypted_name: file.name,
+                decrypt_ok: file.decrypt_ok ? 'true' : 'false',
+              },
+            })),
+          };
+        } else {
+          // Use provider API
+          response = await invoke('provider_change_dir', { path });
+        }
       } else {
         // Use FTP API
         response = await invoke('change_directory', { path });
@@ -3819,6 +3984,16 @@ interface UpdateVerificationInfo {
       }
     } catch (error) {
       if (navId !== remoteNavCounter.current) return;
+      if (String(error).toLowerCase().includes('overlay session')) {
+        setAeroVaultOverlaySession(null);
+        if (activeSessionId) {
+          setSessions(prev => prev.map(s =>
+            s.id === activeSessionId
+              ? { ...s, aeroVaultOverlaySession: null }
+              : s
+          ));
+        }
+      }
       notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(error) }));
     }
   };
@@ -4012,9 +4187,17 @@ interface UpdateVerificationInfo {
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     const isProvider = usesProviderApi(protocol);
+    const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+    const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
 
     try {
       if (isDir) {
+        if (isAeroVaultOverlay) {
+          throw new Error('AeroVault overlay: folder download not yet supported in main browser');
+        }
+        if (isRcloneCryptOverlay) {
+          throw new Error('Rclone crypt: folder download in transparent mode is not yet supported in main browser');
+        }
         const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
           const folderPath = `${downloadPath}/${fileName}`;
@@ -4079,7 +4262,19 @@ interface UpdateVerificationInfo {
 
           const localFilePath = `${downloadPath}/${targetName}`;
           const remoteModified = remoteFileInfo?.modified || undefined;
-          if (isProvider) {
+          if (isAeroVaultOverlay) {
+            await invoke<string>('aerovault_overlay_extract_entry', {
+              sessionId: aeroVaultOverlaySession?.sessionId,
+              entryPath: remoteFilePath,
+              outputPath: localFilePath,
+            });
+          } else if (isRcloneCryptOverlay) {
+            await invoke<string>('rclone_crypt_provider_download_file', {
+              vaultId: rcloneCryptVaultId,
+              remoteEncryptedPath: remoteFilePath,
+              outputPath: localFilePath,
+            });
+          } else if (isProvider) {
             // Use provider command for file download
             await invoke('provider_download_file', { remotePath: remoteFilePath, localPath: localFilePath, modified: remoteModified });
           } else {
@@ -4096,6 +4291,16 @@ interface UpdateVerificationInfo {
         }
       }
     } catch (error) {
+      if (String(error).toLowerCase().includes('overlay session')) {
+        setAeroVaultOverlaySession(null);
+        if (activeSessionId) {
+          setSessions(prev => prev.map(s =>
+            s.id === activeSessionId
+              ? { ...s, aeroVaultOverlaySession: null }
+              : s
+          ));
+        }
+      }
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
       // Don't spam toasts when batch was cancelled — one summary toast is enough
       if (!batchCancelledRef.current) {
@@ -4111,9 +4316,17 @@ interface UpdateVerificationInfo {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = usesProviderApi(protocol);
+      const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+      const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
 
       if (isDir) {
+        if (isAeroVaultOverlay) {
+          throw new Error('AeroVault overlay: folder upload not yet supported in main browser');
+        }
+        if (isRcloneCryptOverlay) {
+          throw new Error('Rclone crypt: folder upload in transparent mode is not yet supported in main browser');
+        }
         const logId = humanLog.logStart('UPLOAD', { filename: fileName });
         pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
         if (isProvider) {
@@ -4204,7 +4417,19 @@ interface UpdateVerificationInfo {
         const logId = humanLog.logStart('UPLOAD', { filename: fileName });
         pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
 
-        if (isProvider) {
+        if (isAeroVaultOverlay) {
+          await invoke<string>('aerovault_overlay_add_file', {
+            sessionId: aeroVaultOverlaySession?.sessionId,
+            localPlaintextPath: localFilePath,
+            remotePlainName: targetName,
+          });
+        } else if (isRcloneCryptOverlay) {
+          await invoke<string>('rclone_crypt_provider_upload_file', {
+            vaultId: rcloneCryptVaultId,
+            localPlaintextPath: localFilePath,
+            remotePlainName: targetName,
+          });
+        } else if (isProvider) {
           await invoke('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null });
         } else {
           await invoke('upload_file', { params: { local_path: localFilePath, remote_path: remotePath } as UploadParams });
@@ -4217,6 +4442,16 @@ interface UpdateVerificationInfo {
         humanLog.updateEntry(logId, { status: 'success', message: msg });
       }
     } catch (error) {
+      if (String(error).toLowerCase().includes('overlay session')) {
+        setAeroVaultOverlaySession(null);
+        if (activeSessionId) {
+          setSessions(prev => prev.map(s =>
+            s.id === activeSessionId
+              ? { ...s, aeroVaultOverlaySession: null }
+              : s
+          ));
+        }
+      }
       humanLog.logRaw('activity.upload_error', 'UPLOAD', { filename: fileName }, 'error');
       if (!batchCancelledRef.current) {
         notify.error(t('toast.uploadFailed'), String(error));
@@ -4389,21 +4624,33 @@ interface UpdateVerificationInfo {
       }
       if (operation === 'cut') {
         // Delete source after successful transfer
-        for (const file of files) {
+        if (sourceIsRemote && aeroVaultOverlaySession?.sessionId) {
           try {
-            if (sourceIsRemote) {
-              const activeSession = sessions.find(s => s.id === activeSessionId);
-              const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-              if (usesProviderApi(protocol)) {
-                await invoke('provider_delete_file', { path: file.path });
-              } else {
-                await invoke('delete_remote_file', { path: file.path });
-              }
-            } else {
-              await invoke('delete_local_file', { path: file.path });
-            }
+            await invoke<number>('aerovault_overlay_delete_entries', {
+              sessionId: aeroVaultOverlaySession?.sessionId,
+              entryPaths: files.map((f) => f.path),
+              recursive: true,
+            });
           } catch (e) {
-            console.error(`Failed to delete source after cut: ${file.name}`, e);
+            console.error('Failed to delete overlay source after cut', e);
+          }
+        } else {
+          for (const file of files) {
+            try {
+              if (sourceIsRemote) {
+                const activeSession = sessions.find(s => s.id === activeSessionId);
+                const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+                if (usesProviderApi(protocol)) {
+                  await invoke('provider_delete_file', { path: file.path });
+                } else {
+                  await invoke('delete_remote_file', { path: file.path });
+                }
+              } else {
+                await invoke('delete_local_file', { path: file.path });
+              }
+            } catch (e) {
+              console.error(`Failed to delete source after cut: ${file.name}`, e);
+            }
           }
         }
         if (sourceIsRemote) loadRemoteFiles(undefined, true);
@@ -4417,13 +4664,20 @@ interface UpdateVerificationInfo {
         const activeSession = sessions.find(s => s.id === activeSessionId);
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
         const useProvider = usesProviderApi(protocol) && protocol !== 'sftp';
+        const isAeroVaultOverlay = targetIsRemote && !!aeroVaultOverlaySession?.sessionId;
 
         for (const file of files) {
           const sep = targetIsRemote ? '/' : (targetDir.includes('\\') ? '\\' : '/');
           const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
           try {
             if (targetIsRemote) {
-              if (useProvider) {
+              if (isAeroVaultOverlay) {
+                await invoke<string>('aerovault_overlay_move_entry', {
+                  sessionId: aeroVaultOverlaySession?.sessionId,
+                  fromPath: file.path,
+                  toPath: destPath,
+                });
+              } else if (useProvider) {
                 await invoke('provider_rename', { from: file.path, to: destPath });
               } else {
                 await invoke('rename_remote_file', { from: file.path, to: destPath });
@@ -4465,6 +4719,7 @@ interface UpdateVerificationInfo {
           }
           loadLocalFiles(currentLocalPath);
         } else {
+          const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
           // Remote copy via server-side copy API
           let anyFailed = false;
           for (const file of files) {
@@ -4479,7 +4734,15 @@ interface UpdateVerificationInfo {
               })()
               : destPath;
             try {
-              await invoke('provider_server_copy', { from, to: finalDest });
+              if (isAeroVaultOverlay) {
+                await invoke<string>('aerovault_overlay_copy_entry', {
+                  sessionId: aeroVaultOverlaySession?.sessionId,
+                  fromPath: from,
+                  toPath: finalDest,
+                });
+              } else {
+                await invoke('provider_server_copy', { from, to: finalDest });
+              }
             } catch (e) {
               notify.error(t('toast.copyFailed'), `${file.name}: ${String(e)}`);
               anyFailed = true;
@@ -5307,6 +5570,7 @@ interface UpdateVerificationInfo {
       const activeSession = sessions.find(s => s.id === activeSessionId);
       const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
       const isProvider = usesProviderApi(protocol);
+      const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
       let batchCommitMessage: string | undefined;
 
@@ -5336,7 +5600,28 @@ interface UpdateVerificationInfo {
       try { await invoke('reset_cancel_flag'); } catch { }
 
       // GitHub atomic batch delete: single commit for all non-dir files
-      if (isGitHubRepoMode && batchCommitMessage) {
+      if (isAeroVaultOverlay) {
+        const resolvedFiles = names
+          .map(name => remoteFiles.find(f => f.name === name))
+          .filter(Boolean) as RemoteFile[];
+        const entryPaths = resolvedFiles.map(f => f.path);
+        try {
+          await invoke<number>('aerovault_overlay_delete_entries', {
+            sessionId: aeroVaultOverlaySession?.sessionId,
+            entryPaths,
+            recursive: true,
+          });
+          for (const file of resolvedFiles) {
+            if (file.is_dir) {
+              deletedFolders.push(file.path);
+            } else {
+              deletedFiles.push(file.path);
+            }
+          }
+        } catch (err) {
+          notify.error(t('toast.deleteFail'), String(err));
+        }
+      } else if (isGitHubRepoMode && batchCommitMessage) {
         const resolvedFiles = names
           .map(name => remoteFiles.find(f => f.name === name))
           .filter(Boolean) as RemoteFile[];
@@ -5541,8 +5826,15 @@ interface UpdateVerificationInfo {
       const logId = humanLog.logStart('DELETE', { filename: path });
       try {
         const isProvider = usesProviderApi(protocol);
+        const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
-        if (isProvider) {
+        if (isAeroVaultOverlay) {
+          await invoke<number>('aerovault_overlay_delete_entries', {
+            sessionId: aeroVaultOverlaySession?.sessionId,
+            entryPaths: [path],
+            recursive: isDir,
+          });
+        } else if (isProvider) {
           if (isDir) {
             await invoke('provider_delete_dir', { path, recursive: true });
           } else {
@@ -5631,8 +5923,15 @@ interface UpdateVerificationInfo {
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = usesProviderApi(protocol);
+            const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
-            if (isProvider) {
+            if (isAeroVaultOverlay) {
+              await invoke<string>('aerovault_overlay_rename_entry', {
+                sessionId: aeroVaultOverlaySession?.sessionId,
+                entryPath: path,
+                newName,
+              });
+            } else if (isProvider) {
               await invoke('provider_rename', { from: path, to: newPath });
             } else {
               await invoke('rename_remote_file', { from: path, to: newPath });
@@ -5701,8 +6000,15 @@ interface UpdateVerificationInfo {
         const activeSession = sessions.find(s => s.id === activeSessionId);
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
         const isProvider = usesProviderApi(protocol);
+        const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
-        if (isProvider) {
+        if (isAeroVaultOverlay) {
+          await invoke<string>('aerovault_overlay_rename_entry', {
+            sessionId: aeroVaultOverlaySession?.sessionId,
+            entryPath: path,
+            newName,
+          });
+        } else if (isProvider) {
           await invoke('provider_rename', { from: path, to: newPath });
         } else {
           await invoke('rename_remote_file', { from: path, to: newPath });
@@ -5758,8 +6064,15 @@ interface UpdateVerificationInfo {
           const activeSession = sessions.find(s => s.id === activeSessionId);
           const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
           const isProvider = usesProviderApi(protocol);
+          const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
-          if (isProvider) {
+          if (isAeroVaultOverlay) {
+            await invoke<string>('aerovault_overlay_rename_entry', {
+              sessionId: aeroVaultOverlaySession?.sessionId,
+              entryPath: oldPath,
+              newName,
+            });
+          } else if (isProvider) {
             await invoke('provider_rename', { from: oldPath, to: newPath });
           } else {
             await invoke('rename_remote_file', { from: oldPath, to: newPath });
@@ -5813,10 +6126,16 @@ interface UpdateVerificationInfo {
             const activeSession = sessions.find(s => s.id === activeSessionId);
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = usesProviderApi(protocol);
+            const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
-            if (isProvider) {
+            if (isAeroVaultOverlay) {
+              await invoke('aerovault_overlay_create_directory', {
+                sessionId: aeroVaultOverlaySession?.sessionId,
+                dirName: name,
+              });
+            } else if (isProvider) {
               await invoke('provider_mkdir', { path });
             } else {
               await invoke('create_remote_folder', { path });
@@ -6089,7 +6408,7 @@ interface UpdateVerificationInfo {
         },
         disabled: currentProtocol === 'immich',
       },
-      ...(currentProtocol && SERVER_COPY_PROVIDERS.includes(currentProtocol) ? [{
+      ...((aeroVaultOverlaySession?.sessionId || (currentProtocol && SERVER_COPY_PROVIDERS.includes(currentProtocol))) ? [{
         label: t('contextMenu.copy') || 'Copy', icon: <Copy size={14} />, action: () => {
           const selectedFiles = remoteFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
           clipboardCopy(selectedFiles, true, currentRemotePath);
@@ -6098,7 +6417,7 @@ interface UpdateVerificationInfo {
       {
         label: t('contextMenu.paste') || 'Paste', icon: <ClipboardPaste size={14} />,
         action: () => clipboardPaste(true, currentRemotePath),
-        disabled: !hasClipboard || (fileClipboardRef.current?.isRemote && fileClipboardRef.current?.operation === 'copy' && currentProtocol && !SERVER_COPY_PROVIDERS.includes(currentProtocol)),
+        disabled: !hasClipboard || (fileClipboardRef.current?.isRemote && fileClipboardRef.current?.operation === 'copy' && !aeroVaultOverlaySession?.sessionId && currentProtocol && !SERVER_COPY_PROVIDERS.includes(currentProtocol)),
         divider: true,
       },
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { navigator.clipboard.writeText(file.path); notify.success(t('contextMenu.pathCopied')); } },
@@ -7861,9 +8180,22 @@ interface UpdateVerificationInfo {
           isOpen={showCloudPanel}
           onClose={() => setShowCloudPanel(false)}
         />
-        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} />}
+        {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} />}
         {showCryptomatorBrowser && <CryptomatorBrowser onClose={() => setShowCryptomatorBrowser(false)} />}
-        {showRcloneCryptUnlock && <RcloneCryptUnlock onClose={() => setShowRcloneCryptUnlock(false)} />}
+        {showRcloneCryptUnlock && (
+          <RcloneCryptUnlock
+            onClose={() => setShowRcloneCryptUnlock(false)}
+            activeVaultId={rcloneCryptVaultId}
+            onUnlocked={(vaultId) => {
+              setRcloneCryptVaultId(vaultId);
+              void loadRemoteFiles(undefined, true);
+            }}
+            onLocked={() => {
+              setRcloneCryptVaultId(null);
+              void loadRemoteFiles(undefined, true);
+            }}
+          />
+        )}
         {showCrossProfilePanel && (() => {
           const activeSavedId = isConnected ? sessions.find(s => s.id === activeSessionId)?.savedServerId : undefined;
           const sourceId = showCrossProfilePanel.sourceId ?? activeSavedId;
@@ -8531,6 +8863,17 @@ interface UpdateVerificationInfo {
                   {isConnected && showRemotePanel && (
                     <>
                       <button
+                        onClick={toggleAeroVaultOverlay}
+                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${aeroVaultOverlaySession
+                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                          : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
+                          }`}
+                        title={aeroVaultOverlaySession ? 'Disattiva AeroVault Overlay (sessione)' : 'Attiva AeroVault Overlay'}
+                      >
+                        <VaultIcon size={16} className={aeroVaultOverlaySession ? 'text-white' : 'text-emerald-400'} />
+                        {aeroVaultOverlaySession ? 'Vault ON' : 'Vault'}
+                      </button>
+                      <button
                         onClick={cancelTransfer}
                         disabled={!isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
                         className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${isForceStopMode
@@ -8692,6 +9035,15 @@ interface UpdateVerificationInfo {
                     >
                       <RefreshCw size={13} />
                     </button>
+                    {aeroVaultOverlaySession && (
+                      <span
+                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30"
+                        title={`AeroVault Overlay attivo (${aeroVaultOverlaySession.source})`}
+                      >
+                        <VaultIcon size={11} className="text-emerald-400" />
+                        OVERLAY
+                      </span>
+                    )}
                     {isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' && (
                       <GitHubBranchSelector
                         currentBranch={gitHubRepoInfo.branch}
