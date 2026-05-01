@@ -5,17 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.7.0] - 2026-05-01
 
-### P3-T01 closure package (W3 + W4)
+### AeroRsync session batch + Crypto overlay + Server Health Check + CLI/MCP parity
 
-Preparazione del pacchetto di chiusura tecnico-operativa per P3-T01 con validazioni i18n, smoke incrementale live e report finale in Appendix.
+Big-batch release closing the P3-T01 wave (AeroRsync streaming + batch transport) and shipping three parallel workstreams: a new crypto overlay layer (rclone-crypt + AeroVault session model), a real-time Server Health Check engine wired into IntroHub Pro, and the CLI/MCP parity wrap-up. The standalone `aerovault` crate is bumped to 0.3.4 with the new overlay-session API.
 
-### Changed
+#### Added
 
-- **i18n GLM batch cleanup completata** - eliminati i placeholder residui `[NEEDS TRANSLATION]` su tutte le locale propagate; `i18n:validate` risulta pulito (0 errori, 0 warning, 0 placeholder).
-- **Smoke live incrementale validato** - su profilo reale `SSH MyCloud HD`, eseguiti i due run di riferimento: upload iniziale 100x10KB e resync con una sola mutazione (1 uploaded, 99 skipped), con tempi coerenti con comportamento incrementale file-level.
-- **Documentazione di chiusura P3-T01 consolidata** - report finale e handoff aggiornati in Appendix con evidenze complete (i18n/typecheck/smoke live small+large) raccolte su target reale.
+- **AeroRsync session-cached batch transport** — new `AerorsyncBatch` trait (W3.1) + russh implementation with channel + raw stream + key auth (W3.2) + generic `do_upload` / `do_download` helpers (W3.2 b2). A single SSH session now amortizes many consecutive delta transfers.
+- **AeroRsync batch surface end-to-end** — `open_delta_batch` + `try_delta_transfer_with_batch` wired into `sync_tree_core` (W4.1 + W4.2). `SyncReport` exposes `delta_files` and `bytes_on_wire`; SyncPanel surfaces the new batch counters.
+- **Rclone-crypt provider session** — rclone-style crypto overlay with deterministic filename obfuscation, streaming chunk-based encrypt/decrypt, `rclone_crypt_provider_*` Tauri commands and a `RcloneCryptUnlock` dialog for interactive unlock.
+- **AeroVault overlay session model** — open/list/upload/download routed transparently through an active encrypted overlay, status badge in App.tsx, `aerovault_overlay_*` commands wired in `lib.rs`, spec updated in `docs/AEROVAULT-V2-SPEC.md`. The `aerovault` crate is bumped to 0.3.4 with the overlay API + KEK derivation polish.
+- **Server Health Check engine** — `health_check.rs` runs real DNS / TCP / TLS / HTTP probes with latency measurements, 0-100 health scoring, and a per-protocol capability matrix. `useProviderHealth` hook does parallel batch refresh with auto-cleanup, `HealthRadial` SVG gauge is wired to the live results, `MyServersPanel` + `ServerCard` show contextual badges and a right-click context menu.
+- **CLI/MCP parity wrap-up** — `aeroftp-cli` and `mcp/tools.rs` align argument shapes and output schemas with wave-5 (cross-profile transfer) and wave-6 (Gap 4 caps + 6 ops tools) so an LLM can use either surface interchangeably.
+
+#### Changed
+
+- **MEGA Native crypto polish** — non-regressive cleanup on top of the v3.6.10 canonical-layout fix (less log noise, nonce/key edge cases, listing pagination).
+- **B2 native v4 hardening** — auth/list/upload/download retry surface aligned with provider-trait expectations; coverage extended in `integration_b2.rs`.
+- **`aerovault` 0.3 → 0.3.4** — new overlay-session API, refreshed KEK derivation, three crypto helpers exposed via the `aerovault_overlay_*` commands.
+- **i18n GLM batch cleanup** — leftover `[NEEDS TRANSLATION]` placeholders removed across all propagated locales; `i18n:validate` is clean (0 errors, 0 warnings, 0 placeholders). New keys: `deltaBatchSummary`, `deltaBytesOnWire`, `storageQuotaUnavailable`, IntroHub probe states (`unknown`, `clickToRetry`).
+- **P3-T01 live smoke validated** — on the real `SSH MyCloud HD` profile, the two reference runs (initial 100x10KB upload and one-mutation resync: 1 uploaded, 99 skipped) confirm consistent file-level incremental behavior.
+- **AeroRsync UI** — SyncPanel shows the batch summary (`Delta: X files in Y session(s)` + `bytes_on_wire`); `types.ts` aligned with the new `SyncReport` shape.
+
+#### Internal
+
+- P3-T01 closure docs consolidated under Appendix C-Y-D (final report and handoff with i18n / typecheck / live small+large smoke evidence on a real target).
+- Three clippy fixes on the new modules: `impl Default for RcloneCryptState`, collapsed nested `if` in the archive prefix matcher in `lib.rs`, `#[allow(clippy::too_many_arguments)]` on `cmd_rclone_crypt_put` (10 args, idiomatic for the CLI handler).
 
 ## [3.6.10] - 2026-04-28
 
