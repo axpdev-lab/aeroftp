@@ -213,250 +213,310 @@ impl DeltaTransport for AerorsyncDeltaTransport {
 // --- upload flow ---------------------------------------------------------
 
 impl AerorsyncDeltaTransport {
+    /// Single-shot upload. Constructs a fresh `SshRemoteShellTransport`
+    /// and an inert `CancelHandle` (the `&self` trait method has no
+    /// cancel hook available) and delegates to [`do_upload`]. The same
+    /// helper is reused by `AerorsyncBatch::upload` (W3.2b) with a
+    /// long-lived transport that keeps an SSH session alive across N
+    /// files and with a real `CancelHandle` shared across the batch.
     async fn upload_inner(
         &self,
         local_path: &Path,
         remote_path: &str,
     ) -> Result<RsyncStats, RsyncError> {
-        let start = Instant::now();
-        let metadata = fs::metadata(local_path).await.map_err(RsyncError::Io)?;
-        let file_size = metadata.len();
-        if file_size < self.min_file_size {
-            return Err(RsyncError::TooSmall {
-                size: file_size,
-                threshold: self.min_file_size,
-            });
-        }
-        // P3-T01 W1.3 — upload-side cap removed. Sources of any size now
-        // flow through `drive_upload_through_delta_streaming` (W1.2).
-        // The driver reads `STREAMING_READ_CHUNK_BYTES`-bounded slabs
-        // from the file handle and emits engine literals incrementally,
-        // so the upload no longer requests a `Vec<u8>` of `file_size`
-        // bytes. The resident memory bound becomes `O(read_chunk +
-        // op_vector)`; lifting the op_vector dependency on file_size
-        // requires streaming the zstd encoder + wire emission, scoped
-        // post-P3-T01 (see `send_delta_phase_streaming` docstring).
-        //
-        // U-07: preserve the source mtime on the wire. Classic rsync
-        // preserves mtime by default and `RsyncConfig::preserve_times`
-        // is already on for the SFTP path; hardcoding `mtime: 0` was a
-        // silent regression for mtime-aware sync consumers.
-        //
-        // The xxh128 file checksum advertised in the file-list entry
-        // (`-c always-checksum` parity) is computed via a streaming
-        // pass over the file before the file_list phase. The OS page
-        // cache makes the second read (inside the delta phase) a hot
-        // hit on typical workloads, so the practical I/O cost is one
-        // disk read.
-        let file_checksum = compute_xxh128_file_streaming(local_path)
-            .await
-            .map_err(RsyncError::Io)?;
-        let source_entry = build_source_entry(local_path, file_size, &metadata, file_checksum);
-
-        let source_file = fs::File::open(local_path)
-            .await
-            .map_err(RsyncError::Io)?;
-
         let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
         let cancel = CancelHandle::inert();
-        let mut driver = AerorsyncDriver::new(transport, cancel);
-        let adapter = CurrentDeltaSyncBridge::new();
-        let warnings = new_warnings_sink();
-        let mut bridge = build_event_bridge(warnings.clone());
-
-        // B.1: production dispatch now talks to stock `rsync --server`
-        // (WrapperParity flavor) instead of the dev helper
-        // `aerorsync_serve`. The wrapper command line is byte-pinned
-        // against rsync 3.2.7 capture by `upload_remote_command_matches_capture`.
-        let spec = RemoteCommandSpec::upload(remote_path);
-        let drive_res = driver
-            .drive_upload_through_delta_streaming(
-                spec,
-                source_entry,
-                source_file,
-                file_size,
-                &adapter,
-                &mut bridge,
-            )
-            .await;
-        if let Err(e) = drive_res {
-            return Err(map_native_error_to_rsync(e, driver.committed()));
-        }
-        if let Err(e) = driver.finish_session(&mut bridge).await {
-            return Err(map_native_error_to_rsync(e, driver.committed()));
-        }
-
-        let duration_ms = start.elapsed().as_millis() as u64;
-        let warnings = drain_warnings(warnings);
-        Ok(build_stats(
-            driver.session_stats(),
-            file_size,
-            duration_ms,
-            warnings,
-        ))
+        do_upload(
+            transport,
+            cancel,
+            local_path,
+            remote_path,
+            self.min_file_size,
+        )
+        .await
     }
+}
+
+/// Module-private upload core extracted from `upload_inner` in P3-T01 W3.2(a).
+///
+/// The function takes the remote-shell transport and cancel handle as
+/// parameters so the same logic serves both the trait single-shot path
+/// (`AerorsyncDeltaTransport::upload`, fresh transport per call) and the
+/// session-reuse batch (`AerorsyncBatch::upload` in W3.2b, transport
+/// preallocated once per batch). All other behavior — metadata probe,
+/// `min_file_size` gate, streaming xxh128, source entry build, driver
+/// drive + finish_session, stats build — is byte-identical to the
+/// pre-W3.2 single-shot path.
+///
+/// Pinned by `cargo test --features aerorsync --lib aerorsync::` 453/453;
+/// any semantic change must surface as a test diff.
+async fn do_upload(
+    transport: SshRemoteShellTransport,
+    cancel: CancelHandle,
+    local_path: &Path,
+    remote_path: &str,
+    min_file_size: u64,
+) -> Result<RsyncStats, RsyncError> {
+    let start = Instant::now();
+    let metadata = fs::metadata(local_path).await.map_err(RsyncError::Io)?;
+    let file_size = metadata.len();
+    if file_size < min_file_size {
+        return Err(RsyncError::TooSmall {
+            size: file_size,
+            threshold: min_file_size,
+        });
+    }
+    // P3-T01 W1.3 — upload-side cap removed. Sources of any size now
+    // flow through `drive_upload_through_delta_streaming` (W1.2).
+    // The driver reads `STREAMING_READ_CHUNK_BYTES`-bounded slabs
+    // from the file handle and emits engine literals incrementally,
+    // so the upload no longer requests a `Vec<u8>` of `file_size`
+    // bytes. The resident memory bound becomes `O(read_chunk +
+    // op_vector)`; lifting the op_vector dependency on file_size
+    // requires streaming the zstd encoder + wire emission, scoped
+    // post-P3-T01 (see `send_delta_phase_streaming` docstring).
+    //
+    // U-07: preserve the source mtime on the wire. Classic rsync
+    // preserves mtime by default and `RsyncConfig::preserve_times`
+    // is already on for the SFTP path; hardcoding `mtime: 0` was a
+    // silent regression for mtime-aware sync consumers.
+    //
+    // The xxh128 file checksum advertised in the file-list entry
+    // (`-c always-checksum` parity) is computed via a streaming
+    // pass over the file before the file_list phase. The OS page
+    // cache makes the second read (inside the delta phase) a hot
+    // hit on typical workloads, so the practical I/O cost is one
+    // disk read.
+    let file_checksum = compute_xxh128_file_streaming(local_path)
+        .await
+        .map_err(RsyncError::Io)?;
+    let source_entry = build_source_entry(local_path, file_size, &metadata, file_checksum);
+
+    let source_file = fs::File::open(local_path)
+        .await
+        .map_err(RsyncError::Io)?;
+
+    let mut driver = AerorsyncDriver::new(transport, cancel);
+    let adapter = CurrentDeltaSyncBridge::new();
+    let warnings = new_warnings_sink();
+    let mut bridge = build_event_bridge(warnings.clone());
+
+    // B.1: production dispatch now talks to stock `rsync --server`
+    // (WrapperParity flavor) instead of the dev helper
+    // `aerorsync_serve`. The wrapper command line is byte-pinned
+    // against rsync 3.2.7 capture by `upload_remote_command_matches_capture`.
+    let spec = RemoteCommandSpec::upload(remote_path);
+    let drive_res = driver
+        .drive_upload_through_delta_streaming(
+            spec,
+            source_entry,
+            source_file,
+            file_size,
+            &adapter,
+            &mut bridge,
+        )
+        .await;
+    if let Err(e) = drive_res {
+        return Err(map_native_error_to_rsync(e, driver.committed()));
+    }
+    if let Err(e) = driver.finish_session(&mut bridge).await {
+        return Err(map_native_error_to_rsync(e, driver.committed()));
+    }
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let warnings = drain_warnings(warnings);
+    Ok(build_stats(
+        driver.session_stats(),
+        file_size,
+        duration_ms,
+        warnings,
+    ))
 }
 
 // --- download flow -------------------------------------------------------
 
 impl AerorsyncDeltaTransport {
+    /// Single-shot download. Constructs a fresh `SshRemoteShellTransport`
+    /// and an inert `CancelHandle` and delegates to [`do_download`]. The
+    /// same helper is reused by `AerorsyncBatch::download` (W3.2b) with
+    /// a long-lived transport that keeps an SSH session alive across N
+    /// files and with a real shared cancel handle.
     async fn download_inner(
         &self,
         remote_path: &str,
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
-        let start = Instant::now();
-        // P3-T01 W2.5: the bulk read still feeds the signature phase
-        // (`adapter.build_signatures` is bulk-only until the post-P3-T01
-        // streaming variant lands). Reconstruction, however, no longer
-        // materialises a `Vec<u8>` — it streams into a
-        // `StreamingAtomicWriter` opened below.
-        //
-        // U-03: distinguish `NotFound` (legitimate empty baseline) from
-        // every other `io::Error`. Before the fix, `unwrap_or_default()`
-        // silently masked `PermissionDenied`, `EIO`, symlink loops, etc.
-        // into "empty baseline", degrading the delta path to a full
-        // download while hiding the underlying error from the user.
-        let (destination_data, baseline_mode) = match fs::read(local_path).await {
-            Ok(data) => {
-                // U-09: capture the pre-existing mode so we can restore it on
-                // the temp file before the atomic rename, preserving
-                // perms / setuid / readonly across the in-place update.
-                let mode = existing_mode_if_any(local_path).await;
-                (data, mode)
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                // Legitimate empty baseline: target file does not exist
-                // yet. Classic full-download semantics via the native
-                // delta pipeline.
-                (Vec::new(), None)
-            }
+        let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
+        let cancel = CancelHandle::inert();
+        do_download(transport, cancel, remote_path, local_path).await
+    }
+}
+
+/// Module-private download core extracted from `download_inner` in P3-T01
+/// W3.2(a). Behavior byte-identical to the pre-W3.2 single-shot path:
+/// baseline read + FileBaseline/MemoryBaseline pick + StreamingAtomicWriter
+/// open + driver drive + finish_session + writer.finalize + stats build.
+///
+/// Like [`do_upload`], the function accepts the remote-shell transport and
+/// cancel handle as parameters so the session-reuse batch (W3.2b) can pass
+/// a long-lived transport instead of allocating a fresh SSH session per
+/// file. Pinned by `cargo test --features aerorsync --lib aerorsync::`
+/// 453/453.
+async fn do_download(
+    transport: SshRemoteShellTransport,
+    cancel: CancelHandle,
+    remote_path: &str,
+    local_path: &Path,
+) -> Result<RsyncStats, RsyncError> {
+    let start = Instant::now();
+    // P3-T01 W2.5: the bulk read still feeds the signature phase
+    // (`adapter.build_signatures` is bulk-only until the post-P3-T01
+    // streaming variant lands). Reconstruction, however, no longer
+    // materialises a `Vec<u8>` — it streams into a
+    // `StreamingAtomicWriter` opened below.
+    //
+    // U-03: distinguish `NotFound` (legitimate empty baseline) from
+    // every other `io::Error`. Before the fix, `unwrap_or_default()`
+    // silently masked `PermissionDenied`, `EIO`, symlink loops, etc.
+    // into "empty baseline", degrading the delta path to a full
+    // download while hiding the underlying error from the user.
+    let (destination_data, baseline_mode) = match fs::read(local_path).await {
+        Ok(data) => {
+            // U-09: capture the pre-existing mode so we can restore it on
+            // the temp file before the atomic rename, preserving
+            // perms / setuid / readonly across the in-place update.
+            let mode = existing_mode_if_any(local_path).await;
+            (data, mode)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Legitimate empty baseline: target file does not exist
+            // yet. Classic full-download semantics via the native
+            // delta pipeline.
+            (Vec::new(), None)
+        }
+        Err(error) => {
+            // Any other read failure must surface, not silently
+            // degrade to full-size delta. Pre-commit classification
+            // routes this through classic fallback with a visible
+            // reason in the stderr string.
+            return Err(RsyncError::TransferFailed {
+                exit: -1,
+                stderr: format!(
+                    "native fallback: cannot read local baseline {}: {}",
+                    local_path.display(),
+                    error
+                ),
+            });
+        }
+    };
+
+    // Random-access baseline for `apply_delta_streaming`'s
+    // `CopyBlock(idx)` dispatch. When the target does not exist yet
+    // we substitute an empty `MemoryBaseline` — the engine never
+    // emits CopyBlocks against an empty signature set, so the
+    // baseline is unused but the trait object is still required by
+    // the streaming entry-point signature.
+    let mut baseline: Box<dyn BaselineSource + Send> = if destination_data.is_empty() {
+        Box::new(MemoryBaseline::new(Vec::new()))
+    } else {
+        match FileBaseline::open(local_path).await {
+            Ok(fb) => Box::new(fb),
             Err(error) => {
-                // Any other read failure must surface, not silently
-                // degrade to full-size delta. Pre-commit classification
-                // routes this through classic fallback with a visible
-                // reason in the stderr string.
                 return Err(RsyncError::TransferFailed {
                     exit: -1,
                     stderr: format!(
-                        "native fallback: cannot read local baseline {}: {}",
+                        "native fallback: cannot open streaming baseline {}: {}",
                         local_path.display(),
                         error
                     ),
                 });
             }
-        };
-
-        // Random-access baseline for `apply_delta_streaming`'s
-        // `CopyBlock(idx)` dispatch. When the target does not exist yet
-        // we substitute an empty `MemoryBaseline` — the engine never
-        // emits CopyBlocks against an empty signature set, so the
-        // baseline is unused but the trait object is still required by
-        // the streaming entry-point signature.
-        let mut baseline: Box<dyn BaselineSource + Send> = if destination_data.is_empty() {
-            Box::new(MemoryBaseline::new(Vec::new()))
-        } else {
-            match FileBaseline::open(local_path).await {
-                Ok(fb) => Box::new(fb),
-                Err(error) => {
-                    return Err(RsyncError::TransferFailed {
-                        exit: -1,
-                        stderr: format!(
-                            "native fallback: cannot open streaming baseline {}: {}",
-                            local_path.display(),
-                            error
-                        ),
-                    });
-                }
-            }
-        };
-
-        // Open the `<target>.aerotmp` sink before the SSH session so a
-        // failure here surfaces as a pre-commit error (no wire bytes
-        // exchanged, no `local_committed=true` invariant tripped).
-        let mut writer = StreamingAtomicWriter::new(local_path).await.map_err(|e| {
-            RsyncError::TransferFailed {
-                exit: -1,
-                stderr: format!(
-                    "native fallback: cannot open streaming temp file for {}: {}",
-                    local_path.display(),
-                    e
-                ),
-            }
-        })?;
-
-        let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
-        let cancel = CancelHandle::inert();
-        let mut driver = AerorsyncDriver::new(transport, cancel);
-        let adapter = CurrentDeltaSyncBridge::new();
-        let warnings = new_warnings_sink();
-        let mut bridge = build_event_bridge(warnings.clone());
-
-        // B.1: production dispatch now talks to stock `rsync --server --sender`
-        // (WrapperParity flavor). Pinned against rsync 3.2.7 capture by
-        // `download_remote_command_matches_capture`.
-        let spec = RemoteCommandSpec::download(remote_path);
-        let drive_res = driver
-            .drive_download_through_delta_streaming(
-                spec,
-                &destination_data,
-                &mut *baseline,
-                &mut writer,
-                &adapter,
-                &mut bridge,
-            )
-            .await;
-        if let Err(e) = drive_res {
-            // The `StreamingAtomicWriter` Drop leaves the temp orphan;
-            // the original `local_path` is untouched. Caller-visible
-            // semantics match the pre-W2.5 bulk path.
-            return Err(map_native_error_to_rsync(e, driver.committed()));
         }
-        if let Err(e) = driver.finish_session(&mut bridge).await {
-            return Err(map_native_error_to_rsync(e, driver.committed()));
+    };
+
+    // Open the `<target>.aerotmp` sink before the SSH session so a
+    // failure here surfaces as a pre-commit error (no wire bytes
+    // exchanged, no `local_committed=true` invariant tripped).
+    let mut writer = StreamingAtomicWriter::new(local_path).await.map_err(|e| {
+        RsyncError::TransferFailed {
+            exit: -1,
+            stderr: format!(
+                "native fallback: cannot open streaming temp file for {}: {}",
+                local_path.display(),
+                e
+            ),
         }
+    })?;
 
-        let file_size = writer.bytes_written();
+    let mut driver = AerorsyncDriver::new(transport, cancel);
+    let adapter = CurrentDeltaSyncBridge::new();
+    let warnings = new_warnings_sink();
+    let mut bridge = build_event_bridge(warnings.clone());
 
-        let remote_entry = driver.downloaded_entry().cloned();
-        let preserve_mode = remote_entry
-            .as_ref()
-            .map(|entry| entry.mode)
-            .or(baseline_mode);
-        // `StreamingAtomicWriter::finalize` takes `(i64, u32)` for
-        // (mtime_secs, mtime_nsecs); rsync wire entries carry the
-        // sub-second part as `Option<i32>` (None = NSEC absent / 0).
-        // Cast through `u32` matching the bulk path (`write_atomic_chunked`
-        // does the same internally via `mtime_nsec.unwrap_or(0)`).
-        let preserve_mtime = remote_entry.as_ref().map(|entry| {
-            (
-                entry.mtime,
-                entry.mtime_nsec.unwrap_or(0).max(0) as u32,
-            )
-        });
-        if remote_entry.is_none() {
-            tracing::warn!(
-                "native rsync download completed without remote file metadata; preserving local baseline mode only"
-            );
-        }
-
-        // Atomic commit: flush + sync_all + chmod (Unix) + set_mtime + rename.
-        // Failures here are post-commit-cutover and surface as
-        // `HardRejection` via `map_write_atomic_error`.
-        writer
-            .finalize(preserve_mode, preserve_mtime)
-            .await
-            .map_err(map_write_atomic_error)?;
-
-        let duration_ms = start.elapsed().as_millis() as u64;
-        let warnings = drain_warnings(warnings);
-        Ok(build_stats(
-            driver.session_stats(),
-            file_size,
-            duration_ms,
-            warnings,
-        ))
+    // B.1: production dispatch now talks to stock `rsync --server --sender`
+    // (WrapperParity flavor). Pinned against rsync 3.2.7 capture by
+    // `download_remote_command_matches_capture`.
+    let spec = RemoteCommandSpec::download(remote_path);
+    let drive_res = driver
+        .drive_download_through_delta_streaming(
+            spec,
+            &destination_data,
+            &mut *baseline,
+            &mut writer,
+            &adapter,
+            &mut bridge,
+        )
+        .await;
+    if let Err(e) = drive_res {
+        // The `StreamingAtomicWriter` Drop leaves the temp orphan;
+        // the original `local_path` is untouched. Caller-visible
+        // semantics match the pre-W2.5 bulk path.
+        return Err(map_native_error_to_rsync(e, driver.committed()));
     }
+    if let Err(e) = driver.finish_session(&mut bridge).await {
+        return Err(map_native_error_to_rsync(e, driver.committed()));
+    }
+
+    let file_size = writer.bytes_written();
+
+    let remote_entry = driver.downloaded_entry().cloned();
+    let preserve_mode = remote_entry
+        .as_ref()
+        .map(|entry| entry.mode)
+        .or(baseline_mode);
+    // `StreamingAtomicWriter::finalize` takes `(i64, u32)` for
+    // (mtime_secs, mtime_nsecs); rsync wire entries carry the
+    // sub-second part as `Option<i32>` (None = NSEC absent / 0).
+    // Cast through `u32` matching the bulk path (`write_atomic_chunked`
+    // does the same internally via `mtime_nsec.unwrap_or(0)`).
+    let preserve_mtime = remote_entry.as_ref().map(|entry| {
+        (
+            entry.mtime,
+            entry.mtime_nsec.unwrap_or(0).max(0) as u32,
+        )
+    });
+    if remote_entry.is_none() {
+        tracing::warn!(
+            "native rsync download completed without remote file metadata; preserving local baseline mode only"
+        );
+    }
+
+    // Atomic commit: flush + sync_all + chmod (Unix) + set_mtime + rename.
+    // Failures here are post-commit-cutover and surface as
+    // `HardRejection` via `map_write_atomic_error`.
+    writer
+        .finalize(preserve_mode, preserve_mtime)
+        .await
+        .map_err(map_write_atomic_error)?;
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let warnings = drain_warnings(warnings);
+    Ok(build_stats(
+        driver.session_stats(),
+        file_size,
+        duration_ms,
+        warnings,
+    ))
 }
 
 // --- helpers -------------------------------------------------------------
