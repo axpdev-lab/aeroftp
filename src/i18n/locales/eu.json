@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Jarraitu klasikoarekin",
             "deltaEligibilitySkip": "Ez erakutsi berriro zerbitzari honetarako",
             "deltaEligibilityLearnMore": "Gehiago jakin",
-            "deltaDisabledFallback": "Delta Sync ez dago aktibo saio honetan. Arrazoia ikusteko, begiratu Transferentzia kontrolaren oharra."
+            "deltaDisabledFallback": "Delta Sync ez dago aktibo saio honetan. Arrazoia ikusteko, begiratu Transferentzia kontrolaren oharra.",
+            "deltaBatchSummary": "Delta: {files} fitxategi {sessions} saio(tan)",
+            "deltaBytesOnWire": "{bytesOnWire} sarean"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -4101,12 +4103,14 @@
             "addFirstServer": "Gehitu zure lehen zerbitzaria",
             "browseCategory": "Edo arakatu kategoriaka",
             "storageUsedOf": "{used} erabilita {total}-(e)tik",
+            "storageQuotaUnavailable": "Konektatu behin biltegiratze-kuota kargatzeko",
             "health": {
                 "up": "Eskuragarri",
                 "slow": "Geldoa",
                 "down": "Eskuraezina",
                 "pending": "Egiaztatzen...",
-                "unknown": "Ez egiaztatua"
+                "unknown": "Ez egiaztatua",
+                "clickToRetry": "egin klik berriro egiaztatzeko"
             }
         },
         "gitlab": {

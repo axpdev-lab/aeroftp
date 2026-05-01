@@ -2961,6 +2961,8 @@
       "deltaEligibilityLearnMore": "Learn more",
       "deltaDisabledFallback": "Delta Sync is not currently active for this session. See the Transfer Control hint for the reason.",
       "deltaSummary": "{files} files · {bytes} saved · {speedup}x speedup",
+      "deltaBatchSummary": "Delta: {files} files in {sessions} session(s)",
+      "deltaBytesOnWire": "{bytesOnWire} on wire",
       "deltaSummaryOptimized": "{files} files served via optimized transfer",
       "deltaTitle": "Delta savings",
       "deltaTitleOptimized": "Optimized transfer",
@@ -4024,12 +4026,14 @@
       "addFavorite": "Add to favorites",
       "removeFavorite": "Remove from favorites",
       "storageUsedOf": "{used} used of {total}",
+      "storageQuotaUnavailable": "Connect once to load storage quota",
       "health": {
         "up": "Reachable",
         "slow": "Slow",
         "down": "Unreachable",
         "pending": "Checking...",
-        "unknown": "Not probed"
+        "unknown": "Not probed",
+        "clickToRetry": "click to recheck"
       },
       "renameWithHotkey": "Rename (F2)",
       "setAsCrossProfileSource": "Set as Cross-Profile source",

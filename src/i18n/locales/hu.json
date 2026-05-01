@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Folytatás klasszikusan",
             "deltaEligibilitySkip": "Ne mutassa újra ehhez a kiszolgálóhoz",
             "deltaEligibilityLearnMore": "Tudjon meg többet",
-            "deltaDisabledFallback": "A Delta Sync ebben a munkamenetben nem aktív. Az okot az Átvitel vezérlése tippben találja."
+            "deltaDisabledFallback": "A Delta Sync ebben a munkamenetben nem aktív. Az okot az Átvitel vezérlése tippben találja.",
+            "deltaBatchSummary": "Delta: {files} fájl {sessions} munkamenetben",
+            "deltaBytesOnWire": "{bytesOnWire} a hálózaton"
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Első kiszolgáló hozzáadása",
             "browseCategory": "Vagy böngészés kategória szerint",
             "storageUsedOf": "{used} használt / {total}",
+            "storageQuotaUnavailable": "Csatlakozz egyszer a tárhelykvóta betöltéséhez",
             "health": {
                 "up": "Elérhető",
                 "slow": "Lassú",
                 "down": "Nem elérhető",
                 "pending": "Ellenőrzés...",
-                "unknown": "Nincs ellenőrizve"
+                "unknown": "Nincs ellenőrizve",
+                "clickToRetry": "kattints az újraellenőrzéshez"
             }
         },
         "gitlab": {

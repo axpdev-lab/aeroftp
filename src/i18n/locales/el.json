@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Συνέχεια με κλασικό",
             "deltaEligibilitySkip": "Να μην εμφανιστεί ξανά για αυτόν τον διακομιστή",
             "deltaEligibilityLearnMore": "Μάθετε περισσότερα",
-            "deltaDisabledFallback": "Το Delta Sync δεν είναι ενεργό για αυτή τη συνεδρία. Δείτε τη συμβουλή Έλεγχος μεταφοράς για τον λόγο."
+            "deltaDisabledFallback": "Το Delta Sync δεν είναι ενεργό για αυτή τη συνεδρία. Δείτε τη συμβουλή Έλεγχος μεταφοράς για τον λόγο.",
+            "deltaBatchSummary": "Delta: {files} αρχεία σε {sessions} συνεδρία(ες)",
+            "deltaBytesOnWire": "{bytesOnWire} στο δίκτυο"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Προσθέστε τον πρώτο σας διακομιστή",
             "browseCategory": "Ή περιήγηση ανά κατηγορία",
             "storageUsedOf": "{used} σε χρήση από {total}",
+            "storageQuotaUnavailable": "Συνδεθείτε μία φορά για να φορτωθεί η ποσόστωση αποθήκευσης",
             "health": {
                 "up": "Προσβάσιμος",
                 "slow": "Αργός",
                 "down": "Μη προσβάσιμος",
                 "pending": "Έλεγχος...",
-                "unknown": "Δεν ελέγχθηκε"
+                "unknown": "Δεν ελέγχθηκε",
+                "clickToRetry": "κάντε κλικ για επανέλεγχο"
             }
         },
         "gitlab": {

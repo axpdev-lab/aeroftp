@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Tiếp tục với cổ điển",
             "deltaEligibilitySkip": "Không hiển thị lại cho máy chủ này",
             "deltaEligibilityLearnMore": "Tìm hiểu thêm",
-            "deltaDisabledFallback": "Delta Sync hiện không hoạt động cho phiên này. Xem gợi ý Điều khiển truyền để biết lý do."
+            "deltaDisabledFallback": "Delta Sync hiện không hoạt động cho phiên này. Xem gợi ý Điều khiển truyền để biết lý do.",
+            "deltaBatchSummary": "Delta: {files} tệp trong {sessions} phiên",
+            "deltaBytesOnWire": "{bytesOnWire} trên mạng"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Thêm máy chủ đầu tiên",
             "browseCategory": "Hoặc duyệt theo danh mục",
             "storageUsedOf": "Đã dùng {used} trên {total}",
+            "storageQuotaUnavailable": "Kết nối một lần để tải hạn mức lưu trữ",
             "health": {
                 "up": "Có thể truy cập",
                 "slow": "Chậm",
                 "down": "Không thể truy cập",
                 "pending": "Đang kiểm tra...",
-                "unknown": "Chưa kiểm tra"
+                "unknown": "Chưa kiểm tra",
+                "clickToRetry": "nhấp để kiểm tra lại"
             }
         },
         "gitlab": {

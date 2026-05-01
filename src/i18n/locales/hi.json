@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "क्लासिक के साथ जारी रखें",
             "deltaEligibilitySkip": "इस सर्वर के लिए फिर से न दिखाएँ",
             "deltaEligibilityLearnMore": "और जानें",
-            "deltaDisabledFallback": "इस सत्र के लिए Delta Sync वर्तमान में सक्रिय नहीं है। कारण के लिए ट्रांसफ़र कंट्रोल संकेत देखें।"
+            "deltaDisabledFallback": "इस सत्र के लिए Delta Sync वर्तमान में सक्रिय नहीं है। कारण के लिए ट्रांसफ़र कंट्रोल संकेत देखें।",
+            "deltaBatchSummary": "Delta: {files} फ़ाइलें, {sessions} सत्र में",
+            "deltaBytesOnWire": "नेटवर्क पर {bytesOnWire}"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "अपना पहला सर्वर जोड़ें",
             "browseCategory": "या श्रेणी के अनुसार ब्राउज़ करें",
             "storageUsedOf": "{total} में से {used} उपयोग में",
+            "storageQuotaUnavailable": "स्टोरेज कोटा लोड करने के लिए एक बार कनेक्ट करें",
             "health": {
                 "up": "पहुँच योग्य",
                 "slow": "धीमा",
                 "down": "अप्राप्य",
                 "pending": "जाँच हो रही है...",
-                "unknown": "सत्यापित नहीं"
+                "unknown": "सत्यापित नहीं",
+                "clickToRetry": "पुनः जाँच करने के लिए क्लिक करें"
             }
         },
         "gitlab": {

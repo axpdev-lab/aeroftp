@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Doorgaan met klassiek",
             "deltaEligibilitySkip": "Dit niet meer tonen voor deze server",
             "deltaEligibilityLearnMore": "Meer informatie",
-            "deltaDisabledFallback": "Delta Sync is niet actief voor deze sessie. Zie de hint Overdrachtsbeheer voor de reden."
+            "deltaDisabledFallback": "Delta Sync is niet actief voor deze sessie. Zie de hint Overdrachtsbeheer voor de reden.",
+            "deltaBatchSummary": "Delta: {files} bestanden in {sessions} sessie(s)",
+            "deltaBytesOnWire": "{bytesOnWire} over het netwerk"
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -4072,12 +4074,14 @@
             "addFirstServer": "Voeg je eerste server toe",
             "browseCategory": "Of blader per categorie",
             "storageUsedOf": "{used} gebruikt van {total}",
+            "storageQuotaUnavailable": "Maak één keer verbinding om het opslagquotum te laden",
             "health": {
                 "up": "Bereikbaar",
                 "slow": "Traag",
                 "down": "Onbereikbaar",
                 "pending": "Controleren...",
-                "unknown": "Niet gecontroleerd"
+                "unknown": "Niet gecontroleerd",
+                "clickToRetry": "klik om opnieuw te controleren"
             }
         },
         "gitlab": {

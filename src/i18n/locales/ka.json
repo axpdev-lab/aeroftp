@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "გაგრძელება კლასიკურით",
             "deltaEligibilitySkip": "ამ სერვერისთვის აღარ მაჩვენო",
             "deltaEligibilityLearnMore": "მეტის ცოდნა",
-            "deltaDisabledFallback": "Delta Sync ამჟამად არ არის აქტიური ამ სესიისთვის. მიზეზისთვის იხილეთ გადაცემის მართვის მინიშნება."
+            "deltaDisabledFallback": "Delta Sync ამჟამად არ არის აქტიური ამ სესიისთვის. მიზეზისთვის იხილეთ გადაცემის მართვის მინიშნება.",
+            "deltaBatchSummary": "Delta: {files} ფაილი {sessions} სესიაში",
+            "deltaBytesOnWire": "{bytesOnWire} ქსელზე"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "დაამატეთ თქვენი პირველი სერვერი",
             "browseCategory": "ან დაათვალიერეთ კატეგორიების მიხედვით",
             "storageUsedOf": "{used} გამოყენებული {total}-დან",
+            "storageQuotaUnavailable": "დაუკავშირდით ერთხელ შესანახი ადგილის კვოტის ჩასატვირთად",
             "health": {
                 "up": "ხელმისაწვდომი",
                 "slow": "ნელი",
                 "down": "მიუწვდომელი",
                 "pending": "შემოწმება...",
-                "unknown": "არ არის შემოწმებული"
+                "unknown": "არ არის შემოწმებული",
+                "clickToRetry": "დააჭირეთ ხელახლა შესამოწმებლად"
             }
         },
         "gitlab": {

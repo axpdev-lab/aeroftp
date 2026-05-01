@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Продолжи со класичен",
             "deltaEligibilitySkip": "Не прикажувај повторно за овој сервер",
             "deltaEligibilityLearnMore": "Дознај повеќе",
-            "deltaDisabledFallback": "Delta Sync моментално не е активен за оваа сесија. Видете го советот Контрола на пренос за причината."
+            "deltaDisabledFallback": "Delta Sync моментално не е активен за оваа сесија. Видете го советот Контрола на пренос за причината.",
+            "deltaBatchSummary": "Delta: {files} датотеки во {sessions} сесија(и)",
+            "deltaBytesOnWire": "{bytesOnWire} преку мрежа"
         },
         "ui": {
             "syncing": "Синхронизирање...",
@@ -4101,12 +4103,14 @@
             "addFirstServer": "Додајте го првиот сервер",
             "browseCategory": "Или прегледајте по категорија",
             "storageUsedOf": "{used} искористено од {total}",
+            "storageQuotaUnavailable": "Поврзете се еднаш за да се вчита квотата за складирање",
             "health": {
                 "up": "Достапен",
                 "slow": "Бавен",
                 "down": "Недостапен",
                 "pending": "Проверување...",
-                "unknown": "Непроверено"
+                "unknown": "Непроверено",
+                "clickToRetry": "кликнете за повторна проверка"
             }
         },
         "gitlab": {

@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Lanjutkan dengan klasik",
             "deltaEligibilitySkip": "Jangan tampilkan lagi untuk server ini",
             "deltaEligibilityLearnMore": "Pelajari lebih lanjut",
-            "deltaDisabledFallback": "Delta Sync saat ini tidak aktif untuk sesi ini. Lihat petunjuk Kontrol Transfer untuk alasannya."
+            "deltaDisabledFallback": "Delta Sync saat ini tidak aktif untuk sesi ini. Lihat petunjuk Kontrol Transfer untuk alasannya.",
+            "deltaBatchSummary": "Delta: {files} file dalam {sessions} sesi",
+            "deltaBytesOnWire": "{bytesOnWire} di jaringan"
         },
         "ui": {
             "syncing": "Menyinkronkan...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Tambahkan server pertama Anda",
             "browseCategory": "Atau jelajahi berdasarkan kategori",
             "storageUsedOf": "{used} digunakan dari {total}",
+            "storageQuotaUnavailable": "Hubungkan sekali untuk memuat kuota penyimpanan",
             "health": {
                 "up": "Dapat dijangkau",
                 "slow": "Lambat",
                 "down": "Tidak dapat dijangkau",
                 "pending": "Memeriksa...",
-                "unknown": "Belum diperiksa"
+                "unknown": "Belum diperiksa",
+                "clickToRetry": "klik untuk memeriksa ulang"
             }
         },
         "gitlab": {

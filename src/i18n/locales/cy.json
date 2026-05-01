@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Parhau'n glasurol",
             "deltaEligibilitySkip": "Peidiwch â dangos eto ar gyfer y gweinydd hwn",
             "deltaEligibilityLearnMore": "Dysgu mwy",
-            "deltaDisabledFallback": "Nid yw Delta Sync yn weithredol ar gyfer y sesiwn hon. Gweler yr awgrym Rheoli Trosglwyddiad am y rheswm."
+            "deltaDisabledFallback": "Nid yw Delta Sync yn weithredol ar gyfer y sesiwn hon. Gweler yr awgrym Rheoli Trosglwyddiad am y rheswm.",
+            "deltaBatchSummary": "Delta: {files} ffeil mewn {sessions} sesiwn",
+            "deltaBytesOnWire": "{bytesOnWire} dros y rhwydwaith"
         },
         "ui": {
             "syncing": "Yn cysoni...",
@@ -4101,12 +4103,14 @@
             "addFirstServer": "Ychwanegwch eich gweinydd cyntaf",
             "browseCategory": "Neu pori yn ôl categori",
             "storageUsedOf": "{used} wedi'u defnyddio o {total}",
+            "storageQuotaUnavailable": "Cysylltwch unwaith i lwytho cwota'r storfa",
             "health": {
                 "up": "Cyrraeddadwy",
                 "slow": "Araf",
                 "down": "Anghyrraeddadwy",
                 "pending": "Yn gwirio...",
-                "unknown": "Heb ei wirio"
+                "unknown": "Heb ei wirio",
+                "clickToRetry": "cliciwch i ailwirio"
             }
         },
         "gitlab": {

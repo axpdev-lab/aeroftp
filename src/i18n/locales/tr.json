@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Klasik ile devam et",
             "deltaEligibilitySkip": "Bu sunucu için tekrar gösterme",
             "deltaEligibilityLearnMore": "Daha fazla bilgi",
-            "deltaDisabledFallback": "Delta Sync bu oturum için şu anda etkin değil. Nedeni için Aktarım Denetimi ipucuna bakın."
+            "deltaDisabledFallback": "Delta Sync bu oturum için şu anda etkin değil. Nedeni için Aktarım Denetimi ipucuna bakın.",
+            "deltaBatchSummary": "Delta: {files} dosya, {sessions} oturumda",
+            "deltaBytesOnWire": "Ağ üzerinde {bytesOnWire}"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "İlk sunucunuzu ekleyin",
             "browseCategory": "Veya kategoriye göre göz atın",
             "storageUsedOf": "{total} alanın {used} kullanıldı",
+            "storageQuotaUnavailable": "Depolama kotasını yüklemek için bir kez bağlanın",
             "health": {
                 "up": "Erişilebilir",
                 "slow": "Yavaş",
                 "down": "Erişilemez",
                 "pending": "Kontrol ediliyor...",
-                "unknown": "Doğrulanmadı"
+                "unknown": "Doğrulanmadı",
+                "clickToRetry": "yeniden kontrol etmek için tıklayın"
             }
         },
         "gitlab": {

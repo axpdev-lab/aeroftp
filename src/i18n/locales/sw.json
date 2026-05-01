@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Endelea na kawaida",
             "deltaEligibilitySkip": "Usionyeshe tena kwa seva hii",
             "deltaEligibilityLearnMore": "Jifunze zaidi",
-            "deltaDisabledFallback": "Delta Sync haijawashwa kwa kipindi hiki. Angalia kidokezo cha Udhibiti wa Uhamisho kwa sababu."
+            "deltaDisabledFallback": "Delta Sync haijawashwa kwa kipindi hiki. Angalia kidokezo cha Udhibiti wa Uhamisho kwa sababu.",
+            "deltaBatchSummary": "Delta: faili {files} katika kipindi {sessions}",
+            "deltaBytesOnWire": "{bytesOnWire} kwenye mtandao"
         },
         "ui": {
             "syncing": "Inasawazisha...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Ongeza seva yako ya kwanza",
             "browseCategory": "Au vinjari kwa kategoria",
             "storageUsedOf": "{used} zimetumika kati ya {total}",
+            "storageQuotaUnavailable": "Unganisha mara moja kupakia mgao wa hifadhi",
             "health": {
                 "up": "Inafikika",
                 "slow": "Polepole",
                 "down": "Haifikiki",
                 "pending": "Inakagua...",
-                "unknown": "Haijakaguliwa"
+                "unknown": "Haijakaguliwa",
+                "clickToRetry": "bofya ili ukague tena"
             }
         },
         "gitlab": {

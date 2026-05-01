@@ -1970,7 +1970,9 @@
             "deltaEligibilityProceed": "クラシックで続行",
             "deltaEligibilitySkip": "このサーバーでは今後表示しない",
             "deltaEligibilityLearnMore": "詳細",
-            "deltaDisabledFallback": "現在このセッションでは Delta Sync が有効になっていません。理由は「転送コントロール」のヒントを参照してください。"
+            "deltaDisabledFallback": "現在このセッションでは Delta Sync が有効になっていません。理由は「転送コントロール」のヒントを参照してください。",
+            "deltaBatchSummary": "Delta: {files} 個のファイルを {sessions} セッションで処理",
+            "deltaBytesOnWire": "ネットワーク上: {bytesOnWire}"
         },
         "ui": {
             "syncing": "同期中...",
@@ -4072,12 +4074,14 @@
             "addFirstServer": "最初のサーバーを追加",
             "browseCategory": "またはカテゴリで検索",
             "storageUsedOf": "{total} のうち {used} 使用済み",
+            "storageQuotaUnavailable": "ストレージ容量を読み込むには一度接続してください",
             "health": {
                 "up": "到達可能",
                 "slow": "低速",
                 "down": "到達不可",
                 "pending": "確認中...",
-                "unknown": "未確認"
+                "unknown": "未確認",
+                "clickToRetry": "クリックで再チェック"
             }
         },
         "gitlab": {

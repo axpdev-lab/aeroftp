@@ -1998,7 +1998,9 @@
             "deltaEligibilityProceed": "Շարունակել դասականով",
             "deltaEligibilitySkip": "Այս սերվերի համար այլևս չցուցադրել",
             "deltaEligibilityLearnMore": "Իմանալ ավելին",
-            "deltaDisabledFallback": "Delta Sync-ը ներկայումս ակտիվ չէ այս նստաշրջանի համար։ Պատճառի համար տե՛ս Փոխանցման կառավարման հուշումը։"
+            "deltaDisabledFallback": "Delta Sync-ը ներկայումս ակտիվ չէ այս նստաշրջանի համար։ Պատճառի համար տե՛ս Փոխանցման կառավարման հուշումը։",
+            "deltaBatchSummary": "Delta: {files} ֆայլ՝ {sessions} նիստ(երում)",
+            "deltaBytesOnWire": "{bytesOnWire} ցանցում"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Ավելացրեք ձեր առաջին սերվերը",
             "browseCategory": "Կամ թերթեք ըստ կատեգորիայի",
             "storageUsedOf": "{used} օգտագործված « {total}-ից",
+            "storageQuotaUnavailable": "Միացե՛ք մեկ անգամ՝ պահեստի քվոտան բեռնելու համար",
             "health": {
                 "up": "Հասանելի",
                 "slow": "Դանդաղ",
                 "down": "անհասանելի",
                 "pending": "ստուգում...",
-                "unknown": "չստուգված"
+                "unknown": "չստուգված",
+                "clickToRetry": "սեղմեք՝ կրկին ստուգելու համար"
             }
         },
         "gitlab": {

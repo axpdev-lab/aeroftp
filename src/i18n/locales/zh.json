@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "继续使用经典模式",
             "deltaEligibilitySkip": "不再为此服务器显示",
             "deltaEligibilityLearnMore": "了解更多",
-            "deltaDisabledFallback": "当前会话未启用 Delta Sync。请查看“传输控制”提示了解原因。"
+            "deltaDisabledFallback": "当前会话未启用 Delta Sync。请查看“传输控制”提示了解原因。",
+            "deltaBatchSummary": "Delta：{files} 个文件，{sessions} 个会话",
+            "deltaBytesOnWire": "网络传输 {bytesOnWire}"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -4072,12 +4074,14 @@
             "addFirstServer": "添加您的第一个服务器",
             "browseCategory": "或按类别浏览",
             "storageUsedOf": "{total} 中已使用 {used}",
+            "storageQuotaUnavailable": "连接一次以加载存储配额",
             "health": {
                 "up": "可访问",
                 "slow": "缓慢",
                 "down": "不可访问",
                 "pending": "正在检查...",
-                "unknown": "未探测"
+                "unknown": "未探测",
+                "clickToRetry": "点击重新检查"
             }
         },
         "gitlab": {

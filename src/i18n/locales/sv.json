@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Fortsätt med klassisk",
             "deltaEligibilitySkip": "Visa inte detta igen för denna server",
             "deltaEligibilityLearnMore": "Läs mer",
-            "deltaDisabledFallback": "Delta Sync är inte aktivt för den här sessionen. Se tipset Överföringskontroll för anledningen."
+            "deltaDisabledFallback": "Delta Sync är inte aktivt för den här sessionen. Se tipset Överföringskontroll för anledningen.",
+            "deltaBatchSummary": "Delta: {files} filer i {sessions} session(er)",
+            "deltaBytesOnWire": "{bytesOnWire} över nätverket"
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Lägg till din första server",
             "browseCategory": "Eller bläddra efter kategori",
             "storageUsedOf": "{used} använt av {total}",
+            "storageQuotaUnavailable": "Anslut en gång för att läsa in lagringskvoten",
             "health": {
                 "up": "Nåbar",
                 "slow": "Långsam",
                 "down": "Onåbar",
                 "pending": "Kontrollerar...",
-                "unknown": "Ej kontrollerad"
+                "unknown": "Ej kontrollerad",
+                "clickToRetry": "klicka för att kontrollera igen"
             }
         },
         "gitlab": {

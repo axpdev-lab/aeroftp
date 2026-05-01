@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Jätka klassikalisega",
             "deltaEligibilitySkip": "Ära näita seda selle serveri kohta uuesti",
             "deltaEligibilityLearnMore": "Lisateave",
-            "deltaDisabledFallback": "Delta Sync pole selle seansi jaoks aktiivne. Põhjuse leiate ülekande juhtimise vihjest."
+            "deltaDisabledFallback": "Delta Sync pole selle seansi jaoks aktiivne. Põhjuse leiate ülekande juhtimise vihjest.",
+            "deltaBatchSummary": "Delta: {files} faili {sessions} seansi jooksul",
+            "deltaBytesOnWire": "{bytesOnWire} võrgus"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Lisa oma esimene server",
             "browseCategory": "Või sirvi kategooriate kaupa",
             "storageUsedOf": "{used} kasutatud {total}-st",
+            "storageQuotaUnavailable": "Ühendage üks kord, et laadida salvestuskvoot",
             "health": {
                 "up": "Kättesaadav",
                 "slow": "Aeglane",
                 "down": "Pole kättesaadav",
                 "pending": "Kontrollimine...",
-                "unknown": "Pole kontrollitud"
+                "unknown": "Pole kontrollitud",
+                "clickToRetry": "klõpsa uuesti kontrollimiseks"
             }
         },
         "gitlab": {

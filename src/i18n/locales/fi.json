@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Jatka klassisella",
             "deltaEligibilitySkip": "Älä näytä tätä uudelleen tälle palvelimelle",
             "deltaEligibilityLearnMore": "Lue lisää",
-            "deltaDisabledFallback": "Delta Sync ei ole aktiivinen tässä istunnossa. Katso syy Siirron hallinta -vihjeestä."
+            "deltaDisabledFallback": "Delta Sync ei ole aktiivinen tässä istunnossa. Katso syy Siirron hallinta -vihjeestä.",
+            "deltaBatchSummary": "Delta: {files} tiedostoa {sessions} istunnossa",
+            "deltaBytesOnWire": "{bytesOnWire} verkossa"
         },
         "ui": {
             "syncing": "Synkronoidaan...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Lisää ensimmäinen palvelin",
             "browseCategory": "Tai selaa kategorian mukaan",
             "storageUsedOf": "{used} käytetty / {total}",
+            "storageQuotaUnavailable": "Yhdistä kerran ladataksesi tallennuskiintiön",
             "health": {
                 "up": "Tavoitettavissa",
                 "slow": "Hidas",
                 "down": "Ei tavoitettavissa",
                 "pending": "Tarkistetaan...",
-                "unknown": "Ei tarkistettu"
+                "unknown": "Ei tarkistettu",
+                "clickToRetry": "napsauta tarkistaaksesi uudelleen"
             }
         },
         "gitlab": {

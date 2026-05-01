@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "ดำเนินการต่อแบบคลาสสิก",
             "deltaEligibilitySkip": "ไม่ต้องแสดงอีกสำหรับเซิร์ฟเวอร์นี้",
             "deltaEligibilityLearnMore": "เรียนรู้เพิ่มเติม",
-            "deltaDisabledFallback": "ขณะนี้ Delta Sync ไม่เปิดใช้งานสำหรับเซสชันนี้ ดูเหตุผลได้ที่คำแนะนำการควบคุมการถ่ายโอน"
+            "deltaDisabledFallback": "ขณะนี้ Delta Sync ไม่เปิดใช้งานสำหรับเซสชันนี้ ดูเหตุผลได้ที่คำแนะนำการควบคุมการถ่ายโอน",
+            "deltaBatchSummary": "Delta: {files} ไฟล์ ใน {sessions} เซสชัน",
+            "deltaBytesOnWire": "{bytesOnWire} บนเครือข่าย"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "เพิ่มเซิร์ฟเวอร์แรกของคุณ",
             "browseCategory": "หรือเรียกดูตามหมวดหมู่",
             "storageUsedOf": "ใช้ {used} จาก {total}",
+            "storageQuotaUnavailable": "เชื่อมต่อหนึ่งครั้งเพื่อโหลดโควตาที่จัดเก็บ",
             "health": {
                 "up": "เข้าถึงได้",
                 "slow": "ช้า",
                 "down": "เข้าถึงไม่ได้",
                 "pending": "กำลังตรวจสอบ...",
-                "unknown": "ยังไม่ตรวจสอบ"
+                "unknown": "ยังไม่ตรวจสอบ",
+                "clickToRetry": "คลิกเพื่อตรวจสอบอีกครั้ง"
             }
         },
         "gitlab": {

@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Continua amb clàssic",
             "deltaEligibilitySkip": "No tornis a mostrar-ho per a aquest servidor",
             "deltaEligibilityLearnMore": "Més informació",
-            "deltaDisabledFallback": "Delta Sync no està actiu en aquesta sessió. Consulteu el consell de Control de transferència per saber-ne el motiu."
+            "deltaDisabledFallback": "Delta Sync no està actiu en aquesta sessió. Consulteu el consell de Control de transferència per saber-ne el motiu.",
+            "deltaBatchSummary": "Delta: {files} fitxers en {sessions} sessió(ns)",
+            "deltaBytesOnWire": "{bytesOnWire} en xarxa"
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -4101,12 +4103,14 @@
             "addFirstServer": "Afegeix el teu primer servidor",
             "browseCategory": "O navega per categoria",
             "storageUsedOf": "{used} utilitzats de {total}",
+            "storageQuotaUnavailable": "Connecta't una vegada per carregar la quota d'emmagatzematge",
             "health": {
                 "up": "Accessible",
                 "slow": "Lent",
                 "down": "Inaccessible",
                 "pending": "Comprovant...",
-                "unknown": "No verificat"
+                "unknown": "No verificat",
+                "clickToRetry": "fes clic per tornar a comprovar"
             }
         },
         "gitlab": {

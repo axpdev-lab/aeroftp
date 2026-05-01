@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Nadaljuj klasično",
             "deltaEligibilitySkip": "Za ta strežnik ne prikazuj več",
             "deltaEligibilityLearnMore": "Več informacij",
-            "deltaDisabledFallback": "Delta Sync trenutno ni aktiven za to sejo. Razlog si oglejte v namigu Nadzor prenosa."
+            "deltaDisabledFallback": "Delta Sync trenutno ni aktiven za to sejo. Razlog si oglejte v namigu Nadzor prenosa.",
+            "deltaBatchSummary": "Delta: {files} datotek v {sessions} seji(ah)",
+            "deltaBytesOnWire": "{bytesOnWire} prek omrežja"
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Dodaj svoj prvi strežnik",
             "browseCategory": "Ali brskaj po kategorijah",
             "storageUsedOf": "{used} uporabljeno od {total}",
+            "storageQuotaUnavailable": "Enkrat se povežite, da naložite kvoto shranjevanja",
             "health": {
                 "up": "Dosegljiv",
                 "slow": "Počasen",
                 "down": "Nedosegljiv",
                 "pending": "Preverjanje...",
-                "unknown": "Ni preverjeno"
+                "unknown": "Ni preverjeno",
+                "clickToRetry": "kliknite za ponovno preverjanje"
             }
         },
         "gitlab": {

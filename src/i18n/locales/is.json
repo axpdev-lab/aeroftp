@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Halda áfram klassískt",
             "deltaEligibilitySkip": "Ekki sýna aftur fyrir þennan netþjón",
             "deltaEligibilityLearnMore": "Nánar",
-            "deltaDisabledFallback": "Delta Sync er ekki virkt í þessari lotu. Sjá ábendinguna Stjórn flutnings fyrir ástæðuna."
+            "deltaDisabledFallback": "Delta Sync er ekki virkt í þessari lotu. Sjá ábendinguna Stjórn flutnings fyrir ástæðuna.",
+            "deltaBatchSummary": "Delta: {files} skrár í {sessions} lotu(m)",
+            "deltaBytesOnWire": "{bytesOnWire} á netinu"
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -4101,12 +4103,14 @@
             "addFirstServer": "Bættu við fyrsta þjóninum þínum",
             "browseCategory": "Eða skoðaðu eftir flokki",
             "storageUsedOf": "{used} notað af {total}",
+            "storageQuotaUnavailable": "Tengstu einu sinni til að hlaða geymslukvóta",
             "health": {
                 "up": "Næst í",
                 "slow": "Hægt",
                 "down": "Næst ekki í",
                 "pending": "Athuga...",
-                "unknown": "Ekki athugað"
+                "unknown": "Ekki athugað",
+                "clickToRetry": "smelltu til að athuga aftur"
             }
         },
         "gitlab": {

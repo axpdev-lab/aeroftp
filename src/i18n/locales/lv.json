@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Turpināt klasiski",
             "deltaEligibilitySkip": "Vairs nerādīt šim serverim",
             "deltaEligibilityLearnMore": "Uzzināt vairāk",
-            "deltaDisabledFallback": "Delta Sync šajā sesijā pašlaik nav aktīvs. Iemeslu skatiet pārsūtīšanas vadības padomā."
+            "deltaDisabledFallback": "Delta Sync šajā sesijā pašlaik nav aktīvs. Iemeslu skatiet pārsūtīšanas vadības padomā.",
+            "deltaBatchSummary": "Delta: {files} faili {sessions} sesijā(s)",
+            "deltaBytesOnWire": "{bytesOnWire} tīklā"
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Pievienot pirmo serveri",
             "browseCategory": "Vai pārlūkot pēc kategorijas",
             "storageUsedOf": "Izmantoti {used} no {total}",
+            "storageQuotaUnavailable": "Pievienojieties vienreiz, lai ielādētu krātuves kvotu",
             "health": {
                 "up": "Sasniedzams",
                 "slow": "Lēns",
                 "down": "Nesasniedzams",
                 "pending": "Pārbauda...",
-                "unknown": "Nav pārbaudīts"
+                "unknown": "Nav pārbaudīts",
+                "clickToRetry": "noklikšķiniet, lai pārbaudītu vēlreiz"
             }
         },
         "gitlab": {

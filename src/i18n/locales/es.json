@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Continuar con clásico",
             "deltaEligibilitySkip": "No mostrar de nuevo para este servidor",
             "deltaEligibilityLearnMore": "Más información",
-            "deltaDisabledFallback": "Delta Sync no está activo en esta sesión. Consulta la sugerencia de Control de transferencia para conocer el motivo."
+            "deltaDisabledFallback": "Delta Sync no está activo en esta sesión. Consulta la sugerencia de Control de transferencia para conocer el motivo.",
+            "deltaBatchSummary": "Delta: {files} archivos en {sessions} sesión(es)",
+            "deltaBytesOnWire": "{bytesOnWire} en red"
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -4072,12 +4074,14 @@
             "addFirstServer": "Añade tu primer servidor",
             "browseCategory": "O navega por categoría",
             "storageUsedOf": "{used} usados de {total}",
+            "storageQuotaUnavailable": "Conéctate una vez para cargar la cuota de almacenamiento",
             "health": {
                 "up": "Accesible",
                 "slow": "Lento",
                 "down": "Inaccesible",
                 "pending": "Comprobando...",
-                "unknown": "Sin verificar"
+                "unknown": "Sin verificar",
+                "clickToRetry": "haz clic para volver a comprobar"
             }
         },
         "gitlab": {

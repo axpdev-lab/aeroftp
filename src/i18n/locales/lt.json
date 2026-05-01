@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Tęsti klasikiniu",
             "deltaEligibilitySkip": "Daugiau nerodyti šiam serveriui",
             "deltaEligibilityLearnMore": "Sužinokite daugiau",
-            "deltaDisabledFallback": "Delta Sync šiuo metu šiame seanse neaktyvus. Priežastį rasite Perdavimo valdymo patarime."
+            "deltaDisabledFallback": "Delta Sync šiuo metu šiame seanse neaktyvus. Priežastį rasite Perdavimo valdymo patarime.",
+            "deltaBatchSummary": "Delta: {files} failų per {sessions} seansą(-us)",
+            "deltaBytesOnWire": "{bytesOnWire} tinkle"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Pridėti pirmąjį serverį",
             "browseCategory": "Arba naršykite pagal kategoriją",
             "storageUsedOf": "Panaudota {used} iš {total}",
+            "storageQuotaUnavailable": "Prisijunkite vieną kartą, kad būtų įkelta saugyklos kvota",
             "health": {
                 "up": "Pasiekiamas",
                 "slow": "Lėtas",
                 "down": "Nepasiekiamas",
                 "pending": "Tikrinama...",
-                "unknown": "Nepatikrinta"
+                "unknown": "Nepatikrinta",
+                "clickToRetry": "spustelėkite, kad patikrintumėte iš naujo"
             }
         },
         "gitlab": {

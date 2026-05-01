@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Продолжить классически",
             "deltaEligibilitySkip": "Больше не показывать для этого сервера",
             "deltaEligibilityLearnMore": "Подробнее",
-            "deltaDisabledFallback": "Delta Sync сейчас не активен для этого сеанса. Причину смотрите в подсказке «Управление передачей»."
+            "deltaDisabledFallback": "Delta Sync сейчас не активен для этого сеанса. Причину смотрите в подсказке «Управление передачей».",
+            "deltaBatchSummary": "Delta: {files} файлов в {sessions} сессии(ях)",
+            "deltaBytesOnWire": "{bytesOnWire} по сети"
         },
         "ui": {
             "syncing": "Синхронизация...",
@@ -4072,12 +4074,14 @@
             "addFirstServer": "Добавьте первый сервер",
             "browseCategory": "Или просмотрите по категории",
             "storageUsedOf": "Использовано {used} из {total}",
+            "storageQuotaUnavailable": "Подключитесь один раз, чтобы загрузить квоту хранилища",
             "health": {
                 "up": "Доступен",
                 "slow": "Медленный",
                 "down": "Недоступен",
                 "pending": "Проверка...",
-                "unknown": "Не проверен"
+                "unknown": "Не проверен",
+                "clickToRetry": "нажмите, чтобы проверить снова"
             }
         },
         "gitlab": {

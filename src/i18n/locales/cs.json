@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Pokračovat klasicky",
             "deltaEligibilitySkip": "Již nezobrazovat pro tento server",
             "deltaEligibilityLearnMore": "Dozvědět se více",
-            "deltaDisabledFallback": "Delta Sync není pro tuto relaci aktivní. Důvod najdete v nápovědě Ovládání přenosu."
+            "deltaDisabledFallback": "Delta Sync není pro tuto relaci aktivní. Důvod najdete v nápovědě Ovládání přenosu.",
+            "deltaBatchSummary": "Delta: {files} souborů v {sessions} relaci(ích)",
+            "deltaBytesOnWire": "{bytesOnWire} po síti"
         },
         "ui": {
             "syncing": "Synchronizace...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "Přidat první server",
             "browseCategory": "Nebo procházet podle kategorie",
             "storageUsedOf": "Použito {used} z {total}",
+            "storageQuotaUnavailable": "Připojte se jednou pro načtení kvóty úložiště",
             "health": {
                 "up": "Dostupný",
                 "slow": "Pomalý",
                 "down": "Nedostupný",
                 "pending": "Kontroluje se...",
-                "unknown": "Neověřeno"
+                "unknown": "Neověřeno",
+                "clickToRetry": "kliknutím znovu zkontrolovat"
             }
         },
         "gitlab": {

@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "클래식으로 계속",
             "deltaEligibilitySkip": "이 서버에서 다시 표시 안 함",
             "deltaEligibilityLearnMore": "자세히 알아보기",
-            "deltaDisabledFallback": "현재 이 세션에서는 Delta Sync가 활성화되어 있지 않습니다. 이유는 전송 제어 힌트를 참조하세요."
+            "deltaDisabledFallback": "현재 이 세션에서는 Delta Sync가 활성화되어 있지 않습니다. 이유는 전송 제어 힌트를 참조하세요.",
+            "deltaBatchSummary": "Delta: {files}개 파일, {sessions}개 세션",
+            "deltaBytesOnWire": "네트워크 전송량 {bytesOnWire}"
         },
         "ui": {
             "syncing": "동기화 중...",
@@ -4072,12 +4074,14 @@
             "addFirstServer": "첫 번째 서버 추가",
             "browseCategory": "또는 카테고리별로 찾아보기",
             "storageUsedOf": "{total} 중 {used} 사용됨",
+            "storageQuotaUnavailable": "저장소 할당량을 불러오려면 한 번 연결하세요",
             "health": {
                 "up": "연결 가능",
                 "slow": "느림",
                 "down": "연결 불가",
                 "pending": "확인 중...",
-                "unknown": "미확인"
+                "unknown": "미확인",
+                "clickToRetry": "클릭하여 다시 확인"
             }
         },
         "gitlab": {

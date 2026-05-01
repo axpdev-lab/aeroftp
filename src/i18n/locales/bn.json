@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "ক্লাসিক দিয়ে চালিয়ে যান",
             "deltaEligibilitySkip": "এই সার্ভারের জন্য আর দেখাবেন না",
             "deltaEligibilityLearnMore": "আরও জানুন",
-            "deltaDisabledFallback": "এই সেশনের জন্য Delta Sync বর্তমানে সক্রিয় নয়। কারণের জন্য ট্রান্সফার নিয়ন্ত্রণ ইঙ্গিতটি দেখুন।"
+            "deltaDisabledFallback": "এই সেশনের জন্য Delta Sync বর্তমানে সক্রিয় নয়। কারণের জন্য ট্রান্সফার নিয়ন্ত্রণ ইঙ্গিতটি দেখুন।",
+            "deltaBatchSummary": "Delta: {files}টি ফাইল, {sessions}টি সেশনে",
+            "deltaBytesOnWire": "নেটে {bytesOnWire}"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
@@ -4082,12 +4084,14 @@
             "addFirstServer": "আপনার প্রথম সার্ভার যোগ করুন",
             "browseCategory": "অথবা বিভাগ অনুসারে ব্রাউজ করুন",
             "storageUsedOf": "{total}-এর মধ্যে {used} ব্যবহৃত",
+            "storageQuotaUnavailable": "স্টোরেজ কোটা লোড করতে একবার সংযোগ করুন",
             "health": {
                 "up": "পৌঁছানো যায়",
                 "slow": "ধীর",
                 "down": "পৌঁছানো যায় না",
                 "pending": "পরীক্ষা করা হচ্ছে...",
-                "unknown": "যাচাই করা হয়নি"
+                "unknown": "যাচাই করা হয়নি",
+                "clickToRetry": "পুনরায় পরীক্ষা করতে ক্লিক করুন"
             }
         },
         "gitlab": {

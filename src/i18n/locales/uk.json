@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Продовжити класично",
             "deltaEligibilitySkip": "Більше не показувати для цього сервера",
             "deltaEligibilityLearnMore": "Дізнатися більше",
-            "deltaDisabledFallback": "Delta Sync наразі не активний для цього сеансу. Причину дивіться у підказці «Керування передачею»."
+            "deltaDisabledFallback": "Delta Sync наразі не активний для цього сеансу. Причину дивіться у підказці «Керування передачею».",
+            "deltaBatchSummary": "Delta: {files} файлів у {sessions} сесії(ях)",
+            "deltaBytesOnWire": "{bytesOnWire} мережею"
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -4072,12 +4074,14 @@
             "addFirstServer": "Додати перший сервер",
             "browseCategory": "Або переглянути за категорією",
             "storageUsedOf": "Використано {used} із {total}",
+            "storageQuotaUnavailable": "Підключіться один раз, щоб завантажити квоту сховища",
             "health": {
                 "up": "Доступний",
                 "slow": "Повільний",
                 "down": "Недоступний",
                 "pending": "Перевірка...",
-                "unknown": "Не перевірено"
+                "unknown": "Не перевірено",
+                "clickToRetry": "натисніть, щоб перевірити знову"
             }
         },
         "gitlab": {

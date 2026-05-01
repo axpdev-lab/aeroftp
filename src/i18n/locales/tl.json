@@ -2005,7 +2005,9 @@
             "deltaEligibilityProceed": "Magpatuloy nang klasiko",
             "deltaEligibilitySkip": "Huwag ipakita muli para sa server na ito",
             "deltaEligibilityLearnMore": "Matuto pa",
-            "deltaDisabledFallback": "Hindi kasalukuyang aktibo ang Delta Sync para sa session na ito. Tingnan ang pahiwatig ng Kontrol ng Paglilipat para sa dahilan."
+            "deltaDisabledFallback": "Hindi kasalukuyang aktibo ang Delta Sync para sa session na ito. Tingnan ang pahiwatig ng Kontrol ng Paglilipat para sa dahilan.",
+            "deltaBatchSummary": "Delta: {files} file sa {sessions} session",
+            "deltaBytesOnWire": "{bytesOnWire} sa network"
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -4101,12 +4103,14 @@
             "addFirstServer": "Idagdag ang iyong unang server",
             "browseCategory": "O mag-browse ayon sa kategorya",
             "storageUsedOf": "{used} na ginamit sa {total}",
+            "storageQuotaUnavailable": "Kumonekta nang isang beses upang mai-load ang storage quota",
             "health": {
                 "up": "Naa-access",
                 "slow": "Mabagal",
                 "down": "Hindi naa-access",
                 "pending": "Sinusuri...",
-                "unknown": "Hindi pa nasuri"
+                "unknown": "Hindi pa nasuri",
+                "clickToRetry": "mag-click upang muling suriin"
             }
         },
         "gitlab": {

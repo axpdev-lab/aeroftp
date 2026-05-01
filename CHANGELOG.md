@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### P3-T01 closure package (W3 + W4)
+
+Preparazione del pacchetto di chiusura tecnico-operativa per P3-T01 con validazioni i18n, smoke incrementale live e report finale in Appendix.
+
+### Changed
+
+- **i18n GLM batch cleanup completata** - eliminati i placeholder residui `[NEEDS TRANSLATION]` su tutte le locale propagate; `i18n:validate` risulta pulito (0 errori, 0 warning, 0 placeholder).
+- **Smoke live incrementale validato** - su profilo reale `SSH MyCloud HD`, eseguiti i due run di riferimento: upload iniziale 100x10KB e resync con una sola mutazione (1 uploaded, 99 skipped), con tempi coerenti con comportamento incrementale file-level.
+- **Documentazione di chiusura P3-T01 consolidata** - report finale e handoff aggiornati in Appendix con evidenze complete (i18n/typecheck/smoke live small+large) raccolte su target reale.
+
 ## [3.6.10] - 2026-04-28
 
 ### MEGA Native canonical crypto, 2FA modal hookup, TOTP QR, mouse Back button
