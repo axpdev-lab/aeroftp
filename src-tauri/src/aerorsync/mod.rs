@@ -36,6 +36,7 @@ pub mod protocol;
 pub mod real_wire;
 pub mod remote_command;
 pub mod rsync_event_bridge;
+pub mod russh_session_transport;
 pub mod server;
 pub mod session;
 pub mod shell_escape;
