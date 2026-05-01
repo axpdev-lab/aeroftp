@@ -67,40 +67,6 @@ use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, S
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use xxhash_rust::xxh3::{xxh3_128, Xxh3Default};
 
-/// P3-T01 W2.4 — sink for the bytes the driver reconstructs on the
-/// download path. The driver dispatches on this at the
-/// `install_reconstructed_from_wire` boundary:
-///
-/// - `None` (the default in `new()`) and `Some(InMemory)` → legacy bulk
-///   path. The reconstructed bytes are materialised as `Vec<u8>` into
-///   `self.reconstructed`, exactly as A2.3 has always done. The A4 adapter
-///   then copies them through `write_atomic_chunked` into `<target>.aerotmp`
-///   and renames. This branch keeps every existing mock test passing
-///   without changes.
-///
-/// - `Some(Streaming(writer))` → streaming download. The driver hands the
-///   delta op stream to `apply_delta_streaming(baseline, ops, bs, writer)`
-///   so reconstructed bytes flow straight into the writer (typically a
-///   `StreamingAtomicWriter`, W2.3) without ever materialising as a
-///   `Vec<u8>`. `self.reconstructed` stays `None` in this mode. The W2.5
-///   `download_inner` integration sets this variant.
-///
-/// The `InMemory` variant carries no payload because the existing
-/// `self.reconstructed: Option<Vec<u8>>` field is the canonical storage
-/// for the bulk path. Keeping the variant tag empty avoids a second
-/// owner of the same `Vec<u8>` and matches the W2.4 acceptance test 5
-/// (`reconstructed()` returns `None` on the streaming branch).
-pub enum ReconstructedTarget {
-    /// Legacy bulk path: the driver populates `self.reconstructed` with a
-    /// fully-materialised `Vec<u8>`. `set_reconstructed_target(InMemory)`
-    /// is functionally identical to leaving the field at `None`; the
-    /// explicit variant is provided so callers can document intent.
-    InMemory,
-    /// Streaming download: reconstructed bytes are written into the
-    /// `AsyncWrite` sink as ops are consumed.
-    Streaming(Box<dyn AsyncWrite + Send + Unpin>),
-}
-
 /// Compute the 16-byte file-level strong checksum rsync verifies at the
 /// end of the delta stream when `xxh128` is the negotiated algo.
 ///
@@ -299,15 +265,9 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// Populated only on the bulk download path
     /// (`drive_download_through_delta`); stays `None` on the streaming
     /// path (`drive_download_through_delta_streaming`, W2.4) where the
-    /// reconstructed bytes flow directly into the configured writer.
+    /// reconstructed bytes flow directly into the caller-supplied
+    /// `AsyncWrite` sink passed by reference.
     reconstructed: Option<Vec<u8>>,
-    /// P3-T01 W2.4 — caller-configurable sink for reconstructed download
-    /// bytes. `None` keeps the legacy bulk semantics for back-compat
-    /// (every A2.x mock test exercises this branch). The W2.5 production
-    /// caller sets `Some(Streaming(writer))` via
-    /// [`set_reconstructed_target`] before invoking
-    /// [`drive_download_through_delta_streaming`].
-    reconstructed_target: Option<ReconstructedTarget>,
     /// Download path: file-level strong checksum trailer read from the
     /// wire (16 bytes in A2.3 — xxh128 / md5 / md4).
     received_file_checksum: Option<Vec<u8>>,
@@ -378,7 +338,6 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             last_received_ndx: -1,
             sig_residual_after_header: Vec::new(),
             reconstructed: None,
-            reconstructed_target: None,
             received_file_checksum: None,
             emitted_delta_ops: Vec::new(),
             sent_data_bytes: 0,
@@ -446,26 +405,6 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
     pub fn reconstructed(&self) -> Option<&[u8]> {
         self.reconstructed.as_deref()
-    }
-    /// P3-T01 W2.4 — install (or replace) the reconstructed-bytes sink
-    /// used by [`drive_download_through_delta_streaming`]. Must be called
-    /// before that entry point; the streaming entry point errors with
-    /// `InvalidFrame` if no `Streaming(_)` target is set.
-    ///
-    /// The legacy [`drive_download_through_delta`] entry point ignores
-    /// this field and always materialises the reconstruction into
-    /// `self.reconstructed` — every existing mock test exercises that
-    /// branch unchanged.
-    pub fn set_reconstructed_target(&mut self, target: ReconstructedTarget) {
-        self.reconstructed_target = Some(target);
-    }
-    /// Read-only access to the configured target tag. Test-facing —
-    /// production callers do not need this. Returns `None` if no target
-    /// has been set, `Some(&InMemory)` if explicit InMemory was set, or
-    /// `Some(&Streaming(_))` if a writer was installed.
-    #[allow(dead_code)]
-    pub fn reconstructed_target(&self) -> Option<&ReconstructedTarget> {
-        self.reconstructed_target.as_ref()
     }
     pub fn received_file_checksum(&self) -> Option<&[u8]> {
         self.received_file_checksum.as_deref()
@@ -654,19 +593,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    /// P3-T01 W2.4 — streaming-sink sibling of
+    /// P3-T01 W2.4/W2.5 — streaming-sink sibling of
     /// [`drive_download_through_delta`]. The pre-delta phases (preamble,
     /// file list receive, signature send) are identical to the bulk path;
     /// only the final `receive_delta_phase` differs. The reconstructed
     /// bytes do not materialise as a `Vec<u8>` — they flow into the
-    /// `Streaming(writer)` sink configured via
-    /// [`set_reconstructed_target`] before this call.
+    /// caller-supplied `writer` (typically a `StreamingAtomicWriter`,
+    /// W2.3) which retains full ownership across the call so the caller
+    /// can `finalize` it (commit the temp file via rename) once the
+    /// driver returns.
     ///
     /// `destination_data` is still passed because the signature phase
     /// runs `adapter.build_signatures(destination_data, block_size)`
     /// in bulk; making *that* phase streaming requires a separate
     /// `build_signatures_streaming` adapter API that is out of scope for
-    /// W2.4. The W2.5 caller gives the same `destination_data` slice
+    /// W2.5. The W2.5 caller gives the same `destination_data` slice
     /// (read once into RAM with `tokio::fs::read`) and a `FileBaseline`
     /// over the same path; the cap removal in W2.5 targets the
     /// reconstruction side, where the asymmetry is `O(reconstructed)`
@@ -678,30 +619,28 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// must be the byte-for-byte identical content as `destination_data`
     /// (caller invariant; the streaming + bulk views of the same file).
     ///
-    /// Returns `Err(InvalidFrame)` immediately if no `Streaming(_)`
-    /// target has been installed — fail-fast instead of silently
-    /// degrading to the bulk path. Other errors propagate identically
-    /// to the bulk sibling.
+    /// `writer` is borrowed by `&mut` for the duration of the call —
+    /// the caller retains ownership and is responsible for
+    /// finalisation (flush + sync_all + rename) on success and for
+    /// best-effort cleanup on error.
     pub async fn drive_download_through_delta_streaming(
         &mut self,
         command_spec: RemoteCommandSpec,
         destination_data: &[u8],
         baseline: &mut dyn BaselineSource,
+        writer: &mut (dyn AsyncWrite + Send + Unpin),
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
-        if !matches!(
-            self.reconstructed_target.as_ref(),
-            Some(ReconstructedTarget::Streaming(_))
-        ) {
-            self.phase = AerorsyncSessionPhase::Failed;
-            return Err(AerorsyncError::invalid_frame(
-                "drive_download_through_delta_streaming: no Streaming reconstructed target \
-                 configured — call set_reconstructed_target(Streaming(writer)) first",
-            ));
-        }
         match self
-            .drive_download_inner_streaming(command_spec, destination_data, baseline, adapter, bridge)
+            .drive_download_inner_streaming(
+                command_spec,
+                destination_data,
+                baseline,
+                writer,
+                adapter,
+                bridge,
+            )
             .await
         {
             Ok(()) => Ok(()),
@@ -802,6 +741,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         command_spec: RemoteCommandSpec,
         destination_data: &[u8],
         baseline: &mut dyn BaselineSource,
+        writer: &mut (dyn AsyncWrite + Send + Unpin),
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
@@ -813,7 +753,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.receive_file_list_single_file(bridge).await?;
         self.send_signature_phase_single_file(destination_data, adapter)
             .await?;
-        self.receive_delta_phase_streaming(baseline, adapter, bridge)
+        self.receive_delta_phase_streaming(baseline, writer, adapter, bridge)
             .await?;
         Ok(())
     }
@@ -1834,6 +1774,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     async fn receive_delta_phase_streaming(
         &mut self,
         baseline: &mut dyn BaselineSource,
+        writer: &mut (dyn AsyncWrite + Send + Unpin),
         adapter: &dyn DeltaEngineAdapter,
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
@@ -1849,7 +1790,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         buf.drain(..consumed);
                         self.received_file_checksum = Some(report.file_checksum.clone());
                         self.install_reconstructed_from_wire_streaming(
-                            baseline, adapter, report.ops,
+                            baseline, writer, adapter, report.ops,
                         )
                         .await?;
                         self.phase = AerorsyncSessionPhase::DeltaReceived;
@@ -1868,23 +1809,22 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    /// P3-T01 W2.4 — streaming sibling of [`install_reconstructed_from_wire`].
-    /// Decodes the wire ops to engine ops (same conversion as the bulk
-    /// path) and dispatches to [`apply_delta_streaming`] against the
-    /// caller-supplied baseline + the configured `Streaming(writer)` sink.
+    /// P3-T01 W2.4/W2.5 — streaming sibling of
+    /// [`install_reconstructed_from_wire`]. Decodes the wire ops to
+    /// engine ops (same conversion as the bulk path) and dispatches to
+    /// [`apply_delta_streaming`] against the caller-supplied baseline +
+    /// caller-supplied writer.
     ///
     /// Errors:
     /// - `InvalidFrame` if `block_size == 0` (no `sent_sum_head` from the
     ///   signature phase — a wire-level invariant violation, identical
     ///   to the bulk path).
-    /// - `InvalidFrame` if `reconstructed_target` is not `Some(Streaming(_))`
-    ///   — defensive guard, the public entry point already checks this
-    ///   but we re-assert here so the dispatcher cannot silently degrade.
     /// - `InvalidFrame` from `apply_delta_streaming` (baseline read errors,
     ///   writer poll_write errors, oversized block_size).
     async fn install_reconstructed_from_wire_streaming(
         &mut self,
         baseline: &mut dyn BaselineSource,
+        writer: &mut (dyn AsyncWrite + Send + Unpin),
         adapter: &dyn DeltaEngineAdapter,
         wire_ops: Vec<DeltaOp>,
     ) -> Result<(), AerorsyncError> {
@@ -1904,20 +1844,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 "receive_delta_phase: block_size is zero (missing local sum_head)",
             ));
         }
-        let writer = match self.reconstructed_target.as_mut() {
-            Some(ReconstructedTarget::Streaming(w)) => w,
-            Some(ReconstructedTarget::InMemory) | None => {
-                return Err(AerorsyncError::invalid_frame(
-                    "install_reconstructed_from_wire_streaming: no Streaming target configured",
-                ));
-            }
-        };
-        apply_delta_streaming(baseline, engine_ops, block_size, writer.as_mut())
+        apply_delta_streaming(baseline, engine_ops, block_size, writer)
             .await
             .map_err(|e| AerorsyncError::invalid_frame(format!("apply_delta_streaming: {e}")))?;
         // self.reconstructed intentionally stays None — the bytes flowed
         // through the writer and reading them back from RAM would defeat
-        // the purpose of the streaming path. W2.4 acceptance test 5
+        // the purpose of the streaming path. W2.4 acceptance test 4
         // pins this.
         Ok(())
     }
@@ -5595,10 +5527,8 @@ mod tests {
     // (`driver_download_delta_decodes_ops_and_reconstructs`,
     // `driver_download_delta_coalesces_consecutive_literal_chunks_into_one_engine_literal`,
     // `driver_download_delta_preserves_committed_false`) act as the
-    // non-regression pin for the bulk path: they never set
-    // `reconstructed_target`, so they exercise the legacy
-    // `drive_download_through_delta` end to end. Their continued passing
-    // is the W2.4 acceptance gate "InMemory path unchanged".
+    // non-regression pin for the bulk path. Their continued passing is the
+    // W2.4 acceptance gate "bulk path unchanged".
     //
     // The tests below exercise the new streaming entry point with the
     // same wire fixture shape (preamble + file list + delta_stream
@@ -5606,6 +5536,14 @@ mod tests {
     // slice's CopyBlock view and a collecting `MockAsyncWriter` for the
     // reconstructed sink. The fixture is small enough that a careful
     // reader can trace each assertion back to the wire bytes.
+    //
+    // P3-T01 W2.5: the streaming entry point now takes the writer by
+    // `&mut` instead of via a setter+field. The driver no longer owns the
+    // writer across the call, which lets the W2.5 caller `finalize` the
+    // `StreamingAtomicWriter` without an awkward downcast back through
+    // `Box<dyn AsyncWrite>`. The "guard against missing target" test
+    // from W2.4 is gone because there is no longer any state to
+    // misconfigure.
     // ========================================================================
 
     use std::sync::Mutex as StdMutex;
@@ -5756,15 +5694,15 @@ mod tests {
         let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
         let mut baseline = MemoryBaseline::new(destination_data.clone());
 
-        let (writer, captured) = MockAsyncWriter::new();
+        let (mut writer, captured) = MockAsyncWriter::new();
         let mut d = make_driver(transport);
-        d.set_reconstructed_target(ReconstructedTarget::Streaming(Box::new(writer)));
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
             &destination_data,
             &mut baseline,
+            &mut writer,
             &adapter,
             &mut sink,
         )
@@ -5815,15 +5753,15 @@ mod tests {
         let baseline_bytes: Vec<u8> = b"XXXXYYYY".to_vec();
         let mut baseline = MemoryBaseline::new(baseline_bytes);
 
-        let (writer, captured) = MockAsyncWriter::new();
+        let (mut writer, captured) = MockAsyncWriter::new();
         let mut d = make_driver(transport);
-        d.set_reconstructed_target(ReconstructedTarget::Streaming(Box::new(writer)));
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
             &destination_data,
             &mut baseline,
+            &mut writer,
             &adapter,
             &mut sink,
         )
@@ -5865,7 +5803,7 @@ mod tests {
         let mut baseline = MemoryBaseline::new(destination_data.clone());
 
         let mut d = make_driver(transport);
-        d.set_reconstructed_target(ReconstructedTarget::Streaming(Box::new(FailingMockWriter)));
+        let mut writer = FailingMockWriter;
 
         let mut sink = CollectingSink::default();
         let err = d
@@ -5873,6 +5811,7 @@ mod tests {
                 RemoteCommandSpec::download("/remote/target.bin"),
                 &destination_data,
                 &mut baseline,
+                &mut writer,
                 &adapter,
                 &mut sink,
             )
@@ -5917,15 +5856,15 @@ mod tests {
         let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
         let mut baseline = MemoryBaseline::new(destination_data.clone());
 
-        let (writer, _captured) = MockAsyncWriter::new();
+        let (mut writer, _captured) = MockAsyncWriter::new();
         let mut d = make_driver(transport);
-        d.set_reconstructed_target(ReconstructedTarget::Streaming(Box::new(writer)));
 
         let mut sink = CollectingSink::default();
         d.drive_download_through_delta_streaming(
             RemoteCommandSpec::download("/remote/target.bin"),
             &destination_data,
             &mut baseline,
+            &mut writer,
             &adapter,
             &mut sink,
         )
@@ -5938,54 +5877,4 @@ mod tests {
         );
     }
 
-    /// W2.4 test 5 — calling `drive_download_through_delta_streaming`
-    /// without first installing a `Streaming(_)` target is an
-    /// `InvalidFrame` error. Tested for two cases: no target at all,
-    /// and explicit `InMemory` target. The dispatcher must fail-fast,
-    /// never silently degrade to the bulk path.
-    #[tokio::test]
-    async fn driver_download_streaming_through_delta_requires_streaming_target() {
-        use crate::aerorsync::engine_adapter::MemoryBaseline;
-
-        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
-        let mut baseline = MemoryBaseline::new(destination_data.clone());
-        let adapter = MockSigAdapter::default();
-
-        // Case A: no target configured at all.
-        let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
-        let mut sink = CollectingSink::default();
-        let err = d
-            .drive_download_through_delta_streaming(
-                RemoteCommandSpec::download("/remote/target.bin"),
-                &destination_data,
-                &mut baseline,
-                &adapter,
-                &mut sink,
-            )
-            .await
-            .expect_err("missing streaming target must error");
-        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
-        assert!(
-            err.detail.contains("set_reconstructed_target"),
-            "error must guide the caller toward the setter, got: {}",
-            err.detail
-        );
-        assert_eq!(d.phase(), AerorsyncSessionPhase::Failed);
-
-        // Case B: explicit InMemory target — same fail-fast outcome.
-        let mut d = make_driver(mock_transport_with_raw_inbound(Vec::new()));
-        d.set_reconstructed_target(ReconstructedTarget::InMemory);
-        let mut sink = CollectingSink::default();
-        let err = d
-            .drive_download_through_delta_streaming(
-                RemoteCommandSpec::download("/remote/target.bin"),
-                &destination_data,
-                &mut baseline,
-                &adapter,
-                &mut sink,
-            )
-            .await
-            .expect_err("InMemory target on streaming path must error");
-        assert_eq!(err.kind, AerorsyncErrorKind::InvalidFrame);
-    }
 }
