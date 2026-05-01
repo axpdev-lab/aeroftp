@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Folder, HardDrive, Check, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
-import { ServerProfile, ProviderType, getProtocolClass, getE2EBits } from '../../types';
+import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, supportsStorageQuota } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { maskCredential } from '../../utils/maskCredential';
@@ -10,13 +10,32 @@ import { useCardLayout } from '../../hooks/useCardLayout';
 import { formatBytes } from '../../utils/formatters';
 import { HealthRadial } from './HealthRadial';
 
-/** Compact storage usage bar for the detailed card layout. Reads from
- *  `server.lastQuota` (cached on the last successful connection). Hidden when
- *  no quota has ever been observed for this profile. */
-function StorageUsageBar({ quota }: { quota: NonNullable<ServerProfile['lastQuota']> }) {
+/** Compact storage usage bar for the detailed card layout footer. Reads from
+ *  `server.lastQuota` (cached on the last successful connection). Returns
+ *  null when no quota is cached — caller decides whether to render an empty
+ *  slot. Many providers (S3, raw FTP/SFTP, WebDAV without quota support)
+ *  never produce one, and a "— / —" placeholder is just visual noise. */
+function StorageUsageBar({
+    quota,
+    supported,
+}: {
+    quota: ServerProfile['lastQuota'] | undefined;
+    supported: boolean;
+}) {
     const t = useTranslation();
+    if (!quota || !quota.total || quota.total <= 0) {
+        if (!supported) return null;
+        const title = t('introHub.storageQuotaUnavailable');
+        return (
+            <div className="leading-tight opacity-60" title={title} aria-label={title}>
+                <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="truncate">Quota</span>
+                </div>
+                <div className="h-1 mt-1 rounded-full bg-gray-200/70 dark:bg-gray-700/70 overflow-hidden" />
+            </div>
+        );
+    }
     const { used, total } = quota;
-    if (!total || total <= 0) return null;
     const pct = Math.max(0, Math.min(100, (used / total) * 100));
     const pctLabel = pct >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10;
     const tone =
@@ -25,14 +44,14 @@ function StorageUsageBar({ quota }: { quota: NonNullable<ServerProfile['lastQuot
         : 'bg-blue-500';
     return (
         <div
-            className="mt-2 space-y-1"
+            className="leading-tight"
             title={t('introHub.storageUsedOf', { used: formatBytes(used), total: formatBytes(total) })}
         >
             <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
-                <span>{formatBytes(used)} / {formatBytes(total)}</span>
-                <span>{pctLabel}%</span>
+                <span className="truncate">{formatBytes(used)} / {formatBytes(total)}</span>
+                <span className="shrink-0 ml-1">{pctLabel}%</span>
             </div>
-            <div className="h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div className="h-1 mt-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
                 <div
                     className={`h-full ${tone} transition-all`}
                     style={{ width: `${pct}%` }}
@@ -170,6 +189,10 @@ interface ServerCardProps {
     /** Reachability probe state, fed by useProviderHealth in detailed layout. */
     healthStatus?: 'up' | 'slow' | 'down' | 'pending' | 'unknown';
     healthLatencyMs?: number;
+    /** Click-to-recheck — re-runs the probe just for this profile. Lets the
+     *  user verify a flaky tab-wide scan result without re-running the whole
+     *  batch. Only wired in detailed layout. */
+    onRetryHealth?: (server: ServerProfile) => void;
 }
 
 function RenameInput({
@@ -295,14 +318,18 @@ export const ServerCard = React.memo(function ServerCard({
     onSelect,
     healthStatus,
     healthLatencyMs,
+    onRetryHealth,
 }: ServerCardProps) {
     const t = useTranslation();
     const cardLayout = useCardLayout();
-    const showRadial = cardLayout === 'detailed' && !!healthStatus && healthStatus !== 'unknown';
     const radialTitle = healthStatus
-        ? t(`introHub.health.${healthStatus}`) + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
+        ? t(`introHub.health.${healthStatus}`)
+            + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
+            + (onRetryHealth ? ` · ${t('introHub.health.clickToRetry')}` : '')
         : undefined;
+    const handleRetry = onRetryHealth ? () => onRetryHealth(server) : undefined;
     const proto = server.protocol || 'ftp';
+    const quotaSupported = supportsStorageQuota(proto as ProviderType);
     const timeAgo = getTimeAgo(server.lastConnected);
     const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
     const handleMouseLeave = onHoverChange ? () => onHoverChange(null) : undefined;
@@ -435,13 +462,14 @@ export const ServerCard = React.memo(function ServerCard({
                 )}
 
                 {/* Col: Health Radial (detailed layout) */}
-                {showRadial && (
+                {cardLayout === 'detailed' && (
                     <span className="shrink-0 text-gray-300 dark:text-gray-600">
                         <HealthRadial
-                            status={healthStatus!}
+                            status={healthStatus || 'unknown'}
                             latencyMs={healthLatencyMs}
-                            size={18}
+                            size={16}
                             title={radialTitle}
+                            onRetry={handleRetry}
                         />
                     </span>
                 )}
@@ -535,20 +563,25 @@ export const ServerCard = React.memo(function ServerCard({
             {/* Subtitle */}
             <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-2 min-h-[1rem]">{subtitle}</div>
 
-            {/* Storage usage bar (detailed layout, when a quota was cached on a previous connection) */}
-            {cardLayout === 'detailed' && server.lastQuota && (
-                <StorageUsageBar quota={server.lastQuota} />
-            )}
-
-            {/* Health Radial (detailed layout) — bottom-right, doesn't overlap actions */}
-            {showRadial && (
-                <div className="absolute bottom-2 right-2 pointer-events-none text-gray-300 dark:text-gray-600">
-                    <HealthRadial
-                        status={healthStatus!}
-                        latencyMs={healthLatencyMs}
-                        size={20}
-                        title={radialTitle}
-                    />
+            {/* Footer (detailed layout): quota left (only when cached), radial
+                right. The radial is rendered whenever the layout is detailed so
+                the click-to-retry affordance is always available — even before
+                the first scan completes. The top border anchors the section so
+                cards with and without quota still feel uniform. */}
+            {cardLayout === 'detailed' && (
+                <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-700/60 grid grid-cols-[1fr_auto] items-center gap-2 min-h-[20px]">
+                    <div className="min-w-0">
+                        <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} />
+                    </div>
+                    <div className="shrink-0 text-gray-300 dark:text-gray-600">
+                        <HealthRadial
+                            status={healthStatus || 'unknown'}
+                            latencyMs={healthLatencyMs}
+                            size={16}
+                            title={radialTitle}
+                            onRetry={handleRetry}
+                        />
+                    </div>
                 </div>
             )}
 

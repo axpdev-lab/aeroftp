@@ -25,20 +25,27 @@ export interface ProviderHealthState {
 export interface HealthTarget {
     id: string;
     url: string;
+    /** Optional — when provided the backend probes via TCP for ftp/ftps/sftp. */
+    protocol?: string;
+    host?: string;
+    port?: number;
 }
 
 /** Cache duration: 5 minutes */
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-/** Safety timeout: max time a scan can take before auto-reset (30s) */
-const SCAN_SAFETY_TIMEOUT_MS = 30_000;
+/** Safety timeout: max time a scan can take before auto-reset.
+ *  Bumped from 30s → 90s for users with 50+ saved servers, where the wave
+ *  scan worst-case (count / MAX_CONCURRENT × per-probe timeout) blows past
+ *  half a minute. The hook still fires `health-scan-complete` on the happy
+ *  path; this is just the hung-scan fallback. */
+const SCAN_SAFETY_TIMEOUT_MS = 90_000;
 
 /** Module-level cache (survives re-renders and re-mounts) */
 const healthCache: Map<string, { state: ProviderHealthState; timestamp: number }> = new Map();
 
-/** Generation counter — increments each scan, used to ignore stale events */
+/** Generation counter — increments each scan, used to make stable scan IDs */
 let scanGeneration = 0;
-let scanInProgress = false;
 
 export function useProviderHealth() {
     const [results, setResults] = useState<Map<string, ProviderHealthState>>(new Map());
@@ -48,10 +55,13 @@ export function useProviderHealth() {
     // Per-instance safety timer — previously module-level, which meant two
     // concurrent mounts would clobber each other's timer reference.
     const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const scanInProgressRef = useRef(false);
+    const activeScanIdRef = useRef<string | null>(null);
     const mountedRef = useRef(true);
 
     const resetScanState = useCallback(() => {
-        scanInProgress = false;
+        scanInProgressRef.current = false;
+        activeScanIdRef.current = null;
         if (safetyTimerRef.current) {
             clearTimeout(safetyTimerRef.current);
             safetyTimerRef.current = null;
@@ -89,7 +99,12 @@ export function useProviderHealth() {
      */
     const scanItems = useCallback(async (items: HealthTarget[], force = false) => {
         if (!navigator.onLine) return;
-        if (scanInProgress) return;
+        const allowInterrupt = force && items.length === 1;
+        if (scanInProgressRef.current && !allowInterrupt) return;
+        if (allowInterrupt && safetyTimerRef.current) {
+            clearTimeout(safetyTimerRef.current);
+            safetyTimerRef.current = null;
+        }
 
         const now = Date.now();
 
@@ -117,13 +132,15 @@ export function useProviderHealth() {
         }
 
         // Capture generation for this scan
-        const gen = ++scanGeneration;
-        scanInProgress = true;
+        const scanId = `health-${Date.now()}-${++scanGeneration}`;
+        const activeIds = new Set(toScan.map(item => item.id));
+        activeScanIdRef.current = scanId;
+        scanInProgressRef.current = true;
         if (mountedRef.current) setScanning(true);
 
         // Safety timeout: auto-reset if scan hangs
         safetyTimerRef.current = setTimeout(() => {
-            if (scanInProgress && scanGeneration === gen) {
+            if (scanInProgressRef.current && activeScanIdRef.current === scanId) {
                 resetScanState();
                 if (mountedRef.current) setScanning(false);
             }
@@ -132,11 +149,13 @@ export function useProviderHealth() {
         // Register listeners FIRST so no event can slip through the gap
         // between the old cleanup and the new subscription. createTauriListener
         // returns a synchronous disposer and handles late resolution safely.
-        const unlisten1 = createTauriListener<{ id: string; status: string; latency_ms: number }>(
+        const unlisten1 = createTauriListener<{ id: string; status: string; latency_ms: number; scan_id?: string }>(
             'health-scan-result',
             (event) => {
-                if (scanGeneration !== gen) return; // stale event
-                const { id, status, latency_ms } = event.payload;
+                if (activeScanIdRef.current !== scanId) return; // stale event
+                const { id, status, latency_ms, scan_id } = event.payload;
+                if (scan_id && scan_id !== scanId) return;
+                if (!activeIds.has(id)) return;
                 healthCache.set(id, {
                     state: { status: status as HealthStatus, latencyMs: latency_ms },
                     timestamp: Date.now(),
@@ -145,8 +164,9 @@ export function useProviderHealth() {
             },
         );
 
-        const unlisten2 = createTauriListener<unknown>('health-scan-complete', () => {
-            if (scanGeneration !== gen) return; // stale event
+        const unlisten2 = createTauriListener<{ scan_id?: string }>('health-scan-complete', (event) => {
+            if (activeScanIdRef.current !== scanId) return; // stale event
+            if (event.payload?.scan_id && event.payload.scan_id !== scanId) return;
             resetScanState();
             if (mountedRef.current) setScanning(false);
         });
@@ -159,10 +179,17 @@ export function useProviderHealth() {
         // Fire scan
         try {
             await invoke('start_health_scan', {
-                targets: toScan.map(t => ({ id: t.id, url: t.url })),
+                targets: toScan.map(t => ({
+                    id: t.id,
+                    url: t.url,
+                    protocol: t.protocol,
+                    host: t.host,
+                    port: t.port,
+                })),
+                scanId,
             });
         } catch {
-            if (scanGeneration === gen) {
+            if (activeScanIdRef.current === scanId) {
                 resetScanState();
                 if (mountedRef.current) setScanning(false);
             }

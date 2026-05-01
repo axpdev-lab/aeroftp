@@ -24,6 +24,11 @@ interface HealthRadialProps {
     latencyMs?: number;
     size?: number;
     title?: string;
+    /** When provided the radial becomes a button that re-runs the probe for
+     *  this single profile. Used to debug a flaky tab-wide scan: clicking the
+     *  ring forces a fresh check and surfaces whether the bad result was the
+     *  scan or the server. */
+    onRetry?: () => void;
 }
 
 const STROKE_WIDTH = 2.5;
@@ -41,6 +46,7 @@ export const HealthRadial: React.FC<HealthRadialProps> = ({
     latencyMs,
     size = 22,
     title,
+    onRetry,
 }) => {
     const r = (size - STROKE_WIDTH) / 2;
     const cx = size / 2;
@@ -54,14 +60,24 @@ export const HealthRadial: React.FC<HealthRadialProps> = ({
         : 0;
     const dashOffset = circumference * (1 - fraction);
     const ariaLabel = title ?? `${status}${latencyMs ? ` ${latencyMs}ms` : ''}`;
+    const interactive = !!onRetry && status !== 'pending';
+    const handleClick = interactive ? (e: React.MouseEvent) => {
+        // Stop the parent card's click handler (which toggles cross-profile
+        // selection) from also firing.
+        e.stopPropagation();
+        onRetry!();
+    } : undefined;
+    const Wrapper: React.ElementType = interactive ? 'button' : 'span';
 
     return (
-        <span
-            role="img"
+        <Wrapper
+            role={interactive ? 'button' : 'img'}
             aria-label={ariaLabel}
             title={ariaLabel}
-            className={`inline-flex shrink-0 ${status === 'pending' ? 'animate-pulse' : ''}`}
-            style={{ width: size, height: size }}
+            onClick={handleClick}
+            type={interactive ? 'button' : undefined}
+            className={`inline-flex shrink-0 items-center justify-center ${status === 'pending' ? 'animate-pulse' : ''} ${interactive ? 'cursor-pointer rounded-full hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors' : ''}`}
+            style={{ width: size, height: size, padding: 0, border: 'none', background: 'transparent' }}
         >
             <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
                 {/* Background ring */}
@@ -106,6 +122,6 @@ export const HealthRadial: React.FC<HealthRadialProps> = ({
                     />
                 )}
             </svg>
-        </span>
+        </Wrapper>
     );
 };

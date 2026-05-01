@@ -22,6 +22,8 @@ import { PROVIDER_HEALTH_URLS } from './discoverData';
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
+const HEALTH_SCAN_CHUNK_SIZE = 12;
+const HEALTH_SCAN_CHUNK_DELAY_MS = 180;
 
 /** Load credential from vault with retry if store not ready */
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
@@ -58,7 +60,7 @@ function deriveProviderId(server: ServerProfile): string | undefined {
         if (host.includes('oraclecloud')) return 'oracle-cloud';
         if (host.includes('digitaloceanspaces')) return 'digitalocean-spaces';
         if (host.includes('storage.yandex')) return 'yandex-storage';
-        if (host.includes('filelu')) return 'filelu-s5';
+        if (host.includes('filelu')) return 'filelu-s3';
     }
     if (proto === 'webdav') {
         if (host.includes('koofr')) return 'koofr-webdav';
@@ -72,6 +74,86 @@ function deriveProviderId(server: ServerProfile): string | undefined {
         if (host.includes('felicloud')) return 'felicloud-webdav';
     }
     return undefined;
+}
+
+function parseHealthEndpoint(input: string): { url: string; host: string; port?: number } | null {
+    const raw = input.trim();
+    if (!raw) return null;
+    const candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+
+    try {
+        const url = new URL(candidate);
+        if (!url.hostname) return null;
+        const port = url.port ? Number(url.port) : undefined;
+        return {
+            url: `${url.protocol}//${url.host}`,
+            host: url.hostname,
+            port: Number.isFinite(port) ? port : undefined,
+        };
+    } catch {
+        const authority = raw
+            .replace(/^https?:\/\//i, '')
+            .split(/[/?#]/)[0]
+            .split('@')
+            .pop();
+        if (!authority) return null;
+        const idx = authority.lastIndexOf(':');
+        const portPart = idx >= 0 ? authority.slice(idx + 1) : '';
+        const port = portPart && /^\d+$/.test(portPart) ? Number(portPart) : undefined;
+        const host = port ? authority.slice(0, idx) : authority;
+        if (!host) return null;
+        return {
+            url: `https://${authority}`,
+            host,
+            port: Number.isFinite(port) ? port : undefined,
+        };
+    }
+}
+
+function getHealthProbeInput(server: ServerProfile): string | null {
+    const proto = server.protocol || 'ftp';
+    const providerUrl = server.providerId ? getProviderById(server.providerId)?.healthCheckUrl : undefined;
+    const protocolUrl = PROVIDER_HEALTH_URLS[proto];
+    const endpoint = server.options?.endpoint;
+
+    if (proto === 's3') {
+        return endpoint || providerUrl || protocolUrl || server.host || null;
+    }
+    if (proto === 'azure') {
+        const host = server.host?.trim();
+        const accountName = (server.options?.accountName || server.username || '').trim();
+        if (endpoint) return endpoint;
+        if (host && (host.includes('.') || host.includes('://'))) return host;
+        if (accountName) return `https://${accountName}.blob.core.windows.net`;
+        if (host) return `https://${host}.blob.core.windows.net`;
+        return 'https://login.microsoftonline.com';
+    }
+    if (proto === 'webdav') {
+        return server.host || providerUrl || protocolUrl || null;
+    }
+    if (isOAuthProvider(proto) || isFourSharedProvider(proto)) {
+        return protocolUrl || providerUrl || server.host || null;
+    }
+    return server.host || endpoint || providerUrl || protocolUrl || null;
+}
+
+function buildHealthTarget(server: ServerProfile): HealthTarget | null {
+    const input = getHealthProbeInput(server);
+    if (!input) return null;
+    const parsed = parseHealthEndpoint(input);
+    if (!parsed) return null;
+    const port = parsed.port ?? (server.port > 0 ? server.port : undefined);
+    return {
+        id: server.id,
+        url: parsed.url,
+        protocol: server.protocol || 'ftp',
+        host: parsed.host,
+        port,
+    };
+}
+
+function wait(ms: number) {
+    return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
 function getSavedServers(): ServerProfile[] {
@@ -169,6 +251,7 @@ export function MyServersPanel({
 
     const scrollTimeout = useRef<number | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const healthScanRunRef = useRef(0);
     // Passive scroll listener — runs on compositor thread, no React re-renders
     useEffect(() => {
         const el = scrollContainerRef.current;
@@ -328,34 +411,47 @@ export function MyServersPanel({
     // we skip the scan otherwise to avoid burning network on a probe nobody
     // can see. Scans are throttled and cached for 5 minutes by the hook.
     const cardLayout = useCardLayout();
-    const { getStatus: getHealthStatus, scanItems: scanHealth, scanning: healthScanning } = useProviderHealth();
+    const { getStatus: getHealthStatus, scanItems: scanHealth } = useProviderHealth();
 
     const healthTargets: HealthTarget[] = useMemo(() => {
         if (cardLayout !== 'detailed') return [];
-        const out: HealthTarget[] = [];
-        for (const s of filteredServers) {
-            const proto = s.protocol;
-            // Prefer the per-protocol API endpoint (works for OAuth where the
-            // user host is empty/internal). Fall back to the saved hostname.
-            const url = (proto && PROVIDER_HEALTH_URLS[proto])
-                || (s.host ? `https://${s.host.split(':')[0]}` : null);
-            if (url) out.push({ id: s.id, url });
-        }
-        return out;
+        return filteredServers
+            .map(buildHealthTarget)
+            .filter((target): target is HealthTarget => target !== null);
     }, [cardLayout, filteredServers]);
 
-    // Auto-scan when detailed layout is active and the visible list changes.
-    // 600ms debounce mirrors the Discover tab so the load feels lazy and
-    // does not block the initial paint.
+    // Auto-scan when detailed layout is active and the visible list changes,
+    // but do it in small sequential chunks. That keeps the cards responsive
+    // with 50+ saved profiles and avoids one big tab-wide probe wave.
     useEffect(() => {
         if (cardLayout !== 'detailed' || healthTargets.length === 0) return;
-        const t = window.setTimeout(() => { void scanHealth(healthTargets); }, 600);
-        return () => window.clearTimeout(t);
+        const runId = ++healthScanRunRef.current;
+        let cancelled = false;
+        const timer = window.setTimeout(() => {
+            void (async () => {
+                for (let i = 0; i < healthTargets.length; i += HEALTH_SCAN_CHUNK_SIZE) {
+                    if (cancelled || healthScanRunRef.current !== runId) return;
+                    await scanHealth(healthTargets.slice(i, i + HEALTH_SCAN_CHUNK_SIZE));
+                    if (i + HEALTH_SCAN_CHUNK_SIZE < healthTargets.length) {
+                        await wait(HEALTH_SCAN_CHUNK_DELAY_MS);
+                    }
+                }
+            })();
+        }, 600);
+        return () => {
+            cancelled = true;
+            healthScanRunRef.current++;
+            window.clearTimeout(timer);
+        };
     }, [cardLayout, healthTargets, scanHealth]);
 
-    const handleHealthCheck = useCallback(() => {
-        void scanHealth(healthTargets, true);
-    }, [scanHealth, healthTargets]);
+    /** Re-scan a single profile. Builds the same target shape as the bulk
+     *  scan (so backend probe path is identical) and forces past the cache. */
+    const handleRetryHealth = useCallback((server: ServerProfile) => {
+        const target = buildHealthTarget(server);
+        if (!target) return;
+        void scanHealth([target], true);
+    }, [scanHealth]);
 
     // Chip counts (computed once from full server list, not filtered)
     const chipCounts = useMemo(() => {
@@ -765,6 +861,7 @@ export function MyServersPanel({
                                     onSelect={servers.length > 1 ? handleSelectServer : undefined}
                                     healthStatus={health?.status}
                                     healthLatencyMs={health?.latencyMs}
+                                    onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
                                 />
                             );
                         })}
@@ -813,6 +910,7 @@ export function MyServersPanel({
                                 onSelect={handleSelectServer}
                                 healthStatus={health?.status}
                                 healthLatencyMs={health?.latencyMs}
+                                onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
                             />
                         );
                     })}
