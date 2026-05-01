@@ -1214,6 +1214,82 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             surfaces: remote_surfaces,
         },
         ToolDef {
+            name: "aeroftp_transfer",
+            description: "Cross-profile single-file transfer between two saved server profiles. Streams source -> temp -> dest without exposing local paths to the agent. Refuses identical src/dst profiles. Mirrors `cross_profile_transfer` in the GUI; uses delta upload when the destination is SFTP key-based with rsync helper.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "src_server": {"type": "string", "description": "Source server name or ID (fuzzy match accepted)"},
+                    "src_path": {"type": "string", "description": "Remote file path on the source profile"},
+                    "dst_server": {"type": "string", "description": "Destination server name or ID"},
+                    "dst_path": {"type": "string", "description": "Remote file path on the destination profile"},
+                    "skip_existing": {"type": "boolean", "description": "Skip when destination already has matching size+mtime (default: false)"},
+                    "dry_run": {"type": "boolean", "description": "Plan without transferring (default: false)"}
+                },
+                "required": ["src_server", "src_path", "dst_server", "dst_path"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_transfer",
+            description: "Alias of aeroftp_transfer.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "src_server": {"type": "string"},
+                    "src_path": {"type": "string"},
+                    "dst_server": {"type": "string"},
+                    "dst_path": {"type": "string"},
+                    "skip_existing": {"type": "boolean"},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["src_server", "src_path", "dst_server", "dst_path"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_transfer_tree",
+            description: "Cross-profile recursive directory transfer between two saved server profiles. Plans the full file set first, then copies one file at a time reusing the same source/destination connection across the whole batch. Default cap: 1000 files per call, hard cap 10000. With `dry_run=true` returns the planned file list (or summary if `summary_only=true`).",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "src_server": {"type": "string", "description": "Source server name or ID"},
+                    "src_path": {"type": "string", "description": "Remote source directory"},
+                    "dst_server": {"type": "string", "description": "Destination server name or ID"},
+                    "dst_path": {"type": "string", "description": "Remote destination directory"},
+                    "skip_existing": {"type": "boolean", "description": "Skip files where destination already has matching size+mtime (default: false)"},
+                    "dry_run": {"type": "boolean", "description": "Plan without transferring (default: false)"},
+                    "max_files": {"type": "integer", "description": "Soft cap on planned files (default 1000, hard cap 10000). Plans exceeding the cap are rejected — narrow the path first."},
+                    "summary_only": {"type": "boolean", "description": "When dry_run=true, return only counters instead of the per-file plan (default: false)"}
+                },
+                "required": ["src_server", "src_path", "dst_server", "dst_path"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_transfer_tree",
+            description: "Alias of aeroftp_transfer_tree.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "src_server": {"type": "string"},
+                    "src_path": {"type": "string"},
+                    "dst_server": {"type": "string"},
+                    "dst_path": {"type": "string"},
+                    "skip_existing": {"type": "boolean"},
+                    "dry_run": {"type": "boolean"},
+                    "max_files": {"type": "integer"},
+                    "summary_only": {"type": "boolean"}
+                },
+                "required": ["src_server", "src_path", "dst_server", "dst_path"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
             name: "aeroftp_agent_connect",
             description: "Single-shot agent connect surface. Returns one JSON payload with per-block status (`connect`, `capabilities`, `quota`, `path`) so the agent can decide go/no-go and gracefully degrade. Replaces the boilerplate sequence of `connect → about → df → ls /`. `connect.status` is the critical signal; `unsupported`/`unavailable`/`error` on other blocks are non-fatal.",
             input_schema: json!({
@@ -1492,6 +1568,10 @@ pub async fn dispatch_tool(
         | "remote_tail"
         | "aeroftp_tree"
         | "remote_tree"
+        | "aeroftp_transfer"
+        | "remote_transfer"
+        | "aeroftp_transfer_tree"
+        | "remote_transfer_tree"
         | "aeroftp_agent_connect"
         | "agent_connect"
         | "remote_agent_connect"

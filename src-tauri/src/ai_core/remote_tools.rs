@@ -249,6 +249,8 @@ fn alias_name(tool_name: &str) -> &str {
         "remote_head" => "aeroftp_head",
         "remote_tail" => "aeroftp_tail",
         "remote_tree" => "aeroftp_tree",
+        "remote_transfer" => "aeroftp_transfer",
+        "remote_transfer_tree" => "aeroftp_transfer_tree",
         other => other,
     }
 }
@@ -319,6 +321,8 @@ pub async fn dispatch_remote_tool(
         "aeroftp_head" => head_file(ctx, args).await,
         "aeroftp_tail" => tail_file(ctx, args).await,
         "aeroftp_tree" => tree(ctx, args).await,
+        "aeroftp_transfer" => transfer_one(ctx, args).await,
+        "aeroftp_transfer_tree" => transfer_tree(ctx, args).await,
         "aeroftp_agent_connect" => agent_connect(ctx, args).await,
         "server_exec" => server_exec(ctx, args).await,
         _ => Err(ToolError::NotMigrated(tool_name.to_string())),
@@ -1133,4 +1137,577 @@ async fn server_exec(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         obj.insert("operation".to_string(), json!(operation));
     }
     Ok(result)
+}
+
+// ── Cross-profile transfer (Wave 5 / Gap 10) ──────────────────────────────
+//
+// Two MCP tools (`aeroftp_transfer`, `aeroftp_transfer_tree`) bridge the
+// existing CLI/GUI cross-profile engine into the agent surface. Plumbing is
+// "Option A" from the Gap 10 handoff: we go straight through `create_temp_provider`
+// instead of the MCP pool so the agent gets the same code path as the GUI's
+// cross-profile panel — including the SFTP key-based delta upload that
+// `copy_one_file` decides on automatically.
+//
+// Scope guarantees:
+// - same src/dst profile is rejected (id and name match)
+// - `..`, null bytes, leading '-' and >4096 char paths are rejected
+// - `transfer_tree` opens src+dst connections ONCE and reuses them across the
+//   whole batch (cap: 1000 default / 10000 hard) so 1000 files = 2 connections
+// - secrets never leave Rust: agent passes server names/IDs, vault resolution
+//   happens inside `create_temp_provider`
+// - audit log via `tracing::info!` per transfer (server IDs, paths, duration,
+//   bytes — never credentials)
+
+/// Soft cap on planned files for `aeroftp_transfer_tree` when the agent does
+/// not specify `max_files`. Hard cap is `MAX_TRANSFER_TREE_FILES`.
+const DEFAULT_TRANSFER_TREE_FILES: u64 = 1_000;
+/// Hard cap above which we refuse the plan even if the agent requested it.
+/// Forces the agent to narrow the path or break the work into batches.
+const MAX_TRANSFER_TREE_FILES: u64 = 10_000;
+
+/// Validate a remote path used as source/destination in a cross-profile
+/// transfer. Stricter than [`validate_remote_path`] (which only catches
+/// null bytes) because the same path is interpreted by TWO providers and a
+/// component of `..` could escape the destination root on FTP servers
+/// that root the user at the home directory.
+fn validate_transfer_path(path: &str, label: &str) -> Result<(), ToolError> {
+    if path.is_empty() {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_transfer".to_string(),
+            reason: format!("{label} must not be empty"),
+        });
+    }
+    if path.len() > 4096 {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_transfer".to_string(),
+            reason: format!("{label} exceeds 4096 characters"),
+        });
+    }
+    if path.contains('\0') {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_transfer".to_string(),
+            reason: format!("{label} contains null bytes"),
+        });
+    }
+    if path.starts_with('-') {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_transfer".to_string(),
+            reason: format!("{label} must not start with '-' (argument injection risk)"),
+        });
+    }
+    let normalized = path.replace('\\', "/");
+    for component in normalized.split('/') {
+        if component == ".." {
+            return Err(ToolError::InvalidArgs {
+                tool: "aeroftp_transfer".to_string(),
+                reason: format!("{label} must not contain '..' path traversal"),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Resolve a fuzzy server query to a concrete `SavedServerInfo`. Same logic as
+/// [`crate::ai_tools::find_server_by_name_or_id`] but returns
+/// [`ToolError::Exec`] so the dispatcher can surface a structured error.
+fn resolve_profile(
+    profiles: &[crate::ai_tools::SavedServerInfo],
+    query: &str,
+) -> Result<crate::ai_tools::SavedServerInfo, ToolError> {
+    crate::ai_tools::find_server_by_name_or_id(profiles, query).map_err(ToolError::Exec)
+}
+
+/// Reject identical source/destination profiles by id (preferred) or by
+/// canonical name. Same invariant enforced by `cross_profile_plan`.
+fn ensure_distinct_profiles(
+    src: &crate::ai_tools::SavedServerInfo,
+    dst: &crate::ai_tools::SavedServerInfo,
+) -> Result<(), ToolError> {
+    if src.id == dst.id || src.name.eq_ignore_ascii_case(&dst.name) {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_transfer".to_string(),
+            reason: "Source and destination must be different saved profiles".to_string(),
+        });
+    }
+    Ok(())
+}
+
+async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let src_server_query = get_str(args, "src_server")?;
+    let dst_server_query = get_str(args, "dst_server")?;
+    let src_path = get_str(args, "src_path")?;
+    let dst_path = get_str(args, "dst_path")?;
+    validate_transfer_path(&src_path, "src_path")?;
+    validate_transfer_path(&dst_path, "dst_path")?;
+    let skip_existing = get_bool_opt(args, "skip_existing").unwrap_or(false);
+    let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
+
+    let profiles = crate::ai_tools::load_saved_servers().map_err(ToolError::Exec)?;
+    let src_server = resolve_profile(&profiles, &src_server_query)?;
+    let dst_server = resolve_profile(&profiles, &dst_server_query)?;
+    ensure_distinct_profiles(&src_server, &dst_server)?;
+
+    let started = std::time::Instant::now();
+
+    // Connect to source first to stat the file. The dest connection is opened
+    // only when actually needed (skip_existing check or transfer).
+    let src_box = crate::ai_tools::create_temp_provider(&src_server)
+        .await
+        .map_err(ToolError::Exec)?;
+    let mut src_provider = src_box;
+    let src_stat = src_provider
+        .stat(&src_path)
+        .await
+        .map_err(|e| ToolError::Exec(format!("source stat failed: {e}")))?;
+    if src_stat.is_dir {
+        let _ = src_provider.disconnect().await;
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_transfer".to_string(),
+            reason: format!(
+                "src_path '{src_path}' is a directory; use aeroftp_transfer_tree instead"
+            ),
+        });
+    }
+
+    let dst_box = crate::ai_tools::create_temp_provider(&dst_server)
+        .await
+        .map_err(|e| {
+            ToolError::Exec(format!("destination connect failed: {e}"))
+        })?;
+    let mut dst_provider = dst_box;
+
+    let entry = crate::cross_profile_transfer::CrossProfileTransferEntry {
+        source_path: src_path.clone(),
+        dest_path: dst_path.clone(),
+        display_name: src_path.rsplit('/').next().unwrap_or(&src_path).to_string(),
+        size: src_stat.size,
+        modified: src_stat.modified.clone(),
+        is_dir: false,
+    };
+
+    if dry_run {
+        let _ = src_provider.disconnect().await;
+        let _ = dst_provider.disconnect().await;
+        let elapsed = started.elapsed().as_millis() as u64;
+        return Ok(json!({
+            "src_server": src_server.name,
+            "src_path": src_path,
+            "dst_server": dst_server.name,
+            "dst_path": dst_path,
+            "transferred": false,
+            "skipped": false,
+            "dry_run": true,
+            "size": src_stat.size,
+            "duration_ms": elapsed,
+        }));
+    }
+
+    if skip_existing {
+        match crate::cross_profile_transfer::should_skip_existing(
+            dst_provider.as_mut(),
+            &dst_path,
+            &entry,
+        )
+        .await
+        {
+            Ok(true) => {
+                let _ = src_provider.disconnect().await;
+                let _ = dst_provider.disconnect().await;
+                let elapsed = started.elapsed().as_millis() as u64;
+                return Ok(json!({
+                    "src_server": src_server.name,
+                    "src_path": src_path,
+                    "dst_server": dst_server.name,
+                    "dst_path": dst_path,
+                    "transferred": false,
+                    "skipped": true,
+                    "bytes": 0,
+                    "duration_ms": elapsed,
+                }));
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::debug!("skip_existing probe failed (continuing): {e}");
+            }
+        }
+    }
+
+    let copy_result = crate::cross_profile_transfer::copy_one_file(
+        src_provider.as_mut(),
+        dst_provider.as_mut(),
+        &src_path,
+        &dst_path,
+        src_stat.modified.as_deref(),
+    )
+    .await;
+
+    let elapsed = started.elapsed().as_millis() as u64;
+    let _ = src_provider.disconnect().await;
+    let _ = dst_provider.disconnect().await;
+
+    match copy_result {
+        Ok(()) => {
+            tracing::info!(
+                target: "aeroftp::mcp::transfer",
+                src_id = %src_server.id,
+                dst_id = %dst_server.id,
+                src_path = %src_path,
+                dst_path = %dst_path,
+                bytes = src_stat.size,
+                duration_ms = elapsed,
+                "cross-profile single-file transfer ok"
+            );
+            Ok(json!({
+                "src_server": src_server.name,
+                "src_path": src_path,
+                "dst_server": dst_server.name,
+                "dst_path": dst_path,
+                "transferred": true,
+                "skipped": false,
+                "bytes": src_stat.size,
+                "duration_ms": elapsed,
+            }))
+        }
+        Err(e) => Err(ToolError::Exec(format!("transfer failed: {e}"))),
+    }
+}
+
+async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let src_server_query = get_str(args, "src_server")?;
+    let dst_server_query = get_str(args, "dst_server")?;
+    let src_path = get_str(args, "src_path")?;
+    let dst_path = get_str(args, "dst_path")?;
+    validate_transfer_path(&src_path, "src_path")?;
+    validate_transfer_path(&dst_path, "dst_path")?;
+    let skip_existing = get_bool_opt(args, "skip_existing").unwrap_or(false);
+    let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
+    let summary_only = get_bool_opt(args, "summary_only").unwrap_or(false);
+    let max_files = args
+        .get("max_files")
+        .and_then(|v| v.as_u64())
+        .map(|n| n.min(MAX_TRANSFER_TREE_FILES))
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_TRANSFER_TREE_FILES);
+
+    let profiles = crate::ai_tools::load_saved_servers().map_err(ToolError::Exec)?;
+    let src_server = resolve_profile(&profiles, &src_server_query)?;
+    let dst_server = resolve_profile(&profiles, &dst_server_query)?;
+    ensure_distinct_profiles(&src_server, &dst_server)?;
+
+    let started = std::time::Instant::now();
+
+    // Open BOTH connections once and reuse them across the whole batch — the
+    // cap on `max_files` keeps temp-file fan-out bounded while sticking to
+    // 2 underlying TCP/SSH sessions (Option A in the Gap 10 handoff).
+    let mut src_provider = crate::ai_tools::create_temp_provider(&src_server)
+        .await
+        .map_err(ToolError::Exec)?;
+    let mut dst_provider = crate::ai_tools::create_temp_provider(&dst_server)
+        .await
+        .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
+
+    let request = crate::cross_profile_transfer::CrossProfileTransferRequest {
+        source_profile: src_server.name.clone(),
+        dest_profile: dst_server.name.clone(),
+        source_path: src_path.clone(),
+        dest_path: dst_path.clone(),
+        recursive: true,
+        dry_run,
+        skip_existing,
+    };
+    let plan = crate::cross_profile_transfer::plan_transfer(
+        src_provider.as_mut(),
+        dst_provider.as_mut(),
+        &request,
+    )
+    .await
+    .map_err(|e| ToolError::Exec(format!("planning failed: {e}")));
+    let plan = match plan {
+        Ok(p) => p,
+        Err(e) => {
+            let _ = src_provider.disconnect().await;
+            let _ = dst_provider.disconnect().await;
+            return Err(e);
+        }
+    };
+
+    if plan.total_files > max_files {
+        let _ = src_provider.disconnect().await;
+        let _ = dst_provider.disconnect().await;
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_transfer_tree".to_string(),
+            reason: format!(
+                "Plan would transfer {} files but max_files cap is {}. Narrow the source path or split the operation.",
+                plan.total_files, max_files
+            ),
+        });
+    }
+
+    if dry_run {
+        let _ = src_provider.disconnect().await;
+        let _ = dst_provider.disconnect().await;
+        let elapsed = started.elapsed().as_millis() as u64;
+        if summary_only {
+            return Ok(json!({
+                "src_server": src_server.name,
+                "src_path": src_path,
+                "dst_server": dst_server.name,
+                "dst_path": dst_path,
+                "dry_run": true,
+                "total_files": plan.total_files,
+                "total_bytes": plan.total_bytes,
+                "max_files": max_files,
+                "truncated": false,
+                "duration_ms": elapsed,
+            }));
+        }
+        let entries: Vec<Value> = plan
+            .entries
+            .iter()
+            .map(|e| {
+                json!({
+                    "source_path": e.source_path,
+                    "dest_path": e.dest_path,
+                    "size": e.size,
+                    "modified": e.modified,
+                    "is_dir": e.is_dir,
+                })
+            })
+            .collect();
+        return Ok(json!({
+            "src_server": src_server.name,
+            "src_path": src_path,
+            "dst_server": dst_server.name,
+            "dst_path": dst_path,
+            "dry_run": true,
+            "plan": entries,
+            "total_files": plan.total_files,
+            "total_bytes": plan.total_bytes,
+            "max_files": max_files,
+            "truncated": false,
+            "duration_ms": elapsed,
+        }));
+    }
+
+    // ── Execute ──
+    let total_planned = plan.total_files;
+    let mut transferred_files: u64 = 0;
+    let mut skipped_files: u64 = 0;
+    let mut failed_files: u64 = 0;
+    let mut total_bytes_transferred: u64 = 0;
+    let mut errors: Vec<Value> = Vec::new();
+
+    // Throttle progress events (emit every 5 files OR ~2% delta) to mirror
+    // the F6 fix in v2.1.2 download path. `progress_step` is at least 1.
+    let progress_step = std::cmp::max((total_planned / 50).max(1), 5);
+
+    for (idx, entry) in plan.entries.iter().enumerate() {
+        if skip_existing {
+            match crate::cross_profile_transfer::should_skip_existing(
+                dst_provider.as_mut(),
+                &entry.dest_path,
+                entry,
+            )
+            .await
+            {
+                Ok(true) => {
+                    skipped_files += 1;
+                    if (idx as u64) % progress_step == 0 {
+                        ctx.event_sink().emit_tool_progress(
+                            &crate::ai_core::ToolProgress {
+                                tool: "aeroftp_transfer_tree".to_string(),
+                                current: (transferred_files + skipped_files) as u32,
+                                total: total_planned as u32,
+                                item: entry.source_path.clone(),
+                            },
+                        );
+                    }
+                    continue;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::debug!("skip_existing probe failed (continuing): {e}");
+                }
+            }
+        }
+
+        match crate::cross_profile_transfer::copy_one_file(
+            src_provider.as_mut(),
+            dst_provider.as_mut(),
+            &entry.source_path,
+            &entry.dest_path,
+            entry.modified.as_deref(),
+        )
+        .await
+        {
+            Ok(()) => {
+                transferred_files += 1;
+                total_bytes_transferred += entry.size;
+            }
+            Err(e) => {
+                failed_files += 1;
+                errors.push(json!({
+                    "source_path": entry.source_path,
+                    "error": e.to_string(),
+                }));
+            }
+        }
+
+        if (idx as u64) % progress_step == 0 || (idx as u64) + 1 == total_planned {
+            ctx.event_sink().emit_tool_progress(
+                &crate::ai_core::ToolProgress {
+                    tool: "aeroftp_transfer_tree".to_string(),
+                    current: (transferred_files + skipped_files + failed_files) as u32,
+                    total: total_planned as u32,
+                    item: entry.source_path.clone(),
+                },
+            );
+        }
+    }
+
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let _ = src_provider.disconnect().await;
+    let _ = dst_provider.disconnect().await;
+
+    tracing::info!(
+        target: "aeroftp::mcp::transfer",
+        src_id = %src_server.id,
+        dst_id = %dst_server.id,
+        src_path = %src_path,
+        dst_path = %dst_path,
+        planned = total_planned,
+        transferred = transferred_files,
+        skipped = skipped_files,
+        failed = failed_files,
+        bytes = total_bytes_transferred,
+        duration_ms,
+        "cross-profile tree transfer complete"
+    );
+
+    Ok(json!({
+        "src_server": src_server.name,
+        "src_path": src_path,
+        "dst_server": dst_server.name,
+        "dst_path": dst_path,
+        "summary": {
+            "planned_files": total_planned,
+            "transferred_files": transferred_files,
+            "skipped_files": skipped_files,
+            "failed_files": failed_files,
+            "total_bytes": total_bytes_transferred,
+            "duration_ms": duration_ms,
+        },
+        "errors": errors,
+        "max_files": max_files,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn server(id: &str, name: &str) -> crate::ai_tools::SavedServerInfo {
+        crate::ai_tools::SavedServerInfo {
+            id: id.to_string(),
+            name: name.to_string(),
+            host: "host".to_string(),
+            port: 22,
+            username: "u".to_string(),
+            protocol: "sftp".to_string(),
+            initial_path: None,
+            provider_id: None,
+        }
+    }
+
+    #[test]
+    fn validate_transfer_path_accepts_simple_paths() {
+        assert!(validate_transfer_path("/data/file.txt", "src_path").is_ok());
+        assert!(validate_transfer_path("relative/dir", "dst_path").is_ok());
+    }
+
+    #[test]
+    fn validate_transfer_path_rejects_traversal() {
+        let err = validate_transfer_path("/data/../etc/passwd", "src_path").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains(".."), "got: {msg}");
+    }
+
+    #[test]
+    fn validate_transfer_path_rejects_null_byte() {
+        let err = validate_transfer_path("/data\0file", "src_path").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("null"), "got: {msg}");
+    }
+
+    #[test]
+    fn validate_transfer_path_rejects_leading_dash() {
+        let err = validate_transfer_path("-rf", "dst_path").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("'-'") || msg.contains("argument injection"), "got: {msg}");
+    }
+
+    #[test]
+    fn validate_transfer_path_rejects_empty() {
+        assert!(validate_transfer_path("", "src_path").is_err());
+    }
+
+    #[test]
+    fn validate_transfer_path_rejects_oversize() {
+        let p = "/".to_string() + &"a".repeat(4096);
+        assert!(validate_transfer_path(&p, "src_path").is_err());
+    }
+
+    #[test]
+    fn resolve_profile_exact_id() {
+        let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
+        let r = resolve_profile(&profiles, "id-b").unwrap();
+        assert_eq!(r.id, "id-b");
+    }
+
+    #[test]
+    fn resolve_profile_exact_name_case_insensitive() {
+        let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
+        let r = resolve_profile(&profiles, "alpha").unwrap();
+        assert_eq!(r.id, "id-a");
+    }
+
+    #[test]
+    fn resolve_profile_substring_match() {
+        let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
+        let r = resolve_profile(&profiles, "et").unwrap();
+        assert_eq!(r.id, "id-b");
+    }
+
+    #[test]
+    fn resolve_profile_no_match_errors() {
+        let profiles = vec![server("id-a", "Alpha")];
+        assert!(resolve_profile(&profiles, "Gamma").is_err());
+    }
+
+    #[test]
+    fn resolve_profile_ambiguous_errors() {
+        let profiles = vec![server("id-a", "Alpha"), server("id-b", "Alpine")];
+        // "alp" matches both "Alpha" and "Alpine" via fuzzy contains.
+        assert!(resolve_profile(&profiles, "alp").is_err());
+    }
+
+    #[test]
+    fn ensure_distinct_profiles_rejects_same_id() {
+        let p = server("id-a", "Alpha");
+        assert!(ensure_distinct_profiles(&p, &p).is_err());
+    }
+
+    #[test]
+    fn ensure_distinct_profiles_rejects_same_name_different_id() {
+        let a = server("id-a", "Alpha");
+        let b = server("id-b", "alpha");
+        assert!(ensure_distinct_profiles(&a, &b).is_err());
+    }
+
+    #[test]
+    fn ensure_distinct_profiles_accepts_different() {
+        let a = server("id-a", "Alpha");
+        let b = server("id-b", "Beta");
+        assert!(ensure_distinct_profiles(&a, &b).is_ok());
+    }
 }
