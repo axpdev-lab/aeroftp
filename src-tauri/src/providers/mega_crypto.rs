@@ -4,10 +4,10 @@
 //! MEGA protocol cryptography — AES-128, RSA, KDF v1/v2, node key management.
 //! Implements the MEGA file encryption protocol as specified in APPENDIX-N/N2.
 
+use aes::cipher::{generic_array::GenericArray, BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit, generic_array::GenericArray};
-use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use ctr::cipher::{KeyIvInit as CtrKeyIvInit, StreamCipher};
 use num_bigint_dig::BigUint;

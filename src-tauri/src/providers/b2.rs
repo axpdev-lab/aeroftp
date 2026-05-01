@@ -7,7 +7,9 @@
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine};
-use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, RANGE};
+use reqwest::header::{
+    HeaderName, HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, RANGE,
+};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
@@ -67,11 +69,9 @@ impl B2Config {
                 "applicationKey cannot be empty".into(),
             ));
         }
-        let bucket = config
-            .extra
-            .get("bucket")
-            .cloned()
-            .ok_or_else(|| ProviderError::InvalidConfig("bucket name required (extra.bucket)".into()))?;
+        let bucket = config.extra.get("bucket").cloned().ok_or_else(|| {
+            ProviderError::InvalidConfig("bucket name required (extra.bucket)".into())
+        })?;
         if bucket.is_empty() {
             return Err(ProviderError::InvalidConfig(
                 "bucket name cannot be empty".into(),
@@ -344,9 +344,10 @@ impl B2Provider {
             let body = resp.text().await.unwrap_or_default();
             return Err(map_b2_status(status, &body, "b2_authorize_account"));
         }
-        let parsed: AuthorizeResponse = resp.json().await.map_err(|e| {
-            ProviderError::AuthenticationFailed(format!("authorize parse: {}", e))
-        })?;
+        let parsed: AuthorizeResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::AuthenticationFailed(format!("authorize parse: {}", e)))?;
         self.account_id = parsed.account_id;
         self.api_url = parsed.api_info.storage_api.api_url;
         self.download_url = parsed.api_info.storage_api.download_url;
@@ -385,7 +386,10 @@ impl B2Provider {
             .into_iter()
             .find(|b| b.bucket_name == self.config.bucket)
             .ok_or_else(|| {
-                ProviderError::NotFound(format!("bucket '{}' not found or not accessible", self.config.bucket))
+                ProviderError::NotFound(format!(
+                    "bucket '{}' not found or not accessible",
+                    self.config.bucket
+                ))
             })?;
         self.bucket_id = target.bucket_id;
         Ok(())
@@ -407,7 +411,11 @@ impl B2Provider {
         normalized_abs.trim_start_matches('/').to_string()
     }
 
-    fn validate_header_budget(&self, file_name: &str, info_extra: usize) -> Result<(), ProviderError> {
+    fn validate_header_budget(
+        &self,
+        file_name: &str,
+        info_extra: usize,
+    ) -> Result<(), ProviderError> {
         if file_name.len() + info_extra > HEADER_BUDGET_STD {
             return Err(ProviderError::InvalidConfig(format!(
                 "file name + metadata exceed B2 header budget ({} bytes)",
@@ -443,7 +451,9 @@ impl B2Provider {
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("list_file_names build: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("list_file_names build: {}", e))
+            })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("list_file_names send: {}", e)))?;
@@ -495,7 +505,10 @@ impl B2Provider {
             .map_err(|e| ProviderError::ServerError(format!("get_upload_url parse: {}", e)))
     }
 
-    async fn start_large_file(&self, file_name: &str) -> Result<StartLargeFileResponse, ProviderError> {
+    async fn start_large_file(
+        &self,
+        file_name: &str,
+    ) -> Result<StartLargeFileResponse, ProviderError> {
         let url = format!("{}/b2api/v4/b2_start_large_file", self.api_url);
         let body = serde_json::json!({
             "bucketId": self.bucket_id,
@@ -1006,10 +1019,14 @@ impl B2Provider {
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("list_file_versions build: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("list_file_versions build: {}", e))
+            })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1106,7 +1123,11 @@ impl B2Provider {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(status, &text, "b2_get_download_authorization"));
+            return Err(map_b2_status(
+                status,
+                &text,
+                "b2_get_download_authorization",
+            ));
         }
         resp.json::<GetDownloadAuthorizationResponse>()
             .await
@@ -1142,13 +1163,15 @@ impl B2Provider {
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("list_unfinished send: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("list_unfinished send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(status, &text, "b2_list_unfinished_large_files"));
+            return Err(map_b2_status(
+                status,
+                &text,
+                "b2_list_unfinished_large_files",
+            ));
         }
         resp.json::<ListUnfinishedLargeFilesResponse>()
             .await
@@ -1307,8 +1330,13 @@ impl StorageProvider for B2Provider {
                 Ok(r) => r,
                 Err(e) if first_call && is_b2_token_failure(&e) => {
                     if self.maybe_reauth(&e).await {
-                        self.list_file_names(&prefix, Some("/"), start.as_deref(), DEFAULT_LIST_PAGE)
-                            .await?
+                        self.list_file_names(
+                            &prefix,
+                            Some("/"),
+                            start.as_deref(),
+                            DEFAULT_LIST_PAGE,
+                        )
+                        .await?
                     } else {
                         return Err(e);
                     }
@@ -1474,7 +1502,10 @@ impl StorageProvider for B2Provider {
         if size > SINGLE_UPLOAD_RECOMMENDED_MAX {
             // Large path: retry once on master-token failure during start_large_file.
             // progress is moved on first attempt; the rare retry runs without it.
-            return match self.upload_large_file(local_path, &key, size, progress).await {
+            return match self
+                .upload_large_file(local_path, &key, size, progress)
+                .await
+            {
                 Ok(()) => Ok(()),
                 Err(e) if is_b2_token_failure(&e) => {
                     if self.maybe_reauth(&e).await {
@@ -1591,7 +1622,11 @@ impl StorageProvider for B2Provider {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(status, &text, "b2_upload_file (mkdir placeholder)"));
+            return Err(map_b2_status(
+                status,
+                &text,
+                "b2_upload_file (mkdir placeholder)",
+            ));
         }
         Ok(())
     }
@@ -1978,11 +2013,7 @@ impl StorageProvider for B2Provider {
         }
     }
 
-    async fn restore_version(
-        &mut self,
-        path: &str,
-        version_id: &str,
-    ) -> Result<(), ProviderError> {
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -2219,7 +2250,10 @@ mod tests {
 
     #[test]
     fn encode_path_segments_preserves_slashes() {
-        assert_eq!(encode_path_segments("photos/cats/cute.jpg"), "photos/cats/cute.jpg");
+        assert_eq!(
+            encode_path_segments("photos/cats/cute.jpg"),
+            "photos/cats/cute.jpg"
+        );
         assert_eq!(
             encode_path_segments("docs/IMPORTANT FILE.md"),
             "docs/IMPORTANT%20FILE.md"
@@ -2283,7 +2317,9 @@ mod tests {
             bucket: "b".into(),
             initial_path: None,
         });
-        assert!(p.validate_header_budget("photos/cats/fluffy.jpg", 0).is_ok());
+        assert!(p
+            .validate_header_budget("photos/cats/fluffy.jpg", 0)
+            .is_ok());
     }
 
     // ── Phase 2 ────────────────────────────────────────────────────────────
@@ -2330,8 +2366,14 @@ mod tests {
         assert_eq!(COPY_MAX_SIZE, five_gb);
         let just_under: u64 = COPY_MAX_SIZE;
         let just_over: u64 = COPY_MAX_SIZE + 1;
-        assert!(just_under <= COPY_MAX_SIZE, "5 GB exact should use copy_file");
-        assert!(just_over > COPY_MAX_SIZE, "5 GB + 1 must route to copy_part");
+        assert!(
+            just_under <= COPY_MAX_SIZE,
+            "5 GB exact should use copy_file"
+        );
+        assert!(
+            just_over > COPY_MAX_SIZE,
+            "5 GB + 1 must route to copy_part"
+        );
     }
 
     // ── Phase 3 (reauth wiring) ───────────────────────────────────────────
@@ -2339,9 +2381,8 @@ mod tests {
     #[test]
     fn reauth_filter_matches_expired_token_message() {
         // Exact form produced by `map_b2_status` for 401 + expired_auth_token.
-        let err = ProviderError::AuthenticationFailed(
-            "b2_list_file_names: token expired/invalid".into(),
-        );
+        let err =
+            ProviderError::AuthenticationFailed("b2_list_file_names: token expired/invalid".into());
         assert!(is_b2_token_failure(&err));
     }
 
@@ -2538,7 +2579,7 @@ mod tests {
         // is ceil(size / part_size). Verify the math agrees with the manual
         // case so the cap check in rename_large_file_inner is sound.
         let part_size: u64 = 100 * 1024 * 1024; // 100 MB
-        // Exactly one part
+                                                // Exactly one part
         assert_eq!(part_size.div_ceil(part_size), 1);
         // Exactly two parts
         assert_eq!((2 * part_size).div_ceil(part_size), 2);

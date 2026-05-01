@@ -108,12 +108,18 @@ async fn connect_list_pwd_disconnect_round_trip() {
     };
     let mut p = make_provider(&creds, None);
     p.connect().await.expect("connect");
-    assert!(p.is_connected(), "connected flag must be true after connect");
+    assert!(
+        p.is_connected(),
+        "connected flag must be true after connect"
+    );
     let cwd = p.pwd().await.expect("pwd");
     assert_eq!(cwd, "/", "default cwd is bucket root");
     let _entries = p.list("/").await.expect("list root");
     p.disconnect().await.expect("disconnect");
-    assert!(!p.is_connected(), "connected flag must be false after disconnect");
+    assert!(
+        !p.is_connected(),
+        "connected flag must be false after disconnect"
+    );
 }
 
 #[tokio::test]
@@ -133,10 +139,14 @@ async fn small_upload_download_checksum_match_and_cleanup() {
     let expected_sha = sha256_hex(&payload);
 
     let local_dir = std::env::temp_dir().join(format!("aeroftp-it-{}", std::process::id()));
-    tokio::fs::create_dir_all(&local_dir).await.expect("mk tmp dir");
+    tokio::fs::create_dir_all(&local_dir)
+        .await
+        .expect("mk tmp dir");
     let local_in: PathBuf = local_dir.join("upload.bin");
     let local_out: PathBuf = local_dir.join("download.bin");
-    tokio::fs::write(&local_in, &payload).await.expect("write upload");
+    tokio::fs::write(&local_in, &payload)
+        .await
+        .expect("write upload");
 
     let upload_result = p
         .upload(local_in.to_str().unwrap(), &format!("/{}", key), None)
@@ -190,10 +200,14 @@ async fn large_upload_forces_chunked_workflow_and_round_trips() {
     let expected_sha = sha256_hex(&payload);
 
     let local_dir = std::env::temp_dir().join(format!("aeroftp-it-large-{}", std::process::id()));
-    tokio::fs::create_dir_all(&local_dir).await.expect("mk tmp dir");
+    tokio::fs::create_dir_all(&local_dir)
+        .await
+        .expect("mk tmp dir");
     let local_in: PathBuf = local_dir.join("upload.bin");
     let local_out: PathBuf = local_dir.join("download.bin");
-    tokio::fs::write(&local_in, &payload).await.expect("write upload");
+    tokio::fs::write(&local_in, &payload)
+        .await
+        .expect("write upload");
     drop(payload); // release 250 MB before the round trip
 
     p.upload(local_in.to_str().unwrap(), &format!("/{}", key), None)
@@ -203,7 +217,10 @@ async fn large_upload_forces_chunked_workflow_and_round_trips() {
         .await
         .expect("large download");
     let actual_sha = read_local_sha256(&local_out).await;
-    assert_eq!(actual_sha, expected_sha, "large round-trip checksum mismatch");
+    assert_eq!(
+        actual_sha, expected_sha,
+        "large round-trip checksum mismatch"
+    );
 
     cleanup_prefix(&mut p, &prefix).await;
     let _ = tokio::fs::remove_dir_all(&local_dir).await;
@@ -224,9 +241,13 @@ async fn rename_moves_file_and_source_disappears() {
     p.connect().await.expect("connect");
 
     let local_dir = std::env::temp_dir().join(format!("aeroftp-it-rename-{}", std::process::id()));
-    tokio::fs::create_dir_all(&local_dir).await.expect("mk tmp dir");
+    tokio::fs::create_dir_all(&local_dir)
+        .await
+        .expect("mk tmp dir");
     let local_in = local_dir.join("rename-payload.txt");
-    tokio::fs::write(&local_in, b"rename payload\n").await.expect("write");
+    tokio::fs::write(&local_in, b"rename payload\n")
+        .await
+        .expect("write");
 
     p.upload(local_in.to_str().unwrap(), &format!("/{}", src_key), None)
         .await
@@ -262,7 +283,9 @@ async fn rmdir_recursive_clears_a_subtree() {
     p.connect().await.expect("connect");
 
     let local_dir = std::env::temp_dir().join(format!("aeroftp-it-rmdir-{}", std::process::id()));
-    tokio::fs::create_dir_all(&local_dir).await.expect("mk tmp dir");
+    tokio::fs::create_dir_all(&local_dir)
+        .await
+        .expect("mk tmp dir");
     let local_in = local_dir.join("payload.txt");
     tokio::fs::write(&local_in, b"x").await.expect("write");
 
@@ -302,7 +325,11 @@ async fn invalid_application_key_surfaces_authentication_failed() {
         Some(c) => c,
         None => return,
     };
-    let bad = (creds.0.clone(), "definitely-not-a-real-key".to_string(), creds.2);
+    let bad = (
+        creds.0.clone(),
+        "definitely-not-a-real-key".to_string(),
+        creds.2,
+    );
     let mut p = make_provider(&bad, None);
     let err = p.connect().await.expect_err("must reject bad credentials");
     // Either AuthenticationFailed or ConnectionFailed — different B2 backends
@@ -326,7 +353,11 @@ async fn invalid_application_key_surfaces_authentication_failed() {
 #[tokio::test]
 #[ignore = "requires AEROFTP_TEST_B2_* + AEROFTP_TEST_B2_LARGE_RENAME=1 (transfers ~5.1 GB)"]
 async fn rename_above_5gb_uses_chunked_copy_part_path() {
-    if std::env::var("AEROFTP_TEST_B2_LARGE_RENAME").ok().as_deref() != Some("1") {
+    if std::env::var("AEROFTP_TEST_B2_LARGE_RENAME")
+        .ok()
+        .as_deref()
+        != Some("1")
+    {
         eprintln!("[rename_above_5gb_uses_chunked_copy_part_path] skipped: set AEROFTP_TEST_B2_LARGE_RENAME=1 to enable");
         return;
     }
@@ -346,13 +377,17 @@ async fn rename_above_5gb_uses_chunked_copy_part_path() {
     let size: u64 = 5 * 1024 * 1024 * 1024 + 1024 * 1024;
     let local_dir =
         std::env::temp_dir().join(format!("aeroftp-it-rename-large-{}", std::process::id()));
-    tokio::fs::create_dir_all(&local_dir).await.expect("mk tmp dir");
+    tokio::fs::create_dir_all(&local_dir)
+        .await
+        .expect("mk tmp dir");
     let local_in = local_dir.join("source.bin");
     // Use a sparse file — works on ext4/xfs/btrfs/apfs but not on every
     // filesystem; if sparse is unsupported the file will be physically zeros.
     {
         use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-        let mut f = tokio::fs::File::create(&local_in).await.expect("create sparse");
+        let mut f = tokio::fs::File::create(&local_in)
+            .await
+            .expect("create sparse");
         f.set_len(size).await.expect("set_len sparse");
         f.seek(std::io::SeekFrom::Start(size - 1))
             .await

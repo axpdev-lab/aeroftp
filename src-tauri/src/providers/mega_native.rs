@@ -8,16 +8,14 @@ use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 use zeroize::Zeroize;
 
 use super::{
-    MegaConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider,
     mega_crypto::{
         aes_ctr_apply_inplace, aes_ctr_decrypt, aes_ecb_decrypt_block, aes_ecb_encrypt_block,
         aes_ecb_encrypt_multi, chunk_mac, compute_chunk_boundaries, decrypt_node_attrs,
@@ -25,6 +23,8 @@ use super::{
         mega_base64_decode, mega_base64_encode, meta_mac, meta_mac_legacy, pack_node_key,
         rsa_decrypt_csid, unpack_node_key_legacy, unpack_node_key_with_mac, username_hash_v1,
     },
+    MegaConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
+    StorageInfo, StorageProvider,
 };
 
 const MEGA_API_BASE_URL: &str = "https://g.api.mega.co.nz/cs";

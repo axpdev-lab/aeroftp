@@ -283,10 +283,7 @@ impl MegaCmdProvider {
                 .output()
                 .await
                 .map_err(|e| {
-                    ProviderError::ConnectionFailed(format!(
-                        "Failed to execute mega-login: {}",
-                        e
-                    ))
+                    ProviderError::ConnectionFailed(format!("Failed to execute mega-login: {}", e))
                 })?;
 
             if !output.status.success() {
