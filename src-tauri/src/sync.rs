@@ -4,6 +4,7 @@
 // AeroFTP Sync Module
 // File comparison and synchronization logic
 
+use crate::delta_transport::DeltaBatch;
 use crate::providers::{ProviderError, StorageProvider};
 use crate::sync_core::scan::{scan_local_tree, scan_remote_tree, ScanOptions};
 use chrono::{DateTime, Utc};
@@ -956,6 +957,24 @@ pub async fn sync_tree_core(
 
     sink.on_phase(SyncPhase::Executing);
 
+    // P3-T01 W4.2 — open a delta-sync batch for the whole sync. The
+    // batch keeps a single SSH session alive across N files, so the
+    // per-file cost drops from full SSH handshake to channel-exec
+    // open. None when the provider is not delta-eligible, when the
+    // transport's begin_batch returns NoopBatch (no session-reuse
+    // support), or when delta policy is off — in those cases the
+    // perform_upload/download functions fall through to the existing
+    // single-shot try_delta_transfer / classic provider path.
+    #[cfg(unix)]
+    let mut delta_batch: Option<Box<dyn DeltaBatch>> =
+        if !opts.dry_run && matches!(opts.delta_policy, DeltaPolicy::Delta) {
+            crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await
+        } else {
+            None
+        };
+    #[cfg(not(unix))]
+    let mut delta_batch: Option<Box<dyn DeltaBatch>> = None;
+
     if matches!(opts.direction, SyncDirection::Upload | SyncDirection::Both) {
         for local_entry in &locals {
             if !seen.insert(local_entry.rel_path.clone()) {
@@ -984,6 +1003,7 @@ pub async fn sync_tree_core(
                         },
                         opts.dry_run,
                         sink,
+                        &mut delta_batch,
                     )
                     .await;
                     apply_sync_tree_outcome(
@@ -1040,6 +1060,7 @@ pub async fn sync_tree_core(
                         },
                         opts.dry_run,
                         sink,
+                        &mut delta_batch,
                     )
                     .await;
                     apply_sync_tree_outcome(
@@ -1114,6 +1135,28 @@ pub async fn sync_tree_core(
                 }
             }
             SyncDirection::Both => {}
+        }
+    }
+
+    // P3-T01 W4.2 — finalize the delta batch (if opened) and populate
+    // SyncReport with the headline session-reuse metrics.
+    if let Some(batch) = delta_batch.take() {
+        match batch.finalize().await {
+            Ok(stats) => {
+                tracing::info!(
+                    "sync.delta: batch finalize ok — files_transferred={}, session_count={}, bytes_on_wire={}, partial={}",
+                    stats.files_transferred,
+                    stats.session_count,
+                    stats.bytes_on_wire,
+                    stats.partial,
+                );
+                report.delta_session_count = Some(stats.session_count);
+                report.delta_bytes_on_wire = Some(stats.bytes_on_wire);
+                report.delta_batch_files = Some(stats.files_transferred);
+            }
+            Err(e) => {
+                tracing::warn!("sync.delta: batch finalize failed: {e}");
+            }
         }
     }
 
@@ -1463,6 +1506,7 @@ async fn perform_upload(
     transfer: SyncTransferSpec<'_>,
     dry_run: bool,
     sink: &mut dyn SyncProgressSink,
+    delta_batch: &mut Option<Box<dyn DeltaBatch>>,
 ) -> FileOutcome {
     sink.on_file_start(
         transfer.rel,
@@ -1478,6 +1522,51 @@ async fn perform_upload(
     let local_path = join_clean(local_root, transfer.rel);
     let remote_path = join_clean_remote(remote_root, transfer.rel);
     ensure_remote_parent(provider, &remote_path).await;
+
+    // P3-T01 W4.2: when a session-reuse batch is open, try it first.
+    // The batch keeps a single SSH session alive across N files, so the
+    // per-file cost drops to a channel-exec open. On used_delta the
+    // file is done; on hard_error the security failure surfaces; on
+    // fallback we drop through to the single-shot try_delta_transfer
+    // path below, which is the same recovery the legacy code does.
+    #[cfg(unix)]
+    if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
+        if let Some(batch) = delta_batch.as_deref_mut() {
+            let local_path_buf = std::path::PathBuf::from(&local_path);
+            let result = crate::delta_sync_rsync::try_delta_transfer_with_batch(
+                batch,
+                crate::delta_sync_rsync::SyncDirection::Upload,
+                &local_path_buf,
+                &remote_path,
+            )
+            .await;
+            if result.used_delta {
+                tracing::info!(
+                    "sync.delta: used batch path (direction=Upload, remote={})",
+                    remote_path
+                );
+                let delta_stats = result.stats.as_ref().map(DeltaTransferStats::from_rsync);
+                return FileOutcome::Uploaded {
+                    bytes: transfer.total,
+                    delta_stats,
+                    fallback_reason: None,
+                };
+            }
+            if let Some(msg) = result.hard_error {
+                return FileOutcome::Failed {
+                    error: format!("delta batch hard rejection: {msg}"),
+                };
+            }
+            if let Some(reason) = result.fallback_reason {
+                tracing::info!(
+                    "sync.delta: batch fallback to single-shot/classic (direction=Upload, remote={remote_path}, reason={reason})",
+                );
+                // Fall through to the single-shot try_delta_transfer
+                // block below, then classic provider.upload as the
+                // final safety net.
+            }
+        }
+    }
 
     // P1-T01: try the native delta wrapper before the classic provider path.
     // The wrapper gates eligibility internally (SFTP downcast + active SSH
@@ -1557,6 +1646,7 @@ async fn perform_download(
     transfer: SyncTransferSpec<'_>,
     dry_run: bool,
     sink: &mut dyn SyncProgressSink,
+    delta_batch: &mut Option<Box<dyn DeltaBatch>>,
 ) -> FileOutcome {
     sink.on_file_start(
         transfer.rel,
@@ -1573,6 +1663,43 @@ async fn perform_download(
     let local_path = join_clean(local_root, transfer.rel);
     if let Some(parent) = Path::new(&local_path).parent() {
         let _ = std::fs::create_dir_all(parent);
+    }
+
+    // P3-T01 W4.2: same batch-first routing as perform_upload, direction=Download.
+    #[cfg(unix)]
+    if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
+        if let Some(batch) = delta_batch.as_deref_mut() {
+            let local_path_buf = std::path::PathBuf::from(&local_path);
+            let result = crate::delta_sync_rsync::try_delta_transfer_with_batch(
+                batch,
+                crate::delta_sync_rsync::SyncDirection::Download,
+                &local_path_buf,
+                &remote_path,
+            )
+            .await;
+            if result.used_delta {
+                tracing::info!(
+                    "sync.delta: used batch path (direction=Download, remote={})",
+                    remote_path
+                );
+                let delta_stats = result.stats.as_ref().map(DeltaTransferStats::from_rsync);
+                return FileOutcome::Downloaded {
+                    bytes: transfer.total,
+                    delta_stats,
+                    fallback_reason: None,
+                };
+            }
+            if let Some(msg) = result.hard_error {
+                return FileOutcome::Failed {
+                    error: format!("delta batch hard rejection: {msg}"),
+                };
+            }
+            if let Some(reason) = result.fallback_reason {
+                tracing::info!(
+                    "sync.delta: batch fallback to single-shot/classic (direction=Download, remote={remote_path}, reason={reason})",
+                );
+            }
+        }
     }
 
     // P1-T01: see `perform_upload` above. Same contract, direction=Download.
