@@ -88,8 +88,8 @@ pub fn local_panel_watch(
     let watch_root = new_path.clone();
     let last_emit = std::sync::Arc::new(Mutex::new(Instant::now() - Duration::from_secs(60)));
 
-    let mut watcher: RecommendedWatcher = notify::recommended_watcher(
-        move |res: Result<Event, notify::Error>| {
+    let mut watcher: RecommendedWatcher =
+        notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
             let event = match res {
                 Ok(ev) => ev,
                 Err(_) => return,
@@ -113,9 +113,8 @@ pub fn local_panel_watch(
             };
             // Best-effort emit; swallow errors (frontend may be unmounted).
             let _ = app_for_cb.emit("local-fs-changed", payload);
-        },
-    )
-    .map_err(|e| format!("watcher init failed: {}", e))?;
+        })
+        .map_err(|e| format!("watcher init failed: {}", e))?;
 
     watcher
         .watch(&new_path, RecursiveMode::NonRecursive)

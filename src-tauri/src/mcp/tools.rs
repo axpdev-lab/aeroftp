@@ -821,24 +821,25 @@ pub async fn execute_tool(
                             "has_differences": diff.has_differences(),
                         }))
                     } else {
-                        let entries_to_json =
-                            |entries: &[crate::sync_core::DiffEntry], group_cap: usize| -> Vec<Value> {
-                                entries
-                                    .iter()
-                                    .take(group_cap)
-                                    .map(|e| {
-                                        json!({
-                                            "path": e.rel_path,
-                                            "local_size": e.local_size,
-                                            "remote_size": e.remote_size,
-                                            "local_sha256": e.local_sha256,
-                                            "remote_checksum_alg": e.remote_checksum_alg,
-                                            "remote_checksum_hex": e.remote_checksum_hex,
-                                            "compare_method": e.compare_method,
-                                        })
+                        let entries_to_json = |entries: &[crate::sync_core::DiffEntry],
+                                               group_cap: usize|
+                         -> Vec<Value> {
+                            entries
+                                .iter()
+                                .take(group_cap)
+                                .map(|e| {
+                                    json!({
+                                        "path": e.rel_path,
+                                        "local_size": e.local_size,
+                                        "remote_size": e.remote_size,
+                                        "local_sha256": e.local_sha256,
+                                        "remote_checksum_alg": e.remote_checksum_alg,
+                                        "remote_checksum_hex": e.remote_checksum_hex,
+                                        "compare_method": e.compare_method,
                                     })
-                                    .collect()
-                            };
+                                })
+                                .collect()
+                        };
                         let mut summary = json!({
                             "match": diff.match_count(),
                             "differ": diff.differ_count(),

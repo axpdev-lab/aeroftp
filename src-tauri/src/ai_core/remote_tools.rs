@@ -805,9 +805,7 @@ async fn hashsum(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let entry = backend.stat(&path).await.map_err(ToolError::Exec)?;
     if entry.is_dir {
-        return Err(ToolError::Exec(
-            "Cannot hash a directory.".to_string(),
-        ));
+        return Err(ToolError::Exec("Cannot hash a directory.".to_string()));
     }
     if entry.size > MAX_HASHSUM_BYTES {
         return Ok(json!({
@@ -890,7 +888,10 @@ async fn fetch_text_for_line_op(
             entry.size, MAX_HEAD_TAIL_BYTES
         )));
     }
-    let data = backend.download_to_bytes(path).await.map_err(ToolError::Exec)?;
+    let data = backend
+        .download_to_bytes(path)
+        .await
+        .map_err(ToolError::Exec)?;
     let total_size = data.len() as u64;
     let text = String::from_utf8_lossy(&data).into_owned();
     Ok((text, total_size, truncated))
@@ -973,8 +974,7 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     // wide trees (deep narrow vs shallow wide). Each queue item is
     // (path, depth). The output is flat — agent reconstructs hierarchy
     // from `path` if needed (cheaper than nested JSON for large trees).
-    let mut queue: std::collections::VecDeque<(String, u64)> =
-        std::collections::VecDeque::new();
+    let mut queue: std::collections::VecDeque<(String, u64)> = std::collections::VecDeque::new();
     queue.push_back((root.clone(), 0));
     let mut entries: Vec<Value> = Vec::new();
     let mut total_visited: usize = 0;
@@ -1283,9 +1283,7 @@ async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
 
     let dst_box = crate::ai_tools::create_temp_provider(&dst_server)
         .await
-        .map_err(|e| {
-            ToolError::Exec(format!("destination connect failed: {e}"))
-        })?;
+        .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
     let mut dst_provider = dst_box;
 
     let entry = crate::cross_profile_transfer::CrossProfileTransferEntry {
@@ -1525,14 +1523,13 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                 Ok(true) => {
                     skipped_files += 1;
                     if (idx as u64) % progress_step == 0 {
-                        ctx.event_sink().emit_tool_progress(
-                            &crate::ai_core::ToolProgress {
+                        ctx.event_sink()
+                            .emit_tool_progress(&crate::ai_core::ToolProgress {
                                 tool: "aeroftp_transfer_tree".to_string(),
                                 current: (transferred_files + skipped_files) as u32,
                                 total: total_planned as u32,
                                 item: entry.source_path.clone(),
-                            },
-                        );
+                            });
                     }
                     continue;
                 }
@@ -1566,14 +1563,13 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         }
 
         if (idx as u64) % progress_step == 0 || (idx as u64) + 1 == total_planned {
-            ctx.event_sink().emit_tool_progress(
-                &crate::ai_core::ToolProgress {
+            ctx.event_sink()
+                .emit_tool_progress(&crate::ai_core::ToolProgress {
                     tool: "aeroftp_transfer_tree".to_string(),
                     current: (transferred_files + skipped_files + failed_files) as u32,
                     total: total_planned as u32,
                     item: entry.source_path.clone(),
-                },
-            );
+                });
         }
     }
 
@@ -1963,7 +1959,11 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         remote_dir.replace('"', "\\\""),
         direction,
         if delete { " --delete" } else { "" },
-        if track_renames { " --track-renames" } else { "" },
+        if track_renames {
+            " --track-renames"
+        } else {
+            ""
+        },
         if checksum { " --checksum" } else { "" },
     );
 
@@ -2037,7 +2037,10 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         std::collections::HashMap::new();
     for (p, s, m) in &files {
         if *s > 0 {
-            size_groups.entry(*s).or_default().push((p.clone(), m.clone()));
+            size_groups
+                .entry(*s)
+                .or_default()
+                .push((p.clone(), m.clone()));
         }
     }
     type DedupeCandidate = (String, Option<String>);
@@ -2064,10 +2067,7 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
             match backend.download_to_bytes(&p).await {
                 Ok(data) => {
                     let hash = format!("{:x}", sha2::Sha256::digest(&data));
-                    hash_map
-                        .entry(hash)
-                        .or_default()
-                        .push((p, size, m));
+                    hash_map.entry(hash).or_default().push((p, size, m));
                 }
                 Err(e) => {
                     hash_errors += 1;
@@ -2410,7 +2410,10 @@ mod tests {
     fn validate_transfer_path_rejects_leading_dash() {
         let err = validate_transfer_path("-rf", "dst_path").unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("'-'") || msg.contains("argument injection"), "got: {msg}");
+        assert!(
+            msg.contains("'-'") || msg.contains("argument injection"),
+            "got: {msg}"
+        );
     }
 
     #[test]

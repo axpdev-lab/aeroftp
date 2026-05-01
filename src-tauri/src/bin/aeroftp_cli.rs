@@ -378,6 +378,12 @@ enum AgentBootstrapTask {
     Reconcile,
 }
 
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+enum RcloneFilenameEncryption {
+    Standard,
+    Off,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Test connection to a remote server
@@ -1160,6 +1166,12 @@ enum Commands {
         #[command(subcommand)]
         command: CryptCommands,
     },
+    /// rclone-crypt compatible operations (separate from `crypt` overlay)
+    #[command(name = "rclone-crypt")]
+    RcloneCrypt {
+        #[command(subcommand)]
+        command: RcloneCryptCommands,
+    },
     /// Import server profiles from external sources
     Import {
         #[command(subcommand)]
@@ -1308,6 +1320,36 @@ enum CryptCommands {
         /// Encryption password
         #[arg(long, env = "AEROFTP_CRYPT_PASSWORD", hide_env_values = true)]
         password: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum RcloneCryptCommands {
+    /// Encrypt and upload a file using the rclone crypt format
+    Put {
+        /// Local file to encrypt and upload
+        local: String,
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote destination directory
+        #[arg(default_value = "/")]
+        remote: String,
+        /// rclone crypt password
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD", hide_env_values = true)]
+        password: Option<String>,
+        /// Optional rclone password2/salt (empty by default)
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_SALT", hide_env_values = true)]
+        salt: Option<String>,
+        /// Filename encryption mode (standard or off)
+        #[arg(long, value_enum, default_value_t = RcloneFilenameEncryption::Standard)]
+        filename_encryption: RcloneFilenameEncryption,
+        /// Base64 dirIV (required with --filename-encryption standard)
+        #[arg(long)]
+        dir_iv_base64: Option<String>,
+        /// Optional plaintext filename override before encryption
+        #[arg(long)]
+        remote_name: Option<String>,
     },
 }
 
@@ -17712,6 +17754,171 @@ async fn cmd_crypt_get(
     0
 }
 
+fn parse_rclone_dir_iv_base64(value: &str) -> Result<[u8; 16], String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(value)
+        .map_err(|e| format!("invalid --dir-iv-base64: {}", e))?;
+    if bytes.len() != 16 {
+        return Err(format!(
+            "invalid --dir-iv-base64 length: expected 16 bytes, got {}",
+            bytes.len()
+        ));
+    }
+    let mut iv = [0u8; 16];
+    iv.copy_from_slice(&bytes);
+    Ok(iv)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_rclone_crypt_put(
+    url: &str,
+    local_file: &str,
+    remote_path: &str,
+    password: &str,
+    salt: &str,
+    filename_encryption: RcloneFilenameEncryption,
+    dir_iv_base64: Option<&str>,
+    remote_name: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, remote_path));
+
+    let (name_key, data_key) = match ftp_client_gui_lib::rclone_crypt::derive_keys(password, salt) {
+        Ok(keys) => keys,
+        Err(e) => {
+            print_error(format, &format!("rclone key derivation failed: {}", e), 5);
+            return 5;
+        }
+    };
+
+    let plaintext = match std::fs::read(local_file) {
+        Ok(d) => d,
+        Err(e) => {
+            print_error(format, &format!("Cannot read '{}': {}", local_file, e), 2);
+            return 2;
+        }
+    };
+
+    let encrypted = match ftp_client_gui_lib::rclone_crypt::encrypt_file_content(&plaintext, &data_key)
+    {
+        Ok(d) => d,
+        Err(e) => {
+            print_error(format, &format!("rclone content encryption failed: {}", e), 99);
+            return 99;
+        }
+    };
+
+    let plain_name = remote_name
+        .map(|s| s.to_string())
+        .or_else(|| {
+            Path::new(local_file)
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| local_file.to_string());
+
+    let encrypted_name = match filename_encryption {
+        RcloneFilenameEncryption::Off => plain_name.clone(),
+        RcloneFilenameEncryption::Standard => {
+            let Some(iv_b64) = dir_iv_base64 else {
+                print_error(
+                    format,
+                    "--dir-iv-base64 is required with --filename-encryption standard",
+                    5,
+                );
+                return 5;
+            };
+            let dir_iv = match parse_rclone_dir_iv_base64(iv_b64) {
+                Ok(iv) => iv,
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            match ftp_client_gui_lib::rclone_crypt::encrypt_name(&name_key, &dir_iv, &plain_name) {
+                Ok(name) => name,
+                Err(e) => {
+                    print_error(format, &format!("rclone filename encryption failed: {}", e), 99);
+                    return 99;
+                }
+            }
+        }
+    };
+
+    let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
+    let start = Instant::now();
+
+    let tmp = match NamedTempFile::new() {
+        Ok(v) => v,
+        Err(e) => {
+            print_error(format, &format!("Cannot create temporary file: {}", e), 11);
+            return 11;
+        }
+    };
+    if let Err(e) = std::fs::write(tmp.path(), &encrypted) {
+        print_error(format, &format!("Cannot write encrypted temp file: {}", e), 11);
+        return 11;
+    }
+
+    let upload_result = provider
+        .upload(&tmp.path().to_string_lossy(), &remote_file, None)
+        .await;
+    let _ = provider.disconnect().await;
+
+    match upload_result {
+        Ok(()) => {
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({
+                    "status": "ok",
+                    "local": local_file,
+                    "remote": remote_file,
+                    "filename": {
+                        "plaintext": plain_name,
+                        "encrypted": encrypted_name,
+                        "mode": match filename_encryption {
+                            RcloneFilenameEncryption::Standard => "standard",
+                            RcloneFilenameEncryption::Off => "off",
+                        }
+                    },
+                    "size": {
+                        "plaintext": plaintext.len(),
+                        "encrypted": encrypted.len(),
+                    },
+                    "elapsed_ms": start.elapsed().as_millis()
+                }));
+            } else if !cli.quiet {
+                println!(
+                    "{} -> {} ({}, {:.1}s)",
+                    plain_name,
+                    remote_file,
+                    format_size(plaintext.len() as u64),
+                    start.elapsed().as_secs_f64()
+                );
+                println!(
+                    "filename mode: {}",
+                    match filename_encryption {
+                        RcloneFilenameEncryption::Standard => "standard",
+                        RcloneFilenameEncryption::Off => "off",
+                    }
+                );
+                println!("encrypted name: {}", encrypted_name);
+            }
+            0
+        }
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("Upload failed: {}", e), code);
+            code
+        }
+    }
+}
+
 async fn cmd_put_glob(
     url: &str,
     local_pattern: &str,
@@ -24812,6 +25019,58 @@ async fn main() {
                 }
             }
         }
+        Commands::RcloneCrypt { command } => {
+            let resolve_rclone_password = |p: &Option<String>| -> Option<String> {
+                if let Some(pw) = p {
+                    return Some(pw.clone());
+                }
+                if std::io::stdin().is_terminal() {
+                    eprint!("Rclone crypt password: ");
+                    let _ = std::io::stderr().flush();
+                    rpassword::read_password().ok()
+                } else {
+                    None
+                }
+            };
+
+            match command {
+                RcloneCryptCommands::Put {
+                    local,
+                    url,
+                    remote,
+                    password,
+                    salt,
+                    filename_encryption,
+                    dir_iv_base64,
+                    remote_name,
+                } => {
+                    let pw = resolve_rclone_password(password).unwrap_or_default();
+                    if pw.is_empty() {
+                        print_error(format, "Password required for rclone-crypt put", 5);
+                        5
+                    } else {
+                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                            "_"
+                        } else {
+                            url.as_str()
+                        };
+                        cmd_rclone_crypt_put(
+                            u,
+                            local,
+                            remote,
+                            &pw,
+                            salt.as_deref().unwrap_or(""),
+                            *filename_encryption,
+                            dir_iv_base64.as_deref(),
+                            remote_name.as_deref(),
+                            &cli,
+                            format,
+                        )
+                        .await
+                    }
+                }
+            }
+        }
         Commands::Daemon { command } => match command {
             DaemonCommands::Start {
                 addr,
@@ -25113,11 +25372,20 @@ mod tests {
 
         // 08:00 - 11:59 -> 512 KB/s
         assert_eq!(resolve_bwlimit_schedule_at(s, 8 * 60), Some(512 * 1024));
-        assert_eq!(resolve_bwlimit_schedule_at(s, 11 * 60 + 59), Some(512 * 1024));
+        assert_eq!(
+            resolve_bwlimit_schedule_at(s, 11 * 60 + 59),
+            Some(512 * 1024)
+        );
 
         // 12:00 - 17:59 -> 10 MB/s
-        assert_eq!(resolve_bwlimit_schedule_at(s, 12 * 60), Some(10 * 1024 * 1024));
-        assert_eq!(resolve_bwlimit_schedule_at(s, 17 * 60 + 59), Some(10 * 1024 * 1024));
+        assert_eq!(
+            resolve_bwlimit_schedule_at(s, 12 * 60),
+            Some(10 * 1024 * 1024)
+        );
+        assert_eq!(
+            resolve_bwlimit_schedule_at(s, 17 * 60 + 59),
+            Some(10 * 1024 * 1024)
+        );
 
         // 18:00 - 23:59 -> off
         assert_eq!(resolve_bwlimit_schedule_at(s, 18 * 60), None);
@@ -25127,7 +25395,10 @@ mod tests {
     #[test]
     fn bwlimit_schedule_simple_rate_when_no_time_entries() {
         // No commas/colons → treated as plain rate
-        assert_eq!(resolve_bwlimit_schedule_at("1M", 12 * 60), Some(1024 * 1024));
+        assert_eq!(
+            resolve_bwlimit_schedule_at("1M", 12 * 60),
+            Some(1024 * 1024)
+        );
         assert_eq!(resolve_bwlimit_schedule_at("512k", 0), Some(512 * 1024));
     }
 
@@ -25139,7 +25410,10 @@ mod tests {
         assert_eq!(resolve_bwlimit_schedule_at(s, 0), Some(1024 * 1024));
         assert_eq!(resolve_bwlimit_schedule_at(s, 10 * 60), None);
         assert_eq!(resolve_bwlimit_schedule_at(s, 13 * 60 + 59), None);
-        assert_eq!(resolve_bwlimit_schedule_at(s, 14 * 60), Some(2 * 1024 * 1024));
+        assert_eq!(
+            resolve_bwlimit_schedule_at(s, 14 * 60),
+            Some(2 * 1024 * 1024)
+        );
     }
 
     #[test]
@@ -25153,7 +25427,10 @@ mod tests {
     fn bwlimit_schedule_skips_malformed_entries() {
         // Hour > 23 and minute > 59 are silently skipped (not panic, not crash)
         let s = "25:00,1M 10:99,2M 12:00,3M";
-        assert_eq!(resolve_bwlimit_schedule_at(s, 12 * 60), Some(3 * 1024 * 1024));
+        assert_eq!(
+            resolve_bwlimit_schedule_at(s, 12 * 60),
+            Some(3 * 1024 * 1024)
+        );
     }
 
     #[test]
@@ -25161,7 +25438,10 @@ mod tests {
         // Caller-provided order shouldn't matter
         let s = "18:00,off 08:00,512k 12:00,10M";
         assert_eq!(resolve_bwlimit_schedule_at(s, 9 * 60), Some(512 * 1024));
-        assert_eq!(resolve_bwlimit_schedule_at(s, 13 * 60), Some(10 * 1024 * 1024));
+        assert_eq!(
+            resolve_bwlimit_schedule_at(s, 13 * 60),
+            Some(10 * 1024 * 1024)
+        );
         assert_eq!(resolve_bwlimit_schedule_at(s, 19 * 60), None);
     }
 
