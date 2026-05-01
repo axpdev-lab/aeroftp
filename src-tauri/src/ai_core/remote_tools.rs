@@ -50,6 +50,160 @@ fn backend_error(e: String) -> ToolError {
     }
 }
 
+/// Hard cap per pagina per `aeroftp_list_files` / `aeroftp_search_files`.
+/// Se l'agente passa un `limit` superiore, viene clampato a questo valore.
+const MAX_LIST_PAGE: usize = 5_000;
+
+#[derive(Debug)]
+struct ListFilterOpts {
+    limit: usize,
+    offset: usize,
+    sort: ListSort,
+    reverse: bool,
+    files_only: bool,
+    dirs_only: bool,
+    min_size: Option<u64>,
+    max_size: Option<u64>,
+    /// Lower bound (inclusive) for `modified` ISO 8601 string.
+    min_mtime: Option<String>,
+    /// Upper bound (inclusive) for `modified` ISO 8601 string.
+    max_mtime: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ListSort {
+    Name,
+    Size,
+    Mtime,
+}
+
+impl ListFilterOpts {
+    fn from_args(args: &Value, default_limit: usize) -> Self {
+        let limit = args
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|n| (n as usize).min(MAX_LIST_PAGE))
+            .filter(|n| *n > 0)
+            .unwrap_or(default_limit);
+        let offset = args
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .unwrap_or(0);
+        let sort = match args.get("sort").and_then(|v| v.as_str()) {
+            Some("size") => ListSort::Size,
+            Some("mtime") | Some("date") => ListSort::Mtime,
+            _ => ListSort::Name,
+        };
+        let reverse = args
+            .get("reverse")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let files_only = args
+            .get("files_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let dirs_only = args
+            .get("dirs_only")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let min_size = args.get("min_size").and_then(|v| v.as_u64());
+        let max_size = args.get("max_size").and_then(|v| v.as_u64());
+        let min_mtime = get_str_opt(args, "min_mtime");
+        let max_mtime = get_str_opt(args, "max_mtime");
+        Self {
+            limit,
+            offset,
+            sort,
+            reverse,
+            files_only,
+            dirs_only,
+            min_size,
+            max_size,
+            min_mtime,
+            max_mtime,
+        }
+    }
+
+    fn has_filter(&self) -> bool {
+        self.files_only
+            || self.dirs_only
+            || self.min_size.is_some()
+            || self.max_size.is_some()
+            || self.min_mtime.is_some()
+            || self.max_mtime.is_some()
+    }
+}
+
+fn apply_entry_filter(
+    entries: Vec<crate::providers::RemoteEntry>,
+    opts: &ListFilterOpts,
+) -> Vec<crate::providers::RemoteEntry> {
+    if !opts.has_filter() {
+        return entries;
+    }
+    entries
+        .into_iter()
+        .filter(|e| {
+            if opts.files_only && e.is_dir {
+                return false;
+            }
+            if opts.dirs_only && !e.is_dir {
+                return false;
+            }
+            // Size filters apply only to files (directories have size=0
+            // which would always trip min_size unless we exempt them).
+            if !e.is_dir {
+                if let Some(min) = opts.min_size {
+                    if e.size < min {
+                        return false;
+                    }
+                }
+                if let Some(max) = opts.max_size {
+                    if e.size > max {
+                        return false;
+                    }
+                }
+            }
+            // ISO 8601 strings are lexicographically sortable for the same
+            // timezone offset (e.g. all 'Z'). When the entry has no mtime,
+            // we keep it (best-effort) — agent can sort=mtime to push them
+            // to the end if it cares.
+            if let (Some(ref min), Some(ref m)) = (&opts.min_mtime, &e.modified) {
+                if m.as_str() < min.as_str() {
+                    return false;
+                }
+            }
+            if let (Some(ref max), Some(ref m)) = (&opts.max_mtime, &e.modified) {
+                if m.as_str() > max.as_str() {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect()
+}
+
+fn apply_entry_sort(entries: &mut [crate::providers::RemoteEntry], opts: &ListFilterOpts) {
+    match opts.sort {
+        ListSort::Name => entries.sort_by_key(|e| e.name.to_lowercase()),
+        ListSort::Size => entries.sort_by_key(|e| e.size),
+        ListSort::Mtime => entries.sort_by(|a, b| {
+            // Entries senza mtime in fondo nell'ordine asc (None > Some(_))
+            // ISO 8601 e' lex-ordinato per data, quindi cmp(&str) e' corretto.
+            match (&a.modified, &b.modified) {
+                (Some(x), Some(y)) => x.cmp(y),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            }
+        }),
+    }
+    if opts.reverse {
+        entries.reverse();
+    }
+}
+
 fn entry_json(e: &crate::providers::RemoteEntry, include_permissions: bool) -> Value {
     let mut v = json!({
         "name": e.name,
@@ -91,6 +245,10 @@ fn alias_name(tool_name: &str) -> &str {
         "remote_storage_quota" => "aeroftp_storage_quota",
         "remote_list_servers" | "server_list_saved" => "aeroftp_list_servers",
         "remote_agent_connect" | "agent_connect" => "aeroftp_agent_connect",
+        "remote_hashsum" => "aeroftp_hashsum",
+        "remote_head" => "aeroftp_head",
+        "remote_tail" => "aeroftp_tail",
+        "remote_tree" => "aeroftp_tree",
         other => other,
     }
 }
@@ -157,6 +315,10 @@ pub async fn dispatch_remote_tool(
         "aeroftp_delete_many" => delete_many(ctx, args).await,
         "aeroftp_rename" => rename(ctx, args).await,
         "aeroftp_storage_quota" => storage_quota(ctx, args).await,
+        "aeroftp_hashsum" => hashsum(ctx, args).await,
+        "aeroftp_head" => head_file(ctx, args).await,
+        "aeroftp_tail" => tail_file(ctx, args).await,
+        "aeroftp_tree" => tree(ctx, args).await,
         "aeroftp_agent_connect" => agent_connect(ctx, args).await,
         "server_exec" => server_exec(ctx, args).await,
         _ => Err(ToolError::NotMigrated(tool_name.to_string())),
@@ -241,19 +403,30 @@ async fn list_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError>
     let server = normalize_server(args)?;
     let path = normalize_path_arg(args, "path", "/");
     validate_remote_path(&path, "path")?;
+    let opts = ListFilterOpts::from_args(args, 200);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let entries = backend.list(&path).await.map_err(ToolError::Exec)?;
-    let items: Vec<Value> = entries
-        .iter()
-        .take(200)
-        .map(|e| entry_json(e, false))
+    let total_unfiltered = entries.len();
+    let mut filtered = apply_entry_filter(entries, &opts);
+    let total_matched = filtered.len();
+    apply_entry_sort(&mut filtered, &opts);
+    let page: Vec<Value> = filtered
+        .into_iter()
+        .skip(opts.offset)
+        .take(opts.limit)
+        .map(|e| entry_json(&e, false))
         .collect();
+    let returned = page.len();
     Ok(json!({
         "server": server,
         "path": path,
-        "entries": items,
-        "total": entries.len(),
-        "truncated": entries.len() > 200,
+        "entries": page,
+        "count": returned,
+        "total": total_unfiltered,
+        "total_matched": total_matched,
+        "offset": opts.offset,
+        "limit": opts.limit,
+        "truncated": opts.offset + returned < total_matched,
     }))
 }
 
@@ -316,23 +489,34 @@ async fn search_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
     let path = normalize_path_arg(args, "path", "/");
     let pattern = get_str(args, "pattern")?;
     validate_remote_path(&path, "path")?;
+    let opts = ListFilterOpts::from_args(args, 100);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let entries = backend
         .search(&path, &pattern)
         .await
         .map_err(ToolError::Exec)?;
-    let items: Vec<Value> = entries
-        .iter()
-        .take(100)
-        .map(|e| entry_json(e, false))
+    let total_unfiltered = entries.len();
+    let mut filtered = apply_entry_filter(entries, &opts);
+    let total_matched = filtered.len();
+    apply_entry_sort(&mut filtered, &opts);
+    let page: Vec<Value> = filtered
+        .into_iter()
+        .skip(opts.offset)
+        .take(opts.limit)
+        .map(|e| entry_json(&e, false))
         .collect();
+    let returned = page.len();
     Ok(json!({
         "server": server,
         "path": path,
         "pattern": pattern,
-        "results": items,
-        "total": entries.len(),
-        "truncated": entries.len() > 100,
+        "results": page,
+        "count": returned,
+        "total": total_unfiltered,
+        "total_matched": total_matched,
+        "offset": opts.offset,
+        "limit": opts.limit,
+        "truncated": opts.offset + returned < total_matched,
     }))
 }
 
@@ -575,6 +759,270 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         "used_bytes": info.used,
         "total_bytes": info.total,
         "free_bytes": info.available,
+    }))
+}
+
+/// Hard cap per `aeroftp_hashsum` — sopra questo size il tool ritorna errore
+/// `file_too_large` invece di tentare il download. Coerente con il fatto che
+/// il backend.download_to_bytes carica tutto il payload in RAM (stessa
+/// pipeline della CLI `aeroftp hashsum`).
+const MAX_HASHSUM_BYTES: u64 = 256 * 1024 * 1024;
+
+async fn hashsum(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let path = get_str(args, "path")?;
+    validate_remote_path(&path, "path")?;
+    let algorithm = get_str_opt(args, "algorithm")
+        .map(|s| s.to_lowercase())
+        .unwrap_or_else(|| "sha256".to_string());
+    if !matches!(
+        algorithm.as_str(),
+        "sha256" | "sha1" | "sha512" | "md5" | "blake3"
+    ) {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_hashsum".to_string(),
+            reason: format!(
+                "unsupported algorithm '{algorithm}'. Use one of: sha256, sha1, sha512, md5, blake3"
+            ),
+        });
+    }
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    let entry = backend.stat(&path).await.map_err(ToolError::Exec)?;
+    if entry.is_dir {
+        return Err(ToolError::Exec(
+            "Cannot hash a directory.".to_string(),
+        ));
+    }
+    if entry.size > MAX_HASHSUM_BYTES {
+        return Ok(json!({
+            "server": server,
+            "path": path,
+            "algorithm": algorithm,
+            "error": "file_too_large",
+            "size": entry.size,
+            "max_size": MAX_HASHSUM_BYTES,
+            "hint": "Use the CLI 'aeroftp hashsum' for files larger than 256 MB; MCP keeps a memory cap to protect the agent process."
+        }));
+    }
+    let data = backend
+        .download_to_bytes(&path)
+        .await
+        .map_err(ToolError::Exec)?;
+    let hash = match algorithm.as_str() {
+        "md5" => {
+            use md5::Digest;
+            format!("{:x}", md5::Md5::digest(&data))
+        }
+        "sha1" => {
+            use sha1::Digest;
+            format!("{:x}", sha1::Sha1::digest(&data))
+        }
+        "sha512" => {
+            use sha2::Digest;
+            format!("{:x}", sha2::Sha512::digest(&data))
+        }
+        "blake3" => blake3::hash(&data).to_hex().to_string(),
+        _ => {
+            use sha2::Digest;
+            format!("{:x}", sha2::Sha256::digest(&data))
+        }
+    };
+    Ok(json!({
+        "server": server,
+        "path": path,
+        "algorithm": algorithm,
+        "hash": hash,
+        "bytes_hashed": data.len(),
+    }))
+}
+
+/// Hard cap per scan in `aeroftp_head` / `aeroftp_tail`. Protegge il
+/// processo MCP quando un agente chiede ultime/prime N righe di un log
+/// gigantesco. Stessa pipeline di `read_file` ma esposta per linee.
+const MAX_HEAD_TAIL_BYTES: u64 = 16 * 1024 * 1024;
+const DEFAULT_HEAD_TAIL_LINES: usize = 50;
+const MAX_HEAD_TAIL_LINES: usize = 10_000;
+
+fn parse_lines_arg(args: &Value) -> Result<usize, ToolError> {
+    let n = args
+        .get("lines")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(DEFAULT_HEAD_TAIL_LINES as i64);
+    if n <= 0 {
+        return Err(ToolError::InvalidArgs {
+            tool: "head/tail".to_string(),
+            reason: format!("lines must be > 0 (got {n})"),
+        });
+    }
+    Ok((n as usize).min(MAX_HEAD_TAIL_LINES))
+}
+
+async fn fetch_text_for_line_op(
+    ctx: &dyn ToolCtx,
+    server: &str,
+    path: &str,
+) -> Result<(String, u64, bool), ToolError> {
+    let backend = ctx.remote_backend(server).await.map_err(backend_error)?;
+    let entry = backend.stat(path).await.map_err(ToolError::Exec)?;
+    if entry.is_dir {
+        return Err(ToolError::Exec("Cannot head/tail a directory.".to_string()));
+    }
+    let truncated = entry.size > MAX_HEAD_TAIL_BYTES;
+    if truncated {
+        return Err(ToolError::Exec(format!(
+            "File too large ({} bytes). Cap: {} bytes. Use aeroftp_download_file then process locally.",
+            entry.size, MAX_HEAD_TAIL_BYTES
+        )));
+    }
+    let data = backend.download_to_bytes(path).await.map_err(ToolError::Exec)?;
+    let total_size = data.len() as u64;
+    let text = String::from_utf8_lossy(&data).into_owned();
+    Ok((text, total_size, truncated))
+}
+
+async fn head_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let path = get_str(args, "path")?;
+    validate_remote_path(&path, "path")?;
+    let lines = parse_lines_arg(args)?;
+    let (text, total_size, _) = fetch_text_for_line_op(ctx, &server, &path).await?;
+    let total_lines = text.lines().count();
+    let collected: Vec<&str> = text.lines().take(lines).collect();
+    let returned = collected.len();
+    let body = collected.join("\n");
+    Ok(json!({
+        "server": server,
+        "path": path,
+        "lines_requested": lines,
+        "lines_returned": returned,
+        "total_lines": total_lines,
+        "total_size": total_size,
+        "truncated": returned < total_lines,
+        "content": body,
+    }))
+}
+
+async fn tail_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let path = get_str(args, "path")?;
+    validate_remote_path(&path, "path")?;
+    let lines = parse_lines_arg(args)?;
+    let (text, total_size, _) = fetch_text_for_line_op(ctx, &server, &path).await?;
+    let all_lines: Vec<&str> = text.lines().collect();
+    let total_lines = all_lines.len();
+    let start = total_lines.saturating_sub(lines);
+    let slice = &all_lines[start..];
+    let returned = slice.len();
+    let body = slice.join("\n");
+    Ok(json!({
+        "server": server,
+        "path": path,
+        "lines_requested": lines,
+        "lines_returned": returned,
+        "total_lines": total_lines,
+        "total_size": total_size,
+        "truncated": start > 0,
+        "content": body,
+    }))
+}
+
+/// Hard cap per `aeroftp_tree`. Combinato con `max_depth`, protegge il
+/// processo dall'esplorazione di alberi enormi (proxy di `find` ricorsivo).
+const TREE_DEFAULT_MAX_DEPTH: u64 = 3;
+const TREE_DEFAULT_MAX_ENTRIES: usize = 500;
+const TREE_HARD_MAX_ENTRIES: usize = 5_000;
+const TREE_HARD_MAX_DEPTH: u64 = 20;
+
+async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let root = normalize_path_arg(args, "path", "/");
+    validate_remote_path(&root, "path")?;
+    let max_depth = args
+        .get("max_depth")
+        .and_then(|v| v.as_u64())
+        .map(|n| n.min(TREE_HARD_MAX_DEPTH))
+        .unwrap_or(TREE_DEFAULT_MAX_DEPTH);
+    let max_entries = args
+        .get("max_entries")
+        .and_then(|v| v.as_u64())
+        .map(|n| (n as usize).min(TREE_HARD_MAX_ENTRIES))
+        .filter(|n| *n > 0)
+        .unwrap_or(TREE_DEFAULT_MAX_ENTRIES);
+    let files_only = get_bool_opt(args, "files_only").unwrap_or(false);
+    let dirs_only = get_bool_opt(args, "dirs_only").unwrap_or(false);
+
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    // BFS bounded by both max_depth and max_entries. We use BFS over a
+    // queue rather than recursion so the cap is enforced uniformly across
+    // wide trees (deep narrow vs shallow wide). Each queue item is
+    // (path, depth). The output is flat — agent reconstructs hierarchy
+    // from `path` if needed (cheaper than nested JSON for large trees).
+    let mut queue: std::collections::VecDeque<(String, u64)> =
+        std::collections::VecDeque::new();
+    queue.push_back((root.clone(), 0));
+    let mut entries: Vec<Value> = Vec::new();
+    let mut total_visited: usize = 0;
+    let mut total_dirs: usize = 0;
+    let mut total_files: usize = 0;
+    let mut truncated = false;
+    let mut errors: Vec<Value> = Vec::new();
+
+    while let Some((dir, depth)) = queue.pop_front() {
+        if depth > max_depth {
+            continue;
+        }
+        let listing = match backend.list(&dir).await {
+            Ok(v) => v,
+            Err(e) => {
+                errors.push(json!({"path": dir, "error": e}));
+                continue;
+            }
+        };
+        for entry in listing {
+            total_visited += 1;
+            if entries.len() >= max_entries {
+                truncated = true;
+                break;
+            }
+            if entry.is_dir {
+                total_dirs += 1;
+            } else {
+                total_files += 1;
+            }
+            let drop_for_files_only = files_only && entry.is_dir;
+            let drop_for_dirs_only = dirs_only && !entry.is_dir;
+            let keep = !drop_for_files_only && !drop_for_dirs_only;
+            if keep {
+                entries.push(json!({
+                    "name": entry.name,
+                    "path": entry.path,
+                    "is_dir": entry.is_dir,
+                    "size": entry.size,
+                    "modified": entry.modified,
+                    "depth": depth + 1,
+                }));
+            }
+            if entry.is_dir && depth + 1 < max_depth + 1 {
+                queue.push_back((entry.path, depth + 1));
+            }
+        }
+        if truncated {
+            break;
+        }
+    }
+
+    Ok(json!({
+        "server": server,
+        "root": root,
+        "max_depth": max_depth,
+        "max_entries": max_entries,
+        "entries": entries,
+        "count": entries.len(),
+        "total_visited": total_visited,
+        "total_dirs": total_dirs,
+        "total_files": total_files,
+        "truncated": truncated,
+        "errors": errors,
     }))
 }
 

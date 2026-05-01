@@ -555,12 +555,22 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_list_files",
-            description: "List files and directories on a remote server.",
+            description: "List files and directories on a remote server. Supports pagination (limit/offset), sort (name|size|mtime), reverse, files_only/dirs_only filters, and size/mtime range filters. Default limit: 200, hard cap: 5000.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
+                    "limit": {"type": "integer", "description": "Max entries to return after filtering/sorting (default 200, cap 5000)"},
+                    "offset": {"type": "integer", "description": "Skip first N entries after filtering/sorting (default 0)"},
+                    "sort": {"type": "string", "enum": ["name", "size", "mtime"], "description": "Sort key (default: name)"},
+                    "reverse": {"type": "boolean", "description": "Reverse sort order (default: false)"},
+                    "files_only": {"type": "boolean", "description": "Drop directories from results (default: false)"},
+                    "dirs_only": {"type": "boolean", "description": "Drop files from results (default: false)"},
+                    "min_size": {"type": "integer", "description": "Keep only files with size >= min_size bytes (directories are always retained when not filtered out by dirs/files_only)"},
+                    "max_size": {"type": "integer", "description": "Keep only files with size <= max_size bytes"},
+                    "min_mtime": {"type": "string", "description": "Keep only entries with modified >= this ISO 8601 timestamp (e.g. '2026-04-01T00:00:00Z'). Entries without mtime are preserved."},
+                    "max_mtime": {"type": "string", "description": "Keep only entries with modified <= this ISO 8601 timestamp."},
                 },
                 "required": ["server"],
             }),
@@ -575,6 +585,16 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "properties": {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
+                    "limit": {"type": "integer"},
+                    "offset": {"type": "integer"},
+                    "sort": {"type": "string", "enum": ["name", "size", "mtime"]},
+                    "reverse": {"type": "boolean"},
+                    "files_only": {"type": "boolean"},
+                    "dirs_only": {"type": "boolean"},
+                    "min_size": {"type": "integer"},
+                    "max_size": {"type": "integer"},
+                    "min_mtime": {"type": "string"},
+                    "max_mtime": {"type": "string"},
                 },
                 "required": ["server"],
             }),
@@ -589,6 +609,16 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "properties": {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
+                    "limit": {"type": "integer"},
+                    "offset": {"type": "integer"},
+                    "sort": {"type": "string", "enum": ["name", "size", "mtime"]},
+                    "reverse": {"type": "boolean"},
+                    "files_only": {"type": "boolean"},
+                    "dirs_only": {"type": "boolean"},
+                    "min_size": {"type": "integer"},
+                    "max_size": {"type": "integer"},
+                    "min_mtime": {"type": "string"},
+                    "max_mtime": {"type": "string"},
                 },
                 "required": ["server"],
             }),
@@ -698,13 +728,23 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_search_files",
-            description: "Search for files matching a pattern on a remote server.",
+            description: "Search for files matching a glob pattern on a remote server. Supports pagination (limit/offset), sort (name|size|mtime), reverse, files_only/dirs_only filters, and size/mtime range filters. Default limit: 100, hard cap: 5000.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
                     "pattern": {"type": "string"},
+                    "limit": {"type": "integer", "description": "Max results to return after filtering/sorting (default 100, cap 5000)"},
+                    "offset": {"type": "integer", "description": "Skip first N results after filtering/sorting (default 0)"},
+                    "sort": {"type": "string", "enum": ["name", "size", "mtime"], "description": "Sort key (default: name)"},
+                    "reverse": {"type": "boolean", "description": "Reverse sort order (default: false)"},
+                    "files_only": {"type": "boolean", "description": "Drop directories from results (default: false)"},
+                    "dirs_only": {"type": "boolean", "description": "Drop files from results (default: false)"},
+                    "min_size": {"type": "integer", "description": "Keep only files with size >= min_size bytes"},
+                    "max_size": {"type": "integer", "description": "Keep only files with size <= max_size bytes"},
+                    "min_mtime": {"type": "string", "description": "Keep only entries with modified >= this ISO 8601 timestamp"},
+                    "max_mtime": {"type": "string", "description": "Keep only entries with modified <= this ISO 8601 timestamp"},
                 },
                 "required": ["server", "pattern"],
             }),
@@ -720,6 +760,16 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
                     "pattern": {"type": "string"},
+                    "limit": {"type": "integer"},
+                    "offset": {"type": "integer"},
+                    "sort": {"type": "string", "enum": ["name", "size", "mtime"]},
+                    "reverse": {"type": "boolean"},
+                    "files_only": {"type": "boolean"},
+                    "dirs_only": {"type": "boolean"},
+                    "min_size": {"type": "integer"},
+                    "max_size": {"type": "integer"},
+                    "min_mtime": {"type": "string"},
+                    "max_mtime": {"type": "string"},
                 },
                 "required": ["server", "pattern"],
             }),
@@ -735,6 +785,16 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "server": {"type": "string"},
                     "path": {"type": "string"},
                     "pattern": {"type": "string"},
+                    "limit": {"type": "integer"},
+                    "offset": {"type": "integer"},
+                    "sort": {"type": "string", "enum": ["name", "size", "mtime"]},
+                    "reverse": {"type": "boolean"},
+                    "files_only": {"type": "boolean"},
+                    "dirs_only": {"type": "boolean"},
+                    "min_size": {"type": "integer"},
+                    "max_size": {"type": "integer"},
+                    "min_mtime": {"type": "string"},
+                    "max_mtime": {"type": "string"},
                 },
                 "required": ["server", "pattern"],
             }),
@@ -1024,6 +1084,136 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             surfaces: remote_surfaces,
         },
         ToolDef {
+            name: "aeroftp_hashsum",
+            description: "Compute a cryptographic hash of a remote file by streaming it through the chosen algorithm. Mirrors `aeroftp hashsum --download` from the CLI. Useful for verifying integrity after upload, comparing files across profiles, or producing checksums for audit. Hard cap: 256 MB per file (returns `error: file_too_large` above the cap). Algorithms: sha256 (default), sha1, sha512, md5, blake3.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "path": {"type": "string", "description": "Remote file path"},
+                    "algorithm": {
+                        "type": "string",
+                        "enum": ["sha256", "sha1", "sha512", "md5", "blake3"],
+                        "description": "Hash algorithm (default: sha256)"
+                    }
+                },
+                "required": ["server", "path"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_hashsum",
+            description: "Alias of aeroftp_hashsum.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "path": {"type": "string"},
+                    "algorithm": {"type": "string", "enum": ["sha256", "sha1", "sha512", "md5", "blake3"]}
+                },
+                "required": ["server", "path"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_head",
+            description: "Return the first N lines of a remote UTF-8 text file (default 50, cap 10000). Mirrors `aeroftp head` from the CLI. Streams the file through `download_to_bytes` then splits on newlines, so non-UTF-8 bytes are replaced with U+FFFD. Hard cap on file size: 16 MB. Use aeroftp_download_file + local processing for larger files.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "path": {"type": "string", "description": "Remote file path"},
+                    "lines": {"type": "integer", "description": "Number of lines to return (default 50, cap 10000)"}
+                },
+                "required": ["server", "path"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_head",
+            description: "Alias of aeroftp_head.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "path": {"type": "string"},
+                    "lines": {"type": "integer"}
+                },
+                "required": ["server", "path"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_tail",
+            description: "Return the last N lines of a remote UTF-8 text file (default 50, cap 10000). Mirrors `aeroftp tail` from the CLI. Useful for log inspection without downloading the full file. Streams the file through `download_to_bytes`. Hard cap on file size: 16 MB. Note: this is NOT a streaming `tail -f` — it is a one-shot read. For continuous follow, use the local CLI on a downloaded copy.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "path": {"type": "string", "description": "Remote file path"},
+                    "lines": {"type": "integer", "description": "Number of lines to return (default 50, cap 10000)"}
+                },
+                "required": ["server", "path"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_tail",
+            description: "Alias of aeroftp_tail.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "path": {"type": "string"},
+                    "lines": {"type": "integer"}
+                },
+                "required": ["server", "path"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_tree",
+            description: "Recursively list the contents of a remote directory as a flat JSON array, bounded by max_depth and max_entries. Mirrors `aeroftp tree` from the CLI. Output is flat (each entry includes `path` and `depth`) rather than nested — agents reconstruct hierarchy from `path` if needed, which is cheaper than deep nested JSON on large trees. Defaults: max_depth=3, max_entries=500. Hard caps: max_depth=20, max_entries=5000. Use this instead of N sequential aeroftp_list_files calls when exploring a layout.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "path": {"type": "string", "description": "Root directory to walk (default: '/')"},
+                    "max_depth": {"type": "integer", "description": "Max recursion depth (default 3, cap 20). depth=0 is the root listing only."},
+                    "max_entries": {"type": "integer", "description": "Stop after collecting this many entries (default 500, cap 5000). When reached, response sets truncated=true."},
+                    "files_only": {"type": "boolean", "description": "Drop directories from the output (descent still happens)"},
+                    "dirs_only": {"type": "boolean", "description": "Drop files from the output (still walks dir contents)"}
+                },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_tree",
+            description: "Alias of aeroftp_tree.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "path": {"type": "string"},
+                    "max_depth": {"type": "integer"},
+                    "max_entries": {"type": "integer"},
+                    "files_only": {"type": "boolean"},
+                    "dirs_only": {"type": "boolean"}
+                },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
             name: "aeroftp_agent_connect",
             description: "Single-shot agent connect surface. Returns one JSON payload with per-block status (`connect`, `capabilities`, `quota`, `path`) so the agent can decide go/no-go and gracefully degrade. Replaces the boilerplate sequence of `connect → about → df → ls /`. `connect.status` is the critical signal; `unsupported`/`unavailable`/`error` on other blocks are non-fatal.",
             input_schema: json!({
@@ -1294,6 +1484,14 @@ pub async fn dispatch_tool(
         | "remote_rename"
         | "aeroftp_storage_quota"
         | "remote_storage_quota"
+        | "aeroftp_hashsum"
+        | "remote_hashsum"
+        | "aeroftp_head"
+        | "remote_head"
+        | "aeroftp_tail"
+        | "remote_tail"
+        | "aeroftp_tree"
+        | "remote_tree"
         | "aeroftp_agent_connect"
         | "agent_connect"
         | "remote_agent_connect"
