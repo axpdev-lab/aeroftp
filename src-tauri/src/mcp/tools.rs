@@ -111,7 +111,12 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
                     "description": "Restrict the check to this exact set of relative paths. Useful when the agent already knows the candidate set and wants to skip a full tree scan."
                 },
                 "max_depth": { "type": "integer", "description": "Max recursion depth (default: 100)" },
-                "max_entries_reported": { "type": "integer", "description": "Cap per-group entries returned (default: 200). Ignored when summary_only=true." },
+                "max_entries_reported": { "type": "integer", "description": "Cap per-group entries returned (default: 200). Used as fallback when per-group caps below are unset. Ignored when summary_only=true." },
+                "max_match": { "type": "integer", "description": "Per-group cap for the `match` bucket (default: max_entries_reported). Useful set to a small number (e.g. 20) when the agent only wants a sample of matches and full visibility on diffs." },
+                "max_differ": { "type": "integer", "description": "Per-group cap for the `differ` bucket (default: max_entries_reported)." },
+                "max_missing_local": { "type": "integer", "description": "Per-group cap for the `missing_local` bucket (default: max_entries_reported)." },
+                "max_missing_remote": { "type": "integer", "description": "Per-group cap for the `missing_remote` bucket (default: max_entries_reported)." },
+                "omit_match": { "type": "boolean", "description": "Drop the `match` bucket entirely from `groups` (counter is still in `summary`). Use when the scope is dominated by matches and only diffs are actionable. Default: false." },
                 "summary_only": { "type": "boolean", "description": "Return only summary counters (match/differ/missing_local/missing_remote) and has_differences. Drops the groups arrays entirely. Use for large scopes where the response would exceed MCP size limits. Default: false." },
                 "group_by_depth": { "type": "integer", "description": "When > 0, add `summary.by_top_level_dir` aggregating counts grouped by the first N path segments. 1 = top-level directory only, 2 = two levels deep. Files at root are aggregated under `_root`. Default: 0 (disabled)." }
             }, "required": ["server", "local_dir", "remote_dir"] }),
@@ -722,6 +727,31 @@ pub async fn execute_tool(
                 .get("max_entries_reported")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(200) as usize;
+            // Gap 4 — per-group caps. Each falls back to `cap` so existing
+            // callers see no behavior change. Pass any of these to ask for a
+            // tight cap on `match` (noise) while keeping `missing_remote`
+            // wide for action.
+            let cap_match = args
+                .get("max_match")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(cap);
+            let cap_differ = args
+                .get("max_differ")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(cap);
+            let cap_missing_local = args
+                .get("max_missing_local")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(cap);
+            let cap_missing_remote = args
+                .get("max_missing_remote")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(cap);
+            let omit_match = get_bool_opt(args, "omit_match").unwrap_or(false);
             let group_by_depth = args
                 .get("group_by_depth")
                 .and_then(|v| v.as_u64())
@@ -792,10 +822,10 @@ pub async fn execute_tool(
                         }))
                     } else {
                         let entries_to_json =
-                            |entries: &[crate::sync_core::DiffEntry]| -> Vec<Value> {
+                            |entries: &[crate::sync_core::DiffEntry], group_cap: usize| -> Vec<Value> {
                                 entries
                                     .iter()
-                                    .take(cap)
+                                    .take(group_cap)
                                     .map(|e| {
                                         json!({
                                             "path": e.rel_path,
@@ -823,6 +853,21 @@ pub async fn execute_tool(
                                 );
                             }
                         }
+                        // Gap 4 — per-group caps. `match` is the high-volume,
+                        // low-action bucket (3590/4190 entries on the Aruba
+                        // CMS). `omit_match` drops it entirely; otherwise the
+                        // 4 bucket caps apply independently so the agent can
+                        // ask for "20 sample matches but every diff" without
+                        // tripping the response size cap.
+                        let match_entries = if omit_match {
+                            Vec::new()
+                        } else {
+                            entries_to_json(&diff.matches, cap_match)
+                        };
+                        let truncated = (!omit_match && diff.match_count() > cap_match)
+                            || diff.differ_count() > cap_differ
+                            || diff.missing_local_count() > cap_missing_local
+                            || diff.missing_remote_count() > cap_missing_remote;
                         ok(json!({
                             "server": server,
                             "local_dir": local_dir,
@@ -831,16 +876,14 @@ pub async fn execute_tool(
                             "checksum_remote_supported": supports_remote_checksum,
                             "summary": summary,
                             "groups": {
-                                "match": entries_to_json(&diff.matches),
-                                "differ": entries_to_json(&diff.differ),
-                                "missing_local": entries_to_json(&diff.missing_local),
-                                "missing_remote": entries_to_json(&diff.missing_remote),
+                                "match": match_entries,
+                                "differ": entries_to_json(&diff.differ, cap_differ),
+                                "missing_local": entries_to_json(&diff.missing_local, cap_missing_local),
+                                "missing_remote": entries_to_json(&diff.missing_remote, cap_missing_remote),
                             },
                             "has_differences": diff.has_differences(),
-                            "truncated": diff.match_count() > cap
-                                || diff.differ_count() > cap
-                                || diff.missing_local_count() > cap
-                                || diff.missing_remote_count() > cap,
+                            "truncated": truncated,
+                            "omit_match": omit_match,
                         }))
                     }
                 }

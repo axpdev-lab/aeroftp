@@ -1290,6 +1290,208 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             surfaces: remote_surfaces,
         },
         ToolDef {
+            name: "aeroftp_touch",
+            description: "Create an empty file or report an existing one. If the path exists, the call is a no-op (`action=\"exists\"`); otherwise an empty zero-byte file is uploaded (`action=\"created\"`). Useful for cache-bust triggers, lock files, `.maintenance` markers, opcache reset markers. Mtime-bump on existing files is NOT supported (most providers lack a portable utime API) — `touch` on existing files reports the state without modifying it.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "path": {"type": "string", "description": "Remote file path to touch"}
+                },
+                "required": ["server", "path"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_touch",
+            description: "Alias of aeroftp_touch.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "path": {"type": "string"}
+                },
+                "required": ["server", "path"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_cleanup",
+            description: "Find and optionally remove orphan `.aerotmp` files left by interrupted uploads (proftpd / sftp atomic-write pattern). With `dry_run=true` (default) returns the list of orphan paths and total bytes; with `dry_run=false` deletes them and reports `cleaned`/`bytes_freed`. Hard cap: 100k entries scanned. Mirrors `aeroftp cleanup` from the CLI.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "path": {"type": "string", "description": "Remote root directory to scan (default: '/')"},
+                    "dry_run": {"type": "boolean", "description": "List orphans without deleting (default: true)"}
+                },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_cleanup",
+            description: "Alias of aeroftp_cleanup.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "path": {"type": "string"},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_speed",
+            description: "Throughput benchmark for a saved profile: uploads a random payload, downloads it back, optionally verifies SHA-256 integrity, then deletes the test artifact. Returns upload/download bps + Mbps, integrity_verified, cleanup_ok. Default size 4 MiB, max 64 MiB (MCP cap), iterations clamped 1..3 (vs CLI 1..10) — agent-grade fast probe rather than long benchmark. Mirrors `aeroftp speed` from the CLI but tighter caps.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "size_mb": {"type": "integer", "description": "Test payload size in MiB (default 4, cap 64)"},
+                    "iterations": {"type": "integer", "description": "Number of upload/download cycles (default 1, cap 3)"},
+                    "verify_integrity": {"type": "boolean", "description": "Compare SHA-256 of upload vs download (default: true)"},
+                    "remote_path": {"type": "string", "description": "Optional explicit remote test path (default: '/.aeroftp-speedtest-<uuid>.bin'). Caller is responsible for choosing a writable location."}
+                },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_speed",
+            description: "Alias of aeroftp_speed.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "size_mb": {"type": "integer"},
+                    "iterations": {"type": "integer"},
+                    "verify_integrity": {"type": "boolean"},
+                    "remote_path": {"type": "string"}
+                },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_sync_doctor",
+            description: "Preflight risk summary for a sync between a local directory and a remote one. Lighter than `aeroftp_sync_tree dry_run=true` — counts files+bytes on both sides and emits a list of human-readable risk strings (delete enabled, bidirectional with no track-renames, remote unreachable, ...) plus a `suggested_next_command` agent can echo to the user. NO file-level plan. Hard cap on remote scan: 500k entries / depth 100. Mirrors `aeroftp sync-doctor` from the CLI.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "local_dir": {"type": "string", "description": "Local directory to compare"},
+                    "remote_dir": {"type": "string", "description": "Remote directory to compare"},
+                    "direction": {"type": "string", "enum": ["upload", "download", "both"], "description": "Planned sync direction (default: 'both')"},
+                    "delete": {"type": "boolean", "description": "Whether the planned sync would delete orphans (raises a risk string)"},
+                    "track_renames": {"type": "boolean", "description": "Whether the planned sync would track renames (default: false)"},
+                    "checksum": {"type": "boolean", "description": "Whether the planned sync would request checksums (default: false)"},
+                    "exclude": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns to exclude during scan"}
+                },
+                "required": ["server", "local_dir", "remote_dir"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_sync_doctor",
+            description: "Alias of aeroftp_sync_doctor.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "local_dir": {"type": "string"},
+                    "remote_dir": {"type": "string"},
+                    "direction": {"type": "string", "enum": ["upload", "download", "both"]},
+                    "delete": {"type": "boolean"},
+                    "track_renames": {"type": "boolean"},
+                    "checksum": {"type": "boolean"},
+                    "exclude": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["server", "local_dir", "remote_dir"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_dedupe",
+            description: "Detect duplicate files on a remote tree by SHA-256 hashing files that share the same size. Returns groups of duplicates, the keeper for each group (selected by `mode`), total wasted bytes. With `dry_run=true` (default) returns the report; with `dry_run=false` and `mode != list` deletes the non-keeper duplicates. Hard caps: 100k file scan, 256 MiB per file (oversize files are skipped with `hash_errors++`). Modes: `newest` (keep latest mtime), `oldest` (keep earliest), `largest`, `smallest`, `list` (report only, never delete). Mirrors `aeroftp dedupe` from the CLI but with conservative caps for agent use.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "path": {"type": "string", "description": "Remote root to scan (default: '/')"},
+                    "mode": {"type": "string", "enum": ["newest", "oldest", "largest", "smallest", "list"], "description": "How to choose the keeper of each duplicate group (default: 'list')"},
+                    "dry_run": {"type": "boolean", "description": "Skip deletion even when mode != list (default: true)"}
+                },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_dedupe",
+            description: "Alias of aeroftp_dedupe.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "path": {"type": "string"},
+                    "mode": {"type": "string", "enum": ["newest", "oldest", "largest", "smallest", "list"]},
+                    "dry_run": {"type": "boolean"}
+                },
+                "required": ["server"],
+            }),
+            danger: DangerLevel::High,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "aeroftp_reconcile",
+            description: "Categorized diff superset of `aeroftp_check_tree`: reports the same 4 buckets (match, differ, missing_local, missing_remote) plus elapsed time and a `suggested_next_command` (CLI-style `aeroftp-cli sync` invocation). Mirrors `aeroftp reconcile` from the CLI. Use `aeroftp_check_tree` when you want the same diff with per-group caps and `summary_only` short-circuit; use `aeroftp_reconcile` when you want elapsed-time + next-command for an end-to-end agent report. NOT capped by max_entries_reported — full lists returned.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string", "description": "Server name or ID"},
+                    "local_dir": {"type": "string", "description": "Local directory"},
+                    "remote_dir": {"type": "string", "description": "Remote directory"},
+                    "checksum": {"type": "boolean", "description": "Compute hashes on both sides where supported (default: false)"},
+                    "one_way": {"type": "boolean", "description": "Skip remote-only entries (default: false)"},
+                    "exclude": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns to exclude"},
+                    "summary_only": {"type": "boolean", "description": "Drop the `groups` arrays — only counters + elapsed + suggested_next_command (default: false)"}
+                },
+                "required": ["server", "local_dir", "remote_dir"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
+            name: "remote_reconcile",
+            description: "Alias of aeroftp_reconcile.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "server": {"type": "string"},
+                    "local_dir": {"type": "string"},
+                    "remote_dir": {"type": "string"},
+                    "checksum": {"type": "boolean"},
+                    "one_way": {"type": "boolean"},
+                    "exclude": {"type": "array", "items": {"type": "string"}},
+                    "summary_only": {"type": "boolean"}
+                },
+                "required": ["server", "local_dir", "remote_dir"],
+            }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: remote_surfaces,
+        },
+        ToolDef {
             name: "aeroftp_agent_connect",
             description: "Single-shot agent connect surface. Returns one JSON payload with per-block status (`connect`, `capabilities`, `quota`, `path`) so the agent can decide go/no-go and gracefully degrade. Replaces the boilerplate sequence of `connect → about → df → ls /`. `connect.status` is the critical signal; `unsupported`/`unavailable`/`error` on other blocks are non-fatal.",
             input_schema: json!({
@@ -1572,6 +1774,18 @@ pub async fn dispatch_tool(
         | "remote_transfer"
         | "aeroftp_transfer_tree"
         | "remote_transfer_tree"
+        | "aeroftp_touch"
+        | "remote_touch"
+        | "aeroftp_cleanup"
+        | "remote_cleanup"
+        | "aeroftp_speed"
+        | "remote_speed"
+        | "aeroftp_sync_doctor"
+        | "remote_sync_doctor"
+        | "aeroftp_dedupe"
+        | "remote_dedupe"
+        | "aeroftp_reconcile"
+        | "remote_reconcile"
         | "aeroftp_agent_connect"
         | "agent_connect"
         | "remote_agent_connect"

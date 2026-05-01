@@ -251,6 +251,12 @@ fn alias_name(tool_name: &str) -> &str {
         "remote_tree" => "aeroftp_tree",
         "remote_transfer" => "aeroftp_transfer",
         "remote_transfer_tree" => "aeroftp_transfer_tree",
+        "remote_touch" => "aeroftp_touch",
+        "remote_cleanup" => "aeroftp_cleanup",
+        "remote_speed" => "aeroftp_speed",
+        "remote_sync_doctor" => "aeroftp_sync_doctor",
+        "remote_dedupe" => "aeroftp_dedupe",
+        "remote_reconcile" => "aeroftp_reconcile",
         other => other,
     }
 }
@@ -323,6 +329,12 @@ pub async fn dispatch_remote_tool(
         "aeroftp_tree" => tree(ctx, args).await,
         "aeroftp_transfer" => transfer_one(ctx, args).await,
         "aeroftp_transfer_tree" => transfer_tree(ctx, args).await,
+        "aeroftp_touch" => touch(ctx, args).await,
+        "aeroftp_cleanup" => cleanup(ctx, args).await,
+        "aeroftp_speed" => speed(ctx, args).await,
+        "aeroftp_sync_doctor" => sync_doctor(ctx, args).await,
+        "aeroftp_dedupe" => dedupe(ctx, args).await,
+        "aeroftp_reconcile" => reconcile(ctx, args).await,
         "aeroftp_agent_connect" => agent_connect(ctx, args).await,
         "server_exec" => server_exec(ctx, args).await,
         _ => Err(ToolError::NotMigrated(tool_name.to_string())),
@@ -1599,6 +1611,761 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         },
         "errors": errors,
         "max_files": max_files,
+    }))
+}
+
+// ── Wave 6 / Gap 5 closure: touch / cleanup / speed / sync_doctor / dedupe / reconcile ──
+//
+// All six wrap the existing CLI semantics over the MCP `RemoteBackend` trait.
+// They never touch sync_core::scan_remote_tree (which would require
+// `&mut Box<dyn StorageProvider>`); instead they do BFS over `backend.list()`,
+// keeping the abstraction clean. The reconcile tool surfaces a "light"
+// list-based diff (size + mtime) and delegates checksum-aware compares to
+// `aeroftp_check_tree` (mcp/tools.rs match arm) — the schema documents this
+// trade-off.
+
+/// Hard caps shared by cleanup / dedupe / sync_doctor / reconcile.
+const MAX_BFS_ENTRIES: usize = 100_000;
+const MAX_BFS_DEPTH: usize = 100;
+
+/// Hard cap per file in `aeroftp_dedupe`. Same memory invariant as `hashsum`.
+const MAX_DEDUPE_FILE_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Caps for `aeroftp_speed`. Tighter than CLI to keep the agent process
+/// responsive (CLI can run minute-long benchmarks; agent should not).
+const SPEED_DEFAULT_SIZE_MB: u64 = 4;
+const SPEED_MAX_SIZE_MB: u64 = 64;
+const SPEED_DEFAULT_ITERATIONS: u32 = 1;
+const SPEED_MAX_ITERATIONS: u32 = 3;
+
+async fn touch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let path = get_str(args, "path")?;
+    validate_remote_path(&path, "path")?;
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    // First check if the file exists. If yes, this is a no-op — providers
+    // generally lack a portable utime API and a re-upload would surprise the
+    // agent (mtime change without explicit intent).
+    if backend.stat(&path).await.is_ok() {
+        return Ok(json!({
+            "server": server,
+            "path": path,
+            "action": "exists",
+            "created": false,
+        }));
+    }
+    backend
+        .upload_from_bytes(b"", &path)
+        .await
+        .map_err(ToolError::Exec)?;
+    Ok(json!({
+        "server": server,
+        "path": path,
+        "action": "created",
+        "created": true,
+    }))
+}
+
+async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let root = normalize_path_arg(args, "path", "/");
+    validate_remote_path(&root, "path")?;
+    let dry_run = get_bool_opt(args, "dry_run").unwrap_or(true);
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+
+    // BFS scan for `.aerotmp` entries. Mirrors `cmd_cleanup` in CLI.
+    let mut orphans: Vec<(String, u64)> = Vec::new();
+    let mut dirs: Vec<(String, usize)> = vec![(root.clone(), 0)];
+    let mut scan_errors: u32 = 0;
+
+    while let Some((dir, depth)) = dirs.pop() {
+        if depth >= MAX_BFS_DEPTH {
+            continue;
+        }
+        if orphans.len() >= MAX_BFS_ENTRIES {
+            break;
+        }
+        match backend.list(&dir).await {
+            Ok(entries) => {
+                for entry in entries {
+                    if entry.is_dir {
+                        dirs.push((entry.path.clone(), depth + 1));
+                    } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
+                        orphans.push((entry.path.clone(), entry.size));
+                    }
+                }
+            }
+            Err(e) => {
+                scan_errors += 1;
+                tracing::debug!("cleanup: failed to list {}: {}", dir, e);
+            }
+        }
+    }
+
+    let total_bytes: u64 = orphans.iter().map(|(_, s)| *s).sum();
+
+    if dry_run || orphans.is_empty() {
+        let files: Vec<Value> = orphans
+            .iter()
+            .map(|(p, s)| json!({"path": p, "size": s}))
+            .collect();
+        return Ok(json!({
+            "server": server,
+            "path": root,
+            "dry_run": dry_run,
+            "orphans": orphans.len(),
+            "bytes": total_bytes,
+            "scan_errors": scan_errors,
+            "delete_errors": 0,
+            "cleaned": 0,
+            "bytes_freed": 0,
+            "files": files,
+        }));
+    }
+
+    let mut cleaned: u32 = 0;
+    let mut bytes_freed: u64 = 0;
+    let mut delete_errors: u32 = 0;
+    let mut errors: Vec<Value> = Vec::new();
+    for (p, s) in &orphans {
+        match backend.delete(p).await {
+            Ok(()) => {
+                cleaned += 1;
+                bytes_freed += *s;
+            }
+            Err(e) => {
+                delete_errors += 1;
+                errors.push(json!({"path": p, "error": e}));
+            }
+        }
+    }
+
+    Ok(json!({
+        "server": server,
+        "path": root,
+        "dry_run": false,
+        "orphans": orphans.len(),
+        "bytes": total_bytes,
+        "scan_errors": scan_errors,
+        "delete_errors": delete_errors,
+        "cleaned": cleaned,
+        "bytes_freed": bytes_freed,
+        "errors": errors,
+    }))
+}
+
+async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    use sha2::Digest;
+
+    let server = normalize_server(args)?;
+    let size_mb = args
+        .get("size_mb")
+        .and_then(|v| v.as_u64())
+        .map(|n| n.min(SPEED_MAX_SIZE_MB))
+        .filter(|n| *n > 0)
+        .unwrap_or(SPEED_DEFAULT_SIZE_MB);
+    let iterations = args
+        .get("iterations")
+        .and_then(|v| v.as_u64())
+        .map(|n| (n as u32).clamp(1, SPEED_MAX_ITERATIONS))
+        .unwrap_or(SPEED_DEFAULT_ITERATIONS);
+    let verify_integrity = get_bool_opt(args, "verify_integrity").unwrap_or(true);
+    let remote_path = get_str_opt(args, "remote_path")
+        .unwrap_or_else(|| format!("/.aeroftp-speedtest-{}.bin", uuid::Uuid::new_v4()));
+    validate_remote_path(&remote_path, "remote_path")?;
+
+    let size_bytes = size_mb * 1024 * 1024;
+
+    // Allocate the random payload once; reuse across iterations.
+    let payload: Vec<u8> = (0..size_bytes)
+        .map(|i| ((i ^ 0x9e37_79b9) & 0xff) as u8)
+        .collect();
+    let upload_sha = format!("{:x}", sha2::Sha256::digest(&payload));
+
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    let started = std::time::Instant::now();
+    let mut upload_total_bps: f64 = 0.0;
+    let mut download_total_bps: f64 = 0.0;
+    let mut integrity_verified = false;
+    let mut last_download_sha = String::new();
+
+    for _ in 0..iterations {
+        let up_start = std::time::Instant::now();
+        backend
+            .upload_from_bytes(&payload, &remote_path)
+            .await
+            .map_err(|e| ToolError::Exec(format!("upload failed: {e}")))?;
+        let up_secs = up_start.elapsed().as_secs_f64().max(0.0001);
+        upload_total_bps += size_bytes as f64 / up_secs;
+
+        let down_start = std::time::Instant::now();
+        let downloaded = backend
+            .download_to_bytes(&remote_path)
+            .await
+            .map_err(|e| ToolError::Exec(format!("download failed: {e}")))?;
+        let down_secs = down_start.elapsed().as_secs_f64().max(0.0001);
+        download_total_bps += downloaded.len() as f64 / down_secs;
+
+        if verify_integrity {
+            last_download_sha = format!("{:x}", sha2::Sha256::digest(&downloaded));
+        }
+    }
+
+    let cleanup_ok = backend.delete(&remote_path).await.is_ok();
+    if verify_integrity {
+        integrity_verified = !last_download_sha.is_empty() && last_download_sha == upload_sha;
+    }
+
+    let upload_bps = upload_total_bps / iterations as f64;
+    let download_bps = download_total_bps / iterations as f64;
+    Ok(json!({
+        "server": server,
+        "remote_path": remote_path,
+        "test_size": size_bytes,
+        "iterations": iterations,
+        "upload_bps": upload_bps as u64,
+        "download_bps": download_bps as u64,
+        "upload_mbps": (upload_bps * 8.0 / 1_000_000.0),
+        "download_mbps": (download_bps * 8.0 / 1_000_000.0),
+        "integrity_checked": verify_integrity,
+        "integrity_verified": integrity_verified,
+        "cleanup_ok": cleanup_ok,
+        "elapsed_ms": started.elapsed().as_millis() as u64,
+    }))
+}
+
+async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let local_dir = get_str(args, "local_dir")?;
+    let remote_dir = get_str(args, "remote_dir")?;
+    validate_remote_path(&remote_dir, "remote_dir")?;
+    let direction = get_str_opt(args, "direction").unwrap_or_else(|| "both".to_string());
+    let delete = get_bool_opt(args, "delete").unwrap_or(false);
+    let track_renames = get_bool_opt(args, "track_renames").unwrap_or(false);
+    let checksum = get_bool_opt(args, "checksum").unwrap_or(false);
+    let exclude: Vec<String> = args
+        .get("exclude")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let local_path = std::path::Path::new(&local_dir);
+    if !local_path.is_dir() {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_sync_doctor".to_string(),
+            reason: format!("local_dir is not a directory: {local_dir}"),
+        });
+    }
+
+    // Compile glob matchers (best-effort — invalid patterns are skipped silently
+    // so a single typo doesn't kill the whole call).
+    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+        .iter()
+        .filter_map(|p| globset::Glob::new(p).ok().map(|g| g.compile_matcher()))
+        .collect();
+
+    // Local scan (walkdir).
+    let mut local_files: usize = 0;
+    let mut local_bytes: u64 = 0;
+    for entry in walkdir::WalkDir::new(local_path)
+        .follow_links(false)
+        .max_depth(MAX_BFS_DEPTH)
+    {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(local_path)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        let fname = entry.file_name().to_string_lossy().to_string();
+        if exclude_matchers
+            .iter()
+            .any(|m| m.is_match(&relative) || m.is_match(&fname))
+        {
+            continue;
+        }
+        local_files += 1;
+        local_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+    }
+
+    // Remote scan (BFS).
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    let remote_root_ok = backend.list(&remote_dir).await.is_ok();
+    let mut remote_files: usize = 0;
+    let mut remote_bytes: u64 = 0;
+    if remote_root_ok {
+        let mut queue: Vec<(String, usize)> = vec![(remote_dir.clone(), 0)];
+        while let Some((dir, depth)) = queue.pop() {
+            if depth >= MAX_BFS_DEPTH || remote_files >= MAX_BFS_ENTRIES {
+                break;
+            }
+            if let Ok(entries) = backend.list(&dir).await {
+                for e in entries {
+                    if e.is_dir {
+                        queue.push((e.path.clone(), depth + 1));
+                    } else {
+                        let relative = e
+                            .path
+                            .strip_prefix(&remote_dir)
+                            .unwrap_or(&e.path)
+                            .trim_start_matches('/')
+                            .to_string();
+                        if exclude_matchers
+                            .iter()
+                            .any(|m| m.is_match(&relative) || m.is_match(&e.name))
+                        {
+                            continue;
+                        }
+                        remote_files += 1;
+                        remote_bytes += e.size;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut checks = vec![
+        json!({"name": "local_path_exists", "ok": true, "path": local_dir}),
+        json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote_dir}),
+    ];
+    if !exclude.is_empty() {
+        checks.push(json!({"name": "exclude_patterns", "ok": true, "count": exclude.len()}));
+    }
+
+    let mut risks: Vec<String> = Vec::new();
+    if delete {
+        risks.push("delete is enabled; sync may remove orphaned files".to_string());
+    }
+    if direction == "both" && !track_renames {
+        risks.push("track-renames is disabled; moved files may be recopied".to_string());
+    }
+    if checksum {
+        risks.push("checksum is enabled; verification will be slower but stricter".to_string());
+    }
+    if !remote_root_ok {
+        risks.push("remote path could not be listed".to_string());
+    }
+    if local_files == 0 && remote_files == 0 {
+        risks.push("both sides are empty; sync will be a no-op".to_string());
+    }
+
+    let suggested_next_command = format!(
+        "aeroftp-cli sync \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}",
+        local_dir.replace('"', "\\\""),
+        remote_dir.replace('"', "\\\""),
+        direction,
+        if delete { " --delete" } else { "" },
+        if track_renames { " --track-renames" } else { "" },
+        if checksum { " --checksum" } else { "" },
+    );
+
+    Ok(json!({
+        "server": server,
+        "status": if remote_root_ok { "ok" } else { "attention" },
+        "summary": {
+            "direction": direction,
+            "local_files": local_files,
+            "local_bytes": local_bytes,
+            "remote_files": remote_files,
+            "remote_bytes": remote_bytes,
+            "delete": delete,
+            "track_renames": track_renames,
+            "checksum": checksum,
+        },
+        "checks": checks,
+        "risks": risks,
+        "suggested_next_command": suggested_next_command,
+    }))
+}
+
+async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    use sha2::Digest;
+
+    let server = normalize_server(args)?;
+    let root = normalize_path_arg(args, "path", "/");
+    validate_remote_path(&root, "path")?;
+    let mode = get_str_opt(args, "mode").unwrap_or_else(|| "list".to_string());
+    if !matches!(
+        mode.as_str(),
+        "newest" | "oldest" | "largest" | "smallest" | "list"
+    ) {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_dedupe".to_string(),
+            reason: format!(
+                "unsupported mode '{mode}'. Use one of: newest, oldest, largest, smallest, list"
+            ),
+        });
+    }
+    let dry_run = get_bool_opt(args, "dry_run").unwrap_or(true);
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+
+    // BFS scan to collect (path, size, mtime).
+    let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
+    let mut dirs: Vec<(String, usize)> = vec![(root.clone(), 0)];
+    let mut scan_errors: u32 = 0;
+    while let Some((dir, depth)) = dirs.pop() {
+        if depth >= MAX_BFS_DEPTH || files.len() >= MAX_BFS_ENTRIES {
+            continue;
+        }
+        match backend.list(&dir).await {
+            Ok(entries) => {
+                for e in entries {
+                    if e.is_dir {
+                        dirs.push((e.path, depth + 1));
+                    } else {
+                        files.push((e.path, e.size, e.modified));
+                    }
+                }
+            }
+            Err(e) => {
+                scan_errors += 1;
+                tracing::debug!("dedupe: failed to list {}: {}", dir, e);
+            }
+        }
+    }
+
+    // Group by size.
+    let mut size_groups: std::collections::HashMap<u64, Vec<(String, Option<String>)>> =
+        std::collections::HashMap::new();
+    for (p, s, m) in &files {
+        if *s > 0 {
+            size_groups.entry(*s).or_default().push((p.clone(), m.clone()));
+        }
+    }
+    type DedupeCandidate = (String, Option<String>);
+    type DedupeSizeGroup = (u64, Vec<DedupeCandidate>);
+    let candidate_groups: Vec<DedupeSizeGroup> = size_groups
+        .into_iter()
+        .filter(|(_, v)| v.len() > 1)
+        .collect();
+
+    let mut hash_errors: u32 = 0;
+    let mut duplicate_groups: Vec<Vec<(String, u64, Option<String>)>> = Vec::new();
+    let mut total_duplicates: u32 = 0;
+    let mut wasted_bytes: u64 = 0;
+
+    for (size, candidates) in candidate_groups {
+        if size > MAX_DEDUPE_FILE_BYTES {
+            // Skip oversize files — would blow the agent memory budget.
+            hash_errors += candidates.len() as u32;
+            continue;
+        }
+        let mut hash_map: std::collections::HashMap<String, Vec<(String, u64, Option<String>)>> =
+            std::collections::HashMap::new();
+        for (p, m) in candidates {
+            match backend.download_to_bytes(&p).await {
+                Ok(data) => {
+                    let hash = format!("{:x}", sha2::Sha256::digest(&data));
+                    hash_map
+                        .entry(hash)
+                        .or_default()
+                        .push((p, size, m));
+                }
+                Err(e) => {
+                    hash_errors += 1;
+                    tracing::debug!("dedupe: failed to hash {}: {}", p, e);
+                }
+            }
+        }
+        for (_, group) in hash_map {
+            if group.len() > 1 {
+                let dupes = group.len() as u32 - 1;
+                total_duplicates += dupes;
+                wasted_bytes += size * dupes as u64;
+                duplicate_groups.push(group);
+            }
+        }
+    }
+
+    // Sort each group to determine the keeper.
+    for group in &mut duplicate_groups {
+        match mode.as_str() {
+            "newest" => {
+                group.sort_by(|a, b| b.2.cmp(&a.2));
+            }
+            "oldest" => {
+                group.sort_by(|a, b| a.2.cmp(&b.2));
+            }
+            "largest" => {
+                group.sort_by_key(|item| std::cmp::Reverse(item.1));
+            }
+            "smallest" => {
+                group.sort_by_key(|item| item.1);
+            }
+            _ => {}
+        }
+    }
+
+    let groups_json: Vec<Value> = duplicate_groups
+        .iter()
+        .map(|group| {
+            let entries: Vec<Value> = group
+                .iter()
+                .enumerate()
+                .map(|(i, (p, s, m))| {
+                    json!({
+                        "path": p,
+                        "size": s,
+                        "modified": m,
+                        "keeper": i == 0 && mode != "list",
+                    })
+                })
+                .collect();
+            json!({"entries": entries})
+        })
+        .collect();
+
+    // Action phase.
+    let mut deleted: u32 = 0;
+    let mut bytes_freed: u64 = 0;
+    let mut action_errors: u32 = 0;
+    let mut errors: Vec<Value> = Vec::new();
+    if !dry_run && mode != "list" {
+        for group in &duplicate_groups {
+            // Index 0 is the keeper after sorting; delete the rest.
+            for (p, s, _) in group.iter().skip(1) {
+                match backend.delete(p).await {
+                    Ok(()) => {
+                        deleted += 1;
+                        bytes_freed += *s;
+                    }
+                    Err(e) => {
+                        action_errors += 1;
+                        errors.push(json!({"path": p, "error": e}));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(json!({
+        "server": server,
+        "path": root,
+        "mode": mode,
+        "dry_run": dry_run,
+        "scanned": files.len(),
+        "scan_errors": scan_errors,
+        "hash_errors": hash_errors,
+        "groups": groups_json,
+        "duplicates_found": total_duplicates,
+        "wasted_bytes": wasted_bytes,
+        "deleted": deleted,
+        "bytes_freed": bytes_freed,
+        "action_errors": action_errors,
+        "errors": errors,
+    }))
+}
+
+async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let server = normalize_server(args)?;
+    let local_dir = get_str(args, "local_dir")?;
+    let remote_dir = get_str(args, "remote_dir")?;
+    validate_remote_path(&remote_dir, "remote_dir")?;
+    let _checksum = get_bool_opt(args, "checksum").unwrap_or(false);
+    let one_way = get_bool_opt(args, "one_way").unwrap_or(false);
+    let summary_only = get_bool_opt(args, "summary_only").unwrap_or(false);
+    let exclude: Vec<String> = args
+        .get("exclude")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let local_path = std::path::Path::new(&local_dir);
+    if !local_path.is_dir() {
+        return Err(ToolError::InvalidArgs {
+            tool: "aeroftp_reconcile".to_string(),
+            reason: format!("local_dir is not a directory: {local_dir}"),
+        });
+    }
+
+    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+        .iter()
+        .filter_map(|p| globset::Glob::new(p).ok().map(|g| g.compile_matcher()))
+        .collect();
+
+    let started = std::time::Instant::now();
+
+    // Local scan: rel_path → (size, mtime_secs).
+    let mut local_map: std::collections::HashMap<String, (u64, Option<i64>)> =
+        std::collections::HashMap::new();
+    for entry in walkdir::WalkDir::new(local_path)
+        .follow_links(false)
+        .max_depth(MAX_BFS_DEPTH)
+    {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let rel = entry
+            .path()
+            .strip_prefix(local_path)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel.is_empty() {
+            continue;
+        }
+        let fname = entry.file_name().to_string_lossy().to_string();
+        if exclude_matchers
+            .iter()
+            .any(|m| m.is_match(&rel) || m.is_match(&fname))
+        {
+            continue;
+        }
+        let metadata = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let mtime_secs = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64);
+        local_map.insert(rel, (metadata.len(), mtime_secs));
+    }
+
+    // Remote scan: BFS via RemoteBackend.list.
+    let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    let mut remote_map: std::collections::HashMap<String, (u64, Option<String>)> =
+        std::collections::HashMap::new();
+    let mut queue: Vec<(String, usize)> = vec![(remote_dir.clone(), 0)];
+    while let Some((dir, depth)) = queue.pop() {
+        if depth >= MAX_BFS_DEPTH || remote_map.len() >= MAX_BFS_ENTRIES {
+            break;
+        }
+        let entries = match backend.list(&dir).await {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        for e in entries {
+            if e.is_dir {
+                queue.push((e.path.clone(), depth + 1));
+            } else {
+                let rel = e
+                    .path
+                    .strip_prefix(&remote_dir)
+                    .unwrap_or(&e.path)
+                    .trim_start_matches('/')
+                    .to_string();
+                if rel.is_empty() {
+                    continue;
+                }
+                if exclude_matchers
+                    .iter()
+                    .any(|m| m.is_match(&rel) || m.is_match(&e.name))
+                {
+                    continue;
+                }
+                remote_map.insert(rel, (e.size, e.modified));
+            }
+        }
+    }
+
+    // Compare.
+    let mut matches_g: Vec<Value> = Vec::new();
+    let mut differ_g: Vec<Value> = Vec::new();
+    let mut missing_remote_g: Vec<Value> = Vec::new();
+    let mut missing_local_g: Vec<Value> = Vec::new();
+
+    for (rel, (lsize, _lmtime)) in &local_map {
+        match remote_map.get(rel) {
+            Some((rsize, _rmtime)) => {
+                if lsize == rsize {
+                    matches_g.push(json!({
+                        "path": rel,
+                        "local_size": lsize,
+                        "remote_size": rsize,
+                        "compare_method": "size",
+                    }));
+                } else {
+                    differ_g.push(json!({
+                        "path": rel,
+                        "local_size": lsize,
+                        "remote_size": rsize,
+                        "compare_method": "size",
+                    }));
+                }
+            }
+            None => {
+                missing_remote_g.push(json!({
+                    "path": rel,
+                    "local_size": lsize,
+                }));
+            }
+        }
+    }
+    if !one_way {
+        for (rel, (rsize, _)) in &remote_map {
+            if !local_map.contains_key(rel) {
+                missing_local_g.push(json!({
+                    "path": rel,
+                    "remote_size": rsize,
+                }));
+            }
+        }
+    }
+
+    let elapsed = started.elapsed().as_secs_f64();
+    let suggested_next_command = format!(
+        "aeroftp-cli sync \"{}\" \"{}\" --dry-run --json",
+        local_dir.replace('"', "\\\""),
+        remote_dir.replace('"', "\\\""),
+    );
+
+    let status = if differ_g.is_empty() && missing_remote_g.is_empty() && missing_local_g.is_empty()
+    {
+        "ok"
+    } else {
+        "differences_found"
+    };
+
+    let summary = json!({
+        "match_count": matches_g.len(),
+        "differ_count": differ_g.len(),
+        "missing_remote_count": missing_remote_g.len(),
+        "missing_local_count": missing_local_g.len(),
+        "elapsed_secs": elapsed,
+    });
+
+    if summary_only {
+        return Ok(json!({
+            "server": server,
+            "status": status,
+            "local_dir": local_dir,
+            "remote_dir": remote_dir,
+            "summary": summary,
+            "summary_only": true,
+            "suggested_next_command": suggested_next_command,
+            "compare_method": "size",
+        }));
+    }
+
+    Ok(json!({
+        "server": server,
+        "status": status,
+        "local_dir": local_dir,
+        "remote_dir": remote_dir,
+        "summary": summary,
+        "groups": {
+            "match": matches_g,
+            "differ": differ_g,
+            "missing_remote": missing_remote_g,
+            "missing_local": missing_local_g,
+        },
+        "compare_method": "size",
+        "suggested_next_command": suggested_next_command,
     }))
 }
 
