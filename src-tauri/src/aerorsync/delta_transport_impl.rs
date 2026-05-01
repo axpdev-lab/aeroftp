@@ -55,6 +55,7 @@
 #![cfg(feature = "aerorsync")]
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
@@ -74,9 +75,12 @@ use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
 use crate::aerorsync::ssh_transport::{
     SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
 };
-use crate::aerorsync::transport::{CancelHandle, RemoteExecRequest, RemoteShellTransport};
+use crate::aerorsync::russh_session_transport::RusshSessionTransport;
+use crate::aerorsync::transport::{
+    CancelHandle, RawRemoteShellTransport, RemoteExecRequest, RemoteShellTransport,
+};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionStats};
-use crate::delta_transport::DeltaTransport;
+use crate::delta_transport::{BatchStats, DeltaBatch, DeltaTransport};
 use crate::rsync_output::RsyncEvent;
 use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
 
@@ -208,6 +212,32 @@ impl DeltaTransport for AerorsyncDeltaTransport {
     async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
         self.upload_inner(local_path, remote_path).await
     }
+
+    /// P3-T01 W3.2(b2) — open a session-reuse batch backed by russh.
+    ///
+    /// Performs one SSH handshake here ([`RusshSessionTransport::connect`])
+    /// and returns an [`AerorsyncBatch`] that opens a fresh channel-exec
+    /// per file over that single SSH session — the per-file cost drops
+    /// from full handshake to channel allocation. Failure to connect
+    /// degrades to [`crate::delta_transport::NoopBatch`] via the trait
+    /// default, so the sync loop falls back to the single-shot path
+    /// without losing the file.
+    async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
+        match RusshSessionTransport::connect(self.ssh_config.clone()).await {
+            Ok(transport) => Ok(Box::new(AerorsyncBatch::new(
+                transport,
+                self.min_file_size,
+            ))),
+            Err(e) => {
+                tracing::warn!(
+                    "AerorsyncDeltaTransport::begin_batch: russh connect failed ({}); \
+                     falling back to NoopBatch — sync loop will use single-shot per-file path",
+                    e
+                );
+                Ok(Box::new(crate::delta_transport::NoopBatch::new()))
+            }
+        }
+    }
 }
 
 // --- upload flow ---------------------------------------------------------
@@ -250,13 +280,16 @@ impl AerorsyncDeltaTransport {
 ///
 /// Pinned by `cargo test --features aerorsync --lib aerorsync::` 453/453;
 /// any semantic change must surface as a test diff.
-async fn do_upload(
-    transport: SshRemoteShellTransport,
+async fn do_upload<T>(
+    transport: T,
     cancel: CancelHandle,
     local_path: &Path,
     remote_path: &str,
     min_file_size: u64,
-) -> Result<RsyncStats, RsyncError> {
+) -> Result<RsyncStats, RsyncError>
+where
+    T: RawRemoteShellTransport + 'static,
+{
     let start = Instant::now();
     let metadata = fs::metadata(local_path).await.map_err(RsyncError::Io)?;
     let file_size = metadata.len();
@@ -362,12 +395,15 @@ impl AerorsyncDeltaTransport {
 /// a long-lived transport instead of allocating a fresh SSH session per
 /// file. Pinned by `cargo test --features aerorsync --lib aerorsync::`
 /// 453/453.
-async fn do_download(
-    transport: SshRemoteShellTransport,
+async fn do_download<T>(
+    transport: T,
     cancel: CancelHandle,
     remote_path: &str,
     local_path: &Path,
-) -> Result<RsyncStats, RsyncError> {
+) -> Result<RsyncStats, RsyncError>
+where
+    T: RawRemoteShellTransport + 'static,
+{
     let start = Instant::now();
     // P3-T01 W2.5: the bulk read still feeds the signature phase
     // (`adapter.build_signatures` is bulk-only until the post-P3-T01
@@ -517,6 +553,110 @@ async fn do_download(
         duration_ms,
         warnings,
     ))
+}
+
+// --- batch (W3.2(b2)) -----------------------------------------------------
+
+/// P3-T01 W3.2(b2) — concrete [`DeltaBatch`] impl backed by russh.
+///
+/// Holds a single [`RusshSessionTransport`] for the lifetime of the
+/// batch. `share_session()` per file gives the driver a transport view
+/// that points at the same SSH session, so N files cost 1 handshake +
+/// N channel-exec opens (vs. N full handshakes on the single-shot
+/// path). [`do_upload`] / [`do_download`] are reused unchanged — the
+/// batch is the same wire semantics, fewer handshakes.
+pub struct AerorsyncBatch {
+    transport: RusshSessionTransport,
+    /// Cooperative cancel handle exposed via [`DeltaBatch::cancel`].
+    /// Cloned per-file into the driver so a cancel mid-file unwinds
+    /// via the existing `CancelHandle` paths.
+    cancel: CancelHandle,
+    min_file_size: u64,
+    files_transferred: AtomicU64,
+    bytes_on_wire: AtomicU64,
+    /// Mirrors the `cancel` flag so [`finalize`] can populate
+    /// `BatchStats.partial`.
+    ///
+    /// [`finalize`]: DeltaBatch::finalize
+    cancel_observed: Arc<AtomicBool>,
+}
+
+impl AerorsyncBatch {
+    fn new(transport: RusshSessionTransport, min_file_size: u64) -> Self {
+        let flag = Arc::new(AtomicBool::new(false));
+        Self {
+            transport,
+            cancel: CancelHandle::new(flag.clone(), None),
+            min_file_size,
+            files_transferred: AtomicU64::new(0),
+            bytes_on_wire: AtomicU64::new(0),
+            cancel_observed: flag,
+        }
+    }
+}
+
+#[async_trait]
+impl DeltaBatch for AerorsyncBatch {
+    async fn upload(
+        &mut self,
+        local_path: &Path,
+        remote_path: &str,
+    ) -> Result<RsyncStats, RsyncError> {
+        let stats = do_upload(
+            self.transport.share_session(),
+            self.cancel.clone(),
+            local_path,
+            remote_path,
+            self.min_file_size,
+        )
+        .await?;
+        self.files_transferred.fetch_add(1, Ordering::SeqCst);
+        let on_wire = stats.bytes_sent.saturating_add(stats.bytes_received);
+        self.bytes_on_wire.fetch_add(on_wire, Ordering::SeqCst);
+        Ok(stats)
+    }
+
+    async fn download(
+        &mut self,
+        remote_path: &str,
+        local_path: &Path,
+    ) -> Result<RsyncStats, RsyncError> {
+        let stats = do_download(
+            self.transport.share_session(),
+            self.cancel.clone(),
+            remote_path,
+            local_path,
+        )
+        .await?;
+        self.files_transferred.fetch_add(1, Ordering::SeqCst);
+        let on_wire = stats.bytes_sent.saturating_add(stats.bytes_received);
+        self.bytes_on_wire.fetch_add(on_wire, Ordering::SeqCst);
+        Ok(stats)
+    }
+
+    fn cancel(&self) {
+        self.cancel_observed.store(true, Ordering::SeqCst);
+        self.cancel.cancel();
+        // Best-effort async teardown of the russh handle. The DeltaBatch
+        // contract is sync; we spawn so the cancel returns immediately.
+        // The cancel_flag inside the shared transport ensures any
+        // in-flight read/write surfaces a typed Cancelled error.
+        let transport = self.transport.share_session();
+        tokio::spawn(async move {
+            transport.cancel().await;
+        });
+    }
+
+    async fn finalize(self: Box<Self>) -> Result<BatchStats, RsyncError> {
+        let session_count = self.transport.handshake_count();
+        let _ = self.transport.close().await;
+        Ok(BatchStats {
+            files_transferred: self.files_transferred.load(Ordering::SeqCst),
+            bytes_on_wire: self.bytes_on_wire.load(Ordering::SeqCst),
+            session_count,
+            partial: self.cancel_observed.load(Ordering::SeqCst),
+        })
+    }
 }
 
 // --- helpers -------------------------------------------------------------
