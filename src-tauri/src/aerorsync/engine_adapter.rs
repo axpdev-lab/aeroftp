@@ -567,11 +567,7 @@ pub trait BaselineSource: Send {
     /// Wire alignment: the returned bytes are byte-identical to
     /// `delta_sync::apply_delta`'s `dest_data[offset..end]` slice. Pinned
     /// by the W2.1 unit tests.
-    async fn read_block(
-        &mut self,
-        block_idx: u32,
-        block_size: u32,
-    ) -> std::io::Result<Vec<u8>>;
+    async fn read_block(&mut self, block_idx: u32, block_size: u32) -> std::io::Result<Vec<u8>>;
 }
 
 /// Compute the `(offset, len)` pair for `read_block(block_idx, block_size)`
@@ -592,9 +588,7 @@ fn baseline_block_bounds(
         }
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!(
-                "BaselineSource::read_block: block_size == 0 with block_idx {block_idx} > 0"
-            ),
+            format!("BaselineSource::read_block: block_size == 0 with block_idx {block_idx} > 0"),
         ));
     }
     let offset = block_idx as u64 * block_size as u64;
@@ -654,11 +648,7 @@ impl BaselineSource for FileBaseline {
         self.len
     }
 
-    async fn read_block(
-        &mut self,
-        block_idx: u32,
-        block_size: u32,
-    ) -> std::io::Result<Vec<u8>> {
+    async fn read_block(&mut self, block_idx: u32, block_size: u32) -> std::io::Result<Vec<u8>> {
         let (offset, len) = baseline_block_bounds(block_idx, block_size, self.len)?;
         if len == 0 {
             return Ok(Vec::new());
@@ -694,11 +684,7 @@ impl BaselineSource for MemoryBaseline {
         self.data.len() as u64
     }
 
-    async fn read_block(
-        &mut self,
-        block_idx: u32,
-        block_size: u32,
-    ) -> std::io::Result<Vec<u8>> {
+    async fn read_block(&mut self, block_idx: u32, block_size: u32) -> std::io::Result<Vec<u8>> {
         let (offset, len) = baseline_block_bounds(block_idx, block_size, self.len())?;
         if len == 0 {
             return Ok(Vec::new());
@@ -952,8 +938,7 @@ mod apply_delta_streaming_tests {
         let dest = deterministic_bytes(dest_len, 0xA1B2);
         let mut source = deterministic_bytes(dest_len + 137, 0xC3D4);
         // Splice 2 matched blocks for non-trivial CopyBlock coverage.
-        source[block_size..2 * block_size]
-            .copy_from_slice(&dest[2 * block_size..3 * block_size]);
+        source[block_size..2 * block_size].copy_from_slice(&dest[2 * block_size..3 * block_size]);
         source[5 * block_size..6 * block_size]
             .copy_from_slice(&dest[7 * block_size..8 * block_size]);
 
@@ -1053,12 +1038,8 @@ mod apply_delta_streaming_tests {
 
         // Single Literal(empty) — same shape the bulk planner emits for
         // an empty source.
-        let (out, written) = run_streaming(
-            &dest,
-            vec![EngineDeltaOp::Literal(Vec::new())],
-            block_size,
-        )
-        .await;
+        let (out, written) =
+            run_streaming(&dest, vec![EngineDeltaOp::Literal(Vec::new())], block_size).await;
         assert!(out.is_empty());
         assert_eq!(written, 0);
     }
@@ -1142,16 +1123,16 @@ mod baseline_source_tests {
         // Reverse order
         for idx in (0..block_count as u32).rev() {
             let buf = file.read_block(idx, block_size).await.unwrap();
-            let want = &payload[idx as usize * block_size as usize
-                ..(idx as usize + 1) * block_size as usize];
+            let want = &payload
+                [idx as usize * block_size as usize..(idx as usize + 1) * block_size as usize];
             assert_eq!(buf, want, "reverse-order block {idx} mismatch");
         }
 
         // Arbitrary jumps
         for &idx in &[7u32, 0, 31, 15, 4, 28, 8, 8, 0] {
             let buf = file.read_block(idx, block_size).await.unwrap();
-            let want = &payload[idx as usize * block_size as usize
-                ..(idx as usize + 1) * block_size as usize];
+            let want = &payload
+                [idx as usize * block_size as usize..(idx as usize + 1) * block_size as usize];
             assert_eq!(buf, want, "jump block {idx} mismatch");
         }
         std::fs::remove_file(&path).ok();
@@ -1262,8 +1243,7 @@ mod baseline_source_tests {
             let bulk_slice = &payload[offset..end];
             let from_baseline = mem.read_block(idx, block_size).await.unwrap();
             assert_eq!(
-                from_baseline,
-                bulk_slice,
+                from_baseline, bulk_slice,
                 "block {idx}: streaming baseline diverges from apply_delta slice"
             );
         }
@@ -1277,7 +1257,10 @@ mod baseline_source_tests {
         // Standard mid-file block.
         assert_eq!(baseline_block_bounds(2, 512, 4096).unwrap(), (1024, 512));
         // Tail block with truncation.
-        assert_eq!(baseline_block_bounds(7, 512, 7 * 512 + 100).unwrap(), (3584, 100));
+        assert_eq!(
+            baseline_block_bounds(7, 512, 7 * 512 + 100).unwrap(),
+            (3584, 100)
+        );
         // Boundary read at offset == len returns empty.
         assert_eq!(baseline_block_bounds(8, 512, 4096).unwrap(), (4096, 0));
         // OOB block_idx errors.
@@ -1457,7 +1440,8 @@ mod producer_tests {
         }
         // Splice in 2 matched blocks to exercise the match path.
         source[block_size..2 * block_size].copy_from_slice(&dest[2 * block_size..3 * block_size]);
-        source[5 * block_size..6 * block_size].copy_from_slice(&dest[7 * block_size..8 * block_size]);
+        source[5 * block_size..6 * block_size]
+            .copy_from_slice(&dest[7 * block_size..8 * block_size]);
         let sigs = engine_sigs_from_dest(&dest, block_size);
         let bulk = bulk_ops(&source, &dest, block_size);
 

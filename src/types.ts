@@ -149,7 +149,6 @@ export const supportsStorageQuota = (type: ProviderType): boolean => {
     "webdav",
     "fourshared",
     "zohoworkdrive",
-    "azure",
     "internxt",
     "kdrive",
     "jottacloud",
@@ -398,6 +397,16 @@ export type SessionStatus =
   | "connecting"
   | "cached";
 
+export interface AeroVaultOverlaySession {
+  sessionId: string;
+  vaultPath: string;
+  source: "local" | "remote";
+  remoteVaultPath?: string;
+  remoteLocalPath?: string;
+  mode: "browse";
+  currentPath?: string;
+}
+
 // FTP Session for multi-session tabs (Hybrid Cache Architecture)
 export interface FtpSession {
   id: string;
@@ -419,6 +428,8 @@ export interface FtpSession {
   // Per-session navigation sync state
   isSyncNavigation?: boolean;
   syncBasePaths?: { remote: string; local: string } | null;
+  // Per-session AeroVault overlay state (N1)
+  aeroVaultOverlaySession?: AeroVaultOverlaySession | null;
 }
 
 // State for managing multiple tabs

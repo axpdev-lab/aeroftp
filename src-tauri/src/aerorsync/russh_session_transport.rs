@@ -18,9 +18,7 @@ use russh::{Channel, ChannelMsg};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::aerorsync::ssh_transport::{
-    parse_probe_protocol, SshHostKeyPolicy, SshTransportConfig,
-};
+use crate::aerorsync::ssh_transport::{parse_probe_protocol, SshHostKeyPolicy, SshTransportConfig};
 use crate::aerorsync::transport::{
     CancelHandle, RawByteStream, RawRemoteShellTransport, RemoteCommandOutput, RemoteExecRequest,
     RemoteShellTransport, TransportProbe,
@@ -31,6 +29,7 @@ pub struct RusshSessionTransport {
     handle: Arc<HandleSlot>,
     cancel_flag: Arc<AtomicBool>,
     handshake_count: Arc<AtomicU32>,
+    raw_open_count: Arc<AtomicU32>,
     config: SshTransportConfig,
 }
 
@@ -106,6 +105,7 @@ impl RusshSessionTransport {
     pub async fn connect(config: SshTransportConfig) -> Result<Self, AerorsyncError> {
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let handshake_count = Arc::new(AtomicU32::new(0));
+        let raw_open_count = Arc::new(AtomicU32::new(0));
 
         let russh_config = Arc::new(Config {
             inactivity_timeout: Some(Duration::from_millis(config.io_timeout_ms.max(30_000) * 2)),
@@ -169,6 +169,7 @@ impl RusshSessionTransport {
             handle: Arc::new(HandleSlot::new(Some(handle))),
             cancel_flag,
             handshake_count,
+            raw_open_count,
             config,
         })
     }
@@ -177,13 +178,34 @@ impl RusshSessionTransport {
         self.handshake_count.load(Ordering::SeqCst)
     }
 
+    pub fn raw_open_count(&self) -> u32 {
+        self.raw_open_count.load(Ordering::SeqCst)
+    }
+
     pub fn share_session(&self) -> Self {
         Self {
             handle: self.handle.clone(),
             cancel_flag: self.cancel_flag.clone(),
             handshake_count: self.handshake_count.clone(),
+            raw_open_count: self.raw_open_count.clone(),
             config: self.config.clone(),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_with_empty_handle(config: SshTransportConfig, handshake_count: u32) -> Self {
+        Self {
+            handle: Arc::new(HandleSlot::new(None)),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            handshake_count: Arc::new(AtomicU32::new(handshake_count)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
+            config,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_set_handshake_count(&self, value: u32) {
+        self.handshake_count.store(value, Ordering::SeqCst);
     }
 
     /// Open a new channel over the existing SSH session and exec the
@@ -193,6 +215,7 @@ impl RusshSessionTransport {
         &self,
         request: RemoteExecRequest,
     ) -> Result<RusshRawStream, AerorsyncError> {
+        self.raw_open_count.fetch_add(1, Ordering::SeqCst);
         if self.cancel_flag.load(Ordering::SeqCst) {
             return Err(AerorsyncError::cancelled(
                 "RusshSessionTransport cancelled before open_raw_channel",
@@ -284,6 +307,27 @@ impl RusshSessionTransport {
             drop(handle);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_dummy_config() -> SshTransportConfig {
+    use std::path::PathBuf;
+    SshTransportConfig {
+        host: "127.0.0.1".into(),
+        port: 22,
+        username: "test".into(),
+        private_key_path: PathBuf::from("/dev/null"),
+        connect_timeout_ms: 5_000,
+        io_timeout_ms: 30_000,
+        worker_idle_poll_ms: 250,
+        max_frame_size: 1 << 20,
+        host_key_policy: SshHostKeyPolicy::AcceptAny,
+        probe_request: RemoteExecRequest {
+            program: "rsync".into(),
+            args: vec!["--version".into()],
+            environment: Vec::new(),
+        },
     }
 }
 
@@ -525,25 +569,9 @@ impl crate::aerorsync::transport::BidirectionalByteStream for RusshUnusedStream 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     fn dummy_config() -> SshTransportConfig {
-        SshTransportConfig {
-            host: "127.0.0.1".into(),
-            port: 22,
-            username: "test".into(),
-            private_key_path: PathBuf::from("/dev/null"),
-            connect_timeout_ms: 5_000,
-            io_timeout_ms: 30_000,
-            worker_idle_poll_ms: 250,
-            max_frame_size: 1 << 20,
-            host_key_policy: SshHostKeyPolicy::AcceptAny,
-            probe_request: RemoteExecRequest {
-                program: "rsync".into(),
-                args: vec!["--version".into()],
-                environment: Vec::new(),
-            },
-        }
+        test_dummy_config()
     }
 
     #[test]
@@ -580,6 +608,7 @@ mod tests {
             handle: Arc::new(HandleSlot::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             handshake_count: Arc::new(AtomicU32::new(0)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
             config: dummy_config(),
         };
         let clone = original.share_session();
@@ -596,6 +625,7 @@ mod tests {
             handle: Arc::new(HandleSlot::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             handshake_count: Arc::new(AtomicU32::new(0)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
             config: dummy_config(),
         };
         transport.close().await.expect("first close ok");
@@ -608,6 +638,7 @@ mod tests {
             handle: Arc::new(HandleSlot::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             handshake_count: Arc::new(AtomicU32::new(0)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
             config: dummy_config(),
         };
         assert!(!transport.cancel_flag.load(Ordering::SeqCst));
@@ -637,9 +668,13 @@ mod tests {
             handle: Arc::new(HandleSlot::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             handshake_count: Arc::new(AtomicU32::new(0)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
             config: dummy_config(),
         };
-        match transport.open_raw_channel(dummy_config().probe_request).await {
+        match transport
+            .open_raw_channel(dummy_config().probe_request)
+            .await
+        {
             Err(_) => {}
             Ok(_) => panic!("open_raw_channel should fail when handle is None"),
         }
@@ -652,6 +687,7 @@ mod tests {
             handle: Arc::new(HandleSlot::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             handshake_count: Arc::new(AtomicU32::new(0)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
             config: dummy_config(),
         };
         match transport.exec(dummy_config().probe_request).await {

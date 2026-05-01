@@ -130,6 +130,12 @@ interface SyncReport {
   // Absent when no file traveled through the rsync delta path in this
   // run — same absence-vs-null contract as the backend MCP response.
   delta_savings?: DeltaSavingsSummary;
+  // W4 surface: populated by backend when batch stats are available.
+  // In the current client-driven loop we compute a conservative fallback
+  // from aggregated per-file delta stats.
+  delta_session_count?: number;
+  delta_bytes_on_wire?: number;
+  delta_batch_files?: number;
 }
 
 // Per-file sync result tracking
@@ -2266,6 +2272,11 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
       totalBytes,
       durationMs: Date.now() - startTime,
       delta_savings,
+      // Best-effort fallback for the current client-driven sync loop.
+      // Backend-populated fields (when present) should override these.
+      delta_session_count: delta_savings ? 1 : undefined,
+      delta_bytes_on_wire: delta_savings?.total_bytes_sent,
+      delta_batch_files: delta_savings?.files_using_delta,
     });
 
     // Save sync index for faster future comparisons
@@ -2933,6 +2944,32 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                             speedup: avg ? avg.toFixed(1) : "—",
                           })}
                     </div>
+                    {(() => {
+                      const files =
+                        syncReport.delta_batch_files ??
+                        syncReport.delta_savings?.files_using_delta;
+                      const bytesOnWire =
+                        syncReport.delta_bytes_on_wire ??
+                        syncReport.delta_savings?.total_bytes_sent;
+                      const sessions =
+                        syncReport.delta_session_count ??
+                        (files && files > 0 ? 1 : undefined);
+                      if (!files || !bytesOnWire || !sessions) {
+                        return null;
+                      }
+                      return (
+                        <div className="mt-1.5 text-[11px] text-emerald-900 dark:text-emerald-200">
+                          {t("syncPanel.deltaBatchSummary", {
+                            files: String(files),
+                            sessions: String(sessions),
+                          })}
+                          {" · "}
+                          {t("syncPanel.deltaBytesOnWire", {
+                            bytesOnWire: formatSize(Math.max(0, bytesOnWire)),
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}

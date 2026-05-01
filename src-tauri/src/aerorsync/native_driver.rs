@@ -1563,8 +1563,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     if chunk_acc.capacity() == 0 {
                         chunk_acc.reserve_exact(STREAMING_READ_CHUNK_BYTES);
                     }
-                    let space_left =
-                        STREAMING_READ_CHUNK_BYTES.saturating_sub(chunk_acc.len());
+                    let space_left = STREAMING_READ_CHUNK_BYTES.saturating_sub(chunk_acc.len());
                     let take = to_consume.len().min(space_left);
                     chunk_acc.extend_from_slice(&to_consume[..take]);
                     to_consume = &to_consume[take..];
@@ -3344,12 +3343,7 @@ mod tests {
         let cursor = std::io::Cursor::new(source_data.clone());
         let upload_res = driver
             .drive_upload_through_delta_streaming(
-                spec,
-                entry,
-                cursor,
-                source_len,
-                &adapter,
-                &mut sink,
+                spec, entry, cursor, source_len, &adapter, &mut sink,
             )
             .await;
         assert!(
@@ -5632,8 +5626,8 @@ mod tests {
     /// transport emits to the driver.
     fn streaming_fixture_inbound(literal: &[u8]) -> Vec<u8> {
         use crate::aerorsync::real_wire::{compress_zstd_literal_stream, encode_delta_stream};
-        let compressed = compress_zstd_literal_stream(&[literal])
-            .expect("zstd compress fixture literal");
+        let compressed =
+            compress_zstd_literal_stream(&[literal]).expect("zstd compress fixture literal");
         assert_eq!(compressed.len(), 1);
         let wire_ops = vec![
             DeltaOp::CopyRun {
@@ -5876,5 +5870,4 @@ mod tests {
             "streaming path must NOT populate self.reconstructed"
         );
     }
-
 }

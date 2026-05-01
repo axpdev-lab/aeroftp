@@ -945,7 +945,12 @@ pub async fn sync_tree_core(
     };
 
     use std::collections::{HashMap as Map, HashSet};
-    let mut seen: HashSet<String> = HashSet::new();
+    let mut seen_local: HashSet<String> = HashSet::new();
+    let mut seen_remote: HashSet<String> = HashSet::new();
+    // In direction=Both we skip the download pass only for paths that
+    // the upload pass actually resolved (Copy action). A plain upload
+    // Skip must not suppress a subsequent download decision.
+    let mut upload_resolved_for_both: HashSet<String> = HashSet::new();
     let local_entries_by_path: Map<&str, &crate::sync_core::LocalEntry> = locals
         .iter()
         .map(|entry| (entry.rel_path.as_str(), entry))
@@ -977,7 +982,7 @@ pub async fn sync_tree_core(
 
     if matches!(opts.direction, SyncDirection::Upload | SyncDirection::Both) {
         for local_entry in &locals {
-            if !seen.insert(local_entry.rel_path.clone()) {
+            if !seen_local.insert(local_entry.rel_path.clone()) {
                 continue;
             }
             let remote_entry = remote_entries_by_path
@@ -991,6 +996,9 @@ pub async fn sync_tree_core(
             );
             match decision.action {
                 SyncTreeAction::Copy => {
+                    if matches!(opts.direction, SyncDirection::Both) {
+                        upload_resolved_for_both.insert(local_entry.rel_path.clone());
+                    }
                     let outcome = perform_upload(
                         provider,
                         local_root,
@@ -1036,7 +1044,11 @@ pub async fn sync_tree_core(
         SyncDirection::Download | SyncDirection::Both
     ) {
         for remote_entry in &remotes {
-            let already_seen = !seen.insert(remote_entry.rel_path.clone());
+            if !seen_remote.insert(remote_entry.rel_path.clone()) {
+                continue;
+            }
+            let handled_by_upload = matches!(opts.direction, SyncDirection::Both)
+                && upload_resolved_for_both.contains(&remote_entry.rel_path);
             let decision = decide_download(
                 remote_entry,
                 local_entries_by_path
@@ -1044,7 +1056,7 @@ pub async fn sync_tree_core(
                     .copied(),
                 opts.delta_policy,
                 opts.conflict_mode,
-                already_seen && matches!(opts.direction, SyncDirection::Both),
+                handled_by_upload,
             );
             match decision.action {
                 SyncTreeAction::Copy => {
@@ -4021,6 +4033,57 @@ mod tests {
             true,
         );
         assert!(matches!(decision.action, SyncTreeAction::Skip(_)));
+    }
+
+    #[test]
+    fn test_both_mode_remote_newer_not_masked_by_upload_skip() {
+        // Regression guard for direction=Both:
+        // upload pass can decide Skip when remote is newer; that must
+        // NOT force a synthetic download skip via "resolved by upload pass".
+        let local = local_entry(10, Some("2026-04-21T10:00:00Z"), None);
+        let remote = remote_entry(10, Some("2026-04-22T10:00:00Z"), None);
+
+        let upload_decision = decide_upload(
+            &local,
+            Some(&remote),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+        );
+        assert!(matches!(upload_decision.action, SyncTreeAction::Skip(_)));
+
+        let download_decision = decide_download(
+            &remote,
+            Some(&local),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+            false,
+        );
+        assert!(matches!(download_decision.action, SyncTreeAction::Copy));
+    }
+
+    #[test]
+    fn test_both_mode_upload_copy_can_suppress_download_pass() {
+        // When upload has actually resolved the path in direction=Both,
+        // the download pass is intentionally suppressed.
+        let local = local_entry(10, Some("2026-04-22T10:00:00Z"), None);
+        let remote = remote_entry(10, Some("2026-04-21T10:00:00Z"), None);
+
+        let upload_decision = decide_upload(
+            &local,
+            Some(&remote),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+        );
+        assert!(matches!(upload_decision.action, SyncTreeAction::Copy));
+
+        let download_decision = decide_download(
+            &remote,
+            Some(&local),
+            DeltaPolicy::Mtime,
+            ConflictMode::Newer,
+            true,
+        );
+        assert!(matches!(download_decision.action, SyncTreeAction::Skip(_)));
     }
 
     #[test]

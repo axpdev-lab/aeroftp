@@ -330,7 +330,10 @@ mod tests {
     #[tokio::test]
     async fn rsync_binary_transport_inherits_default_noop_batch() {
         let t = RsyncBinaryTransport::new(test_config(), None);
-        let batch = t.begin_batch().await.expect("default begin_batch never fails");
+        let batch = t
+            .begin_batch()
+            .await
+            .expect("default begin_batch never fails");
         assert!(
             batch.is_noop(),
             "RsyncBinaryTransport must inherit the NoopBatch default until W3.2 wires \
@@ -373,14 +376,20 @@ mod tests {
         }
 
         let t = UnimplementedTransport;
-        let batch = t.begin_batch().await.expect("default begin_batch is infallible");
+        let batch = t
+            .begin_batch()
+            .await
+            .expect("default begin_batch is infallible");
         assert!(batch.is_noop());
     }
 
     #[tokio::test]
     async fn noop_batch_finalize_returns_default_stats() {
         let batch: Box<dyn DeltaBatch> = Box::new(NoopBatch::new());
-        let stats = batch.finalize().await.expect("NoopBatch finalize is infallible");
+        let stats = batch
+            .finalize()
+            .await
+            .expect("NoopBatch finalize is infallible");
         assert_eq!(stats, BatchStats::default());
         assert_eq!(stats.files_transferred, 0);
         assert_eq!(stats.bytes_on_wire, 0);

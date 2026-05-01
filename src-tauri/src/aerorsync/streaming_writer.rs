@@ -200,12 +200,10 @@ async fn finalize_steps(
 ) -> Result<(), WriteAtomicError> {
     use tokio::io::AsyncWriteExt;
 
-    file.flush()
-        .await
-        .map_err(|e| WriteAtomicError::PostOpen {
-            stage: "flush",
-            source: e,
-        })?;
+    file.flush().await.map_err(|e| WriteAtomicError::PostOpen {
+        stage: "flush",
+        source: e,
+    })?;
     file.sync_all()
         .await
         .map_err(|e| WriteAtomicError::PostOpen {
@@ -356,7 +354,10 @@ mod tests {
             bytes, b"ORIGINAL_DO_NOT_LOSE",
             "target must survive a drop without finalize"
         );
-        assert!(temp.exists(), ".aerotmp must remain as the orphan diagnostic");
+        assert!(
+            temp.exists(),
+            ".aerotmp must remain as the orphan diagnostic"
+        );
     }
 
     /// Test 4 — `finalize(Some(mode), Some(mtime))` reflects on the
@@ -489,7 +490,11 @@ mod tests {
             .iter()
             .copied()
             .chain(baseline_bytes[0..block_size].iter().copied())
-            .chain(baseline_bytes[2 * block_size..3 * block_size].iter().copied())
+            .chain(
+                baseline_bytes[2 * block_size..3 * block_size]
+                    .iter()
+                    .copied(),
+            )
             .chain(tail_lit.iter().copied())
             .collect();
 

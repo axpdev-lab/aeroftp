@@ -70,12 +70,12 @@ use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
 use crate::aerorsync::native_driver::AerorsyncDriver;
 use crate::aerorsync::real_wire::FileListEntry;
 use crate::aerorsync::remote_command::RemoteCommandSpec;
-use crate::aerorsync::streaming_writer::StreamingAtomicWriter;
 use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
+use crate::aerorsync::russh_session_transport::RusshSessionTransport;
 use crate::aerorsync::ssh_transport::{
     SshHostKeyPolicy, SshRemoteShellTransport, SshTransportConfig,
 };
-use crate::aerorsync::russh_session_transport::RusshSessionTransport;
+use crate::aerorsync::streaming_writer::StreamingAtomicWriter;
 use crate::aerorsync::transport::{
     CancelHandle, RawRemoteShellTransport, RemoteExecRequest, RemoteShellTransport,
 };
@@ -224,10 +224,7 @@ impl DeltaTransport for AerorsyncDeltaTransport {
     /// without losing the file.
     async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
         match RusshSessionTransport::connect(self.ssh_config.clone()).await {
-            Ok(transport) => Ok(Box::new(AerorsyncBatch::new(
-                transport,
-                self.min_file_size,
-            ))),
+            Ok(transport) => Ok(Box::new(AerorsyncBatch::new(transport, self.min_file_size))),
             Err(e) => {
                 tracing::warn!(
                     "AerorsyncDeltaTransport::begin_batch: russh connect failed ({}); \
@@ -325,9 +322,7 @@ where
         .map_err(RsyncError::Io)?;
     let source_entry = build_source_entry(local_path, file_size, &metadata, file_checksum);
 
-    let source_file = fs::File::open(local_path)
-        .await
-        .map_err(RsyncError::Io)?;
+    let source_file = fs::File::open(local_path).await.map_err(RsyncError::Io)?;
 
     let mut driver = AerorsyncDriver::new(transport, cancel);
     let adapter = CurrentDeltaSyncBridge::new();
@@ -473,16 +468,17 @@ where
     // Open the `<target>.aerotmp` sink before the SSH session so a
     // failure here surfaces as a pre-commit error (no wire bytes
     // exchanged, no `local_committed=true` invariant tripped).
-    let mut writer = StreamingAtomicWriter::new(local_path).await.map_err(|e| {
-        RsyncError::TransferFailed {
-            exit: -1,
-            stderr: format!(
-                "native fallback: cannot open streaming temp file for {}: {}",
-                local_path.display(),
-                e
-            ),
-        }
-    })?;
+    let mut writer =
+        StreamingAtomicWriter::new(local_path)
+            .await
+            .map_err(|e| RsyncError::TransferFailed {
+                exit: -1,
+                stderr: format!(
+                    "native fallback: cannot open streaming temp file for {}: {}",
+                    local_path.display(),
+                    e
+                ),
+            })?;
 
     let mut driver = AerorsyncDriver::new(transport, cancel);
     let adapter = CurrentDeltaSyncBridge::new();
@@ -525,12 +521,9 @@ where
     // sub-second part as `Option<i32>` (None = NSEC absent / 0).
     // Cast through `u32` matching the bulk path (`write_atomic_chunked`
     // does the same internally via `mtime_nsec.unwrap_or(0)`).
-    let preserve_mtime = remote_entry.as_ref().map(|entry| {
-        (
-            entry.mtime,
-            entry.mtime_nsec.unwrap_or(0).max(0) as u32,
-        )
-    });
+    let preserve_mtime = remote_entry
+        .as_ref()
+        .map(|entry| (entry.mtime, entry.mtime_nsec.unwrap_or(0).max(0) as u32));
     if remote_entry.is_none() {
         tracing::warn!(
             "native rsync download completed without remote file metadata; preserving local baseline mode only"
@@ -1623,5 +1616,83 @@ mod tests {
         let a = temp_path_for(target);
         let b = temp_path_for(target);
         assert_ne!(a, b, "concurrent writers must get distinct temp paths");
+    }
+
+    // -- W3.2(b3) batch session-reuse tests ---------------------------------
+
+    fn write_test_file(dir: &TempDir, name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = dir.path().join(name);
+        std::fs::File::create(&path)
+            .expect("create test file")
+            .write_all(bytes)
+            .expect("write test file");
+        path
+    }
+
+    #[tokio::test]
+    async fn aerorsync_batch_reuses_ssh_session() {
+        let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
+        let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
+        let mut batch = AerorsyncBatch::new(transport, 1);
+        let dir = fresh_tempdir();
+        let local = write_test_file(&dir, "batch_reuse.bin", b"1234567890");
+
+        // All operations fail because the test transport has no live handle,
+        // but they still exercise the per-file open_raw_stream attempt path.
+        for _ in 0..3 {
+            let _ = batch.upload(&local, "/remote/reuse.bin").await;
+        }
+
+        assert_eq!(batch.transport.handshake_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn aerorsync_batch_per_file_open_raw_stream_count_equals_file_count() {
+        let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
+        let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
+        let mut batch = AerorsyncBatch::new(transport, 1);
+        let dir = fresh_tempdir();
+        let a = write_test_file(&dir, "a.bin", b"AAAA");
+        let b = write_test_file(&dir, "b.bin", b"BBBB");
+
+        let _ = batch.upload(&a, "/remote/a.bin").await;
+        let _ = batch.upload(&b, "/remote/b.bin").await;
+        let _ = batch
+            .download("/remote/c.bin", &dir.path().join("c.bin"))
+            .await;
+
+        assert_eq!(batch.transport.raw_open_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn aerorsync_batch_finalize_returns_session_count_one_on_perfect_reuse() {
+        let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
+        let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
+        let batch = AerorsyncBatch::new(transport, 1);
+
+        let stats = Box::new(batch)
+            .finalize()
+            .await
+            .expect("finalize should succeed");
+
+        assert_eq!(stats.session_count, 1);
+    }
+
+    #[tokio::test]
+    async fn aerorsync_batch_session_count_increments_on_transient_reconnect() {
+        // Reconnect orchestration is wired in a later step; this test pins the
+        // reporting contract by simulating a transient reconnect on the shared
+        // transport state before finalize.
+        let cfg = crate::aerorsync::russh_session_transport::test_dummy_config();
+        let transport = RusshSessionTransport::test_with_empty_handle(cfg, 1);
+        let batch = AerorsyncBatch::new(transport, 1);
+        batch.transport.test_set_handshake_count(2);
+
+        let stats = Box::new(batch)
+            .finalize()
+            .await
+            .expect("finalize should succeed");
+
+        assert_eq!(stats.session_count, 2);
     }
 }
