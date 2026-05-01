@@ -40,6 +40,7 @@ pub mod server;
 pub mod session;
 pub mod shell_escape;
 pub mod ssh_transport;
+pub mod streaming_writer;
 pub mod tests;
 pub mod transport;
 pub mod types;

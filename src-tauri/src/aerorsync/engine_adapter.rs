@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt, SeekFrom};
 
 use crate::aerorsync::protocol::{
     DeltaInstruction as ProtocolDeltaInstruction, SignatureBlock as ProtocolSignatureBlock,
@@ -705,6 +705,380 @@ impl BaselineSource for MemoryBaseline {
         }
         let start = offset as usize;
         Ok(self.data[start..start + len].to_vec())
+    }
+}
+
+// --- W2.2: streaming download apply_delta -------------------------------
+//
+// `apply_delta_streaming` is the chunk-driven counterpart of
+// `delta_sync::apply_delta` (and of the trait method on `DeltaEngineAdapter`).
+// Where the bulk path returns the reconstructed file as a single
+// `Vec<u8>`, the streaming path takes a `BaselineSource` (W2.1) for the
+// destination side and an `AsyncWrite` sink, and writes the reconstructed
+// bytes directly to the sink as ops are consumed.
+//
+// Why a free function (not a trait method): `DeltaEngineAdapter` exists
+// to abstract the *production* of delta plans (`compute_delta`,
+// `build_signatures`). `apply_delta_streaming` is a *consumer* of an
+// already-produced plan: it does not depend on `delta_sync` internals
+// at all, only on the `EngineDeltaOp` enum + the W2.1 baseline trait.
+// Putting it on the trait would force every adapter impl (including
+// future ones) to re-implement what is in fact a single, generic loop.
+//
+// Wire-parity invariant pinned by `streaming_apply_delta_*` tests below:
+// for any (`baseline`, `ops`, `block_size`), the bytes written by
+// `apply_delta_streaming` are byte-identical to the bytes returned by
+// `delta_sync::apply_delta(baseline_as_slice, ops, block_size)`. Holds
+// because:
+//
+// - `Literal(bytes)` writes `bytes` verbatim — same as the bulk path.
+// - `CopyBlock(idx)` writes `baseline.read_block(idx, block_size)`,
+//   pinned in W2.1 to equal `dest_data[offset..end]` — same slice the
+//   bulk path produces.
+//
+// Memory bound: `O(max literal size) + O(block_size)` for the
+// `read_block` allocation. No accumulation of the reconstructed file
+// in memory.
+
+/// Streaming-write counterpart of `delta_sync::apply_delta`. Consumes the
+/// op stream sequentially, reading destination blocks from `baseline`
+/// (typically a `FileBaseline`) and writing reconstructed bytes to
+/// `writer` (typically a `StreamingAtomicWriter`, W2.3).
+///
+/// Returns the total number of bytes written. Errors propagate from the
+/// baseline (`InvalidInput` for out-of-range `CopyBlock(idx)`, I/O for
+/// read failures) and from the writer (`io::Error` for write failures).
+///
+/// `block_size` is the stride the signatures were built with — must
+/// match the `block_size` recorded on the wire. Bulk-parity-pinned by
+/// the W2.2 tests.
+pub async fn apply_delta_streaming<I, W>(
+    baseline: &mut dyn BaselineSource,
+    ops: I,
+    block_size: usize,
+    writer: &mut W,
+) -> std::io::Result<u64>
+where
+    I: IntoIterator<Item = EngineDeltaOp>,
+    I::IntoIter: Send,
+    W: AsyncWrite + Send + Unpin + ?Sized,
+{
+    if block_size > u32::MAX as usize {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "apply_delta_streaming: block_size {block_size} exceeds u32::MAX; \
+                 cannot address baseline blocks at this stride"
+            ),
+        ));
+    }
+    let block_size_u32 = block_size as u32;
+    let mut bytes_written: u64 = 0;
+    for op in ops {
+        match op {
+            EngineDeltaOp::Literal(bytes) => {
+                if !bytes.is_empty() {
+                    writer.write_all(&bytes).await?;
+                    bytes_written += bytes.len() as u64;
+                }
+            }
+            EngineDeltaOp::CopyBlock(idx) => {
+                let block = baseline.read_block(idx, block_size_u32).await?;
+                if !block.is_empty() {
+                    writer.write_all(&block).await?;
+                    bytes_written += block.len() as u64;
+                }
+            }
+        }
+    }
+    Ok(bytes_written)
+}
+
+#[cfg(test)]
+mod apply_delta_streaming_tests {
+    use super::*;
+    use crate::delta_sync::{compute_delta, compute_signatures};
+
+    fn deterministic_bytes(len: usize, seed: u64) -> Vec<u8> {
+        // Mixing seed into the position so different fixtures don't collide
+        // even at identical lengths. Same multiplier family as the producer
+        // pseudo-random fixture for visual continuity.
+        (0..len)
+            .map(|i| (((i as u64).wrapping_mul(2654435761).wrapping_add(seed)) & 0xFF) as u8)
+            .collect()
+    }
+
+    fn engine_sigs_from_dest(dest: &[u8], block_size: usize) -> Vec<EngineSignatureBlock> {
+        let table = compute_signatures(dest, block_size);
+        table.signatures.into_iter().map(Into::into).collect()
+    }
+
+    fn engine_ops_from_bulk(source: &[u8], dest: &[u8], block_size: usize) -> Vec<EngineDeltaOp> {
+        let table = compute_signatures(dest, block_size);
+        let (ops, _) = compute_delta(source, &table);
+        ops.into_iter().map(Into::into).collect()
+    }
+
+    fn bulk_apply(dest: &[u8], ops: &[EngineDeltaOp], block_size: usize) -> Vec<u8> {
+        let bridge = CurrentDeltaSyncBridge::new();
+        bridge
+            .apply_delta(dest, ops, block_size)
+            .expect("bulk apply_delta must succeed on parity fixture")
+    }
+
+    /// Drive `apply_delta_streaming` with `MemoryBaseline` and collect the
+    /// output into a `Vec<u8>`. Returns `(reconstructed, bytes_written)`.
+    async fn run_streaming(
+        dest: &[u8],
+        ops: Vec<EngineDeltaOp>,
+        block_size: usize,
+    ) -> (Vec<u8>, u64) {
+        let mut baseline = MemoryBaseline::new(dest.to_vec());
+        let mut sink: Vec<u8> = Vec::new();
+        let written = apply_delta_streaming(&mut baseline, ops, block_size, &mut sink)
+            .await
+            .expect("streaming apply must succeed on parity fixture");
+        (sink, written)
+    }
+
+    /// Source consists entirely of literal bytes (no overlap with dest).
+    /// Streaming output must match bulk output and `bytes_written` must
+    /// equal source length.
+    #[tokio::test]
+    async fn streaming_apply_only_literals_matches_bulk() {
+        let block_size = 512;
+        let dest = vec![0xAAu8; 8 * block_size];
+        let mut source = vec![0u8; 3 * block_size + 17];
+        for (i, b) in source.iter_mut().enumerate() {
+            *b = 0x55u8.wrapping_add((i as u8) & 0x0F);
+        }
+        let ops = engine_ops_from_bulk(&source, &dest, block_size);
+        // Sanity: every op must be a Literal in this scenario.
+        assert!(
+            ops.iter().all(|op| matches!(op, EngineDeltaOp::Literal(_))),
+            "fixture should produce only Literals"
+        );
+
+        let bulk_out = bulk_apply(&dest, &ops, block_size);
+        let (stream_out, written) = run_streaming(&dest, ops, block_size).await;
+        assert_eq!(stream_out, bulk_out, "literal-only stream must match bulk");
+        assert_eq!(written, source.len() as u64);
+        assert_eq!(stream_out, source);
+    }
+
+    /// Source is the destination: every op is `CopyBlock`. Streaming
+    /// output must match bulk output and `bytes_written` must equal
+    /// destination length.
+    #[tokio::test]
+    async fn streaming_apply_only_copyblocks_matches_bulk() {
+        let block_size = 512;
+        let n_blocks = 8;
+        let dest = deterministic_bytes(n_blocks * block_size, 0xC0DE);
+        let source = dest.clone();
+        let ops = engine_ops_from_bulk(&source, &dest, block_size);
+        assert!(
+            ops.iter()
+                .all(|op| matches!(op, EngineDeltaOp::CopyBlock(_))),
+            "identical source/dest fixture should produce only CopyBlocks"
+        );
+
+        let bulk_out = bulk_apply(&dest, &ops, block_size);
+        let (stream_out, written) = run_streaming(&dest, ops, block_size).await;
+        assert_eq!(
+            stream_out, bulk_out,
+            "copyblock-only stream must match bulk"
+        );
+        assert_eq!(written, dest.len() as u64);
+        assert_eq!(stream_out, source);
+    }
+
+    /// Mixed Literal + CopyBlock with deterministic payloads at multiple
+    /// block sizes. The canonical W2.2 invariant: bulk and streaming
+    /// produce byte-identical reconstructions for every fixture.
+    #[tokio::test]
+    async fn streaming_apply_mixed_ops_matches_bulk() {
+        for &block_size in &[128usize, 256, 512, 1024] {
+            let n_blocks = 6;
+            let dest = deterministic_bytes(n_blocks * block_size, 0xDE57);
+            // Source: matched block 0, 100B literal, matched block 3
+            // (out of order), 7B literal tail.
+            let mut source = Vec::new();
+            source.extend(&dest[0..block_size]);
+            source.extend(std::iter::repeat_n(0xEEu8, 100));
+            source.extend(&dest[3 * block_size..4 * block_size]);
+            source.extend(b"TAILEND");
+
+            let ops = engine_ops_from_bulk(&source, &dest, block_size);
+            let bulk_out = bulk_apply(&dest, &ops, block_size);
+            let (stream_out, written) = run_streaming(&dest, ops, block_size).await;
+            assert_eq!(
+                stream_out, bulk_out,
+                "block_size={block_size}: stream must match bulk"
+            );
+            assert_eq!(written, source.len() as u64);
+            assert_eq!(stream_out, source);
+        }
+    }
+
+    /// Tail block of the destination is shorter than `block_size`.
+    /// `apply_delta_streaming` must produce the same truncated tail the
+    /// bulk path emits when the source references the tail via
+    /// `CopyBlock(last_idx)`.
+    #[tokio::test]
+    async fn streaming_apply_tail_block_truncation_matches_bulk() {
+        let block_size = 512;
+        let dest_len = 4 * block_size + 137; // tail = 137 B
+        let dest = deterministic_bytes(dest_len, 0x7411);
+        let source = dest.clone();
+        let ops = engine_ops_from_bulk(&source, &dest, block_size);
+
+        let bulk_out = bulk_apply(&dest, &ops, block_size);
+        let (stream_out, written) = run_streaming(&dest, ops, block_size).await;
+        assert_eq!(
+            stream_out, bulk_out,
+            "tail-block fixture: stream must match bulk"
+        );
+        assert_eq!(written, dest_len as u64);
+    }
+
+    /// Plan produced by the W1.1 streaming producer (driven chunked over
+    /// pseudo-random source/dest), then applied through the W2.2 streaming
+    /// apply over `MemoryBaseline`. End-to-end bulk-vs-streaming parity:
+    /// the chain produces byte-identical reconstruction.
+    #[tokio::test]
+    async fn streaming_apply_pseudo_random_e2e_matches_bulk() {
+        let block_size = 256;
+        let dest_len = 16 * block_size;
+        let dest = deterministic_bytes(dest_len, 0xA1B2);
+        let mut source = deterministic_bytes(dest_len + 137, 0xC3D4);
+        // Splice 2 matched blocks for non-trivial CopyBlock coverage.
+        source[block_size..2 * block_size]
+            .copy_from_slice(&dest[2 * block_size..3 * block_size]);
+        source[5 * block_size..6 * block_size]
+            .copy_from_slice(&dest[7 * block_size..8 * block_size]);
+
+        let sigs = engine_sigs_from_dest(&dest, block_size);
+        let mut producer = RollingDeltaPlanProducer::new(block_size, sigs);
+        let mut ops = Vec::new();
+        for chunk in source.chunks(257) {
+            producer.drive_chunk(chunk, &mut ops);
+        }
+        producer.finalize(&mut ops);
+
+        let bulk_out = bulk_apply(&dest, &ops, block_size);
+        let (stream_out, written) = run_streaming(&dest, ops, block_size).await;
+        assert_eq!(stream_out, bulk_out);
+        assert_eq!(written, source.len() as u64);
+        assert_eq!(stream_out, source);
+    }
+
+    /// `CopyBlock(idx)` whose offset exceeds the baseline length must
+    /// surface as an error from `read_block`. The stream must abort and
+    /// the bytes written before the failure must remain in the sink (no
+    /// rollback — the writer is the caller's atomic strategy, W2.3).
+    #[tokio::test]
+    async fn streaming_apply_oob_copyblock_errors() {
+        let block_size = 512;
+        let dest = vec![0u8; 4 * block_size];
+        let mut baseline = MemoryBaseline::new(dest);
+        let ops = vec![
+            EngineDeltaOp::Literal(b"OK".to_vec()),
+            EngineDeltaOp::CopyBlock(99), // offset = 99 * 512 >> 4*512
+        ];
+        let mut sink: Vec<u8> = Vec::new();
+        let err = apply_delta_streaming(&mut baseline, ops, block_size, &mut sink)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            sink, b"OK",
+            "literal before the failure must remain in the sink"
+        );
+    }
+
+    /// A failing writer aborts the stream and propagates the error. The
+    /// `bytes_written` accounting up to the failure point reflects only
+    /// the bytes the *writer* accepted (i.e. zero in this fixture, since
+    /// the very first write fails).
+    #[tokio::test]
+    async fn streaming_apply_writer_failure_propagates() {
+        struct FailingWriter;
+        impl tokio::io::AsyncWrite for FailingWriter {
+            fn poll_write(
+                self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+                _buf: &[u8],
+            ) -> std::task::Poll<std::io::Result<usize>> {
+                std::task::Poll::Ready(Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "synthetic writer failure",
+                )))
+            }
+            fn poll_flush(
+                self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<std::io::Result<()>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+            fn poll_shutdown(
+                self: std::pin::Pin<&mut Self>,
+                _cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<std::io::Result<()>> {
+                std::task::Poll::Ready(Ok(()))
+            }
+        }
+        let block_size = 512;
+        let dest = vec![0xAAu8; block_size];
+        let mut baseline = MemoryBaseline::new(dest);
+        let ops = vec![EngineDeltaOp::Literal(b"never written".to_vec())];
+        let mut writer = FailingWriter;
+        let err = apply_delta_streaming(&mut baseline, ops, block_size, &mut writer)
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+    }
+
+    /// Empty op vec produces zero bytes written. Empty-source bulk path
+    /// emits a single `Literal(empty)` (see `RollingDeltaPlanProducer`'s
+    /// quirk-matcher); we verify that path also works through streaming.
+    #[tokio::test]
+    async fn streaming_apply_empty_inputs_match_bulk() {
+        let block_size = 512;
+        let dest = vec![0u8; 4 * block_size];
+
+        // Empty op stream → empty output.
+        let (out, written) = run_streaming(&dest, Vec::new(), block_size).await;
+        assert!(out.is_empty());
+        assert_eq!(written, 0);
+
+        // Single Literal(empty) — same shape the bulk planner emits for
+        // an empty source.
+        let (out, written) = run_streaming(
+            &dest,
+            vec![EngineDeltaOp::Literal(Vec::new())],
+            block_size,
+        )
+        .await;
+        assert!(out.is_empty());
+        assert_eq!(written, 0);
+    }
+
+    /// `block_size > u32::MAX` is rejected up front before any I/O. The
+    /// trait stores the stride as `u32` so we need to refuse oversized
+    /// inputs cleanly rather than truncate.
+    #[tokio::test]
+    async fn streaming_apply_block_size_overflow_errors() {
+        let mut baseline = MemoryBaseline::new(vec![0u8; 16]);
+        let mut sink: Vec<u8> = Vec::new();
+        let err = apply_delta_streaming(
+            &mut baseline,
+            Vec::<EngineDeltaOp>::new(),
+            (u32::MAX as usize) + 1,
+            &mut sink,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
 

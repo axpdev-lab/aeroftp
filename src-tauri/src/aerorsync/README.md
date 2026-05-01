@@ -115,7 +115,7 @@ cargo test --features aerorsync \
 1. ~~**Stock rsync interop**: production dispatch still uses `aerorsync_serve`~~ Done — Blocco B chiuso il 2026-04-26. Production dispatch usa stock `rsync --server` (WrapperParity); pin test in `remote_command::tests`. Live gate verde con sha256 match contro rsync 3.4.1.
 1a. ~~**Multi-chunk DEFLATED_DATA splitting (S8j)**: cap 16 KiB per literal~~ Done (2026-04-26) — `send_delta_phase_single_file` splitta i blob zstd oltre `MAX_DELTA_LITERAL_LEN` in N DEFLATED_DATA consecutivi (mirror di `token.c::send_zstd_token`). Live upload 1 MiB contro rsync 3.4.1 passa con sha256 match in ~330 ms.
 2a. ~~**Cap in-memory 256 MiB upload-side** (`AERORSYNC_MAX_IN_MEMORY_BYTES`)~~ Done (P3-T01 W1.3) — `upload_inner` apre la sorgente come `tokio::fs::File` e la fa scorrere via `drive_upload_through_delta_streaming` (W1.2). Sources di qualsiasi dimensione passano per la streaming path; il cap upload-side è rimosso. RSS proporzionale a `source_len` per il caso `block_size == 0` finché lo zstd encoder + wire emission non saranno streaming-aware (post-P3-T01).
-2b. **Cap in-memory 256 MiB download-side** — baseline read (`fs::read(local_path)`) e ricostruito (`driver.reconstructed`) ancora soggetti al cap. Streaming download = P3-T01 W2 (in corso). **W2.1 done** (additivo): `BaselineSource` trait + `FileBaseline` (random-access su `tokio::fs::File`) + `MemoryBaseline` (test) in `engine_adapter.rs`. Pin parity bit-for-bit con `delta_sync::apply_delta` slicing. Call site download invariati — wiring in W2.4/W2.5.
+2b. **Cap in-memory 256 MiB download-side** — baseline read (`fs::read(local_path)`) e ricostruito (`driver.reconstructed`) ancora soggetti al cap. Streaming download = P3-T01 W2 (in corso). **W2.1 done** (additivo): `BaselineSource` trait + `FileBaseline` (random-access su `tokio::fs::File`) + `MemoryBaseline` (test). **W2.2 done** (additivo): `apply_delta_streaming(baseline, ops, block_size, writer) -> io::Result<u64>` standalone in `engine_adapter.rs` — consumer di `BaselineSource` + `AsyncWrite` sink, pin parity bit-for-bit con bulk `delta_sync::apply_delta` (Literal/CopyBlock-only/mixed/tail/pseudo-random). **W2.3 done** (additivo): `StreamingAtomicWriter` in `streaming_writer.rs` — counterpart streaming di `delta_transport_impl::write_atomic_chunked`. Espone `AsyncWrite` su `<target>.aerotmp`; `finalize(mode, mtime)` esegue flush+sync_all+chmod (Unix)+set_mtime+rename. Kill-9 invariant: drop senza finalize lascia il temp orfano e il `target` originale intatto. Pinned dai 10 test del modulo, incluso integration `apply_delta_streaming → StreamingAtomicWriter`. Call site download invariati — wiring in W2.4/W2.5.
 3. **Session reuse**: ogni file apre una nuova sessione SSH. Overhead visibile su batch di molti file piccoli. Scope P3-T01 / EV-T03.
 4. **Scope funzionale**: single-file delta accelerator, non sostituto completo di rsync. Fuori scope: recursive tree sync, symlink/hardlink, xattrs, ACL, `--inplace`, `--append`, `--delete*`, `--mkpath`, `--partial-dir`, `--sparse`, streaming multi-GB e session reuse cross-file.
 
@@ -128,9 +128,10 @@ cargo test --features aerorsync \
 - `delta_transport_impl.rs` (1 139 LOC) — `AerorsyncDeltaTransport` (impl `DeltaTransport`)
 - `events.rs`, `ssh_transport.rs`, `driver.rs`, `server.rs`, `live_tests.rs`, `rsync_event_bridge.rs` — supporto
 - `mock.rs`, `fixtures.rs` — test scaffolding
+- `streaming_writer.rs` (W2.3) — `StreamingAtomicWriter`, counterpart streaming di `delta_transport_impl::write_atomic_chunked` (`AsyncWrite` + `finalize` rename-last)
 - altri: `types.rs`, `protocol.rs`, `planner.rs`, `engine_adapter.rs`, `transport.rs`, `frame_io.rs`, `fallback_policy.rs`, `remote_command.rs`
 
-Totale: 23 file, 20 604 LOC.
+Totale: 24 file (W2.3 +1).
 
 ## Cross-reference
 
