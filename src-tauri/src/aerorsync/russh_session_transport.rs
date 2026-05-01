@@ -1,40 +1,9 @@
 //! P3-T01 W3.2(b1) — russh-based SSH session transport for the native rsync
 //! batch path.
 //!
-//! ## Why this exists
+//! See [`RusshSessionTransport`] for the entry point.
 //!
-//! The legacy [`crate::aerorsync::ssh_transport::SshRemoteShellTransport`] is
-//! built on `ssh2` (libssh2 binding). libssh2 is thread-bound: every
-//! `open_raw_stream` call ends up in a `spawn_blocking` worker that runs
-//! `connect_and_auth` from scratch — one full SSH handshake per file. That is
-//! correct for the single-shot path (`AerorsyncDeltaTransport::download` /
-//! `upload` use a fresh transport per call), but it makes session reuse
-//! impossible for [`crate::aerorsync::AerorsyncBatch`] (W3.2(b2)).
-//!
-//! `russh` 0.60.1 is already a first-class SSH stack in the project (see
-//! `providers/sftp.rs`): pure-Rust, async-native, multi-channel naturally
-//! (one [`russh::client::Handle`] opens N [`russh::Channel`]s above a single
-//! SSH session). The native rsync batch needs exactly that — open one SSH
-//! handshake at `AerorsyncBatch::new` time and exec the remote rsync server
-//! over a fresh channel per file.
-//!
-//! ## Status
-//!
-//! W3.2(b1)-impl-connect: [`RusshSessionTransport::connect`] is functional.
-//! It opens one SSH session via russh, authenticates with a private key
-//! (RSA SHA-512/256/1 fallback like `providers::sftp`, ed25519/ecdsa direct),
-//! and stores the [`russh::client::Handle`] behind a `tokio::sync::Mutex`
-//! shared via `Arc` for cheap `share_session()` clones across the batch.
-//!
-//! Still TODO (subsequent commits):
-//! - W3.2(b1)-impl-channel: `open_raw_channel` opens a channel session,
-//!   execs the remote command, and wraps it in [`RusshRawStream`].
-//! - W3.2(b1)-impl-raw-stream: [`RawByteStream`] impl driven by
-//!   [`russh::ChannelMsg::Data`] / `Eof` / `ExitStatus` events.
-//! - W3.2(b1)-impl-trait: [`RemoteShellTransport`] `probe` + `exec` impls.
-//! - W3.2(b1)-tests: 4 live tests against the Docker key-auth lane.
-//!
-//! Spec dettagliata: `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/tasks/2026-05-01_P3-T01_W3_2b1_Spec_Session_Caching.md`.
+//! Spec: `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-Y/tasks/2026-05-01_P3-T01_W3_2b1_Spec_Session_Caching.md`.
 
 #![cfg(feature = "aerorsync")]
 
@@ -43,45 +12,28 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use russh::client::{self, AuthResult, Config, Handle, Handler};
+use russh::client::{self, AuthResult, Config, Handle, Handler, Msg};
 use russh::keys::{self, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::{Channel, ChannelMsg};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::aerorsync::ssh_transport::{SshHostKeyPolicy, SshTransportConfig};
+use crate::aerorsync::ssh_transport::{
+    parse_probe_protocol, SshHostKeyPolicy, SshTransportConfig,
+};
 use crate::aerorsync::transport::{
     CancelHandle, RawByteStream, RawRemoteShellTransport, RemoteCommandOutput, RemoteExecRequest,
     RemoteShellTransport, TransportProbe,
 };
 use crate::aerorsync::types::AerorsyncError;
 
-/// russh-based remote shell transport that holds one long-lived SSH session
-/// and serves N channel-exec calls over it.
-///
-/// Cheap to clone: the [`russh::client::Handle`] lives behind an `Arc<Mutex>`,
-/// so `share_session` produces a view that points at the same session — no
-/// new handshake. Drop the last clone and the russh `Handle` Drop closes
-/// the session.
 pub struct RusshSessionTransport {
-    /// Long-lived russh client handle. `Some` after a successful
-    /// [`Self::connect`]. Wrapped in `Arc<AsyncMutex>` so `share_session`
-    /// is cheap and concurrent `open_raw_channel` calls serialize on the
-    /// mutex (russh `channel_open_session` is `&mut self` on `Handle`).
     handle: Arc<HandleSlot>,
-    /// Cooperative cancel flag, shared with all `share_session` clones.
     cancel_flag: Arc<AtomicBool>,
-    /// Counter incremented by every successful `connect()`. Production
-    /// usage: `BatchStats.session_count = handshake_count` at finalize.
     handshake_count: Arc<AtomicU32>,
-    /// Stored for reconnect on transient failure (W3.2(b2) batch logic).
     config: SshTransportConfig,
 }
 
-/// Internal cell that holds the optional russh `Handle`. Wrapped in an
-/// `AsyncMutex` because `russh::client::Handle::channel_open_session` (and
-/// the auth methods) take `&mut self`. Concurrent batches would need
-/// serialization at this layer; for P3-T01's sequential batch the lock is
-/// always uncontended.
 struct HandleSlot {
     inner: AsyncMutex<Option<Handle<RusshHandler>>>,
 }
@@ -94,12 +46,8 @@ impl HandleSlot {
     }
 }
 
-/// russh `Handler` that enforces the same [`SshHostKeyPolicy`] semantics as
-/// the legacy ssh2 transport (`enforce_host_key_policy` in
-/// `ssh_transport.rs`). No known_hosts / TOFU here — that flow lives in
-/// `providers::sftp::SshHandler`. The batch path consumes a host key
-/// fingerprint already captured by the SFTP session that the user
-/// approved.
+/// russh `Handler` enforcing [`SshHostKeyPolicy`] semantics. Mirrors
+/// `enforce_host_key_policy` in `ssh_transport.rs` (the libssh2 leg).
 pub struct RusshHandler {
     policy: SshHostKeyPolicy,
 }
@@ -109,10 +57,6 @@ impl RusshHandler {
         Self { policy }
     }
 
-    /// SHA-256 hex digest (lowercase, colon-free) of the SSH-wire-encoded
-    /// public key bytes. Mirrors the `sha256_hex_of(host_key)` shape used
-    /// by `enforce_host_key_policy`. Returns `None` if russh fails to
-    /// re-encode the key — secure default: refuse to accept.
     fn fingerprint_sha256_hex(key: &PublicKey) -> Option<String> {
         let wire = key.to_bytes().ok()?;
         let digest = Sha256::digest(&wire);
@@ -139,8 +83,7 @@ impl Handler for RusshHandler {
                     Some(hex) => hex,
                     None => {
                         tracing::error!(
-                            "russh: rejecting host key — failed to compute SHA-256 fingerprint \
-                             (key encoding error)"
+                            "russh: rejecting host key — failed to compute SHA-256 fingerprint"
                         );
                         return Ok(false);
                     }
@@ -150,8 +93,7 @@ impl Handler for RusshHandler {
                     Ok(true)
                 } else {
                     tracing::error!(
-                        "russh: REJECTING host key — fingerprint mismatch (expected {expected}, \
-                         got {actual})"
+                        "russh: REJECTING host key — fingerprint mismatch (expected {expected}, got {actual})"
                     );
                     Ok(false)
                 }
@@ -161,21 +103,10 @@ impl Handler for RusshHandler {
 }
 
 impl RusshSessionTransport {
-    /// Open one SSH session via russh: TCP connect + handshake + key auth +
-    /// host key policy check. Mirrors the auth shape of
-    /// `providers::sftp::authenticate_with_key` (RSA SHA-512/256/1
-    /// fallback, ed25519/ecdsa direct).
-    ///
-    /// Increments `handshake_count` to 1 on success. The batch is expected
-    /// to call `connect` once at construction; transient reconnect mid-batch
-    /// (W3.2(b2)) calls `connect` again and observes `handshake_count > 1`.
     pub async fn connect(config: SshTransportConfig) -> Result<Self, AerorsyncError> {
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let handshake_count = Arc::new(AtomicU32::new(0));
 
-        // 1. Build russh client config. Mirrors `providers::sftp::connect`
-        //    with keepalive sufficient for long batches but tighter than
-        //    the SFTP defaults so a dead session is detected within ~45s.
         let russh_config = Arc::new(Config {
             inactivity_timeout: Some(Duration::from_millis(config.io_timeout_ms.max(30_000) * 2)),
             keepalive_interval: Some(Duration::from_secs(15)),
@@ -183,18 +114,12 @@ impl RusshSessionTransport {
             ..Default::default()
         });
 
-        // 2. TCP + SSH handshake. The handler enforces SshHostKeyPolicy.
         let handler = RusshHandler::new(config.host_key_policy.clone());
         let addr = format!("{}:{}", config.host, config.port);
         let mut handle = client::connect(russh_config, &addr, handler)
             .await
-            .map_err(|e| {
-                AerorsyncError::transport(format!("russh connect {addr}: {e}"))
-            })?;
+            .map_err(|e| AerorsyncError::transport(format!("russh connect {addr}: {e}")))?;
 
-        // 3. Key auth — replicates `authenticate_with_key` from sftp.rs.
-        //    No passphrase support yet (RsyncConfig has no key_passphrase
-        //    field; if needed it goes through SshTransportConfig later).
         let key_pair = keys::load_secret_key(&config.private_key_path, None).map_err(|e| {
             AerorsyncError::transport(format!(
                 "load private key {}: {e}",
@@ -205,9 +130,6 @@ impl RusshSessionTransport {
 
         let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
         let attempts: Vec<Option<HashAlg>> = if is_rsa {
-            // OpenSSH 8.8+ rejects ssh-rsa (SHA-1) by default. Try SHA-512
-            // (RFC 8332 preference), SHA-256 fallback, then None for
-            // legacy servers that still accept ssh-rsa.
             vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
         } else {
             vec![None]
@@ -251,16 +173,10 @@ impl RusshSessionTransport {
         })
     }
 
-    /// Number of SSH handshakes performed over the lifetime of this
-    /// transport (counting `connect` + any reconnect on transient
-    /// failure). `BatchStats.session_count` source.
     pub fn handshake_count(&self) -> u32 {
         self.handshake_count.load(Ordering::SeqCst)
     }
 
-    /// View of the same session — clones the inner Arc so `do_upload` /
-    /// `do_download` can consume a transport by value without a new
-    /// handshake.
     pub fn share_session(&self) -> Self {
         Self {
             handle: self.handle.clone(),
@@ -271,44 +187,100 @@ impl RusshSessionTransport {
     }
 
     /// Open a new channel over the existing SSH session and exec the
-    /// rsync remote command. Returns a [`RusshRawStream`] that the driver
-    /// can drive as a [`RawByteStream`].
-    ///
-    /// W3.2(b1)-impl-channel TODO: lock the handle, call
-    /// `channel_open_session` + `channel.exec(cmd)`, wrap in RusshRawStream.
+    /// remote command. Returns a [`RusshRawStream`] that the driver can
+    /// drive as a [`RawByteStream`].
     pub async fn open_raw_channel(
         &self,
-        _request: RemoteExecRequest,
+        request: RemoteExecRequest,
     ) -> Result<RusshRawStream, AerorsyncError> {
-        Err(AerorsyncError::transport(
-            "RusshSessionTransport::open_raw_channel not implemented yet \
-             (W3.2(b1)-impl-channel)",
-        ))
+        if self.cancel_flag.load(Ordering::SeqCst) {
+            return Err(AerorsyncError::cancelled(
+                "RusshSessionTransport cancelled before open_raw_channel",
+            ));
+        }
+        let mut guard = self.handle.inner.lock().await;
+        let handle = guard.as_mut().ok_or_else(|| {
+            AerorsyncError::transport(
+                "RusshSessionTransport handle is closed; call connect() first",
+            )
+        })?;
+        let channel = handle
+            .channel_open_session()
+            .await
+            .map_err(|e| AerorsyncError::transport(format!("russh channel_open_session: {e}")))?;
+        let cmd = request.full_command_line();
+        channel
+            .exec(true, cmd.as_str())
+            .await
+            .map_err(|e| AerorsyncError::transport(format!("russh channel.exec({cmd}): {e}")))?;
+        Ok(RusshRawStream::new(self.cancel_flag.clone(), channel))
     }
 
-    /// Cooperative cancel. Flips the flag and tears down the russh handle
-    /// (which closes any in-flight channels). Idempotent.
+    /// Drain a channel-exec result fully. Returns stdout + stderr + exit
+    /// code, mirroring the libssh2 `exec_once` semantics.
+    async fn drain_exec_channel(
+        cancel_flag: &Arc<AtomicBool>,
+        channel: &mut Channel<Msg>,
+    ) -> Result<RemoteCommandOutput, AerorsyncError> {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut exit_code: Option<i32> = None;
+
+        loop {
+            if cancel_flag.load(Ordering::SeqCst) {
+                return Err(AerorsyncError::cancelled(
+                    "RusshSessionTransport cancelled mid drain_exec_channel",
+                ));
+            }
+            match channel.wait().await {
+                Some(ChannelMsg::Data { data }) => {
+                    stdout.extend_from_slice(&data);
+                }
+                Some(ChannelMsg::ExtendedData { data, ext }) => {
+                    if ext == 1 {
+                        stderr.extend_from_slice(&data);
+                    } else {
+                        // Unknown extended data channel — append to stderr
+                        // for visibility instead of dropping.
+                        stderr.extend_from_slice(&data);
+                    }
+                }
+                Some(ChannelMsg::ExitStatus { exit_status }) => {
+                    exit_code = Some(exit_status as i32);
+                }
+                Some(ChannelMsg::Eof) => {
+                    // Server signalled end of stdout/stderr. Continue
+                    // waiting for ExitStatus + Close if not yet seen.
+                    continue;
+                }
+                Some(ChannelMsg::Close) | None => {
+                    break;
+                }
+                Some(_) => {
+                    // ExitSignal, Success, Failure, WindowAdjusted, etc.
+                    continue;
+                }
+            }
+        }
+
+        Ok(RemoteCommandOutput {
+            exit_code: exit_code.unwrap_or(-1),
+            stdout,
+            stderr,
+        })
+    }
+
     pub async fn cancel(&self) {
         self.cancel_flag.store(true, Ordering::SeqCst);
-        // Best-effort handle teardown. If a channel_open_session is in
-        // flight on another task, dropping the handle here unblocks it
-        // with a transport error.
         let mut guard = self.handle.inner.lock().await;
         if let Some(handle) = guard.take() {
-            // russh::client::Handle has no public disconnect API; dropping
-            // it sends Disconnect and closes the underlying TCP. The
-            // explicit drop here makes the lifecycle visible.
             drop(handle);
         }
     }
 
-    /// Tear down the SSH session ordinately. Idempotent. After `close()`
-    /// returns, subsequent `open_raw_channel` calls fail with a typed
-    /// transport error.
     pub async fn close(&self) -> Result<(), AerorsyncError> {
         let mut guard = self.handle.inner.lock().await;
         if let Some(handle) = guard.take() {
-            // Same as cancel — drop closes the session.
             drop(handle);
         }
         Ok(())
@@ -316,67 +288,133 @@ impl RusshSessionTransport {
 }
 
 /// Channel-backed [`RawByteStream`] returned by
-/// [`RusshSessionTransport::open_raw_channel`].
-///
-/// W3.2(b1) scaffold body. The impl step replaces `_unused` with the
-/// real `russh::Channel<Msg>` and drains `ChannelMsg::Data` events.
+/// [`RusshSessionTransport::open_raw_channel`]. Drives a single
+/// `russh::Channel<Msg>` for the lifetime of one rsync exec on the
+/// remote.
 pub struct RusshRawStream {
     cancel_flag: Arc<AtomicBool>,
-    /// Surplus bytes from prior `ChannelMsg::Data` events that didn't fit
-    /// in the previous `read_bytes` allocation.
+    /// Surplus bytes from a prior `ChannelMsg::Data` that exceeded the
+    /// caller's `read_bytes(max)` allocation. Drained ahead of any new
+    /// `wait()` call.
     pending: Vec<u8>,
-    /// True after `ChannelMsg::Eof` or `ExitStatus`. Once true,
-    /// subsequent `read_bytes` returns `Ok(vec![])` (per RawByteStream
-    /// contract).
+    /// True after `ChannelMsg::Eof` / `Close` / `None`. Subsequent
+    /// `read_bytes` returns `Ok(vec![])` per [`RawByteStream`] contract.
     eof: bool,
+    /// `None` after `shutdown` or after the channel naturally ends.
+    channel: Option<Channel<Msg>>,
 }
 
 impl RusshRawStream {
-    #[allow(dead_code)]
-    fn new(cancel_flag: Arc<AtomicBool>) -> Self {
+    fn new(cancel_flag: Arc<AtomicBool>, channel: Channel<Msg>) -> Self {
         Self {
             cancel_flag,
             pending: Vec::new(),
             eof: false,
+            channel: Some(channel),
         }
     }
 }
 
 #[async_trait]
 impl RawByteStream for RusshRawStream {
-    async fn read_bytes(&mut self, _max: usize) -> Result<Vec<u8>, AerorsyncError> {
+    async fn read_bytes(&mut self, max: usize) -> Result<Vec<u8>, AerorsyncError> {
         if self.cancel_flag.load(Ordering::SeqCst) {
             return Err(AerorsyncError::cancelled(
                 "RusshRawStream cancelled before read_bytes",
             ));
         }
+        // Drain any surplus from a previous Data event before issuing a
+        // fresh wait().
+        if !self.pending.is_empty() {
+            let take = self.pending.len().min(max);
+            let result: Vec<u8> = self.pending.drain(..take).collect();
+            return Ok(result);
+        }
         if self.eof {
             return Ok(Vec::new());
         }
-        // Surplus from a previous Data event takes priority.
-        if !self.pending.is_empty() {
-            // Real impl: drain up to `max` bytes from `pending` here.
+        let channel = match self.channel.as_mut() {
+            Some(c) => c,
+            None => {
+                self.eof = true;
+                return Ok(Vec::new());
+            }
+        };
+
+        loop {
+            if self.cancel_flag.load(Ordering::SeqCst) {
+                return Err(AerorsyncError::cancelled(
+                    "RusshRawStream cancelled mid read_bytes",
+                ));
+            }
+            match channel.wait().await {
+                Some(ChannelMsg::Data { data }) => {
+                    let bytes = data.to_vec();
+                    if bytes.len() > max {
+                        let surplus = bytes[max..].to_vec();
+                        self.pending = surplus;
+                        return Ok(bytes[..max].to_vec());
+                    }
+                    return Ok(bytes);
+                }
+                Some(ChannelMsg::ExtendedData { .. }) => {
+                    // Stderr — discarded at the raw-byte layer; the
+                    // driver-level event bridge surfaces stderr through
+                    // its own path. Continue draining.
+                    continue;
+                }
+                Some(ChannelMsg::Eof) => {
+                    self.eof = true;
+                    return Ok(Vec::new());
+                }
+                Some(ChannelMsg::ExitStatus { .. }) => {
+                    // Capture is upstream's job (drain_exec_channel).
+                    // Raw-stream consumers continue draining for
+                    // residual data after ExitStatus.
+                    continue;
+                }
+                Some(ChannelMsg::Close) | None => {
+                    self.eof = true;
+                    self.channel = None;
+                    return Ok(Vec::new());
+                }
+                Some(_) => continue,
+            }
         }
-        Err(AerorsyncError::transport(
-            "RusshRawStream::read_bytes not implemented yet (W3.2(b1)-impl-raw-stream)",
-        ))
     }
 
-    async fn write_bytes(&mut self, _bytes: &[u8]) -> Result<(), AerorsyncError> {
+    async fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), AerorsyncError> {
         if self.cancel_flag.load(Ordering::SeqCst) {
             return Err(AerorsyncError::cancelled(
                 "RusshRawStream cancelled before write_bytes",
             ));
         }
-        Err(AerorsyncError::transport(
-            "RusshRawStream::write_bytes not implemented yet (W3.2(b1)-impl-raw-stream)",
-        ))
+        let channel = match self.channel.as_mut() {
+            Some(c) => c,
+            None => {
+                return Err(AerorsyncError::transport(
+                    "RusshRawStream channel already closed",
+                ));
+            }
+        };
+        channel
+            .data(bytes)
+            .await
+            .map_err(|e| AerorsyncError::transport(format!("russh channel.data: {e}")))?;
+        Ok(())
     }
 
     async fn shutdown(&mut self) -> Result<(), AerorsyncError> {
-        // Mark eof so subsequent read_bytes return Ok(empty). Real impl:
-        // `channel.eof().await` + drain trailing ChannelMsg events.
         self.eof = true;
+        if let Some(channel) = self.channel.as_mut() {
+            channel
+                .eof()
+                .await
+                .map_err(|e| AerorsyncError::transport(format!("russh channel.eof: {e}")))?;
+        }
+        // Drop the channel after eof so further read_bytes/write_bytes
+        // surface the typed "channel closed" error.
+        self.channel = None;
         Ok(())
     }
 }
@@ -386,28 +424,54 @@ impl RemoteShellTransport for RusshSessionTransport {
     type Stream = RusshUnusedStream;
 
     async fn probe(&self) -> Result<TransportProbe, AerorsyncError> {
-        Err(AerorsyncError::transport(
-            "RusshSessionTransport::probe not implemented yet (W3.2(b1)-impl-trait)",
-        ))
+        let output = self.exec(self.config.probe_request.clone()).await?;
+        if output.exit_code != 0 {
+            return Err(AerorsyncError::transport(format!(
+                "russh probe exited with code {}: {}",
+                output.exit_code,
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        let banner = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let protocol = parse_probe_protocol(&banner)?;
+        Ok(TransportProbe {
+            remote_banner: banner,
+            protocol,
+            supports_remote_shell: true,
+        })
     }
 
     async fn exec(
         &self,
-        _request: RemoteExecRequest,
+        request: RemoteExecRequest,
     ) -> Result<RemoteCommandOutput, AerorsyncError> {
-        Err(AerorsyncError::transport(
-            "RusshSessionTransport::exec not implemented yet (W3.2(b1)-impl-trait)",
-        ))
+        if self.cancel_flag.load(Ordering::SeqCst) {
+            return Err(AerorsyncError::cancelled(
+                "RusshSessionTransport cancelled before exec",
+            ));
+        }
+        let mut guard = self.handle.inner.lock().await;
+        let handle = guard.as_mut().ok_or_else(|| {
+            AerorsyncError::transport(
+                "RusshSessionTransport handle is closed; call connect() first",
+            )
+        })?;
+        let mut channel = handle
+            .channel_open_session()
+            .await
+            .map_err(|e| AerorsyncError::transport(format!("russh channel_open_session: {e}")))?;
+        let cmd = request.full_command_line();
+        channel
+            .exec(true, cmd.as_str())
+            .await
+            .map_err(|e| AerorsyncError::transport(format!("russh channel.exec({cmd}): {e}")))?;
+        Self::drain_exec_channel(&self.cancel_flag, &mut channel).await
     }
 
     async fn open_stream(
         &self,
         _request: RemoteExecRequest,
     ) -> Result<Self::Stream, AerorsyncError> {
-        // The russh transport intentionally does not support the legacy
-        // RSNP framed stream — only the raw byte path. The legacy
-        // `BidirectionalByteStream` driver path was wired on the ssh2
-        // transport and is not on the migration list.
         Err(AerorsyncError::transport(
             "RusshSessionTransport does not support the legacy RSNP framed stream",
         ))
@@ -435,9 +499,6 @@ impl RawRemoteShellTransport for RusshSessionTransport {
     }
 }
 
-/// Placeholder type for the unused `RemoteShellTransport::Stream` slot.
-/// Lives here to keep the impl block self-contained without dragging the
-/// legacy `SshProtoStream` into the russh module.
 pub struct RusshUnusedStream;
 
 #[async_trait]
@@ -485,18 +546,12 @@ mod tests {
         }
     }
 
-    /// Compile-time guard — RusshSessionTransport implements both
-    /// `RemoteShellTransport` and `RawRemoteShellTransport`. If a future
-    /// trait change makes the impl invalid, this fails to compile.
     #[test]
     fn russh_transport_satisfies_remote_shell_traits() {
         fn assert_traits<T: RemoteShellTransport + RawRemoteShellTransport>() {}
         assert_traits::<RusshSessionTransport>();
     }
 
-    /// Compile-time guard — `Send + Sync`. Critical for the batch since
-    /// the same transport view is consumed by `do_upload` / `do_download`
-    /// across tokio task boundaries.
     #[test]
     fn russh_transport_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
@@ -504,21 +559,14 @@ mod tests {
         assert_send_sync::<RusshRawStream>();
     }
 
-    /// Now that `connect` is real, an unreachable host (port 22 on
-    /// 127.0.0.1 with no SSH server in CI) returns `Err` from the
-    /// `client::connect` step. Pin: the typed error path holds.
     #[tokio::test]
     async fn connect_with_unreachable_host_returns_typed_transport_error() {
         let cfg = SshTransportConfig {
-            // Use a port that no SSH server listens on in CI.
-            port: 1, // privileged port, almost certainly nothing listening
+            port: 1,
             ..dummy_config()
         };
         match RusshSessionTransport::connect(cfg).await {
-            Err(_) => {
-                // Expected — connect fails at TCP layer (1 is privileged
-                // and not bound by anything sane in CI).
-            }
+            Err(_) => {}
             Ok(_) => panic!(
                 "connect to port 1 should not succeed in CI — fixture must have an SSH \
                  server bound there which would be a security red flag"
@@ -528,9 +576,6 @@ mod tests {
 
     #[tokio::test]
     async fn share_session_clones_arc_state() {
-        // Build a stub transport via the same field shape connect uses.
-        // We do not call `connect` because it would require a real SSH
-        // server; this test exercises only the share_session bookkeeping.
         let original = RusshSessionTransport {
             handle: Arc::new(HandleSlot::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
@@ -538,14 +583,9 @@ mod tests {
             config: dummy_config(),
         };
         let clone = original.share_session();
-
-        // Pin: the underlying counter is shared. Bump on the original,
-        // observe on the clone.
         original.handshake_count.fetch_add(1, Ordering::SeqCst);
         assert_eq!(clone.handshake_count(), 1);
         assert_eq!(original.handshake_count(), 1);
-
-        // Same for cancel_flag.
         clone.cancel_flag.store(true, Ordering::SeqCst);
         assert!(original.cancel_flag.load(Ordering::SeqCst));
     }
@@ -558,7 +598,6 @@ mod tests {
             handshake_count: Arc::new(AtomicU32::new(0)),
             config: dummy_config(),
         };
-        // Closing twice without panic — idempotent contract.
         transport.close().await.expect("first close ok");
         transport.close().await.expect("second close ok");
     }
@@ -574,7 +613,6 @@ mod tests {
         assert!(!transport.cancel_flag.load(Ordering::SeqCst));
         transport.cancel().await;
         assert!(transport.cancel_flag.load(Ordering::SeqCst));
-        // Idempotent — second call does not panic.
         transport.cancel().await;
     }
 
@@ -588,5 +626,37 @@ mod tests {
         let _h = RusshHandler::new(SshHostKeyPolicy::PinnedFingerprintSha256 {
             sha256_hex: "deadbeef".into(),
         });
+    }
+
+    /// open_raw_channel without a connected handle returns the typed
+    /// "handle closed" error. Pin: callers can detect missing
+    /// connect() up front instead of crashing on libssh2 internals.
+    #[tokio::test]
+    async fn open_raw_channel_without_handle_returns_typed_error() {
+        let transport = RusshSessionTransport {
+            handle: Arc::new(HandleSlot::new(None)),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            handshake_count: Arc::new(AtomicU32::new(0)),
+            config: dummy_config(),
+        };
+        match transport.open_raw_channel(dummy_config().probe_request).await {
+            Err(_) => {}
+            Ok(_) => panic!("open_raw_channel should fail when handle is None"),
+        }
+    }
+
+    /// Same for exec.
+    #[tokio::test]
+    async fn exec_without_handle_returns_typed_error() {
+        let transport = RusshSessionTransport {
+            handle: Arc::new(HandleSlot::new(None)),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            handshake_count: Arc::new(AtomicU32::new(0)),
+            config: dummy_config(),
+        };
+        match transport.exec(dummy_config().probe_request).await {
+            Err(_) => {}
+            Ok(_) => panic!("exec should fail when handle is None"),
+        }
     }
 }

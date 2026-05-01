@@ -722,7 +722,7 @@ fn spawn_raw_worker(
 /// next whitespace-delimited token as the numeric version. Anything else
 /// is a transport-level parse error that the caller maps to
 /// `RemoteNotAvailable` (soft classic fallback).
-fn parse_probe_protocol(stdout: &str) -> Result<ProtocolVersion, AerorsyncError> {
+pub(crate) fn parse_probe_protocol(stdout: &str) -> Result<ProtocolVersion, AerorsyncError> {
     const MARKER: &str = "protocol version ";
     let trimmed = stdout.trim();
     if trimmed.is_empty() {
