@@ -72,6 +72,8 @@ pub enum ProviderType {
     GooglePhotos,
     /// Immich (Self-hosted photo/video management, API key auth)
     Immich,
+    /// Backblaze B2 Cloud Storage (native API, applicationKeyId + applicationKey)
+    Backblaze,
 }
 
 impl fmt::Display for ProviderType {
@@ -106,6 +108,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Swift => write!(f, "Swift"),
             ProviderType::GooglePhotos => write!(f, "Google Photos"),
             ProviderType::Immich => write!(f, "Immich"),
+            ProviderType::Backblaze => write!(f, "Backblaze B2"),
         }
     }
 }
@@ -143,6 +146,7 @@ impl ProviderType {
             ProviderType::Swift => 443,
             ProviderType::GooglePhotos => 443,
             ProviderType::Immich => 2283,
+            ProviderType::Backblaze => 443,
         }
     }
 
@@ -178,7 +182,8 @@ impl ProviderType {
             ProviderType::GitLab |
             ProviderType::Swift |
             ProviderType::GooglePhotos |
-            ProviderType::Immich
+            ProviderType::Immich |
+            ProviderType::Backblaze
         )
     }
 

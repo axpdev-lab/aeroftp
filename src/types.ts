@@ -47,7 +47,8 @@ export type ProviderType =
   | "github"
   | "gitlab"
   | "swift"
-  | "immich";
+  | "immich"
+  | "backblaze";
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {

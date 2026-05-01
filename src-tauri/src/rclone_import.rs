@@ -524,7 +524,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             initial_path: None,
         }),
 
-        // ---- Backblaze B2 (native, not S3) ----
+        // ---- Backblaze B2 (native API v4) ----
+        // rclone stores `account` as the applicationKeyId and `key` as the
+        // applicationKey. We route them to the native AeroFTP B2 provider so
+        // users get large-file workflow + server-side copy + version history
+        // (the previous mapping went through the S3-compatible endpoint).
         "b2" => {
             let account = get_str("account").unwrap_or("").to_string();
             if account.is_empty() {
@@ -538,20 +542,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                     serde_json::Value::String(bucket.to_string()),
                 );
             }
-            options.insert(
-                "endpoint".into(),
-                serde_json::Value::String("https://s3.us-west-004.backblazeb2.com".to_string()),
-            );
-            options.insert(
-                "region".into(),
-                serde_json::Value::String("us-west-004".to_string()),
-            );
-            options.insert("pathStyle".into(), serde_json::Value::Bool(false));
 
             Some(MappedProfile {
-                protocol: "s3".to_string(),
-                provider_id: Some("backblaze-b2".to_string()),
-                host: "s3.us-west-004.backblazeb2.com".to_string(),
+                protocol: "backblaze".to_string(),
+                provider_id: Some("backblaze-native".to_string()),
+                host: "api.backblazeb2.com".to_string(),
                 port: 443,
                 username: account,
                 password: get_password("key"),

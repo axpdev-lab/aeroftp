@@ -21,6 +21,7 @@ import {
     Pencil,
     Info,
     Settings,
+    Flame,
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
@@ -453,6 +454,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
     { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud — Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
     { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich — Self-hosted photo/video management, API key auth' },
+    { type: 'backblaze', name: 'Backblaze B2', icon: <Flame size={18} />, description: 'Backblaze B2 native API v4', defaultPort: 443, badge: 'API', color: 'text-red-600', isCloudStorage: true, tooltip: 'Backblaze B2 native — applicationKeyId + applicationKey, large-file workflow, server-side copy' },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
@@ -1381,6 +1383,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         gitlab: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
         swift: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
         immich: 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300',
+        backblaze: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
     };
 
     return (

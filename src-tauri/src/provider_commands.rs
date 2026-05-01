@@ -189,6 +189,7 @@ impl ProviderConnectionParams {
             "swift" => ProviderType::Swift,
             "googlephotos" | "google_photos" => ProviderType::GooglePhotos,
             "immich" => ProviderType::Immich,
+            "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
 

@@ -24,6 +24,7 @@
 
 pub mod atomic_write;
 pub mod azure;
+pub mod b2;
 pub mod box_provider;
 pub mod drime_cloud;
 pub mod dropbox;
@@ -65,6 +66,7 @@ pub const AEROFTP_USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION
 pub use types::*;
 // GAP-A01: retry infrastructure ready — integration into providers deferred to v2.5.0
 pub use azure::AzureProvider;
+pub use b2::B2Provider;
 pub use box_provider::BoxProvider;
 pub use drime_cloud::DrimeCloudProvider;
 pub use dropbox::DropboxProvider;
@@ -755,6 +757,10 @@ impl ProviderFactory {
                 let immich_config = immich::ImmichConfig::from_provider_config(config)?;
                 Ok(Box::new(ImmichProvider::new(immich_config)))
             }
+            ProviderType::Backblaze => {
+                let b2_config = b2::B2Config::from_provider_config(config)?;
+                Ok(Box::new(B2Provider::new(b2_config)))
+            }
         }
     }
 
@@ -791,6 +797,7 @@ impl ProviderFactory {
             ProviderType::Swift,
             ProviderType::GooglePhotos,
             ProviderType::Immich,
+            ProviderType::Backblaze,
         ]
     }
 }

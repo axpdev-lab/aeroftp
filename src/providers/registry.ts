@@ -260,9 +260,55 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://aws.amazon.com/free/',
     },
     {
+        id: 'backblaze-native',
+        name: 'Backblaze B2 (native)',
+        description: 'Native B2 v4 API: large-file workflow, server-side copy, version history',
+        protocol: 'backblaze',
+        category: 'object',
+        icon: 'Flame',
+        color: '#E31C1C',
+        stable: true,
+        fields: [
+            {
+                key: 'username',
+                label: 'Application Key ID',
+                type: 'text',
+                required: true,
+                placeholder: '003d90ca9d33900000000001',
+                helpText: 'B2 Application Key ID (starts with 003...) — App Keys page',
+            },
+            {
+                key: 'password',
+                label: 'Application Key',
+                type: 'password',
+                required: true,
+                helpText: 'B2 Application Key (shown only once at creation)',
+            },
+            {
+                key: 'bucket',
+                label: 'Bucket Name',
+                type: 'text',
+                required: true,
+                placeholder: 'my-b2-bucket',
+                helpText: 'Exact bucket name (case-sensitive)',
+            },
+        ],
+        defaults: {
+            // Native API discovers apiUrl/downloadUrl during b2_authorize_account.
+            // No endpoint field needed.
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://api.backblazeb2.com/b2api/v4/b2_authorize_account',
+        helpUrl: 'https://www.backblaze.com/apidocs/',
+        signupUrl: 'https://www.backblaze.com/sign-up/cloud-storage',
+    },
+    {
         id: 'backblaze',
-        name: 'Backblaze B2',
-        description: 'Affordable cloud storage with S3 compatibility',
+        name: 'Backblaze B2 (S3-compat)',
+        description: 'B2 via S3-compatible endpoint (legacy; prefer the native option above)',
         protocol: 's3',
         category: 's3',
         icon: 'Flame',
@@ -1597,6 +1643,7 @@ class ProviderRegistryImpl implements ProviderRegistry {
             webdav: [],
             mega: [],
             swift: [],
+            object: [],
         };
 
         this.getAll().forEach(p => {

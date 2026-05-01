@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useRef, useCallback } from 'react';
-import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck, Folder } from 'lucide-react';
+import { X, Plus, Loader2, Wifi, WifiOff, Database, Cloud, CloudOff, Server, Lock, ShieldCheck, Folder, Flame } from 'lucide-react';
 import { FtpSession, SessionStatus, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import type { LocalTab } from '../types/aerofile';
 import { MegaLogo, BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, GitLabLogo, ImmichLogo, PROVIDER_LOGOS } from './ProviderLogos';
@@ -145,6 +145,8 @@ const ProviderIcon: React.FC<{
             return <span className={opacityClass}><GitLabLogo size={size} /></span>;
         case 'immich':
             return <span className={opacityClass}><ImmichLogo size={size} /></span>;
+        case 'backblaze':
+            return <Flame size={size} className={`${combinedClass} text-red-600`} />;
         case 'sftp':
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
         case 'ftps':
@@ -180,6 +182,7 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'github': return 'text-gray-400';
         case 'gitlab': return 'text-orange-500';
         case 'immich': return 'text-indigo-500';
+        case 'backblaze': return 'text-red-600';
         case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)
         default: return 'text-green-500';        // FTP - green
