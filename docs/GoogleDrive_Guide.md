@@ -172,4 +172,4 @@ While rclone requires manual CLI configuration, AeroFTP offers:
 
 ---
 
-*This guide is created for AeroFTP v3.5.3. Procedures may vary slightly with future versions.*
+*This guide is created for AeroFTP v3.7.0. Procedures may vary slightly with future versions.*

@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 27 April 2026
-> Version: v3.6.6
+> Last Updated: 2 May 2026
+> Version: v3.7.0
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
@@ -436,7 +436,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 52 tools work identically across the 7 transport protocols and 20+ native provider integrations via the `StorageProvider` trait:
+All 43 tools work identically across the 7 transport protocols and 20+ native provider integrations via the `StorageProvider` trait:
 
 | Tool | Danger | Description |
 |------|--------|-------------|
@@ -533,7 +533,7 @@ All 52 tools work identically across the 7 transport protocols and 20+ native pr
 | GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
 | Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A | N/A | N/A | N/A |
 
-### AeroAgent Tool Categories (52 tools)
+### AeroAgent Tool Categories (43 tools)
 
 | Category | Tools | Danger Level |
 |----------|-------|-------------|
@@ -627,7 +627,7 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v2.9.5 | **Dual-Engine Security Audit** - Claude Opus 4.6 + GPT-5.4 (117 findings), DOMPurify, vault write safety, shell denylist expansion, TOTP-before-cache. Yandex Object Storage S3 preset | Done |
 | v2.9.6 | **Remote Timestamp Timezone Fix** - MLSD/SFTP/cloud UTC→local conversion, sync comparison fix, 11 provider backends updated | Done |
 | v2.9.7 | **Share Links for FTP/SFTP/WebDAV** - Per-server Public URL Base mapping, folder scan progress toast, update install overlay, security audit remediation | Done |
-| v2.9.8 | **OpenDrive Native API** (22nd protocol), Settings OAuth for Yandex/Zoho, protocol count update to 21 | Done |
+| v2.9.8 | **OpenDrive Native API** (22nd protocol), Settings OAuth for Yandex/Zoho | Done |
 | v3.0.5 | **SFTP upload 0-byte fix** (russh→ssh2/SCP backend on embedded SFTP servers), atomic downloads (`.aerotmp` rename) on all 22 providers, **GitHub PEM vault** (AES-256-GCM encrypted in vault on import), GitHub token expiry badges, 0 B file alert badge | Done |
 | v3.1.x | Filen Encrypted Notes (Beta), CSP Phase 2 prep, biometric unlock investigation | Done |
 | v3.3.4 | **`serve http`** + **`serve webdav`** local servers (axum-based, Range requests, PROPFIND, atomic PUT) | Done |
@@ -637,6 +637,9 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v3.5.8 / v3.5.9 | MCP pool auto-reset, `delete_many`, `list_servers` filter, `read_file preview_kb`, `upload_file create_parents`, `sync_tree plan[]`, two-sided checksum, CLI parent explainer, scan reconnect, ssh2 OpenSSL Windows CI quirks | Done |
 | v3.6.0 | MCP `read_file` soft-truncate, `check_tree compare_method`, cluster doc reorg | Done |
 | v3.6.1 | **Windows first-class delta sync** - native rsync protocol 31 in pure Rust, no rsync.exe bundle, no WSL requirement (`aerorsync` cross-OS, `#![cfg(unix)]` removed surgically) | Done |
+| v3.6.6 | Community wishlist quick wins, Server Speed Test dialog (`speed-compare`), `aeroftp_agent_connect`, AeroRsync wired into Cross-Profile Transfer + AeroTools Code Editor save | Done |
+| v3.6.7 / v3.6.8 / v3.6.10 | Share-link reliability + `link --verify`, suppaftp 8.0.3 with 14 upstream FTP fixes, MEGA Native canonical key layout interop fix, MEGA/Filen 2FA modal hookup, TOTP QR | Done |
+| v3.7.0 | **AeroRsync session-cached batch transport** (`AerorsyncBatch` trait, `delta_files[]`, `bytes_on_wire`), **AeroVault overlay session model** (transparent encrypted browse), **rclone crypt full read/write** (provider session + filename obfuscation), **Server Health Check** engine (DNS/TCP/TLS/HTTP probes, IntroHub Pro), **MCP wave-5 cross-profile transfer** + **wave-6 ops tools** (`touch` / `cleanup` / `speed` / `sync_doctor` / `dedupe` / `reconcile`), MCP tool count 27 → 39, `aerovault` crate 0.3.4 with `rename_entry` / `move_entry` / `copy_entry` | Done |
 
 ### Planned
 

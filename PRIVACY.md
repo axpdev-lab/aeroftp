@@ -71,4 +71,4 @@ For privacy-related questions or concerns:
 
 ---
 
-*AeroFTP v3.5.0 - An open source project by axpdev*
+*AeroFTP v3.7.0 - An open source project by axpdev*

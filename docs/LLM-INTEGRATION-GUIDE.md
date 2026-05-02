@@ -240,35 +240,46 @@ The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-serv
 
 | Category | Limit | Examples |
 |----------|-------|----------|
-| ReadOnly | 60/min | `aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_file_info`, `aeroftp_search_files`, `aeroftp_storage_quota`, `aeroftp_list_servers`, `aeroftp_check_tree`, `aeroftp_agent_connect`, `aeroftp_mcp_info` |
-| Mutative | 30/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection` |
-| Destructive | 10/min | `aeroftp_delete`, `aeroftp_delete_many` |
+| ReadOnly | 60/min | `aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_file_info`, `aeroftp_search_files`, `aeroftp_storage_quota`, `aeroftp_list_servers`, `aeroftp_check_tree`, `aeroftp_agent_connect`, `aeroftp_mcp_info`, `aeroftp_head`, `aeroftp_tail`, `aeroftp_tree`, `aeroftp_hashsum`, `aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe` |
+| Mutative | 30/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection`, `aeroftp_transfer`, `aeroftp_transfer_tree`, `aeroftp_touch`, `aeroftp_speed` |
+| Destructive | 10/min | `aeroftp_delete`, `aeroftp_delete_many`, `aeroftp_cleanup` |
 
-### Available Tools (19 canonical)
+### Available Tools (39 canonical, v3.7.0)
 
-The canonical MCP tool set uses the `aeroftp_` prefix. Legacy aliases without the prefix (`remote_list`, `server_exec`, etc.) are also exposed by the server for backward compatibility but new integrations should target the canonical names.
+The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a matching `remote_*` alias for callers that prefer the cross-profile naming convention.
 
 | Tool | Category | Description |
 |------|----------|-------------|
-| `aeroftp_list_servers` | ReadOnly | List saved server profiles in the vault |
+| `aeroftp_list_servers` | ReadOnly | List saved server profiles in the vault (filters: `name_contains`, `protocol`, `limit`, `offset`) |
 | `aeroftp_agent_connect` | ReadOnly | Single-shot connect probe: connect / capabilities / quota / path in one envelope |
 | `aeroftp_mcp_info` | ReadOnly | MCP process diagnostics (started_at, uptime_secs, protocol coverage) |
-| `aeroftp_list_files` | ReadOnly | List files in a remote directory |
-| `aeroftp_read_file` | ReadOnly | Read a remote text file (size-capped preview) |
-| `aeroftp_file_info` | ReadOnly | Stat a remote file or directory (size, mtime, type) |
-| `aeroftp_search_files` | ReadOnly | Search remote tree by name pattern (glob) |
+| `aeroftp_list_files` | ReadOnly | List files in a remote directory (glob, `name_contains`, `recursive`, `limit`) |
+| `aeroftp_read_file` | ReadOnly | Read a remote text file with `preview_kb` window and soft-truncate inside the 1 MB hard cap |
+| `aeroftp_file_info` | ReadOnly | Stat a remote file or directory (size, mtime, type, hash where supported) |
+| `aeroftp_search_files` | ReadOnly | Search remote tree by name pattern (glob, extension filters) |
 | `aeroftp_storage_quota` | ReadOnly | Storage quota / usage where the protocol exposes it |
-| `aeroftp_check_tree` | ReadOnly | Compare local vs remote tree, returns differ / missing-local / missing-remote groups |
-| `aeroftp_upload_file` | Mutative | Upload one local file to a remote path |
-| `aeroftp_upload_many` | Mutative | Batch upload multiple local files in one call |
-| `aeroftp_download_file` | Mutative | Download one remote file to a local path |
-| `aeroftp_create_directory` | Mutative | Create a remote directory (idempotent with `create_parents`) |
+| `aeroftp_head` / `aeroftp_tail` | ReadOnly | First / last N lines of a remote text file |
+| `aeroftp_tree` | ReadOnly | Recursive directory tree, depth-capped |
+| `aeroftp_hashsum` | ReadOnly | Server-side checksum (SHA-256 / SHA-1 / MD5 / BLAKE3) with provider fallback |
+| `aeroftp_check_tree` | ReadOnly | Compare local vs remote tree with two-sided checksum, per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`), `omit_match`, `compare_method` flag per entry |
+| `aeroftp_sync_doctor` | ReadOnly | Preflight risk summary with `suggested_next_command` (lighter than `sync_tree dry_run`) |
+| `aeroftp_reconcile` | ReadOnly | Categorized size-only diff variant of `check_tree` with `elapsed_secs` + `suggested_next_command` |
+| `aeroftp_dedupe` | ReadOnly | SHA-256 duplicate detection grouped per size — modes `newest` / `oldest` / `largest` / `smallest` / `list`, dry-run by default |
+| `aeroftp_upload_file` | Mutative | Upload one local file (`create_parents`, `no_clobber`) |
+| `aeroftp_upload_many` | Mutative | Batch upload from a `files: []` array |
+| `aeroftp_download_file` | Mutative | Download one remote file with progress stream |
+| `aeroftp_create_directory` | Mutative | Create a remote directory (idempotent with `parents`) |
 | `aeroftp_rename` | Mutative | Rename / move a remote file or directory |
 | `aeroftp_edit` | Mutative | Find-and-replace on a remote UTF-8 text file (no full download) |
-| `aeroftp_sync_tree` | Mutative | Sync a local directory with a remote one (upload / download / both, plus delta savings) |
+| `aeroftp_sync_tree` | Mutative | Bidirectional sync with `plan[]` (per-file decision) and `summary.delta_files[]` (per-file delta breakdown) |
+| `aeroftp_transfer` | Mutative | Cross-profile single-file copy between two saved profiles |
+| `aeroftp_transfer_tree` | Mutative | Cross-profile recursive directory copy (`max_files` cap, `summary_only`, `dry_run`) |
+| `aeroftp_touch` | Mutative | Create empty file or report `action: "exists"` |
+| `aeroftp_speed` | Mutative | Throughput probe (random payload upload + download + SHA-256 integrity + cleanup) |
 | `aeroftp_close_connection` | Mutative | Close a pooled server connection explicitly |
-| `aeroftp_delete` | Destructive | Delete a remote file or empty directory |
-| `aeroftp_delete_many` | Destructive | Batch delete multiple remote paths in one call |
+| `aeroftp_delete` | Destructive | Delete a remote file or directory |
+| `aeroftp_delete_many` | Destructive | Batch delete with caps + configurable backoff |
+| `aeroftp_cleanup` | Destructive | BFS scan for orphan `.aerotmp` partial-transfer files (dry-run by default) |
 
 ### MCP Resources
 

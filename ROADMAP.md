@@ -1,24 +1,129 @@
 # AeroFTP Roadmap
 
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
-> This roadmap is updated regularly. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
+> This roadmap is updated continuously. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
 
 ---
 
-## Legend
+## At a Glance
 
-| Symbol | Meaning |
-|--------|---------|
-| **Shipped** | Released and available |
-| **In progress** | Currently being worked on |
-| **Planned** | Confirmed for a future release |
-| **Considering** | Evaluating based on community interest |
+A continuous flow rather than a calendar. Items move from right to left as they ship.
+
+| 🟢 **Just Shipped** | 🟡 **In Flight** | 🔵 **Up Next** | ⚪ **On the Horizon** |
+|---|---|---|---|
+| Available in the latest release | Actively being worked on, ready to release soon | Confirmed for an upcoming release, design done | Planned but not yet started |
+
+### 🟢 Just Shipped
+
+- **AeroRsync session-cached batch transport** — one SSH session amortizes many consecutive delta transfers (`AerorsyncBatch` trait, per-file `delta_files[]`, `bytes_on_wire` counter)
+- **AeroVault overlay session model** — open an `.aerovault` once, then route every list/upload/download/rename through the encrypted overlay transparently
+- **rclone crypt — full read/write** — beyond the existing read-only browse, AeroFTP now re-encrypts on the upload path with a transparent crypto overlay session
+- **Server Health Check engine** — real-time DNS/TCP/TLS/HTTP probes per saved server in IntroHub Pro (latency, 0-100 score, capability matrix, SVG radial gauge)
+- **MCP wave-5 cross-profile transfer** — `aeroftp_transfer` / `aeroftp_transfer_tree` between two saved profiles in one batch
+- **MCP wave-6 ops tools** — `aeroftp_touch` / `aeroftp_cleanup` / `aeroftp_speed` / `aeroftp_sync_doctor` / `aeroftp_dedupe` / `aeroftp_reconcile` plus per-group caps on `aeroftp_check_tree` (MCP tool count: 27 → 39)
+- **Box / Google Drive / Dropbox / OneDrive / Zoho deeper integrations** — labels, comments, file properties, tags, trash management, versioning across the matrix
+- **InfiniCLOUD — REST v2 (Muramasa) + WebDAV** — dual-connector with auto-discovery and real-time quota
+- **Immich photo provider** — native REST API integration, self-hosted photo management
+- **Continuous bidirectional `sync --watch`** — native filesystem watcher (inotify / FSEvents / ReadDirectoryChangesW), anti-loop cooldown, NDJSON output
+- **MEGA Native crypto canonical layout** — interop fix so AeroFTP-uploaded files open correctly in MEGA Web / MEGA Mobile / megajs
+
+### 🟡 In Flight
+
+- **AeroFile Dual Panel** — one surface for any pair of endpoints (local/local, local/remote, remote/local, remote/remote) with FreeFileSync-style mirror / backup / bisync workflow
+- **Local Transport for AeroRsync** — delta sync local-to-local, same wire-protocol-compatible engine extended to local filesystem pairs
+- **Activity Log per-provider coverage** — beyond generic CRUD, surface provider-specific events (share link rotated, version restored, label applied)
+- **Flathub publish** — flatpak manifest done, `flathub-fork/` ready, awaiting acceptance into the Flathub remote
+- **Bitbucket / Gitea / Forgejo native integrations** — Git forge Tier 1 on top of the existing GitHub + GitLab providers (~90% reuse of the GitHub code path)
+- **Mobile companion app** — Android with Capacitor 6 + React, FTP / SFTP / WebDAV protocols and AeroVault v2 import/export
+
+### 🔵 Up Next
+
+- **Persistent Mount Manager** (GUI + CLI) — pick a free drive letter on Windows or a mount path on Linux, persist across reboots; `Open Mount` button in the dual panel
+- **Streaming Scan Pipeline** — producer-consumer architecture for immediate transfer start without waiting for a full directory scan
+- **Share Link UX Redesign** — unified share experience with QR codes, link analytics, and team sharing on top of the 22 provider backends already shipped
+- **VS Code Remote Explorer extension** — browse, edit, and upload to remotes from inside VS Code (distinct from the existing MCP launcher extension)
+- **Deploy Engine** — one-click self-hosted server provisioning (S3 / WebDAV / SFTP / FTP) on a NAS, VPS, or local Docker, with the resulting endpoint auto-saved as a connection profile
+- **Photo & Media Services expansion** — 7 services beyond Immich and Google Photos
+- **Mobile-friendly window dimensions** — shrink the minimum width below current bound so AeroFTP runs comfortably on Linux phones / half-screen splits
+- **Universal File Versioning** — unified versions panel across 10 providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud)
+- **AeroCloud Selective Sync** — folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization
+- **Agent Orchestration v2** — mutative remote operations with grant model on top of the existing 39-tool MCP server
+- **AeroVault v2 Enhancements** — cross-platform migration, multi-device sync integration, key rotation
+- **S3 Storage Class Management** — set storage class on upload, change in-place, Glacier restore workflow, tier badges
+- **Azure Blob Tier Management** — Hot / Cool / Cold / Archive with rehydration workflow
+
+### ⚪ On the Horizon
+
+- **AeroIndex** — content-aware file intelligence: cross-server deduplication, semantic tags, transactional preview, offline browsing, workspaces. A new way to think about files scattered across 40+ cloud services.
+- **IPFS / Web3 Storage** — decentralized storage integration (NLnet grant submitted)
+- **Tor Support** — anonymous file transfers via Tor hidden services (NLnet grant submitted)
+- **Biometric Unlock** — fingerprint / face unlock for the encrypted vault (Touch ID, Windows Hello)
+- **Per-protocol comparison page in docs** — qualitative API vs WebDAV trade-offs, complementing Health Check + Speed Test
+- **Topbar nav restructure** — dedicated 3-cluster layout (page-nav / utility / window controls)
+- **Custom favicon picker — manual reorder + sort toggle**
+- **Icon size enlarge / Appearance slider** — bigger provider icons or user-adjustable size
+- **Keyboard accessibility — Tab forward unstuck** — Enter / Space activation already shipped; Tab traversal still pending
+- **AeroSync ↔ aeroftp-cli script export/import** — `.ps1` / `.sh` with auto-detected shebang
+- **Top-right overlays — keep titlebar drag-region active** while modals are open
+- **Right-click "Open with default app"** — `.aerovault` / `.aeroftp` / `.aeroftp-keystore` open inside AeroFTP, `.ps1` / `.sh` open in AeroTools terminal
 
 ---
 
-## Recently Shipped
+## Provider Pipeline
 
-### v3.5.0 (April 2026)
+| Provider | Protocol | Status |
+|----------|----------|--------|
+| **InfiniCLOUD** (REST v2 + WebDAV) | Muramasa REST + WebDAV | 🟢 Just Shipped — dual-connector with auto-discovery and quota |
+| **Immich** | REST API (self-hosted) | 🟢 Just Shipped |
+| **Bitbucket** | REST 2.0 | 🟡 In Flight — Git forge Tier 1 |
+| **Gitea / Forgejo** | REST v1 | 🟡 In Flight — Git forge Tier 1 (~90% GitHub reuse) |
+| **Photo & Media services** | OAuth / REST | 🔵 Up Next — phased rollout, 7 services in queue |
+| **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next — Tier 1 already shipped |
+| **ImageKit** | REST API | 🔵 Up Next — media CDN + storage |
+| **Blomp** | OpenStack Swift | ⏸ Awaiting Blomp proxy fix (auth works, storage 403) |
+
+**Already supported via presets**: Quotaless (S3 + WebDAV), PixelUnion (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud / ownCloud (WebDAV auto-detect).
+
+---
+
+## From the Community
+
+A continuous stream of fixes and small features driven by GitHub Issues. We treat the wishlist threads as a single rolling backlog: items get tagged, sorted by effort, and merged into the lanes above as they're picked up.
+
+Recent contributors include **[@EhudKirsh](https://github.com/EhudKirsh)**, whose detailed wishlists across multiple releases shaped the IntroHub polish, Activity Log filtering, OAuth Edit form parity, AeroFile auto-refresh, keyboard accessibility (Enter/Space activation, font-size shortcuts), the Choose Icon dialog, and the detailed server cards with storage bar + Health Check radial.
+
+Open community items currently in our triage:
+
+- AeroSync ↔ aeroftp-cli script export/import (`.ps1` / `.sh`, OS-aware shebang)
+- Top-right overlays — keep titlebar drag-region active while modal is open
+- AeroFile right-click "Open with default app" (`.aerovault` / `.aeroftp` in-app, `.ps1` / `.sh` in AeroTools)
+- Persistent Mount Manager + Open Mount button
+- Mobile-friendly window dimensions for Linux phones
+- Per-protocol comparison page in docs
+
+If you spot a bug, want a small feature, or want to nominate a provider for native integration, [open an issue](https://github.com/axpdev-lab/aeroftp/issues). Tier 1 quick wins are typically picked up within one or two releases.
+
+---
+
+## Detailed Release History
+
+The lane view above is what most users want. The tables below are kept for users who want to see exactly which feature landed in which release.
+
+### v3.7.0
+
+| Feature | Description |
+|---------|-------------|
+| **AeroRsync session-cached batch transport** | New `AerorsyncBatch` trait amortizes a single SSH session across many consecutive delta transfers. `SyncReport` exposes `delta_files[]` (per-file breakdown) and `bytes_on_wire` (cumulative wire savings) surfaced in SyncPanel. |
+| **AeroVault overlay session model** | Open an `.aerovault` once and route every list/upload/download/rename through the encrypted overlay transparently. Provider sees only opaque vault chunks; UI shows plaintext entries. Header status badge marks when overlay is active. |
+| **rclone crypt full read/write** | Beyond the existing read-only browse, AeroFTP now re-encrypts on the upload path with a transparent crypto overlay session. Filename obfuscation is deterministic; provider sees only encrypted blobs. |
+| **Server Health Check** | Real-time DNS/TCP/TLS/HTTP probes per saved server in IntroHub Pro. Latency measurements, 0-100 health scoring, capability matrix per protocol, SVG radial gauge, parallel batch refresh. |
+| **MCP wave-5 cross-profile transfer** | `aeroftp_transfer` and `aeroftp_transfer_tree` copy files between two saved profiles in one batch. Source and destination provider opened once and reused; path validation, audit log, throttled progress streaming. |
+| **MCP wave-6 ops tools** | Six new tools — `aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile` — plus per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`) and `omit_match` switch on `aeroftp_check_tree`. MCP tool count: 27 → 39. |
+| **`aerovault` crate 0.3.4** | New overlay-session API and KEK-derivation polish in the standalone Rust crate. New `rename_entry` / `move_entry` / `copy_entry` public API on `Vault`, mirrored by `aerovault rename / move / copy` CLI subcommands. |
+| **MEGA Native crypto polish** | Non-regressive cleanup on top of the v3.6.10 canonical-layout fix (less log noise, nonce/key edge cases, listing pagination). |
+| **B2 native v4 hardening** | Auth/list/upload/download retry surface aligned with provider-trait expectations. |
+
+### v3.5.0
 
 | Feature | Description |
 |---------|-------------|
@@ -27,7 +132,7 @@
 | **Nextcloud WebDAV auto-detection** | Connecting to a Nextcloud/ownCloud server without specifying the WebDAV path now auto-discovers `/remote.php/dav/files/{username}/`. No manual path configuration needed. |
 | **Transfer engine hardening** | Timeout scales with file size (2s/MB + 30s base). "Skip if identical" works reliably. Retry queue preserved after batch completion. |
 
-### v3.4.9 (April 2026)
+### v3.4.9
 
 | Feature | Description |
 |---------|-------------|
@@ -36,17 +141,17 @@
 | **macOS Quit fix** | Cmd+Q and menu bar Quit now exit correctly even when AeroCloud hide-to-tray is active. |
 | **Import/export security hardening** | Path traversal rejection, symlink resolution, 10 MB size cap, credential redaction in JSON output, INI injection prevention. |
 
-### v3.4.8 (April 2026)
+### v3.4.8
 
 | Feature | Description |
 |---------|-------------|
-| **MCP Server** | Native Model Context Protocol server via `aeroftp-cli agent --mcp`. 16 curated tools across all 27 protocols, connection pooling, rate limiting, audit logging, 5 resources, 4 prompt templates. Works with Claude Desktop, Cursor, and any MCP client. 2,800+ lines, async stdio, JSON-RPC 2.0 compliant. |
+| **MCP Server** | Native Model Context Protocol server via `aeroftp-cli mcp`. 16 curated tools across all 22 protocols (later expanded to 39 in v3.7.0), connection pooling, rate limiting, audit logging, 5 resources, 4 prompt templates. Works with Claude Desktop, Cursor, Windsurf, Claude Code via the [`axpdev-lab.aeroftp-mcp`](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp) extension. 2,800+ lines, async stdio, JSON-RPC 2.0 compliant. |
 | **Cross-profile transfer panel** | Dedicated toolbar button for cloud-to-cloud transfers. Floating panel with real-time queue, progress bars, and plan/execute/done transitions. |
 | **CLI `transfer` command** | Cross-profile copy between two vault-backed profiles with dry-run, recursive mode, and `--skip-existing` for backup flows. |
 | **CLI doctor workflows** | `sync-doctor` and `transfer-doctor` preflight commands with structured checks, risk summaries, and `suggested_next_command` for agent automation. |
 | **Rate limit resilience** | Automatic retry with exponential backoff on 429/5xx for Zoho WorkDrive, GitLab, and Swift/Blomp. |
 
-### v3.4.7 (April 2026)
+### v3.4.7
 
 | Feature | Description |
 |---------|-------------|
@@ -55,125 +160,58 @@
 | **CLI `import rclone`** | New subcommand `aeroftp import rclone [path] [--json]` for headless config migration. |
 | **MEGA default fix** | New MEGA profiles default to Native API instead of MEGAcmd. Existing profiles without explicit mode correctly labeled. |
 
-### v3.3.0 (April 2026)
+### v3.3.0
 
 | Feature | Description |
 |---------|-------------|
-| **IntroHub redesign** | New tabbed interface replaces the 50/50 split layout. My Servers grid with favorites, Discover Services catalog (49 providers in 5 categories), Command Palette (Ctrl+K), and dynamic form tabs. |
+| **IntroHub redesign** | New tabbed interface replaces the 50/50 split layout. My Servers grid with favorites, Discover Services catalog, Command Palette (Ctrl+K), and dynamic form tabs. |
 | **SourceForge integration** | Native SFTP provider for SourceForge File Release System. Pre-configured connection with Project (Unixname) field and SSH key authentication. |
-| **Custom Checkbox component** | All ~75 native HTML checkboxes replaced with animated SVG checkmark component. Focus-visible ring, aria-label support, keyboard navigation. |
+| **Custom Checkbox component** | All native HTML checkboxes replaced with animated SVG checkmark component. Focus-visible ring, aria-label support, keyboard navigation. |
 | **SFTP upload fix (#73)** | Removed SSH2/SCP fallback that caused "host key changed" errors during upload. Uploads now use native russh_sftp through the same SSH session. |
 | **Auto-update Trust UI** | Sigstore verification badges (green/amber/red). Linux restart reliability fix. Snap users redirected to store. Post-restart confirmation with actual verification status. |
-| **Cloud provider descriptions** | All 17 cloud services in Discover show storage info and signup links. Info banners for all 5 categories translated in 47 languages. |
+| **Cloud provider descriptions** | All cloud services in Discover show storage info and signup links. Info banners for all 5 categories translated in 47 languages. |
 | **Collapsible SSH Auth** | SFTP SSH authentication fields collapse by default, saving form space. |
 | **Badge accuracy** | Fixed kDrive, Yandex Disk, Koofr badges. Added OCS badge for Felicloud/Nextcloud, Swift for Blomp. |
 
-### v3.2.6 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **macOS crash fix** | Static liblzma linking eliminates DYLD crash at launch caused by dynamic Homebrew dependency. |
-| **Security hardening** | Resolved HIGH vulnerability (russh 0.59), removed dangerouslySetInnerHTML XSS finding, 116 dependency updates. Aikido Security: **Top 5% benchmark**, 0 open issues. |
-| **Felicloud direct access** | Clicking Felicloud in the connection screen now goes directly to the connection form instead of routing through the WebDAV preset list. |
-| **Status bar consistency** | File count indicators (remote/local) now match the visual panel order when panels are swapped. |
-
-### v3.2.5 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **Linux localhost fix** | Fixed connection refused on startup when `tauri-plugin-localhost` resolved to IPv6. Plugin now explicitly binds to `127.0.0.1`. |
-
-### v3.2.2 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **Advanced Share Links** | Password protection, expiry dates, and granular permissions for share links across 21 providers. |
-| **MEGA S4 Object Storage** | S3-compatible object storage via MEGA's S4 infrastructure. |
-| **CLI link enhancements** | New `--password`, `--expires`, and `--permissions` flags for the `link` command. |
-| **Security Hardening** | Additional security improvements across the application. |
-
-### v3.2.0 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **MEGA Native API** | Full native MEGA protocol - connect without MEGAcmd. Client-side AES-128-CTR encryption, RSA session auth, encrypted node tree, share links, trash management. Zero external dependencies. |
-| **MEGA Dual-Backend** | Users choose Native API or MEGAcmd in connection form. Mode-specific badges, session persistence, backward compatibility with existing profiles. |
-| **Windows MEGA Fixes** | Console flash eliminated (CREATE_NO_WINDOW), login via CLI arg for .bat wrappers. |
-| **Trash Date Formatting** | All 14 trash managers now display human-readable dates. |
-
-### v3.1.8 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **Desktop Security Hardening** | Sigstore client-side update verification, backend AI tool approval with native OS dialogs, vault passphrase moved to OS keyring, plugin registry fail-closed. |
-| **Agent Orchestration** | External AI agents (Claude Code, Codex, Cursor) can orchestrate AeroAgent via CLI with credential isolation. New `server_list_saved` and `server_exec` tools. New `ai-models` command for provider discovery. [Full documentation](https://docs.aeroftp.app/features/agent-orchestration). |
-| **FileLu v2 Listing** | v2 `folder/list` as primary listing path with legacy hybrid fallback. New metadata fields: content_hash, direct_link, public status. |
-
-### v3.1.7 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **Glob Find Patterns** | 8 providers (WebDAV, SFTP, S3, Jottacloud, Yandex Disk, GitHub, Filen, pCloud) now support glob patterns in find. |
-| **LargeIconsGrid Virtualization** | react-virtuoso for large directories. |
-| **DOMPurify CVE Fix** | Override to 3.3.3 (CVE mutation-XSS via monaco-editor). |
-| **Nextcloud Trash Scope** | Trash button restricted to Nextcloud/Felicloud WebDAV providers only. |
-
-### v3.1.6 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **Felicloud** (20th provider) | Nextcloud-based EU cloud storage with 10 GB free, GDPR compliant. Full OCS API integration with share links and trash management. |
-| **Share Link Modal** | New dedicated modal for share links with visual confirmation, copy buttons, and automatic password display when required by the server. |
-| **FileLu Performance** | Folder listing speed improved by 50% through parallel API calls. |
-| **Activity Log Coverage** | All trash operations (restore, permanent delete, empty) now tracked in the activity log across 14 providers. Share link creation and 30+ provider-specific operations also logged. |
-| **Share Link Bug Fixes** | Fixed missing share link support for Azure, kDrive, and Drime Cloud. Link expiration now properly passed to all providers that support it. |
-
-### v3.1.5 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **AeroAgent Hardening** | Improved AI agent reliability with prompt injection sanitization and memory management. |
-| **CLI Evolution** | 38 subcommands, batch engine with 17 commands, parallel transfers, shell completions. |
-| **Security Audit** | Full security review with backend-enforced command denylist and signed audit log. |
-
-### v3.1.4 (March 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **FileLu v2 API** | Migrated to path-based API with hash-based sync support. |
-| **AeroCloud Closure** | Production-grade personal cloud sync with conflict resolution. |
-
-### v3.1.2 (February 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **Zoho WorkDrive** (16th provider) | Full OAuth2 integration with native document creation, labels, and share link management. |
-| **Swap Panels** | One-click swap between local and remote panels. |
-
-### v3.1.0 (February 2026)
-
-| Feature | Description |
-|---------|-------------|
-| **Co-Author Address Book** | Manage and reuse co-authors for Git commits. |
-| **Static CRT** | Windows builds with statically linked C runtime for broader compatibility. |
-
-### v3.0.x Highlights (January - February 2026)
+### v3.2.x
 
 | Version | Feature |
 |---------|---------|
-| v3.0.9 | **GitHub Batch Operations** - bulk upload, delete, and commit across repositories |
-| v3.0.7 | **GitHub Actions Browser** - monitor and trigger CI/CD workflows directly from AeroFTP |
-| v3.0.5 | **GitHub App Authentication** - PEM vault storage, installation tokens, branch protection |
-| v3.0.0 | **AeroFTP 3.0** - Tauri 2 migration, new UI, 15 AI providers, plugin system |
+| v3.2.6 | macOS crash fix (static liblzma), security hardening (russh 0.59 HIGH, Aikido Top 5%), Felicloud direct access, status bar consistency |
+| v3.2.5 | Linux localhost fix (`tauri-plugin-localhost` IPv6 → `127.0.0.1`) |
+| v3.2.2 | Advanced share links (password / expiry / permissions across 21 providers), MEGA S4 Object Storage, CLI link enhancements |
+| v3.2.0 | **MEGA Native API** (full native protocol, AES-128-CTR, RSA session, encrypted node tree), MEGA dual-backend, Windows MEGA fixes, trash date formatting |
+
+### v3.1.x
+
+| Version | Feature |
+|---------|---------|
+| v3.1.8 | Desktop security hardening (Sigstore, native OS approval dialogs, OS keyring), **Agent Orchestration** (CLI `agent` mode, `server_list_saved`, `server_exec`), FileLu v2 listing |
+| v3.1.7 | Glob find patterns (8 providers), LargeIconsGrid virtualization, DOMPurify CVE fix, Nextcloud trash scope |
+| v3.1.6 | **Felicloud** integration (Nextcloud-based EU cloud, OCS API, share links, trash), share link modal redesign, FileLu listing perf, activity log coverage |
+| v3.1.5 | AeroAgent hardening (prompt injection sanitization, memory management), CLI evolution (38 subcommands, batch engine), security audit (signed log, command denylist) |
+| v3.1.4 | FileLu v2 path-based API, AeroCloud production closure |
+| v3.1.2 | **Zoho WorkDrive** OAuth2, swap panels |
+| v3.1.0 | Co-Author address book, Windows static CRT |
+
+### v3.0.x
+
+| Version | Feature |
+|---------|---------|
+| v3.0.9 | GitHub batch operations (bulk upload, delete, commit) |
+| v3.0.7 | GitHub Actions browser (CI/CD monitor and trigger) |
+| v3.0.5 | GitHub App authentication (PEM vault storage, installation tokens, branch protection) |
+| v3.0.0 | **AeroFTP 3.0** — Tauri 2 migration, new UI, plugin system |
 
 ---
 
 ### Provider Timeline
 
-Every new cloud provider integration is a milestone. Here's the full history:
+Every native cloud provider integration is a milestone. Here's the full history:
 
 | # | Provider | Version | Protocol |
 |---|----------|---------|----------|
+| 25 | **InfiniCLOUD** | v3.7.0 | REST v2 (Muramasa) + WebDAV |
 | 24 | **Immich** | v3.4.4 | REST API (self-hosted) |
 | 23 | **Google Photos** | v3.4.3 | OAuth2 (read-only, Google restricted scope 2025) |
 | 22 | **GitLab** | v3.3.2 | REST API v4 |
@@ -199,97 +237,9 @@ Every new cloud provider integration is a milestone. Here's the full history:
 | 2 | **Google Drive** | v2.0.0 | OAuth2 |
 | 1 | **Azure Blob + S3** | v1.5.0 | HMAC |
 
-Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**
+Plus the core protocols: **FTP**, **FTPS**, **SFTP**, **WebDAV**, **AeroCloud**.
 
 **Bridge interoperability** (v3.4.7-v3.5.0): Import/export profiles with **rclone** (17 backends), **WinSCP** (6 protocols), and **FileZilla** (4 protocols). Credentials decoded from each tool's obfuscation format and upgraded to AES-256-GCM vault.
-
----
-
-## In Progress
-
-| Feature | Status | Description |
-|---------|--------|-------------|
-| **InfiniCLOUD REST API** | Beta | Dual connector (WebDAV / REST API) with Muramasa API. Auto-discovery of user node server and real-time storage quota. Available for developer and beta testing. |
-| **Mobile App** | In progress | Android companion app with Capacitor 6 + React. FTP, SFTP, WebDAV protocols, AeroVault v2 import/export. 17/19 tasks complete (89%). |
-
----
-
-## Planned
-
-### AeroFile Dual Panel (local)
-
-Optional Total Commander-style dual local panel with unified tab bar, local-to-local drag-and-drop, and F5/F6 keyboard shortcuts.
-
-### Provider Capabilities
-
-| Feature | Description |
-|---------|-------------|
-| **Universal File Versioning** | Unified versions panel across 10 providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud) |
-| **Universal Trash Restore** | List, restore, and empty trash across all providers with trash support (14 providers already implemented, 2 backend-only) |
-| **S3 Storage Class Management** | Set storage class on upload, change in-place, Glacier restore workflow, tier badges in UI |
-| **Azure Blob Tier Management** | Hot/Cool/Cold/Archive tier management with rehydration workflow |
-
-### CLI Advanced (already shipped, CLI-only)
-
-These features are production-ready in the CLI. GUI integration is planned for future releases.
-
-| Feature | CLI Status | GUI Planned |
-| ------- | ---------- | ----------- |
-| **FUSE Mount** | Shipped (v3.4.2) - Linux + macOS read-write, Windows WebDAV bridge. `aeroftp mount <profile>:<path> <mountpoint>` | Mount manager panel with mount/unmount, status indicators, auto-mount on startup |
-| **Daemon & Job Queue** | Shipped (v3.4.2) - `aeroftp daemon start/stop/status`, HTTP RC API, persistent SQLite job queue, `jobs add/list/status/cancel` | Background daemon control in system tray, job queue viewer with pause/cancel/priority |
-| **Serve HTTP/WebDAV/FTP/SFTP** | Shipped (v3.3.5-v3.4.2) - Expose any remote as local HTTP (range 206), WebDAV (r/w, 8 methods), FTP (`libunftp`), SFTP (`russh`) | Quick Share panel: one-click serve a folder with QR code and local URL |
-| **Bisync** | Shipped (v3.4.2) - True bidirectional sync with snapshot, delta mtime, `--conflict-mode`, `--resync`, `--backup-dir` | Already partially in AeroSync GUI. Full conflict visualization planned |
-| **NCdu Explorer** | Shipped (v3.4.2) - ratatui TUI with recursive scan, keyboard navigation, JSON export | Disk usage treemap already in GUI. Remote NCdu-style drill-down planned |
-| **Crypt Overlay** | Shipped (v3.4.2) - AES-256-GCM content + AES-256-SIV filenames + Argon2id KDF. `crypt init/ls/put/get` | Transparent crypt layer in file browser, encrypt-on-upload toggle per profile |
-
-### Sync & Transfer
-
-| Feature | Description |
-|---------|-------------|
-| **AeroCloud Selective Sync** | Folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization |
-| **Streaming Scan Pipeline** | Producer-consumer architecture for immediate transfer start without full directory scan |
-| **Rclone Crypt Read Compatibility** | Transparent read-only decryption of existing rclone-encrypted remotes (XSalsa20-Poly1305 content, EME filename encryption) |
-
-### Agent & Orchestration
-
-| Feature | Description |
-|---------|-------------|
-| **Agent Orchestration v2** | Mutative remote operations (put, rm, mv, mkdir) with grant model, cross-server diff/sync. MCP Server already shipped with 16 read/write tools - this extends the grant and approval layer |
-| **AeroVault v2 Enhancements** | Cross-platform migration, multi-device sync integration, key rotation |
-
-### Documentation & Distribution
-
-| Feature | Description |
-|---------|-------------|
-| **Provider Landing Pages** | SEO landing pages on docs.aeroftp.app for 30+ providers with connection guides and feature matrices |
-| **Auto-Update Trust UI** | Sigstore trust UI improvements, macOS DMG distribution |
-
-### Provider Pipeline
-
-| Provider | Protocol | Status |
-|----------|----------|--------|
-| **InfiniCLOUD** (REST API) | REST + WebDAV | Beta - dual connector with Muramasa API for auto-discovery and quota |
-| **Blomp** | OpenStack Swift | Awaiting Blomp proxy fix (auth works, storage 403) |
-| **GitLab** (completion) | REST API v4 | Tier 1 shipped (v3.3.2). Remaining: Tier 2-3 features |
-| **Bitbucket** | REST 2.0 | Planned - Git forge Tier 1 |
-| **Gitea / Forgejo** | REST v1 | Planned - Git forge Tier 1 (~90% GitHub reuse) |
-| **ImageKit** | REST API | Planned - media CDN + storage |
-
-**Already supported via presets:** Quotaless (S3 + WebDAV), PixelUnion/Immich (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud/ownCloud (WebDAV auto-detect since v3.5.0)
-
----
-
-## Under Consideration
-
-These features are being evaluated based on community interest and NLnet grant outcome:
-
-| Feature | Description |
-|---------|-------------|
-| **Content-aware file intelligence** | What if your file manager understood what's inside your files, not just where they are? Cross-server awareness, smarter transfers, and a new way to think about files scattered across 40+ cloud services |
-| **IPFS / Web3 Storage** | Decentralized file storage integration (NLnet grant submitted) |
-| **Tor Support** | Anonymous file transfers via Tor hidden services (NLnet grant submitted) |
-| **Biometric Unlock** | Fingerprint/face unlock for the encrypted vault |
-| **Share Link Redesign** | Unified share experience with QR codes, link analytics, and team sharing |
 
 ---
 
@@ -297,7 +247,7 @@ These features are being evaluated based on community interest and NLnet grant o
 
 AeroFTP is available in **47 languages**:
 
-Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spanish, Estonian, Basque, Finnish, French, Galician, Hindi, Croatian, Hungarian, Armenian, Indonesian, Icelandic, Italian, Japanese, Georgian, Khmer, Korean, Lithuanian, Latvian, Macedonian, Malay, Dutch, Norwegian, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Serbian, Swedish, Swahili, Thai, Filipino, Turkish, Ukrainian, Vietnamese, Chinese
+Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spanish, Estonian, Basque, Finnish, French, Galician, Hindi, Croatian, Hungarian, Armenian, Indonesian, Icelandic, Italian, Japanese, Georgian, Khmer, Korean, Lithuanian, Latvian, Macedonian, Malay, Dutch, Norwegian, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Serbian, Swedish, Swahili, Thai, Filipino, Turkish, Ukrainian, Vietnamese, Chinese.
 
 ---
 
@@ -305,9 +255,6 @@ Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spani
 
 - **Star the repo** to show your support
 - **Report bugs** via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues)
-- **Suggest features** by opening a discussion
-- **Help translate** - we're always looking for native speakers to improve translations
-
----
-
-*Last updated: April 14, 2026*
+- **Suggest features** by opening a discussion or commenting on an existing wishlist thread
+- **Help translate** — we're always looking for native speakers to improve translations
+- **Run a storage service?** See the [Provider Integration Guide](docs/PROVIDER-INTEGRATION-GUIDE.md) for a native integration in AeroFTP. We collaborate directly with providers on the API mapping.
