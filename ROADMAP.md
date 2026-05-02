@@ -38,7 +38,9 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🔵 Up Next
 
-- **Persistent Mount Manager** (GUI + CLI) — pick a free drive letter on Windows or a mount path on Linux, persist across reboots; `Open Mount` button in the dual panel
+- **Persistent Mount Manager** (GUI + CLI) — pick a free drive letter on Windows or a mount path on Linux, persist across reboots; `Open Mount` button in the dual panel. Also unlocks "view the decrypted view of an encrypted sync" for Crypt and AeroVault overlays.
+- **Crypt as a dedicated profile type** — surface `crypt` in the `aeroftp-cli profiles` listing under the "Proto" column instead of hiding the encryption configuration inside `.sh` / `.ps1` automation scripts. Same on the GUI: Crypt becomes its own card on My Servers and Discover with a `256-bit 🔐` badge.
+- **Compression wrapper profile** — symmetric to the Crypt overlay: a per-profile zstd compression layer with the safe ordering enforced by the engine (`Encrypt(Compress(Data))` only). The UI warns when a user tries to compress an already-encrypted overlay (which would defeat compression).
 - **Streaming Scan Pipeline** — producer-consumer architecture for immediate transfer start without waiting for a full directory scan
 - **Share Link UX Redesign** — unified share experience with QR codes, link analytics, and team sharing on top of the 22 provider backends already shipped
 - **VS Code Remote Explorer extension** — browse, edit, and upload to remotes from inside VS Code (distinct from the existing MCP launcher extension)
@@ -57,7 +59,10 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 - **AeroIndex** — content-aware file intelligence: cross-server deduplication, semantic tags, transactional preview, offline browsing, workspaces. A new way to think about files scattered across 40+ cloud services.
 - **IPFS / Web3 Storage** — decentralized storage integration (NLnet grant submitted)
 - **Tor Support** — anonymous file transfers via Tor hidden services (NLnet grant submitted)
+- **AeroVault v3 with BLAKE3** — replace the SHA-2 fast-hashing parts of the AeroVault v2 stack with BLAKE3 while keeping Argon2id for KDF. Now is the right moment to make this kind of cryptographic decision before the install base grows.
+- **ChaCha20 / XChaCha20 cipher family** — battery-efficient symmetric encryption option for mobile (and exposed on desktop too for parity). Reference points: Kopia (ChaCha + zstd + BLAKE3), Restic (zstd). Benchmark phase before pinning the default.
 - **Biometric Unlock** — fingerprint / face unlock for the encrypted vault (Touch ID, Windows Hello)
+- **Encryption-strength badges refresh** — replace the current `E2E` / `🔒` badges across My Servers, Discover Services, and ProtocolSelector with cipher-strength labels (`128-bit 🔐` / `256-bit 🔐`). Removes the misleading "End-to-End Encryption" framing on overlays where there is no destination decryption, and aligns OAuth providers with the same visual grammar as API providers.
 - **Per-protocol comparison page in docs** — qualitative API vs WebDAV trade-offs, complementing Health Check + Speed Test
 - **Topbar nav restructure** — dedicated 3-cluster layout (page-nav / utility / window controls)
 - **Custom favicon picker — manual reorder + sort toggle**
