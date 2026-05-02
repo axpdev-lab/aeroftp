@@ -64,8 +64,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev
-          # Install Snapcraft
-          sudo snap install snapcraft --classic
+          # Install Snapcraft with retry on transient snap-store outages
+          for i in 1 2 3 4 5; do
+            if sudo snap install snapcraft --classic; then
+              echo "snapcraft installed (attempt $i)"
+              break
+            fi
+            if [ "$i" -eq 5 ]; then
+              echo "snapcraft install still failing after 5 attempts; continuing — Snap step is continue-on-error"
+              break
+            fi
+            echo "snap install failed (attempt $i/5), retry in 60s..."
+            sleep 60
+          done
 
       - name: Install npm dependencies
         run: npm ci
