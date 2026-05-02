@@ -15,6 +15,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
+use futures_util::future::BoxFuture;
 use reqwest::header::{HeaderValue, AUTHORIZATION};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
@@ -213,6 +214,41 @@ fn resource_to_entry(res: &YdResource) -> RemoteEntry {
     }
 }
 
+fn yandex_auth_message(description: &str) -> String {
+    let clean = if description.trim().is_empty() {
+        "Unauthorized"
+    } else {
+        description.trim()
+    };
+    if is_yandex_terminal_auth_message(clean) {
+        format!(
+            "Yandex token revoked or expired: {}. Regenerate the OAuth token at oauth.yandex.com and re-add the server.",
+            clean
+        )
+    } else {
+        clean.to_string()
+    }
+}
+
+fn is_yandex_terminal_auth_message(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("revoked")
+        || lower.contains("expired")
+        || lower.contains("invalid_token")
+        || lower.contains("invalid oauth")
+        || lower.contains("token is invalid")
+        || lower.contains("token not valid")
+}
+
+fn is_yandex_retryable_auth_error(err: &ProviderError) -> bool {
+    match err {
+        ProviderError::AuthenticationFailed(message) => {
+            !is_yandex_terminal_auth_message(message)
+        }
+        _ => false,
+    }
+}
+
 // ─── Provider ────────────────────────────────────────────────────────
 
 pub struct YandexDiskProvider {
@@ -243,6 +279,53 @@ impl YandexDiskProvider {
             .unwrap_or_else(|_| HeaderValue::from_static("OAuth invalid"))
     }
 
+    /// Yandex OAuth tokens are user-provisioned static tokens; there is no
+    /// refresh-token exchange available to this provider. The reauth hook is
+    /// therefore a bounded transient-401 retry with a short backoff.
+    async fn reauth(&mut self) -> Result<(), ProviderError> {
+        yd_log("401 from Yandex API; backing off before one retry");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        Ok(())
+    }
+
+    async fn with_reauth<T, F>(&mut self, mut op: F) -> Result<T, ProviderError>
+    where
+        F: for<'a> FnMut(&'a mut Self) -> BoxFuture<'a, Result<T, ProviderError>>,
+    {
+        match op(self).await {
+            Err(err) if is_yandex_retryable_auth_error(&err) => {
+                self.reauth().await?;
+                op(self).await
+            }
+            other => other,
+        }
+    }
+
+    async fn send_auth_checked(
+        &self,
+        rb: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let resp = rb
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if resp.status().as_u16() == 401 {
+            return Err(self.parse_error(resp).await);
+        }
+        Ok(resp)
+    }
+
+    async fn send_with_reauth<F>(&mut self, mut build: F) -> Result<reqwest::Response, ProviderError>
+    where
+        F: FnMut(&Self) -> reqwest::RequestBuilder,
+    {
+        self.with_reauth(|this| {
+            let rb = build(this);
+            Box::pin(async move { this.send_auth_checked(rb).await })
+        })
+        .await
+    }
+
     /// Resolve a relative path against current_path with traversal validation.
     fn resolve_path_safe(&self, path: &str) -> Result<String, ProviderError> {
         validate_yd_path(path)?;
@@ -270,7 +353,9 @@ impl YandexDiskProvider {
         if let Ok(err) = serde_json::from_str::<YdError>(&body) {
             match err.error.as_str() {
                 "UnauthorizedError" => {
-                    return ProviderError::AuthenticationFailed(err.description);
+                    return ProviderError::AuthenticationFailed(yandex_auth_message(
+                        &err.description,
+                    ));
                 }
                 "DiskNotFoundError" | "DiskPathDoesntExistsError" => {
                     return ProviderError::NotFound(err.description);
@@ -288,7 +373,9 @@ impl YandexDiskProvider {
             }
         }
         match status.as_u16() {
-            401 => ProviderError::AuthenticationFailed("Unauthorized".into()),
+            401 => ProviderError::AuthenticationFailed(yandex_auth_message(
+                &sanitize_api_error(&body),
+            )),
             403 => ProviderError::PermissionDenied("Forbidden".into()),
             404 => ProviderError::NotFound(sanitize_api_error(&body)),
             409 => ProviderError::AlreadyExists(sanitize_api_error(&body)),
@@ -303,7 +390,7 @@ impl YandexDiskProvider {
     }
 
     /// List directory contents with pagination.
-    async fn list_path(&self, path: &str) -> Result<Vec<YdResource>, ProviderError> {
+    async fn list_path(&mut self, path: &str) -> Result<Vec<YdResource>, ProviderError> {
         let encoded = encode_yd_path(path);
         let mut all_items = Vec::new();
         let mut offset: u64 = 0;
@@ -317,12 +404,12 @@ impl YandexDiskProvider {
             yd_log(&format!("LIST {}", url));
 
             let resp = self
-                .client
-                .get(&url)
-                .header(AUTHORIZATION, self.auth_header())
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .send_with_reauth(|this| {
+                    this.client
+                        .get(&url)
+                        .header(AUTHORIZATION, this.auth_header())
+                })
+                .await?;
 
             if !resp.status().is_success() {
                 return Err(self.parse_error(resp).await);
@@ -350,18 +437,18 @@ impl YandexDiskProvider {
     }
 
     /// Get metadata for a single resource.
-    async fn get_resource(&self, path: &str) -> Result<YdResource, ProviderError> {
+    async fn get_resource(&mut self, path: &str) -> Result<YdResource, ProviderError> {
         let encoded = encode_yd_path(path);
         let url = format!("{}/resources?path={}", API_BASE, encoded);
         yd_log(&format!("STAT {}", url));
 
         let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .get(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -375,7 +462,7 @@ impl YandexDiskProvider {
     // ─── Public trash methods (not in StorageProvider trait) ─────────
 
     /// List trash contents.
-    pub async fn list_trash(&self) -> Result<Vec<RemoteEntry>, ProviderError> {
+    pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut all_items = Vec::new();
         let mut offset: u64 = 0;
         let limit: u64 = 1000;
@@ -386,12 +473,12 @@ impl YandexDiskProvider {
                 API_BASE, limit, offset
             );
             let resp = self
-                .client
-                .get(&url)
-                .header(AUTHORIZATION, self.auth_header())
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .send_with_reauth(|this| {
+                    this.client
+                        .get(&url)
+                        .header(AUTHORIZATION, this.auth_header())
+                })
+                .await?;
 
             if !resp.status().is_success() {
                 return Err(self.parse_error(resp).await);
@@ -421,16 +508,16 @@ impl YandexDiskProvider {
     }
 
     /// Restore a resource from trash.
-    pub async fn restore_from_trash(&self, trash_path: &str) -> Result<(), ProviderError> {
+    pub async fn restore_from_trash(&mut self, trash_path: &str) -> Result<(), ProviderError> {
         let encoded = urlencoding::encode(trash_path);
         let url = format!("{}/trash/resources/restore?path={}", API_BASE, encoded);
         let resp = self
-            .client
-            .put(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .put(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         let status = resp.status();
         if status.is_success() || status.as_u16() == 201 || status.as_u16() == 202 {
@@ -441,15 +528,15 @@ impl YandexDiskProvider {
     }
 
     /// Empty the entire trash.
-    pub async fn empty_trash(&self) -> Result<(), ProviderError> {
+    pub async fn empty_trash(&mut self) -> Result<(), ProviderError> {
         let url = format!("{}/trash/resources", API_BASE);
         let resp = self
-            .client
-            .delete(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .delete(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         let status = resp.status();
         if status.is_success() || status.as_u16() == 204 || status.as_u16() == 202 {
@@ -460,16 +547,19 @@ impl YandexDiskProvider {
     }
 
     /// Permanently delete a specific item from trash.
-    pub async fn permanent_delete_from_trash(&self, trash_path: &str) -> Result<(), ProviderError> {
+    pub async fn permanent_delete_from_trash(
+        &mut self,
+        trash_path: &str,
+    ) -> Result<(), ProviderError> {
         let encoded = urlencoding::encode(trash_path);
         let url = format!("{}/trash/resources?path={}", API_BASE, encoded);
         let resp = self
-            .client
-            .delete(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .delete(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         let status = resp.status();
         if status.is_success() || status.as_u16() == 204 || status.as_u16() == 202 {
@@ -591,12 +681,12 @@ impl StorageProvider for YandexDiskProvider {
         // Step 1: Get download URL
         let url = format!("{}/resources/download?path={}", API_BASE, encoded);
         let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .get(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -669,12 +759,12 @@ impl StorageProvider for YandexDiskProvider {
         // Step 1: Get download URL (same as download())
         let url = format!("{}/resources/download?path={}", API_BASE, encoded);
         let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .get(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -711,12 +801,12 @@ impl StorageProvider for YandexDiskProvider {
         // Step 1: Get download URL
         let url = format!("{}/resources/download?path={}", API_BASE, encoded);
         let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .get(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -771,12 +861,12 @@ impl StorageProvider for YandexDiskProvider {
             API_BASE, encoded
         );
         let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .get(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -841,12 +931,12 @@ impl StorageProvider for YandexDiskProvider {
         yd_log(&format!("mkdir: {}", resolved));
 
         let resp = self
-            .client
-            .put(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .put(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if resp.status().is_success() || resp.status().as_u16() == 201 {
             Ok(())
@@ -865,12 +955,12 @@ impl StorageProvider for YandexDiskProvider {
         yd_log(&format!("delete: {}", resolved));
 
         let resp = self
-            .client
-            .delete(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .delete(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         let status = resp.status();
         if status.is_success() || status.as_u16() == 204 || status.as_u16() == 202 {
@@ -903,12 +993,12 @@ impl StorageProvider for YandexDiskProvider {
         yd_log(&format!("rename: {} -> {}", from_resolved, to_resolved));
 
         let resp = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .post(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         let status = resp.status();
         if status.is_success() || status.as_u16() == 201 || status.as_u16() == 202 {
@@ -949,12 +1039,12 @@ impl StorageProvider for YandexDiskProvider {
             return Err(ProviderError::NotConnected);
         }
         let resp = self
-            .client
-            .get(format!("{}/", API_BASE))
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .get(format!("{}/", API_BASE))
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1025,12 +1115,12 @@ impl StorageProvider for YandexDiskProvider {
         // Publish the resource
         let url = format!("{}/resources/publish?path={}", API_BASE, encoded);
         let resp = self
-            .client
-            .put(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .put(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1059,12 +1149,12 @@ impl StorageProvider for YandexDiskProvider {
         let url = format!("{}/resources/unpublish?path={}", API_BASE, encoded);
 
         let resp = self
-            .client
-            .put(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .put(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if resp.status().is_success() {
             Ok(())
@@ -1096,12 +1186,12 @@ impl StorageProvider for YandexDiskProvider {
                 API_BASE, limit, offset
             );
             let resp = self
-                .client
-                .get(&url)
-                .header(AUTHORIZATION, self.auth_header())
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .send_with_reauth(|this| {
+                    this.client
+                        .get(&url)
+                        .header(AUTHORIZATION, this.auth_header())
+                })
+                .await?;
 
             if !resp.status().is_success() {
                 return Err(self.parse_error(resp).await);
@@ -1137,12 +1227,12 @@ impl StorageProvider for YandexDiskProvider {
             return Err(ProviderError::NotConnected);
         }
         let resp = self
-            .client
-            .get(format!("{}/", API_BASE))
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .get(format!("{}/", API_BASE))
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1192,12 +1282,12 @@ impl StorageProvider for YandexDiskProvider {
         yd_log(&format!("copy: {} -> {}", from_resolved, to_resolved));
 
         let resp = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .post(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         let status = resp.status();
         if status.is_success() || status.as_u16() == 201 || status.as_u16() == 202 {
@@ -1225,12 +1315,12 @@ impl StorageProvider for YandexDiskProvider {
         yd_log(&format!("remote_upload: {} -> {}", url, resolved));
 
         let resp = self
-            .client
-            .post(&api_url)
-            .header(AUTHORIZATION, self.auth_header())
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .send_with_reauth(|this| {
+                this.client
+                    .post(&api_url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
 
         let status = resp.status();
         if status.is_success() || status.as_u16() == 202 {
@@ -1338,5 +1428,19 @@ mod tests {
         assert_eq!(provider.resolve_path("file.txt"), "/Documents/file.txt");
         assert_eq!(provider.resolve_path("/absolute/path"), "/absolute/path");
         assert_eq!(provider.resolve_path("disk:/something"), "disk:/something");
+    }
+
+    #[test]
+    fn retry_filter_accepts_generic_unauthorized_once() {
+        let err = ProviderError::AuthenticationFailed("Unauthorized".into());
+        assert!(is_yandex_retryable_auth_error(&err));
+    }
+
+    #[test]
+    fn retry_filter_rejects_terminal_token_messages() {
+        let err = ProviderError::AuthenticationFailed(yandex_auth_message("invalid_token"));
+        assert!(!is_yandex_retryable_auth_error(&err));
+        let msg = err.to_string();
+        assert!(msg.contains("Regenerate the OAuth token"));
     }
 }
