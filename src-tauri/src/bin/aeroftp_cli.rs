@@ -322,6 +322,32 @@ struct Cli {
     #[arg(long, global = true)]
     buffer_size: Option<String>,
 
+    /// Number of concurrent Range streams per single-file download
+    /// (rclone `--multi-thread-streams`). Default 1 = disabled. Range 1-16.
+    /// Currently honored by S3-compatible providers; other backends fall back
+    /// to single-stream transparently. Reads default from
+    /// `AEROFTP_MULTI_THREAD_STREAMS` if set.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 1,
+        env = "AEROFTP_MULTI_THREAD_STREAMS"
+    )]
+    multi_thread_streams: usize,
+
+    /// Minimum file size for multi-thread download
+    /// (rclone `--multi-thread-cutoff`). Default `250M`. Accepts size suffixes
+    /// `K`/`M`/`G`. Files smaller than this always use the single-stream path,
+    /// regardless of `--multi-thread-streams`. Reads default from
+    /// `AEROFTP_MULTI_THREAD_CUTOFF` if set.
+    #[arg(
+        long,
+        global = true,
+        default_value = "250M",
+        env = "AEROFTP_MULTI_THREAD_CUTOFF"
+    )]
+    multi_thread_cutoff: String,
+
     /// Default mtime when backend returns None (ISO 8601 or "now")
     #[arg(long, global = true)]
     default_time: Option<String>,
@@ -6030,6 +6056,34 @@ async fn create_and_connect(
         .and_then(|s| parse_size_filter(s).ok());
     if upload_override.is_some() || download_override.is_some() {
         provider.set_chunk_sizes(upload_override, download_override);
+    }
+
+    // Apply --multi-thread-streams / --multi-thread-cutoff (U-13).
+    // Only forward to the provider when the user actually asked for >1 stream,
+    // so providers that override `set_multi_thread_download` see the disabled
+    // state as a no-op rather than a parse-error from a malformed cutoff.
+    let mt_streams = cli.multi_thread_streams.clamp(1, 16);
+    if mt_streams > 1 {
+        let mt_cutoff = match parse_size_filter(&cli.multi_thread_cutoff) {
+            Ok(v) => v,
+            Err(e) => {
+                if cli.verbose > 0 {
+                    eprintln!(
+                        "Warning: invalid --multi-thread-cutoff '{}': {} (using 250M)",
+                        cli.multi_thread_cutoff, e
+                    );
+                }
+                250 * 1024 * 1024
+            }
+        };
+        provider.set_multi_thread_download(mt_streams, mt_cutoff);
+        if cli.verbose > 0 {
+            eprintln!(
+                "Multi-thread download: {} streams above {}",
+                mt_streams,
+                format_size(mt_cutoff)
+            );
+        }
     }
 
     Ok((provider, path))
@@ -25340,6 +25394,8 @@ mod tests {
             dump: Vec::new(),
             chunk_size: None,
             buffer_size: None,
+            multi_thread_streams: 1,
+            multi_thread_cutoff: "250M".to_string(),
             default_time: None,
             fast_list: false,
             inplace: false,

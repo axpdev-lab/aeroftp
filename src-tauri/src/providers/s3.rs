@@ -17,7 +17,11 @@ use quick_xml::Reader;
 use reqwest::{Client, Method, StatusCode};
 use secrecy::ExposeSecret;
 use std::collections::HashMap;
-use tracing::{debug, info};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tracing::{debug, info, warn};
 
 use super::{
     sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry, S3Config,
@@ -36,6 +40,12 @@ pub struct S3Provider {
     clock_offset_secs: i64,
     /// Override for multipart upload part size (default: 5 MB)
     upload_chunk_override: Option<usize>,
+    /// Number of concurrent Range streams for multi-thread download (1 = disabled).
+    /// Used by `download_multi_thread`. Set via `set_multi_thread_download`.
+    multi_thread_streams: usize,
+    /// Minimum file size (bytes) above which multi-thread download is engaged.
+    /// Below this threshold, the standard single-stream path is always used.
+    multi_thread_cutoff: u64,
 }
 
 impl S3Provider {
@@ -58,8 +68,16 @@ impl S3Provider {
             connected: false,
             clock_offset_secs: 0,
             upload_chunk_override: None,
+            multi_thread_streams: 1,
+            multi_thread_cutoff: Self::MULTI_THREAD_CUTOFF_DEFAULT,
         })
     }
+
+    /// Maximum number of concurrent download streams accepted by `set_multi_thread_download`.
+    pub const MULTI_THREAD_MAX_STREAMS: usize = 16;
+    /// Default cutoff above which multi-thread download engages (250 MiB).
+    /// Mirrors rclone's `--multi-thread-cutoff` default.
+    pub const MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
 
     /// Returns the current UTC time adjusted for any detected clock skew.
     fn now_adjusted(&self) -> DateTime<Utc> {
@@ -423,7 +441,6 @@ impl S3Provider {
         extra_headers: &[(&str, &str)],
     ) -> Result<reqwest::Response, ProviderError> {
         use sha2::{Digest, Sha256};
-        use tracing::{debug, warn};
 
         let mut url = self.build_url(key);
         if let Some(params) = query_params {
@@ -1087,6 +1104,180 @@ impl S3Provider {
         Ok(())
     }
 
+    /// Multi-thread chunk-parallel download for a single S3 object.
+    ///
+    /// Splits the object into N contiguous byte ranges and downloads them
+    /// concurrently via independent `GET` requests with `Range: bytes=start-end`.
+    /// Each task seeks to its offset on a pre-allocated `.aerotmp` file, so the
+    /// final file is assembled in place — no concatenation step.
+    ///
+    /// Equivalent to rclone `--multi-thread-streams N`.
+    /// Caller must ensure `total_size > 0` and the server advertises range support.
+    async fn download_multi_thread(
+        &self,
+        key: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let streams = self
+            .multi_thread_streams
+            .clamp(2, Self::MULTI_THREAD_MAX_STREAMS);
+        let ranges = plan_multi_thread_ranges(total_size, streams);
+        if ranges.is_empty() {
+            return Err(ProviderError::TransferFailed(
+                "Multi-thread download: empty range plan".to_string(),
+            ));
+        }
+
+        // Compute temp path matching `AtomicFile::temp_path_for` so existing
+        // cleanup tooling and the resume path stay consistent.
+        let final_pathbuf = PathBuf::from(local_path);
+        let temp_path: PathBuf = {
+            let mut p = final_pathbuf.as_os_str().to_owned();
+            p.push(".aerotmp");
+            PathBuf::from(p)
+        };
+
+        if let Some(parent) = final_pathbuf.parent() {
+            if !parent.as_os_str().is_empty() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+            }
+        }
+
+        // Pre-allocate the temp file. `set_len` reserves the full size up front so
+        // that concurrent seek+writes don't race on file extension.
+        {
+            let f = tokio::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&temp_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+            f.set_len(total_size)
+                .await
+                .map_err(ProviderError::IoError)?;
+            f.sync_all().await.map_err(ProviderError::IoError)?;
+        }
+
+        // RAII guard: remove the .aerotmp on early return unless we mark it committed.
+        struct TempGuard {
+            path: PathBuf,
+            committed: bool,
+        }
+        impl Drop for TempGuard {
+            fn drop(&mut self) {
+                if !self.committed {
+                    let _ = std::fs::remove_file(&self.path);
+                }
+            }
+        }
+        let mut guard = TempGuard {
+            path: temp_path.clone(),
+            committed: false,
+        };
+
+        // Aggregate counter of bytes written across all streams (lock-free).
+        let aggregate = Arc::new(AtomicU64::new(0));
+
+        // Background progress emitter: ticks every 100 ms, reads the aggregate
+        // and forwards it to the user-supplied callback. Decouples the workers
+        // from the (Send-only, !Sync) `on_progress` closure.
+        let progress_stop = Arc::new(AtomicBool::new(false));
+        let progress_handle = if let Some(cb) = on_progress {
+            let agg = aggregate.clone();
+            let stop = progress_stop.clone();
+            Some(tokio::spawn(async move {
+                let mut ticker =
+                    tokio::time::interval(std::time::Duration::from_millis(100));
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                let mut last_emitted: u64 = u64::MAX;
+                loop {
+                    ticker.tick().await;
+                    if stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let cur = agg.load(Ordering::Relaxed);
+                    if cur != last_emitted {
+                        cb(cur, total_size);
+                        last_emitted = cur;
+                    }
+                    if cur >= total_size {
+                        break;
+                    }
+                }
+                // Final flush — ensures the user sees the last byte counts even if
+                // the download finished between two ticks.
+                let cur = agg.load(Ordering::Relaxed);
+                if cur != last_emitted {
+                    cb(cur, total_size);
+                }
+            }))
+        } else {
+            None
+        };
+
+        // Spawn one task per range. JoinSet so the first failure aborts siblings,
+        // mirroring the multipart upload pattern (`upload_multipart`).
+        let mut joinset = tokio::task::JoinSet::new();
+        for (start, end) in ranges {
+            let provider = self.clone();
+            let key_owned = key.to_string();
+            let temp = temp_path.clone();
+            let agg = aggregate.clone();
+            joinset.spawn(async move {
+                download_range_to_offset(provider, key_owned, temp, start, end, agg).await
+            });
+        }
+
+        let mut first_error: Option<ProviderError> = None;
+        while let Some(joined) = joinset.join_next().await {
+            match joined {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    if first_error.is_none() {
+                        first_error = Some(e);
+                    }
+                    joinset.abort_all();
+                    while joinset.join_next().await.is_some() {}
+                    break;
+                }
+                Err(e) => {
+                    if first_error.is_none() {
+                        first_error = Some(ProviderError::TransferFailed(format!(
+                            "Multi-thread download task panicked: {e}"
+                        )));
+                    }
+                    joinset.abort_all();
+                    while joinset.join_next().await.is_some() {}
+                    break;
+                }
+            }
+        }
+
+        // Stop the progress emitter and wait for it to drain before returning,
+        // otherwise the user-supplied callback could be invoked after we've
+        // declared the download finished.
+        progress_stop.store(true, Ordering::Relaxed);
+        if let Some(h) = progress_handle {
+            let _ = h.await;
+        }
+
+        if let Some(err) = first_error {
+            return Err(err);
+        }
+
+        // All ranges committed — atomic rename .aerotmp → final path.
+        tokio::fs::rename(&temp_path, &final_pathbuf)
+            .await
+            .map_err(ProviderError::IoError)?;
+        guard.committed = true;
+        Ok(())
+    }
+
     /// List all object keys under a given prefix (non-recursive, no delimiter).
     /// Used by rename (folder) and rmdir_recursive.
     /// Includes pagination via continuation-token (H-05).
@@ -1501,6 +1692,59 @@ impl StorageProvider for S3Provider {
         }
 
         let key = remote_path.trim_start_matches('/');
+
+        // U-13 Phase 1: multi-thread chunk-parallel download.
+        // Engaged only when:
+        //   1. user opted in (`set_multi_thread_download(streams >= 2, ...)`),
+        //   2. HEAD succeeds and reports a known content length,
+        //   3. file size meets the configured cutoff,
+        //   4. server advertises Accept-Ranges (or omits it, since S3 supports
+        //      ranges by default — only an explicit "none" disables it).
+        // On any HEAD-side problem we fall through to the single-stream path so
+        // a one-off mismatch never fails an otherwise downloadable transfer.
+        let on_progress = if self.multi_thread_streams >= 2 {
+            match self.s3_request(Method::HEAD, key, None, None).await {
+                Ok(head) if head.status() == StatusCode::OK => {
+                    let size = head.content_length().unwrap_or(0);
+                    let accepts_ranges = head
+                        .headers()
+                        .get("accept-ranges")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| !s.eq_ignore_ascii_case("none"))
+                        .unwrap_or(true);
+                    if size >= self.multi_thread_cutoff && accepts_ranges {
+                        return self
+                            .download_multi_thread(key, local_path, size, on_progress)
+                            .await;
+                    }
+                    if !accepts_ranges {
+                        warn!(
+                            "S3 multi-thread download disabled: server advertised Accept-Ranges: none for {}",
+                            key
+                        );
+                    }
+                    on_progress
+                }
+                Ok(other) => {
+                    debug!(
+                        "S3 multi-thread HEAD probe returned {} for {}, falling back to single-stream",
+                        other.status(),
+                        key
+                    );
+                    on_progress
+                }
+                Err(e) => {
+                    debug!(
+                        "S3 multi-thread HEAD probe failed for {}: {}, falling back to single-stream",
+                        key, e
+                    );
+                    on_progress
+                }
+            }
+        } else {
+            on_progress
+        };
+
         // DL-01: Retry handled by s3_request → send_with_retry (429, 5xx)
         let response = self.s3_request(Method::GET, key, None, None).await?;
 
@@ -2402,6 +2646,16 @@ impl StorageProvider for S3Provider {
         }
     }
 
+    fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
+        // Clamp streams to [1, MAX]: 1 is the disabled state; values above the
+        // cap rarely improve throughput and waste sockets. A cutoff of 0 would
+        // engage multi-thread on every file regardless of size, which the
+        // handoff explicitly warns against (overhead on small files), so we
+        // floor the cutoff at 1 MiB.
+        self.multi_thread_streams = streams.clamp(1, Self::MULTI_THREAD_MAX_STREAMS);
+        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
+    }
+
     async fn read_range(
         &mut self,
         path: &str,
@@ -3130,6 +3384,118 @@ impl S3Provider {
     }
 }
 
+/// Plan contiguous byte ranges for a multi-thread download.
+///
+/// Splits `[0, total_size)` into at most `streams` chunks of (almost) equal
+/// length. The remainder is distributed one byte at a time across the first
+/// `total_size % streams` ranges, so the union always covers exactly the
+/// whole object with no gaps and no overlaps.
+///
+/// Returned ranges use **inclusive** end offsets, matching HTTP `Range:
+/// bytes=start-end` semantics.
+fn plan_multi_thread_ranges(total_size: u64, streams: usize) -> Vec<(u64, u64)> {
+    if total_size == 0 || streams == 0 {
+        return Vec::new();
+    }
+    let streams = streams.clamp(1, S3Provider::MULTI_THREAD_MAX_STREAMS) as u64;
+    // If the file is smaller than the requested stream count, collapse to fewer
+    // ranges of >= 1 byte rather than emit zero-length entries.
+    let effective = streams.min(total_size);
+    let base = total_size / effective;
+    let remainder = total_size % effective;
+
+    let mut ranges = Vec::with_capacity(effective as usize);
+    let mut offset = 0u64;
+    for i in 0..effective {
+        let len = base + if i < remainder { 1 } else { 0 };
+        if len == 0 {
+            continue;
+        }
+        ranges.push((offset, offset + len - 1));
+        offset += len;
+    }
+    ranges
+}
+
+/// Download a single byte range and write it at the matching offset of an
+/// already-pre-allocated temp file. Used as the per-task body of
+/// `S3Provider::download_multi_thread`.
+async fn download_range_to_offset(
+    provider: S3Provider,
+    key: String,
+    temp_path: PathBuf,
+    start: u64,
+    end: u64,
+    aggregate: Arc<AtomicU64>,
+) -> Result<(), ProviderError> {
+    let range_value = format!("bytes={}-{}", start, end);
+    let response = provider
+        .s3_request_ext(Method::GET, &key, None, None, &[("range", &range_value)])
+        .await?;
+
+    let status = response.status();
+    match status {
+        StatusCode::PARTIAL_CONTENT | StatusCode::OK => {}
+        StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
+        StatusCode::RANGE_NOT_SATISFIABLE => {
+            return Err(ProviderError::NotSupported(
+                "Server rejected Range request mid-flight (file may have changed)"
+                    .to_string(),
+            ));
+        }
+        other => {
+            return Err(ProviderError::TransferFailed(format!(
+                "Multi-thread range download failed with status: {}",
+                other
+            )));
+        }
+    }
+
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(&temp_path)
+        .await
+        .map_err(ProviderError::IoError)?;
+    file.seek(std::io::SeekFrom::Start(start))
+        .await
+        .map_err(ProviderError::IoError)?;
+
+    let expected = end - start + 1;
+    let mut written: u64 = 0;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let chunk_len = chunk.len() as u64;
+        if written + chunk_len > expected {
+            // Server returned more than requested — truncate to the planned
+            // window so we don't trample a neighboring range.
+            let allowed = (expected - written) as usize;
+            file.write_all(&chunk[..allowed])
+                .await
+                .map_err(ProviderError::IoError)?;
+            aggregate.fetch_add(allowed as u64, Ordering::Relaxed);
+            written = expected;
+            break;
+        }
+        file.write_all(&chunk)
+            .await
+            .map_err(ProviderError::IoError)?;
+        aggregate.fetch_add(chunk_len, Ordering::Relaxed);
+        written += chunk_len;
+    }
+
+    if written != expected {
+        return Err(ProviderError::TransferFailed(format!(
+            "Multi-thread range download truncated: expected {} bytes, got {}",
+            expected, written
+        )));
+    }
+
+    file.flush().await.map_err(ProviderError::IoError)?;
+    file.sync_all().await.map_err(ProviderError::IoError)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3208,5 +3574,118 @@ mod tests {
             S3Provider::bucket_addressing_error(xml),
             Some(ProviderError::InvalidConfig(_))
         ));
+    }
+
+    // ── U-13 multi-thread download — range planner ─────────────────────
+
+    fn ranges_cover(total: u64, ranges: &[(u64, u64)]) -> bool {
+        if ranges.is_empty() {
+            return total == 0;
+        }
+        // Must start at 0
+        if ranges[0].0 != 0 {
+            return false;
+        }
+        // Each must be contiguous with no gap and no overlap
+        for w in ranges.windows(2) {
+            if w[0].1 + 1 != w[1].0 {
+                return false;
+            }
+        }
+        // End-inclusive last range must hit total - 1
+        ranges.last().map(|(_, end)| *end + 1 == total).unwrap_or(false)
+    }
+
+    #[test]
+    fn test_plan_multi_thread_ranges_even_split() {
+        let ranges = plan_multi_thread_ranges(1000, 4);
+        assert_eq!(ranges.len(), 4);
+        assert!(ranges_cover(1000, &ranges));
+        // 1000 / 4 = 250 each
+        for &(s, e) in &ranges {
+            assert_eq!(e - s + 1, 250);
+        }
+    }
+
+    #[test]
+    fn test_plan_multi_thread_ranges_uneven_split_distributes_remainder() {
+        // 1003 / 4 = 250 base, remainder 3 → first 3 ranges get +1
+        let ranges = plan_multi_thread_ranges(1003, 4);
+        assert_eq!(ranges.len(), 4);
+        assert!(ranges_cover(1003, &ranges));
+        let lengths: Vec<u64> = ranges.iter().map(|(s, e)| e - s + 1).collect();
+        assert_eq!(lengths, vec![251, 251, 251, 250]);
+    }
+
+    #[test]
+    fn test_plan_multi_thread_ranges_zero_size_returns_empty() {
+        assert!(plan_multi_thread_ranges(0, 4).is_empty());
+    }
+
+    #[test]
+    fn test_plan_multi_thread_ranges_zero_streams_returns_empty() {
+        assert!(plan_multi_thread_ranges(1024, 0).is_empty());
+    }
+
+    #[test]
+    fn test_plan_multi_thread_ranges_caps_streams_to_max() {
+        let ranges = plan_multi_thread_ranges(10_000_000, 999);
+        // Cap is MULTI_THREAD_MAX_STREAMS (16)
+        assert!(ranges.len() <= S3Provider::MULTI_THREAD_MAX_STREAMS);
+        assert!(ranges_cover(10_000_000, &ranges));
+    }
+
+    #[test]
+    fn test_plan_multi_thread_ranges_collapses_when_streams_exceed_size() {
+        // file smaller than stream count: each range must still be ≥ 1 byte
+        let ranges = plan_multi_thread_ranges(3, 8);
+        assert_eq!(ranges.len(), 3);
+        assert!(ranges_cover(3, &ranges));
+        for &(s, e) in &ranges {
+            assert_eq!(e - s + 1, 1);
+        }
+    }
+
+    #[test]
+    fn test_plan_multi_thread_ranges_single_stream_covers_whole_file() {
+        let ranges = plan_multi_thread_ranges(12345, 1);
+        assert_eq!(ranges, vec![(0, 12344)]);
+        assert!(ranges_cover(12345, &ranges));
+    }
+
+    #[test]
+    fn test_set_multi_thread_download_clamps_streams_and_floors_cutoff() {
+        let mut provider = S3Provider::new(S3Config {
+            endpoint: Some("http://localhost:9000".to_string()),
+            region: "us-east-1".to_string(),
+            access_key_id: "x".to_string(),
+            secret_access_key: secrecy::SecretString::from("y".to_string()),
+            bucket: "b".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+        })
+        .expect("provider");
+
+        // Above cap → clamped down
+        provider.set_multi_thread_download(999, 0);
+        assert_eq!(
+            provider.multi_thread_streams,
+            S3Provider::MULTI_THREAD_MAX_STREAMS
+        );
+        // Cutoff floored at 1 MiB
+        assert_eq!(provider.multi_thread_cutoff, 1024 * 1024);
+
+        // Below floor → clamped up to 1 (disabled)
+        provider.set_multi_thread_download(0, 50 * 1024 * 1024);
+        assert_eq!(provider.multi_thread_streams, 1);
+        assert_eq!(provider.multi_thread_cutoff, 50 * 1024 * 1024);
+
+        // Mid-range value passes through
+        provider.set_multi_thread_download(4, 250 * 1024 * 1024);
+        assert_eq!(provider.multi_thread_streams, 4);
+        assert_eq!(provider.multi_thread_cutoff, 250 * 1024 * 1024);
     }
 }

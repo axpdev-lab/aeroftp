@@ -627,6 +627,12 @@ pub trait StorageProvider: Send + Sync {
     /// Providers that support dynamic sizing should override this.
     fn set_chunk_sizes(&mut self, _upload: Option<u64>, _download: Option<u64>) {}
 
+    /// Configure multi-thread download (rclone `--multi-thread-streams`).
+    /// `streams = 1` disables the feature; otherwise files larger than `cutoff_bytes`
+    /// are downloaded by splitting them into N concurrent Range requests.
+    /// Providers that support concurrent Range downloads should override this.
+    fn set_multi_thread_download(&mut self, _streams: usize, _cutoff_bytes: u64) {}
+
     /// Whether this provider supports delta sync (rsync-style block transfer)
     fn supports_delta_sync(&self) -> bool {
         false
