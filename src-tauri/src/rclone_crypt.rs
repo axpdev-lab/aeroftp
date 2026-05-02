@@ -751,11 +751,84 @@ fn parse_dir_iv(base64_str: &str) -> Result<[u8; 16], String> {
     Ok(iv)
 }
 
+/// Helper for cryptcheck: stream-decrypts a remote file and computes its hash (e.g. MD5 or SHA-256).
+pub fn decrypt_and_hash<H: sha2::digest::Digest>(
+    blob: &[u8],
+    data_key: &[u8; 32],
+) -> Result<(generic_array::GenericArray<u8, H::OutputSize>, u64), String> {
+    if blob.len() < 32 {
+        return Err("Blob too short (missing header/nonce)".to_string());
+    }
+    if &blob[..8] != b"RCLONE\x00\x00" {
+        return Err("Invalid Rclone crypt header".to_string());
+    }
+    let mut file_nonce = [0u8; 24];
+    file_nonce.copy_from_slice(&blob[8..32]);
+
+    let mut hasher = H::new();
+    let mut offset = 32;
+    let mut chunk_num = 0u64;
+    let mut total_len = 0u64;
+
+    while offset < blob.len() {
+        let chunk_size = std::cmp::min(blob.len() - offset, CHUNK_DATA_SIZE + MAC_SIZE);
+        let chunk = &blob[offset..offset + chunk_size];
+        let plain = decrypt_chunk(data_key, &file_nonce, chunk_num, chunk)?;
+        hasher.update(&plain);
+        total_len += plain.len() as u64;
+        offset += chunk_size;
+        chunk_num += 1;
+    }
+
+    Ok((hasher.finalize(), total_len))
+}
+
+/// Helper for cryptcheck: async stream-decrypts a remote reader and computes its hash.
+pub async fn decrypt_and_hash_async<R: tokio::io::AsyncRead + Unpin, H: sha2::digest::Digest>(
+    mut reader: R,
+    data_key: &[u8; 32],
+) -> Result<(generic_array::GenericArray<u8, H::OutputSize>, u64), String> {
+    use tokio::io::AsyncReadExt;
+    let mut header = [0u8; 8];
+    reader.read_exact(&mut header).await.map_err(|e| e.to_string())?;
+    if &header != b"RCLONE\x00\x00" {
+        return Err("Invalid Rclone crypt header".to_string());
+    }
+    
+    let mut file_nonce = [0u8; 24];
+    reader.read_exact(&mut file_nonce).await.map_err(|e| e.to_string())?;
+
+    let mut hasher = H::new();
+    let mut chunk_num = 0u64;
+    let mut total_len = 0u64;
+
+    loop {
+        let mut chunk_buf = vec![0u8; CHUNK_DATA_SIZE + MAC_SIZE];
+        let mut chunk_len = 0;
+        while chunk_len < CHUNK_DATA_SIZE + MAC_SIZE {
+            let n = reader.read(&mut chunk_buf[chunk_len..]).await.map_err(|e| e.to_string())?;
+            if n == 0 { break; }
+            chunk_len += n;
+        }
+        if chunk_len == 0 { break; }
+        
+        let plain = decrypt_chunk(data_key, &file_nonce, chunk_num, &chunk_buf[..chunk_len])?;
+        hasher.update(&plain);
+        total_len += plain.len() as u64;
+        chunk_num += 1;
+        
+        if chunk_len < CHUNK_DATA_SIZE + MAC_SIZE { break; }
+    }
+
+    Ok((hasher.finalize(), total_len))
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::Digest;
 
     // Golden vectors copied from rclone/backend/crypt/cipher_test.go
     // (TestEncryptData + TestStandardEncryptFileNameBase32).
@@ -1136,5 +1209,46 @@ mod tests {
         let key = [0u8; 32];
         let iv = [0u8; 16];
         assert!(decrypt_name(&key, &iv, "!!!invalid!!!").is_err());
+    }
+
+    #[test]
+    fn decrypt_and_hash_roundtrip_sha256() {
+        let (_, data_key) = derive_keys("hash-test", "salt").unwrap();
+        let plaintext = b"streaming hash test";
+        let encrypted = encrypt_file_content(plaintext, &data_key).unwrap();
+        
+        let (hash, len) = decrypt_and_hash::<sha2::Sha256>(&encrypted, &data_key).unwrap();
+        let expected_hash = sha2::Sha256::digest(plaintext);
+        
+        assert_eq!(hash, expected_hash);
+        assert_eq!(len, plaintext.len() as u64);
+    }
+
+    #[test]
+    fn decrypt_and_hash_empty_file() {
+        let (_, data_key) = derive_keys("empty-hash", "").unwrap();
+        let encrypted = encrypt_file_content(&[], &data_key).unwrap();
+        
+        let (hash, len) = decrypt_and_hash::<sha2::Sha256>(&encrypted, &data_key).unwrap();
+        let expected_hash = sha2::Sha256::digest(b"");
+        
+        assert_eq!(hash, expected_hash);
+        assert_eq!(len, 0);
+    }
+
+    #[tokio::test]
+    async fn decrypt_and_hash_async_roundtrip() {
+        let (_, data_key) = derive_keys("async-hash-test", "salt").unwrap();
+        let plaintext: Vec<u8> = (0..(CHUNK_DATA_SIZE * 2 + 100))
+            .map(|i| (i % 251) as u8)
+            .collect();
+        let encrypted = encrypt_file_content(&plaintext, &data_key).unwrap();
+        
+        let cursor = std::io::Cursor::new(encrypted);
+        let (hash, len) = decrypt_and_hash_async::<_, sha2::Sha256>(cursor, &data_key).await.unwrap();
+        let expected_hash = sha2::Sha256::digest(&plaintext);
+        
+        assert_eq!(hash, expected_hash);
+        assert_eq!(len, plaintext.len() as u64);
     }
 }

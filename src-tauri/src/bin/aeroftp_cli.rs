@@ -676,6 +676,36 @@ enum Commands {
         #[arg(long)]
         one_way: bool,
     },
+    /// Cryptcheck integrity against encrypted rclone remote
+    Cryptcheck {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Local directory
+        #[arg(default_value = ".")]
+        local: String,
+        /// Remote directory
+        #[arg(default_value = "/")]
+        remote: String,
+        /// Password for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD)
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD")]
+        password: Option<String>,
+        /// Salt for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD2)
+        #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD2")]
+        password2: Option<String>,
+        /// Filename encryption mode
+        #[arg(long, default_value = "standard")]
+        filename_encryption: String,
+        /// Only check files present locally
+        #[arg(long)]
+        one_way: bool,
+        /// Optional checkfile mode (not fully implemented)
+        #[arg(long)]
+        checkfile: Option<String>,
+        /// Hash algorithm to use (sha256 or md5)
+        #[arg(long, short = 'a', default_value = "sha256")]
+        algorithm: String,
+    },
     /// Reconcile local and remote trees with categorized diff output
     Reconcile {
         /// Server URL (omit when using --profile)
@@ -19289,6 +19319,263 @@ async fn cmd_check(
 }
 
 #[allow(clippy::too_many_arguments)]
+async fn cmd_cryptcheck(
+    url: &str,
+    local_path: &str,
+    remote_path: &str,
+    password: Option<String>,
+    password2: Option<String>,
+    filename_encryption: &str,
+    one_way: bool,
+    _checkfile: Option<String>,
+    algorithm: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let start = Instant::now();
+
+    if filename_encryption == "obfuscate" {
+        print_error(format, "filename_encryption=obfuscate is not yet supported (see APPENDIX-S §\"Chiusura finale richiesta\")", 5);
+        return 5;
+    }
+
+    let pwd = password.unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD").unwrap_or_default());
+    if pwd.is_empty() {
+        print_error(format, "wrong password or non-crypt remote (missing password)", 5);
+        return 5;
+    }
+    let salt = password2.unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
+
+    let (name_key, data_key) = match ftp_client_gui_lib::rclone_crypt::derive_keys(&pwd, &salt) {
+        Ok(keys) => keys,
+        Err(e) => {
+            print_error(format, &format!("Key derivation failed: {}", e), 5);
+            return 5;
+        }
+    };
+
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let remote_path_resolved = resolve_cli_remote_path(&initial_path, remote_path);
+
+    let local_dir = Path::new(local_path);
+    if !local_dir.is_dir() {
+        print_error(format, &format!("Local path is not a directory: {}", local_path), 5);
+        let _ = provider.disconnect().await;
+        return 5;
+    }
+
+    use ftp_client_gui_lib::sync_core::{scan_local_tree, scan_remote_tree, ScanOptions};
+    let scan_opts = ScanOptions {
+        compute_checksum: false,
+        max_depth: Some(MAX_SCAN_DEPTH),
+        ..Default::default()
+    };
+    
+    let locals = scan_local_tree(local_path, &scan_opts);
+    let remotes = scan_remote_tree(&mut provider, &remote_path_resolved, &scan_opts).await;
+
+    let mut dir_ivs: std::collections::HashMap<String, [u8; 16]> = std::collections::HashMap::new();
+    for r in &remotes {
+        if r.name == "dirIV" || r.name == "diriv" || r.name == ".diriv" {
+            let full_path = format!("{}/{}", remote_path_resolved, r.rel_path);
+            if let Ok(data) = provider.download_to_bytes(&full_path).await {
+                if data.len() == 16 {
+                    let mut iv = [0u8; 16];
+                    iv.copy_from_slice(&data);
+                    let parent = Path::new(&r.rel_path).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
+                    dir_ivs.insert(parent, iv);
+                }
+            }
+        }
+    }
+
+    let mut decrypted_remotes = std::collections::HashMap::new();
+    for r in &remotes {
+        if r.name == "dirIV" || r.name == "diriv" || r.name == ".diriv" { continue; }
+        
+        let components: Vec<&str> = r.rel_path.split('/').collect();
+        let mut current_enc_dir = String::new();
+        let mut current_dec_dir = String::new();
+        let mut ok = true;
+        
+        for (i, comp) in components.iter().enumerate() {
+            let dir_iv = if current_enc_dir.is_empty() {
+                dir_ivs.get("").copied().or(Some([0u8; 16]))
+            } else {
+                dir_ivs.get(&current_enc_dir).copied()
+            };
+            
+            let dec_comp = if filename_encryption == "off" {
+                comp.to_string()
+            } else if let Some(iv) = dir_iv {
+                match ftp_client_gui_lib::rclone_crypt::decrypt_name(&name_key, &iv, comp) {
+                    Ok(n) => n,
+                    Err(_) => { ok = false; break; }
+                }
+            } else {
+                ok = false;
+                break;
+            };
+            
+            if !current_enc_dir.is_empty() {
+                current_enc_dir.push('/');
+                current_dec_dir.push('/');
+            }
+            current_enc_dir.push_str(comp);
+            current_dec_dir.push_str(&dec_comp);
+        }
+        
+        if ok {
+            decrypted_remotes.insert(current_dec_dir.clone(), r.clone());
+        }
+    }
+
+    let mut match_count = 0;
+    let mut differ_count = 0;
+    let mut missing_local = 0;
+    let mut missing_remote = 0;
+    let mut details = Vec::new();
+
+    use std::sync::Arc;
+    use tokio::sync::{Mutex as AsyncMutex, Semaphore};
+
+    let match_count_safe = Arc::new(AsyncMutex::new(0));
+    let differ_count_safe = Arc::new(AsyncMutex::new(0));
+    let missing_remote_safe = Arc::new(AsyncMutex::new(0));
+    let details_safe = Arc::new(AsyncMutex::new(Vec::new()));
+
+    let mut checks = Vec::new();
+    for local_file in &locals {
+        if local_file.is_dir { continue; }
+        let rel = &local_file.rel_path;
+        if let Some(remote_file) = decrypted_remotes.remove(rel) {
+            checks.push((local_file.clone(), remote_file.clone()));
+        } else {
+            missing_remote += 1;
+            details.push(CliCheckEntry { path: rel.clone(), status: "missing_remote".to_string(), local_size: Some(local_file.size), remote_size: None });
+            if matches!(format, OutputFormat::Text) { eprintln!("- {}", rel); }
+        }
+    }
+
+    let concurrency = cli.effective_parallel_workers();
+    let algorithm = algorithm.to_string();
+    let data_key = Arc::new(data_key);
+    let local_path = local_path.to_string();
+    let remote_path_resolved = remote_path_resolved.to_string();
+
+    let cfg = profile_to_provider_config(url, cli, format).unwrap_or_else(|_| (ftp_client_gui_lib::provider_config::ProviderConfig::default(), "".to_string())).0;
+
+    let semaphore = Arc::new(Semaphore::new(concurrency));
+    let mut join_handles = Vec::new();
+
+    for (local_file, remote_file) in checks {
+        let algo = algorithm.clone();
+        let dk = Arc::clone(&data_key);
+        let lp = local_path.clone();
+        let rp = remote_path_resolved.clone();
+        let mc = Arc::clone(&match_count_safe);
+        let dc = Arc::clone(&differ_count_safe);
+        let ds = Arc::clone(&details_safe);
+        let c = cfg.clone();
+        let permit = Arc::clone(&semaphore).acquire_owned().await.unwrap();
+
+        join_handles.push(tokio::spawn(async move {
+            let rel = &local_file.rel_path;
+            let local_full = format!("{}/{}", lp, rel);
+            let local_bytes = tokio::fs::read(&local_full).await.unwrap_or_default();
+            
+            let local_hash = if algo == "md5" {
+                use md5::Digest;
+                format!("{:x}", md5::Md5::digest(&local_bytes))
+            } else {
+                use sha2::Digest;
+                format!("{:x}", sha2::Sha256::digest(&local_bytes))
+            };
+            
+            let remote_full = format!("{}/{}", rp, remote_file.rel_path);
+            let remote_hash = if let Ok(mut p) = ProviderFactory::create(&c) {
+                if let Ok(()) = p.connect().await {
+                    let remote_bytes = p.download_to_bytes(&remote_full).await.unwrap_or_default();
+                    if algo == "md5" {
+                        match ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<md5::Md5>(&remote_bytes, &dk) {
+                            Ok((h, _)) => format!("{:x}", h),
+                            Err(_) => "error".to_string()
+                        }
+                    } else {
+                        match ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<sha2::Sha256>(&remote_bytes, &dk) {
+                            Ok((h, _)) => format!("{:x}", h),
+                            Err(_) => "error".to_string()
+                        }
+                    }
+                } else {
+                    "error".to_string()
+                }
+            } else {
+                "error".to_string()
+            };
+
+            if local_hash == remote_hash {
+                *mc.lock().await += 1;
+                if matches!(format, OutputFormat::Text) { eprintln!("= {}", rel); }
+            } else {
+                *dc.lock().await += 1;
+                ds.lock().await.push(CliCheckEntry { path: rel.clone(), status: "differ".to_string(), local_size: Some(local_bytes.len() as u64), remote_size: Some(remote_file.size) });
+                if matches!(format, OutputFormat::Text) { eprintln!("* {}", rel); }
+            }
+
+            drop(permit);
+        }));
+    }
+
+    for handle in join_handles {
+        let _ = handle.await;
+    }
+
+    match_count += *match_count_safe.lock().await;
+    differ_count += *differ_count_safe.lock().await;
+    details.append(&mut *details_safe.lock().await);
+
+    if !one_way {
+        for (rel, remote_file) in decrypted_remotes {
+            if remote_file.is_dir { continue; }
+            missing_local += 1;
+            details.push(CliCheckEntry { path: rel.clone(), status: "missing_local".to_string(), local_size: None, remote_size: Some(remote_file.size) });
+            if matches!(format, OutputFormat::Text) { eprintln!("+ {}", rel); }
+        }
+    }
+
+    let elapsed = start.elapsed().as_secs_f64();
+
+    if matches!(format, OutputFormat::Json) {
+        print_json(&serde_json::json!({
+            "status": if differ_count == 0 && missing_local == 0 && missing_remote == 0 { "ok" } else { "differences_found" },
+            "match_count": match_count,
+            "differ_count": differ_count,
+            "missing_local": missing_local,
+            "missing_remote": missing_remote,
+            "elapsed_secs": elapsed,
+            "algorithm": algorithm,
+            "details": details,
+        }));
+    } else {
+        eprintln!(
+            "\n  Match: {}  Differ: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
+            match_count, differ_count, missing_local, missing_remote, elapsed
+        );
+    }
+
+    let _ = provider.disconnect().await;
+    if differ_count > 0 || missing_local > 0 || missing_remote > 0 {
+        4
+    } else {
+        0
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn cmd_reconcile(
     url: &str,
     local_path: &str,
@@ -24413,6 +24700,37 @@ async fn main() {
                 password.as_deref(),
                 permissions.as_str(),
                 *verify,
+                &cli,
+                format,
+            )
+            .await
+        }
+        Commands::Cryptcheck {
+            url,
+            local,
+            remote,
+            password,
+            password2,
+            filename_encryption,
+            one_way,
+            checkfile,
+            algorithm,
+        } => {
+            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str(), local.as_str())
+            } else {
+                (url.as_str(), local.as_str(), remote.as_str())
+            };
+            cmd_cryptcheck(
+                u,
+                l,
+                r,
+                password.clone(),
+                password2.clone(),
+                filename_encryption,
+                *one_way,
+                checkfile.clone(),
+                algorithm,
                 &cli,
                 format,
             )
