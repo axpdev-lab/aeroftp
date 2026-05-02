@@ -19379,7 +19379,8 @@ async fn cmd_cryptcheck(
 
     let mut dir_ivs: std::collections::HashMap<String, [u8; 16]> = std::collections::HashMap::new();
     for r in &remotes {
-        if r.name == "dirIV" || r.name == "diriv" || r.name == ".diriv" {
+        let is_dir_iv = r.rel_path.ends_with("/dirIV") || r.rel_path.ends_with("/diriv") || r.rel_path.ends_with("/.diriv") || r.rel_path == "dirIV" || r.rel_path == "diriv" || r.rel_path == ".diriv";
+        if is_dir_iv {
             let full_path = format!("{}/{}", remote_path_resolved, r.rel_path);
             if let Ok(data) = provider.download_to_bytes(&full_path).await {
                 if data.len() == 16 {
@@ -19394,14 +19395,15 @@ async fn cmd_cryptcheck(
 
     let mut decrypted_remotes = std::collections::HashMap::new();
     for r in &remotes {
-        if r.name == "dirIV" || r.name == "diriv" || r.name == ".diriv" { continue; }
+        let is_dir_iv = r.rel_path.ends_with("/dirIV") || r.rel_path.ends_with("/diriv") || r.rel_path.ends_with("/.diriv") || r.rel_path == "dirIV" || r.rel_path == "diriv" || r.rel_path == ".diriv";
+        if is_dir_iv { continue; }
         
         let components: Vec<&str> = r.rel_path.split('/').collect();
         let mut current_enc_dir = String::new();
         let mut current_dec_dir = String::new();
         let mut ok = true;
         
-        for (i, comp) in components.iter().enumerate() {
+        for comp in components.iter() {
             let dir_iv = if current_enc_dir.is_empty() {
                 dir_ivs.get("").copied().or(Some([0u8; 16]))
             } else {
@@ -19444,12 +19446,11 @@ async fn cmd_cryptcheck(
 
     let match_count_safe = Arc::new(AsyncMutex::new(0));
     let differ_count_safe = Arc::new(AsyncMutex::new(0));
-    let missing_remote_safe = Arc::new(AsyncMutex::new(0));
+
     let details_safe = Arc::new(AsyncMutex::new(Vec::new()));
 
     let mut checks = Vec::new();
     for local_file in &locals {
-        if local_file.is_dir { continue; }
         let rel = &local_file.rel_path;
         if let Some(remote_file) = decrypted_remotes.remove(rel) {
             checks.push((local_file.clone(), remote_file.clone()));
@@ -19460,13 +19461,16 @@ async fn cmd_cryptcheck(
         }
     }
 
-    let concurrency = cli.effective_parallel_workers();
+    let concurrency = effective_parallel_workers(cli);
     let algorithm = algorithm.to_string();
     let data_key = Arc::new(data_key);
     let local_path = local_path.to_string();
     let remote_path_resolved = remote_path_resolved.to_string();
 
-    let cfg = profile_to_provider_config(url, cli, format).unwrap_or_else(|_| (ftp_client_gui_lib::provider_config::ProviderConfig::default(), "".to_string())).0;
+    let cfg = match resolve_url_or_profile(url, cli, format) {
+        Ok(v) => v.0,
+        Err(code) => return code,
+    };
 
     let semaphore = Arc::new(Semaphore::new(concurrency));
     let mut join_handles = Vec::new();
@@ -19540,7 +19544,6 @@ async fn cmd_cryptcheck(
 
     if !one_way {
         for (rel, remote_file) in decrypted_remotes {
-            if remote_file.is_dir { continue; }
             missing_local += 1;
             details.push(CliCheckEntry { path: rel.clone(), status: "missing_local".to_string(), local_size: None, remote_size: Some(remote_file.size) });
             if matches!(format, OutputFormat::Text) { eprintln!("+ {}", rel); }

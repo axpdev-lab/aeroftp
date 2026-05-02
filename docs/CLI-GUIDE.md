@@ -433,6 +433,24 @@ aeroftp-cli check --profile "server" /local/ /remote/ --json
 
 Verifies that a local directory and remote directory are identical. Compares by file size (default) or SHA-256 checksum (`--checksum`). Reports: matches, differences, files missing on either side.
 
+### cryptcheck - Verify Crypt/Cleartext Integrity
+
+```bash
+# Compare a local cleartext directory against a remote encrypted directory
+aeroftp-cli cryptcheck --profile "server" /local/cleartext /remote/encrypted
+
+# Use MD5 instead of SHA-256
+aeroftp-cli cryptcheck --profile "server" /local/ /remote/ -a md5
+
+# Password via flag (not recommended, use AEROFTP_RCLONE_CRYPT_PASSWORD)
+aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --password "secret"
+
+# JSON output with details
+aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --json
+```
+
+Verifies the integrity of files stored on a remote encrypted with `rclone crypt`. Stream-decrypts the remote files (without saving to disk) and computes their hash to compare against local cleartext files. Supports `sha256` and `md5`. Reports: matches, differences, files missing on either side. Exit codes: `0` (success), `4` (differences found), `5` (invalid usage).
+
 ### about - Server Info & Storage Quota
 
 ```bash

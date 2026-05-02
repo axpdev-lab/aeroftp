@@ -755,7 +755,7 @@ fn parse_dir_iv(base64_str: &str) -> Result<[u8; 16], String> {
 pub fn decrypt_and_hash<H: sha2::digest::Digest>(
     blob: &[u8],
     data_key: &[u8; 32],
-) -> Result<(generic_array::GenericArray<u8, H::OutputSize>, u64), String> {
+) -> Result<(sha2::digest::Output<H>, u64), String> {
     if blob.len() < 32 {
         return Err("Blob too short (missing header/nonce)".to_string());
     }
@@ -765,15 +765,19 @@ pub fn decrypt_and_hash<H: sha2::digest::Digest>(
     let mut file_nonce = [0u8; 24];
     file_nonce.copy_from_slice(&blob[8..32]);
 
+    let cipher = XSalsa20Poly1305::new(data_key.into());
     let mut hasher = H::new();
     let mut offset = 32;
     let mut chunk_num = 0u64;
     let mut total_len = 0u64;
 
     while offset < blob.len() {
-        let chunk_size = std::cmp::min(blob.len() - offset, CHUNK_DATA_SIZE + MAC_SIZE);
+        let chunk_size = std::cmp::min(blob.len() - offset, CHUNK_CIPHER_SIZE);
         let chunk = &blob[offset..offset + chunk_size];
-        let plain = decrypt_chunk(data_key, &file_nonce, chunk_num, chunk)?;
+        let nonce = chunk_nonce(&file_nonce, chunk_num);
+        let plain = cipher
+            .decrypt((&nonce).into(), chunk)
+            .map_err(|_| format!("chunk {} decrypt failed", chunk_num))?;
         hasher.update(&plain);
         total_len += plain.len() as u64;
         offset += chunk_size;
@@ -787,7 +791,7 @@ pub fn decrypt_and_hash<H: sha2::digest::Digest>(
 pub async fn decrypt_and_hash_async<R: tokio::io::AsyncRead + Unpin, H: sha2::digest::Digest>(
     mut reader: R,
     data_key: &[u8; 32],
-) -> Result<(generic_array::GenericArray<u8, H::OutputSize>, u64), String> {
+) -> Result<(sha2::digest::Output<H>, u64), String> {
     use tokio::io::AsyncReadExt;
     let mut header = [0u8; 8];
     reader.read_exact(&mut header).await.map_err(|e| e.to_string())?;
@@ -798,26 +802,31 @@ pub async fn decrypt_and_hash_async<R: tokio::io::AsyncRead + Unpin, H: sha2::di
     let mut file_nonce = [0u8; 24];
     reader.read_exact(&mut file_nonce).await.map_err(|e| e.to_string())?;
 
+    let cipher = XSalsa20Poly1305::new(data_key.into());
     let mut hasher = H::new();
     let mut chunk_num = 0u64;
     let mut total_len = 0u64;
 
     loop {
-        let mut chunk_buf = vec![0u8; CHUNK_DATA_SIZE + MAC_SIZE];
+        let mut chunk_buf = vec![0u8; CHUNK_CIPHER_SIZE];
         let mut chunk_len = 0;
-        while chunk_len < CHUNK_DATA_SIZE + MAC_SIZE {
+        while chunk_len < CHUNK_CIPHER_SIZE {
             let n = reader.read(&mut chunk_buf[chunk_len..]).await.map_err(|e| e.to_string())?;
             if n == 0 { break; }
             chunk_len += n;
         }
         if chunk_len == 0 { break; }
         
-        let plain = decrypt_chunk(data_key, &file_nonce, chunk_num, &chunk_buf[..chunk_len])?;
+        let nonce = chunk_nonce(&file_nonce, chunk_num);
+        let plain = cipher
+            .decrypt((&nonce).into(), &chunk_buf[..chunk_len])
+            .map_err(|_| format!("chunk {} decrypt failed", chunk_num))?;
+            
         hasher.update(&plain);
         total_len += plain.len() as u64;
         chunk_num += 1;
         
-        if chunk_len < CHUNK_DATA_SIZE + MAC_SIZE { break; }
+        if chunk_len < CHUNK_CIPHER_SIZE { break; }
     }
 
     Ok((hasher.finalize(), total_len))
