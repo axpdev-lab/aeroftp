@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Auto-discovery, real-time na quota, mga advanced na feature",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Gumagamit ang mode na ito ng InfiniCLOUD REST API v2 para sa auto-discovery at real-time na quota. Kasalukuyang available para sa mga developer at internal beta testing."
+            "infinicloudApiInfoDesc": "Gumagamit ang mode na ito ng InfiniCLOUD REST API v2 para sa auto-discovery at real-time na quota. Kasalukuyang available para sa mga developer at internal beta testing.",
+            "discoverBackblazeNative": "Katutubong B2 v4 API: workflow para sa malalaking file, kopya sa server, kasaysayan ng bersyon (10 GB libre)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

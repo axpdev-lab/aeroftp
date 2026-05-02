@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Samodejno odkrivanje, kvota v realnem času, napredne funkcije",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Ta način uporablja InfiniCLOUD REST API v2 za samodejno odkrivanje in kvoto v realnem času. Trenutno na voljo za razvijalce in interno beta testiranje."
+            "infinicloudApiInfoDesc": "Ta način uporablja InfiniCLOUD REST API v2 za samodejno odkrivanje in kvoto v realnem času. Trenutno na voljo za razvijalce in interno beta testiranje.",
+            "discoverBackblazeNative": "Izvorni B2 v4 API: potek dela za velike datoteke, kopiranje na strežniku, zgodovina različic (10 GB brezplačno)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

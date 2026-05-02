@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Аутоматско откривање, квота у реалном времену, напредне функције",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Овај режим користи InfiniCLOUD REST API v2 за аутоматско откривање и квоту у реалном времену. Тренутно доступно за програмере и интерно бета тестирање."
+            "infinicloudApiInfoDesc": "Овај режим користи InfiniCLOUD REST API v2 за аутоматско откривање и квоту у реалном времену. Тренутно доступно за програмере и интерно бета тестирање.",
+            "discoverBackblazeNative": "Изворни B2 v4 API: радни ток за велике датотеке, копија на серверу, историја верзија (10 GB бесплатно)"
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",

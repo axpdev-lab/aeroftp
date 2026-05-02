@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Penemuan automatik, kuota masa nyata, ciri lanjutan",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Mod ini menggunakan InfiniCLOUD REST API v2 untuk penemuan automatik dan kuota masa nyata. Kini tersedia untuk pembangun dan ujian beta dalaman."
+            "infinicloudApiInfoDesc": "Mod ini menggunakan InfiniCLOUD REST API v2 untuk penemuan automatik dan kuota masa nyata. Kini tersedia untuk pembangun dan ujian beta dalaman.",
+            "discoverBackblazeNative": "API B2 v4 asli: aliran kerja fail besar, salinan sisi pelayan, sejarah versi (10 GB percuma)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

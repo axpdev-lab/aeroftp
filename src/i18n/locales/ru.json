@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Автообнаружение, квота в реальном времени, расширенные функции",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Этот режим использует InfiniCLOUD REST API v2 для автообнаружения и квоты в реальном времени. Сейчас доступно для разработчиков и внутреннего бета-тестирования."
+            "infinicloudApiInfoDesc": "Этот режим использует InfiniCLOUD REST API v2 для автообнаружения и квоты в реальном времени. Сейчас доступно для разработчиков и внутреннего бета-тестирования.",
+            "discoverBackblazeNative": "Нативный B2 v4 API: работа с большими файлами, серверная копия, история версий (10 ГБ бесплатно)"
         },
         "shortcuts": {
             "title": "Горячие клавиши",

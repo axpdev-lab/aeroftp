@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { Server, Compass, Plus, Cloud, FolderOpen, Search, X, ArrowRightLeft } from 'lucide-react';
+import { Server, Compass, Plus, Cloud, FolderOpen, Search, X } from 'lucide-react';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { useTranslation } from '../../i18n';
@@ -28,7 +28,6 @@ interface IntroHubHeaderProps {
     onSkipToFileManager?: () => void;
     onAeroCloud?: () => void;
     onAeroFile?: () => void;
-    onCrossProfileTransfer?: () => void;
     isAeroCloudConnected?: boolean;
     isAeroCloudPaused?: boolean;
     isAeroCloudConfigured?: boolean;
@@ -61,7 +60,6 @@ export function IntroHubHeader({
     onSkipToFileManager,
     onAeroCloud,
     onAeroFile,
-    onCrossProfileTransfer,
     isAeroCloudConnected,
     isAeroCloudPaused,
     isAeroCloudConfigured,
@@ -201,15 +199,10 @@ export function IntroHubHeader({
                     </button>
                 )}
 
-                {onCrossProfileTransfer && serverCount > 1 && (
-                    <button
-                        onClick={onCrossProfileTransfer}
-                        className="flex items-center p-1.5 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 text-indigo-600 dark:text-indigo-400 rounded-lg transition-colors"
-                        title="Cross-Profile Transfer"
-                    >
-                        <ArrowRightLeft size={16} />
-                    </button>
-                )}
+                {/* Cross-Profile Transfer entry point lives in the My Servers
+                    toolbar next to the selection ring/badge, where it pairs
+                    with the per-card selection flow. The header duplicate was
+                    removed to avoid two parallel paths to the same modal. */}
             </div>
 
             {/* Form tab context menu — portal to body to escape overflow:hidden */}

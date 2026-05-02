@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Automatisk upptäckt, realtidskvot, avancerade funktioner",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Detta läge använder InfiniCLOUD REST API v2 för automatisk upptäckt och realtidskvot. För närvarande tillgängligt för utvecklare och intern betatestning."
+            "infinicloudApiInfoDesc": "Detta läge använder InfiniCLOUD REST API v2 för automatisk upptäckt och realtidskvot. För närvarande tillgängligt för utvecklare och intern betatestning.",
+            "discoverBackblazeNative": "Inbyggt B2 v4 API: arbetsflöde för stora filer, kopiering på serversidan, versionshistorik (10 GB gratis)"
         },
         "shortcuts": {
             "title": "Kortkommandon",

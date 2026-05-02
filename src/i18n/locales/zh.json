@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "自动发现、实时配额、高级功能",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "此模式使用 InfiniCLOUD REST API v2 进行自动发现和实时配额。目前可供开发者和内部测试使用。"
+            "infinicloudApiInfoDesc": "此模式使用 InfiniCLOUD REST API v2 进行自动发现和实时配额。目前可供开发者和内部测试使用。",
+            "discoverBackblazeNative": "原生 B2 v4 API：大文件工作流、服务器端复制、版本历史（10 GB 免费）"
         },
         "shortcuts": {
             "title": "键盘快捷键",

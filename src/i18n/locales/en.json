@@ -2291,6 +2291,7 @@
       "discoverFourShared": "File sharing platform (15 GB free)",
       "discoverOpenDrive": "Cloud storage and backup (5 GB free)",
       "discoverYandexDisk": "Russian cloud storage (5 GB free)",
+      "discoverBackblazeNative": "Native B2 v4 API: large-file workflow, server-side copy, version history (10 GB free)",
       "discoverFtpFtps": "File Transfer Protocol (plain or TLS)",
       "discoverSftp": "SSH File Transfer",
       "discoverRebexFtp": "Public read-only FTP test server",

@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "স্বয়ংক্রিয় আবিষ্কার, রিয়েল-টাইম কোটা, উন্নত বৈশিষ্ট্য",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "এই মোডটি স্বয়ংক্রিয় আবিষ্কার এবং রিয়েল-টাইম কোটার জন্য InfiniCLOUD REST API v2 ব্যবহার করে। বর্তমানে ডেভেলপার এবং অভ্যন্তরীণ বেটা পরীক্ষার জন্য উপলব্ধ।"
+            "infinicloudApiInfoDesc": "এই মোডটি স্বয়ংক্রিয় আবিষ্কার এবং রিয়েল-টাইম কোটার জন্য InfiniCLOUD REST API v2 ব্যবহার করে। বর্তমানে ডেভেলপার এবং অভ্যন্তরীণ বেটা পরীক্ষার জন্য উপলব্ধ।",
+            "discoverBackblazeNative": "নেটিভ B2 v4 API: বড় ফাইল ওয়ার্কফ্লো, সার্ভার-সাইড কপি, সংস্করণ ইতিহাস (10 GB বিনামূল্যে)"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Sjálfvirk uppgötvun, rauntímakvóti, ítarlegir eiginleikar",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Þessi stilling notar InfiniCLOUD REST API v2 fyrir sjálfvirka uppgötvun og rauntímakvóta. Sem stendur aðgengilegt fyrir forritara og innri beta prófun."
+            "infinicloudApiInfoDesc": "Þessi stilling notar InfiniCLOUD REST API v2 fyrir sjálfvirka uppgötvun og rauntímakvóta. Sem stendur aðgengilegt fyrir forritara og innri beta prófun.",
+            "discoverBackblazeNative": "Innfædd B2 v4 API: vinnuflæði fyrir stórar skrár, afrit á þjóni, útgáfusaga (10 GB ókeypis)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

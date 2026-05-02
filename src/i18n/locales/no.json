@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Automatisk oppdagelse, sanntidskvote, avanserte funksjoner",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Denne modusen bruker InfiniCLOUD REST API v2 for automatisk oppdagelse og sanntidskvote. For tiden tilgjengelig for utviklere og intern betatesting."
+            "infinicloudApiInfoDesc": "Denne modusen bruker InfiniCLOUD REST API v2 for automatisk oppdagelse og sanntidskvote. For tiden tilgjengelig for utviklere og intern betatesting.",
+            "discoverBackblazeNative": "Innfødt B2 v4 API: arbeidsflyt for store filer, kopiering på serversiden, versjonshistorikk (10 GB gratis)"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",

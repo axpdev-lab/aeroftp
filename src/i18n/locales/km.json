@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "រកឃើញស្វ័យប្រវត្តិ, កូតាពេលវេលាជាក់ស្តែង, មុខងារកម្រិតខ្ពស់",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "របៀបនេះប្រើ InfiniCLOUD REST API v2 សម្រាប់ការរកឃើញស្វ័យប្រវត្តិ និងកូតាពេលវេលាជាក់ស្តែង។ បច្ចុប្បន្នអាចប្រើបានសម្រាប់អ្នកអភិវឌ្ឍន៍ និងការសាកល្បងបេតាផ្ទៃក្នុង។"
+            "infinicloudApiInfoDesc": "របៀបនេះប្រើ InfiniCLOUD REST API v2 សម្រាប់ការរកឃើញស្វ័យប្រវត្តិ និងកូតាពេលវេលាជាក់ស្តែង។ បច្ចុប្បន្នអាចប្រើបានសម្រាប់អ្នកអភិវឌ្ឍន៍ និងការសាកល្បងបេតាផ្ទៃក្នុង។",
+            "discoverBackblazeNative": "API B2 v4 ដើម៖ លំហូរការងារឯកសារធំ ការចម្លងផ្នែកម៉ាស៊ីនមេ ប្រវត្តិកំណែ (10 GB ឥតគិតថ្លៃ)"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

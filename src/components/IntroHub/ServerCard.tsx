@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Folder, HardDrive, Check, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle, ShieldCheck, Lock, Folder, HardDrive, Check, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, supportsStorageQuota } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -79,7 +79,7 @@ function ServerBadges({ server }: { server: ServerProfile }) {
     const infiniCloudBadge = server.providerId === 'infinicloud' ? getInfiniCloudConnectionBadge(server.options) : null;
     const protocolClass = getProtocolClass(proto as ProviderType);
     const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto as ProviderType) : null;
-    const protocolClassLabel = e2eBits ? `E2E ${e2eBits}` : protocolClass;
+    const protocolClassLabel = e2eBits ? `E2E ${e2eBits}-bit` : protocolClass;
     // Skip class badge when it duplicates the brand badge (FTP/FTPS/SFTP show protocol uppercase already)
     const showClassBadge = !['FTP', 'FTPS', 'SFTP'].includes(protocolClass);
     const classBadgeColor: Record<string, string> = {
@@ -115,7 +115,8 @@ function ServerBadges({ server }: { server: ServerProfile }) {
                 </span>
             ) : null}
             {showClassBadge && server.providerId !== 'felicloud' && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${classBadgeColor[protocolClass] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 ${classBadgeColor[protocolClass] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                    {e2eBits && <Lock size={10} />}
                     {protocolClassLabel}
                 </span>
             )}

@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Descoberta automática, cota em tempo real, recursos avançados",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Este modo usa o InfiniCLOUD REST API v2 para descoberta automática e cota em tempo real. Atualmente disponível para desenvolvedores e testes beta internos."
+            "infinicloudApiInfoDesc": "Este modo usa o InfiniCLOUD REST API v2 para descoberta automática e cota em tempo real. Atualmente disponível para desenvolvedores e testes beta internos.",
+            "discoverBackblazeNative": "API B2 v4 nativa: fluxo de arquivos grandes, cópia no servidor, histórico de versões (10 GB grátis)"
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",

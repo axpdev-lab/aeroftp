@@ -317,7 +317,6 @@ export function IntroHub(props: IntroHubProps) {
                 onSkipToFileManager={onSkipToFileManager}
                 onAeroCloud={onAeroCloud}
                 onAeroFile={onAeroFile}
-                onCrossProfileTransfer={onOpenCrossProfile}
                 isAeroCloudConnected={isAeroCloudConnected}
                 isAeroCloudPaused={isAeroCloudPaused}
                 isAeroCloudConfigured={isAeroCloudConfigured}

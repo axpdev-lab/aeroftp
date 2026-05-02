@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Tự động khám phá, hạn mức thời gian thực, tính năng nâng cao",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Chế độ này sử dụng InfiniCLOUD REST API v2 để tự động khám phá và hạn mức thời gian thực. Hiện có sẵn cho nhà phát triển và thử nghiệm beta nội bộ."
+            "infinicloudApiInfoDesc": "Chế độ này sử dụng InfiniCLOUD REST API v2 để tự động khám phá và hạn mức thời gian thực. Hiện có sẵn cho nhà phát triển và thử nghiệm beta nội bộ.",
+            "discoverBackblazeNative": "API B2 v4 gốc: quy trình tệp lớn, sao chép phía máy chủ, lịch sử phiên bản (10 GB miễn phí)"
         },
         "shortcuts": {
             "title": "Phím tắt",

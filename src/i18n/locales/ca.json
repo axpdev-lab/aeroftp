@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Descobriment automàtic, quota en temps real, funcions avançades",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Aquest mode utilitza InfiniCLOUD REST API v2 per al descobriment automàtic i la quota en temps real. Actualment disponible per a desenvolupadors i proves beta internes."
+            "infinicloudApiInfoDesc": "Aquest mode utilitza InfiniCLOUD REST API v2 per al descobriment automàtic i la quota en temps real. Actualment disponible per a desenvolupadors i proves beta internes.",
+            "discoverBackblazeNative": "API B2 v4 nativa: flux per a fitxers grans, copia al servidor, historial de versions (10 GB gratis)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",

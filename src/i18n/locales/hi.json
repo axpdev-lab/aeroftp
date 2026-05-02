@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "स्वचालित खोज, रीयल-टाइम कोटा, उन्नत सुविधाएं",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "यह मोड स्वचालित खोज और रीयल-टाइम कोटा के लिए InfiniCLOUD REST API v2 का उपयोग करता है। वर्तमान में डेवलपर्स और आंतरिक बीटा परीक्षण के लिए उपलब्ध है।"
+            "infinicloudApiInfoDesc": "यह मोड स्वचालित खोज और रीयल-टाइम कोटा के लिए InfiniCLOUD REST API v2 का उपयोग करता है। वर्तमान में डेवलपर्स और आंतरिक बीटा परीक्षण के लिए उपलब्ध है।",
+            "discoverBackblazeNative": "नेटिव B2 v4 API: बड़ी फ़ाइल वर्कफ़्लो, सर्वर-साइड कॉपी, संस्करण इतिहास (10 GB मुफ़्त)"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

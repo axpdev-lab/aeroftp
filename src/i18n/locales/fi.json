@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Automaattinen tunnistus, reaaliaikainen kiintiö, edistyneet ominaisuudet",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Tämä tila käyttää InfiniCLOUD REST API v2:ta automaattiseen tunnistukseen ja reaaliaikaiseen kiintiöön. Tällä hetkellä saatavilla kehittäjille ja sisäiseen betatestaukseen."
+            "infinicloudApiInfoDesc": "Tämä tila käyttää InfiniCLOUD REST API v2:ta automaattiseen tunnistukseen ja reaaliaikaiseen kiintiöön. Tällä hetkellä saatavilla kehittäjille ja sisäiseen betatestaukseen.",
+            "discoverBackblazeNative": "Natiivi B2 v4 API: suurten tiedostojen työnkulku, palvelinpuolen kopio, versiohistoria (10 Gt ilmaiseksi)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

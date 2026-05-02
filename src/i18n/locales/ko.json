@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "자동 검색, 실시간 할당량, 고급 기능",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "이 모드는 InfiniCLOUD REST API v2를 사용하여 자동 검색 및 실시간 할당량을 제공합니다. 현재 개발자 및 내부 베타 테스트용으로 사용할 수 있습니다."
+            "infinicloudApiInfoDesc": "이 모드는 InfiniCLOUD REST API v2를 사용하여 자동 검색 및 실시간 할당량을 제공합니다. 현재 개발자 및 내부 베타 테스트용으로 사용할 수 있습니다.",
+            "discoverBackblazeNative": "네이티브 B2 v4 API: 대용량 파일 워크플로, 서버 측 복사, 버전 기록 (10 GB 무료)"
         },
         "shortcuts": {
             "title": "단축키",

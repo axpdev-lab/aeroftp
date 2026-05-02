@@ -42,11 +42,11 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'googledrive', name: 'Google Drive', description: 'Google cloud storage (15 GB free)', protocol: 'googledrive', badge: 'OAuth', signupUrl: 'https://drive.google.com', healthCheckUrl: 'https://www.googleapis.com', source: 'protocol' },
     { id: 'onedrive', name: 'OneDrive', description: 'Microsoft cloud storage (5 GB free)', protocol: 'onedrive', badge: 'OAuth', signupUrl: 'https://onedrive.live.com', healthCheckUrl: 'https://graph.microsoft.com', source: 'protocol' },
     { id: 'dropbox', name: 'Dropbox', description: 'File sync and sharing (2 GB free)', protocol: 'dropbox', badge: 'OAuth', signupUrl: 'https://www.dropbox.com', healthCheckUrl: 'https://api.dropboxapi.com', source: 'protocol' },
-    { id: 'mega', name: 'MEGA', description: 'Secure cloud with client-side encryption (20 GB free)', protocol: 'mega', badge: 'E2E 128', signupUrl: 'https://mega.nz/register', healthCheckUrl: 'https://g.api.mega.co.nz', source: 'protocol' },
+    { id: 'mega', name: 'MEGA', description: 'Secure cloud with client-side encryption (20 GB free)', protocol: 'mega', badge: 'E2E 128-bit', signupUrl: 'https://mega.nz/register', healthCheckUrl: 'https://g.api.mega.co.nz', source: 'protocol' },
     { id: 'box', name: 'Box', description: 'Enterprise cloud content management (10 GB free)', protocol: 'box', badge: 'OAuth', signupUrl: 'https://www.box.com/pricing/individual', healthCheckUrl: 'https://api.box.com', source: 'protocol' },
     { id: 'pcloud', name: 'pCloud', description: 'Swiss cloud storage (10 GB free)', protocol: 'pcloud', badge: 'OAuth', signupUrl: 'https://www.pcloud.com', healthCheckUrl: 'https://api.pcloud.com', source: 'protocol' },
-    { id: 'filen', name: 'Filen', description: 'Zero-knowledge encrypted cloud (10 GB free)', protocol: 'filen', badge: 'E2E 256', signupUrl: 'https://filen.io', healthCheckUrl: 'https://gateway.filen.io', source: 'protocol' },
-    { id: 'internxt', name: 'Internxt', description: 'Privacy-focused encrypted cloud (1 GB free)', protocol: 'internxt', badge: 'E2E 256', signupUrl: 'https://internxt.com', healthCheckUrl: 'https://api.internxt.com', source: 'protocol' },
+    { id: 'filen', name: 'Filen', description: 'Zero-knowledge encrypted cloud (10 GB free)', protocol: 'filen', badge: 'E2E 256-bit', signupUrl: 'https://filen.io', healthCheckUrl: 'https://gateway.filen.io', source: 'protocol' },
+    { id: 'internxt', name: 'Internxt', description: 'Privacy-focused encrypted cloud (1 GB free)', protocol: 'internxt', badge: 'E2E 256-bit', signupUrl: 'https://internxt.com', healthCheckUrl: 'https://api.internxt.com', source: 'protocol' },
     { id: 'koofr-cloud', name: 'Koofr', description: 'EU-based privacy-friendly cloud (10 GB free)', protocol: 'koofr', badge: 'API', signupUrl: 'https://koofr.eu', healthCheckUrl: 'https://app.koofr.net', source: 'protocol' },
     { id: 'kdrive', name: 'kDrive', description: 'Infomaniak Swiss cloud (15 GB free)', protocol: 'kdrive', badge: 'API', signupUrl: 'https://www.infomaniak.com/en/kdrive', healthCheckUrl: 'https://api.infomaniak.com', source: 'protocol' },
     { id: 'filelu', name: 'FileLu', description: 'Multi-protocol cloud storage (1 GB free)', protocol: 'filelu', badge: 'API', signupUrl: 'https://filelu.com', healthCheckUrl: 'https://filelu.com/api/', source: 'protocol' },
@@ -56,6 +56,7 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'fourshared', name: '4shared', description: 'File sharing platform (15 GB free)', protocol: 'fourshared', badge: 'OAuth', signupUrl: 'https://www.4shared.com', healthCheckUrl: 'https://webdav.4shared.com', source: 'protocol' },
     { id: 'opendrive', name: 'OpenDrive', description: 'Cloud storage and backup (5 GB free)', protocol: 'opendrive', badge: 'API', signupUrl: 'https://www.opendrive.com', healthCheckUrl: 'https://dev.opendrive.com', source: 'protocol' },
     { id: 'yandexdisk', name: 'Yandex Disk', description: 'Russian cloud storage (5 GB free)', protocol: 'yandexdisk', badge: 'OAuth', signupUrl: 'https://disk.yandex.com', healthCheckUrl: 'https://cloud-api.yandex.net', source: 'protocol' },
+    { id: 'backblaze-native', name: 'Backblaze B2 (native)', description: 'Native B2 v4 API: large-file workflow, server-side copy, version history (10 GB free)', protocol: 'backblaze', providerId: 'backblaze-native', badge: 'API', signupUrl: 'https://www.backblaze.com/sign-up/cloud-storage', healthCheckUrl: 'https://api.backblazeb2.com', helpUrl: 'https://www.backblaze.com/apidocs/', source: 'protocol' },
 ];
 
 /** Media Services — photo/video platforms with file management.
@@ -171,6 +172,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'fourshared': 'protocol.discoverFourShared',
     'opendrive': 'protocol.discoverOpenDrive',
     'yandexdisk': 'protocol.discoverYandexDisk',
+    'backblaze-native': 'protocol.discoverBackblazeNative',
     // Protocol items
     'ftp-generic': 'protocol.discoverFtpFtps',
     'sftp-generic': 'protocol.discoverSftp',

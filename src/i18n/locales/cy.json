@@ -1576,7 +1576,8 @@
             "infinicloudModeApi": "REST API",
             "infinicloudModeApiDesc": "Darganfod awtomatig, cwota amser real, nodweddion uwch",
             "infinicloudApiInfoTitle": "REST API (Beta)",
-            "infinicloudApiInfoDesc": "Mae'r modd hwn yn defnyddio InfiniCLOUD REST API v2 ar gyfer darganfod awtomatig a chwota amser real. Ar gael ar hyn o bryd ar gyfer datblygwyr a phrofion beta mewnol."
+            "infinicloudApiInfoDesc": "Mae'r modd hwn yn defnyddio InfiniCLOUD REST API v2 ar gyfer darganfod awtomatig a chwota amser real. Ar gael ar hyn o bryd ar gyfer datblygwyr a phrofion beta mewnol.",
+            "discoverBackblazeNative": "API B2 v4 brodorol: llif gwaith ffeiliau mawr, copio ochr y gweinydd, hanes fersiynau (10 GB am ddim)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

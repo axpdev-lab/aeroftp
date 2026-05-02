@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, BarChart3 } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -25,6 +25,10 @@ interface MyServersToolbarProps {
     onOpenCrossProfile?: () => void;
     /** 0/1/2 — drives the 3 brightness states of the cross-profile button. */
     crossProfileSelectionCount?: number;
+    /** Current card layout — drives the detailed-cards toggle visual state. */
+    cardLayout?: 'compact' | 'detailed';
+    /** Toggle compact ↔ detailed card layout (storage bar + health radial). */
+    onToggleCardLayout?: () => void;
 }
 
 export function MyServersToolbar({
@@ -46,17 +50,20 @@ export function MyServersToolbar({
     onSpeedTest,
     onOpenCrossProfile,
     crossProfileSelectionCount = 0,
+    cardLayout = 'compact',
+    onToggleCardLayout,
 }: MyServersToolbarProps) {
     const t = useTranslation();
     // Cross-Profile button visual states:
-    //  - 0 selected: muted (low contrast) — invites click but doesn't compete with the rest
-    //  - 1 selected: normal indigo accent (matches the existing brand color for cross-profile)
-    //  - 2 selected: saturated + ring + bg — strongest signal; the pair is ready to transfer
+    //  - 0 selected: same indigo background as the other toolbar action buttons
+    //                (Health Check, Speed Test) so it sits on the same baseline
+    //  - 1 selected: brighter indigo accent — selection in progress
+    //  - 2 selected: saturated + ring — strongest signal; the pair is ready to transfer
     const cpButtonClass = crossProfileSelectionCount >= 2
         ? 'bg-indigo-500 text-white ring-2 ring-indigo-400/60 shadow-md hover:bg-indigo-600'
         : crossProfileSelectionCount === 1
-            ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40'
-            : 'text-indigo-400/70 dark:text-indigo-400/60 hover:bg-indigo-50/60 dark:hover:bg-indigo-900/20 hover:text-indigo-500 dark:hover:text-indigo-300';
+            ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800/50'
+            : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-800/40';
 
     return (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -126,6 +133,20 @@ export function MyServersToolbar({
                 >
                     <List size={15} />
                 </button>
+                {onToggleCardLayout && (
+                    <button
+                        onClick={onToggleCardLayout}
+                        className={`p-2 transition-colors border-l border-gray-200 dark:border-gray-600 ${
+                            cardLayout === 'detailed'
+                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        title={t('settings.detailedCards')}
+                        aria-pressed={cardLayout === 'detailed'}
+                    >
+                        <BarChart3 size={15} />
+                    </button>
+                )}
             </div>
 
             {/* Mask toggle */}
