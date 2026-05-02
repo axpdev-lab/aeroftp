@@ -3,6 +3,8 @@
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
 > This roadmap is updated continuously. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
 
+> **This roadmap is indicative.** The order in which items are picked up may change based on technical evaluations made during development, dependencies between features, community feedback, and security findings. Items can move between lanes (or be deferred) without notice.
+
 ---
 
 ## At a Glance
@@ -15,62 +17,109 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🟢 Just Shipped
 
-- **AeroRsync session-cached batch transport** — one SSH session amortizes many consecutive delta transfers (`AerorsyncBatch` trait, per-file `delta_files[]`, `bytes_on_wire` counter)
-- **AeroVault overlay session model** — open an `.aerovault` once, then route every list/upload/download/rename through the encrypted overlay transparently
-- **rclone crypt — full read/write** — beyond the existing read-only browse, AeroFTP now re-encrypts on the upload path with a transparent crypto overlay session
-- **Server Health Check engine** — real-time DNS/TCP/TLS/HTTP probes per saved server in IntroHub Pro (latency, 0-100 score, capability matrix, SVG radial gauge)
-- **MCP wave-5 cross-profile transfer** — `aeroftp_transfer` / `aeroftp_transfer_tree` between two saved profiles in one batch
-- **MCP wave-6 ops tools** — `aeroftp_touch` / `aeroftp_cleanup` / `aeroftp_speed` / `aeroftp_sync_doctor` / `aeroftp_dedupe` / `aeroftp_reconcile` plus per-group caps on `aeroftp_check_tree` (MCP tool count: 27 → 39)
-- **Box / Google Drive / Dropbox / OneDrive / Zoho deeper integrations** — labels, comments, file properties, tags, trash management, versioning across the matrix
-- **InfiniCLOUD — REST v2 (Muramasa) + WebDAV** — dual-connector with auto-discovery and real-time quota
-- **Immich photo provider** — native REST API integration, self-hosted photo management
-- **Continuous bidirectional `sync --watch`** — native filesystem watcher (inotify / FSEvents / ReadDirectoryChangesW), anti-loop cooldown, NDJSON output
-- **MEGA Native crypto canonical layout** — interop fix so AeroFTP-uploaded files open correctly in MEGA Web / MEGA Mobile / megajs
+- **AeroRsync session-cached batch transport**
+  One SSH session amortizes many consecutive delta transfers (`AerorsyncBatch` trait, per-file `delta_files[]`, `bytes_on_wire` counter).
+- **AeroVault overlay session model**
+  Open an `.aerovault` once, then route every list, upload, download, and rename through the encrypted overlay transparently.
+- **rclone crypt full read/write**
+  Beyond the existing read-only browse, AeroFTP now re-encrypts on the upload path with a transparent crypto overlay session.
+- **Server Health Check engine**
+  Real-time DNS, TCP, TLS, and HTTP probes per saved server in IntroHub Pro. Latency measurements, 0-100 score, capability matrix, SVG radial gauge.
+- **MCP wave-5 cross-profile transfer**
+  `aeroftp_transfer` and `aeroftp_transfer_tree` copy between two saved profiles in one batch.
+- **MCP wave-6 ops tools**
+  Six new tools (`aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile`) plus per-group caps on `aeroftp_check_tree`. MCP tool count: 27 → 39.
+- **Box, Google Drive, Dropbox, OneDrive, Zoho deeper integrations**
+  Labels, comments, file properties, tags, trash management, and versioning across the matrix.
+- **InfiniCLOUD: REST v2 (Muramasa) + WebDAV**
+  Dual-connector with auto-discovery and real-time quota.
+- **Immich photo provider**
+  Native REST API integration for self-hosted photo management.
+- **Continuous bidirectional `sync --watch`**
+  Native filesystem watcher (inotify, FSEvents, ReadDirectoryChangesW), anti-loop cooldown, NDJSON output.
+- **MEGA Native crypto canonical layout**
+  Interop fix so AeroFTP-uploaded files open correctly in MEGA Web, MEGA Mobile, and megajs.
 
 ### 🟡 In Flight
 
-- **AeroFile Dual Panel** — one surface for any pair of endpoints (local/local, local/remote, remote/local, remote/remote) with FreeFileSync-style mirror / backup / bisync workflow
-- **Local Transport for AeroRsync** — delta sync local-to-local, same wire-protocol-compatible engine extended to local filesystem pairs
-- **Activity Log per-provider coverage** — beyond generic CRUD, surface provider-specific events (share link rotated, version restored, label applied)
-- **Flathub publish** — flatpak manifest done, `flathub-fork/` ready, awaiting acceptance into the Flathub remote
-- **Bitbucket / Gitea / Forgejo native integrations** — Git forge Tier 1 on top of the existing GitHub + GitLab providers (~90% reuse of the GitHub code path)
-- **Mobile companion app** — Android with Capacitor 6 + React, FTP / SFTP / WebDAV protocols and AeroVault v2 import/export
+- **AeroFile Dual Panel**
+  One surface for any pair of endpoints (local/local, local/remote, remote/local, remote/remote) with a FreeFileSync-style mirror, backup, and bisync workflow.
+- **Local Transport for AeroRsync**
+  Delta sync local-to-local, the same wire-protocol-compatible engine extended to local filesystem pairs.
+- **Activity Log per-provider coverage**
+  Beyond generic CRUD, surface provider-specific events such as share link rotated, version restored, label applied.
+- **Flathub publish**
+  Flatpak manifest done, `flathub-fork/` ready, awaiting acceptance into the Flathub remote.
+- **Bitbucket, Gitea, Forgejo native integrations**
+  Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
+- **Mobile companion app**
+  Android with Capacitor 6 and React. FTP, SFTP, and WebDAV protocols, plus AeroVault v2 import/export.
 
 ### 🔵 Up Next
 
-- **Persistent Mount Manager** (GUI + CLI) — pick a free drive letter on Windows or a mount path on Linux, persist across reboots; `Open Mount` button in the dual panel. Also unlocks "view the decrypted view of an encrypted sync" for Crypt and AeroVault overlays.
-- **Crypt as a dedicated profile type** — surface `crypt` in the `aeroftp-cli profiles` listing under the "Proto" column instead of hiding the encryption configuration inside `.sh` / `.ps1` automation scripts. Same on the GUI: Crypt becomes its own card on My Servers and Discover with a `256-bit 🔐` badge.
-- **Compression wrapper profile** — symmetric to the Crypt overlay: a per-profile zstd compression layer with the safe ordering enforced by the engine (`Encrypt(Compress(Data))` only). The UI warns when a user tries to compress an already-encrypted overlay (which would defeat compression).
-- **Streaming Scan Pipeline** — producer-consumer architecture for immediate transfer start without waiting for a full directory scan
-- **Share Link UX Redesign** — unified share experience with QR codes, link analytics, and team sharing on top of the 22 provider backends already shipped
-- **VS Code Remote Explorer extension** — browse, edit, and upload to remotes from inside VS Code (distinct from the existing MCP launcher extension)
-- **Deploy Engine** — one-click self-hosted server provisioning (S3 / WebDAV / SFTP / FTP) on a NAS, VPS, or local Docker, with the resulting endpoint auto-saved as a connection profile
-- **Photo & Media Services expansion** — 7 services beyond Immich and Google Photos
-- **Mobile-friendly window dimensions** — shrink the minimum width below current bound so AeroFTP runs comfortably on Linux phones / half-screen splits
-- **Universal File Versioning** — unified versions panel across 10 providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud)
-- **AeroCloud Selective Sync** — folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization
-- **Agent Orchestration v2** — mutative remote operations with grant model on top of the existing 39-tool MCP server
-- **AeroVault v2 Enhancements** — cross-platform migration, multi-device sync integration, key rotation
-- **S3 Storage Class Management** — set storage class on upload, change in-place, Glacier restore workflow, tier badges
-- **Azure Blob Tier Management** — Hot / Cool / Cold / Archive with rehydration workflow
+- **Persistent Mount Manager (GUI + CLI)**
+  Pick a free drive letter on Windows or a mount path on Linux, persist across reboots, with an Open Mount button in the dual panel. Also unlocks the "view the decrypted view of an encrypted sync" use case for Crypt and AeroVault overlays.
+- **Crypt as a dedicated profile type**
+  Surface `crypt` in the `aeroftp-cli profiles` listing under the "Proto" column instead of hiding the encryption configuration inside `.sh` and `.ps1` automation scripts. Same on the GUI: Crypt becomes its own card on My Servers and Discover with a `256-bit 🔐` badge.
+- **Compression wrapper profile**
+  Symmetric to the Crypt overlay. A per-profile zstd compression layer with the safe ordering enforced by the engine (`Encrypt(Compress(Data))` only). The UI warns when a user tries to compress an already-encrypted overlay, which would defeat compression.
+- **Streaming Scan Pipeline**
+  Producer-consumer architecture for immediate transfer start without waiting for a full directory scan.
+- **Share Link UX Redesign**
+  Unified share experience with QR codes, link analytics, and team sharing on top of the 22 provider backends already shipped.
+- **VS Code Remote Explorer extension**
+  Browse, edit, and upload to remotes from inside VS Code, distinct from the existing MCP launcher extension.
+- **Deploy Engine**
+  One-click self-hosted server provisioning (S3, WebDAV, SFTP, FTP) on a NAS, VPS, or local Docker, with the resulting endpoint auto-saved as a connection profile.
+- **Photo and Media Services expansion**
+  Seven services beyond Immich and Google Photos.
+- **Mobile-friendly window dimensions**
+  Shrink the minimum width below the current bound so AeroFTP runs comfortably on Linux phones and half-screen splits.
+- **Universal File Versioning**
+  Unified versions panel across 10 providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud).
+- **AeroCloud Selective Sync**
+  Folder-level exclusion with tree view, `.aeroignore` patterns, bandwidth throttling, conflict visualization.
+- **Agent Orchestration v2**
+  Mutative remote operations with grant model on top of the existing 39-tool MCP server.
+- **AeroVault v2 Enhancements**
+  Cross-platform migration, multi-device sync integration, key rotation.
+- **S3 Storage Class Management**
+  Set storage class on upload, change in-place, Glacier restore workflow, tier badges.
+- **Azure Blob Tier Management**
+  Hot, Cool, Cold, and Archive tiers with rehydration workflow.
 
 ### ⚪ On the Horizon
 
-- **AeroIndex** — content-aware file intelligence: cross-server deduplication, semantic tags, transactional preview, offline browsing, workspaces. A new way to think about files scattered across 40+ cloud services.
-- **IPFS / Web3 Storage** — decentralized storage integration (NLnet grant submitted)
-- **Tor Support** — anonymous file transfers via Tor hidden services (NLnet grant submitted)
-- **AeroVault v3 with BLAKE3** — replace the SHA-2 fast-hashing parts of the AeroVault v2 stack with BLAKE3 while keeping Argon2id for KDF. Now is the right moment to make this kind of cryptographic decision before the install base grows.
-- **ChaCha20 / XChaCha20 cipher family** — battery-efficient symmetric encryption option for mobile (and exposed on desktop too for parity). Reference points: Kopia (ChaCha + zstd + BLAKE3), Restic (zstd). Benchmark phase before pinning the default.
-- **Biometric Unlock** — fingerprint / face unlock for the encrypted vault (Touch ID, Windows Hello)
-- **Encryption-strength badges refresh** — replace the current `E2E` / `🔒` badges across My Servers, Discover Services, and ProtocolSelector with cipher-strength labels (`128-bit 🔐` / `256-bit 🔐`). Removes the misleading "End-to-End Encryption" framing on overlays where there is no destination decryption, and aligns OAuth providers with the same visual grammar as API providers.
-- **Per-protocol comparison page in docs** — qualitative API vs WebDAV trade-offs, complementing Health Check + Speed Test
-- **Topbar nav restructure** — dedicated 3-cluster layout (page-nav / utility / window controls)
-- **Custom favicon picker — manual reorder + sort toggle**
-- **Icon size enlarge / Appearance slider** — bigger provider icons or user-adjustable size
-- **Keyboard accessibility — Tab forward unstuck** — Enter / Space activation already shipped; Tab traversal still pending
-- **AeroSync ↔ aeroftp-cli script export/import** — `.ps1` / `.sh` with auto-detected shebang
-- **Top-right overlays — keep titlebar drag-region active** while modals are open
-- **Right-click "Open with default app"** — `.aerovault` / `.aeroftp` / `.aeroftp-keystore` open inside AeroFTP, `.ps1` / `.sh` open in AeroTools terminal
+- **AeroIndex**
+  Content-aware file intelligence: cross-server deduplication, semantic tags, transactional preview, offline browsing, workspaces. A new way to think about files scattered across 40+ cloud services.
+- **IPFS / Web3 Storage**
+  Decentralized storage integration (NLnet grant submitted).
+- **Tor Support**
+  Anonymous file transfers via Tor hidden services (NLnet grant submitted).
+- **AeroVault v3 with BLAKE3**
+  Replace the SHA-2 fast-hashing parts of the AeroVault v2 stack with BLAKE3 while keeping Argon2id for KDF. Now is the right moment to make this kind of cryptographic decision before the install base grows.
+- **ChaCha20 / XChaCha20 cipher family**
+  Battery-efficient symmetric encryption option for mobile, exposed on desktop too for parity. Reference points: Kopia (ChaCha, zstd, BLAKE3) and Restic (zstd). Benchmark phase before pinning the default.
+- **Biometric Unlock**
+  Fingerprint and face unlock for the encrypted vault (Touch ID, Windows Hello).
+- **Encryption-strength badges refresh**
+  Replace the current `E2E` and `🔒` badges across My Servers, Discover Services, and ProtocolSelector with cipher-strength labels (`128-bit 🔐` / `256-bit 🔐`). Removes the misleading "End-to-End Encryption" framing on overlays where there is no destination decryption, and aligns OAuth providers with the same visual grammar as API providers.
+- **Per-protocol comparison page in docs**
+  Qualitative API vs WebDAV trade-offs, complementing Health Check and Speed Test.
+- **Topbar nav restructure**
+  Dedicated 3-cluster layout (page-nav, utility, window controls).
+- **Custom favicon picker: manual reorder and sort toggle**
+  User-uploaded library with explicit ordering and a sort toggle.
+- **Icon size enlarge or Appearance slider**
+  Bigger provider icons, or a user-adjustable size in Appearance.
+- **Keyboard accessibility: Tab forward unstuck**
+  Enter and Space activation already shipped; Tab traversal still pending.
+- **AeroSync ↔ aeroftp-cli script export/import**
+  `.ps1` and `.sh` with auto-detected shebang.
+- **Top-right overlays: keep titlebar drag-region active**
+  While modals are open, the titlebar should remain draggable so the window can be moved or split-screened.
+- **Right-click "Open with default app"**
+  `.aerovault`, `.aeroftp`, and `.aeroftp-keystore` open inside AeroFTP. `.ps1` and `.sh` open in AeroTools terminal. Everything else uses the OS default.
 
 ---
 
@@ -78,13 +127,13 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 | Provider | Protocol | Status |
 |----------|----------|--------|
-| **InfiniCLOUD** (REST v2 + WebDAV) | Muramasa REST + WebDAV | 🟢 Just Shipped — dual-connector with auto-discovery and quota |
+| **InfiniCLOUD** (REST v2 + WebDAV) | Muramasa REST + WebDAV | 🟢 Just Shipped: dual-connector with auto-discovery and quota |
 | **Immich** | REST API (self-hosted) | 🟢 Just Shipped |
-| **Bitbucket** | REST 2.0 | 🟡 In Flight — Git forge Tier 1 |
-| **Gitea / Forgejo** | REST v1 | 🟡 In Flight — Git forge Tier 1 (~90% GitHub reuse) |
-| **Photo & Media services** | OAuth / REST | 🔵 Up Next — phased rollout, 7 services in queue |
-| **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next — Tier 1 already shipped |
-| **ImageKit** | REST API | 🔵 Up Next — media CDN + storage |
+| **Bitbucket** | REST 2.0 | 🟡 In Flight: Git forge Tier 1 |
+| **Gitea / Forgejo** | REST v1 | 🟡 In Flight: Git forge Tier 1 (~90% GitHub reuse) |
+| **Photo & Media services** | OAuth / REST | 🔵 Up Next: phased rollout, 7 services in queue |
+| **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next: Tier 1 already shipped |
+| **ImageKit** | REST API | 🔵 Up Next: media CDN + storage |
 | **Blomp** | OpenStack Swift | ⏸ Awaiting Blomp proxy fix (auth works, storage 403) |
 
 **Already supported via presets**: Quotaless (S3 + WebDAV), PixelUnion (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud / ownCloud (WebDAV auto-detect).
@@ -100,7 +149,7 @@ Recent contributors include **[@EhudKirsh](https://github.com/EhudKirsh)**, whos
 Open community items currently in our triage:
 
 - AeroSync ↔ aeroftp-cli script export/import (`.ps1` / `.sh`, OS-aware shebang)
-- Top-right overlays — keep titlebar drag-region active while modal is open
+- Top-right overlays: keep titlebar drag-region active while modal is open
 - AeroFile right-click "Open with default app" (`.aerovault` / `.aeroftp` in-app, `.ps1` / `.sh` in AeroTools)
 - Persistent Mount Manager + Open Mount button
 - Mobile-friendly window dimensions for Linux phones
@@ -123,7 +172,7 @@ The lane view above is what most users want. The tables below are kept for users
 | **rclone crypt full read/write** | Beyond the existing read-only browse, AeroFTP now re-encrypts on the upload path with a transparent crypto overlay session. Filename obfuscation is deterministic; provider sees only encrypted blobs. |
 | **Server Health Check** | Real-time DNS/TCP/TLS/HTTP probes per saved server in IntroHub Pro. Latency measurements, 0-100 health scoring, capability matrix per protocol, SVG radial gauge, parallel batch refresh. |
 | **MCP wave-5 cross-profile transfer** | `aeroftp_transfer` and `aeroftp_transfer_tree` copy files between two saved profiles in one batch. Source and destination provider opened once and reused; path validation, audit log, throttled progress streaming. |
-| **MCP wave-6 ops tools** | Six new tools — `aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile` — plus per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`) and `omit_match` switch on `aeroftp_check_tree`. MCP tool count: 27 → 39. |
+| **MCP wave-6 ops tools** | Six new tools (`aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile`) plus per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`) and `omit_match` switch on `aeroftp_check_tree`. MCP tool count: 27 → 39. |
 | **`aerovault` crate 0.3.4** | New overlay-session API and KEK-derivation polish in the standalone Rust crate. New `rename_entry` / `move_entry` / `copy_entry` public API on `Vault`, mirrored by `aerovault rename / move / copy` CLI subcommands. |
 | **MEGA Native crypto polish** | Non-regressive cleanup on top of the v3.6.10 canonical-layout fix (less log noise, nonce/key edge cases, listing pagination). |
 | **B2 native v4 hardening** | Auth/list/upload/download retry surface aligned with provider-trait expectations. |
@@ -206,7 +255,7 @@ The lane view above is what most users want. The tables below are kept for users
 | v3.0.9 | GitHub batch operations (bulk upload, delete, commit) |
 | v3.0.7 | GitHub Actions browser (CI/CD monitor and trigger) |
 | v3.0.5 | GitHub App authentication (PEM vault storage, installation tokens, branch protection) |
-| v3.0.0 | **AeroFTP 3.0** — Tauri 2 migration, new UI, plugin system |
+| v3.0.0 | **AeroFTP 3.0**: Tauri 2 migration, new UI, plugin system |
 
 ---
 
@@ -261,5 +310,5 @@ Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, English, Spani
 - **Star the repo** to show your support
 - **Report bugs** via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues)
 - **Suggest features** by opening a discussion or commenting on an existing wishlist thread
-- **Help translate** — we're always looking for native speakers to improve translations
+- **Help translate**: we're always looking for native speakers to improve translations
 - **Run a storage service?** See the [Provider Integration Guide](docs/PROVIDER-INTEGRATION-GUIDE.md) for a native integration in AeroFTP. We collaborate directly with providers on the API mapping.
