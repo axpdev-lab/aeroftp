@@ -21,6 +21,7 @@
 use aes::cipher::{KeyIvInit, StreamCipher};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use futures_util::future::BoxFuture;
 use reqwest::header::CONTENT_TYPE;
 use ripemd::Ripemd160;
 use secrecy::{ExposeSecret, SecretString};
@@ -68,6 +69,15 @@ const APP_CRYPTO_SECRET: &str = "6KYQBP847D4ATSFA";
 
 /// OpenSSL "Salted__" prefix
 const SALTED_PREFIX: &[u8] = b"Salted__";
+
+fn internxt_auth_failure(context: &str, detail: &str) -> ProviderError {
+    let clean = detail.trim();
+    if clean.is_empty() {
+        ProviderError::AuthenticationFailed(context.to_string())
+    } else {
+        ProviderError::AuthenticationFailed(format!("{}: {}", context, clean))
+    }
+}
 
 // ─── Serde Helpers ──────────────────────────────────────────────────────────
 
@@ -723,7 +733,7 @@ impl InternxtProvider {
 
     /// Find a subfolder by name within a parent folder
     async fn find_subfolder(
-        &self,
+        &mut self,
         parent_uuid: &str,
         name: &str,
     ) -> Result<Option<String>, ProviderError> {
@@ -735,7 +745,7 @@ impl InternxtProvider {
             );
 
             let resp = self
-                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
                 .await?;
 
             if !resp.status().is_success() {
@@ -829,7 +839,7 @@ impl InternxtProvider {
 
     /// Find a file by name in a folder, returns (uuid, file_id, bucket)
     async fn find_file_in_folder(
-        &self,
+        &mut self,
         folder_uuid: &str,
         filename: &str,
     ) -> Result<Option<(String, String, String)>, ProviderError> {
@@ -841,7 +851,7 @@ impl InternxtProvider {
             );
 
             let resp = self
-                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
                 .await?;
 
             if !resp.status().is_success() {
@@ -1288,7 +1298,7 @@ impl StorageProvider for InternxtProvider {
             tracing::debug!(target: "internxt", "[LIST FOLDERS] GET {}", full_url);
 
             let resp = self
-                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
                 .await?;
 
             let status = resp.status();
@@ -1374,7 +1384,7 @@ impl StorageProvider for InternxtProvider {
             tracing::debug!(target: "internxt", "[LIST FILES] GET {}", full_url);
 
             let resp = self
-                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
                 .await?;
 
             let status = resp.status();
@@ -1492,10 +1502,10 @@ impl StorageProvider for InternxtProvider {
         // Get bucket file info (shards + encryption index)
         let info_url = format!("/buckets/{}/files/{}/info", file_bucket, file_id);
         let info_resp = self
-            .send_retryable(
-                self.network_request(reqwest::Method::GET, &info_url)
-                    .header("x-api-version", "2"),
-            )
+            .send_with_reauth(|this| {
+                this.network_request(reqwest::Method::GET, &info_url)
+                    .header("x-api-version", "2")
+            })
             .await?;
 
         if !info_resp.status().is_success() {
@@ -1644,10 +1654,12 @@ impl StorageProvider for InternxtProvider {
                 filename
             ));
             let _ = self
-                .send_retryable(self.drive_request(
-                    reqwest::Method::DELETE,
-                    &format!("/files/{}", existing_uuid),
-                ))
+                .send_with_reauth(|this| {
+                    this.drive_request(
+                        reqwest::Method::DELETE,
+                        &format!("/files/{}", existing_uuid),
+                    )
+                })
                 .await;
         }
 
@@ -1703,10 +1715,11 @@ impl StorageProvider for InternxtProvider {
             }
 
             let resp = self
-                .network_request(reqwest::Method::POST, &start_url)
-                .header(CONTENT_TYPE, "application/json; charset=utf-8")
-                .json(&start_body)
-                .send()
+                .send_with_reauth(|this| {
+                    this.network_request(reqwest::Method::POST, &start_url)
+                        .header(CONTENT_TYPE, "application/json; charset=utf-8")
+                        .json(&start_body)
+                })
                 .await;
 
             let resp = match resp {
@@ -1840,11 +1853,11 @@ impl StorageProvider for InternxtProvider {
         });
 
         let finish_resp = self
-            .send_retryable(
-                self.network_request(reqwest::Method::POST, &finish_url)
+            .send_with_reauth(|this| {
+                this.network_request(reqwest::Method::POST, &finish_url)
                     .header(CONTENT_TYPE, "application/json; charset=utf-8")
-                    .json(&finish_body),
-            )
+                    .json(&finish_body)
+            })
             .await?;
 
         if !finish_resp.status().is_success() {
@@ -1902,11 +1915,11 @@ impl StorageProvider for InternxtProvider {
         });
 
         let resp = self
-            .send_retryable(
-                self.drive_request(reqwest::Method::POST, "/folders")
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::POST, "/folders")
                     .header(CONTENT_TYPE, "application/json")
-                    .json(&body),
-            )
+                    .json(&body)
+            })
             .await?;
 
         if !resp.status().is_success() {
@@ -1947,9 +1960,12 @@ impl StorageProvider for InternxtProvider {
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", resolved)))?;
 
         let resp = self
-            .send_retryable(
-                self.drive_request(reqwest::Method::DELETE, &format!("/files/{}", file_info.0)),
-            )
+            .send_with_reauth(|this| {
+                this.drive_request(
+                    reqwest::Method::DELETE,
+                    &format!("/files/{}", file_info.0),
+                )
+            })
             .await?;
 
         if !resp.status().is_success() {
@@ -1970,9 +1986,9 @@ impl StorageProvider for InternxtProvider {
         let uuid = self.resolve_folder_uuid(&resolved).await?;
 
         let resp = self
-            .send_retryable(
-                self.drive_request(reqwest::Method::DELETE, &format!("/folders/{}", uuid)),
-            )
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::DELETE, &format!("/folders/{}", uuid))
+            })
             .await?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 204 {
@@ -2039,14 +2055,14 @@ impl StorageProvider for InternxtProvider {
                     "destinationFolder": to_parent_uuid
                 });
                 let move_resp = self
-                    .send_retryable(
-                        self.drive_request(
+                    .send_with_reauth(|this| {
+                        this.drive_request(
                             reqwest::Method::PATCH,
                             &format!("/files/{}", file_uuid),
                         )
                         .header(CONTENT_TYPE, "application/json")
-                        .json(&move_payload),
-                    )
+                        .json(&move_payload)
+                    })
                     .await?;
 
                 if !move_resp.status().is_success() {
@@ -2069,14 +2085,14 @@ impl StorageProvider for InternxtProvider {
                 }
 
                 let resp = self
-                    .send_retryable(
-                        self.drive_request(
+                    .send_with_reauth(|this| {
+                        this.drive_request(
                             reqwest::Method::PUT,
                             &format!("/files/{}/meta", file_uuid),
                         )
                         .header(CONTENT_TYPE, "application/json")
-                        .json(&payload),
-                    )
+                        .json(&payload)
+                    })
                     .await?;
 
                 if !resp.status().is_success() {
@@ -2110,14 +2126,14 @@ impl StorageProvider for InternxtProvider {
                 "destinationFolder": to_parent_uuid
             });
             let move_resp = self
-                .send_retryable(
-                    self.drive_request(
+                .send_with_reauth(|this| {
+                    this.drive_request(
                         reqwest::Method::PATCH,
                         &format!("/folders/{}", folder_uuid),
                     )
                     .header(CONTENT_TYPE, "application/json")
-                    .json(&move_payload),
-                )
+                    .json(&move_payload)
+                })
                 .await?;
 
             if !move_resp.status().is_success() {
@@ -2135,14 +2151,14 @@ impl StorageProvider for InternxtProvider {
         if from_name != to_name {
             let rename_payload = serde_json::json!({ "plainName": to_name });
             let rename_resp = self
-                .send_retryable(
-                    self.drive_request(
+                .send_with_reauth(|this| {
+                    this.drive_request(
                         reqwest::Method::PUT,
                         &format!("/folders/{}/meta", folder_uuid),
                     )
                     .header(CONTENT_TYPE, "application/json")
-                    .json(&rename_payload),
-                )
+                    .json(&rename_payload)
+                })
                 .await?;
 
             if !rename_resp.status().is_success() {
@@ -2216,35 +2232,9 @@ impl StorageProvider for InternxtProvider {
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
-        // Attempt token refresh. JWT tokens last ~7 days but refreshing proactively
-        // prevents expiration during long sessions.
-        let resp = self
-            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/refresh"))
-            .await;
-
-        match resp {
-            Ok(r) if r.status().is_success() => {
-                // Try to extract new token from response
-                if let Ok(body) = r.text().await {
-                    // Response may be a JSON object with "newToken" field
-                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) {
-                        if let Some(new_token) = parsed.get("newToken").and_then(|v| v.as_str()) {
-                            if !new_token.is_empty() {
-                                self.token = SecretString::from(new_token.to_string());
-                                tracing::debug!(target: "internxt", "Token refreshed successfully");
-                            }
-                        }
-                    }
-                }
-            }
-            Ok(r) => {
-                tracing::debug!(target: "internxt", "Token refresh returned {}, token may still be valid", r.status());
-            }
-            Err(e) => {
-                tracing::debug!(target: "internxt", "Token refresh failed: {}, token may still be valid", e);
-            }
+        if let Err(e) = self.refresh_token_once().await {
+            tracing::debug!(target: "internxt", "Token refresh failed: {}, token may still be valid", e);
         }
-
         Ok(())
     }
 
@@ -2255,7 +2245,7 @@ impl StorageProvider for InternxtProvider {
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         // GET /drive/users/usage
         let usage_resp = self
-            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/usage"))
+            .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, "/users/usage"))
             .await?;
 
         let used = if usage_resp.status().is_success() {
@@ -2270,7 +2260,7 @@ impl StorageProvider for InternxtProvider {
 
         // GET /drive/users/limit
         let limit_resp = self
-            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/limit"))
+            .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, "/users/limit"))
             .await?;
 
         let total = if limit_resp.status().is_success() {
@@ -2304,7 +2294,7 @@ impl InternxtProvider {
 
     /// Create file metadata in Drive after network upload
     async fn create_file_meta(
-        &self,
+        &mut self,
         file_id: Option<&str>,
         folder_uuid: &str,
         plain_name: &str,
@@ -2331,11 +2321,11 @@ impl InternxtProvider {
         }
 
         let resp = self
-            .send_retryable(
-                self.drive_request(reqwest::Method::POST, "/files")
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::POST, "/files")
                     .header(CONTENT_TYPE, "application/json; charset=utf-8")
-                    .json(&body),
-            )
+                    .json(&body)
+            })
             .await?;
 
         if !resp.status().is_success() {
@@ -2368,6 +2358,105 @@ impl InternxtProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
+    async fn send_auth_checked(
+        &self,
+        rb: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let resp = self.send_retryable(rb).await?;
+        if resp.status().as_u16() == 401 {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(internxt_auth_failure(
+                "Internxt token expired or invalid",
+                &super::sanitize_api_error(&body),
+            ));
+        }
+        Ok(resp)
+    }
+
+    async fn with_reauth<T, F>(&mut self, mut op: F) -> Result<T, ProviderError>
+    where
+        F: for<'a> FnMut(&'a mut Self) -> BoxFuture<'a, Result<T, ProviderError>>,
+    {
+        match op(self).await {
+            Err(ProviderError::AuthenticationFailed(msg)) => {
+                tracing::warn!(
+                    target: "internxt",
+                    "Authenticated Internxt request failed; refreshing credentials and retrying once: {}",
+                    msg
+                );
+                self.reauth().await?;
+                op(self).await
+            }
+            other => other,
+        }
+    }
+
+    async fn send_with_reauth<F>(&mut self, mut build: F) -> Result<reqwest::Response, ProviderError>
+    where
+        F: FnMut(&Self) -> reqwest::RequestBuilder,
+    {
+        self.with_reauth(|this| {
+            let rb = build(this);
+            Box::pin(async move { this.send_auth_checked(rb).await })
+        })
+        .await
+    }
+
+    async fn refresh_token_once(&mut self) -> Result<(), ProviderError> {
+        let resp = self
+            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/refresh"))
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(internxt_auth_failure(
+                "Internxt token refresh failed",
+                &format!("{}: {}", status, super::sanitize_api_error(&body)),
+            ));
+        }
+
+        let body = resp.text().await.unwrap_or_default();
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) {
+            if let Some(new_token) = parsed.get("newToken").and_then(|v| v.as_str()) {
+                if !new_token.is_empty() {
+                    self.token = SecretString::from(new_token.to_string());
+                    tracing::debug!(target: "internxt", "Token refreshed successfully");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn reauth(&mut self) -> BoxFuture<'_, Result<(), ProviderError>> {
+        Box::pin(async move {
+            if self.refresh_token_once().await.is_ok() {
+                return Ok(());
+            }
+
+            let previous_path = self.current_path.clone();
+            tracing::info!(target: "internxt", "Falling back to fresh Internxt login after refresh failure");
+            self.connect().await?;
+
+            if previous_path != "/" {
+                match Box::pin(self.resolve_folder_uuid(&previous_path)).await {
+                    Ok(uuid) => {
+                        self.current_path = previous_path;
+                        self.current_folder_id = uuid;
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            target: "internxt",
+                            "Could not restore Internxt cwd after reauth: {}",
+                            e
+                        );
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
     // TODO: Share links via POST /storage/share/{type}/{id}
     // TODO: Versioning via GET /files/{uuid}/versions
     // TODO: Workspace support (enterprise feature)
@@ -2384,7 +2473,7 @@ impl InternxtProvider {
         loop {
             let url = format!("/storage/trash/paginated?offset={}&limit={}", offset, limit);
             let resp = self
-                .send_retryable(self.drive_request(reqwest::Method::GET, &url))
+                .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
                 .await?;
 
             if !resp.status().is_success() {
@@ -2550,5 +2639,22 @@ mod tests {
         // from root, ".." stays at root
         p.current_path = "/".to_string();
         assert_eq!(p.resolve_path(".."), "/");
+    }
+
+    #[test]
+    fn internxt_auth_failure_formats_empty_and_detailed_messages() {
+        let empty = internxt_auth_failure("Internxt token expired or invalid", "");
+        assert!(matches!(
+            empty,
+            ProviderError::AuthenticationFailed(ref msg)
+                if msg == "Internxt token expired or invalid"
+        ));
+
+        let detailed = internxt_auth_failure("Internxt token refresh failed", "401: expired");
+        assert!(matches!(
+            detailed,
+            ProviderError::AuthenticationFailed(ref msg)
+                if msg == "Internxt token refresh failed: 401: expired"
+        ));
     }
 }
