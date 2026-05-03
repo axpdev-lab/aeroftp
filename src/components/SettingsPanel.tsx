@@ -628,6 +628,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         setKeystoreImportProgress(null);
     }, [clearKeystoreImportProgressListener, isOpen]);
 
+    // Live-sync the panel's local `settings` state with global font-size
+    // changes from useFontSizeShortcuts (Ctrl+-/=/0). Without this listener
+    // the Font Size range slider stays frozen at the value loaded when the
+    // panel was opened, even though App.tsx has already applied the new size.
+    // We deliberately merge the incoming detail into the existing state to
+    // avoid clobbering pending user edits to other fields.
+    useEffect(() => {
+        if (!isOpen) return;
+        const onSettingsChanged = (e: Event) => {
+            const detail = (e as CustomEvent<Partial<AppSettings>>).detail;
+            if (!detail || typeof detail !== 'object') return;
+            setSettings(prev => {
+                const merged: AppSettings = { ...prev, ...detail };
+                if (typeof detail.fontSize === 'number') {
+                    merged.fontSize = clampAppFontSize(detail.fontSize);
+                }
+                if (typeof detail.fontFamily === 'string') {
+                    merged.fontFamily = normalizeAppFontFamily(detail.fontFamily);
+                }
+                return merged;
+            });
+        };
+        window.addEventListener('aeroftp-settings-changed', onSettingsChanged);
+        return () => window.removeEventListener('aeroftp-settings-changed', onSettingsChanged);
+    }, [isOpen]);
+
     useEffect(() => {
         return () => {
             clearKeystoreImportProgressListener();

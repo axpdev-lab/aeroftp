@@ -71,6 +71,17 @@ export const useFontSizeShortcuts = (
             if (e.altKey) return;
             // Skip when typing in inputs so native field shortcuts keep working
             if (isEditableTarget(e.target)) return;
+            // Don't hijack zoom in Monaco editor, terminal, or anything opted out:
+            // those surfaces have their own local zoom keybinding (terminal listens
+            // on its container, Monaco does it internally).
+            const target = e.target as HTMLElement | null;
+            if (
+                target?.closest(
+                    '.monaco-editor, .xterm, [data-no-font-zoom]',
+                )
+            ) {
+                return;
+            }
             if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
                 e.preventDefault();
                 change(+1);

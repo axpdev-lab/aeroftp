@@ -10,6 +10,7 @@ import { Terminal as TerminalIcon, Play, Square, RotateCcw, Plus, X, Palette, Zo
 import { invoke } from '@tauri-apps/api/core';
 import '@xterm/xterm/css/xterm.css';
 import { createTauriListener } from '../../hooks/useTauriListener';
+import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 
 // ============ Terminal Themes ============
 
@@ -292,6 +293,11 @@ function nextTabId(): string {
 // ============ Settings Persistence ============
 
 const SETTINGS_KEY = 'aeroftp-terminal-settings';
+// Vault account name for terminal settings. Anything not matching the
+// server_/server_profile_/ai_apikey_/oauth_ prefixes lands in the
+// `config_entries` category of the keystore export, so storing it here
+// makes the terminal font/theme part of the AeroFTP backup automatically.
+const TERMINAL_SETTINGS_VAULT_KEY = 'terminal_settings';
 const SCROLLBACK_KEY = 'aeroftp-terminal-scrollback';
 // L57: Size limits for scrollback persistence to prevent localStorage bloat
 const SCROLLBACK_MAX_PER_TAB = 100 * 1024;  // 100 KB per tab
@@ -302,16 +308,35 @@ interface TerminalSettings {
     fontSize: number;
 }
 
-function loadSettings(): TerminalSettings {
+const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = { themeName: 'tokyo-night', fontSize: 14 };
+
+// Synchronous fallback used as the React initial state — vault reads are
+// async and we can't block the render. The full vault refresh happens
+// right after mount in a useEffect (see `loadSettingsFromVault` below).
+function loadSettingsSync(): TerminalSettings {
     try {
         const raw = localStorage.getItem(SETTINGS_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) return { ...DEFAULT_TERMINAL_SETTINGS, ...JSON.parse(raw) };
     } catch { /* ignore */ }
-    return { themeName: 'tokyo-night', fontSize: 14 };
+    return DEFAULT_TERMINAL_SETTINGS;
+}
+
+async function loadSettingsFromVault(): Promise<TerminalSettings | null> {
+    try {
+        const v = await secureGetWithFallback<TerminalSettings>(
+            TERMINAL_SETTINGS_VAULT_KEY,
+            SETTINGS_KEY,
+        );
+        if (v) return { ...DEFAULT_TERMINAL_SETTINGS, ...v };
+    } catch { /* ignore */ }
+    return null;
 }
 
 function saveSettings(s: TerminalSettings) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    // Keep localStorage as a synchronous mirror (fast first paint after reload)
+    // and write to the vault so the keystore export picks it up.
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* ignore */ }
+    void secureStoreAndClean(TERMINAL_SETTINGS_VAULT_KEY, SETTINGS_KEY, s).catch(() => { /* ignore */ });
 }
 
 // Scrollback persistence — save/restore terminal buffer text per tab
@@ -395,7 +420,17 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
 }) => {
     const t = useTranslation();
     // Settings
-    const [settings, setSettings] = useState<TerminalSettings>(loadSettings);
+    const [settings, setSettings] = useState<TerminalSettings>(loadSettingsSync);
+    // Hydrate from vault on mount (vault read is async; the localStorage
+    // fallback above gives an instant first paint, then we upgrade if the
+    // vault holds a fresher value).
+    useEffect(() => {
+        let cancelled = false;
+        void loadSettingsFromVault().then(v => {
+            if (!cancelled && v) setSettings(prev => ({ ...prev, ...v }));
+        });
+        return () => { cancelled = true; };
+    }, []);
     // Track whether user manually picked a terminal theme (overrides auto-sync)
     const userOverrideRef = useRef(false);
     const [showThemeMenu, setShowThemeMenu] = useState(false);
@@ -416,6 +451,14 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     // Pending command queued by AeroAgent when no terminal was open
     const pendingCommandRef = useRef<string | null>(null);
 
+    // One xterm container per tab. xterm.open(container) is called ONCE per
+    // tab when its xterm instance is created, then we just show/hide the
+    // container via CSS when switching tabs. The previous "single container +
+    // detach/re-attach" approach broke xterm's renderer on tab switch (issue
+    // reproduced by EhudKirsh: tab 1 went black after opening tab 2).
+    const terminalContainers = useRef<Map<string, HTMLDivElement>>(new Map());
+    // Kept for back-compat with code paths that still need *some* container
+    // (e.g. ResizeObserver). It always points at the active tab's container.
     const terminalRef = useRef<HTMLDivElement>(null);
     const styleInjectedRef = useRef(false);
 
@@ -504,20 +547,25 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
 
     // Initialize / dispose xterm for each tab
     useEffect(() => {
-        if (!terminalRef.current || !activeTabId) return;
+        if (!activeTabId) return;
+        const container = terminalContainers.current.get(activeTabId);
+        if (!container) return;
+        // Keep terminalRef in sync with the active tab's container so other
+        // effects that still read terminalRef.current keep working.
+        (terminalRef as React.MutableRefObject<HTMLDivElement | null>).current = container;
 
         const tabId = activeTabId;
-        // Already initialized?
+        // Already initialized? Just focus + refit — DOM stays mounted.
         if (xtermInstances.current.has(tabId)) {
-            // Re-attach to DOM
             const xterm = xtermInstances.current.get(tabId)!;
-            const container = terminalRef.current;
-            // Clear container, re-open
-            container.innerHTML = '';
-            xterm.open(container);
             xterm.focus();
             const fa = fitAddons.current.get(tabId);
-            setTimeout(() => fa?.fit(), 50);
+            // Container was hidden until now, dimensions may have changed
+            // while it was display:none. Refit on the next frame.
+            setTimeout(() => {
+                try { fa?.fit(); } catch { /* ignore */ }
+                try { xterm.refresh(0, xterm.rows - 1); } catch { /* ignore */ }
+            }, 0);
             return;
         }
 
@@ -548,8 +596,25 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         xterm.loadAddon(fitAddon);
         xterm.loadAddon(webLinksAddon);
 
-        terminalRef.current.innerHTML = '';
-        xterm.open(terminalRef.current);
+        // Intercept Ctrl/Cmd + (-, =, +, 0) so xterm doesn't forward them to the
+        // shell as control sequences. Returning false prevents PTY delivery; the
+        // event still bubbles to the container's keydown listener which calls
+        // updateSettings() to actually change the font size.
+        xterm.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+            if (e.type !== 'keydown') return true;
+            if (!(e.ctrlKey || e.metaKey) || e.altKey) return true;
+            if (e.key === '-' || e.key === '_'
+                || e.key === '=' || e.key === '+'
+                || e.key === '0') {
+                return false;
+            }
+            return true;
+        });
+
+        // Open xterm into THIS tab's dedicated container. Each tab keeps its
+        // own DOM container mounted across tab switches; we just toggle
+        // visibility via CSS, which avoids tearing down xterm's renderer.
+        xterm.open(container);
         xterm.focus();
 
         setTimeout(() => {
@@ -583,7 +648,6 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             xterm.writeln('');
         };
 
-        const container = terminalRef.current!;
         if (container.offsetWidth > 0 && container.offsetHeight > 0) {
             // Container already has dimensions (subsequent tabs)
             setTimeout(writeWelcome, 50);
@@ -1140,11 +1204,23 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 </div>
             ) : (
                 <div
-                    ref={terminalRef}
-                    className="flex-1 p-1 overflow-hidden cursor-text"
+                    className="flex-1 relative overflow-hidden"
                     style={{ backgroundColor: currentTheme.colors.background }}
                     onClick={() => xtermInstances.current.get(activeTabId)?.focus()}
-                />
+                >
+                    {tabs.map(tab => (
+                        <div
+                            key={tab.id}
+                            ref={(el) => {
+                                if (el) terminalContainers.current.set(tab.id, el);
+                                else terminalContainers.current.delete(tab.id);
+                            }}
+                            className={`absolute inset-0 p-1 cursor-text ${
+                                tab.id === activeTabId ? '' : 'invisible pointer-events-none'
+                            }`}
+                        />
+                    ))}
+                </div>
             )}
         </div>
     );
