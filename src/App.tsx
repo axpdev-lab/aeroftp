@@ -1387,6 +1387,15 @@ interface UpdateVerificationInfo {
         : s
       );
       await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', next);
+      // localStorage backup so MyServers re-reads the fresh quota next render
+      // even if the secure store is locked (matches the pattern used by
+      // persistFilenAuthVersionToProfile below).
+      try {
+        localStorage.setItem('aeroftp-saved-servers', JSON.stringify(next));
+      } catch { /* best-effort */ }
+      // Refresh the My Servers panel so the card reflects the new quota
+      // without requiring a full app reload.
+      setServersRefreshKey(k => k + 1);
     } catch { /* best-effort */ }
   };
 
@@ -2934,7 +2943,9 @@ interface UpdateVerificationInfo {
         quickConnectDirs.localDir || currentLocalPath,
         oauthResponse?.files
       );
-      fetchStorageQuota(protocol);
+      // Pass effectiveParams so persistQuotaToProfile receives the saved server id
+      // (connectionParams state is async, may still be stale when this runs).
+      fetchStorageQuota(protocol, effectiveParams);
       return;
     }
 
@@ -8562,7 +8573,10 @@ interface UpdateVerificationInfo {
                     resolvedLocalPath,
                     savedOauthResp?.files
                   );
-                  fetchStorageQuota(normalizedParams.protocol);
+                  // Pass normalizedParams so persistQuotaToProfile picks up
+                  // savedServerId from the saved profile (connectionParams state
+                  // is intentionally not mutated during onSavedServerConnect).
+                  fetchStorageQuota(normalizedParams.protocol, normalizedParams);
                   // Reset form for next "Add New Server"
                   setConnectionParams({ server: '', username: '', password: '' });
                   setQuickConnectDirs({ remoteDir: '', localDir: '' });

@@ -338,6 +338,62 @@ impl WebDavProvider {
         }
     }
 
+    /// Koofr exposes a REST API that accepts the same basic auth used for
+    /// WebDAV (email + app password) and returns spaceTotal / spaceUsed in MiB
+    /// per mount. This is more reliable than PROPFIND for Koofr (their WebDAV
+    /// server returns 0 for RFC 4331 quota properties).
+    async fn koofr_storage_via_api(&self) -> Result<super::StorageInfo, ProviderError> {
+        const MIB: u64 = 1024 * 1024;
+        let url = "https://app.koofr.net/api/v2/mounts";
+        let resp = self
+            .client
+            .get(url)
+            .basic_auth(
+                &self.config.username,
+                Some(self.config.password.expose_secret()),
+            )
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::NotSupported(format!(
+                "koofr quota api returned {}",
+                resp.status()
+            )));
+        }
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let mounts = body
+            .get("mounts")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| ProviderError::ParseError("koofr quota: no mounts".into()))?;
+        // Prefer the primary mount (default Koofr storage); fall back to the
+        // first entry if no mount is flagged as primary.
+        let mount = mounts
+            .iter()
+            .find(|m| m.get("isPrimary").and_then(|v| v.as_bool()).unwrap_or(false))
+            .or_else(|| mounts.first())
+            .ok_or_else(|| ProviderError::ParseError("koofr quota: empty mounts".into()))?;
+        let used = mount
+            .get("spaceUsed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            .saturating_mul(MIB);
+        let total = mount
+            .get("spaceTotal")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            .saturating_mul(MIB);
+        Ok(super::StorageInfo {
+            used,
+            total,
+            free: total.saturating_sub(used),
+        })
+    }
+
     /// OCS: Create a public share link for a file/folder.
     /// If the Nextcloud instance enforces passwords on share links (HTTP 403),
     /// retries automatically with a generated password and returns "url\npassword".
@@ -1864,6 +1920,16 @@ impl StorageProvider for WebDavProvider {
     async fn storage_info(&mut self) -> Result<super::StorageInfo, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
+        }
+
+        // Koofr WebDAV does not expose RFC 4331 quota properties via PROPFIND
+        // (returns 0 / 0). Use the native Koofr REST API instead — it accepts
+        // basic auth with the same email + app password used for WebDAV.
+        if self.config.url.contains("app.koofr.net") {
+            if let Ok(info) = self.koofr_storage_via_api().await {
+                return Ok(info);
+            }
+            // Fall through to PROPFIND on failure (best-effort).
         }
 
         // RFC 4331: WebDAV quota properties
