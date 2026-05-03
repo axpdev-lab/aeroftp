@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} โปรไฟล์ · {unique} ไดรฟ์คลาวด์ที่ไม่ซ้ำกัน · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} โปรไฟล์ · {unique} ไดรฟ์คลาวด์ที่ไม่ซ้ำกัน",
+                "footerDedupExplained": "โปรไฟล์ที่ใช้ดิสก์ทางกายภาพเดียวกัน (Koofr WebDAV + REST, OpenDrive WebDAV + REST, บัคเก็ต Wasabi ภายใต้คีย์การเข้าถึงเดียวกัน) จะรวมเป็นไดรฟ์เดียว เพื่อให้นับโควตาเพียงครั้งเดียว"
+            },
+            "breakdown": {
+                "title": "พื้นที่จัดเก็บตามโปรโตคอล",
+                "colProtocol": "โปรโตคอล",
+                "colProfiles": "โปรไฟล์",
+                "colUnique": "ไม่ซ้ำ",
+                "colUsed": "ใช้แล้ว",
+                "colTotal": "รวม",
+                "colPct": "%",
+                "totalRow": "รวม",
+                "noData": "ยังไม่มีข้อมูลโปรโตคอล — เชื่อมต่อเซิร์ฟเวอร์อย่างน้อยหนึ่งเครื่อง"
             }
         },
         "gitlab": {

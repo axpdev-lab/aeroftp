@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} პროფილი · {unique} უნიკალური ღრუბლოვანი დისკი · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} პროფილი · {unique} უნიკალური ღრუბლოვანი დისკი",
+                "footerDedupExplained": "პროფილები, რომლებიც ერთსა და იმავე ფიზიკურ დისკს იყენებენ (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ერთი წვდომის გასაღების ქვეშ მყოფი Wasabi bucket-ები), გაერთიანდებიან ერთ დისკში, რათა კვოტები მხოლოდ ერთხელ დაითვალოს."
+            },
+            "breakdown": {
+                "title": "საცავი პროტოკოლის მიხედვით",
+                "colProtocol": "პროტოკოლი",
+                "colProfiles": "პროფილები",
+                "colUnique": "უნიკალური",
+                "colUsed": "გამოყენებული",
+                "colTotal": "სულ",
+                "colPct": "%",
+                "totalRow": "სულ",
+                "noData": "პროტოკოლის მონაცემები ჯერ არ არის — დააკავშირეთ მინიმუმ ერთი სერვერი."
             }
         },
         "gitlab": {

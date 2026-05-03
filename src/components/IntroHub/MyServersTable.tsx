@@ -53,6 +53,9 @@ interface MyServersTableProps {
     onRetryHealth: (server: ServerProfile) => void;
     thresholds: StorageThresholds;
     density: MyServersDensity;
+    breakdownAvailable?: boolean;
+    breakdownOpen?: boolean;
+    onToggleBreakdown?: () => void;
 }
 
 const pctOf = (server: ServerProfile) => {
@@ -114,6 +117,9 @@ export function MyServersTable({
     onRetryHealth,
     thresholds,
     density,
+    breakdownAvailable,
+    breakdownOpen,
+    onToggleBreakdown,
 }: MyServersTableProps) {
     const t = useTranslation();
     const effectiveVisibility = React.useMemo(() => {
@@ -203,7 +209,13 @@ export function MyServersTable({
                     );
                 })}
             </tbody>
-            <MyServersTableFooter servers={servers} colSpan={visibleColumnCount} />
+            <MyServersTableFooter
+                servers={servers}
+                colSpan={visibleColumnCount}
+                breakdownAvailable={breakdownAvailable}
+                breakdownOpen={breakdownOpen}
+                onToggleBreakdown={onToggleBreakdown}
+            />
         </table>
     );
 }

@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profiilia · {unique} ainutlaatuista pilvilevyä · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profiilia · {unique} ainutlaatuista pilvilevyä",
+                "footerDedupExplained": "Profiilit, jotka jakavat saman fyysisen levyn (Koofr WebDAV + REST, OpenDrive WebDAV + REST, samalla access keyllä toimivat Wasabi-bucketit), yhdistetään yhdeksi levyksi, jotta kiintiöt lasketaan vain kerran."
+            },
+            "breakdown": {
+                "title": "Tallennustila protokollan mukaan",
+                "colProtocol": "Protokolla",
+                "colProfiles": "Profiilit",
+                "colUnique": "Ainutlaatuiset",
+                "colUsed": "Käytetty",
+                "colTotal": "Yhteensä",
+                "colPct": "%",
+                "totalRow": "Yhteensä",
+                "noData": "Ei vielä protokollatietoja — yhdistä vähintään yksi palvelin."
             }
         },
         "gitlab": {

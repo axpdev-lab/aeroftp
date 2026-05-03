@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profil · {unique} hodeiko unitate esklusibo · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profil · {unique} hodeiko unitate esklusibo",
+                "footerDedupExplained": "Disko fisiko bera partekatzen duten profilak (Koofr WebDAV + REST, OpenDrive WebDAV + REST, access key bera duten Wasabi bucket-ak) unitate bakarrean batzen dira, kuotak behin bakarrik zenbatu daitezen."
+            },
+            "breakdown": {
+                "title": "Biltegiratzea protokoloka",
+                "colProtocol": "Protokoloa",
+                "colProfiles": "Profilak",
+                "colUnique": "Esklusiboak",
+                "colUsed": "Erabilia",
+                "colTotal": "Guztira",
+                "colPct": "%",
+                "totalRow": "Guztira",
+                "noData": "Oraindik ez dago protokolo daturik — konektatu gutxienez zerbitzari bat."
             }
         },
         "gitlab": {

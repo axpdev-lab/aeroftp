@@ -4112,8 +4112,7 @@
                 "manualOrderActive": "Ordine manuale attivo",
                 "clickToReturnManual": "Ordinato per {column}: clicca # per riabilitare il riordino manuale",
                 "clickToSortBy": "Ordina per {column}",
-                "footerSummary": "{count} server · {usage} · {quotaCount} con quota",
-                "footerDedupNote": "Alcuni profili possono condividere lo stesso spazio fisico; i totali deduplicati arrivano nella Fase 4.",
+                "footerSummary": "{count} profili · {unique} drive cloud unici · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icona",
@@ -4128,7 +4127,20 @@
                     "health": "Stato",
                     "actions": "Azioni",
                     "favorite": "Preferito"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profili · {unique} drive cloud unici",
+                "footerDedupExplained": "I profili che condividono lo stesso disco fisico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket Wasabi con la stessa access key) vengono accorpati in un singolo drive così le quote sono contate una sola volta."
+            },
+            "breakdown": {
+                "title": "Storage per protocollo",
+                "colProtocol": "Protocollo",
+                "colProfiles": "Profili",
+                "colUnique": "Unici",
+                "colUsed": "Usato",
+                "colTotal": "Totale",
+                "colPct": "%",
+                "totalRow": "Totale",
+                "noData": "Ancora nessun dato per protocollo — connetti almeno un server."
             }
         },
         "gitlab": {

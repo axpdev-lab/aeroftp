@@ -4105,8 +4105,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profiluri · {unique} drive-uri cloud unice · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4121,7 +4120,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profiluri · {unique} drive-uri cloud unice",
+                "footerDedupExplained": "Profilurile care partajează același disc fizic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket-uri Wasabi sub aceeași cheie de acces) se unesc într-un singur drive, astfel încât cotele sunt numărate o singură dată."
+            },
+            "breakdown": {
+                "title": "Stocare pe protocol",
+                "colProtocol": "Protocol",
+                "colProfiles": "Profiluri",
+                "colUnique": "Unice",
+                "colUsed": "Folosit",
+                "colTotal": "Total",
+                "colPct": "%",
+                "totalRow": "Total",
+                "noData": "Încă nu există date despre protocol — conectează cel puțin un server."
             }
         },
         "gitlab": {

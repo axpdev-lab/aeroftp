@@ -4105,8 +4105,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "프로필 {count}개 · 고유 클라우드 드라이브 {unique}개 · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4121,7 +4120,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "프로필 {count}개 · 고유 클라우드 드라이브 {unique}개",
+                "footerDedupExplained": "동일한 물리 디스크를 공유하는 프로필(Koofr WebDAV + REST, OpenDrive WebDAV + REST, 동일한 액세스 키의 Wasabi 버킷)은 하나의 드라이브로 통합되어 할당량이 한 번만 계산됩니다."
+            },
+            "breakdown": {
+                "title": "프로토콜별 스토리지",
+                "colProtocol": "프로토콜",
+                "colProfiles": "프로필",
+                "colUnique": "고유",
+                "colUsed": "사용됨",
+                "colTotal": "전체",
+                "colPct": "%",
+                "totalRow": "전체",
+                "noData": "아직 프로토콜 데이터가 없습니다 — 서버를 하나 이상 연결하세요."
             }
         },
         "gitlab": {

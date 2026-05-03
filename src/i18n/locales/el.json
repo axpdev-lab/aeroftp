@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} προφίλ · {unique} μοναδικοί δίσκοι cloud · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} προφίλ · {unique} μοναδικοί δίσκοι cloud",
+                "footerDedupExplained": "Τα προφίλ που μοιράζονται τον ίδιο φυσικό δίσκο (Koofr WebDAV + REST, OpenDrive WebDAV + REST, κάδοι Wasabi με το ίδιο access key) συγχωνεύονται σε έναν δίσκο, ώστε τα όρια να μετρώνται μόνο μία φορά."
+            },
+            "breakdown": {
+                "title": "Αποθήκευση ανά πρωτόκολλο",
+                "colProtocol": "Πρωτόκολλο",
+                "colProfiles": "Προφίλ",
+                "colUnique": "Μοναδικά",
+                "colUsed": "Σε χρήση",
+                "colTotal": "Σύνολο",
+                "colPct": "%",
+                "totalRow": "Σύνολο",
+                "noData": "Δεν υπάρχουν δεδομένα πρωτοκόλλου ακόμα — συνδέστε τουλάχιστον έναν διακομιστή."
             }
         },
         "gitlab": {

@@ -4105,8 +4105,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profili · {unique} unikalnych dysków chmurowych · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4121,7 +4120,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profili · {unique} unikalnych dysków chmurowych",
+                "footerDedupExplained": "Profile współdzielące ten sam dysk fizyczny (Koofr WebDAV + REST, OpenDrive WebDAV + REST, kubełki Wasabi pod tym samym kluczem dostępu) są łączone w jeden dysk, więc limity są liczone tylko raz."
+            },
+            "breakdown": {
+                "title": "Pamięć według protokołu",
+                "colProtocol": "Protokół",
+                "colProfiles": "Profile",
+                "colUnique": "Unikalne",
+                "colUsed": "Użyte",
+                "colTotal": "Łącznie",
+                "colPct": "%",
+                "totalRow": "Razem",
+                "noData": "Brak danych protokołu — połącz przynajmniej jeden serwer."
             }
         },
         "gitlab": {

@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} perfís · {unique} unidades na nube únicas · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} perfís · {unique} unidades na nube únicas",
+                "footerDedupExplained": "Os perfís que comparten o mesmo disco físico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets de Wasabi coa mesma access key) agrúpanse nunha única unidade para que as cotas se conten unha soa vez."
+            },
+            "breakdown": {
+                "title": "Almacenamento por protocolo",
+                "colProtocol": "Protocolo",
+                "colProfiles": "Perfís",
+                "colUnique": "Únicos",
+                "colUsed": "Usado",
+                "colTotal": "Total",
+                "colPct": "%",
+                "totalRow": "Total",
+                "noData": "Aínda non hai datos por protocolo — conecta polo menos un servidor."
             }
         },
         "gitlab": {

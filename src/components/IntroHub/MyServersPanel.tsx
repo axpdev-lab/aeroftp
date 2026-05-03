@@ -7,6 +7,7 @@ import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId }
 import { MyServersToolbar } from './MyServersToolbar';
 import { ServerCard } from './ServerCard';
 import { MyServersTable } from './MyServersTable';
+import { MyServersProtocolBreakdown, breakdownIsAvailable } from './MyServersProtocolBreakdown';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
@@ -253,6 +254,7 @@ export function MyServersPanel({
     const [renamingId, setRenamingId] = useState<string | null>(null);
     // Cross-Profile selection: ephemeral, max 2. selection[0] = source, selection[1] = destination.
     const [crossProfileSelection, setCrossProfileSelection] = useState<string[]>([]);
+    const [breakdownOpen, setBreakdownOpen] = useState(false);
     const hoveredServerRef = useRef<ServerProfile | null>(null);
     const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
@@ -1000,7 +1002,15 @@ export function MyServersPanel({
                         onRetryHealth={handleRetryHealth}
                         thresholds={thresholds}
                         density={density}
+                        breakdownAvailable={breakdownIsAvailable(filteredServers)}
+                        breakdownOpen={breakdownOpen}
+                        onToggleBreakdown={() => setBreakdownOpen(prev => !prev)}
                     />
+                    {breakdownOpen && (
+                        <div className="px-3 pb-4">
+                            <MyServersProtocolBreakdown servers={filteredServers} thresholds={thresholds} />
+                        </div>
+                    )}
                 </div>
             )}
 

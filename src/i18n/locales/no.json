@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profiler · {unique} unike skystasjoner · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profiler · {unique} unike skystasjoner",
+                "footerDedupExplained": "Profiler som deler den samme fysiske disken (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-bøtter under samme tilgangsnøkkel) slås sammen til én stasjon slik at kvoter telles kun én gang."
+            },
+            "breakdown": {
+                "title": "Lagring etter protokoll",
+                "colProtocol": "Protokoll",
+                "colProfiles": "Profiler",
+                "colUnique": "Unike",
+                "colUsed": "Brukt",
+                "colTotal": "Totalt",
+                "colPct": "%",
+                "totalRow": "Totalt",
+                "noData": "Ingen protokolldata ennå — koble til minst én server."
             }
         },
         "gitlab": {

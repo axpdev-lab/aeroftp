@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} proffil · {unique} gyriant cwmwl unigryw · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} proffil · {unique} gyriant cwmwl unigryw",
+                "footerDedupExplained": "Mae proffiliau sy'n rhannu'r un disg ffisegol (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bwcedi Wasabi o dan yr un access key) yn cael eu cyfuno'n un gyriant fel bod cwotâu'n cael eu cyfrif unwaith yn unig."
+            },
+            "breakdown": {
+                "title": "Storfa yn ôl protocol",
+                "colProtocol": "Protocol",
+                "colProfiles": "Proffiliau",
+                "colUnique": "Unigryw",
+                "colUsed": "Defnyddir",
+                "colTotal": "Cyfanswm",
+                "colPct": "%",
+                "totalRow": "Cyfanswm",
+                "noData": "Dim data protocol eto — cysylltwch o leiaf un gweinydd."
             }
         },
         "gitlab": {

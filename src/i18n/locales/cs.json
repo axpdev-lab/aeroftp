@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profilů · {unique} unikátních cloudových disků · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profilů · {unique} unikátních cloudových disků",
+                "footerDedupExplained": "Profily, které sdílejí stejný fyzický disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckety pod stejným access key), se sloučí do jednoho disku, aby se kvóty počítaly jen jednou."
+            },
+            "breakdown": {
+                "title": "Úložiště podle protokolu",
+                "colProtocol": "Protokol",
+                "colProfiles": "Profily",
+                "colUnique": "Unikátní",
+                "colUsed": "Využito",
+                "colTotal": "Celkem",
+                "colPct": "%",
+                "totalRow": "Celkem",
+                "noData": "Zatím žádná data podle protokolu — připojte alespoň jeden server."
             }
         },
         "gitlab": {

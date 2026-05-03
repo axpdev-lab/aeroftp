@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} प्रोफ़ाइल · {unique} अद्वितीय क्लाउड ड्राइव · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} प्रोफ़ाइल · {unique} अद्वितीय क्लाउड ड्राइव",
+                "footerDedupExplained": "वे प्रोफ़ाइल जो एक ही भौतिक डिस्क साझा करती हैं (Koofr WebDAV + REST, OpenDrive WebDAV + REST, समान access key के अंतर्गत Wasabi बकेट) एक ही ड्राइव में संयोजित हो जाती हैं ताकि कोटा केवल एक बार गिना जाए।"
+            },
+            "breakdown": {
+                "title": "प्रोटोकॉल के अनुसार स्टोरेज",
+                "colProtocol": "प्रोटोकॉल",
+                "colProfiles": "प्रोफ़ाइल",
+                "colUnique": "अद्वितीय",
+                "colUsed": "उपयोग",
+                "colTotal": "कुल",
+                "colPct": "%",
+                "totalRow": "कुल",
+                "noData": "अभी तक कोई प्रोटोकॉल डेटा नहीं — कम से कम एक सर्वर कनेक्ट करें।"
             }
         },
         "gitlab": {

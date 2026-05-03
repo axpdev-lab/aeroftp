@@ -57,6 +57,7 @@ pub mod delta_sync_rsync;
 pub mod delta_transport;
 mod number_parsing;
 pub mod profile_loader;
+pub mod storage_dedup;
 mod rsync_output;
 // `pub` transitively so integration tests can construct `RsyncStats`
 // fixtures for MockDeltaTransport. Same accepted-debt note as above.

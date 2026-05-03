@@ -4105,8 +4105,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} 个配置 · {unique} 个独立云盘 · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4121,7 +4120,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} 个配置 · {unique} 个独立云盘",
+                "footerDedupExplained": "共享同一物理磁盘的配置(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同一访问密钥下的 Wasabi 存储桶)会合并为一个云盘,因此配额只计算一次。"
+            },
+            "breakdown": {
+                "title": "按协议存储",
+                "colProtocol": "协议",
+                "colProfiles": "配置",
+                "colUnique": "独立",
+                "colUsed": "已用",
+                "colTotal": "总计",
+                "colPct": "%",
+                "totalRow": "总计",
+                "noData": "暂无协议数据 — 请至少连接一台服务器。"
             }
         },
         "gitlab": {

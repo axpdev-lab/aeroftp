@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} na profile · {unique} na natatanging cloud drive · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} na profile · {unique} na natatanging cloud drive",
+                "footerDedupExplained": "Ang mga profile na nagbabahagi ng parehong pisikal na disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets sa ilalim ng parehong access key) ay pinagsasama sa isang drive upang ang quota ay mabilang minsan lamang."
+            },
+            "breakdown": {
+                "title": "Imbakan ayon sa protocol",
+                "colProtocol": "Protocol",
+                "colProfiles": "Mga profile",
+                "colUnique": "Natatangi",
+                "colUsed": "Ginamit",
+                "colTotal": "Kabuuan",
+                "colPct": "%",
+                "totalRow": "Kabuuan",
+                "noData": "Wala pang data ng protocol — kumonekta ng kahit isang server."
             }
         },
         "gitlab": {

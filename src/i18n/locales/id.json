@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profil · {unique} drive cloud unik · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profil · {unique} drive cloud unik",
+                "footerDedupExplained": "Profil yang berbagi disk fisik yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket Wasabi dengan access key yang sama) digabungkan menjadi satu drive sehingga kuota dihitung hanya sekali."
+            },
+            "breakdown": {
+                "title": "Penyimpanan menurut protokol",
+                "colProtocol": "Protokol",
+                "colProfiles": "Profil",
+                "colUnique": "Unik",
+                "colUsed": "Terpakai",
+                "colTotal": "Total",
+                "colPct": "%",
+                "totalRow": "Total",
+                "noData": "Belum ada data protokol — hubungkan setidaknya satu server."
             }
         },
         "gitlab": {

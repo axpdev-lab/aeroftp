@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} perfils · {unique} unitats al núvol úniques · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} perfils · {unique} unitats al núvol úniques",
+                "footerDedupExplained": "Els perfils que comparteixen el mateix disc físic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, cubs de Wasabi amb la mateixa access key) s'agrupen en una sola unitat per comptar les quotes una única vegada."
+            },
+            "breakdown": {
+                "title": "Emmagatzematge per protocol",
+                "colProtocol": "Protocol",
+                "colProfiles": "Perfils",
+                "colUnique": "Únics",
+                "colUsed": "Usat",
+                "colTotal": "Total",
+                "colPct": "%",
+                "totalRow": "Total",
+                "noData": "Encara no hi ha dades per protocol — connecta com a mínim un servidor."
             }
         },
         "gitlab": {

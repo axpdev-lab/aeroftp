@@ -4105,8 +4105,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} 個のプロファイル · {unique} 個の固有クラウドドライブ · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4121,7 +4120,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} 個のプロファイル · {unique} 個の固有クラウドドライブ",
+                "footerDedupExplained": "同じ物理ディスクを共有するプロファイル(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同じアクセスキーの Wasabi バケット)は 1 つのドライブにまとめられ、クォータは 1 回だけカウントされます。"
+            },
+            "breakdown": {
+                "title": "プロトコル別ストレージ",
+                "colProtocol": "プロトコル",
+                "colProfiles": "プロファイル",
+                "colUnique": "固有",
+                "colUsed": "使用済み",
+                "colTotal": "合計",
+                "colPct": "%",
+                "totalRow": "合計",
+                "noData": "プロトコルデータがまだありません — サーバーを 1 つ以上接続してください。"
             }
         },
         "gitlab": {

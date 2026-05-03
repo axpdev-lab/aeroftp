@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profili · {unique} unikāli mākoņdiski · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profili · {unique} unikāli mākoņdiski",
+                "footerDedupExplained": "Profili, kas izmanto vienu un to pašu fizisko disku (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi grozi ar vienu piekļuves atslēgu), tiek apvienoti vienā diskā, lai kvotas tiktu skaitītas tikai vienreiz."
+            },
+            "breakdown": {
+                "title": "Krātuve pēc protokola",
+                "colProtocol": "Protokols",
+                "colProfiles": "Profili",
+                "colUnique": "Unikāli",
+                "colUsed": "Izmantots",
+                "colTotal": "Kopā",
+                "colPct": "%",
+                "totalRow": "Kopā",
+                "noData": "Vēl nav protokola datu — pievienojiet vismaz vienu serveri."
             }
         },
         "gitlab": {

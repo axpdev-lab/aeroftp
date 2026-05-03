@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} профили · {unique} уникатни облак-дискови · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} профили · {unique} уникатни облак-дискови",
+                "footerDedupExplained": "Профилите што го делат истиот физички диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi сегменти со истиот пристапен клуч) се спојуваат во еден диск за квотите да се бројат само еднаш."
+            },
+            "breakdown": {
+                "title": "Складирање по протокол",
+                "colProtocol": "Протокол",
+                "colProfiles": "Профили",
+                "colUnique": "Уникатни",
+                "colUsed": "Искористено",
+                "colTotal": "Вкупно",
+                "colPct": "%",
+                "totalRow": "Вкупно",
+                "noData": "Сè уште нема податоци за протоколи — поврзете барем еден сервер."
             }
         },
         "gitlab": {

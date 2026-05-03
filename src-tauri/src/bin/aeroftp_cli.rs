@@ -1173,6 +1173,12 @@ enum Commands {
         /// Available: name, type, host, used, total, pct, path, last, fav.
         #[arg(long, value_name = "COLS")]
         show: Option<String>,
+
+        /// Append a per-protocol-class breakdown after the main listing.
+        /// In JSON mode, wrap the output in `{ profiles, summary, breakdown }`
+        /// (the default JSON shape — a flat array — stays back-compatible).
+        #[arg(long)]
+        breakdown: bool,
     },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
@@ -3946,6 +3952,7 @@ struct ProfilesViewOverrides {
     sort: Option<String>,
     hide: Option<String>,
     show: Option<String>,
+    breakdown: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -4591,6 +4598,14 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                 let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
                     &store, &accounts, id, proto,
                 );
+                let used = p
+                    .get("lastQuota")
+                    .and_then(|q| q.get("used"))
+                    .and_then(|v| v.as_u64());
+                let total = p
+                    .get("lastQuota")
+                    .and_then(|q| q.get("total"))
+                    .and_then(|v| v.as_u64());
                 serde_json::json!({
                     "id": id,
                     "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
@@ -4600,18 +4615,94 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                     "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
                     "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
                     "auth_state": auth_state,
+                    "providerId": p.get("providerId").and_then(|v| v.as_str()),
+                    "lastQuota": match (used, total) {
+                        (Some(u), Some(t)) if t > 0 => serde_json::json!({ "used": u, "total": t }),
+                        _ => serde_json::Value::Null,
+                    },
                 })
             })
             .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&safe).unwrap_or_default()
-        );
+
+        if overrides.breakdown {
+            // Wrap in object with summary + breakdown when explicitly requested.
+            // Default flat array shape stays back-compatible.
+            let views = build_profile_views(&profiles);
+            let summary = ftp_client_gui_lib::storage_dedup::aggregate(&views);
+            let mean_pct = if summary.total_total > 0 {
+                Some((summary.total_used as f64 / summary.total_total as f64) * 100.0)
+            } else {
+                None
+            };
+            let wrapped = serde_json::json!({
+                "profiles": safe,
+                "summary": {
+                    "profiles": summary.profiles,
+                    "uniqueDrives": summary.unique_count,
+                    "used": summary.total_used.to_string(),
+                    "total": summary.total_total.to_string(),
+                    "dedupedQuotaCount": summary.deduped_quota_count,
+                    "meanPct": mean_pct,
+                },
+                "breakdown": summary.by_protocol_class.iter().map(|row| {
+                    let row_pct = if row.total > 0 {
+                        Some((row.used as f64 / row.total as f64) * 100.0)
+                    } else {
+                        None
+                    };
+                    serde_json::json!({
+                        "protocolClass": row.protocol_class,
+                        "profiles": row.profiles,
+                        "unique": row.unique,
+                        "used": row.used.to_string(),
+                        "total": row.total.to_string(),
+                        "quotaCount": row.quota_count,
+                        "meanPct": row_pct,
+                    })
+                }).collect::<Vec<_>>(),
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&wrapped).unwrap_or_default()
+            );
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&safe).unwrap_or_default()
+            );
+        }
     } else {
         return render_profiles_text(&store, profiles, &overrides);
     }
 
     0
+}
+
+/// Build `ProfileView` borrows from the in-memory profile JSON. The lifetime
+/// is tied to the input vector — the caller keeps it alive for as long as the
+/// views are needed.
+fn build_profile_views(
+    profiles: &[serde_json::Value],
+) -> Vec<ftp_client_gui_lib::storage_dedup::ProfileView<'_>> {
+    profiles
+        .iter()
+        .map(|p| ftp_client_gui_lib::storage_dedup::ProfileView {
+            id: p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+            protocol: p.get("protocol").and_then(|v| v.as_str()).unwrap_or("ftp"),
+            provider_id: p.get("providerId").and_then(|v| v.as_str()),
+            host: p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+            port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+            username: p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+            used: p
+                .get("lastQuota")
+                .and_then(|q| q.get("used"))
+                .and_then(|v| v.as_u64()),
+            total: p
+                .get("lastQuota")
+                .and_then(|q| q.get("total"))
+                .and_then(|v| v.as_u64()),
+        })
+        .collect()
 }
 
 fn render_profiles_text(
@@ -4868,40 +4959,49 @@ fn render_profiles_text(
         println!("  {}", cells.join("  "));
     }
 
-    // Footer: count + summed used/total + mean utilisation.
-    let mut total_used: u128 = 0;
-    let mut total_total: u128 = 0;
-    let mut quota_count: usize = 0;
-    for (_, p) in sorted.iter() {
-        let used = p
-            .get("lastQuota")
-            .and_then(|q| q.get("used"))
-            .and_then(|v| v.as_u64());
-        let total = p
-            .get("lastQuota")
-            .and_then(|q| q.get("total"))
-            .and_then(|v| v.as_u64());
-        if let (Some(u), Some(t)) = (used, total) {
-            if t > 0 {
-                total_used += u as u128;
-                total_total += t as u128;
-                quota_count += 1;
-            }
-        }
-    }
-    let usage_label = if quota_count > 0 && total_total > 0 {
-        let mean_pct = (total_used as f64 / total_total as f64) * 100.0;
+    // Footer: dedup-aware summary (Phase 4). Profiles backed by the same
+    // physical disk collapse via storage_dedup so the "used / total" line is
+    // honest instead of triple-counting Koofr-style multi-protocol drives.
+    let sorted_profiles: Vec<&serde_json::Value> = sorted.iter().map(|(_, p)| p).collect();
+    let views: Vec<ftp_client_gui_lib::storage_dedup::ProfileView<'_>> = sorted_profiles
+        .iter()
+        .map(|p| ftp_client_gui_lib::storage_dedup::ProfileView {
+            id: p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+            protocol: p.get("protocol").and_then(|v| v.as_str()).unwrap_or("ftp"),
+            provider_id: p.get("providerId").and_then(|v| v.as_str()),
+            host: p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+            port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+            username: p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+            used: p
+                .get("lastQuota")
+                .and_then(|q| q.get("used"))
+                .and_then(|v| v.as_u64()),
+            total: p
+                .get("lastQuota")
+                .and_then(|q| q.get("total"))
+                .and_then(|v| v.as_u64()),
+        })
+        .collect();
+    let summary = ftp_client_gui_lib::storage_dedup::aggregate(&views);
+
+    let usage_label = if summary.deduped_quota_count > 0 && summary.total_total > 0 {
+        let mean_pct = (summary.total_used as f64 / summary.total_total as f64) * 100.0;
         format!(
             "{} / {} ({:.1}%)",
-            format_size(total_used.min(u64::MAX as u128) as u64),
-            format_size(total_total.min(u64::MAX as u128) as u64),
+            format_size(summary.total_used.min(u64::MAX as u128) as u64),
+            format_size(summary.total_total.min(u64::MAX as u128) as u64),
             mean_pct
         )
     } else {
         "—".to_string()
     };
-    let count = sorted.len();
+    let count = summary.profiles;
     let plural = if count == 1 { "profile" } else { "profiles" };
+    let drive_word = if summary.unique_count == 1 {
+        "unique cloud drive"
+    } else {
+        "unique cloud drives"
+    };
     println!(
         "  {}",
         paint_dim(
@@ -4909,31 +5009,118 @@ fn render_profiles_text(
             color_on
         )
     );
-    println!(
-        "  {}",
-        paint_bold(
-            &format!(
-                "{} {} \u{00B7} {}{}",
-                count,
-                plural,
-                usage_label,
-                if quota_count > 0 && quota_count != count {
-                    format!(" \u{00B7} {} with quota", quota_count)
-                } else {
-                    String::new()
-                }
-            ),
-            color_on,
+    let footer_line = if summary.deduped_quota_count > 0 {
+        format!(
+            "{} {} \u{00B7} {} {} \u{00B7} {}",
+            count, plural, summary.unique_count, drive_word, usage_label
         )
-    );
+    } else {
+        format!(
+            "{} {} \u{00B7} {} {}",
+            count, plural, summary.unique_count, drive_word
+        )
+    };
+    println!("  {}", paint_bold(&footer_line, color_on));
+
+    // Per-protocol-class breakdown table when --breakdown is requested.
+    if overrides.breakdown && !summary.by_protocol_class.is_empty() {
+        println!();
+        let class_w = summary
+            .by_protocol_class
+            .iter()
+            .map(|r| r.protocol_class.chars().count())
+            .max()
+            .unwrap_or(8)
+            .max("Protocol".len());
+        let profiles_w = "Profiles".len().max(
+            summary
+                .by_protocol_class
+                .iter()
+                .map(|r| r.profiles.to_string().len())
+                .max()
+                .unwrap_or(1),
+        );
+        let unique_w = "Unique".len().max(
+            summary
+                .by_protocol_class
+                .iter()
+                .map(|r| r.unique.to_string().len())
+                .max()
+                .unwrap_or(1),
+        );
+        let used_w = 10;
+        let total_w = 10;
+        let pct_w = 6;
+
+        let header = format!(
+            "{:<cw$}  {:>pw$}  {:>uw$}  {:>used_w$}  {:>total_w$}  {:>pct_w$}",
+            "Protocol",
+            "Profiles",
+            "Unique",
+            "Used",
+            "Total",
+            "%",
+            cw = class_w,
+            pw = profiles_w,
+            uw = unique_w,
+            used_w = used_w,
+            total_w = total_w,
+            pct_w = pct_w,
+        );
+        println!("  {}", paint_bold(&header, color_on));
+        let sep_w = class_w + profiles_w + unique_w + used_w + total_w + pct_w + 5 * 2;
+        println!("  {}", paint_dim(&"\u{2500}".repeat(sep_w), color_on));
+        for row in &summary.by_protocol_class {
+            let used_cell = if row.total > 0 {
+                format_size(row.used.min(u64::MAX as u128) as u64)
+            } else {
+                "—".to_string()
+            };
+            let total_cell = if row.total > 0 {
+                format_size(row.total.min(u64::MAX as u128) as u64)
+            } else {
+                "—".to_string()
+            };
+            let (tone, pct) = ftp_client_gui_lib_storage_tone(row.used, row.total);
+            let pct_str = match pct {
+                Some(p) => format!("{:>5.1}%", p),
+                None => format!("{:>6}", "—"),
+            };
+            let pct_padded = format!("{:>w$}", pct_str, w = pct_w);
+            let pct_painted = paint_tone(&pct_padded, tone, color_on);
+            println!(
+                "  {:<cw$}  {:>pw$}  {:>uw$}  {:>used_w$}  {:>total_w$}  {}",
+                row.protocol_class,
+                row.profiles,
+                row.unique,
+                used_cell,
+                total_cell,
+                pct_painted,
+                cw = class_w,
+                pw = profiles_w,
+                uw = unique_w,
+                used_w = used_w,
+                total_w = total_w,
+            );
+        }
+    }
 
     if std::io::stderr().is_terminal() {
         eprintln!(
-            "\nTip: aeroftp-cli ls --profile \"Name\" [path]    \u{00B7}    --sort=used:desc / --hide=path,fav / --show=health"
+            "\nTip: aeroftp-cli ls --profile \"Name\" [path]    \u{00B7}    --sort=used:desc / --hide=path,fav / --breakdown"
         );
     }
 
     0
+}
+
+/// Tiny wrapper around `storage_tone` that consumes the `u128` totals from
+/// `AggregateSummary` rows and reuses the existing CLI thresholds (default
+/// values are already aligned with the GUI).
+fn ftp_client_gui_lib_storage_tone(used: u128, total: u128) -> (Tone, Option<f64>) {
+    let used = u64::try_from(used).unwrap_or(u64::MAX);
+    let total = u64::try_from(total).unwrap_or(u64::MAX);
+    storage_tone(Some(used), Some(total), CliThresholds::default())
 }
 
 fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
@@ -26217,6 +26404,7 @@ async fn main() {
             sort,
             hide,
             show,
+            breakdown,
         } => list_vault_profiles(
             &cli,
             format,
@@ -26224,6 +26412,7 @@ async fn main() {
                 sort: sort.clone(),
                 hide: hide.clone(),
                 show: show.clone(),
+                breakdown: *breakdown,
             },
         ),
         Commands::AiModels => list_ai_models(&cli, format),
@@ -26664,6 +26853,7 @@ mod tests {
                 sort: None,
                 hide: None,
                 show: None,
+                breakdown: false,
             },
         }
     }

@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profiler · {unique} unikke cloud-drev · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profiler · {unique} unikke cloud-drev",
+                "footerDedupExplained": "Profiler, der deler den samme fysiske disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets under samme access key), samles til ét drev, så kvoter kun tælles én gang."
+            },
+            "breakdown": {
+                "title": "Lager efter protokol",
+                "colProtocol": "Protokol",
+                "colProfiles": "Profiler",
+                "colUnique": "Unikke",
+                "colUsed": "Brugt",
+                "colTotal": "Total",
+                "colPct": "%",
+                "totalRow": "Total",
+                "noData": "Ingen protokoldata endnu — tilslut mindst én server."
             }
         },
         "gitlab": {

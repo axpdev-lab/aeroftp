@@ -4115,8 +4115,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} profila · {unique} jedinstvenih cloud diskova · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4131,7 +4130,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} profila · {unique} jedinstvenih cloud diskova",
+                "footerDedupExplained": "Profili koji dijele isti fizički disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi spremnici pod istim ključem) spajaju se u jedan disk kako bi se kvote brojale samo jednom."
+            },
+            "breakdown": {
+                "title": "Pohrana po protokolu",
+                "colProtocol": "Protokol",
+                "colProfiles": "Profili",
+                "colUnique": "Jedinstveni",
+                "colUsed": "Iskorišteno",
+                "colTotal": "Ukupno",
+                "colPct": "%",
+                "totalRow": "Ukupno",
+                "noData": "Još nema podataka o protokolima — povežite barem jedan poslužitelj."
             }
         },
         "gitlab": {

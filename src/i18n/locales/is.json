@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} snið · {unique} einstök skýjadrif · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} snið · {unique} einstök skýjadrif",
+                "footerDedupExplained": "Snið sem deila sama eðlislæga diski (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-fötur undir sama aðgangslykli) eru sameinuð í eitt drif svo kvótar séu taldir aðeins einu sinni."
+            },
+            "breakdown": {
+                "title": "Geymsla eftir samskiptareglu",
+                "colProtocol": "Samskiptaregla",
+                "colProfiles": "Snið",
+                "colUnique": "Einstök",
+                "colUsed": "Notað",
+                "colTotal": "Samtals",
+                "colPct": "%",
+                "totalRow": "Samtals",
+                "noData": "Engin gögn enn — tengdu að minnsta kosti einn netþjón."
             }
         },
         "gitlab": {

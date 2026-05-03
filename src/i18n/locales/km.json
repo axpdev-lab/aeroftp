@@ -4134,8 +4134,7 @@
                 "manualOrderActive": "Manual order active",
                 "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
                 "clickToSortBy": "Sort by {column}",
-                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
-                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "footerSummary": "{count} ប្រវត្តិរូប · {unique} ដ្រាយ Cloud តែមួយ · {usage}",
                 "columns": {
                     "index": "#",
                     "icon": "Icon",
@@ -4150,7 +4149,20 @@
                     "health": "Health",
                     "actions": "Actions",
                     "favorite": "Favorite"
-                }
+                },
+                "footerSummaryNoQuota": "{count} ប្រវត្តិរូប · {unique} ដ្រាយ Cloud តែមួយ",
+                "footerDedupExplained": "ប្រវត្តិរូបដែលប្រើថាសរូបវន្តដូចគ្នា (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ធុង Wasabi ដែលប្រើ access key ដូចគ្នា) ត្រូវបានបញ្ចូលគ្នាជាដ្រាយតែមួយ ដើម្បីឱ្យកូតាត្រូវបានរាប់តែម្តងគត់។"
+            },
+            "breakdown": {
+                "title": "ការផ្ទុកតាមពិធីការ",
+                "colProtocol": "ពិធីការ",
+                "colProfiles": "ប្រវត្តិរូប",
+                "colUnique": "តែមួយ",
+                "colUsed": "បានប្រើ",
+                "colTotal": "សរុប",
+                "colPct": "%",
+                "totalRow": "សរុប",
+                "noData": "មិនទាន់មានទិន្នន័យពិធីការទេ — សូមភ្ជាប់ម៉ាស៊ីនមេយ៉ាងតិចមួយ។"
             }
         },
         "gitlab": {
