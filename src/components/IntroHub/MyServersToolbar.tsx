@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, BarChart3 } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, BarChart3, Rows3, Rows2 } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
+import type { MyServersDensity } from '../../hooks/useMyServersDensity';
 
 interface MyServersToolbarProps {
     searchQuery: string;
@@ -29,6 +30,10 @@ interface MyServersToolbarProps {
     cardLayout?: 'compact' | 'detailed';
     /** Toggle compact ↔ detailed card layout (storage bar + health radial). */
     onToggleCardLayout?: () => void;
+    /** Row density in list view ('compact' shrinks paddings + icon size). */
+    listDensity?: MyServersDensity;
+    /** Cycle the row density. Only rendered when in list view. */
+    onToggleListDensity?: () => void;
 }
 
 export function MyServersToolbar({
@@ -52,6 +57,8 @@ export function MyServersToolbar({
     crossProfileSelectionCount = 0,
     cardLayout = 'compact',
     onToggleCardLayout,
+    listDensity = 'compact',
+    onToggleListDensity,
 }: MyServersToolbarProps) {
     const t = useTranslation();
     // Cross-Profile button visual states:
@@ -145,6 +152,16 @@ export function MyServersToolbar({
                         aria-pressed={cardLayout === 'detailed'}
                     >
                         <BarChart3 size={15} />
+                    </button>
+                )}
+                {viewMode === 'list' && onToggleListDensity && (
+                    <button
+                        onClick={onToggleListDensity}
+                        className="p-2 transition-colors border-l border-gray-200 dark:border-gray-600 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        title={listDensity === 'compact' ? t('introHub.densityComfortable') : t('introHub.densityCompact')}
+                        aria-pressed={listDensity === 'compact'}
+                    >
+                        {listDensity === 'compact' ? <Rows3 size={15} /> : <Rows2 size={15} />}
                     </button>
                 )}
             </div>

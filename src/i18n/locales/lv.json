@@ -929,7 +929,16 @@
             "closeToTray": "Aizvērt uz teknes, nevis iziet",
             "closeToTrayDesc": "Nospiežot loga aizvēršanas pogu, AeroFTP tiek paslēpts sistēmas teknē, nevis aizvērts. Fona uzdevumi, piemēram, AeroCloud sinhronizācija, turpina darboties. Lai izietu, izmantojiet teknes izvēlni.",
             "detailedCards": "Detalizētas servera kartes",
-            "detailedCardsDesc": "Rādīt kešatmiņā saglabātās krātuves lietojuma joslu kartēs Mani serveri."
+            "detailedCardsDesc": "Rādīt kešatmiņā saglabātās krātuves lietojuma joslu kartēs Mani serveri.",
+            "storageThresholds": "Krātuves lietojuma krāsas",
+            "storageThresholdsDesc": "Kad % kolonna Manos serveros kļūst dzeltenbrūna un sarkana. Noklusējums 80% / 95% — virs kvotas (>100%) vienmēr sarkans, zem 5% pelēks.",
+            "storageWarn": "Brīdinājuma slieksnis (dzeltenbrūns)",
+            "storageCritical": "Kritiskais slieksnis (sarkans)",
+            "storageThresholdsReset": "Atiestatīt uz noklusējumu (80% / 95%)",
+            "myServersDensity": "Manu serveru saraksta blīvums",
+            "myServersDensityDesc": "Kompakts samazina atkāpes un ikonu; ērts saglabā sākotnējo atstarpi.",
+            "densityCompact": "Kompakts",
+            "densityComfortable": "Ērts"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Pārbauda...",
                 "unknown": "Nav pārbaudīts",
                 "clickToRetry": "noklikšķiniet, lai pārbaudītu vēlreiz"
-            }
+            },
+            "densityCompact": "Kompaktas rindas",
+            "densityComfortable": "Ērtas rindas"
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

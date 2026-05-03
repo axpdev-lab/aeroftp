@@ -929,7 +929,16 @@
             "closeToTray": "Kapatmak yerine sistem tepsisine küçült",
             "closeToTrayDesc": "Pencere kapatma düğmesine tıkladığınızda AeroFTP kapanmak yerine sistem tepsisine gizlenir. AeroCloud senkronizasyonu gibi arka plan görevleri çalışmaya devam eder. Uygulamadan tamamen çıkmak için tepsi menüsünü kullanın.",
             "detailedCards": "Ayrıntılı sunucu kartları",
-            "detailedCardsDesc": "Sunucularım kartlarında önbelleğe alınmış depolama kullanım çubuğunu göster."
+            "detailedCardsDesc": "Sunucularım kartlarında önbelleğe alınmış depolama kullanım çubuğunu göster.",
+            "storageThresholds": "Depolama kullanım renkleri",
+            "storageThresholdsDesc": "My Servers'daki % sütununun ne zaman amber ve kırmızıya döneceği. Varsayılan 80% / 95% — kotanın üstünde (>100%) her zaman kırmızı, %5'in altında gri.",
+            "storageWarn": "Uyarı eşiği (amber)",
+            "storageCritical": "Kritik eşik (kırmızı)",
+            "storageThresholdsReset": "Varsayılanlara sıfırla (80% / 95%)",
+            "myServersDensity": "My Servers liste yoğunluğu",
+            "myServersDensityDesc": "Kompakt iç boşlukları ve simgeyi küçültür; rahat orijinal aralığı korur.",
+            "densityCompact": "Kompakt",
+            "densityComfortable": "Rahat"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Kontrol ediliyor...",
                 "unknown": "Doğrulanmadı",
                 "clickToRetry": "yeniden kontrol etmek için tıklayın"
-            }
+            },
+            "densityCompact": "Kompakt satırlar",
+            "densityComfortable": "Rahat satırlar"
         },
         "gitlab": {
             "projectPath": "Proje Yolu",

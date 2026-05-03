@@ -18,6 +18,8 @@ import { AlertDialog } from '../Dialogs';
 import { supportsSpeedTest } from '../../utils/speedTest';
 import { useProviderHealth, type HealthTarget } from '../../hooks/useProviderHealth';
 import { useCardLayout } from '../../hooks/useCardLayout';
+import { useStorageThresholds } from '../../hooks/useStorageThresholds';
+import { useMyServersDensity } from '../../hooks/useMyServersDensity';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
@@ -231,6 +233,8 @@ export function MyServersPanel({
             return next;
         });
     }, []);
+    const { thresholds } = useStorageThresholds();
+    const { density, setDensity } = useMyServersDensity();
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
     const [speedTestTarget, setSpeedTestTarget] = useState<string | undefined | false>(false);
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
@@ -779,6 +783,8 @@ export function MyServersPanel({
                 crossProfileSelectionCount={crossProfileSelection.length}
                 cardLayout={cardLayout}
                 onToggleCardLayout={handleToggleCardLayout}
+                listDensity={density}
+                onToggleListDensity={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
             />
 
             {filteredServers.length === 0 ? (
@@ -886,6 +892,8 @@ export function MyServersPanel({
                                     healthStatus={health?.status}
                                     healthLatencyMs={health?.latencyMs}
                                     onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
+                                    thresholds={thresholds}
+                                    density={density}
                                 />
                             );
                         })}
@@ -935,6 +943,8 @@ export function MyServersPanel({
                                 healthStatus={health?.status}
                                 healthLatencyMs={health?.latencyMs}
                                 onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
+                                thresholds={thresholds}
+                                density={density}
                             />
                         );
                     })}

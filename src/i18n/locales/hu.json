@@ -929,7 +929,16 @@
             "closeToTray": "Bezárás a tálcára kilépés helyett",
             "closeToTrayDesc": "Amikor az ablak bezárása gombra kattintasz, az AeroFTP a rendszertálcára kerül kilépés helyett. A háttérfeladatok, mint az AeroCloud szinkronizáció, tovább futnak. A kilépéshez használd a tálca menüjét.",
             "detailedCards": "Részletes szerverkártyák",
-            "detailedCardsDesc": "A gyorsítótárazott tárolóhasználat sávjának megjelenítése a Saját szerverek kártyákon."
+            "detailedCardsDesc": "A gyorsítótárazott tárolóhasználat sávjának megjelenítése a Saját szerverek kártyákon.",
+            "storageThresholds": "Tárhely használati színek",
+            "storageThresholdsDesc": "Amikor a Szervereim % oszlopa borostyán és piros lesz. Alapértelmezett 80% / 95% — kvótán felül (>100%) mindig piros, 5% alatt szürke.",
+            "storageWarn": "Figyelmeztetési küszöb (borostyán)",
+            "storageCritical": "Kritikus küszöb (piros)",
+            "storageThresholdsReset": "Alaphelyzetbe (80% / 95%)",
+            "myServersDensity": "Szervereim lista sűrűsége",
+            "myServersDensityDesc": "Kompakt csökkenti a margókat és az ikont; kényelmes megtartja az eredeti távolságot.",
+            "densityCompact": "Kompakt",
+            "densityComfortable": "Kényelmes"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Ellenőrzés...",
                 "unknown": "Nincs ellenőrizve",
                 "clickToRetry": "kattints az újraellenőrzéshez"
-            }
+            },
+            "densityCompact": "Kompakt sorok",
+            "densityComfortable": "Kényelmes sorok"
         },
         "gitlab": {
             "projectPath": "Projekt utvonal",

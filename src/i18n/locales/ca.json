@@ -929,7 +929,16 @@
             "closeToTray": "Minimitza a la safata en lloc de sortir",
             "closeToTrayDesc": "Quan feu clic al botó de tancar la finestra, AeroFTP es minimitza a la safata del sistema en lloc de tancar-se. Les tasques en segon pla com la sincronització d'AeroCloud continuen funcionant. Utilitzeu el menú de la safata per sortir.",
             "detailedCards": "Targetes de servidor detallades",
-            "detailedCardsDesc": "Mostra la barra d'ús d'emmagatzematge en memòria cau a les targetes Els meus servidors."
+            "detailedCardsDesc": "Mostra la barra d'ús d'emmagatzematge en memòria cau a les targetes Els meus servidors.",
+            "storageThresholds": "Colors d'ús d'emmagatzematge",
+            "storageThresholdsDesc": "Quan la columna % a Els meus servidors es torna ambre i vermell. Per defecte 80% / 95% — sobrequota (>100%) sempre vermell, menys del 5% gris.",
+            "storageWarn": "Llindar d'avís (ambre)",
+            "storageCritical": "Llindar crític (vermell)",
+            "storageThresholdsReset": "Restableix als valors per defecte (80% / 95%)",
+            "myServersDensity": "Densitat de la llista Els meus servidors",
+            "myServersDensityDesc": "Compacta encongeix els marges i la icona; còmoda manté l'espaiat original.",
+            "densityCompact": "Compacta",
+            "densityComfortable": "Còmoda"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4117,7 +4126,9 @@
                 "pending": "Comprovant...",
                 "unknown": "No verificat",
                 "clickToRetry": "fes clic per tornar a comprovar"
-            }
+            },
+            "densityCompact": "Files compactes",
+            "densityComfortable": "Files còmodes"
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",

@@ -32,6 +32,8 @@ import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStora
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { maskCredential } from '../utils/maskCredential';
 import { DEFAULT_APP_FONT_FAMILY, MIN_APP_FONT_SIZE, MAX_APP_FONT_SIZE, clampAppFontSize, normalizeAppFontFamily } from '../hooks/useSettings';
+import { useStorageThresholds, DEFAULT_THRESHOLDS } from '../hooks/useStorageThresholds';
+import { useMyServersDensity } from '../hooks/useMyServersDensity';
 import { createTauriListener } from '../hooks/useTauriListener';
 
 // Protocol colors for avatar (same as SavedServers)
@@ -459,6 +461,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [confirmMasterPassword, setConfirmMasterPassword] = useState('');
     const [currentMasterPassword, setCurrentMasterPassword] = useState('');
     const [autoLockTimeout, setAutoLockTimeout] = useState(0); // minutes (0 = disabled)
+    const { thresholds: storageThresholds, setThresholds: setStorageThresholds } = useStorageThresholds();
+    const { density: myServersDensity, setDensity: setMyServersDensity } = useMyServersDensity();
     const [showMasterPassword, setShowMasterPassword] = useState(false);
     const [masterPasswordError, setMasterPasswordError] = useState('');
     const [showOAuthSecrets, setShowOAuthSecrets] = useState(false);
@@ -3122,6 +3126,96 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         {t('settings.fontReset')}
                                                     </button>
                                                 )}
+                                            </div>
+
+                                            <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
+
+                                            {/* Storage usage thresholds — drive the colour of the
+                                                used/total/% triplet on My Servers list view and the
+                                                quota bar on grid view. Persisted to vault under
+                                                ui_settings.storage_thresholds and shared with the CLI. */}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">{t('settings.storageThresholds')}</label>
+                                                <p className="text-xs text-gray-500 mb-3">{t('settings.storageThresholdsDesc')}</p>
+                                                <div className="space-y-3">
+                                                    <div>
+                                                        <div className="flex items-center justify-between gap-4 mb-1">
+                                                            <label className="text-xs font-medium text-amber-600 dark:text-amber-400">{t('settings.storageWarn')}</label>
+                                                            <span className="text-xs font-medium tabular-nums text-amber-600 dark:text-amber-400">{storageThresholds.warn}%</span>
+                                                        </div>
+                                                        <input
+                                                            type="range"
+                                                            min={5}
+                                                            max={99}
+                                                            step={1}
+                                                            value={storageThresholds.warn}
+                                                            onChange={(e) => {
+                                                                const warn = Math.round(Number(e.target.value));
+                                                                const critical = Math.max(storageThresholds.critical, warn + 1);
+                                                                setStorageThresholds({ warn, critical });
+                                                            }}
+                                                            className="w-full accent-amber-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center justify-between gap-4 mb-1">
+                                                            <label className="text-xs font-medium text-red-600 dark:text-red-400">{t('settings.storageCritical')}</label>
+                                                            <span className="text-xs font-medium tabular-nums text-red-600 dark:text-red-400">{storageThresholds.critical}%</span>
+                                                        </div>
+                                                        <input
+                                                            type="range"
+                                                            min={Math.max(6, storageThresholds.warn + 1)}
+                                                            max={100}
+                                                            step={1}
+                                                            value={storageThresholds.critical}
+                                                            onChange={(e) => {
+                                                                const critical = Math.round(Number(e.target.value));
+                                                                setStorageThresholds({ warn: storageThresholds.warn, critical });
+                                                            }}
+                                                            className="w-full accent-red-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {(storageThresholds.warn !== DEFAULT_THRESHOLDS.warn || storageThresholds.critical !== DEFAULT_THRESHOLDS.critical) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setStorageThresholds(DEFAULT_THRESHOLDS)}
+                                                        className="mt-2 text-xs text-blue-500 hover:text-blue-400 transition-colors"
+                                                    >
+                                                        {t('settings.storageThresholdsReset')}
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">{t('settings.myServersDensity')}</label>
+                                                <p className="text-xs text-gray-500 mb-2">{t('settings.myServersDensityDesc')}</p>
+                                                <div className="inline-flex items-center border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setMyServersDensity('compact')}
+                                                        className={`px-3 py-1.5 text-xs transition-colors ${
+                                                            myServersDensity === 'compact'
+                                                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                                                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                        }`}
+                                                        aria-pressed={myServersDensity === 'compact'}
+                                                    >
+                                                        {t('settings.densityCompact')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setMyServersDensity('comfortable')}
+                                                        className={`px-3 py-1.5 text-xs transition-colors border-l border-gray-200 dark:border-gray-600 ${
+                                                            myServersDensity === 'comfortable'
+                                                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                                                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                        }`}
+                                                        aria-pressed={myServersDensity === 'comfortable'}
+                                                    >
+                                                        {t('settings.densityComfortable')}
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             <div className="border-t border-gray-200 dark:border-gray-700 my-4" />

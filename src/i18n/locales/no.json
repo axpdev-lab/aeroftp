@@ -929,7 +929,16 @@
             "closeToTray": "Lukk til systemstatusfeltet i stedet for å avslutte",
             "closeToTrayDesc": "Når du klikker på lukkeknappen for vinduet, skjules AeroFTP i systemstatusfeltet i stedet for å avslutte. Bakgrunnsoppgaver som AeroCloud-synkronisering fortsetter å kjøre. Bruk menyen i systemstatusfeltet for å avslutte.",
             "detailedCards": "Detaljerte serverkort",
-            "detailedCardsDesc": "Vis bufret lagringsbruk-stolpen på Mine servere-kortene."
+            "detailedCardsDesc": "Vis bufret lagringsbruk-stolpen på Mine servere-kortene.",
+            "storageThresholds": "Farger for lagringsbruk",
+            "storageThresholdsDesc": "Når %-kolonnen i Mine servere blir rav og rød. Standard 80% / 95% — over kvote (>100%) alltid rød, under 5% grå.",
+            "storageWarn": "Advarselsterskel (rav)",
+            "storageCritical": "Kritisk terskel (rød)",
+            "storageThresholdsReset": "Tilbakestill til standard (80% / 95%)",
+            "myServersDensity": "Tetthet av Mine servere-listen",
+            "myServersDensityDesc": "Kompakt krymper innrykk og ikon; komfortabel beholder den opprinnelige avstanden.",
+            "densityCompact": "Kompakt",
+            "densityComfortable": "Komfortabel"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4117,7 +4126,9 @@
                 "pending": "Sjekker...",
                 "unknown": "Ikke sjekket",
                 "clickToRetry": "klikk for å sjekke på nytt"
-            }
+            },
+            "densityCompact": "Kompakte rader",
+            "densityComfortable": "Komfortable rader"
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

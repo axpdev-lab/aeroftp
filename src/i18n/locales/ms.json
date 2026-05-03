@@ -929,7 +929,16 @@
             "closeToTray": "Tutup ke dulang, bukan keluar",
             "closeToTrayDesc": "Apabila anda klik butang tutup tetingkap, AeroFTP disembunyikan ke dulang sistem dan bukannya ditutup. Tugas latar belakang seperti penyegerakan AeroCloud terus berjalan. Gunakan menu dulang untuk keluar.",
             "detailedCards": "Kad pelayan terperinci",
-            "detailedCardsDesc": "Tunjukkan bar penggunaan storan cache pada kad Pelayan Saya."
+            "detailedCardsDesc": "Tunjukkan bar penggunaan storan cache pada kad Pelayan Saya.",
+            "storageThresholds": "Warna penggunaan storan",
+            "storageThresholdsDesc": "Bila lajur % dalam My Servers menjadi kuning ambar dan merah. Lalai 80% / 95% — melebihi kuota (>100%) sentiasa merah, kurang 5% kelabu.",
+            "storageWarn": "Ambang amaran (ambar)",
+            "storageCritical": "Ambang kritikal (merah)",
+            "storageThresholdsReset": "Tetapkan semula ke lalai (80% / 95%)",
+            "myServersDensity": "Kepadatan senarai My Servers",
+            "myServersDensityDesc": "Padat mengecilkan padding dan ikon; selesa mengekalkan jarak asal.",
+            "densityCompact": "Padat",
+            "densityComfortable": "Selesa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Memeriksa...",
                 "unknown": "Belum disemak",
                 "clickToRetry": "klik untuk semak semula"
-            }
+            },
+            "densityCompact": "Baris padat",
+            "densityComfortable": "Baris selesa"
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

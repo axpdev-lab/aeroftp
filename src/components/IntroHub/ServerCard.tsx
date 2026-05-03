@@ -3,11 +3,19 @@ import { Edit2, Trash2, Copy, Loader2, Star, GripVertical, Clock, AlertTriangle,
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, supportsStorageQuota } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
-import { maskCredential } from '../../utils/maskCredential';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
+import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { useTranslation } from '../../i18n';
 import { useCardLayout } from '../../hooks/useCardLayout';
 import { formatBytes } from '../../utils/formatters';
+import {
+    DEFAULT_THRESHOLDS,
+    getStorageTone,
+    TONE_BG_CLASS,
+    TONE_TEXT_CLASS,
+    type StorageThresholds,
+} from '../../hooks/useStorageThresholds';
+import type { MyServersDensity } from '../../hooks/useMyServersDensity';
 import { HealthRadial } from './HealthRadial';
 
 /** Compact storage usage bar for the detailed card layout footer. Reads from
@@ -18,9 +26,11 @@ import { HealthRadial } from './HealthRadial';
 function StorageUsageBar({
     quota,
     supported,
+    thresholds,
 }: {
     quota: ServerProfile['lastQuota'] | undefined;
     supported: boolean;
+    thresholds: StorageThresholds;
 }) {
     const t = useTranslation();
     if (!quota || !quota.total || quota.total <= 0) {
@@ -36,12 +46,9 @@ function StorageUsageBar({
         );
     }
     const { used, total } = quota;
-    const pct = Math.max(0, Math.min(100, (used / total) * 100));
-    const pctLabel = pct >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10;
-    const tone =
-        pct >= 90 ? 'bg-red-500'
-        : pct >= 75 ? 'bg-amber-500'
-        : 'bg-blue-500';
+    const { tone, pct } = getStorageTone(used, total, thresholds);
+    const pctClamped = pct === null ? 0 : Math.max(0, Math.min(100, pct));
+    const pctLabel = pct === null ? '—' : pct >= 10 ? `${Math.round(pct)}` : `${Math.round(pct * 10) / 10}`;
     return (
         <div
             className="leading-tight"
@@ -49,12 +56,12 @@ function StorageUsageBar({
         >
             <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
                 <span className="truncate">{formatBytes(used)} / {formatBytes(total)}</span>
-                <span className="shrink-0 ml-1">{pctLabel}%</span>
+                <span className={`shrink-0 ml-1 tabular-nums ${TONE_TEXT_CLASS[tone]}`}>{pctLabel}%</span>
             </div>
             <div className="h-1 mt-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
                 <div
-                    className={`h-full ${tone} transition-all`}
-                    style={{ width: `${pct}%` }}
+                    className={`h-full ${TONE_BG_CLASS[tone]} transition-all`}
+                    style={{ width: `${pctClamped}%` }}
                 />
             </div>
         </div>
@@ -194,6 +201,12 @@ interface ServerCardProps {
      *  user verify a flaky tab-wide scan result without re-running the whole
      *  batch. Only wired in detailed layout. */
     onRetryHealth?: (server: ServerProfile) => void;
+    /** Storage usage thresholds (warn/critical) for the % column tone. Falls
+     *  back to defaults when the panel hasn't loaded settings yet. */
+    thresholds?: StorageThresholds;
+    /** Row density for list view: 'compact' shrinks paddings + icon size,
+     *  'comfortable' uses the legacy padding. Ignored in grid view. */
+    density?: MyServersDensity;
 }
 
 function RenameInput({
@@ -320,6 +333,8 @@ export const ServerCard = React.memo(function ServerCard({
     healthStatus,
     healthLatencyMs,
     onRetryHealth,
+    thresholds = DEFAULT_THRESHOLDS,
+    density = 'compact',
 }: ServerCardProps) {
     const t = useTranslation();
     const cardLayout = useCardLayout();
@@ -358,22 +373,47 @@ export const ServerCard = React.memo(function ServerCard({
             : '';
 
     const subtitle = React.useMemo(() => {
-        const shouldMask = credentialsMasked && server.protocol !== 'github';
-        const user = shouldMask && server.username
-            ? maskCredential(server.username)
-            : server.username;
-        const host = shouldMask && server.host
-            ? maskCredential(server.host)
-            : server.host;
-        if (hideUsername) return host || '\u00A0';
-        if (user && host) return `${user}@${host}`;
-        if (host) return host;
-        if (user) return user;
-        return '\u00A0';
-    }, [server.username, server.host, credentialsMasked, server.protocol, hideUsername]);
+        // Smart subtitle: hides opaque OAuth/API tokens by default, shows
+        // hostname[:port] for traditional protocols, optionally adds the
+        // username when the toolbar's "show usernames" override is on.
+        const text = getServerSubtitle(server, {
+            credentialsMasked,
+            showUsername: !hideUsername,
+        });
+        return text || '\u00A0';
+    }, [server, credentialsMasked, hideUsername]);
 
     // ===== LIST VIEW (table-like columns) =====
     if (viewMode === 'list') {
+        const isCompact = density === 'compact';
+        const rowPadY = isCompact ? 'py-1' : 'py-2';
+        const iconBoxSize = isCompact ? 'w-8 h-8' : 'w-10 h-10';
+        const iconSize = isCompact ? 16 : 18;
+        const rowGap = isCompact ? 'gap-2' : 'gap-3';
+        // Storage cells: only meaningful when the protocol exposes a quota.
+        // Cached `lastQuota` lives on the profile (filled by the round-2 fix).
+        const quotaCells = (() => {
+            const supported = quotaSupported;
+            const q = server.lastQuota;
+            if (!supported) {
+                return { used: '—', total: '—', pct: '—', toneText: TONE_TEXT_CLASS.unknown };
+            }
+            if (!q || !q.total || q.total <= 0) {
+                return { used: '…', total: '…', pct: '…', toneText: TONE_TEXT_CLASS.unknown };
+            }
+            const { tone, pct } = getStorageTone(q.used, q.total, thresholds);
+            const pctText = pct === null
+                ? '—'
+                : pct >= 10
+                    ? `${Math.round(pct)}%`
+                    : `${Math.round(pct * 10) / 10}%`;
+            return {
+                used: formatBytes(q.used),
+                total: formatBytes(q.total),
+                pct: pctText,
+                toneText: TONE_TEXT_CLASS[tone],
+            };
+        })();
         return (
             <div
                 draggable={isDraggable}
@@ -383,7 +423,7 @@ export const ServerCard = React.memo(function ServerCard({
                 onDrop={onDrop}
                 onDragEnd={onDragEnd}
                 onClick={handleCardClick}
-                className={`group flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 transition-colors ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''} ${selectionRingClass}`}
+                className={`group flex items-center ${rowGap} px-3 ${rowPadY} border-b border-gray-100 dark:border-gray-700/50 transition-colors ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''} ${selectionRingClass}`}
                 onContextMenu={(e) => onContextMenu?.(e, server)}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
@@ -392,7 +432,7 @@ export const ServerCard = React.memo(function ServerCard({
                 {/* Drag handle */}
                 {isDraggable && (
                     <div className="text-gray-400 opacity-0 group-hover:opacity-60 shrink-0 -ml-1">
-                        <GripVertical size={14} />
+                        <GripVertical size={isCompact ? 12 : 14} />
                     </div>
                 )}
                 {/* Cross-Profile selection badge */}
@@ -406,13 +446,13 @@ export const ServerCard = React.memo(function ServerCard({
                     </div>
                 )}
 
-                {/* Icon = connect button (same size as grid view) */}
+                {/* Icon = connect button. Density-aware: 8x8 compact, 10x10 comfortable. */}
                 <button
                     onClick={(e) => { e.stopPropagation(); onConnect(server); }}
-                    className="w-10 h-10 shrink-0 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer"
+                    className={`${iconBoxSize} shrink-0 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer`}
                     title={t('common.connect')}
                 >
-                    {isConnecting ? <Loader2 size={18} className="animate-spin text-blue-500" /> : getServerIcon(server)}
+                    {isConnecting ? <Loader2 size={iconSize} className="animate-spin text-blue-500" /> : getServerIcon(server, iconSize + 2)}
                 </button>
 
                 {/* Col: Name */}
@@ -434,9 +474,28 @@ export const ServerCard = React.memo(function ServerCard({
                     <ServerBadges server={server} />
                 </div>
 
-                {/* Col: User/Host */}
+                {/* Col: subtitle (host or — for OAuth/API providers — empty by
+                    smart-default; the badges already convey the protocol). */}
                 <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate">
                     {subtitle}
+                </div>
+
+                {/* Storage triplet: used | total | percent. Hidden under md to
+                    keep the row legible on narrow windows. */}
+                <div
+                    className="hidden md:flex items-center gap-3 shrink-0 text-[11px] tabular-nums"
+                    title={
+                        quotaSupported && server.lastQuota && server.lastQuota.total > 0
+                            ? t('introHub.storageUsedOf', {
+                                used: formatBytes(server.lastQuota.used),
+                                total: formatBytes(server.lastQuota.total),
+                            })
+                            : t('introHub.storageQuotaUnavailable')
+                    }
+                >
+                    <span className="w-16 text-right text-gray-500 dark:text-gray-400">{quotaCells.used}</span>
+                    <span className="w-16 text-right text-gray-400 dark:text-gray-500">{quotaCells.total}</span>
+                    <span className={`w-12 text-right font-medium ${quotaCells.toneText}`}>{quotaCells.pct}</span>
                 </div>
 
                 {/* Col: Paths (remote / local, 2 rows) */}
@@ -572,7 +631,7 @@ export const ServerCard = React.memo(function ServerCard({
             {cardLayout === 'detailed' && (
                 <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-700/60 grid grid-cols-[1fr_auto] items-center gap-2 min-h-[20px]">
                     <div className="min-w-0">
-                        <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} />
+                        <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} thresholds={thresholds} />
                     </div>
                     <div className="shrink-0 text-gray-300 dark:text-gray-600">
                         <HealthRadial

@@ -1210,7 +1210,16 @@
             "closeToTray": "Chiudi nella tray invece di uscire",
             "closeToTrayDesc": "Quando premi il pulsante di chiusura della finestra, AeroFTP viene nascosto nella tray di sistema invece di terminare. Le attività in background come la sincronizzazione AeroCloud continuano a funzionare. Usa il menu della tray per uscire.",
             "detailedCards": "Card server dettagliate",
-            "detailedCardsDesc": "Mostra la barra di utilizzo dello storage memorizzato nelle card dei server."
+            "detailedCardsDesc": "Mostra la barra di utilizzo dello storage memorizzato nelle card dei server.",
+            "storageThresholds": "Colori uso archiviazione",
+            "storageThresholdsDesc": "Quando la colonna % in I miei server diventa ambra e rossa. Default 80% / 95% — oltre la quota (>100%) sempre rossa, sotto il 5% grigia.",
+            "storageWarn": "Soglia di avviso (ambra)",
+            "storageCritical": "Soglia critica (rossa)",
+            "storageThresholdsReset": "Ripristina i valori predefiniti (80% / 95%)",
+            "myServersDensity": "Densità elenco I miei server",
+            "myServersDensityDesc": "Compatta riduce padding e icona; comoda mantiene la spaziatura originale.",
+            "densityCompact": "Compatta",
+            "densityComfortable": "Comoda"
         },
         "appearance": {
             "patternCross": "Croce",
@@ -4095,7 +4104,9 @@
                 "pending": "Verifica in corso...",
                 "unknown": "Non verificato",
                 "clickToRetry": "clic per riverificare"
-            }
+            },
+            "densityCompact": "Righe compatte",
+            "densityComfortable": "Righe comode"
         },
         "gitlab": {
             "projectPath": "Percorso progetto",

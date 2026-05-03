@@ -929,7 +929,16 @@
             "closeToTray": "Skrýt do oznamovací oblasti místo ukončení",
             "closeToTrayDesc": "Když kliknete na tlačítko zavření okna, AeroFTP se skryje do oznamovací oblasti místo ukončení. Úlohy na pozadí jako synchronizace AeroCloud běží dál. Pro ukončení použijte nabídku v oznamovací oblasti.",
             "detailedCards": "Podrobné karty serverů",
-            "detailedCardsDesc": "Zobrazit panel využití úložiště v mezipaměti na kartách Moje servery."
+            "detailedCardsDesc": "Zobrazit panel využití úložiště v mezipaměti na kartách Moje servery.",
+            "storageThresholds": "Barvy využití úložiště",
+            "storageThresholdsDesc": "Kdy se sloupec % v Moje servery změní na oranžovou a červenou. Výchozí 80% / 95% — překročení kvóty (>100%) je vždy červené, pod 5% šedé.",
+            "storageWarn": "Práh varování (oranžová)",
+            "storageCritical": "Kritický práh (červená)",
+            "storageThresholdsReset": "Obnovit výchozí hodnoty (80% / 95%)",
+            "myServersDensity": "Hustota seznamu Moje servery",
+            "myServersDensityDesc": "Kompaktní zmenší odsazení a ikonu; pohodlný zachovává původní rozestup.",
+            "densityCompact": "Kompaktní",
+            "densityComfortable": "Pohodlný"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Kontroluje se...",
                 "unknown": "Neověřeno",
                 "clickToRetry": "kliknutím znovu zkontrolovat"
-            }
+            },
+            "densityCompact": "Kompaktní řádky",
+            "densityComfortable": "Pohodlné řádky"
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

@@ -929,7 +929,16 @@
             "closeToTray": "Skrij v sistemsko vrstico namesto izhoda",
             "closeToTrayDesc": "Ko kliknete gumb za zapiranje okna, se AeroFTP skrije v sistemsko vrstico namesto da bi se zaprl. Opravila v ozadju, kot je sinhronizacija AeroCloud, se nadaljujejo. Za izhod uporabite meni v sistemski vrstici.",
             "detailedCards": "Podrobne kartice strežnikov",
-            "detailedCardsDesc": "Prikaži vrstico uporabe predpomnjenega prostora za shranjevanje na karticah Moji strežniki."
+            "detailedCardsDesc": "Prikaži vrstico uporabe predpomnjenega prostora za shranjevanje na karticah Moji strežniki.",
+            "storageThresholds": "Barve uporabe shrambe",
+            "storageThresholdsDesc": "Kdaj stolpec % v Moji strežniki postane jantar in rdeč. Privzeto 80% / 95% — prek kvote (>100%) vedno rdeče, pod 5% sivo.",
+            "storageWarn": "Prag opozorila (jantar)",
+            "storageCritical": "Kritični prag (rdeč)",
+            "storageThresholdsReset": "Ponastavi na privzete (80% / 95%)",
+            "myServersDensity": "Gostota seznama Moji strežniki",
+            "myServersDensityDesc": "Kompaktno zmanjša padding in ikono; udobno ohrani izvirno razmik.",
+            "densityCompact": "Kompaktno",
+            "densityComfortable": "Udobno"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Preverjanje...",
                 "unknown": "Ni preverjeno",
                 "clickToRetry": "kliknite za ponovno preverjanje"
-            }
+            },
+            "densityCompact": "Kompaktne vrstice",
+            "densityComfortable": "Udobne vrstice"
         },
         "gitlab": {
             "projectPath": "Pot projekta",

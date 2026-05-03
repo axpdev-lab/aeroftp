@@ -929,7 +929,16 @@
             "closeToTray": "Minimizar á bandexa en vez de saír",
             "closeToTrayDesc": "Cando fas clic no botón de pechar a xanela, AeroFTP ocúltase na bandexa do sistema en vez de pecharse. As tarefas en segundo plano como a sincronización de AeroCloud seguen executándose. Usa o menú da bandexa para saír.",
             "detailedCards": "Tarxetas de servidor detalladas",
-            "detailedCardsDesc": "Mostra a barra de uso de almacenamento en caché nas tarxetas Os meus servidores."
+            "detailedCardsDesc": "Mostra a barra de uso de almacenamento en caché nas tarxetas Os meus servidores.",
+            "storageThresholds": "Cores de uso de almacenamento",
+            "storageThresholdsDesc": "Cando a columna % en Os meus servidores se volve ámbar e vermella. Por defecto 80% / 95% — exceso de cota (>100%) sempre vermello, menos do 5% gris.",
+            "storageWarn": "Limiar de aviso (ámbar)",
+            "storageCritical": "Limiar crítico (vermello)",
+            "storageThresholdsReset": "Restablecer valores predeterminados (80% / 95%)",
+            "myServersDensity": "Densidade da lista Os meus servidores",
+            "myServersDensityDesc": "Compacta reduce os recheos e a icona; cómoda mantén o espazado orixinal.",
+            "densityCompact": "Compacta",
+            "densityComfortable": "Cómoda"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4117,7 +4126,9 @@
                 "pending": "Comprobando...",
                 "unknown": "Sen verificar",
                 "clickToRetry": "fai clic para volver comprobar"
-            }
+            },
+            "densityCompact": "Filas compactas",
+            "densityComfortable": "Filas cómodas"
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",

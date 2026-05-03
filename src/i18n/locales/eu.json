@@ -929,7 +929,16 @@
             "closeToTray": "Ezkutatu sistemaren erretiluan, irten beharrean",
             "closeToTrayDesc": "Leihoa ixteko botoian klik egitean, AeroFTP sistemaren erretiluan ezkutatzen da, itxi beharrean. Bigarren mailako atazek, hala nola AeroCloud sinkronizazioak, lanean jarraitzen dute. Erabili erretiluaren menua aplikaziotik irteteko.",
             "detailedCards": "Zerbitzari-txartel zehatzak",
-            "detailedCardsDesc": "Erakutsi cache biltegiratze-erabileraren barra Nire zerbitzariak txarteletan."
+            "detailedCardsDesc": "Erakutsi cache biltegiratze-erabileraren barra Nire zerbitzariak txarteletan.",
+            "storageThresholds": "Biltegiratzearen erabileraren koloreak",
+            "storageThresholdsDesc": "Noiz Nire zerbitzariak orriko % zutabea anbar eta gorri bihurtzen den. Lehenetsia 80% / 95% — kuotaren gainetik (>100%) beti gorri, %5etik behera grisa.",
+            "storageWarn": "Abisu-atalasea (anbar)",
+            "storageCritical": "Atalase kritikoa (gorri)",
+            "storageThresholdsReset": "Berrezarri lehenespenak (80% / 95%)",
+            "myServersDensity": "Nire zerbitzariak zerrendaren dentsitatea",
+            "myServersDensityDesc": "Trinkoak betetzeak eta ikonoa txikitzen ditu; erosoak lehengo tartea mantentzen du.",
+            "densityCompact": "Trinkoa",
+            "densityComfortable": "Erosoa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4117,7 +4126,9 @@
                 "pending": "Egiaztatzen...",
                 "unknown": "Ez egiaztatua",
                 "clickToRetry": "egin klik berriro egiaztatzeko"
-            }
+            },
+            "densityCompact": "Lerro trinkoak",
+            "densityComfortable": "Lerro erosoak"
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

@@ -929,7 +929,16 @@
             "closeToTray": "बंद करने के बजाय सिस्टम ट्रे में छिपाएँ",
             "closeToTrayDesc": "जब आप विंडो बंद करने वाले बटन पर क्लिक करते हैं, तो AeroFTP बंद होने के बजाय सिस्टम ट्रे में छिप जाता है। AeroCloud सिंक जैसे बैकग्राउंड कार्य चलते रहते हैं। बाहर निकलने के लिए ट्रे मेनू का उपयोग करें।",
             "detailedCards": "विस्तृत सर्वर कार्ड",
-            "detailedCardsDesc": "मेरे सर्वर कार्ड पर कैश किए गए संग्रहण उपयोग बार को दिखाएं।"
+            "detailedCardsDesc": "मेरे सर्वर कार्ड पर कैश किए गए संग्रहण उपयोग बार को दिखाएं।",
+            "storageThresholds": "भंडारण उपयोग रंग",
+            "storageThresholdsDesc": "My Servers में % कॉलम कब अंबर और लाल हो जाता है। डिफ़ॉल्ट 80% / 95% — कोटा से अधिक (>100%) हमेशा लाल, 5% से कम भूरा।",
+            "storageWarn": "चेतावनी सीमा (अंबर)",
+            "storageCritical": "गंभीर सीमा (लाल)",
+            "storageThresholdsReset": "डिफ़ॉल्ट पर रीसेट करें (80% / 95%)",
+            "myServersDensity": "My Servers सूची घनत्व",
+            "myServersDensityDesc": "कॉम्पैक्ट पैडिंग और आइकन सिकोड़ता है; आरामदायक मूल अंतर बनाए रखता है।",
+            "densityCompact": "कॉम्पैक्ट",
+            "densityComfortable": "आरामदायक"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "जाँच हो रही है...",
                 "unknown": "सत्यापित नहीं",
                 "clickToRetry": "पुनः जाँच करने के लिए क्लिक करें"
-            }
+            },
+            "densityCompact": "कॉम्पैक्ट पंक्तियाँ",
+            "densityComfortable": "आरामदायक पंक्तियाँ"
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",

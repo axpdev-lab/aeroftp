@@ -929,7 +929,16 @@
             "closeToTray": "종료하지 않고 트레이로 닫기",
             "closeToTrayDesc": "창 닫기 버튼을 누르면 AeroFTP가 종료되지 않고 시스템 트레이로 숨겨집니다. AeroCloud 동기화와 같은 백그라운드 작업은 계속 실행됩니다. 종료하려면 트레이 메뉴를 사용하세요.",
             "detailedCards": "상세 서버 카드",
-            "detailedCardsDesc": "내 서버 카드에 캐시된 저장소 사용 막대를 표시합니다."
+            "detailedCardsDesc": "내 서버 카드에 캐시된 저장소 사용 막대를 표시합니다.",
+            "storageThresholds": "저장소 사용량 색상",
+            "storageThresholdsDesc": "My Servers의 % 열이 황색과 빨간색이 되는 시점. 기본 80% / 95% — 할당량 초과(>100%)는 항상 빨간색, 5% 미만은 회색.",
+            "storageWarn": "경고 임계값 (황색)",
+            "storageCritical": "심각 임계값 (빨간색)",
+            "storageThresholdsReset": "기본값으로 재설정 (80% / 95%)",
+            "myServersDensity": "My Servers 목록 밀도",
+            "myServersDensityDesc": "좁게는 여백과 아이콘을 줄이고, 편안하게는 원래 간격을 유지합니다.",
+            "densityCompact": "좁게",
+            "densityComfortable": "편안하게"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "확인 중...",
                 "unknown": "미확인",
                 "clickToRetry": "클릭하여 다시 확인"
-            }
+            },
+            "densityCompact": "좁은 행",
+            "densityComfortable": "편안한 행"
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",

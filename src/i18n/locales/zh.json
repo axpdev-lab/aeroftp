@@ -929,7 +929,16 @@
             "closeToTray": "关闭时最小化到系统托盘而非退出",
             "closeToTrayDesc": "当您点击窗口关闭按钮时，AeroFTP 将隐藏到系统托盘而不是退出。AeroCloud 同步等后台任务会继续运行。如需退出，请使用托盘菜单。",
             "detailedCards": "详细的服务器卡片",
-            "detailedCardsDesc": "在\"我的服务器\"卡片上显示缓存的存储使用条。"
+            "detailedCardsDesc": "在\"我的服务器\"卡片上显示缓存的存储使用条。",
+            "storageThresholds": "存储使用颜色",
+            "storageThresholdsDesc": "My Servers 中 % 列何时变为琥珀色和红色。默认 80% / 95% — 超过配额 (>100%) 始终为红色，低于 5% 为灰色。",
+            "storageWarn": "警告阈值（琥珀）",
+            "storageCritical": "严重阈值（红色）",
+            "storageThresholdsReset": "重置为默认 (80% / 95%)",
+            "myServersDensity": "My Servers 列表密度",
+            "myServersDensityDesc": "紧凑缩小内边距和图标；舒适保持原有间距。",
+            "densityCompact": "紧凑",
+            "densityComfortable": "舒适"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "正在检查...",
                 "unknown": "未探测",
                 "clickToRetry": "点击重新检查"
-            }
+            },
+            "densityCompact": "紧凑行",
+            "densityComfortable": "舒适行"
         },
         "gitlab": {
             "projectPath": "项目路径",

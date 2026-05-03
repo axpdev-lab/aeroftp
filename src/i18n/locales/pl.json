@@ -929,7 +929,16 @@
             "closeToTray": "Zamknij do zasobnika zamiast zakończyć",
             "closeToTrayDesc": "Po kliknięciu przycisku zamykania okna ukryj AeroFTP w zasobniku systemowym zamiast zamykać aplikację. Zadania w tle, takie jak synchronizacja AeroCloud, będą nadal działać. Aby zamknąć aplikację, użyj menu zasobnika.",
             "detailedCards": "Szczegółowe karty serwerów",
-            "detailedCardsDesc": "Pokaż pasek użycia pamięci podręcznej na kartach Moje serwery."
+            "detailedCardsDesc": "Pokaż pasek użycia pamięci podręcznej na kartach Moje serwery.",
+            "storageThresholds": "Kolory użycia pamięci",
+            "storageThresholdsDesc": "Kiedy kolumna % w Moich serwerach staje się bursztynowa i czerwona. Domyślnie 80% / 95% — powyżej limitu (>100%) zawsze czerwona, poniżej 5% szara.",
+            "storageWarn": "Próg ostrzegawczy (bursztyn)",
+            "storageCritical": "Próg krytyczny (czerwony)",
+            "storageThresholdsReset": "Przywróć domyślne (80% / 95%)",
+            "myServersDensity": "Gęstość listy Moje serwery",
+            "myServersDensityDesc": "Kompaktowy zmniejsza wcięcia i ikonę; wygodny zachowuje oryginalny odstęp.",
+            "densityCompact": "Kompaktowy",
+            "densityComfortable": "Wygodny"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "Sprawdzanie...",
                 "unknown": "Niesprawdzony",
                 "clickToRetry": "kliknij, aby sprawdzić ponownie"
-            }
+            },
+            "densityCompact": "Kompaktowe wiersze",
+            "densityComfortable": "Wygodne wiersze"
         },
         "gitlab": {
             "projectPath": "Sciezka projektu",

@@ -929,7 +929,16 @@
             "closeToTray": "終了せずにトレイに格納",
             "closeToTrayDesc": "ウィンドウの閉じるボタンを押すと、AeroFTPは終了せずにシステムトレイに格納されます。AeroCloudの同期などのバックグラウンドタスクは引き続き実行されます。終了するにはトレイメニューを使用してください。",
             "detailedCards": "詳細なサーバーカード",
-            "detailedCardsDesc": "「マイサーバー」カードにキャッシュされたストレージ使用量バーを表示します。"
+            "detailedCardsDesc": "「マイサーバー」カードにキャッシュされたストレージ使用量バーを表示します。",
+            "storageThresholds": "ストレージ使用量の色",
+            "storageThresholdsDesc": "My Servers の % 列がアンバーと赤になるしきい値。デフォルトは 80% / 95% — クォータ超過 (>100%) は常に赤、5% 未満は灰色。",
+            "storageWarn": "警告しきい値 (アンバー)",
+            "storageCritical": "重大しきい値 (赤)",
+            "storageThresholdsReset": "デフォルトにリセット (80% / 95%)",
+            "myServersDensity": "My Servers リストの密度",
+            "myServersDensityDesc": "コンパクトは余白とアイコンを縮小、快適は元の間隔を維持。",
+            "densityCompact": "コンパクト",
+            "densityComfortable": "快適"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "確認中...",
                 "unknown": "未確認",
                 "clickToRetry": "クリックで再チェック"
-            }
+            },
+            "densityCompact": "コンパクトな行",
+            "densityComfortable": "快適な行"
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",

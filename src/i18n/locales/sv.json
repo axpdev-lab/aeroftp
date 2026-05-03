@@ -929,7 +929,16 @@
             "closeToTray": "Minimera till aktivitetsfältet i stället för att avsluta",
             "closeToTrayDesc": "När du klickar på stäng-knappen göms AeroFTP i systemfältet i stället för att avslutas. Bakgrundsuppgifter som AeroCloud-synkronisering fortsätter att köras. Använd menyn i systemfältet för att avsluta.",
             "detailedCards": "Detaljerade serverkort",
-            "detailedCardsDesc": "Visa stapeln för cachad lagringsanvändning på korten Mina servrar."
+            "detailedCardsDesc": "Visa stapeln för cachad lagringsanvändning på korten Mina servrar.",
+            "storageThresholds": "Färger för lagringsanvändning",
+            "storageThresholdsDesc": "När %-kolumnen i Mina servrar blir bärnstensgul och röd. Standard 80% / 95% — över kvot (>100%) alltid röd, under 5% grå.",
+            "storageWarn": "Varningströskel (bärnsten)",
+            "storageCritical": "Kritisk tröskel (röd)",
+            "storageThresholdsReset": "Återställ till standard (80% / 95%)",
+            "myServersDensity": "Täthet av Mina servrar-listan",
+            "myServersDensityDesc": "Kompakt minskar utfyllnad och ikon; bekväm behåller ursprungligt avstånd.",
+            "densityCompact": "Kompakt",
+            "densityComfortable": "Bekväm"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Kontrollerar...",
                 "unknown": "Ej kontrollerad",
                 "clickToRetry": "klicka för att kontrollera igen"
-            }
+            },
+            "densityCompact": "Kompakta rader",
+            "densityComfortable": "Bekväma rader"
         },
         "gitlab": {
             "projectPath": "Projektsokvag",

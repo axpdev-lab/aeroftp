@@ -929,7 +929,16 @@
             "closeToTray": "In Infobereich minimieren statt beenden",
             "closeToTrayDesc": "Wenn Sie auf die Schließen-Schaltfläche klicken, wird AeroFTP in den Infobereich minimiert, anstatt beendet zu werden. Hintergrundaufgaben wie die AeroCloud-Synchronisierung laufen weiter. Verwenden Sie das Menü im Infobereich, um die App zu beenden.",
             "detailedCards": "Detaillierte Serverkarten",
-            "detailedCardsDesc": "Zeigt den zwischengespeicherten Speichernutzungsbalken auf den Karten \"Meine Server\" an."
+            "detailedCardsDesc": "Zeigt den zwischengespeicherten Speichernutzungsbalken auf den Karten \"Meine Server\" an.",
+            "storageThresholds": "Farben für Speichernutzung",
+            "storageThresholdsDesc": "Wann die %-Spalte in Meine Server amber und rot wird. Standard 80% / 95% — über Kontingent (>100%) immer rot, unter 5% grau.",
+            "storageWarn": "Warnschwelle (amber)",
+            "storageCritical": "Kritische Schwelle (rot)",
+            "storageThresholdsReset": "Auf Standard zurücksetzen (80% / 95%)",
+            "myServersDensity": "Dichte der Meine-Server-Liste",
+            "myServersDensityDesc": "Kompakt verkleinert Abstände und Symbol; komfortabel behält den ursprünglichen Abstand.",
+            "densityCompact": "Kompakt",
+            "densityComfortable": "Komfortabel"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "Wird geprüft...",
                 "unknown": "Nicht geprüft",
                 "clickToRetry": "klicken, um erneut zu prüfen"
-            }
+            },
+            "densityCompact": "Kompakte Zeilen",
+            "densityComfortable": "Komfortable Zeilen"
         },
         "gitlab": {
             "projectPath": "Projektpfad",

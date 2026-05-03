@@ -929,7 +929,16 @@
             "closeToTray": "Sakrij u traku sustava umjesto izlaza",
             "closeToTrayDesc": "Kada kliknete gumb za zatvaranje prozora, AeroFTP se sakriva u traku sustava umjesto da se zatvori. Pozadinski zadaci poput AeroCloud sinkronizacije nastavljaju s radom. Za izlaz koristite izbornik trake sustava.",
             "detailedCards": "Detaljne kartice poslužitelja",
-            "detailedCardsDesc": "Prikaži traku korištenja predmemorirane pohrane na karticama Moji poslužitelji."
+            "detailedCardsDesc": "Prikaži traku korištenja predmemorirane pohrane na karticama Moji poslužitelji.",
+            "storageThresholds": "Boje korištenja pohrane",
+            "storageThresholdsDesc": "Kada stupac % u Moji poslužitelji postane jantarni i crveni. Zadano 80% / 95% — preko kvote (>100%) uvijek crveno, ispod 5% sivo.",
+            "storageWarn": "Prag upozorenja (jantar)",
+            "storageCritical": "Kritični prag (crveno)",
+            "storageThresholdsReset": "Vrati na zadano (80% / 95%)",
+            "myServersDensity": "Gustoća popisa Moji poslužitelji",
+            "myServersDensityDesc": "Kompaktni smanjuje paddinge i ikonu; udobni zadržava izvorni razmak.",
+            "densityCompact": "Kompaktni",
+            "densityComfortable": "Udobni"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Provjera...",
                 "unknown": "Nije provjereno",
                 "clickToRetry": "kliknite za ponovnu provjeru"
-            }
+            },
+            "densityCompact": "Kompaktni redovi",
+            "densityComfortable": "Udobni redovi"
         },
         "gitlab": {
             "projectPath": "Putanja projekta",

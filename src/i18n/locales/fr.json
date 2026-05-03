@@ -929,7 +929,16 @@
             "closeToTray": "Réduire dans la barre d'état système au lieu de quitter",
             "closeToTrayDesc": "Lorsque vous cliquez sur le bouton de fermeture de la fenêtre, AeroFTP est réduit dans la barre d'état système au lieu d'être fermé. Les tâches en arrière-plan comme la synchronisation AeroCloud continuent de s'exécuter. Utilisez le menu de la barre d'état système pour quitter.",
             "detailedCards": "Cartes de serveur détaillées",
-            "detailedCardsDesc": "Affiche la barre d'utilisation du stockage en cache sur les cartes Mes serveurs."
+            "detailedCardsDesc": "Affiche la barre d'utilisation du stockage en cache sur les cartes Mes serveurs.",
+            "storageThresholds": "Couleurs d'utilisation du stockage",
+            "storageThresholdsDesc": "Quand la colonne % dans Mes serveurs passe à l'ambre et au rouge. Par défaut 80% / 95% — dépassement de quota (>100%) toujours rouge, moins de 5% gris.",
+            "storageWarn": "Seuil d'avertissement (ambre)",
+            "storageCritical": "Seuil critique (rouge)",
+            "storageThresholdsReset": "Réinitialiser aux valeurs par défaut (80% / 95%)",
+            "myServersDensity": "Densité de la liste Mes serveurs",
+            "myServersDensityDesc": "Compacte réduit les marges et l'icône ; confortable conserve l'espacement d'origine.",
+            "densityCompact": "Compacte",
+            "densityComfortable": "Confortable"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "Vérification...",
                 "unknown": "Non vérifié",
                 "clickToRetry": "cliquez pour revérifier"
-            }
+            },
+            "densityCompact": "Lignes compactes",
+            "densityComfortable": "Lignes confortables"
         },
         "gitlab": {
             "projectPath": "Chemin du projet",

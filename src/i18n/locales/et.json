@@ -929,7 +929,16 @@
             "closeToTray": "Peida tegumiribale väljumise asemel",
             "closeToTrayDesc": "Kui klõpsate akna sulgemise nuppu, peidab AeroFTP end väljumise asemel süsteemisalve. Taustatööd nagu AeroCloud sünkroonimine jätkavad töötamist. Väljumiseks kasutage süsteemisalve menüüd.",
             "detailedCards": "Üksikasjalikud serverikaardid",
-            "detailedCardsDesc": "Kuvab vahemällu salvestatud salvestusruumi kasutuse riba kaartidel Minu serverid."
+            "detailedCardsDesc": "Kuvab vahemällu salvestatud salvestusruumi kasutuse riba kaartidel Minu serverid.",
+            "storageThresholds": "Salvestusruumi kasutuse värvid",
+            "storageThresholdsDesc": "Millal Minu serverite %-veerg muutub merevaiguks ja punaseks. Vaikeväärtus 80% / 95% — kvoodi ületamine (>100%) alati punane, alla 5% hall.",
+            "storageWarn": "Hoiatuslävi (merevaik)",
+            "storageCritical": "Kriitiline lävi (punane)",
+            "storageThresholdsReset": "Lähtesta vaikeväärtustele (80% / 95%)",
+            "myServersDensity": "Minu serverite loendi tihedus",
+            "myServersDensityDesc": "Tihendatud vähendab paddingit ja ikooni; mugav säilitab varasema vahekauguse.",
+            "densityCompact": "Tihendatud",
+            "densityComfortable": "Mugav"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Kontrollimine...",
                 "unknown": "Pole kontrollitud",
                 "clickToRetry": "klõpsa uuesti kontrollimiseks"
-            }
+            },
+            "densityCompact": "Tihendatud read",
+            "densityComfortable": "Mugavad read"
         },
         "gitlab": {
             "projectPath": "Projekti tee",

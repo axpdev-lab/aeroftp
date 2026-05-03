@@ -929,7 +929,16 @@
             "closeToTray": "Thu nhỏ vào khay hệ thống thay vì thoát",
             "closeToTrayDesc": "Khi bạn nhấn nút đóng cửa sổ, AeroFTP sẽ được ẩn vào khay hệ thống thay vì thoát hẳn. Các tác vụ nền như đồng bộ AeroCloud vẫn tiếp tục chạy. Dùng menu trên khay hệ thống để thoát ứng dụng.",
             "detailedCards": "Thẻ máy chủ chi tiết",
-            "detailedCardsDesc": "Hiển thị thanh sử dụng bộ nhớ đã lưu trên các thẻ Máy chủ của tôi."
+            "detailedCardsDesc": "Hiển thị thanh sử dụng bộ nhớ đã lưu trên các thẻ Máy chủ của tôi.",
+            "storageThresholds": "Màu sử dụng lưu trữ",
+            "storageThresholdsDesc": "Khi cột % trong My Servers chuyển sang hổ phách và đỏ. Mặc định 80% / 95% — vượt hạn ngạch (>100%) luôn đỏ, dưới 5% xám.",
+            "storageWarn": "Ngưỡng cảnh báo (hổ phách)",
+            "storageCritical": "Ngưỡng nghiêm trọng (đỏ)",
+            "storageThresholdsReset": "Đặt lại về mặc định (80% / 95%)",
+            "myServersDensity": "Mật độ danh sách My Servers",
+            "myServersDensityDesc": "Nhỏ gọn thu nhỏ phần đệm và biểu tượng; thoải mái giữ nguyên khoảng cách ban đầu.",
+            "densityCompact": "Nhỏ gọn",
+            "densityComfortable": "Thoải mái"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Đang kiểm tra...",
                 "unknown": "Chưa kiểm tra",
                 "clickToRetry": "nhấp để kiểm tra lại"
-            }
+            },
+            "densityCompact": "Hàng nhỏ gọn",
+            "densityComfortable": "Hàng thoải mái"
         },
         "gitlab": {
             "projectPath": "Duong dan du an",

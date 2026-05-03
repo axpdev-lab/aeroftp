@@ -929,7 +929,16 @@
             "closeToTray": "Minimizar a la bandeja en lugar de salir",
             "closeToTrayDesc": "Cuando haces clic en el botón de cerrar la ventana, AeroFTP se oculta en la bandeja del sistema en lugar de cerrarse. Las tareas en segundo plano como la sincronización de AeroCloud siguen ejecutándose. Usa el menú de la bandeja para salir.",
             "detailedCards": "Tarjetas de servidor detalladas",
-            "detailedCardsDesc": "Muestra la barra de uso de almacenamiento en caché en las tarjetas Mis servidores."
+            "detailedCardsDesc": "Muestra la barra de uso de almacenamiento en caché en las tarjetas Mis servidores.",
+            "storageThresholds": "Colores de uso de almacenamiento",
+            "storageThresholdsDesc": "Cuándo la columna % en Mis servidores se vuelve ámbar y roja. Por defecto 80% / 95% — sobrecuota (>100%) siempre roja, menos del 5% gris.",
+            "storageWarn": "Umbral de advertencia (ámbar)",
+            "storageCritical": "Umbral crítico (rojo)",
+            "storageThresholdsReset": "Restablecer valores por defecto (80% / 95%)",
+            "myServersDensity": "Densidad de la lista Mis servidores",
+            "myServersDensityDesc": "Compacta reduce los rellenos y el icono; cómoda mantiene el espaciado original.",
+            "densityCompact": "Compacta",
+            "densityComfortable": "Cómoda"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "Comprobando...",
                 "unknown": "Sin verificar",
                 "clickToRetry": "haz clic para volver a comprobar"
-            }
+            },
+            "densityCompact": "Filas compactas",
+            "densityComfortable": "Filas cómodas"
         },
         "gitlab": {
             "projectPath": "Ruta del proyecto",

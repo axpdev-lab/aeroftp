@@ -929,7 +929,16 @@
             "closeToTray": "Cau i'r hambwrdd yn lle gadael",
             "closeToTrayDesc": "Pan fyddwch yn clicio botwm cau'r ffenestr, mae AeroFTP yn cuddio i hambwrdd y system yn lle gadael. Mae tasgau cefndir fel cysoni AeroCloud yn parhau i redeg. Defnyddiwch ddewislen yr hambwrdd i adael.",
             "detailedCards": "Cardiau gweinydd manwl",
-            "detailedCardsDesc": "Dangos y bar defnydd storfa storiwyd ar gardiau Fy Ngweinyddion."
+            "detailedCardsDesc": "Dangos y bar defnydd storfa storiwyd ar gardiau Fy Ngweinyddion.",
+            "storageThresholds": "Lliwiau defnydd storfa",
+            "storageThresholdsDesc": "Pryd mae'r golofn % yn My Servers yn troi'n ambr a choch. Diofyn 80% / 95% — dros gwota (>100%) bob amser yn goch, llai na 5% yn llwyd.",
+            "storageWarn": "Trothwy rhybudd (ambr)",
+            "storageCritical": "Trothwy critigol (coch)",
+            "storageThresholdsReset": "Ailosod i'r diofyn (80% / 95%)",
+            "myServersDensity": "Dwysedd rhestr My Servers",
+            "myServersDensityDesc": "Mae cryno yn lleihau'r padin a'r eicon; cyfforddus yn cadw'r bylchu blaenorol.",
+            "densityCompact": "Cryno",
+            "densityComfortable": "Cyfforddus"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4117,7 +4126,9 @@
                 "pending": "Yn gwirio...",
                 "unknown": "Heb ei wirio",
                 "clickToRetry": "cliciwch i ailwirio"
-            }
+            },
+            "densityCompact": "Rhesi cryno",
+            "densityComfortable": "Rhesi cyfforddus"
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

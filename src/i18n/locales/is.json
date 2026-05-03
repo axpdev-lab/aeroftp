@@ -929,7 +929,16 @@
             "closeToTray": "Loka í kerfisbakka í stað þess að hætta",
             "closeToTrayDesc": "Þegar þú smellir á lokunarhnapp gluggans er AeroFTP falið í kerfisbakkanum í stað þess að hætta. Bakgrunnsverkefni eins og AeroCloud samstilling halda áfram að keyra. Notaðu valmynd kerfisbakkans til að hætta.",
             "detailedCards": "Ítarleg þjónakort",
-            "detailedCardsDesc": "Birta nýtingarstiku skyndiminnisgeymslu á Mínir þjónar kortunum."
+            "detailedCardsDesc": "Birta nýtingarstiku skyndiminnisgeymslu á Mínir þjónar kortunum.",
+            "storageThresholds": "Litir á notkun geymslu",
+            "storageThresholdsDesc": "Hvenær %-dálkur í Mínir þjónar verður gulbrúnn og rauður. Sjálfgefið 80% / 95% — yfir kvóta (>100%) alltaf rautt, undir 5% grátt.",
+            "storageWarn": "Viðvörunarmörk (gulbrúnt)",
+            "storageCritical": "Mikilvæg mörk (rauður)",
+            "storageThresholdsReset": "Endurstilla á sjálfgefið (80% / 95%)",
+            "myServersDensity": "Þéttleiki Mínir þjónar lista",
+            "myServersDensityDesc": "Þétt minnkar bil og táknið; þægilegt heldur upprunalegu bili.",
+            "densityCompact": "Þétt",
+            "densityComfortable": "Þægilegt"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4117,7 +4126,9 @@
                 "pending": "Athuga...",
                 "unknown": "Ekki athugað",
                 "clickToRetry": "smelltu til að athuga aftur"
-            }
+            },
+            "densityCompact": "Þéttar línur",
+            "densityComfortable": "Þægilegar línur"
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

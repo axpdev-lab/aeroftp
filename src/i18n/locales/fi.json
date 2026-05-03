@@ -929,7 +929,16 @@
             "closeToTray": "Piilota ilmoitusalueelle sulkemisen sijaan",
             "closeToTrayDesc": "Kun napsautat ikkunan sulkemispainiketta, AeroFTP piilotetaan ilmoitusalueelle sulkemisen sijaan. Taustatehtävät, kuten AeroCloud-synkronointi, jatkavat toimintaansa. Sulje sovellus ilmoitusalueen valikosta.",
             "detailedCards": "Yksityiskohtaiset palvelinkortit",
-            "detailedCardsDesc": "Näytä välimuistissa olevan tallennustilan käyttöpalkki Omat palvelimet -korteissa."
+            "detailedCardsDesc": "Näytä välimuistissa olevan tallennustilan käyttöpalkki Omat palvelimet -korteissa.",
+            "storageThresholds": "Tallennustilan käytön värit",
+            "storageThresholdsDesc": "Milloin %-sarake Omat palvelimet -näkymässä muuttuu meripihkaksi ja punaiseksi. Oletus 80% / 95% — yli kiintiön (>100%) aina punainen, alle 5% harmaa.",
+            "storageWarn": "Varoitusraja (meripihka)",
+            "storageCritical": "Kriittinen raja (punainen)",
+            "storageThresholdsReset": "Palauta oletukset (80% / 95%)",
+            "myServersDensity": "Omat palvelimet -listan tiheys",
+            "myServersDensityDesc": "Tiivis pienentää täytteet ja kuvakkeen; mukava säilyttää alkuperäisen välistyksen.",
+            "densityCompact": "Tiivis",
+            "densityComfortable": "Mukava"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Tarkistetaan...",
                 "unknown": "Ei tarkistettu",
                 "clickToRetry": "napsauta tarkistaaksesi uudelleen"
-            }
+            },
+            "densityCompact": "Tiiviit rivit",
+            "densityComfortable": "Mukavat rivit"
         },
         "gitlab": {
             "projectPath": "Projektipolku",

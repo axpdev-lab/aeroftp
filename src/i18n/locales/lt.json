@@ -929,7 +929,16 @@
             "closeToTray": "Užverti į dėklą, o ne išjungti",
             "closeToTrayDesc": "Paspaudus lango uždarymo mygtuką, AeroFTP paslepiamas sistemos dėkle, o ne uždaromas. Foninės užduotys, tokios kaip AeroCloud sinchronizavimas, toliau veikia. Norėdami išjungti, naudokite dėklo meniu.",
             "detailedCards": "Išsamios serverio kortelės",
-            "detailedCardsDesc": "Rodyti talpyklos saugyklos naudojimo juostą kortelėse Mano serveriai."
+            "detailedCardsDesc": "Rodyti talpyklos saugyklos naudojimo juostą kortelėse Mano serveriai.",
+            "storageThresholds": "Saugyklos naudojimo spalvos",
+            "storageThresholdsDesc": "Kada % stulpelis Mano serveriuose tampa gintaro ir raudonu. Numatytasis 80% / 95% — viršijus kvotą (>100%) visada raudona, mažiau nei 5% pilka.",
+            "storageWarn": "Įspėjimo riba (gintaras)",
+            "storageCritical": "Kritinė riba (raudona)",
+            "storageThresholdsReset": "Atstatyti į numatytuosius (80% / 95%)",
+            "myServersDensity": "Mano serverių sąrašo tankis",
+            "myServersDensityDesc": "Glaustas mažina paraštes ir piktogramą; patogus išlaiko pradinį tarpą.",
+            "densityCompact": "Glaustas",
+            "densityComfortable": "Patogus"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Tikrinama...",
                 "unknown": "Nepatikrinta",
                 "clickToRetry": "spustelėkite, kad patikrintumėte iš naujo"
-            }
+            },
+            "densityCompact": "Glaustos eilutės",
+            "densityComfortable": "Patogios eilutės"
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

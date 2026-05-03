@@ -929,7 +929,16 @@
             "closeToTray": "Itago sa system tray sa halip na isara",
             "closeToTrayDesc": "Kapag pinindot mo ang close button ng window, itatago ang AeroFTP sa system tray sa halip na isara. Patuloy na tatakbo ang mga gawain sa background tulad ng AeroCloud sync. Gamitin ang tray menu para isara nang lubusan.",
             "detailedCards": "Detalyadong mga server card",
-            "detailedCardsDesc": "Ipakita ang naka-cache na storage usage bar sa mga My Servers card."
+            "detailedCardsDesc": "Ipakita ang naka-cache na storage usage bar sa mga My Servers card.",
+            "storageThresholds": "Mga kulay ng paggamit ng storage",
+            "storageThresholdsDesc": "Kailan magiging amber at pula ang column na % sa My Servers. Default na 80% / 95% — lampas sa quota (>100%) palaging pula, mas mababa sa 5% kulay-abo.",
+            "storageWarn": "Threshold ng babala (amber)",
+            "storageCritical": "Kritikal na threshold (pula)",
+            "storageThresholdsReset": "I-reset sa default (80% / 95%)",
+            "myServersDensity": "Density ng listahan ng My Servers",
+            "myServersDensityDesc": "Maigsi pinaliit ang mga padding at icon; maginhawa pinapanatili ang dating espasyo.",
+            "densityCompact": "Maigsi",
+            "densityComfortable": "Maginhawa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4117,7 +4126,9 @@
                 "pending": "Sinusuri...",
                 "unknown": "Hindi pa nasuri",
                 "clickToRetry": "mag-click upang muling suriin"
-            }
+            },
+            "densityCompact": "Maigsi na hanay",
+            "densityComfortable": "Maginhawang hanay"
         },
         "gitlab": {
             "projectPath": "Path ng Project",

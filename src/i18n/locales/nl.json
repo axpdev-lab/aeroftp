@@ -929,7 +929,16 @@
             "closeToTray": "Sluiten naar systeemvak in plaats van afsluiten",
             "closeToTrayDesc": "Wanneer je op de sluitknop van het venster klikt, wordt AeroFTP verborgen in het systeemvak in plaats van afgesloten. Achtergrondtaken zoals AeroCloud-synchronisatie blijven actief. Gebruik het menu van het systeemvak om af te sluiten.",
             "detailedCards": "Gedetailleerde serverkaarten",
-            "detailedCardsDesc": "Toont de balk voor gebufferd opslaggebruik op de kaarten Mijn servers."
+            "detailedCardsDesc": "Toont de balk voor gebufferd opslaggebruik op de kaarten Mijn servers.",
+            "storageThresholds": "Kleuren voor opslaggebruik",
+            "storageThresholdsDesc": "Wanneer de %-kolom in Mijn servers oranje en rood wordt. Standaard 80% / 95% — boven quotum (>100%) altijd rood, onder 5% grijs.",
+            "storageWarn": "Waarschuwingsdrempel (oranje)",
+            "storageCritical": "Kritieke drempel (rood)",
+            "storageThresholdsReset": "Standaardwaarden herstellen (80% / 95%)",
+            "myServersDensity": "Dichtheid van Mijn servers-lijst",
+            "myServersDensityDesc": "Compact verkleint paddings en het pictogram; comfortabel behoudt de oorspronkelijke afstand.",
+            "densityCompact": "Compact",
+            "densityComfortable": "Comfortabel"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "Controleren...",
                 "unknown": "Niet gecontroleerd",
                 "clickToRetry": "klik om opnieuw te controleren"
-            }
+            },
+            "densityCompact": "Compacte rijen",
+            "densityComfortable": "Comfortabele rijen"
         },
         "gitlab": {
             "projectPath": "Projectpad",

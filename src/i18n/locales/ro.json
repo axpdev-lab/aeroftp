@@ -929,7 +929,16 @@
             "closeToTray": "Minimizează în bară în loc de a închide",
             "closeToTrayDesc": "Când apeși butonul de închidere a ferestrei, ascunde AeroFTP în bara de sistem în loc să închizi aplicația. Sarcinile din fundal, precum sincronizarea AeroCloud, continuă să ruleze. Folosește meniul din bara de sistem pentru a închide complet.",
             "detailedCards": "Carduri detaliate de server",
-            "detailedCardsDesc": "Afișează bara de utilizare a spațiului de stocare în cache pe cardurile Serverele mele."
+            "detailedCardsDesc": "Afișează bara de utilizare a spațiului de stocare în cache pe cardurile Serverele mele.",
+            "storageThresholds": "Culori utilizare stocare",
+            "storageThresholdsDesc": "Când coloana % din Serverele mele devine chihlimbar și roșie. Implicit 80% / 95% — peste cotă (>100%) întotdeauna roșu, sub 5% gri.",
+            "storageWarn": "Prag de avertizare (chihlimbar)",
+            "storageCritical": "Prag critic (roșu)",
+            "storageThresholdsReset": "Resetare la valorile implicite (80% / 95%)",
+            "myServersDensity": "Densitatea listei Serverele mele",
+            "myServersDensityDesc": "Compact reduce padding-ul și pictograma; confortabil păstrează spațierea originală.",
+            "densityCompact": "Compact",
+            "densityComfortable": "Confortabil"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4088,7 +4097,9 @@
                 "pending": "Se verifică...",
                 "unknown": "Neverificat",
                 "clickToRetry": "clic pentru a verifica din nou"
-            }
+            },
+            "densityCompact": "Rânduri compacte",
+            "densityComfortable": "Rânduri confortabile"
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

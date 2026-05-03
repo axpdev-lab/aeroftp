@@ -929,7 +929,16 @@
             "closeToTray": "Sakrij u trej umesto izlaska",
             "closeToTrayDesc": "Kada kliknete na dugme za zatvaranje prozora, AeroFTP će se sakriti u sistemski trej umesto da se zatvori. Pozadinski zadaci kao što je sinhronizacija AeroCloud-a nastavljaju da rade. Za izlaz iz aplikacije koristite meni u treju.",
             "detailedCards": "Детаљне картице сервера",
-            "detailedCardsDesc": "Прикажи траку коришћења кеширане меморије на картицама Моји сервери."
+            "detailedCardsDesc": "Прикажи траку коришћења кеширане меморије на картицама Моји сервери.",
+            "storageThresholds": "Боје коришћења складишта",
+            "storageThresholdsDesc": "Када колона % у Моји сервери постане ћилибарна и црвена. Подразумевано 80% / 95% — преко квоте (>100%) увек црвено, испод 5% сиво.",
+            "storageWarn": "Праг упозорења (ћилибар)",
+            "storageCritical": "Критични праг (црвен)",
+            "storageThresholdsReset": "Врати на подразумевано (80% / 95%)",
+            "myServersDensity": "Густина листе Моји сервери",
+            "myServersDensityDesc": "Компактни смањује падинге и икону; удобни задржава оригинални размак.",
+            "densityCompact": "Компактни",
+            "densityComfortable": "Удобни"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Провера...",
                 "unknown": "Није проверено",
                 "clickToRetry": "кликните за поновну проверу"
-            }
+            },
+            "densityCompact": "Компактни редови",
+            "densityComfortable": "Удобни редови"
         },
         "gitlab": {
             "projectPath": "Путања пројекта",

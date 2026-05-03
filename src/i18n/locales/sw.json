@@ -929,7 +929,16 @@
             "closeToTray": "Ficha kwenye treya badala ya kutoka",
             "closeToTrayDesc": "Unapobonyeza kitufe cha kufunga dirisha, ficha AeroFTP kwenye treya ya mfumo badala ya kutoka kabisa. Kazi za chinichini kama vile usawazishaji wa AeroCloud zinaendelea kufanya kazi. Tumia menyu ya treya kutoka kabisa.",
             "detailedCards": "Kadi za seva za kina",
-            "detailedCardsDesc": "Onyesha upau wa matumizi ya hifadhi iliyohifadhiwa kwenye kadi za Seva Zangu."
+            "detailedCardsDesc": "Onyesha upau wa matumizi ya hifadhi iliyohifadhiwa kwenye kadi za Seva Zangu.",
+            "storageThresholds": "Rangi za matumizi ya hifadhi",
+            "storageThresholdsDesc": "Wakati safu wima ya % katika Seva Zangu inakuwa amba na nyekundu. Chaguo-msingi 80% / 95% — zaidi ya kiwango (>100%) daima nyekundu, chini ya 5% kijivu.",
+            "storageWarn": "Kizingiti cha onyo (amba)",
+            "storageCritical": "Kizingiti hatari (nyekundu)",
+            "storageThresholdsReset": "Rejesha chaguo-msingi (80% / 95%)",
+            "myServersDensity": "Msongamano wa orodha ya Seva Zangu",
+            "myServersDensityDesc": "Mfupi hupunguza nafasi za ndani na ikoni; vizuri huhifadhi nafasi ya awali.",
+            "densityCompact": "Mfupi",
+            "densityComfortable": "Vizuri"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Inakagua...",
                 "unknown": "Haijakaguliwa",
                 "clickToRetry": "bofya ili ukague tena"
-            }
+            },
+            "densityCompact": "Safu mfupi",
+            "densityComfortable": "Safu vizuri"
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",

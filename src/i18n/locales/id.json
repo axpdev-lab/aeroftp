@@ -929,7 +929,16 @@
             "closeToTray": "Tutup ke tray, bukan keluar",
             "closeToTrayDesc": "Saat kamu menekan tombol tutup jendela, AeroFTP disembunyikan ke tray sistem alih-alih ditutup. Tugas latar belakang seperti sinkronisasi AeroCloud tetap berjalan. Gunakan menu tray untuk keluar.",
             "detailedCards": "Kartu server terperinci",
-            "detailedCardsDesc": "Tampilkan bilah penggunaan penyimpanan tersimpan di kartu Server Saya."
+            "detailedCardsDesc": "Tampilkan bilah penggunaan penyimpanan tersimpan di kartu Server Saya.",
+            "storageThresholds": "Warna penggunaan penyimpanan",
+            "storageThresholdsDesc": "Kapan kolom % di Server Saya menjadi amber dan merah. Default 80% / 95% — melebihi kuota (>100%) selalu merah, kurang dari 5% abu-abu.",
+            "storageWarn": "Ambang peringatan (amber)",
+            "storageCritical": "Ambang kritis (merah)",
+            "storageThresholdsReset": "Reset ke default (80% / 95%)",
+            "myServersDensity": "Kepadatan daftar Server Saya",
+            "myServersDensityDesc": "Ringkas mengecilkan padding dan ikon; nyaman mempertahankan jarak asli.",
+            "densityCompact": "Ringkas",
+            "densityComfortable": "Nyaman"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4098,7 +4107,9 @@
                 "pending": "Memeriksa...",
                 "unknown": "Belum diperiksa",
                 "clickToRetry": "klik untuk memeriksa ulang"
-            }
+            },
+            "densityCompact": "Baris ringkas",
+            "densityComfortable": "Baris nyaman"
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",
