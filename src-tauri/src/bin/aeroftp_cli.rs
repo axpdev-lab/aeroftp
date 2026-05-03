@@ -1148,10 +1148,31 @@ enum Commands {
         shell: clap_complete::Shell,
     },
     /// List saved server profiles from the encrypted vault
+    ///
+    /// Mirrors the My Servers Table view in the GUI: the same column visibility
+    /// and sort persisted by `useMyServersColumns` are honoured here. The flags
+    /// below override the GUI-persisted settings for this run only (no vault
+    /// write) so scripts and pipes stay deterministic.
     Profiles {
         /// Optional `list` keyword for parity with `<tool> profiles list` muscle memory; ignored.
         #[arg(hide = true)]
         _ignored: Vec<String>,
+
+        /// Override the GUI-persisted sort. Format: `<col>[:asc|desc]`.
+        /// Sortable columns: name, type, used, total, pct, last, fav.
+        /// Use `manual` (alias `index`) to restore the saved profile order.
+        #[arg(long, value_name = "COL[:DIR]")]
+        sort: Option<String>,
+
+        /// Comma-separated columns to hide for this run only (not persisted).
+        /// Available: name, type, host, used, total, pct, path, last, fav.
+        #[arg(long, value_name = "COLS")]
+        hide: Option<String>,
+
+        /// Comma-separated columns to force-show for this run only (not persisted).
+        /// Available: name, type, host, used, total, pct, path, last, fav.
+        #[arg(long, value_name = "COLS")]
+        show: Option<String>,
     },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
@@ -3908,7 +3929,614 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
     CredentialStore::from_cache().ok_or_else(|| "Vault not available after init".to_string())
 }
 
-fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
+// ── My Servers Table view (CLI parity with src/components/IntroHub) ───────
+//
+// The text branch of `aeroftp-cli profiles` mirrors the columns, sort and
+// visibility persisted by the GUI under
+// `app_settings.aeroftp_settings.{storage_thresholds, ui_settings.my_servers_table}`
+// (see `src/hooks/useMyServersColumns.ts` + `useStorageThresholds.tsx`).
+// Toggling columns or sort in either surface is reflected in the other.
+//
+// The CLI flags `--sort`, `--hide`, `--show` override the vault-persisted view
+// for one run only — they never write back. The JSON branch is left untouched
+// because external agents and CI scripts depend on its schema.
+
+#[derive(Clone, Debug, Default)]
+struct ProfilesViewOverrides {
+    sort: Option<String>,
+    hide: Option<String>,
+    show: Option<String>,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+enum ProfileColId {
+    Index,
+    Name,
+    Badges,
+    Subtitle,
+    Used,
+    Total,
+    Pct,
+    Paths,
+    Time,
+    Favorite,
+}
+
+impl ProfileColId {
+    fn header(self) -> &'static str {
+        match self {
+            ProfileColId::Index => "#",
+            ProfileColId::Name => "Name",
+            ProfileColId::Badges => "Type",
+            ProfileColId::Subtitle => "Host",
+            ProfileColId::Used => "Used",
+            ProfileColId::Total => "Total",
+            ProfileColId::Pct => "%",
+            ProfileColId::Paths => "Path",
+            ProfileColId::Time => "Last",
+            ProfileColId::Favorite => "Fav",
+        }
+    }
+
+    fn is_sortable(self) -> bool {
+        // Mirrors MY_SERVERS_TABLE_COLUMNS sortable flag: subtitle/paths excluded.
+        !matches!(self, ProfileColId::Subtitle | ProfileColId::Paths)
+    }
+
+    /// Translate a CLI alias (case-insensitive) into the corresponding column.
+    /// Accepts the headers a user actually types, not the GUI internal ids.
+    fn from_cli_alias(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "index" | "#" | "idx" => Some(ProfileColId::Index),
+            "name" => Some(ProfileColId::Name),
+            "type" | "badges" | "proto" | "protocol" => Some(ProfileColId::Badges),
+            "host" | "subtitle" => Some(ProfileColId::Subtitle),
+            "used" => Some(ProfileColId::Used),
+            "total" => Some(ProfileColId::Total),
+            "pct" | "%" | "percent" => Some(ProfileColId::Pct),
+            "path" | "paths" => Some(ProfileColId::Paths),
+            "last" | "time" => Some(ProfileColId::Time),
+            "fav" | "favorite" => Some(ProfileColId::Favorite),
+            _ => None,
+        }
+    }
+}
+
+const PROFILE_COL_ORDER: &[ProfileColId] = &[
+    ProfileColId::Index,
+    ProfileColId::Name,
+    ProfileColId::Badges,
+    ProfileColId::Subtitle,
+    ProfileColId::Used,
+    ProfileColId::Total,
+    ProfileColId::Pct,
+    ProfileColId::Paths,
+    ProfileColId::Time,
+    ProfileColId::Favorite,
+];
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum ProfileSortDir {
+    Asc,
+    Desc,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct ProfileSort {
+    col: ProfileColId,
+    dir: ProfileSortDir,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct CliThresholds {
+    warn: u32,
+    critical: u32,
+}
+
+impl Default for CliThresholds {
+    fn default() -> Self {
+        Self {
+            warn: 80,
+            critical: 95,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum Tone {
+    Critical,
+    Warn,
+    Ok,
+    Low,
+    Unknown,
+}
+
+/// Port of `getStorageTone` from `src/hooks/useStorageThresholds.tsx`.
+fn storage_tone(used: Option<u64>, total: Option<u64>, t: CliThresholds) -> (Tone, Option<f64>) {
+    let (Some(used), Some(total)) = (used, total) else {
+        return (Tone::Unknown, None);
+    };
+    if total == 0 {
+        return (Tone::Unknown, None);
+    }
+    let pct = (used as f64 / total as f64) * 100.0;
+    if pct > 100.0 {
+        return (Tone::Critical, Some(pct));
+    }
+    if pct < 5.0 {
+        return (Tone::Low, Some(pct));
+    }
+    if pct >= t.critical as f64 {
+        return (Tone::Critical, Some(pct));
+    }
+    if pct >= t.warn as f64 {
+        return (Tone::Warn, Some(pct));
+    }
+    (Tone::Ok, Some(pct))
+}
+
+fn paint_tone(text: &str, tone: Tone, color_on: bool) -> String {
+    if !color_on {
+        return text.to_string();
+    }
+    let code = match tone {
+        Tone::Critical => "\x1b[31m",
+        Tone::Warn => "\x1b[33m",
+        Tone::Ok => "\x1b[32m",
+        Tone::Low => "\x1b[90m",
+        Tone::Unknown => "\x1b[90m",
+    };
+    format!("{}{}\x1b[0m", code, text)
+}
+
+fn paint_bold(text: &str, color_on: bool) -> String {
+    if !color_on {
+        return text.to_string();
+    }
+    format!("\x1b[1m{}\x1b[22m", text)
+}
+
+fn paint_dim(text: &str, color_on: bool) -> String {
+    if !color_on {
+        return text.to_string();
+    }
+    format!("\x1b[2m{}\x1b[22m", text)
+}
+
+/// Mirrors `getProtocolClass` from `src/types.ts`.
+fn protocol_class(proto: &str) -> &'static str {
+    match proto {
+        "googledrive" | "googlephotos" | "dropbox" | "onedrive" | "box" | "pcloud"
+        | "zohoworkdrive" | "yandexdisk" | "fourshared" => "OAuth",
+        "aerocloud" => "AeroCloud",
+        "filen" | "internxt" | "mega" => "E2E",
+        "webdav" => "WebDAV",
+        "ftps" => "FTPS",
+        "ftp" => "FTP",
+        "sftp" => "SFTP",
+        "s3" => "S3",
+        "azure" => "Azure",
+        // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu,
+        // GitHub, GitLab, Swift, Immich, Backblaze, ...)
+        _ => "API",
+    }
+}
+
+/// Mirrors `getE2EBits`. Returns the raw bits for the badge label suffix.
+fn e2e_bits(proto: &str) -> Option<u16> {
+    match proto {
+        "mega" => Some(128),
+        "filen" | "internxt" => Some(256),
+        _ => None,
+    }
+}
+
+/// Render the protocol class label exactly as the GUI table shows it for sort
+/// purposes (Type column). Matches `badgeSortLabel` in `MyServersTable.tsx`.
+fn badge_sort_label(profile: &serde_json::Value) -> String {
+    let proto = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ftp");
+    let provider_id = profile
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let class = protocol_class(proto);
+    if provider_id == "felicloud" {
+        return "API OCS".to_string();
+    }
+    let class_part = match (class, e2e_bits(proto)) {
+        ("E2E", Some(bits)) => format!("E2E {}-bit", bits),
+        (other, _) => other.to_string(),
+    };
+    let trailing = if !provider_id.is_empty() {
+        provider_id
+    } else {
+        proto
+    };
+    format!("{} {}", class_part, trailing)
+}
+
+/// Short label for the rendered Type cell (no extra suffix; just the class
+/// plus optional E2E bits — keeps the column narrow).
+fn badge_display_label(profile: &serde_json::Value) -> String {
+    let proto = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ftp");
+    match (protocol_class(proto), e2e_bits(proto)) {
+        ("E2E", Some(bits)) => format!("E2E{}", bits),
+        (other, _) => other.to_string(),
+    }
+}
+
+fn looks_like_opaque_token(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    if s.len() > 40 && !s.contains('@') && !s.contains(' ') {
+        return true;
+    }
+    if s.len() >= 32 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+        return true;
+    }
+    if s.len() >= 36 && !s.contains('@') && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return true;
+    }
+    false
+}
+
+fn is_default_port(proto: &str, port: u64) -> bool {
+    matches!(
+        (proto, port),
+        ("ftp", 21) | ("ftps", 21) | ("sftp", 22) | ("webdav", 443) | ("webdav", 80) | (_, 0)
+    ) || matches!(port, 21 | 22 | 80 | 443)
+}
+
+/// Port of `getServerSubtitle` from `src/utils/serverSubtitle.ts` (no masking).
+fn host_subtitle(profile: &serde_json::Value) -> String {
+    let proto = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("ftp");
+    let host = profile
+        .get("host")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let port = profile.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
+    let username = profile
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let port_suffix = if !is_default_port(proto, port) {
+        format!(":{}", port)
+    } else {
+        String::new()
+    };
+
+    let hostname_protocols = ["ftp", "ftps", "sftp", "webdav"];
+    if hostname_protocols.contains(&proto) {
+        if host.is_empty() {
+            return String::new();
+        }
+        return format!("{}{}", host, port_suffix);
+    }
+
+    let oauth_protocols = [
+        "googledrive",
+        "googlephotos",
+        "dropbox",
+        "onedrive",
+        "box",
+        "pcloud",
+        "zohoworkdrive",
+        "yandexdisk",
+        "fourshared",
+    ];
+    let opaque_token_protocols = [
+        "jottacloud",
+        "kdrive",
+        "drime",
+        "filelu",
+        "internxt",
+        "koofr",
+        "opendrive",
+        "yandexdisk",
+    ];
+
+    if oauth_protocols.contains(&proto) || opaque_token_protocols.contains(&proto) {
+        if !username.is_empty() && !looks_like_opaque_token(username) && username.contains('@') {
+            return username.to_string();
+        }
+        return String::new();
+    }
+
+    // Other API providers: prefer username when meaningful, else host.
+    if !username.is_empty() && !looks_like_opaque_token(username) {
+        return username.to_string();
+    }
+    host.to_string()
+}
+
+/// Compact "5m / 2h / 3d / 2w" rendering. Returns `None` when the timestamp is
+/// missing or unparseable.
+fn format_time_ago(iso: &str) -> Option<String> {
+    if iso.is_empty() {
+        return None;
+    }
+    let dt = chrono::DateTime::parse_from_rfc3339(iso).ok()?;
+    let now = chrono::Utc::now();
+    let delta = now.signed_duration_since(dt.with_timezone(&chrono::Utc));
+    if delta.num_seconds() < 0 {
+        return Some("now".to_string());
+    }
+    let secs = delta.num_seconds();
+    if secs < 60 {
+        return Some("now".to_string());
+    }
+    let mins = delta.num_minutes();
+    if mins < 60 {
+        return Some(format!("{}m", mins));
+    }
+    let hrs = delta.num_hours();
+    if hrs < 24 {
+        return Some(format!("{}h", hrs));
+    }
+    let days = delta.num_days();
+    if days < 14 {
+        return Some(format!("{}d", days));
+    }
+    if days < 60 {
+        return Some(format!("{}w", days / 7));
+    }
+    if days < 365 {
+        return Some(format!("{}mo", days / 30));
+    }
+    Some(format!("{}y", days / 365))
+}
+
+fn truncate_cell(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+    let cut: String = s.chars().take(max_chars.saturating_sub(1)).collect();
+    format!("{}\u{2026}", cut)
+}
+
+#[derive(Clone, Debug, Default)]
+struct UiTableSettings {
+    thresholds: CliThresholds,
+    hidden: std::collections::HashSet<ProfileColId>,
+    sort: Option<ProfileSort>,
+}
+
+/// Read the GUI-persisted table settings from
+/// `app_settings.aeroftp_settings`. Missing or malformed fields fall back to
+/// the same defaults the GUI uses.
+fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
+    let mut out = UiTableSettings {
+        thresholds: CliThresholds::default(),
+        hidden: [ProfileColId::Paths].iter().copied().collect(),
+        sort: None,
+    };
+
+    let raw = match store.get("aeroftp_settings") {
+        Ok(s) => s,
+        Err(_) => return out,
+    };
+    let blob: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return out,
+    };
+
+    if let Some(t) = blob.get("storage_thresholds") {
+        let warn = t
+            .get("warn")
+            .and_then(|v| v.as_u64())
+            .map(|n| n.clamp(5, 99) as u32);
+        let critical = t
+            .get("critical")
+            .and_then(|v| v.as_u64())
+            .map(|n| n.clamp(5, 100) as u32);
+        if let (Some(w), Some(c)) = (warn, critical) {
+            // critical must stay strictly greater than warn (matches sanitizeThresholds)
+            let critical = if c > w { c } else { (w + 1).min(100) };
+            out.thresholds = CliThresholds { warn: w, critical };
+        }
+    }
+
+    let table = blob
+        .get("ui_settings")
+        .and_then(|v| v.get("my_servers_table"))
+        .or_else(|| blob.get("my_servers_table"));
+    let Some(table) = table else { return out };
+
+    if let Some(vis) = table.get("visibility").and_then(|v| v.as_object()) {
+        out.hidden.clear();
+        // GUI default: paths and (in compact mode) health are hidden. We never
+        // render `health`, so we only consider the data columns CLI exposes.
+        for col in PROFILE_COL_ORDER {
+            // Match GUI ids: `paths` (CLI alias `path`), `subtitle` (CLI alias
+            // `host`), `time` (CLI alias `last`), `favorite` (CLI alias `fav`).
+            // The visibility blob is keyed by the GUI ids.
+            let key = match col {
+                ProfileColId::Index => "index",
+                ProfileColId::Name => "name",
+                ProfileColId::Badges => "badges",
+                ProfileColId::Subtitle => "subtitle",
+                ProfileColId::Used => "used",
+                ProfileColId::Total => "total",
+                ProfileColId::Pct => "pct",
+                ProfileColId::Paths => "paths",
+                ProfileColId::Time => "time",
+                ProfileColId::Favorite => "favorite",
+            };
+            match vis.get(key).and_then(|v| v.as_bool()) {
+                Some(false) => {
+                    out.hidden.insert(*col);
+                }
+                Some(true) => {} // explicitly visible
+                None => {
+                    // Missing key — fall back to defaultVisibility().
+                    if matches!(col, ProfileColId::Paths) {
+                        out.hidden.insert(*col);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(sort) = table.get("sort") {
+        if !sort.is_null() {
+            let col_id = sort.get("colId").and_then(|v| v.as_str()).unwrap_or("");
+            let dir = sort.get("dir").and_then(|v| v.as_str()).unwrap_or("asc");
+            let parsed_col = match col_id {
+                "index" => Some(ProfileColId::Index),
+                "name" => Some(ProfileColId::Name),
+                "badges" => Some(ProfileColId::Badges),
+                "used" => Some(ProfileColId::Used),
+                "total" => Some(ProfileColId::Total),
+                "pct" => Some(ProfileColId::Pct),
+                "time" => Some(ProfileColId::Time),
+                "favorite" => Some(ProfileColId::Favorite),
+                _ => None,
+            };
+            let parsed_dir = match dir {
+                "desc" => ProfileSortDir::Desc,
+                _ => ProfileSortDir::Asc,
+            };
+            if let Some(c) = parsed_col {
+                if c.is_sortable() {
+                    out.sort = Some(ProfileSort {
+                        col: c,
+                        dir: parsed_dir,
+                    });
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Parse `--sort=<col>[:asc|desc]`. `manual`/`index` clears the sort (vault
+/// order). Returns `Ok(None)` for "no override", `Ok(Some(None))` for an
+/// explicit clear, `Ok(Some(Some(_)))` for a real sort, `Err` for malformed.
+#[allow(clippy::option_option)]
+fn parse_sort_override(raw: &str) -> Result<Option<Option<ProfileSort>>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower == "manual" || lower == "none" {
+        return Ok(Some(None));
+    }
+    let (col_part, dir_part) = match trimmed.split_once(':') {
+        Some((c, d)) => (c, Some(d)),
+        None => (trimmed, None),
+    };
+    let col = ProfileColId::from_cli_alias(col_part)
+        .ok_or_else(|| format!("unknown column `{}`", col_part))?;
+    if !col.is_sortable() {
+        return Err(format!("column `{}` is not sortable", col_part));
+    }
+    if matches!(col, ProfileColId::Index) {
+        return Ok(Some(None));
+    }
+    let dir = match dir_part.map(|d| d.trim().to_ascii_lowercase()).as_deref() {
+        None | Some("") | Some("asc") => ProfileSortDir::Asc,
+        Some("desc") => ProfileSortDir::Desc,
+        Some(other) => return Err(format!("invalid sort direction `{}`", other)),
+    };
+    Ok(Some(Some(ProfileSort { col, dir })))
+}
+
+fn parse_col_list(raw: &str) -> Result<Vec<ProfileColId>, String> {
+    let mut out = Vec::new();
+    for token in raw.split(',') {
+        let t = token.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let col = ProfileColId::from_cli_alias(t)
+            .ok_or_else(|| format!("unknown column `{}`", t))?;
+        out.push(col);
+    }
+    Ok(out)
+}
+
+/// Compare two profiles for the requested column. Mirrors the comparators in
+/// `MyServersTable.tsx`. Profiles without the relevant data sort first in
+/// ascending order so the populated rows form a contiguous block.
+fn compare_profiles(
+    a: &serde_json::Value,
+    b: &serde_json::Value,
+    col: ProfileColId,
+) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    fn used(p: &serde_json::Value) -> Option<u64> {
+        p.get("lastQuota")
+            .and_then(|q| q.get("used"))
+            .and_then(|v| v.as_u64())
+    }
+    fn total(p: &serde_json::Value) -> Option<u64> {
+        p.get("lastQuota")
+            .and_then(|q| q.get("total"))
+            .and_then(|v| v.as_u64())
+    }
+    fn pct(p: &serde_json::Value) -> Option<f64> {
+        let (Some(u), Some(t)) = (used(p), total(p)) else {
+            return None;
+        };
+        if t == 0 {
+            return None;
+        }
+        Some(u as f64 / t as f64)
+    }
+    fn time_ts(p: &serde_json::Value) -> Option<i64> {
+        p.get("lastConnected")
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.timestamp())
+    }
+
+    match col {
+        ProfileColId::Index => Ordering::Equal,
+        ProfileColId::Name => a
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_lowercase()
+            .cmp(
+                &b.get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_lowercase(),
+            ),
+        ProfileColId::Badges => badge_sort_label(a)
+            .to_lowercase()
+            .cmp(&badge_sort_label(b).to_lowercase()),
+        ProfileColId::Used => used(a).cmp(&used(b)),
+        ProfileColId::Total => total(a).cmp(&total(b)),
+        ProfileColId::Pct => match (pct(a), pct(b)) {
+            (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
+            (Some(_), None) => Ordering::Greater,
+            (None, Some(_)) => Ordering::Less,
+            (None, None) => Ordering::Equal,
+        },
+        ProfileColId::Time => time_ts(a).cmp(&time_ts(b)),
+        ProfileColId::Favorite => Ordering::Equal, // favorites live in localStorage, not the vault
+        ProfileColId::Subtitle | ProfileColId::Paths => Ordering::Equal,
+    }
+}
+
+fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewOverrides) -> i32 {
     let store = match open_vault(cli) {
         Ok(s) => s,
         Err(e) => {
@@ -3980,35 +4608,328 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat) -> i32 {
             serde_json::to_string_pretty(&safe).unwrap_or_default()
         );
     } else {
-        // Text: formatted table
-        println!(
-            "  {:<4} {:<30} {:<8} {:<35} Path",
-            "#", "Name", "Proto", "Host"
-        );
-        println!("  {}", "\u{2500}".repeat(90));
-        for (i, p) in profiles.iter().enumerate() {
-            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
-            let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("?");
-            let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("");
-            let port = p.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
-            let path = p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/");
-            let host_port = if port > 0 && port != 21 && port != 22 && port != 443 && port != 80 {
-                format!("{}:{}", host, port)
-            } else {
-                host.to_string()
-            };
-            println!(
-                "  {:<4} {:<30} {:<8} {:<35} {}",
-                i + 1,
-                name,
-                proto.to_uppercase(),
-                host_port,
-                path
-            );
+        return render_profiles_text(&store, profiles, &overrides);
+    }
+
+    0
+}
+
+fn render_profiles_text(
+    store: &CredentialStore,
+    profiles: Vec<serde_json::Value>,
+    overrides: &ProfilesViewOverrides,
+) -> i32 {
+    let color_on = use_color();
+    let mut settings = read_ui_table_settings(store);
+
+    // Apply --hide / --show overrides for this run only.
+    match overrides.hide.as_deref().map(parse_col_list) {
+        Some(Ok(cols)) => {
+            for c in cols {
+                settings.hidden.insert(c);
+            }
         }
+        Some(Err(e)) => {
+            eprintln!("Warning: invalid --hide value ({}). Ignored.", e);
+        }
+        None => {}
+    }
+    match overrides.show.as_deref().map(parse_col_list) {
+        Some(Ok(cols)) => {
+            for c in cols {
+                settings.hidden.remove(&c);
+            }
+        }
+        Some(Err(e)) => {
+            eprintln!("Warning: invalid --show value ({}). Ignored.", e);
+        }
+        None => {}
+    }
+
+    // Apply --sort override.
+    if let Some(raw) = overrides.sort.as_deref() {
+        match parse_sort_override(raw) {
+            Ok(Some(opt)) => settings.sort = opt,
+            Ok(None) => {} // empty string — leave vault sort
+            Err(e) => {
+                eprintln!(
+                    "Warning: invalid --sort value ({}). Falling back to vault sort.",
+                    e
+                );
+            }
+        }
+    }
+
+    // Apply sort. Stable so equal keys keep the vault order.
+    let mut sorted: Vec<(usize, serde_json::Value)> =
+        profiles.into_iter().enumerate().collect();
+    if let Some(sort) = settings.sort {
+        sorted.sort_by(|a, b| {
+            let ord = compare_profiles(&a.1, &b.1, sort.col);
+            let ord = if matches!(sort.dir, ProfileSortDir::Desc) {
+                ord.reverse()
+            } else {
+                ord
+            };
+            ord.then_with(|| a.0.cmp(&b.0))
+        });
+    }
+
+    // Visible columns in the canonical order.
+    let visible: Vec<ProfileColId> = PROFILE_COL_ORDER
+        .iter()
+        .copied()
+        .filter(|c| !settings.hidden.contains(c))
+        .collect();
+    if visible.is_empty() {
+        eprintln!("Warning: all columns hidden. Showing Name as fallback.");
+    }
+    let visible: Vec<ProfileColId> = if visible.is_empty() {
+        vec![ProfileColId::Name]
+    } else {
+        visible
+    };
+
+    // Compute column widths in chars. Index uses the row count, percent and
+    // bytes have fixed widths, name/host/path are capped to keep wide tables
+    // readable on standard terminals.
+    let row_count = sorted.len();
+    let index_width = ((row_count.max(1) as f64).log10().floor() as usize) + 1;
+    let index_width = index_width.max(1);
+
+    let name_width = sorted
+        .iter()
+        .map(|(_, p)| {
+            p.get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count().min(30))
+                .unwrap_or(7)
+        })
+        .max()
+        .unwrap_or(7)
+        .max(4);
+
+    let badge_width = sorted
+        .iter()
+        .map(|(_, p)| badge_display_label(p).chars().count())
+        .max()
+        .unwrap_or(4)
+        .max(4);
+
+    let host_width = sorted
+        .iter()
+        .map(|(_, p)| host_subtitle(p).chars().count().min(35))
+        .max()
+        .unwrap_or(4)
+        .max(4);
+
+    let used_width = 10;
+    let total_width = 10;
+    let pct_width = 6;
+
+    let path_width = sorted
+        .iter()
+        .map(|(_, p)| {
+            p.get("initialPath")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count().min(30))
+                .unwrap_or(1)
+        })
+        .max()
+        .unwrap_or(4)
+        .max(4);
+
+    let last_width = 6;
+    let fav_width = 3;
+
+    let col_width = |c: ProfileColId| -> usize {
+        match c {
+            ProfileColId::Index => index_width.max(c.header().chars().count()),
+            ProfileColId::Name => name_width.max(c.header().chars().count()),
+            ProfileColId::Badges => badge_width.max(c.header().chars().count()),
+            ProfileColId::Subtitle => host_width.max(c.header().chars().count()),
+            ProfileColId::Used => used_width,
+            ProfileColId::Total => total_width,
+            ProfileColId::Pct => pct_width,
+            ProfileColId::Paths => path_width.max(c.header().chars().count()),
+            ProfileColId::Time => last_width,
+            ProfileColId::Favorite => fav_width,
+        }
+    };
+
+    // Header.
+    let mut header_cells = Vec::with_capacity(visible.len());
+    for c in &visible {
+        let w = col_width(*c);
+        let label = c.header();
+        let raw = match c {
+            ProfileColId::Index
+            | ProfileColId::Used
+            | ProfileColId::Total
+            | ProfileColId::Pct
+            | ProfileColId::Time => format!("{:>w$}", label, w = w),
+            ProfileColId::Favorite => format!("{:^w$}", label, w = w),
+            _ => format!("{:<w$}", label, w = w),
+        };
+        header_cells.push(paint_bold(&raw, color_on));
+    }
+    println!("  {}", header_cells.join("  "));
+
+    // Separator.
+    let total_cell_width: usize = visible.iter().map(|c| col_width(*c)).sum();
+    let total_width_with_gaps = total_cell_width + visible.len().saturating_sub(1) * 2;
+    println!(
+        "  {}",
+        paint_dim(&"\u{2500}".repeat(total_width_with_gaps), color_on)
+    );
+
+    // Rows.
+    for (display_idx, (_, p)) in sorted.iter().enumerate() {
+        let mut cells = Vec::with_capacity(visible.len());
+        for c in &visible {
+            let w = col_width(*c);
+            let cell = match c {
+                ProfileColId::Index => format!("{:>w$}", display_idx + 1, w = w),
+                ProfileColId::Name => {
+                    let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+                    let cap = name_width.max(c.header().chars().count());
+                    format!("{:<w$}", truncate_cell(name, cap), w = w)
+                }
+                ProfileColId::Badges => {
+                    let label = badge_display_label(p);
+                    format!("{:<w$}", label, w = w)
+                }
+                ProfileColId::Subtitle => {
+                    let host = host_subtitle(p);
+                    let display = if host.is_empty() { "—".to_string() } else { host };
+                    format!("{:<w$}", truncate_cell(&display, host_width.max(1)), w = w)
+                }
+                ProfileColId::Used => {
+                    let used = p
+                        .get("lastQuota")
+                        .and_then(|q| q.get("used"))
+                        .and_then(|v| v.as_u64());
+                    let s = used
+                        .map(format_size)
+                        .unwrap_or_else(|| "—".to_string());
+                    format!("{:>w$}", s, w = w)
+                }
+                ProfileColId::Total => {
+                    let total = p
+                        .get("lastQuota")
+                        .and_then(|q| q.get("total"))
+                        .and_then(|v| v.as_u64());
+                    let s = total
+                        .map(format_size)
+                        .unwrap_or_else(|| "—".to_string());
+                    format!("{:>w$}", s, w = w)
+                }
+                ProfileColId::Pct => {
+                    let used = p
+                        .get("lastQuota")
+                        .and_then(|q| q.get("used"))
+                        .and_then(|v| v.as_u64());
+                    let total = p
+                        .get("lastQuota")
+                        .and_then(|q| q.get("total"))
+                        .and_then(|v| v.as_u64());
+                    let (tone, pct) = storage_tone(used, total, settings.thresholds);
+                    let raw = match pct {
+                        Some(p) => format!("{:>5.1}%", p),
+                        None => format!("{:>6}", "—"),
+                    };
+                    let padded = format!("{:>w$}", raw, w = w);
+                    paint_tone(&padded, tone, color_on)
+                }
+                ProfileColId::Paths => {
+                    let path = p
+                        .get("initialPath")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("/");
+                    let cap = path_width.max(c.header().chars().count());
+                    format!("{:<w$}", truncate_cell(path, cap), w = w)
+                }
+                ProfileColId::Time => {
+                    let raw = p
+                        .get("lastConnected")
+                        .and_then(|v| v.as_str())
+                        .and_then(format_time_ago)
+                        .unwrap_or_else(|| "—".to_string());
+                    format!("{:>w$}", raw, w = w)
+                }
+                ProfileColId::Favorite => {
+                    // Favourites live in localStorage today, not in the vault.
+                    // Phase 4 will move them to the vault; until then, render `-`.
+                    format!("{:^w$}", "-", w = w)
+                }
+            };
+            cells.push(cell);
+        }
+        println!("  {}", cells.join("  "));
+    }
+
+    // Footer: count + summed used/total + mean utilisation.
+    let mut total_used: u128 = 0;
+    let mut total_total: u128 = 0;
+    let mut quota_count: usize = 0;
+    for (_, p) in sorted.iter() {
+        let used = p
+            .get("lastQuota")
+            .and_then(|q| q.get("used"))
+            .and_then(|v| v.as_u64());
+        let total = p
+            .get("lastQuota")
+            .and_then(|q| q.get("total"))
+            .and_then(|v| v.as_u64());
+        if let (Some(u), Some(t)) = (used, total) {
+            if t > 0 {
+                total_used += u as u128;
+                total_total += t as u128;
+                quota_count += 1;
+            }
+        }
+    }
+    let usage_label = if quota_count > 0 && total_total > 0 {
+        let mean_pct = (total_used as f64 / total_total as f64) * 100.0;
+        format!(
+            "{} / {} ({:.1}%)",
+            format_size(total_used.min(u64::MAX as u128) as u64),
+            format_size(total_total.min(u64::MAX as u128) as u64),
+            mean_pct
+        )
+    } else {
+        "—".to_string()
+    };
+    let count = sorted.len();
+    let plural = if count == 1 { "profile" } else { "profiles" };
+    println!(
+        "  {}",
+        paint_dim(
+            &"\u{2500}".repeat(total_width_with_gaps),
+            color_on
+        )
+    );
+    println!(
+        "  {}",
+        paint_bold(
+            &format!(
+                "{} {} \u{00B7} {}{}",
+                count,
+                plural,
+                usage_label,
+                if quota_count > 0 && quota_count != count {
+                    format!(" \u{00B7} {} with quota", quota_count)
+                } else {
+                    String::new()
+                }
+            ),
+            color_on,
+        )
+    );
+
+    if std::io::stderr().is_terminal() {
         eprintln!(
-            "\n{} profile(s). Use: aeroftp-cli ls --profile \"Name\" [path]",
-            profiles.len()
+            "\nTip: aeroftp-cli ls --profile \"Name\" [path]    \u{00B7}    --sort=used:desc / --hide=path,fav / --show=health"
         );
     }
 
@@ -25291,7 +26212,20 @@ async fn main() {
                 }
             }
         }
-        Commands::Profiles { _ignored: _ } => list_vault_profiles(&cli, format),
+        Commands::Profiles {
+            _ignored: _,
+            sort,
+            hide,
+            show,
+        } => list_vault_profiles(
+            &cli,
+            format,
+            ProfilesViewOverrides {
+                sort: sort.clone(),
+                hide: hide.clone(),
+                show: show.clone(),
+            },
+        ),
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentBootstrap {
             task,
@@ -25727,6 +26661,9 @@ mod tests {
             max_depth: None,
             command: Commands::Profiles {
                 _ignored: Vec::new(),
+                sort: None,
+                hide: None,
+                show: None,
             },
         }
     }
