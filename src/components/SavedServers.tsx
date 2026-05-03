@@ -145,6 +145,31 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
     const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
+    useEffect(() => {
+        const onFilenAuthVersionUpdated = (evt: Event) => {
+            const custom = evt as CustomEvent<{ profileId?: string; authVersion?: number }>;
+            const profileId = custom.detail?.profileId;
+            const authVersion = custom.detail?.authVersion;
+            if (!profileId || typeof authVersion !== 'number') return;
+
+            setServers(prev => prev.map(server => {
+                if (server.id !== profileId || server.protocol !== 'filen') return server;
+                return {
+                    ...server,
+                    options: {
+                        ...(server.options || {}),
+                        filen_auth_version: authVersion,
+                    },
+                };
+            }));
+        };
+
+        window.addEventListener('aeroftp-filen-auth-version-updated', onFilenAuthVersionUpdated as EventListener);
+        return () => {
+            window.removeEventListener('aeroftp-filen-auth-version-updated', onFilenAuthVersionUpdated as EventListener);
+        };
+    }, []);
+
     // Filter servers by search query (name, host, protocol, username)
     const SEARCH_THRESHOLD = 10;
     const showSearch = servers.length >= SEARCH_THRESHOLD;
@@ -397,6 +422,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     protocol: server.protocol,
                     displayName: server.name,
                     providerId: server.providerId,
+                    savedServerId: server.id,
                 }, server.initialPath, server.localInitialPath);
 
             } catch (e) {
@@ -456,6 +482,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     protocol: server.protocol,
                     displayName: server.name,
                     providerId: server.providerId,
+                    savedServerId: server.id,
                 }, server.initialPath, server.localInitialPath);
             } catch (e) {
                 setOauthError(e instanceof Error ? e.message : String(e));
@@ -497,7 +524,32 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 displayName: server.name,
                 options: server.options,
                 providerId: server.providerId,
+                savedServerId: server.id,
             }, server.initialPath, server.localInitialPath);
+
+            if ((server.protocol || 'ftp') === 'filen') {
+                try {
+                    const authVersion = await invoke<number | null>('filen_get_auth_version');
+                    if (typeof authVersion === 'number') {
+                        const updatedWithAuth = servers.map(s =>
+                            s.id === server.id
+                                ? {
+                                    ...s,
+                                    options: {
+                                        ...(s.options || {}),
+                                        filen_auth_version: authVersion,
+                                    },
+                                }
+                                : s
+                        );
+                        setServers(updatedWithAuth);
+                        saveServers(updatedWithAuth);
+                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedWithAuth)); } catch { /* noop */ }
+                    }
+                } catch {
+                    // best-effort badge enrichment only
+                }
+            }
         } catch {
             // Connection error handled by parent — reset loading state
         } finally {
@@ -670,6 +722,14 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                     {megaBadge && (
                                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${megaBadge.className}`}>
                                             {megaBadge.label}
+                                        </span>
+                                    )}
+                                    {server.protocol === 'filen' && typeof server.options?.filen_auth_version === 'number' && (
+                                        <span
+                                            className="text-xs px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                                            title="Detected from Filen auth/info on successful connect"
+                                        >
+                                            v{server.options.filen_auth_version}
                                         </span>
                                     )}
                                 </div>
