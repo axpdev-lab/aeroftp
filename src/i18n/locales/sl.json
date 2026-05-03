@@ -245,7 +245,9 @@
             "immichOps": "Brskanje, nalaganje, prenos, brisanje, albumi, iskanje, povezave za skupno rabo. Preimenovanje in premikanje nista podprta.",
             "generatePassword": "Ustvari geslo",
             "saveAndConnect": "Shrani in poveži",
-            "saveDisabledTotp": "Kode TOTP so za enkratno uporabo. Uporabite Shrani in poveži, da to kodo uporabite zdaj."
+            "saveDisabledTotp": "Kode TOTP so za enkratno uporabo. Uporabite Shrani in poveži, da to kodo uporabite zdaj.",
+            "generatePersonalLoginToken": "Ustvari osebni žeton za prijavo",
+            "endpointUrl": "URL končne točke"
         },
         "browser": {
             "remote": "Oddaljeno",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Koš pCloud",
             "kdriveTrashTitle": "Koš kDrive",
             "internxtTrashTitle": "Internxt Koš",
-            "azureTrashTitle": "Azure Blob Koš"
+            "azureTrashTitle": "Azure Blob Koš",
+            "lockRcloneCrypt": "Zakleni prekrivanje Rclone Crypt",
+            "unlockRcloneCrypt": "Dešifriraj kot prekrivanje Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Prenašanje...",
@@ -1399,7 +1403,6 @@
             "selectRegion": "Izberite regijo...",
             "providerDocumentation": "Dokumentacija {name}",
             "webdavExampleLabel": "Primer:",
-            "webdavBasePath": "Osnovna pot: {path}",
             "connectVia": "Poveži se z {name} prek {protocol}",
             "webdavConnectVia": "Poveži se z {name} prek WebDAV",
             "s3Endpoint": "Končna točka",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Skrij sistemski meni",
             "localOnly": "Samo lokalno",
             "showRemote": "Prikaži oddaljeno",
-            "showSystemMenu": "Prikaži sistemski meni"
+            "showSystemMenu": "Prikaži sistemski meni",
+            "aerovaultOverlayActive": "Prekrivanje vsebnika AeroVault aktivno — kliknite za odklop",
+            "aerovaultOverlayInactive": "Odpri vsebnik .aerovault kot navidezno oddaljeno ploščo. Za prekrivanje rclone-crypt uporabite desni klik na oddaljeno mapo."
         },
         "ai.agentMode.title": "Nacin agenta",
         "ai.agentMode.description": "Nadzoruje obnasanje odobritve orodij, omejitve korakov in raven avtonomije.",

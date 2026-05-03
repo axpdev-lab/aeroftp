@@ -245,7 +245,9 @@
             "immichOps": "დათვალიერება, ატვირთვა, ჩამოტვირთვა, წაშლა, ალბომები, ძიება, გაზიარების ბმულები. სახელის შეცვლა და გადატანა არ არის მხარდაჭერილი.",
             "generatePassword": "პაროლის გენერაცია",
             "saveAndConnect": "შენახვა და დაკავშირება",
-            "saveDisabledTotp": "TOTP კოდები ერთჯერადია. გამოიყენეთ „შენახვა და დაკავშირება“ ამ კოდის ახლავე გამოსაყენებლად."
+            "saveDisabledTotp": "TOTP კოდები ერთჯერადია. გამოიყენეთ „შენახვა და დაკავშირება“ ამ კოდის ახლავე გამოსაყენებლად.",
+            "generatePersonalLoginToken": "პირადი შესვლის ტოკენის გენერაცია",
+            "endpointUrl": "საბოლოო წერტილის URL"
         },
         "browser": {
             "remote": "დისტანციური",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud კალათა",
             "kdriveTrashTitle": "kDrive კალათა",
             "internxtTrashTitle": "Internxt ნაგავი",
-            "azureTrashTitle": "Azure Blob ნაგავი"
+            "azureTrashTitle": "Azure Blob ნაგავი",
+            "lockRcloneCrypt": "Rclone Crypt გადაფარვის დაბლოკვა",
+            "unlockRcloneCrypt": "Rclone Crypt გადაფარვად გაშიფვრა…"
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "აირჩიეთ რეგიონი...",
             "providerDocumentation": "{name} დოკუმენტაცია",
             "webdavExampleLabel": "მაგალითი:",
-            "webdavBasePath": "საბაზისო ბილიკი: {path}",
             "connectVia": "{protocol}-ით {name}-თან დაკავშირება",
             "webdavConnectVia": "WebDAV-ით {name}-თან დაკავშირება",
             "s3Endpoint": "Endpoint",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "სისტემის მენიუს ზოლის დამალვა",
             "localOnly": "მხოლოდ ლოკალური",
             "showRemote": "დისტანციურის ჩვენება",
-            "showSystemMenu": "სისტემის მენიუს ზოლის ჩვენება"
+            "showSystemMenu": "სისტემის მენიუს ზოლის ჩვენება",
+            "aerovaultOverlayActive": "AeroVault კონტეინერის გადაფარვა აქტიურია — დააწკაპუნეთ გათიშვისთვის",
+            "aerovaultOverlayInactive": "გახსენით .aerovault კონტეინერი როგორც ვირტუალური დისტანციური პანელი. rclone-crypt გადაფარვისთვის გამოიყენეთ მარჯვენა დაწკაპება დისტანციურ საქაღალდეზე."
         },
         "ai.agentMode.title": "აგენტის რეჟიმი",
         "ai.agentMode.description": "აკონტროლებს ხელსაწყოების დამტკიცების ქცევას, ნაბიჯების ლიმიტს და ავტონომიის დონეს.",

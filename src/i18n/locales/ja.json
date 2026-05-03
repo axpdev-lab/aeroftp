@@ -245,7 +245,9 @@
             "immichOps": "閲覧、アップロード、ダウンロード、削除、アルバム、検索、共有リンク。名前の変更と移動はサポートされていません。",
             "generatePassword": "パスワードを生成",
             "saveAndConnect": "保存して接続",
-            "saveDisabledTotp": "TOTPコードは1回限り有効です。このコードを今すぐ適用するには「保存して接続」を使用してください。"
+            "saveDisabledTotp": "TOTPコードは1回限り有効です。このコードを今すぐ適用するには「保存して接続」を使用してください。",
+            "generatePersonalLoginToken": "パーソナルログイントークンを生成",
+            "endpointUrl": "エンドポイントURL"
         },
         "browser": {
             "remote": "リモート",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud ゴミ箱",
             "kdriveTrashTitle": "kDrive ゴミ箱",
             "internxtTrashTitle": "Internxt ゴミ箱",
-            "azureTrashTitle": "Azure Blob ゴミ箱"
+            "azureTrashTitle": "Azure Blob ゴミ箱",
+            "lockRcloneCrypt": "Rclone Crypt オーバーレイをロック",
+            "unlockRcloneCrypt": "Rclone Crypt オーバーレイとして復号…"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "リージョンを選択...",
             "providerDocumentation": "{name} のドキュメント",
             "webdavExampleLabel": "例:",
-            "webdavBasePath": "ベースパス: {path}",
             "connectVia": "{protocol}で{name}に接続",
             "webdavConnectVia": "WebDAVで{name}に接続",
             "s3Endpoint": "エンドポイント",
@@ -3447,7 +3450,9 @@
             "hideSystemMenu": "システムメニューバーを非表示",
             "localOnly": "ローカルのみ",
             "showRemote": "リモートを表示",
-            "showSystemMenu": "システムメニューバーを表示"
+            "showSystemMenu": "システムメニューバーを表示",
+            "aerovaultOverlayActive": "AeroVault コンテナオーバーレイが有効 — クリックして切り離す",
+            "aerovaultOverlayInactive": ".aerovault コンテナを仮想リモートパネルとして開きます。rclone-crypt オーバーレイにはリモートフォルダで右クリックを使用してください。"
         },
         "masterPassword": {
             "autoLockTimeout": "自動ロックタイムアウト",

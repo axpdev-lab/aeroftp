@@ -245,7 +245,9 @@
             "immichOps": "เรียกดู อัปโหลด ดาวน์โหลด ลบ อัลบั้ม ค้นหา ลิงก์แชร์ ไม่รองรับการเปลี่ยนชื่อและย้าย",
             "generatePassword": "สร้างรหัสผ่าน",
             "saveAndConnect": "บันทึกและเชื่อมต่อ",
-            "saveDisabledTotp": "รหัส TOTP ใช้ได้ครั้งเดียว ใช้ บันทึกและเชื่อมต่อ เพื่อใช้รหัสนี้ตอนนี้"
+            "saveDisabledTotp": "รหัส TOTP ใช้ได้ครั้งเดียว ใช้ บันทึกและเชื่อมต่อ เพื่อใช้รหัสนี้ตอนนี้",
+            "generatePersonalLoginToken": "สร้างโทเค็นการเข้าสู่ระบบส่วนตัว",
+            "endpointUrl": "URL ปลายทาง"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "ถังขยะ pCloud",
             "kdriveTrashTitle": "ถังขยะ kDrive",
             "internxtTrashTitle": "Internxt ถังขยะ",
-            "azureTrashTitle": "Azure Blob ถังขยะ"
+            "azureTrashTitle": "Azure Blob ถังขยะ",
+            "lockRcloneCrypt": "ล็อกการซ้อนทับ Rclone Crypt",
+            "unlockRcloneCrypt": "ถอดรหัสเป็นการซ้อนทับ Rclone Crypt…"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "เลือกภูมิภาค...",
             "providerDocumentation": "เอกสาร {name}",
             "webdavExampleLabel": "ตัวอย่าง:",
-            "webdavBasePath": "เส้นทางฐาน: {path}",
             "connectVia": "เชื่อมต่อกับ {name} ผ่าน {protocol}",
             "webdavConnectVia": "เชื่อมต่อกับ {name} ผ่าน WebDAV",
             "s3Endpoint": "ปลายทาง",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "ซ่อนแถบเมนูระบบ",
             "localOnly": "เฉพาะในเครื่อง",
             "showRemote": "แสดงระยะไกล",
-            "showSystemMenu": "แสดงแถบเมนูระบบ"
+            "showSystemMenu": "แสดงแถบเมนูระบบ",
+            "aerovaultOverlayActive": "การซ้อนทับคอนเทนเนอร์ AeroVault ใช้งานอยู่ — คลิกเพื่อยกเลิก",
+            "aerovaultOverlayInactive": "เปิดคอนเทนเนอร์ .aerovault เป็นแผงรีโมตเสมือน สำหรับการซ้อนทับ rclone-crypt ให้ใช้คลิกขวาบนโฟลเดอร์รีโมต"
         },
         "ai.agentMode.title": "โหมดเอเจนต์",
         "ai.agentMode.description": "ควบคุมพฤติกรรมการอนุมัติเครื่องมือ ขีดจำกัดขั้นตอน และระดับความเป็นอิสระ",

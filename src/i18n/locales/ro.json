@@ -245,7 +245,9 @@
             "immichOps": "Navigare, încărcare, descărcare, ștergere, albume, căutare, linkuri de partajare. Redenumirea și mutarea nu sunt acceptate.",
             "generatePassword": "Generează parolă",
             "saveAndConnect": "Salvează și conectează",
-            "saveDisabledTotp": "Codurile TOTP sunt de unică folosință. Folosiți Salvează și conectează pentru a aplica acest cod acum."
+            "saveDisabledTotp": "Codurile TOTP sunt de unică folosință. Folosiți Salvează și conectează pentru a aplica acest cod acum.",
+            "generatePersonalLoginToken": "Generează token de autentificare personal",
+            "endpointUrl": "URL endpoint"
         },
         "browser": {
             "remote": "La distanță",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Coș de gunoi pCloud",
             "kdriveTrashTitle": "Coș de gunoi kDrive",
             "internxtTrashTitle": "Internxt Coș de gunoi",
-            "azureTrashTitle": "Azure Blob Coș de gunoi"
+            "azureTrashTitle": "Azure Blob Coș de gunoi",
+            "lockRcloneCrypt": "Blochează suprapunerea Rclone Crypt",
+            "unlockRcloneCrypt": "Decriptează ca suprapunere Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -1399,7 +1403,6 @@
             "selectRegion": "Selectați regiunea...",
             "providerDocumentation": "Documentație {name}",
             "webdavExampleLabel": "Exemplu:",
-            "webdavBasePath": "Cale de bază: {path}",
             "connectVia": "Conectare la {name} prin {protocol}",
             "webdavConnectVia": "Conectare la {name} prin WebDAV",
             "s3Endpoint": "Endpoint",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Ascunde bara de meniu sistem",
             "localOnly": "Doar local",
             "showRemote": "Afișează la distanță",
-            "showSystemMenu": "Afișează bara de meniu sistem"
+            "showSystemMenu": "Afișează bara de meniu sistem",
+            "aerovaultOverlayActive": "Suprapunere container AeroVault activă — clic pentru detașare",
+            "aerovaultOverlayInactive": "Deschide un container .aerovault ca panou la distanță virtual. Pentru suprapunerea rclone-crypt, fă clic dreapta pe un folder la distanță."
         },
         "security": {
             "totp": {

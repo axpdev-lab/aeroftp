@@ -245,7 +245,9 @@
             "immichOps": "Przeglądanie, przesyłanie, pobieranie, usuwanie, albumy, wyszukiwanie, linki udostępniania. Zmiana nazwy i przenoszenie nie są obsługiwane.",
             "generatePassword": "Wygeneruj hasło",
             "saveAndConnect": "Zapisz i połącz",
-            "saveDisabledTotp": "Kody TOTP są jednorazowe. Użyj Zapisz i połącz, aby zastosować ten kod teraz."
+            "saveDisabledTotp": "Kody TOTP są jednorazowe. Użyj Zapisz i połącz, aby zastosować ten kod teraz.",
+            "generatePersonalLoginToken": "Wygeneruj osobisty token logowania",
+            "endpointUrl": "Adres URL punktu końcowego"
         },
         "browser": {
             "remote": "Zdalny",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Kosz pCloud",
             "kdriveTrashTitle": "Kosz kDrive",
             "internxtTrashTitle": "Internxt Kosz",
-            "azureTrashTitle": "Azure Blob Kosz"
+            "azureTrashTitle": "Azure Blob Kosz",
+            "lockRcloneCrypt": "Zablokuj nakładkę Rclone Crypt",
+            "unlockRcloneCrypt": "Odszyfruj jako nakładkę Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Przesyłanie...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Wybierz region...",
             "providerDocumentation": "Dokumentacja {name}",
             "webdavExampleLabel": "Przykład:",
-            "webdavBasePath": "Ścieżka bazowa: {path}",
             "connectVia": "Połącz z {name} przez {protocol}",
             "webdavConnectVia": "Połącz z {name} przez WebDAV",
             "s3Endpoint": "Punkt końcowy",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Ukryj menu systemowe",
             "localOnly": "Tylko lokalnie",
             "showRemote": "Pokaż zdalne",
-            "showSystemMenu": "Pokaż menu systemowe"
+            "showSystemMenu": "Pokaż menu systemowe",
+            "aerovaultOverlayActive": "Nakładka kontenera AeroVault aktywna — kliknij, aby odłączyć",
+            "aerovaultOverlayInactive": "Otwórz kontener .aerovault jako wirtualny panel zdalny. Dla nakładki rclone-crypt użyj prawego kliknięcia na zdalnym folderze."
         },
         "security": {
             "totp": {

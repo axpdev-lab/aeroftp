@@ -245,7 +245,9 @@
             "immichOps": "Explorar, subir, descargar, eliminar, álbumes, buscar, enlaces compartidos. No se admite renombrar ni mover.",
             "generatePassword": "Generar contraseña",
             "saveAndConnect": "Guardar y conectar",
-            "saveDisabledTotp": "Los códigos TOTP son de un solo uso. Usa Guardar y conectar para aplicar este código ahora."
+            "saveDisabledTotp": "Los códigos TOTP son de un solo uso. Usa Guardar y conectar para aplicar este código ahora.",
+            "generatePersonalLoginToken": "Generar token de inicio de sesión personal",
+            "endpointUrl": "URL del endpoint"
         },
         "browser": {
             "remote": "Remoto",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Papelera de pCloud",
             "kdriveTrashTitle": "Papelera de kDrive",
             "internxtTrashTitle": "Papelera de Internxt",
-            "azureTrashTitle": "Papelera de Azure Blob"
+            "azureTrashTitle": "Papelera de Azure Blob",
+            "lockRcloneCrypt": "Bloquear superposición Rclone Crypt",
+            "unlockRcloneCrypt": "Descifrar como superposición Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Transfiriendo...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Seleccionar región...",
             "providerDocumentation": "Documentación de {name}",
             "webdavExampleLabel": "Ejemplo:",
-            "webdavBasePath": "Ruta base: {path}",
             "connectVia": "Conectar a {name} vía {protocol}",
             "webdavConnectVia": "Conectar a {name} vía WebDAV",
             "s3Endpoint": "Endpoint",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Ocultar barra de menú del sistema",
             "localOnly": "Solo local",
             "showRemote": "Mostrar remoto",
-            "showSystemMenu": "Mostrar barra de menú del sistema"
+            "showSystemMenu": "Mostrar barra de menú del sistema",
+            "aerovaultOverlayActive": "Superposición de contenedor AeroVault activa — clic para desconectar",
+            "aerovaultOverlayInactive": "Abrir un contenedor .aerovault como panel remoto virtual. Para la superposición rclone-crypt, haz clic derecho en una carpeta remota."
         },
         "security": {
             "totp": {

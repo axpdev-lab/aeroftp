@@ -273,7 +273,9 @@
             "immichApiKeyPlaceholder": "Incolla la tua chiave API qui",
             "immichApiKeyHelp": "Genera una chiave API in Immich → User Settings → API Keys",
             "immichOps": "Sfoglia, carica, scarica, elimina, album, cerca, link di condivisione. Rinomina e sposta non supportati.",
-            "generatePassword": "Genera password"
+            "generatePassword": "Genera password",
+            "generatePersonalLoginToken": "Genera token di accesso personale",
+            "endpointUrl": "URL endpoint"
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -334,7 +336,6 @@
             "selectRegion": "Seleziona regione...",
             "providerDocumentation": "Documentazione {name}",
             "webdavExampleLabel": "Esempio:",
-            "webdavBasePath": "Percorso base: {path}",
             "connectVia": "Connetti a {name} tramite {protocol}",
             "webdavConnectVia": "Connetti a {name} via WebDAV",
             "s3Endpoint": "Endpoint",
@@ -667,7 +668,9 @@
             "pcloudTrashTitle": "Cestino pCloud",
             "kdriveTrashTitle": "Cestino kDrive",
             "internxtTrashTitle": "Cestino Internxt",
-            "azureTrashTitle": "Cestino Azure Blob"
+            "azureTrashTitle": "Cestino Azure Blob",
+            "lockRcloneCrypt": "Blocca overlay Rclone Crypt",
+            "unlockRcloneCrypt": "Decifra come overlay Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -3523,7 +3526,9 @@
             "hideSystemMenu": "Nascondi barra menu di sistema",
             "localOnly": "Solo locale",
             "showRemote": "Mostra remoto",
-            "showSystemMenu": "Mostra barra menu di sistema"
+            "showSystemMenu": "Mostra barra menu di sistema",
+            "aerovaultOverlayActive": "Overlay container AeroVault attivo — clicca per disattivare",
+            "aerovaultOverlayInactive": "Apri un container .aerovault come pannello remoto virtuale. Per l'overlay rclone-crypt usa il click destro su una cartella remota."
         },
         "security": {
             "totp": {

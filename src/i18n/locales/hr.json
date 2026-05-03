@@ -245,7 +245,9 @@
             "immichOps": "Pregledavanje, prijenos, preuzimanje, brisanje, albumi, pretraživanje, dijeljeni linkovi. Preimenovanje i premještanje nisu podržani.",
             "generatePassword": "Generiraj lozinku",
             "saveAndConnect": "Spremi i poveži",
-            "saveDisabledTotp": "TOTP kodovi su jednokratni. Koristite Spremi i poveži za primjenu ovog koda sada."
+            "saveDisabledTotp": "TOTP kodovi su jednokratni. Koristite Spremi i poveži za primjenu ovog koda sada.",
+            "generatePersonalLoginToken": "Generiraj osobni token za prijavu",
+            "endpointUrl": "URL krajnje točke"
         },
         "browser": {
             "remote": "Udaljeno",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud smeće",
             "kdriveTrashTitle": "kDrive smeće",
             "internxtTrashTitle": "Internxt smece",
-            "azureTrashTitle": "Azure Blob smece"
+            "azureTrashTitle": "Azure Blob smece",
+            "lockRcloneCrypt": "Zaključaj prekrivač Rclone Crypt",
+            "unlockRcloneCrypt": "Dešifriraj kao prekrivač Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Odaberite regiju...",
             "providerDocumentation": "{name} Dokumentacija",
             "webdavExampleLabel": "Primjer:",
-            "webdavBasePath": "Osnovni put: {path}",
             "connectVia": "Poveži se s {name} putem {protocol}",
             "webdavConnectVia": "Povežite se s {name} putem WebDAV-a",
             "s3Endpoint": "Krajnja točka",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Sakrij sistemski izbornik",
             "localOnly": "Samo lokalno",
             "showRemote": "Prikaži udaljeno",
-            "showSystemMenu": "Prikaži sistemski izbornik"
+            "showSystemMenu": "Prikaži sistemski izbornik",
+            "aerovaultOverlayActive": "Prekrivač AeroVault spremnika aktivan — kliknite za odvajanje",
+            "aerovaultOverlayInactive": "Otvori .aerovault spremnik kao virtualni udaljeni panel. Za prekrivač rclone-crypt koristite desni klik na udaljenu mapu."
         },
         "ai.agentMode.title": "Agentski nacin",
         "ai.agentMode.description": "Kontrolira ponasanje odobravanja alata, ogranicenja koraka i razinu autonomije.",

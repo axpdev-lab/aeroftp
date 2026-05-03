@@ -245,7 +245,9 @@
             "immichOps": "Դիտարկել, վերբեռնել, ներբեռնել, ջնջել, ալբոմներ, որոնել, համաօգտագործման հղմնակներ։ Վերանվանումը և տեղափոխումը չեն աջակցվում։",
             "generatePassword": "Ստեղծել գաղտնաբառ",
             "saveAndConnect": "Պահպանել և միանալ",
-            "saveDisabledTotp": "TOTP կոդերը մեկանգամյա օգտագործման են։ Օգտագործեք «Պահպանել և միանալ»՝ այս կոդն այժմ կիրառելու համար։"
+            "saveDisabledTotp": "TOTP կոդերը մեկանգամյա օգտագործման են։ Օգտագործեք «Պահպանել և միանալ»՝ այս կոդն այժմ կիրառելու համար։",
+            "generatePersonalLoginToken": "Անձնական մուտքի նշանի ստեղծում",
+            "endpointUrl": "Եզրակետի URL"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud Աղբաման",
             "kdriveTrashTitle": "kDrive Աղբաման",
             "internxtTrashTitle": "Internxt Աղբաման",
-            "azureTrashTitle": "Azure Blob Աղբաման"
+            "azureTrashTitle": "Azure Blob Աղբաման",
+            "lockRcloneCrypt": "Կողպել Rclone Crypt ծածկույթը",
+            "unlockRcloneCrypt": "Վերծանել որպես Rclone Crypt ծածկույթ…"
         },
         "transfer": {
             "transferring": "Փոխանցում...",
@@ -1391,7 +1395,6 @@
             "selectRegion": "Ընտրեք տարածաշրջան...",
             "providerDocumentation": "{name} Փաստաթղթեր",
             "webdavExampleLabel": "Օրինակ՝",
-            "webdavBasePath": "Հիմնական ուղի՝ {path}",
             "connectVia": "Միանալ {name}-ին {protocol}-ի միջոցով",
             "webdavConnectVia": "Միանալ {name}-ին WebDAV-ի միջոցով",
             "s3Endpoint": "Վերջնակետ",
@@ -3475,7 +3478,9 @@
             "hideSystemMenu": "Թաքցնել համակարգի մենյուի գոտին",
             "localOnly": "Միայն տեղական",
             "showRemote": "Ցույց տալ հեռավորը",
-            "showSystemMenu": "Ցույց տալ համակարգի մենյուի գոտին"
+            "showSystemMenu": "Ցույց տալ համակարգի մենյուի գոտին",
+            "aerovaultOverlayActive": "AeroVault կոնտեյների ծածկույթը ակտիվ է — սեղմեք անջատելու համար",
+            "aerovaultOverlayInactive": "Բացեք .aerovault կոնտեյները որպես վիրտուալ հեռակառավարման վահանակ։ rclone-crypt ծածկույթի համար օգտագործեք աջ սեղմում հեռակառավարման թղթապանակի վրա։"
         },
         "dialogs": {
             "confirmTitle": "Հաստատել",

@@ -245,7 +245,9 @@
             "immichOps": "Перегляд, завантаження, завантаження, видалення, альбоми, пошук, посилання для спільного доступу. Перейменування та переміщення не підтримуються.",
             "generatePassword": "Створити пароль",
             "saveAndConnect": "Зберегти й підключитися",
-            "saveDisabledTotp": "Коди TOTP одноразові. Натисніть «Зберегти й підключитися», щоб застосувати цей код зараз."
+            "saveDisabledTotp": "Коди TOTP одноразові. Натисніть «Зберегти й підключитися», щоб застосувати цей код зараз.",
+            "generatePersonalLoginToken": "Створити персональний токен входу",
+            "endpointUrl": "URL кінцевої точки"
         },
         "browser": {
             "remote": "Віддалений",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Кошик pCloud",
             "kdriveTrashTitle": "Кошик kDrive",
             "internxtTrashTitle": "Internxt Кошик",
-            "azureTrashTitle": "Azure Blob Кошик"
+            "azureTrashTitle": "Azure Blob Кошик",
+            "lockRcloneCrypt": "Заблокувати накладання Rclone Crypt",
+            "unlockRcloneCrypt": "Розшифрувати як накладання Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Передача...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Виберіть регіон...",
             "providerDocumentation": "Документація {name}",
             "webdavExampleLabel": "Приклад:",
-            "webdavBasePath": "Базовий шлях: {path}",
             "connectVia": "Підключитися до {name} через {protocol}",
             "webdavConnectVia": "Підключитися до {name} через WebDAV",
             "s3Endpoint": "Кінцева точка",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Приховати системне меню",
             "localOnly": "Лише локально",
             "showRemote": "Показати віддалене",
-            "showSystemMenu": "Показати системне меню"
+            "showSystemMenu": "Показати системне меню",
+            "aerovaultOverlayActive": "Накладання контейнера AeroVault активне — клацніть для від'єднання",
+            "aerovaultOverlayInactive": "Відкрити контейнер .aerovault як віртуальну віддалену панель. Для накладання rclone-crypt використовуйте правий клік на віддаленій папці."
         },
         "security": {
             "totp": {

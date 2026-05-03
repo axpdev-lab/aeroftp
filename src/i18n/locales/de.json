@@ -245,7 +245,9 @@
             "immichOps": "Durchsuchen, Hochladen, Herunterladen, Löschen, Alben, Suche, Freigabelinks. Umbenennen und Verschieben werden nicht unterstützt.",
             "generatePassword": "Passwort generieren",
             "saveAndConnect": "Speichern & Verbinden",
-            "saveDisabledTotp": "TOTP-Codes sind einmalig gültig. Nutzen Sie „Speichern & Verbinden“, um diesen Code jetzt anzuwenden."
+            "saveDisabledTotp": "TOTP-Codes sind einmalig gültig. Nutzen Sie „Speichern & Verbinden“, um diesen Code jetzt anzuwenden.",
+            "generatePersonalLoginToken": "Persönliches Anmelde-Token generieren",
+            "endpointUrl": "Endpunkt-URL"
         },
         "browser": {
             "remote": "Remote",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud Papierkorb",
             "kdriveTrashTitle": "kDrive Papierkorb",
             "internxtTrashTitle": "Internxt Papierkorb",
-            "azureTrashTitle": "Azure Blob Papierkorb"
+            "azureTrashTitle": "Azure Blob Papierkorb",
+            "lockRcloneCrypt": "Rclone-Crypt-Overlay sperren",
+            "unlockRcloneCrypt": "Als Rclone-Crypt-Overlay entschlüsseln…"
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Region auswählen...",
             "providerDocumentation": "{name}-Dokumentation",
             "webdavExampleLabel": "Beispiel:",
-            "webdavBasePath": "Basispfad: {path}",
             "connectVia": "Mit {name} über {protocol} verbinden",
             "webdavConnectVia": "Mit {name} über WebDAV verbinden",
             "s3Endpoint": "Endpunkt",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Systemmenüleiste ausblenden",
             "localOnly": "Nur lokal",
             "showRemote": "Remote anzeigen",
-            "showSystemMenu": "Systemmenüleiste anzeigen"
+            "showSystemMenu": "Systemmenüleiste anzeigen",
+            "aerovaultOverlayActive": "AeroVault-Container-Overlay aktiv — klicken zum Trennen",
+            "aerovaultOverlayInactive": "Einen .aerovault-Container als virtuelles Remote-Panel öffnen. Für Rclone-Crypt-Overlay Rechtsklick auf einen Remote-Ordner verwenden."
         },
         "security": {
             "totp": {

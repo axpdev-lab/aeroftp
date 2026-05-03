@@ -245,7 +245,9 @@
             "immichOps": "Bladeren, uploaden, downloaden, verwijderen, albums, zoeken, deellinks. Hernoemen en verplaatsen worden niet ondersteund.",
             "generatePassword": "Wachtwoord genereren",
             "saveAndConnect": "Opslaan en verbinden",
-            "saveDisabledTotp": "TOTP-codes zijn eenmalig bruikbaar. Gebruik Opslaan en verbinden om deze code nu toe te passen."
+            "saveDisabledTotp": "TOTP-codes zijn eenmalig bruikbaar. Gebruik Opslaan en verbinden om deze code nu toe te passen.",
+            "generatePersonalLoginToken": "Persoonlijk login-token genereren",
+            "endpointUrl": "Endpoint-URL"
         },
         "browser": {
             "remote": "Extern",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud prullenbak",
             "kdriveTrashTitle": "kDrive prullenbak",
             "internxtTrashTitle": "Internxt prullenbak",
-            "azureTrashTitle": "Azure Blob prullenbak"
+            "azureTrashTitle": "Azure Blob prullenbak",
+            "lockRcloneCrypt": "Rclone Crypt-overlay vergrendelen",
+            "unlockRcloneCrypt": "Ontsleutelen als Rclone Crypt-overlay…"
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Regio selecteren...",
             "providerDocumentation": "{name}-documentatie",
             "webdavExampleLabel": "Voorbeeld:",
-            "webdavBasePath": "Basispad: {path}",
             "connectVia": "Verbinden met {name} via {protocol}",
             "webdavConnectVia": "Verbinden met {name} via WebDAV",
             "s3Endpoint": "Endpoint",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Systeemmenubalk verbergen",
             "localOnly": "Alleen lokaal",
             "showRemote": "Externe weergeven",
-            "showSystemMenu": "Systeemmenubalk weergeven"
+            "showSystemMenu": "Systeemmenubalk weergeven",
+            "aerovaultOverlayActive": "AeroVault-container-overlay actief — klik om los te koppelen",
+            "aerovaultOverlayInactive": "Open een .aerovault-container als virtueel extern paneel. Gebruik voor rclone-crypt-overlay rechts klikken op een externe map."
         },
         "security": {
             "totp": {

@@ -245,7 +245,9 @@
             "immichOps": "Обзор, загрузка, скачивание, удаление, альбомы, поиск, ссылки для обмена. Переименование и перемещение не поддерживаются.",
             "generatePassword": "Сгенерировать пароль",
             "saveAndConnect": "Сохранить и подключиться",
-            "saveDisabledTotp": "Коды TOTP одноразовые. Используйте «Сохранить и подключиться», чтобы применить этот код сейчас."
+            "saveDisabledTotp": "Коды TOTP одноразовые. Используйте «Сохранить и подключиться», чтобы применить этот код сейчас.",
+            "generatePersonalLoginToken": "Создать персональный токен входа",
+            "endpointUrl": "URL конечной точки"
         },
         "browser": {
             "remote": "Удалённый",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Корзина pCloud",
             "kdriveTrashTitle": "Корзина kDrive",
             "internxtTrashTitle": "Internxt Корзина",
-            "azureTrashTitle": "Azure Blob Корзина"
+            "azureTrashTitle": "Azure Blob Корзина",
+            "lockRcloneCrypt": "Заблокировать наложение Rclone Crypt",
+            "unlockRcloneCrypt": "Расшифровать как наложение Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Передача...",
@@ -1399,7 +1403,6 @@
             "selectRegion": "Выберите регион...",
             "providerDocumentation": "Документация {name}",
             "webdavExampleLabel": "Пример:",
-            "webdavBasePath": "Базовый путь: {path}",
             "connectVia": "Подключиться к {name} через {protocol}",
             "webdavConnectVia": "Подключиться к {name} через WebDAV",
             "s3Endpoint": "Конечная точка",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Скрыть системное меню",
             "localOnly": "Только локально",
             "showRemote": "Показать удаленное",
-            "showSystemMenu": "Показать системное меню"
+            "showSystemMenu": "Показать системное меню",
+            "aerovaultOverlayActive": "Наложение контейнера AeroVault активно — нажмите, чтобы отключить",
+            "aerovaultOverlayInactive": "Открыть контейнер .aerovault как виртуальную удалённую панель. Для наложения rclone-crypt используйте правый клик по удалённой папке."
         },
         "security": {
             "totp": {

@@ -245,7 +245,9 @@
             "immichOps": "Περιήγηση, μεταφόρτωση, λήψη, διαγραφή, άλμπουμ, αναζήτηση, σύνδεσμοι κοινής χρήσης. Η μετονομασία και η μετακίνηση δεν υποστηρίζονται.",
             "generatePassword": "Δημιουργία κωδικού",
             "saveAndConnect": "Αποθήκευση και σύνδεση",
-            "saveDisabledTotp": "Οι κωδικοί TOTP είναι μίας χρήσης. Χρησιμοποιήστε «Αποθήκευση και σύνδεση» για να εφαρμόσετε αυτόν τον κωδικό τώρα."
+            "saveDisabledTotp": "Οι κωδικοί TOTP είναι μίας χρήσης. Χρησιμοποιήστε «Αποθήκευση και σύνδεση» για να εφαρμόσετε αυτόν τον κωδικό τώρα.",
+            "generatePersonalLoginToken": "Δημιουργία προσωπικού διακριτικού σύνδεσης",
+            "endpointUrl": "URL τελικού σημείου"
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Κάδος pCloud",
             "kdriveTrashTitle": "Κάδος kDrive",
             "internxtTrashTitle": "Κάδος Internxt",
-            "azureTrashTitle": "Κάδος Azure Blob"
+            "azureTrashTitle": "Κάδος Azure Blob",
+            "lockRcloneCrypt": "Κλείδωμα επικάλυψης Rclone Crypt",
+            "unlockRcloneCrypt": "Αποκρυπτογράφηση ως επικάλυψη Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Μεταφορά...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Επιλέξτε περιοχή...",
             "providerDocumentation": "Τεκμηρίωση {name}",
             "webdavExampleLabel": "Παράδειγμα:",
-            "webdavBasePath": "Βασική διαδρομή: {path}",
             "connectVia": "Σύνδεση στο {name} μέσω {protocol}",
             "webdavConnectVia": "Σύνδεση στο {name} μέσω WebDAV",
             "s3Endpoint": "Τελικό Σημείο",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Απόκρυψη γραμμής μενού συστήματος",
             "localOnly": "Μόνο τοπικά",
             "showRemote": "Εμφάνιση απομακρυσμένου",
-            "showSystemMenu": "Εμφάνιση γραμμής μενού συστήματος"
+            "showSystemMenu": "Εμφάνιση γραμμής μενού συστήματος",
+            "aerovaultOverlayActive": "Επικάλυψη κοντέινερ AeroVault ενεργή — κάντε κλικ για αποσύνδεση",
+            "aerovaultOverlayInactive": "Ανοίξτε ένα κοντέινερ .aerovault ως εικονικό απομακρυσμένο πάνελ. Για την επικάλυψη rclone-crypt χρησιμοποιήστε δεξί κλικ σε απομακρυσμένο φάκελο."
         },
         "ai.agentMode.title": "Λειτουργία πράκτορα",
         "ai.agentMode.description": "Ελέγχει τη συμπεριφορά έγκρισης εργαλείων, τα όρια βημάτων και το επίπεδο αυτονομίας.",

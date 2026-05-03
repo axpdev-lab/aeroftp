@@ -245,7 +245,9 @@
             "immichOps": "Parcourir, envoyer, télécharger, supprimer, albums, recherche, liens de partage. Le renommage et le déplacement ne sont pas pris en charge.",
             "generatePassword": "Générer un mot de passe",
             "saveAndConnect": "Enregistrer et connecter",
-            "saveDisabledTotp": "Les codes TOTP sont à usage unique. Utilisez Enregistrer et connecter pour appliquer ce code maintenant."
+            "saveDisabledTotp": "Les codes TOTP sont à usage unique. Utilisez Enregistrer et connecter pour appliquer ce code maintenant.",
+            "generatePersonalLoginToken": "Générer un jeton de connexion personnel",
+            "endpointUrl": "URL du point de terminaison"
         },
         "browser": {
             "remote": "Distant",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Corbeille pCloud",
             "kdriveTrashTitle": "Corbeille kDrive",
             "internxtTrashTitle": "Corbeille Internxt",
-            "azureTrashTitle": "Corbeille Azure Blob"
+            "azureTrashTitle": "Corbeille Azure Blob",
+            "lockRcloneCrypt": "Verrouiller la superposition Rclone Crypt",
+            "unlockRcloneCrypt": "Déchiffrer comme superposition Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Selectionner une region...",
             "providerDocumentation": "Documentation {name}",
             "webdavExampleLabel": "Exemple :",
-            "webdavBasePath": "Chemin de base : {path}",
             "connectVia": "Se connecter a {name} via {protocol}",
             "webdavConnectVia": "Se connecter a {name} via WebDAV",
             "s3Endpoint": "Point de terminaison",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Masquer la barre de menu système",
             "localOnly": "Local uniquement",
             "showRemote": "Afficher distant",
-            "showSystemMenu": "Afficher la barre de menu système"
+            "showSystemMenu": "Afficher la barre de menu système",
+            "aerovaultOverlayActive": "Superposition de conteneur AeroVault active — cliquez pour détacher",
+            "aerovaultOverlayInactive": "Ouvrir un conteneur .aerovault comme panneau distant virtuel. Pour la superposition rclone-crypt, faites un clic droit sur un dossier distant."
         },
         "security": {
             "totp": {

@@ -245,7 +245,9 @@
             "immichOps": "Arakatu, igo, deskargatu, ezabatu, albumak, bilatu, partekatzeko estekak. Berrizendatzea eta mugitzea ez dira onartzen.",
             "generatePassword": "Sortu pasahitza",
             "saveAndConnect": "Gorde eta konektatu",
-            "saveDisabledTotp": "TOTP kodeak erabilera bakarrekoak dira. Erabili Gorde eta konektatu kode hau orain aplikatzeko."
+            "saveDisabledTotp": "TOTP kodeak erabilera bakarrekoak dira. Erabili Gorde eta konektatu kode hau orain aplikatzeko.",
+            "generatePersonalLoginToken": "Sortu saio-hasierako token pertsonala",
+            "endpointUrl": "Amaiera-puntuaren URLa"
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud zakarrontzia",
             "kdriveTrashTitle": "kDrive zakarrontzia",
             "internxtTrashTitle": "Internxt zakarrontzia",
-            "azureTrashTitle": "Azure Blob zakarrontzia"
+            "azureTrashTitle": "Azure Blob zakarrontzia",
+            "lockRcloneCrypt": "Blokeatu Rclone Crypt gainjartzea",
+            "unlockRcloneCrypt": "Deszifratu Rclone Crypt gainjartze gisa…"
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Eskualdea hautatu...",
             "providerDocumentation": "{name} dokumentazioa",
             "webdavExampleLabel": "Adibidea:",
-            "webdavBasePath": "Oinarri bidea: {path}",
             "connectVia": "{name}-(e)ra konektatu {protocol} bidez",
             "webdavConnectVia": "{name}-(e)ra konektatu WebDAV bidez",
             "s3Endpoint": "Amaiera-puntua",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Ezkutatu sistemaren menu-barra",
             "localOnly": "Tokikoa soilik",
             "showRemote": "Erakutsi urrunekoa",
-            "showSystemMenu": "Erakutsi sistemaren menu-barra"
+            "showSystemMenu": "Erakutsi sistemaren menu-barra",
+            "aerovaultOverlayActive": "AeroVault edukiontziaren gainjartzea aktibo — egin klik askatzeko",
+            "aerovaultOverlayInactive": "Ireki .aerovault edukiontzi bat urruneko panel birtual gisa. rclone-crypt gainjartzerako, egin klik eskuineko botoiarekin urruneko karpeta batean."
         },
         "ai.agentMode.title": "Agente modua",
         "ai.agentMode.description": "Tresnen onarpen portaera, urratsen mugak eta autonomia maila kontrolatzen ditu.",

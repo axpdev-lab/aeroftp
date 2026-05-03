@@ -6813,6 +6813,33 @@ interface UpdateVerificationInfo {
       }
     }
 
+    // ─── Rclone-crypt overlay (remote provider directories) ─────────────
+    // Rclone-crypt has no marker file: nomi cifrati base32, struttura per-directory.
+    // Lo offriamo su qualsiasi directory remota in connessione provider/SFTP.
+    const rcloneCryptCompatible = !!currentProtocol && usesProviderApi(currentProtocol);
+    if (rcloneCryptCompatible) {
+      if (rcloneCryptVaultId) {
+        items.push({
+          label: t('contextMenu.lockRcloneCrypt') || 'Lock Rclone Crypt overlay',
+          icon: <Shield size={14} className="text-emerald-500" />,
+          action: () => {
+            const vaultId = rcloneCryptVaultId;
+            setRcloneCryptVaultId(null);
+            void invoke('rclone_crypt_lock', { vaultId }).catch(() => { });
+            void loadRemoteFiles(undefined, true);
+          },
+          divider: true,
+        });
+      } else if (count === 1 && file.is_dir) {
+        items.push({
+          label: t('contextMenu.unlockRcloneCrypt') || 'Decrypt as Rclone Crypt overlay…',
+          icon: <Shield size={14} className="text-blue-500" />,
+          action: () => setShowRcloneCryptUnlock(true),
+          divider: true,
+        });
+      }
+    }
+
     // Ask AeroAgent
     items.push({
       label: t('contextMenu.askAeroAgent'),
@@ -7174,16 +7201,14 @@ interface UpdateVerificationInfo {
       /^(vault\.cryptomator|masterkey\.cryptomator)$/i.test(file.name);
 
     // vault.cryptomator / masterkey.cryptomator → Open as Cryptomator Vault
+    // Note: Rclone-crypt overlay does NOT belong here — it's a different format
+    // (XSalsa20-Poly1305 + EME, no marker file) and applies to remote directories.
+    // It now lives in the remote panel context menu.
     if (isCryptomatorMarker) {
       items.push({
         label: t('contextMenu.openAsCryptomator') || 'Open as Cryptomator Vault',
         icon: <Lock size={14} className="text-emerald-500" />,
         action: () => setShowCryptomatorBrowser(true),
-      });
-      items.push({
-        label: 'Decrypt as Rclone Crypt',
-        icon: <Shield size={14} className="text-blue-500" />,
-        action: () => setShowRcloneCryptUnlock(true),
       });
       items.push({
         label: 'Cross-Profile Transfer',
@@ -8868,10 +8893,12 @@ interface UpdateVerificationInfo {
                           ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
                           : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                           }`}
-                        title={aeroVaultOverlaySession ? 'Disattiva AeroVault Overlay (sessione)' : 'Attiva AeroVault Overlay'}
+                        title={aeroVaultOverlaySession
+                          ? t('toolbar.aerovaultOverlayActive') || 'AeroVault container overlay active — click to detach'
+                          : t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel. For rclone-crypt overlay use right-click on a remote folder.'}
                       >
                         <VaultIcon size={16} className={aeroVaultOverlaySession ? 'text-white' : 'text-emerald-400'} />
-                        {aeroVaultOverlaySession ? 'Vault ON' : 'Vault'}
+                        {aeroVaultOverlaySession ? 'AeroVault ON' : 'AeroVault'}
                       </button>
                       <button
                         onClick={cancelTransfer}

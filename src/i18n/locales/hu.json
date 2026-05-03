@@ -245,7 +245,9 @@
             "immichOps": "Böngészés, feltöltés, letöltés, törlés, albumok, keresés, megosztási linkek. Az átnevezés és áthelyezés nem támogatott.",
             "generatePassword": "Jelszó generálása",
             "saveAndConnect": "Mentés és csatlakozás",
-            "saveDisabledTotp": "A TOTP kódok egyszer használatosak. Használja a Mentés és csatlakozás gombot a kód azonnali alkalmazásához."
+            "saveDisabledTotp": "A TOTP kódok egyszer használatosak. Használja a Mentés és csatlakozás gombot a kód azonnali alkalmazásához.",
+            "generatePersonalLoginToken": "Személyes bejelentkezési token létrehozása",
+            "endpointUrl": "Végpont URL"
         },
         "browser": {
             "remote": "Távoli",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud szemétkosár",
             "kdriveTrashTitle": "kDrive szemétkosár",
             "internxtTrashTitle": "Internxt lomtar",
-            "azureTrashTitle": "Azure Blob lomtar"
+            "azureTrashTitle": "Azure Blob lomtar",
+            "lockRcloneCrypt": "Rclone Crypt fedőréteg zárolása",
+            "unlockRcloneCrypt": "Visszafejtés Rclone Crypt fedőrétegként…"
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Régió választása...",
             "providerDocumentation": "{name} dokumentáció",
             "webdavExampleLabel": "Példa:",
-            "webdavBasePath": "Alapútvonal: {path}",
             "connectVia": "Csatlakozás {name} szolgáltatáshoz {protocol} protokollon",
             "webdavConnectVia": "Csatlakozás a(z) {name} szolgáltatáshoz WebDAV-on",
             "s3Endpoint": "Végpont",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Rendszer menüsor elrejtése",
             "localOnly": "Csak helyi",
             "showRemote": "Távoli megjelenítése",
-            "showSystemMenu": "Rendszer menüsor megjelenítése"
+            "showSystemMenu": "Rendszer menüsor megjelenítése",
+            "aerovaultOverlayActive": "AeroVault konténer fedőréteg aktív — kattintson a leválasztáshoz",
+            "aerovaultOverlayInactive": "Nyisson meg egy .aerovault konténert virtuális távoli panelként. Az rclone-crypt fedőréteghez kattintson a jobb gombbal egy távoli mappára."
         },
         "ai.agentMode.title": "Agens mod",
         "ai.agentMode.description": "Az eszkoz-jovahagyas viselkedeset, a lepeskorlatokat es az autonomia szintjet szabalyozza.",

@@ -245,7 +245,9 @@
             "immichOps": "រុករក, ផ្ទុកឡើង, ទាញយក, លុប, អាល់ប៊ុម, ស្វែងរក, តំណចែករំលែក។ ការប្តូរឈ្មោះ និងការផ្លាស់ទីមិនត្រូវបានគាំទ្រ។",
             "generatePassword": "បង្កើតពាក្យសម្ងាត់",
             "saveAndConnect": "រក្សាទុក និងភ្ជាប់",
-            "saveDisabledTotp": "កូដ TOTP ប្រើបានតែម្តងគត់។ ប្រើ រក្សាទុក និងភ្ជាប់ ដើម្បីអនុវត្តកូដនេះឥឡូវនេះ។"
+            "saveDisabledTotp": "កូដ TOTP ប្រើបានតែម្តងគត់។ ប្រើ រក្សាទុក និងភ្ជាប់ ដើម្បីអនុវត្តកូដនេះឥឡូវនេះ។",
+            "generatePersonalLoginToken": "បង្កើតនិមិត្តសញ្ញាចូលផ្ទាល់ខ្លួន",
+            "endpointUrl": "URL ចំណុចបញ្ចប់"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud ធុងសំរាម",
             "kdriveTrashTitle": "kDrive ធុងសំរាម",
             "internxtTrashTitle": "Internxt ធុងស្ដុបស្ដាំង",
-            "azureTrashTitle": "Azure Blob ធុងស្ដុបស្ដាំង"
+            "azureTrashTitle": "Azure Blob ធុងស្ដុបស្ដាំង",
+            "lockRcloneCrypt": "ចាក់សោការត្រួតលើ Rclone Crypt",
+            "unlockRcloneCrypt": "ឌិគ្រីបជាការត្រួតលើ Rclone Crypt…"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "ជ្រើសរើសតំបន់...",
             "providerDocumentation": "ឯកសារ {name}",
             "webdavExampleLabel": "ឧទាហរណ៍:",
-            "webdavBasePath": "ផ្លូវមូលដ្ឋាន: {path}",
             "connectVia": "តភ្ជាប់ទៅ {name} តាមរយៈ {protocol}",
             "webdavConnectVia": "តភ្ជាប់ទៅ {name} តាមរយៈ WebDAV",
             "s3Endpoint": "ចំណុចបញ្ចប់",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "លាក់របារម៉ឺនុយប្រព័ន្ធ",
             "localOnly": "មូលដ្ឋានតែប៉ុណ្ណោះ",
             "showRemote": "បង្ហាញពីចម្ងាយ",
-            "showSystemMenu": "បង្ហាញរបារម៉ឺនុយប្រព័ន្ធ"
+            "showSystemMenu": "បង្ហាញរបារម៉ឺនុយប្រព័ន្ធ",
+            "aerovaultOverlayActive": "ការត្រួតលើធុង AeroVault សកម្ម — ចុចដើម្បីផ្តាច់",
+            "aerovaultOverlayInactive": "បើកធុង .aerovault ជាបន្ទះពីចម្ងាយនិម្មិត។ សម្រាប់ការត្រួតលើ rclone-crypt សូមប្រើការចុចស្តាំលើថតពីចម្ងាយ។"
         },
         "ai.agentMode.title": "ម៉ូដភ្នាក់ងារ",
         "ai.agentMode.description": "គ្រាន់គ្រងឥករណ៍វិនិច្ឆ័យឧបករណ៍ កំណត់កំណាត់ជំហាន និងកម្រិតជើងអាត់មានឥករណ៍។",

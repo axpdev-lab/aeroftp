@@ -245,7 +245,9 @@
             "immichOps": "Semak imbas, muat naik, muat turun, padam, album, cari, pautan kongsi. Namakan semula dan alih tidak disokong.",
             "generatePassword": "Jana kata laluan",
             "saveAndConnect": "Simpan & Sambung",
-            "saveDisabledTotp": "Kod TOTP adalah untuk kegunaan sekali sahaja. Gunakan Simpan & Sambung untuk menggunakan kod ini sekarang."
+            "saveDisabledTotp": "Kod TOTP adalah untuk kegunaan sekali sahaja. Gunakan Simpan & Sambung untuk menggunakan kod ini sekarang.",
+            "generatePersonalLoginToken": "Jana token log masuk peribadi",
+            "endpointUrl": "URL titik akhir"
         },
         "browser": {
             "remote": "Jauh",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Tong Sampah pCloud",
             "kdriveTrashTitle": "Tong Sampah kDrive",
             "internxtTrashTitle": "Tong Sampah Internxt",
-            "azureTrashTitle": "Tong Sampah Azure Blob"
+            "azureTrashTitle": "Tong Sampah Azure Blob",
+            "lockRcloneCrypt": "Kunci tindihan Rclone Crypt",
+            "unlockRcloneCrypt": "Nyahsulit sebagai tindihan Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Pilih rantau...",
             "providerDocumentation": "Dokumentasi {name}",
             "webdavExampleLabel": "Contoh:",
-            "webdavBasePath": "Laluan asas: {path}",
             "connectVia": "Sambung ke {name} melalui {protocol}",
             "webdavConnectVia": "Sambung ke {name} melalui WebDAV",
             "s3Endpoint": "Titik Akhir",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Sembunyikan bar menu sistem",
             "localOnly": "Tempatan sahaja",
             "showRemote": "Tunjukkan jauh",
-            "showSystemMenu": "Tunjukkan bar menu sistem"
+            "showSystemMenu": "Tunjukkan bar menu sistem",
+            "aerovaultOverlayActive": "Tindihan bekas AeroVault aktif — klik untuk tanggalkan",
+            "aerovaultOverlayInactive": "Buka bekas .aerovault sebagai panel jauh maya. Untuk tindihan rclone-crypt, gunakan klik kanan pada folder jauh."
         },
         "ai.agentMode.title": "Mod Ejen",
         "ai.agentMode.description": "Mengawal tingkah laku kelulusan alat, had langkah dan tahap autonomi.",

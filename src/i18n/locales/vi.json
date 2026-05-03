@@ -245,7 +245,9 @@
             "immichOps": "Duyệt, tải lên, tải xuống, xóa, album, tìm kiếm, liên kết chia sẻ. Không hỗ trợ đổi tên và di chuyển.",
             "generatePassword": "Tạo mật khẩu",
             "saveAndConnect": "Lưu và Kết nối",
-            "saveDisabledTotp": "Mã TOTP chỉ dùng được một lần. Hãy dùng Lưu và Kết nối để áp dụng mã này ngay bây giờ."
+            "saveDisabledTotp": "Mã TOTP chỉ dùng được một lần. Hãy dùng Lưu và Kết nối để áp dụng mã này ngay bây giờ.",
+            "generatePersonalLoginToken": "Tạo mã đăng nhập cá nhân",
+            "endpointUrl": "URL điểm cuối"
         },
         "browser": {
             "remote": "Từ xa",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Thùng rác pCloud",
             "kdriveTrashTitle": "Thùng rác kDrive",
             "internxtTrashTitle": "Internxt Thùng rác",
-            "azureTrashTitle": "Azure Blob Thùng rác"
+            "azureTrashTitle": "Azure Blob Thùng rác",
+            "lockRcloneCrypt": "Khóa lớp phủ Rclone Crypt",
+            "unlockRcloneCrypt": "Giải mã làm lớp phủ Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Chọn khu vực...",
             "providerDocumentation": "Tài liệu {name}",
             "webdavExampleLabel": "Ví dụ:",
-            "webdavBasePath": "Đường dẫn gốc: {path}",
             "connectVia": "Kết nối tới {name} qua {protocol}",
             "webdavConnectVia": "Kết nối tới {name} qua WebDAV",
             "s3Endpoint": "Điểm cuối",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Ẩn thanh menu hệ thống",
             "localOnly": "Chỉ cục bộ",
             "showRemote": "Hiện từ xa",
-            "showSystemMenu": "Hiện thanh menu hệ thống"
+            "showSystemMenu": "Hiện thanh menu hệ thống",
+            "aerovaultOverlayActive": "Lớp phủ container AeroVault đang hoạt động — bấm để tách",
+            "aerovaultOverlayInactive": "Mở container .aerovault làm bảng điều khiển từ xa ảo. Đối với lớp phủ rclone-crypt, dùng bấm chuột phải trên thư mục từ xa."
         },
         "ai.agentMode.title": "Che do Agent",
         "ai.agentMode.description": "Kiem soat hanh vi phe duyet cong cu, gioi han buoc va muc do tu chu.",

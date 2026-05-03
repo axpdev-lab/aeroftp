@@ -245,7 +245,9 @@
             "immichOps": "Sirvimine, üleslaadimine, allalaadimine, kustutamine, albumid, otsing, jagamislingid. Ümbernimetamine ja teisaldamine ei ole toetatud.",
             "generatePassword": "Genereeri parool",
             "saveAndConnect": "Salvesta ja ühenda",
-            "saveDisabledTotp": "TOTP-koodid on ühekordsed. Kasuta Salvesta ja ühenda, et see kood kohe rakendada."
+            "saveDisabledTotp": "TOTP-koodid on ühekordsed. Kasuta Salvesta ja ühenda, et see kood kohe rakendada.",
+            "generatePersonalLoginToken": "Genereeri isiklik sisselogimise tunnus",
+            "endpointUrl": "Lõpp-punkti URL"
         },
         "browser": {
             "remote": "Kaugserver",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud prügikast",
             "kdriveTrashTitle": "kDrive prügikast",
             "internxtTrashTitle": "Internxt prügikast",
-            "azureTrashTitle": "Azure Blob prügikast"
+            "azureTrashTitle": "Azure Blob prügikast",
+            "lockRcloneCrypt": "Lukusta Rclone Crypt kate",
+            "unlockRcloneCrypt": "Dekrüpteeri Rclone Crypt kattena…"
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Valige piirkond...",
             "providerDocumentation": "{name} dokumentatsioon",
             "webdavExampleLabel": "Näide:",
-            "webdavBasePath": "Baastee: {path}",
             "connectVia": "Ühendage {name}-ga läbi {protocol}",
             "webdavConnectVia": "Ühendage {name}-ga läbi WebDAV-i",
             "s3Endpoint": "Lõpp-punkt",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Peida süsteemi menüüriba",
             "localOnly": "Ainult lokaalne",
             "showRemote": "Näita kauget",
-            "showSystemMenu": "Näita süsteemi menüüriba"
+            "showSystemMenu": "Näita süsteemi menüüriba",
+            "aerovaultOverlayActive": "AeroVault konteineri kate aktiivne — klõpsake lahti ühendamiseks",
+            "aerovaultOverlayInactive": "Avage .aerovault konteiner virtuaalse kaugpaneelina. rclone-crypt katte jaoks kasutage paremklõpsu kaugkaustal."
         },
         "ai.agentMode.title": "Agendi režiim",
         "ai.agentMode.description": "Juhib tööriistade kinnitamise käitumist, sammupiiranguid ja autonoomia taset.",

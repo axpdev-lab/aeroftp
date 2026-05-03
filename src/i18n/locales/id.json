@@ -245,7 +245,9 @@
             "immichOps": "Jelajah, unggah, unduh, hapus, album, cari, tautan berbagi. Ganti nama dan pindahkan tidak didukung.",
             "generatePassword": "Buat kata sandi",
             "saveAndConnect": "Simpan & Sambungkan",
-            "saveDisabledTotp": "Kode TOTP hanya untuk sekali pakai. Gunakan Simpan & Sambungkan untuk menerapkan kode ini sekarang."
+            "saveDisabledTotp": "Kode TOTP hanya untuk sekali pakai. Gunakan Simpan & Sambungkan untuk menerapkan kode ini sekarang.",
+            "generatePersonalLoginToken": "Buat token login pribadi",
+            "endpointUrl": "URL endpoint"
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Sampah pCloud",
             "kdriveTrashTitle": "Sampah kDrive",
             "internxtTrashTitle": "Sampah Internxt",
-            "azureTrashTitle": "Sampah Azure Blob"
+            "azureTrashTitle": "Sampah Azure Blob",
+            "lockRcloneCrypt": "Kunci overlay Rclone Crypt",
+            "unlockRcloneCrypt": "Dekripsi sebagai overlay Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Pilih wilayah...",
             "providerDocumentation": "Dokumentasi {name}",
             "webdavExampleLabel": "Contoh:",
-            "webdavBasePath": "Jalur Dasar: {path}",
             "connectVia": "Hubungkan ke {name} via {protocol}",
             "webdavConnectVia": "Hubungkan ke {name} via WebDAV",
             "s3Endpoint": "Endpoint",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Sembunyikan bilah menu sistem",
             "localOnly": "Hanya lokal",
             "showRemote": "Tampilkan jarak jauh",
-            "showSystemMenu": "Tampilkan bilah menu sistem"
+            "showSystemMenu": "Tampilkan bilah menu sistem",
+            "aerovaultOverlayActive": "Overlay kontainer AeroVault aktif — klik untuk melepaskan",
+            "aerovaultOverlayInactive": "Buka kontainer .aerovault sebagai panel jarak jauh virtual. Untuk overlay rclone-crypt, gunakan klik kanan pada folder jarak jauh."
         },
         "ai.agentMode.title": "Mode Agen",
         "ai.agentMode.description": "Mengontrol perilaku persetujuan alat, batas langkah, dan tingkat otonomi.",

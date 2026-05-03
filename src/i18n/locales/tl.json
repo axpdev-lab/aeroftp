@@ -245,7 +245,9 @@
             "immichOps": "Mag-browse, mag-upload, mag-download, magtanggal, album, maghanap, mga link ng pagbabahagi. Hindi sinusuportahan ang pagpapalit ng pangalan at paglipat.",
             "generatePassword": "Bumuo ng password",
             "saveAndConnect": "I-save at Kumonekta",
-            "saveDisabledTotp": "Ang mga TOTP code ay isang beses lang magagamit. Gamitin ang I-save at Kumonekta upang ilapat ang code na ito ngayon."
+            "saveDisabledTotp": "Ang mga TOTP code ay isang beses lang magagamit. Gamitin ang I-save at Kumonekta upang ilapat ang code na ito ngayon.",
+            "generatePersonalLoginToken": "Gumawa ng personal na login token",
+            "endpointUrl": "Endpoint URL"
         },
         "browser": {
             "remote": "Remote",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Basurahan ng pCloud",
             "kdriveTrashTitle": "Basurahan ng kDrive",
             "internxtTrashTitle": "Internxt Basurahan",
-            "azureTrashTitle": "Azure Blob Basurahan"
+            "azureTrashTitle": "Azure Blob Basurahan",
+            "lockRcloneCrypt": "I-lock ang Rclone Crypt overlay",
+            "unlockRcloneCrypt": "I-decrypt bilang Rclone Crypt overlay…"
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Pumili ng rehiyon...",
             "providerDocumentation": "Dokumentasyon ng {name}",
             "webdavExampleLabel": "Halimbawa:",
-            "webdavBasePath": "Base path: {path}",
             "connectVia": "Kumonekta sa {name} sa pamamagitan ng {protocol}",
             "webdavConnectVia": "Kumonekta sa {name} sa pamamagitan ng WebDAV",
             "s3Endpoint": "Endpoint",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Itago ang system menu bar",
             "localOnly": "Lokal lamang",
             "showRemote": "Ipakita ang remote",
-            "showSystemMenu": "Ipakita ang system menu bar"
+            "showSystemMenu": "Ipakita ang system menu bar",
+            "aerovaultOverlayActive": "Aktibo ang AeroVault container overlay — mag-click upang ihiwalay",
+            "aerovaultOverlayInactive": "Buksan ang .aerovault container bilang virtual remote panel. Para sa rclone-crypt overlay, gumamit ng right-click sa remote folder."
         },
         "ai.agentMode.title": "Mode ng Ahente",
         "ai.agentMode.description": "Kinokontrol ang gawi ng pag-apruba ng mga kasangkapan, limitasyon ng mga hakbang at antas ng awtonomiya.",

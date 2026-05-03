@@ -245,7 +245,9 @@
             "immichOps": "Претраживање, отпремање, преузимање, брисање, албуми, претрага, линкови за дељење. Преименовање и премештање нису подржани.",
             "generatePassword": "Генериши лозинку",
             "saveAndConnect": "Сачувај и повежи",
-            "saveDisabledTotp": "TOTP кодови су за једнократну употребу. Користите Сачувај и повежи да бисте применили овај код сада."
+            "saveDisabledTotp": "TOTP кодови су за једнократну употребу. Користите Сачувај и повежи да бисте применили овај код сада.",
+            "generatePersonalLoginToken": "Генериши лични токен за пријаву",
+            "endpointUrl": "URL крајње тачке"
         },
         "browser": {
             "remote": "Удаљено",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud корпа",
             "kdriveTrashTitle": "kDrive корпа",
             "internxtTrashTitle": "Internxt Корпа",
-            "azureTrashTitle": "Azure Blob Корпа"
+            "azureTrashTitle": "Azure Blob Корпа",
+            "lockRcloneCrypt": "Закључај прекривач Rclone Crypt",
+            "unlockRcloneCrypt": "Дешифруј као прекривач Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Пренос...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Izaberite region...",
             "providerDocumentation": "{name} dokumentacija",
             "webdavExampleLabel": "Primer:",
-            "webdavBasePath": "Osnovna putanja: {path}",
             "connectVia": "Povežite se sa {name} preko {protocol}",
             "webdavConnectVia": "Povežite se sa {name} preko WebDAV",
             "s3Endpoint": "Krajnja tačka",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Сакриј системски мени",
             "localOnly": "Само локално",
             "showRemote": "Прикажи удаљено",
-            "showSystemMenu": "Прикажи системски мени"
+            "showSystemMenu": "Прикажи системски мени",
+            "aerovaultOverlayActive": "Прекривач AeroVault контејнера активан — кликните за откачињање",
+            "aerovaultOverlayInactive": "Отвори .aerovault контејнер као виртуелни удаљени панел. За прекривач rclone-crypt користите десни клик на удаљени фолдер."
         },
         "ai.agentMode.title": "Режим агента",
         "ai.agentMode.description": "Контролише понашање одобравања алата, ограничења корака и ниво аутономије.",

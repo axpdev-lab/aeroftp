@@ -245,7 +245,9 @@
             "immichOps": "Göz at, yükle, indir, sil, albümler, ara, paylaşım bağlantıları. Yeniden adlandırma ve taşıma desteklenmiyor.",
             "generatePassword": "Parola oluştur",
             "saveAndConnect": "Kaydet ve Bağlan",
-            "saveDisabledTotp": "TOTP kodları tek kullanımlıktır. Bu kodu şimdi uygulamak için Kaydet ve Bağlan'ı kullanın."
+            "saveDisabledTotp": "TOTP kodları tek kullanımlıktır. Bu kodu şimdi uygulamak için Kaydet ve Bağlan'ı kullanın.",
+            "generatePersonalLoginToken": "Kişisel giriş belirteci oluştur",
+            "endpointUrl": "Uç nokta URL'si"
         },
         "browser": {
             "remote": "Uzak",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud Çöp Kutusu",
             "kdriveTrashTitle": "kDrive Çöp Kutusu",
             "internxtTrashTitle": "Internxt Çöp Kutusu",
-            "azureTrashTitle": "Azure Blob Çöp Kutusu"
+            "azureTrashTitle": "Azure Blob Çöp Kutusu",
+            "lockRcloneCrypt": "Rclone Crypt katmanını kilitle",
+            "unlockRcloneCrypt": "Rclone Crypt katmanı olarak çöz…"
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Bölge seçin...",
             "providerDocumentation": "{name} Belgeleri",
             "webdavExampleLabel": "Örnek:",
-            "webdavBasePath": "Temel yol: {path}",
             "connectVia": "{protocol} ile {name} bağlantısı kur",
             "webdavConnectVia": "WebDAV ile {name} bağlantısı kur",
             "s3Endpoint": "Uç Nokta",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Sistem menü çubuğunu gizle",
             "localOnly": "Yalnızca yerel",
             "showRemote": "Uzak göster",
-            "showSystemMenu": "Sistem menü çubuğunu göster"
+            "showSystemMenu": "Sistem menü çubuğunu göster",
+            "aerovaultOverlayActive": "AeroVault konteyner katmanı etkin — ayırmak için tıklayın",
+            "aerovaultOverlayInactive": "Bir .aerovault konteynerini sanal uzak panel olarak açın. rclone-crypt katmanı için uzak bir klasöre sağ tıklayın."
         },
         "ai.agentMode.title": "Ajan Modu",
         "ai.agentMode.description": "Arac onay davranisini, adim limitlerini ve otonomi seviyesini kontrol eder.",

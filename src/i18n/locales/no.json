@@ -245,7 +245,9 @@
             "immichOps": "Bla gjennom, last opp, last ned, slett, album, søk, delingslenker. Gi nytt navn og flytt støttes ikke.",
             "generatePassword": "Generer passord",
             "saveAndConnect": "Lagre og koble til",
-            "saveDisabledTotp": "TOTP-koder er engangskoder. Bruk Lagre og koble til for å bruke denne koden nå."
+            "saveDisabledTotp": "TOTP-koder er engangskoder. Bruk Lagre og koble til for å bruke denne koden nå.",
+            "generatePersonalLoginToken": "Generer personlig pålogginstoken",
+            "endpointUrl": "Endepunkt-URL"
         },
         "browser": {
             "remote": "Ekstern",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud papirkurv",
             "kdriveTrashTitle": "kDrive papirkurv",
             "internxtTrashTitle": "Internxt papirkurv",
-            "azureTrashTitle": "Azure Blob papirkurv"
+            "azureTrashTitle": "Azure Blob papirkurv",
+            "lockRcloneCrypt": "Lås Rclone Crypt-overlegg",
+            "unlockRcloneCrypt": "Dekrypter som Rclone Crypt-overlegg…"
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Velg region...",
             "providerDocumentation": "{name}-dokumentasjon",
             "webdavExampleLabel": "Eksempel:",
-            "webdavBasePath": "Basissti: {path}",
             "connectVia": "Koble til {name} via {protocol}",
             "webdavConnectVia": "Koble til {name} via WebDAV",
             "s3Endpoint": "Endepunkt",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Skjul systemmenylinje",
             "localOnly": "Kun lokalt",
             "showRemote": "Vis ekstern",
-            "showSystemMenu": "Vis systemmenylinje"
+            "showSystemMenu": "Vis systemmenylinje",
+            "aerovaultOverlayActive": "AeroVault-container-overlegg aktivt — klikk for å koble fra",
+            "aerovaultOverlayInactive": "Åpne en .aerovault-container som virtuelt fjernpanel. Bruk høyreklikk på en fjernmappe for rclone-crypt-overlegg."
         },
         "ai.agentMode.title": "Agentmodus",
         "ai.agentMode.description": "Styrer verktoyets godkjenningsatferd, trinngrenser og autonominiva.",

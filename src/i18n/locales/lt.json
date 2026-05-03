@@ -245,7 +245,9 @@
             "immichOps": "Naršymas, įkėlimas, atsisiuntimas, trynimas, albumai, paieška, bendrinimo nuorodos. Pervadinimas ir perkėlimas nepalaikomi.",
             "generatePassword": "Generuoti slaptažodį",
             "saveAndConnect": "Įrašyti ir prisijungti",
-            "saveDisabledTotp": "TOTP kodai yra vienkartiniai. Naudokite Įrašyti ir prisijungti, kad pritaikytumėte šį kodą dabar."
+            "saveDisabledTotp": "TOTP kodai yra vienkartiniai. Naudokite Įrašyti ir prisijungti, kad pritaikytumėte šį kodą dabar.",
+            "generatePersonalLoginToken": "Generuoti asmeninį prisijungimo žetoną",
+            "endpointUrl": "Galinio taško URL"
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud šiukšlinė",
             "kdriveTrashTitle": "kDrive šiukšlinė",
             "internxtTrashTitle": "Internxt šiukšliadėžė",
-            "azureTrashTitle": "Azure Blob šiukšliadėžė"
+            "azureTrashTitle": "Azure Blob šiukšliadėžė",
+            "lockRcloneCrypt": "Užrakinti Rclone Crypt sluoksnį",
+            "unlockRcloneCrypt": "Iššifruoti kaip Rclone Crypt sluoksnį…"
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Pasirinkite regioną...",
             "providerDocumentation": "{name} dokumentacija",
             "webdavExampleLabel": "Pavyzdys:",
-            "webdavBasePath": "Bazinis kelias: {path}",
             "connectVia": "Prisijungti prie {name} per {protocol}",
             "webdavConnectVia": "Prisijungti prie {name} per WebDAV",
             "s3Endpoint": "Galinis taškas",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Slėpti sistemos meniu juostą",
             "localOnly": "Tik vietinis",
             "showRemote": "Rodyti nuotolinį",
-            "showSystemMenu": "Rodyti sistemos meniu juostą"
+            "showSystemMenu": "Rodyti sistemos meniu juostą",
+            "aerovaultOverlayActive": "AeroVault konteinerio sluoksnis aktyvus — spustelėkite, kad atjungtumėte",
+            "aerovaultOverlayInactive": "Atidarykite .aerovault konteinerį kaip virtualų nuotolinį skydą. rclone-crypt sluoksniui naudokite dešinį pelės mygtuką nuotoliniame aplanke."
         },
         "ai.agentMode.title": "Agento rezimas",
         "ai.agentMode.description": "Valdo irankiu patvirtinimo elgsena, zingsniu limitus ir autonomijos lygi.",

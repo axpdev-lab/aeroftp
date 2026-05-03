@@ -245,7 +245,9 @@
             "immichOps": "탐색, 업로드, 다운로드, 삭제, 앨범, 검색, 공유 링크. 이름 바꾸기와 이동은 지원되지 않습니다.",
             "generatePassword": "비밀번호 생성",
             "saveAndConnect": "저장 및 연결",
-            "saveDisabledTotp": "TOTP 코드는 일회용입니다. 이 코드를 지금 적용하려면 저장 및 연결을 사용하세요."
+            "saveDisabledTotp": "TOTP 코드는 일회용입니다. 이 코드를 지금 적용하려면 저장 및 연결을 사용하세요.",
+            "generatePersonalLoginToken": "개인 로그인 토큰 생성",
+            "endpointUrl": "엔드포인트 URL"
         },
         "browser": {
             "remote": "원격",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud 휴지통",
             "kdriveTrashTitle": "kDrive 휴지통",
             "internxtTrashTitle": "Internxt 휴지통",
-            "azureTrashTitle": "Azure Blob 휴지통"
+            "azureTrashTitle": "Azure Blob 휴지통",
+            "lockRcloneCrypt": "Rclone Crypt 오버레이 잠금",
+            "unlockRcloneCrypt": "Rclone Crypt 오버레이로 복호화…"
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "리전 선택...",
             "providerDocumentation": "{name} 문서",
             "webdavExampleLabel": "예시:",
-            "webdavBasePath": "기본 경로: {path}",
             "connectVia": "{protocol}를 통해 {name}에 연결",
             "webdavConnectVia": "WebDAV를 통해 {name}에 연결",
             "s3Endpoint": "엔드포인트",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "시스템 메뉴바 숨기기",
             "localOnly": "로컬만",
             "showRemote": "원격 표시",
-            "showSystemMenu": "시스템 메뉴바 표시"
+            "showSystemMenu": "시스템 메뉴바 표시",
+            "aerovaultOverlayActive": "AeroVault 컨테이너 오버레이 활성 — 클릭하여 분리",
+            "aerovaultOverlayInactive": ".aerovault 컨테이너를 가상 원격 패널로 엽니다. rclone-crypt 오버레이는 원격 폴더에서 마우스 오른쪽 버튼 클릭을 사용하세요."
         },
         "security": {
             "totp": {

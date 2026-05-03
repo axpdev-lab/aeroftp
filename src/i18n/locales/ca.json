@@ -245,7 +245,9 @@
             "immichOps": "Navega, puja, baixa, elimina, àlbums, cerca, enllaços compartits. No es pot canviar el nom ni moure.",
             "generatePassword": "Generar contrasenya",
             "saveAndConnect": "Desa i connecta",
-            "saveDisabledTotp": "Els codis TOTP són d'un sol ús. Utilitzeu Desa i connecta per aplicar aquest codi ara."
+            "saveDisabledTotp": "Els codis TOTP són d'un sol ús. Utilitzeu Desa i connecta per aplicar aquest codi ara.",
+            "generatePersonalLoginToken": "Genera un testimoni d'inici de sessió personal",
+            "endpointUrl": "URL del punt de connexió"
         },
         "browser": {
             "remote": "Remot",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Paperera de pCloud",
             "kdriveTrashTitle": "Paperera de kDrive",
             "internxtTrashTitle": "Paperera d'Internxt",
-            "azureTrashTitle": "Paperera d'Azure Blob"
+            "azureTrashTitle": "Paperera d'Azure Blob",
+            "lockRcloneCrypt": "Bloqueja la superposició Rclone Crypt",
+            "unlockRcloneCrypt": "Desxifra com a superposició Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Seleccionar regió...",
             "providerDocumentation": "Documentació de {name}",
             "webdavExampleLabel": "Exemple:",
-            "webdavBasePath": "Ruta base: {path}",
             "connectVia": "Connectar a {name} via {protocol}",
             "webdavConnectVia": "Connectar a {name} via WebDAV",
             "s3Endpoint": "Punt d'accés",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Amagar barra de menú del sistema",
             "localOnly": "Només local",
             "showRemote": "Mostrar remot",
-            "showSystemMenu": "Mostrar barra de menú del sistema"
+            "showSystemMenu": "Mostrar barra de menú del sistema",
+            "aerovaultOverlayActive": "Superposició de contenidor AeroVault activa — feu clic per desconnectar",
+            "aerovaultOverlayInactive": "Obre un contenidor .aerovault com a panell remot virtual. Per a la superposició rclone-crypt, feu clic dret en una carpeta remota."
         },
         "ai.agentMode.title": "Mode d'agent",
         "ai.agentMode.description": "Controla el comportament d'aprovació d'eines, els límits de passos i el nivell d'autonomia.",

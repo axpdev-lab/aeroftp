@@ -245,7 +245,9 @@
             "immichOps": "Vafra, hlaða upp, hlaða niður, eyða, plötur, leita, deilihlekkir. Endurnefning og færsla eru ekki studd.",
             "generatePassword": "Búa til lykilorð",
             "saveAndConnect": "Vista og tengja",
-            "saveDisabledTotp": "TOTP-kóðar eru einnota. Notaðu Vista og tengja til að beita þessum kóða núna."
+            "saveDisabledTotp": "TOTP-kóðar eru einnota. Notaðu Vista og tengja til að beita þessum kóða núna.",
+            "generatePersonalLoginToken": "Búa til persónulegt innskráningartóken",
+            "endpointUrl": "Slóð endapunkts"
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud rusl",
             "kdriveTrashTitle": "kDrive rusl",
             "internxtTrashTitle": "Internxt rusl",
-            "azureTrashTitle": "Azure Blob rusl"
+            "azureTrashTitle": "Azure Blob rusl",
+            "lockRcloneCrypt": "Læsa Rclone Crypt yfirlag",
+            "unlockRcloneCrypt": "Afkóða sem Rclone Crypt yfirlag…"
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Veldu svæði...",
             "providerDocumentation": "{name} Skjöl",
             "webdavExampleLabel": "Dæmi:",
-            "webdavBasePath": "Grunnslóð: {path}",
             "connectVia": "Tengjast {name} í gegnum {protocol}",
             "webdavConnectVia": "Tengjast við {name} í gegnum WebDAV",
             "s3Endpoint": "Endapunktur",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Fela valmyndarstiku kerfis",
             "localOnly": "Aðeins staðbundið",
             "showRemote": "Sýna fjartengd",
-            "showSystemMenu": "Sýna valmyndarstiku kerfis"
+            "showSystemMenu": "Sýna valmyndarstiku kerfis",
+            "aerovaultOverlayActive": "AeroVault gáms yfirlag virkt — smelltu til að aftengja",
+            "aerovaultOverlayInactive": "Opnaðu .aerovault gám sem sýndarfjarstýriborð. Fyrir rclone-crypt yfirlag notaðu hægrismell á fjartengda möppu."
         },
         "ai.agentMode.title": "Umbodshamur",
         "ai.agentMode.description": "Stjornar hegdun verkfaerasamthykkis, skrefatakmork og sjalfraedisstig.",

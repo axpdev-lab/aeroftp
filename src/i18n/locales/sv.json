@@ -245,7 +245,9 @@
             "immichOps": "Bläddra, ladda upp, ladda ner, radera, album, sök, delningslänkar. Namnbyte och flytt stöds inte.",
             "generatePassword": "Generera lösenord",
             "saveAndConnect": "Spara och anslut",
-            "saveDisabledTotp": "TOTP-koder är engångskoder. Använd Spara och anslut för att tillämpa denna kod nu."
+            "saveDisabledTotp": "TOTP-koder är engångskoder. Använd Spara och anslut för att tillämpa denna kod nu.",
+            "generatePersonalLoginToken": "Generera personlig inloggningstoken",
+            "endpointUrl": "Endpunkt-URL"
         },
         "browser": {
             "remote": "Fjärr",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud papperskorg",
             "kdriveTrashTitle": "kDrive papperskorg",
             "internxtTrashTitle": "Internxt Papperskorgen",
-            "azureTrashTitle": "Azure Blob Papperskorgen"
+            "azureTrashTitle": "Azure Blob Papperskorgen",
+            "lockRcloneCrypt": "Lås Rclone Crypt-överlägg",
+            "unlockRcloneCrypt": "Dekryptera som Rclone Crypt-överlägg…"
         },
         "transfer": {
             "transferring": "Överför...",
@@ -1399,7 +1403,6 @@
             "selectRegion": "Välj region...",
             "providerDocumentation": "{name}-dokumentation",
             "webdavExampleLabel": "Exempel:",
-            "webdavBasePath": "Bassökväg: {path}",
             "connectVia": "Anslut till {name} via {protocol}",
             "webdavConnectVia": "Anslut till {name} via WebDAV",
             "s3Endpoint": "Slutpunkt",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Dölj systemmenyrad",
             "localOnly": "Endast lokalt",
             "showRemote": "Visa fjärr",
-            "showSystemMenu": "Visa systemmenyrad"
+            "showSystemMenu": "Visa systemmenyrad",
+            "aerovaultOverlayActive": "AeroVault-containeröverlägg aktivt — klicka för att koppla från",
+            "aerovaultOverlayInactive": "Öppna en .aerovault-container som virtuell fjärrpanel. Använd högerklick på en fjärrmapp för rclone-crypt-överlägg."
         },
         "ai.agentMode.title": "Agentlage",
         "ai.agentMode.description": "Styr godkannandebeteende for verktyg, steggranser och autonominiva.",

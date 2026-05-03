@@ -245,7 +245,9 @@
             "immichOps": "Pārlūkošana, augšupielāde, lejupielāde, dzēšana, albumi, meklēšana, kopīgošanas saites. Pārdēvēšana un pārvietošana netiek atbalstīta.",
             "generatePassword": "Ģenerēt paroli",
             "saveAndConnect": "Saglabāt un savienot",
-            "saveDisabledTotp": "TOTP kodi ir vienreizēji. Izmantojiet Saglabāt un savienot, lai lietotu šo kodu tagad."
+            "saveDisabledTotp": "TOTP kodi ir vienreizēji. Izmantojiet Saglabāt un savienot, lai lietotu šo kodu tagad.",
+            "generatePersonalLoginToken": "Ģenerēt personīgo pieteikšanās marķieri",
+            "endpointUrl": "Galapunkta URL"
         },
         "browser": {
             "remote": "Attālināts",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud atkritne",
             "kdriveTrashTitle": "kDrive atkritne",
             "internxtTrashTitle": "Internxt atkritne",
-            "azureTrashTitle": "Azure Blob atkritne"
+            "azureTrashTitle": "Azure Blob atkritne",
+            "lockRcloneCrypt": "Bloķēt Rclone Crypt pārklājumu",
+            "unlockRcloneCrypt": "Atšifrēt kā Rclone Crypt pārklājumu…"
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Izvēlieties reģionu...",
             "providerDocumentation": "{name} dokumentācija",
             "webdavExampleLabel": "Piemērs:",
-            "webdavBasePath": "Bāzes ceļš: {path}",
             "connectVia": "Pieslēgties {name} caur {protocol}",
             "webdavConnectVia": "Pieslēgties pie {name} caur WebDAV",
             "s3Endpoint": "Galapunkts",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Slēpt sistēmas izvēlnes joslu",
             "localOnly": "Tikai lokāli",
             "showRemote": "Rādīt attālināto",
-            "showSystemMenu": "Rādīt sistēmas izvēlnes joslu"
+            "showSystemMenu": "Rādīt sistēmas izvēlnes joslu",
+            "aerovaultOverlayActive": "AeroVault konteinera pārklājums aktīvs — klikšķiniet, lai atvienotu",
+            "aerovaultOverlayInactive": "Atveriet .aerovault konteineru kā virtuālu attālo paneli. rclone-crypt pārklājumam izmantojiet labo klikšķi uz attālās mapes."
         },
         "ai.agentMode.title": "Agenta rezims",
         "ai.agentMode.description": "Kontrole riku apstiprinasanas uzvedibui, solu ierobezojumiem un autonomijas limeni.",

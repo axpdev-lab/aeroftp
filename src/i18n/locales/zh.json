@@ -245,7 +245,9 @@
             "immichOps": "浏览、上传、下载、删除、相册、搜索、共享链接。不支持重命名和移动。",
             "generatePassword": "生成密码",
             "saveAndConnect": "保存并连接",
-            "saveDisabledTotp": "TOTP 验证码为一次性使用。请使用“保存并连接”立即应用此验证码。"
+            "saveDisabledTotp": "TOTP 验证码为一次性使用。请使用“保存并连接”立即应用此验证码。",
+            "generatePersonalLoginToken": "生成个人登录令牌",
+            "endpointUrl": "端点 URL"
         },
         "browser": {
             "remote": "远程",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud 回收站",
             "kdriveTrashTitle": "kDrive 回收站",
             "internxtTrashTitle": "Internxt 回收站",
-            "azureTrashTitle": "Azure Blob 回收站"
+            "azureTrashTitle": "Azure Blob 回收站",
+            "lockRcloneCrypt": "锁定 Rclone Crypt 覆盖层",
+            "unlockRcloneCrypt": "解密为 Rclone Crypt 覆盖层…"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "选择区域...",
             "providerDocumentation": "{name} 文档",
             "webdavExampleLabel": "示例：",
-            "webdavBasePath": "基本路径：{path}",
             "connectVia": "通过 {protocol} 连接到 {name}",
             "webdavConnectVia": "通过 WebDAV 连接到 {name}",
             "s3Endpoint": "端点",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "隐藏系统菜单栏",
             "localOnly": "仅本地",
             "showRemote": "显示远程",
-            "showSystemMenu": "显示系统菜单栏"
+            "showSystemMenu": "显示系统菜单栏",
+            "aerovaultOverlayActive": "AeroVault 容器覆盖层已激活 — 点击以分离",
+            "aerovaultOverlayInactive": "将 .aerovault 容器作为虚拟远程面板打开。对于 rclone-crypt 覆盖层,请在远程文件夹上右键单击。"
         },
         "security": {
             "totp": {

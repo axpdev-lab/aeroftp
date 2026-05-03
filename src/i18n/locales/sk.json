@@ -245,7 +245,9 @@
             "immichOps": "Prehľadávanie, nahrávanie, sťahovanie, mazanie, albumy, vyhľadávanie, zdieľacie odkazy. Premenovanie a presun nie sú podporované.",
             "generatePassword": "Vygenerovať heslo",
             "saveAndConnect": "Uložiť a pripojiť",
-            "saveDisabledTotp": "Kódy TOTP sú jednorazové. Použite Uložiť a pripojiť na okamžité použitie tohto kódu."
+            "saveDisabledTotp": "Kódy TOTP sú jednorazové. Použite Uložiť a pripojiť na okamžité použitie tohto kódu.",
+            "generatePersonalLoginToken": "Vygenerovať osobný prihlasovací token",
+            "endpointUrl": "URL koncového bodu"
         },
         "browser": {
             "remote": "Vzdialený",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Kôš pCloud",
             "kdriveTrashTitle": "Kôš kDrive",
             "internxtTrashTitle": "Internxt Kôš",
-            "azureTrashTitle": "Azure Blob Kôš"
+            "azureTrashTitle": "Azure Blob Kôš",
+            "lockRcloneCrypt": "Zamknúť prekrytie Rclone Crypt",
+            "unlockRcloneCrypt": "Dešifrovať ako prekrytie Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -1399,7 +1403,6 @@
             "selectRegion": "Vyberte region...",
             "providerDocumentation": "Dokumentacia {name}",
             "webdavExampleLabel": "Priklad:",
-            "webdavBasePath": "Zakladna cesta: {path}",
             "connectVia": "Pripojit sa k {name} cez {protocol}",
             "webdavConnectVia": "Pripojit sa k {name} cez WebDAV",
             "s3Endpoint": "Koncovy bod",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Skryť systémové menu",
             "localOnly": "Len lokálne",
             "showRemote": "Zobraziť vzdialené",
-            "showSystemMenu": "Zobraziť systémové menu"
+            "showSystemMenu": "Zobraziť systémové menu",
+            "aerovaultOverlayActive": "Prekrytie kontajnera AeroVault aktívne — kliknutím odpojte",
+            "aerovaultOverlayInactive": "Otvoriť kontajner .aerovault ako virtuálny vzdialený panel. Pre prekrytie rclone-crypt použite pravé kliknutie na vzdialený priečinok."
         },
         "ai.agentMode.title": "Rezim agenta",
         "ai.agentMode.description": "Ovlada spravanie schvalovania nastrojov, limity krokov a uroven autonomie.",

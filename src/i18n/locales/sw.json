@@ -245,7 +245,9 @@
             "immichOps": "Vinjari, pakia, pakua, futa, albamu, tafuta, viungo vya kushiriki. Kubadilisha jina na kuhamisha havitumiki.",
             "generatePassword": "Tengeneza nenosiri",
             "saveAndConnect": "Hifadhi na Unganisha",
-            "saveDisabledTotp": "Misimbo ya TOTP ni ya matumizi ya mara moja. Tumia Hifadhi na Unganisha kutumia msimbo huu sasa."
+            "saveDisabledTotp": "Misimbo ya TOTP ni ya matumizi ya mara moja. Tumia Hifadhi na Unganisha kutumia msimbo huu sasa.",
+            "generatePersonalLoginToken": "Tengeneza tokeni ya kuingia ya kibinafsi",
+            "endpointUrl": "URL ya mwisho"
         },
         "browser": {
             "remote": "Mbali",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Takataka ya pCloud",
             "kdriveTrashTitle": "Takataka ya kDrive",
             "internxtTrashTitle": "Internxt Tupio",
-            "azureTrashTitle": "Azure Blob Tupio"
+            "azureTrashTitle": "Azure Blob Tupio",
+            "lockRcloneCrypt": "Funga uwekeleaji wa Rclone Crypt",
+            "unlockRcloneCrypt": "Simbua kama uwekeleaji wa Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Chagua eneo...",
             "providerDocumentation": "Nyaraka za {name}",
             "webdavExampleLabel": "Mfano:",
-            "webdavBasePath": "Njia ya msingi: {path}",
             "connectVia": "Unganisha na {name} kupitia {protocol}",
             "webdavConnectVia": "Unganisha na {name} kupitia WebDAV",
             "s3Endpoint": "Mwisho",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Ficha upau wa menyu ya mfumo",
             "localOnly": "Ndani tu",
             "showRemote": "Onyesha mbali",
-            "showSystemMenu": "Onyesha upau wa menyu ya mfumo"
+            "showSystemMenu": "Onyesha upau wa menyu ya mfumo",
+            "aerovaultOverlayActive": "Uwekeleaji wa kontena la AeroVault unaendelea — bofya kutenganisha",
+            "aerovaultOverlayInactive": "Fungua kontena la .aerovault kama paneli pepe ya mbali. Kwa uwekeleaji wa rclone-crypt tumia mbofyo wa kulia kwenye folda ya mbali."
         },
         "ai.agentMode.title": "Hali ya Wakala",
         "ai.agentMode.description": "Inadhibiti tabia ya idhini ya zana, vikomo vya hatua na kiwango cha uhuru.",

@@ -245,7 +245,9 @@
             "immichOps": "ब्राउज़, अपलोड, डाउनलोड, हटाएं, एल्बम, खोज, शेयर लिंक। नाम बदलना और स्थानांतरित करना समर्थित नहीं है।",
             "generatePassword": "पासवर्ड जेनरेट करें",
             "saveAndConnect": "सहेजें और कनेक्ट करें",
-            "saveDisabledTotp": "TOTP कोड एकल-उपयोग के लिए हैं। इस कोड को अभी लागू करने के लिए सहेजें और कनेक्ट करें का उपयोग करें।"
+            "saveDisabledTotp": "TOTP कोड एकल-उपयोग के लिए हैं। इस कोड को अभी लागू करने के लिए सहेजें और कनेक्ट करें का उपयोग करें।",
+            "generatePersonalLoginToken": "व्यक्तिगत लॉगिन टोकन जनरेट करें",
+            "endpointUrl": "एंडपॉइंट URL"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud ट्रैश",
             "kdriveTrashTitle": "kDrive ट्रैश",
             "internxtTrashTitle": "Internxt ट्रैश",
-            "azureTrashTitle": "Azure Blob ट्रैश"
+            "azureTrashTitle": "Azure Blob ट्रैश",
+            "lockRcloneCrypt": "Rclone Crypt ओवरले लॉक करें",
+            "unlockRcloneCrypt": "Rclone Crypt ओवरले के रूप में डिक्रिप्ट करें…"
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "क्षेत्र चुनें...",
             "providerDocumentation": "{name} दस्तावेज़",
             "webdavExampleLabel": "उदाहरण:",
-            "webdavBasePath": "आधार पथ: {path}",
             "connectVia": "{protocol} के माध्यम से {name} से कनेक्ट करें",
             "webdavConnectVia": "WebDAV के माध्यम से {name} से कनेक्ट करें",
             "s3Endpoint": "एंडपॉइंट",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "सिस्टम मेनू बार छुपाएं",
             "localOnly": "केवल स्थानीय",
             "showRemote": "रिमोट दिखाएं",
-            "showSystemMenu": "सिस्टम मेनू बार दिखाएं"
+            "showSystemMenu": "सिस्टम मेनू बार दिखाएं",
+            "aerovaultOverlayActive": "AeroVault कंटेनर ओवरले सक्रिय — अलग करने के लिए क्लिक करें",
+            "aerovaultOverlayInactive": ".aerovault कंटेनर को वर्चुअल रिमोट पैनल के रूप में खोलें। rclone-crypt ओवरले के लिए रिमोट फ़ोल्डर पर राइट-क्लिक का उपयोग करें।"
         },
         "ai.agentMode.title": "एजेंट मोड",
         "ai.agentMode.description": "टूल अनुमोदन व्यवहार, चरण सीमाओं और स्वायत्तता स्तर को नियंत्रित करता है।",

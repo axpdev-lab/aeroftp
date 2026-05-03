@@ -245,7 +245,9 @@
             "immichOps": "Pori, uwchlwytho, lawrlwytho, dileu, albymau, chwilio, dolenni rhannu. Ni chefnogir ailenwi na symud.",
             "generatePassword": "Cynhyrchu cyfrinair",
             "saveAndConnect": "Cadw a Chysylltu",
-            "saveDisabledTotp": "Mae codau TOTP yn rhai un-defnydd. Defnyddiwch Cadw a Chysylltu i gymhwyso'r cod hwn nawr."
+            "saveDisabledTotp": "Mae codau TOTP yn rhai un-defnydd. Defnyddiwch Cadw a Chysylltu i gymhwyso'r cod hwn nawr.",
+            "generatePersonalLoginToken": "Cynhyrchu tocyn mewngofnodi personol",
+            "endpointUrl": "URL pwynt terfyn"
         },
         "browser": {
             "remote": "Pell",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "Sbwriel pCloud",
             "kdriveTrashTitle": "Sbwriel kDrive",
             "internxtTrashTitle": "Sbwriel Internxt",
-            "azureTrashTitle": "Sbwriel Azure Blob"
+            "azureTrashTitle": "Sbwriel Azure Blob",
+            "lockRcloneCrypt": "Cloi troshaen Rclone Crypt",
+            "unlockRcloneCrypt": "Dadgryptio fel troshaen Rclone Crypt…"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Dewiswch ranbarth...",
             "providerDocumentation": "Dogfennaeth {name}",
             "webdavExampleLabel": "Enghraifft:",
-            "webdavBasePath": "Llwybr sylfaenol: {path}",
             "connectVia": "Cysylltu â {name} drwy {protocol}",
             "webdavConnectVia": "Cysylltu â {name} drwy WebDAV",
             "s3Endpoint": "Pwynt Terfyn",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Cuddio bar dewislen y system",
             "localOnly": "Lleol yn unig",
             "showRemote": "Dangos pell",
-            "showSystemMenu": "Dangos bar dewislen y system"
+            "showSystemMenu": "Dangos bar dewislen y system",
+            "aerovaultOverlayActive": "Troshaen cynhwysydd AeroVault yn weithredol — cliciwch i ddatgysylltu",
+            "aerovaultOverlayInactive": "Agorwch gynhwysydd .aerovault fel panel pell rhithwir. Ar gyfer troshaen rclone-crypt, defnyddiwch glic dde ar ffolder pell."
         },
         "ai.agentMode.title": "Modd Asiant",
         "ai.agentMode.description": "Yn rheoli ymddygiad cymeradwyo offer, terfynau camau, a lefel ymreolaeth.",

@@ -245,7 +245,9 @@
             "immichOps": "ব্রাউজ, আপলোড, ডাউনলোড, মুছুন, অ্যালবাম, অনুসন্ধান, শেয়ার লিংক। রিনেম এবং মুভ সমর্থিত নয়।",
             "generatePassword": "পাসওয়ার্ড জেনারেট করুন",
             "saveAndConnect": "সংরক্ষণ করুন এবং সংযোগ করুন",
-            "saveDisabledTotp": "TOTP কোড একবার ব্যবহারযোগ্য। এই কোড এখন প্রয়োগ করতে „সংরক্ষণ করুন এবং সংযোগ করুন“ ব্যবহার করুন।"
+            "saveDisabledTotp": "TOTP কোড একবার ব্যবহারযোগ্য। এই কোড এখন প্রয়োগ করতে „সংরক্ষণ করুন এবং সংযোগ করুন“ ব্যবহার করুন।",
+            "generatePersonalLoginToken": "ব্যক্তিগত লগইন টোকেন তৈরি করুন",
+            "endpointUrl": "এন্ডপয়েন্ট URL"
         },
         "browser": {
             "remote": "রিমোট",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud ট্র্যাশ",
             "kdriveTrashTitle": "kDrive ট্র্যাশ",
             "internxtTrashTitle": "Internxt ট্র্যাশ",
-            "azureTrashTitle": "Azure Blob ট্র্যাশ"
+            "azureTrashTitle": "Azure Blob ট্র্যাশ",
+            "lockRcloneCrypt": "Rclone Crypt ওভারলে লক করুন",
+            "unlockRcloneCrypt": "Rclone Crypt ওভারলে হিসাবে ডিক্রিপ্ট করুন…"
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "অঞ্চল নির্বাচন করুন...",
             "providerDocumentation": "{name} ডকুমেন্টেশন",
             "webdavExampleLabel": "উদাহরণ:",
-            "webdavBasePath": "বেস পাথ: {path}",
             "connectVia": "{protocol} এর মাধ্যমে {name}-এ সংযোগ করুন",
             "webdavConnectVia": "WebDAV এর মাধ্যমে {name}-এ সংযোগ করুন",
             "s3Endpoint": "এন্ডপয়েন্ট",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "সিস্টেম মেনু বার লুকান",
             "localOnly": "শুধুমাত্র স্থানীয়",
             "showRemote": "দূরবর্তী দেখান",
-            "showSystemMenu": "সিস্টেম মেনু বার দেখান"
+            "showSystemMenu": "সিস্টেম মেনু বার দেখান",
+            "aerovaultOverlayActive": "AeroVault কন্টেইনার ওভারলে সক্রিয় — বিচ্ছিন্ন করতে ক্লিক করুন",
+            "aerovaultOverlayInactive": ".aerovault কন্টেইনার ভার্চুয়াল রিমোট প্যানেল হিসাবে খুলুন। rclone-crypt ওভারলের জন্য রিমোট ফোল্ডারে রাইট-ক্লিক ব্যবহার করুন।"
         },
         "ai.agentMode.title": "এজেন্ট মোড",
         "ai.agentMode.description": "টুল অনুমোদনের আচরণ, ধাপের সীমা এবং স্বায়ত্তশাসনের স্তর নিয়ন্ত্রণ করে।",

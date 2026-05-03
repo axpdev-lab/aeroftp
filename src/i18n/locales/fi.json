@@ -245,7 +245,9 @@
             "immichOps": "Selaa, lataa, lataa, poista, albumit, haku, jakolinkit. Uudelleennimeämistä ja siirtämistä ei tueta.",
             "generatePassword": "Luo salasana",
             "saveAndConnect": "Tallenna ja yhdistä",
-            "saveDisabledTotp": "TOTP-koodit ovat kertakäyttöisiä. Käytä Tallenna ja yhdistä -toimintoa ottaaksesi tämän koodin käyttöön nyt."
+            "saveDisabledTotp": "TOTP-koodit ovat kertakäyttöisiä. Käytä Tallenna ja yhdistä -toimintoa ottaaksesi tämän koodin käyttöön nyt.",
+            "generatePersonalLoginToken": "Luo henkilökohtainen kirjautumistunnus",
+            "endpointUrl": "Päätepisteen URL"
         },
         "browser": {
             "remote": "Etä",
@@ -391,7 +393,9 @@
             "pcloudTrashTitle": "pCloud roskakori",
             "kdriveTrashTitle": "kDrive roskakori",
             "internxtTrashTitle": "Internxt roskakori",
-            "azureTrashTitle": "Azure Blob roskakori"
+            "azureTrashTitle": "Azure Blob roskakori",
+            "lockRcloneCrypt": "Lukitse Rclone Crypt -peittokerros",
+            "unlockRcloneCrypt": "Pura salaus Rclone Crypt -peittokerroksena…"
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -1398,7 +1402,6 @@
             "selectRegion": "Valitse alue...",
             "providerDocumentation": "{name}-dokumentaatio",
             "webdavExampleLabel": "Esimerkki:",
-            "webdavBasePath": "Peruspolku: {path}",
             "connectVia": "Yhdistä palveluun {name} {protocol}:n kautta",
             "webdavConnectVia": "Yhdistä palveluun {name} WebDAV:n kautta",
             "s3Endpoint": "Päätepiste",
@@ -3482,7 +3485,9 @@
             "hideSystemMenu": "Piilota järjestelmävalikkorivi",
             "localOnly": "Vain paikallinen",
             "showRemote": "Näytä etä",
-            "showSystemMenu": "Näytä järjestelmävalikkorivi"
+            "showSystemMenu": "Näytä järjestelmävalikkorivi",
+            "aerovaultOverlayActive": "AeroVault-säilön peittokerros aktiivinen — irrota napsauttamalla",
+            "aerovaultOverlayInactive": "Avaa .aerovault-säilö virtuaalisena etäpaneelina. rclone-crypt-peittokerrokseen napsauta hiiren oikealla painikkeella etäkansiota."
         },
         "ai.agentMode.title": "Agenttitila",
         "ai.agentMode.description": "Hallitsee työkalujen hyväksymiskäyttäytymistä, vaiheiden rajoja ja autonomian tasoa.",
