@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2 } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -472,8 +472,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const t = useTranslation();
     const protocol = connectionParams.protocol; // Can be undefined
 
-    // Save connection state
-    const [saveConnection, setSaveConnection] = useState(false);
+    // Connections are always saved (the legacy "Save this connection" checkbox
+    // was removed: the user can still delete a profile from the list afterwards).
+    const [saveConnection, setSaveConnection] = useState(true);
     const [connectionName, setConnectionName] = useState('');
     // Stable ref for onTabLabelChange to avoid re-render loops from unstable arrow functions
     const onTabLabelChangeRef = useRef(onTabLabelChange);
@@ -1225,6 +1226,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return t('connection.username');
     };
 
+    // Dynamic server label based on protocol.
+    // For URL-based protocols (WebDAV, S3, Azure) we use "Endpoint URL" with a
+    // Link2 icon; for hostname-based protocols (FTP/SFTP/FTPS) the simple
+    // "Server" label fits.
+    const getServerLabel = (): React.ReactNode => {
+        if (protocol === 's3') {
+            return <span className="inline-flex items-center gap-1.5"><Link2 size={12} className="text-gray-400" />{t('protocol.s3Endpoint')}</span>;
+        }
+        if (protocol === 'azure') {
+            return <span className="inline-flex items-center gap-1.5"><Link2 size={12} className="text-gray-400" />{t('connection.azureEndpoint')}</span>;
+        }
+        if (protocol === 'webdav') {
+            return <span className="inline-flex items-center gap-1.5"><Link2 size={12} className="text-gray-400" />{t('connection.endpointUrl')}</span>;
+        }
+        return t('connection.server');
+    };
+
     // Dynamic password label based on protocol
     const getPasswordLabel = () => {
         if (protocol === 's3') return t('connection.secretAccessKey');
@@ -1233,6 +1251,42 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (protocol === 'gitlab') return 'Access Token';
         return t('connection.password');
     };
+
+    // Username/Password label rows with contextual signup / password-gen links inline.
+    // The links live next to the field they help with (more discoverable than a footer row).
+    const renderUsernameLabel = (overrideText?: string) => (
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+            <label className="block text-sm font-medium">{overrideText ?? getUsernameLabel()}</label>
+            {selectedProvider?.signupUrl && (
+                <a
+                    href={`${selectedProvider.signupUrl}${selectedProvider.signupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                >
+                    <ExternalLink size={10} />
+                    {t('connection.createAccount')}
+                </a>
+            )}
+        </div>
+    );
+
+    const renderPasswordLabel = (overrideText?: string) => (
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+            <label className="block text-sm font-medium">{overrideText ?? getPasswordLabel()}</label>
+            {selectedProvider?.passwordGenUrl && (
+                <a
+                    href={selectedProvider.passwordGenUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                >
+                    <KeyRound size={10} />
+                    {t('connection.generatePassword')}
+                </a>
+            )}
+        </div>
+    );
 
     // Provider logo for connect buttons (OAuth/API providers show their logo instead of Cloud icon)
     const ConnectIcon = (() => {
@@ -1323,30 +1377,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         </button>
                     </div>
                 </div>
-                {/* Save Connection */}
+                {/* Connection name (always shown — connections are always saved) */}
                 <div className="pt-2 border-t border-gray-200 dark:border-gray-700/50">
-                    <Checkbox
-                        checked={saveConnection}
-                        onChange={setSaveConnection}
-                        label={
-                            <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                <Save size={14} />
-                                {t('connection.saveThisConnection')}
-                            </span>
-                        }
+                    <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                        <Save size={14} />
+                        {t('connection.connectionNameOptional')}
+                    </label>
+                    <input
+                        type="text"
+                        value={connectionName}
+                        onChange={(e) => setConnectionName(e.target.value)}
+                        placeholder={connectionNameKey}
+                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
-                    {saveConnection && (
-                        <div className="mt-2 animate-fade-in-down">
-                            <input
-                                type="text"
-                                value={connectionName}
-                                onChange={(e) => setConnectionName(e.target.value)}
-                                placeholder={connectionNameKey}
-                                className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                            {showIcon && renderIconPicker()}
-                        </div>
-                    )}
+                    {showIcon && renderIconPicker()}
                 </div>
                 {/* Action Buttons */}
                 <div className={showCancelSaveAsNew ? 'flex gap-2' : 'pt-2'}>
@@ -1368,7 +1412,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         {loading ? (
                             <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
                         ) : buttonText ? buttonText : (
-                            editingProfileId ? <><Save size={18} /> {t('connection.saveChanges')}</> :
+                            editingProfileId ? <><Save size={18} /> {t('common.save')}</> :
                             saveConnection ? <><Save size={18} /> {t('common.save')}</> :
                             t('common.connect')
                         )}
@@ -1430,6 +1474,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
                                         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                            {selectedProvider?.helpUrl && (
+                                                <a
+                                                    href={selectedProvider.helpUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                                                >
+                                                    <ExternalLink size={10} />
+                                                    Docs
+                                                </a>
+                                            )}
                                             {LogoComponent && <LogoComponent size={20} />}
                                             <span className="font-medium">{providerName}</span>
                                         </div>
@@ -1804,7 +1859,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         <div className="space-y-4">
                                             <div>
-                                                <label className="block text-sm font-medium mb-1.5">{t('connection.jottacloudToken')}</label>
+                                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                                    <label className="block text-sm font-medium">{t('connection.jottacloudToken')}</label>
+                                                    <a
+                                                        href="https://www.jottacloud.com/web/secure"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-xs text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                                                    >
+                                                        <KeyRound size={10} />
+                                                        {t('connection.generatePersonalLoginToken')}
+                                                    </a>
+                                                </div>
                                                 <div className="relative">
                                                     <input
                                                         type={showPassword ? 'text' : 'password'}
@@ -1840,7 +1906,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         <div className="space-y-4">
                                             <div>
-                                                <label className="block text-sm font-medium mb-1.5">{t('connection.drimeToken')}</label>
+                                                {renderPasswordLabel(t('connection.drimeToken'))}
                                                 <div className="relative">
                                                     <input
                                                         type={showPassword ? 'text' : 'password'}
@@ -1877,7 +1943,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.koofrEmail')}</label>
+                                            {renderUsernameLabel(t('connection.koofrEmail'))}
                                             <input
                                                 type="email"
                                                 value={connectionParams.username}
@@ -1893,7 +1959,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.koofrAppPassword')}</label>
+                                            {renderPasswordLabel(t('connection.koofrAppPassword'))}
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -1956,29 +2022,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         {/* Save Connection Option */}
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         <div className="pt-3">
@@ -2079,29 +2136,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNameOptional')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNameOptional')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         <div className="pt-3">
@@ -2438,29 +2486,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
 
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNameOptional')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNameOptional')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         <div className="pt-3">
@@ -2484,7 +2523,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.kdriveToken')}</label>
+                                            {renderPasswordLabel(t('connection.kdriveToken'))}
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -2563,29 +2602,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         {/* Save Connection Option */}
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         <div className="pt-3">
@@ -2611,7 +2641,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.emailAccount')}</label>
+                                            {renderUsernameLabel(t('connection.emailAccount'))}
                                             <input
                                                 type="email"
                                                 value={connectionParams.username}
@@ -2627,7 +2657,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.password')}</label>
+                                            {renderPasswordLabel()}
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -2706,29 +2736,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         {/* Save Connection Option */}
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         <div className="pt-2">
@@ -2743,7 +2764,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
                                                                 className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
                                                             >
-                                                                <Save size={18} /> {t('connection.saveChanges')}
+                                                                <Save size={18} /> {t('common.save')}
                                                             </button>
                                                             <button
                                                                 onClick={handleSaveAndConnect}
@@ -2786,7 +2807,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.emailAccount')}</label>
+                                            {renderUsernameLabel(t('connection.emailAccount'))}
                                             <input
                                                 type="email"
                                                 value={connectionParams.username}
@@ -2802,7 +2823,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.password')}</label>
+                                            {renderPasswordLabel()}
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -2881,29 +2902,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         {/* Save Connection Option */}
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         <div className="pt-2">
@@ -2918,7 +2930,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
                                                                 className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
                                                             >
-                                                                <Save size={18} /> {t('connection.saveChanges')}
+                                                                <Save size={18} /> {t('common.save')}
                                                             </button>
                                                             <button
                                                                 onClick={handleSaveAndConnect}
@@ -3044,29 +3056,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         {/* Save Connection Option */}
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         <div className="pt-3">
@@ -3090,7 +3093,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     /* MEGA Specific Form (Beta v0.5.0) */
                                     <div className="space-y-4 pt-2">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.emailAccount')}</label>
+                                            {renderUsernameLabel(t('connection.emailAccount'))}
                                             <input
                                                 type="email"
                                                 value={connectionParams.username}
@@ -3106,7 +3109,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.password')}</label>
+                                            {renderPasswordLabel()}
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -3274,29 +3277,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         {/* Save Connection Option (re-added) */}
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.megaConnectionNamePlaceholder')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.megaConnectionNamePlaceholder')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         <div className="pt-2">
@@ -3311,7 +3305,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                 title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
                                                                 className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
                                                             >
-                                                                <Save size={18} /> {t('connection.saveChanges')}
+                                                                <Save size={18} /> {t('common.save')}
                                                             </button>
                                                             <button
                                                                 onClick={handleSaveAndConnect}
@@ -3453,28 +3447,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         {/* Save Connection */}
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNameOptional')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                                                    />
-                                                    {renderIconPicker()}
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNameOptional')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                                />
+                                                {renderIconPicker()}
+                                            </div>
                                         </div>
 
                                         {/* Connect Button */}
@@ -3497,7 +3483,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     /* Blomp / OpenStack Swift Form */
                                     <div className="space-y-4 pt-2">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.emailAccount')}</label>
+                                            {renderUsernameLabel(t('connection.emailAccount'))}
                                             <input
                                                 type="email"
                                                 value={connectionParams.username}
@@ -3513,7 +3499,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('connection.password')}</label>
+                                            {renderPasswordLabel()}
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -3563,28 +3549,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         {/* Save Connection */}
                                         <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <Checkbox
-                                                checked={saveConnection}
-                                                onChange={setSaveConnection}
-                                                label={
-                                                    <span className="text-sm flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300">
-                                                        <Save size={14} />
-                                                        {t('connection.saveToServers')}
-                                                    </span>
-                                                }
-                                            />
-
-                                            {saveConnection && (
-                                                <div className="mt-2 animate-fade-in-down">
-                                                    <input
-                                                        type="text"
-                                                        value={connectionName}
-                                                        onChange={(e) => setConnectionName(e.target.value)}
-                                                        placeholder={t('connection.connectionNameOptional')}
-                                                        className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                                                    />
-                                                </div>
-                                            )}
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                                    <Save size={14} />
+                                                    {t('connection.connectionNameOptional')}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionName}
+                                                    onChange={(e) => setConnectionName(e.target.value)}
+                                                    placeholder={t('connection.connectionNameOptional')}
+                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                                />
+                                            </div>
                                         </div>
 
                                         <div className="pt-2">
@@ -3621,7 +3598,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1.5">
                                                             <label className="block text-sm font-medium">
-                                                                {protocol === 's3' ? t('protocol.s3Endpoint') : protocol === 'azure' ? t('connection.azureEndpoint') : t('connection.server')}
+                                                                {getServerLabel()}
                                                             </label>
                                                         </div>
                                                         <input
@@ -3696,7 +3673,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                         )}
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{getUsernameLabel()}</label>
+                                            {renderUsernameLabel()}
                                             <input
                                                 type="text"
                                                 value={connectionParams.username}
@@ -3706,7 +3683,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{getPasswordLabel()}</label>
+                                            {renderPasswordLabel()}
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -3747,7 +3724,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             ) : (
                                                 <div className="flex gap-2">
                                                     <div className="flex-1 min-w-0">
-                                                        <label className="block text-sm font-medium mb-1.5">{t('connection.server')}</label>
+                                                        <label className="block text-sm font-medium mb-1.5">{getServerLabel()}</label>
                                                         <input
                                                             type="text"
                                                             value={connectionParams.server}
@@ -3802,7 +3779,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         <div className="mt-2 space-y-2 pl-0.5">
                                                             <div className="flex gap-2">
                                                                 <div className="flex-1 min-w-0">
-                                                                    <label className="block text-xs font-medium mb-1 text-gray-500">{t('connection.server')}</label>
+                                                                    <label className="block text-xs font-medium mb-1 text-gray-500">{getServerLabel()}</label>
                                                                     <input
                                                                         type="text"
                                                                         value={connectionParams.server || selectedProvider?.defaults?.server || ''}
@@ -3883,9 +3860,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         if (!selectedProvider || selectedProvider.isGeneric) return null;
                         const proto = protocol === 's3' ? 'S3' : protocol === 'webdav' ? 'WebDAV' : null;
                         if (!proto) return null;
-                        const footerText = selectedProvider.defaults?.basePath && protocol === 'webdav'
-                            ? t('protocol.webdavBasePath', { path: selectedProvider.defaults.basePath })
-                            : t('protocol.connectVia', { name: selectedProvider.name, protocol: proto });
+                        const footerText = t('protocol.connectVia', { name: selectedProvider.name, protocol: proto });
                         return (
                             <div className="-mx-6 -mb-6 mt-4 px-6 py-3 bg-gray-50/80 dark:bg-white/[0.02] border-t border-gray-100 dark:border-gray-700/50 rounded-b-lg">
                                 <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-xs">
@@ -3893,48 +3868,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <Cloud size={12} />
                                         {footerText}
                                     </span>
-                                    {selectedProvider.signupUrl && (
-                                        <>
-                                            <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                                            <a
-                                                href={`${selectedProvider.signupUrl}${selectedProvider.signupUrl.includes('?') ? '&' : '?'}utm_source=aeroftp`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-                                            >
-                                                <ExternalLink size={10} />
-                                                {t('connection.createAccount')}
-                                            </a>
-                                        </>
-                                    )}
-                                    {selectedProvider.helpUrl && (
-                                        <>
-                                            <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                                            <a
-                                                href={selectedProvider.helpUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                                            >
-                                                <ExternalLink size={10} />
-                                                Docs
-                                            </a>
-                                        </>
-                                    )}
-                                    {selectedProvider.passwordGenUrl && (
-                                        <>
-                                            <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                                            <a
-                                                href={selectedProvider.passwordGenUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
-                                            >
-                                                <KeyRound size={10} />
-                                                {t('connection.generatePassword')}
-                                            </a>
-                                        </>
-                                    )}
                                 </div>
                             </div>
                         );
