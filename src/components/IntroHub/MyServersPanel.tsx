@@ -23,6 +23,7 @@ import { useStorageThresholds } from '../../hooks/useStorageThresholds';
 import { useMyServersDensity } from '../../hooks/useMyServersDensity';
 import { useMyServersColumns } from '../../hooks/useMyServersColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
+import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
@@ -575,9 +576,14 @@ export function MyServersPanel({
                 }
 
                 const updatedUsername = result.account_email || server.username;
-                const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: new Date().toISOString(), username: updatedUsername || s.username } : s);
+                const connectedAt = new Date().toISOString();
+                const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: connectedAt, username: updatedUsername || s.username } : s);
                 setServers(updated);
-                secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+                await mergeSavedServerProfile(server.id, latest => ({
+                    ...latest,
+                    lastConnected: connectedAt,
+                    username: updatedUsername || latest.username,
+                }));
 
                 await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
             } catch (e) {
@@ -613,9 +619,14 @@ export function MyServersPanel({
                 }
 
                 const updatedUsername = result.account_email || server.username;
-                const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: new Date().toISOString(), username: updatedUsername || s.username } : s);
+                const connectedAt = new Date().toISOString();
+                const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: connectedAt, username: updatedUsername || s.username } : s);
                 setServers(updated);
-                secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+                await mergeSavedServerProfile(server.id, latest => ({
+                    ...latest,
+                    lastConnected: connectedAt,
+                    username: updatedUsername || latest.username,
+                }));
 
                 await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
             } catch (e) {
@@ -629,9 +640,13 @@ export function MyServersPanel({
 
         // Non-OAuth: standard credential-based connection
         try {
-            const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: new Date().toISOString() } : s);
+            const connectedAt = new Date().toISOString();
+            const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: connectedAt } : s);
             setServers(updated);
-            secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+            await mergeSavedServerProfile(server.id, latest => ({
+                ...latest,
+                lastConnected: connectedAt,
+            }));
 
             // Load password from credential vault with retry
             let password = '';
@@ -661,20 +676,14 @@ export function MyServersPanel({
                 try {
                     const authVersion = await invoke<number | null>('filen_get_auth_version');
                     if (typeof authVersion === 'number') {
-                        const updatedWithAuth = servers.map(s =>
-                            s.id === server.id
-                                ? {
-                                    ...s,
-                                    options: {
-                                        ...(s.options || {}),
-                                        filen_auth_version: authVersion,
-                                    },
-                                }
-                                : s
-                        );
+                        const updatedWithAuth = await mergeSavedServerProfile(server.id, latest => ({
+                            ...latest,
+                            options: {
+                                ...(latest.options || {}),
+                                filen_auth_version: authVersion,
+                            },
+                        }));
                         setServers(updatedWithAuth);
-                        secureStoreAndClean('server_profiles', STORAGE_KEY, updatedWithAuth).catch(() => {});
-                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedWithAuth)); } catch { /* noop */ }
                     }
                 } catch {
                     // best-effort badge enrichment only

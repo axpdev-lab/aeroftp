@@ -16,6 +16,7 @@ import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
 import { getFilenAuthVersion } from '../utils/filenAuthVersion';
+import { mergeSavedServerProfile } from '../utils/serverProfileStore';
 import { maskCredential } from '../utils/maskCredential';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
@@ -409,11 +410,16 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
                 // Save account email to server profile if retrieved
                 const updatedUsername = result.account_email || server.username;
+                const connectedAt = new Date().toISOString();
                 const updated = servers.map(s =>
-                    s.id === server.id ? { ...s, lastConnected: new Date().toISOString(), username: updatedUsername || s.username } : s
+                    s.id === server.id ? { ...s, lastConnected: connectedAt, username: updatedUsername || s.username } : s
                 );
                 setServers(updated);
-                saveServers(updated);
+                await mergeSavedServerProfile(server.id, latest => ({
+                    ...latest,
+                    lastConnected: connectedAt,
+                    username: updatedUsername || latest.username,
+                }));
 
                 // Call onConnect with OAuth params
                 await onConnect({
@@ -470,11 +476,16 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 }
 
                 const updatedUsername = result.account_email || server.username;
+                const connectedAt = new Date().toISOString();
                 const updated = servers.map(s =>
-                    s.id === server.id ? { ...s, lastConnected: new Date().toISOString(), username: updatedUsername || s.username } : s
+                    s.id === server.id ? { ...s, lastConnected: connectedAt, username: updatedUsername || s.username } : s
                 );
                 setServers(updated);
-                saveServers(updated);
+                await mergeSavedServerProfile(server.id, latest => ({
+                    ...latest,
+                    lastConnected: connectedAt,
+                    username: updatedUsername || latest.username,
+                }));
 
                 await onConnect({
                     server: result.display_name,
@@ -496,11 +507,15 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
         // Non-OAuth: Update last connected
         try {
+            const connectedAt = new Date().toISOString();
             const updated = servers.map(s =>
-                s.id === server.id ? { ...s, lastConnected: new Date().toISOString() } : s
+                s.id === server.id ? { ...s, lastConnected: connectedAt } : s
             );
             setServers(updated);
-            saveServers(updated);
+            await mergeSavedServerProfile(server.id, latest => ({
+                ...latest,
+                lastConnected: connectedAt,
+            }));
 
             // Load password from credential vault (with retry if vault not ready yet)
             let password = '';
@@ -532,20 +547,14 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 try {
                     const authVersion = await invoke<number | null>('filen_get_auth_version');
                     if (typeof authVersion === 'number') {
-                        const updatedWithAuth = servers.map(s =>
-                            s.id === server.id
-                                ? {
-                                    ...s,
-                                    options: {
-                                        ...(s.options || {}),
-                                        filen_auth_version: authVersion,
-                                    },
-                                }
-                                : s
-                        );
+                        const updatedWithAuth = await mergeSavedServerProfile(server.id, latest => ({
+                            ...latest,
+                            options: {
+                                ...(latest.options || {}),
+                                filen_auth_version: authVersion,
+                            },
+                        }));
                         setServers(updatedWithAuth);
-                        saveServers(updatedWithAuth);
-                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedWithAuth)); } catch { /* noop */ }
                     }
                 } catch {
                     // best-effort badge enrichment only

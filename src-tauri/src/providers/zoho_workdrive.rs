@@ -136,12 +136,16 @@ where
         None | Some(serde_json::Value::Null) => Ok(None),
         Some(serde_json::Value::Number(n)) => n
             .as_u64()
-            .or_else(|| n.as_f64().filter(|v| v.is_finite() && *v >= 0.0).map(|v| v as u64))
+            .or_else(|| {
+                n.as_f64()
+                    .filter(|v| v.is_finite() && *v >= 0.0)
+                    .map(|v| v as u64)
+            })
             .ok_or_else(|| de::Error::custom("invalid byte amount number"))
             .map(Some),
-        Some(serde_json::Value::String(s)) => parse_byte_amount(&s)
-            .map(Some)
-            .map_err(de::Error::custom),
+        Some(serde_json::Value::String(s)) => {
+            parse_byte_amount(&s).map(Some).map_err(de::Error::custom)
+        }
         Some(other) => Err(de::Error::custom(format!("invalid byte amount: {}", other))),
     }
 }
@@ -154,7 +158,9 @@ fn parse_byte_amount(raw: &str) -> Result<u64, String> {
     let (number_part, unit_part) = if cleaned.contains(char::is_whitespace) {
         let mut parts = cleaned.split_whitespace();
         (
-            parts.next().ok_or_else(|| "empty byte amount".to_string())?,
+            parts
+                .next()
+                .ok_or_else(|| "empty byte amount".to_string())?,
             parts.next().unwrap_or("bytes"),
         )
     } else {
@@ -181,6 +187,81 @@ fn parse_byte_amount(raw: &str) -> Result<u64, String> {
         _ => return Err(format!("unknown byte unit '{}'", unit)),
     };
     Ok((number * multiplier).round() as u64)
+}
+
+const ZOHO_WORKDRIVE_FALLBACK_QUOTA_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+
+const ZOHO_USED_QUOTA_KEYS: &[&str] = &[
+    "storage_used",
+    "used_storage",
+    "storageUsed",
+    "usedStorage",
+    "storage_used_in_bytes",
+    "used_storage_in_bytes",
+    "storageUsedInBytes",
+    "usedStorageInBytes",
+    "used_space",
+    "usedSpace",
+    "space_used",
+    "spaceUsed",
+    "consumed_storage",
+    "consumedStorage",
+];
+
+const ZOHO_TOTAL_QUOTA_KEYS: &[&str] = &[
+    "storage_quota",
+    "storage_limit",
+    "storage_total",
+    "storageQuota",
+    "storageLimit",
+    "storageTotal",
+    "storage_quota_in_bytes",
+    "quota_in_bytes",
+    "storageQuotaInBytes",
+    "quotaInBytes",
+    "total_storage",
+    "totalStorage",
+    "total_space",
+    "totalSpace",
+    "space_total",
+    "spaceTotal",
+    "allocated_storage",
+    "allocatedStorage",
+    "quota",
+];
+
+fn parse_byte_amount_value(value: &serde_json::Value) -> Option<u64> {
+    match value {
+        serde_json::Value::Number(n) => n.as_u64().or_else(|| {
+            n.as_f64()
+                .filter(|v| v.is_finite() && *v >= 0.0)
+                .map(|v| v as u64)
+        }),
+        serde_json::Value::String(s) => parse_byte_amount(s).ok(),
+        serde_json::Value::Object(map) => map
+            .get("bytes")
+            .or_else(|| map.get("value"))
+            .and_then(parse_byte_amount_value),
+        _ => None,
+    }
+}
+
+fn find_byte_amount_by_keys(value: &serde_json::Value, keys: &[&str]) -> Option<u64> {
+    match value {
+        serde_json::Value::Object(map) => {
+            for key in keys {
+                if let Some(parsed) = map.get(*key).and_then(parse_byte_amount_value) {
+                    return Some(parsed);
+                }
+            }
+            map.values()
+                .find_map(|nested| find_byte_amount_by_keys(nested, keys))
+        }
+        serde_json::Value::Array(items) => items
+            .iter()
+            .find_map(|nested| find_byte_amount_by_keys(nested, keys)),
+        _ => None,
+    }
 }
 
 /// Team current user info (for getting teamUserID)
@@ -2911,13 +2992,20 @@ impl StorageProvider for ZohoWorkdriveProvider {
             )));
         }
 
-        let team: JsonApiResponse<TeamResource> = resp
-            .json()
+        let body = resp
+            .text()
             .await
+            .map_err(|e| ProviderError::Other(format!("Read team response: {}", e)))?;
+
+        let team: JsonApiResponse<TeamResource> = serde_json::from_str(&body)
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         let mut used = team.data.attributes.storage_used.unwrap_or(0);
         let mut total = team.data.attributes.storage_quota.unwrap_or(0);
+        if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&body) {
+            used = find_byte_amount_by_keys(&raw, ZOHO_USED_QUOTA_KEYS).unwrap_or(used);
+            total = find_byte_amount_by_keys(&raw, ZOHO_TOTAL_QUOTA_KEYS).unwrap_or(total);
+        }
         if total == 0 {
             let teams_url = format!("{}/teams", self.api_base());
             let teams_resp = self
@@ -2932,7 +3020,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
                     .text()
                     .await
                     .map_err(|e| ProviderError::Other(format!("Read teams response: {}", e)))?;
-                if let Ok(teams) = serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body) {
+                if let Ok(teams) = serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body)
+                {
                     if let Some(found) = teams.data.into_iter().find(|team| team.id == *team_id) {
                         used = found.attributes.storage_used.unwrap_or(used);
                         total = found.attributes.storage_quota.unwrap_or(total);
@@ -2943,7 +3032,34 @@ impl StorageProvider for ZohoWorkdriveProvider {
                         sanitize_api_error(&body)
                     );
                 }
+                if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let matched_team =
+                        raw.get("data")
+                            .and_then(|data| data.as_array())
+                            .and_then(|teams| {
+                                teams.iter().find(|team| {
+                                    team.get("id")
+                                        .and_then(|id| id.as_str())
+                                        .map(|id| id == team_id)
+                                        .unwrap_or(false)
+                                })
+                            });
+                    let quota_source = matched_team.unwrap_or(&raw);
+                    used = find_byte_amount_by_keys(quota_source, ZOHO_USED_QUOTA_KEYS)
+                        .unwrap_or(used);
+                    total = find_byte_amount_by_keys(quota_source, ZOHO_TOTAL_QUOTA_KEYS)
+                        .unwrap_or(total);
+                }
             }
+        }
+        if total == 0 {
+            debug!(
+                "Zoho WorkDrive storage_info response did not include quota; using 5 GB fallback"
+            );
+            total = ZOHO_WORKDRIVE_FALLBACK_QUOTA_BYTES;
+        }
+        if used > total {
+            total = used;
         }
         let free = total.saturating_sub(used);
 

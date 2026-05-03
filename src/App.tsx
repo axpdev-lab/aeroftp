@@ -178,6 +178,7 @@ import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
 import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
+import { loadSavedServerProfiles, mergeSavedServerProfile } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { useTranslation } from './i18n';
 
@@ -1381,18 +1382,10 @@ interface UpdateVerificationInfo {
   ) => {
     if (!profileId) return;
     try {
-      const all = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers') || [];
-      const next = all.map(s => s.id === profileId
-        ? { ...s, lastQuota: { used: quota.used, total: quota.total, fetched_at: new Date().toISOString() } }
-        : s
-      );
-      await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', next);
-      // localStorage backup so MyServers re-reads the fresh quota next render
-      // even if the secure store is locked (matches the pattern used by
-      // persistFilenAuthVersionToProfile below).
-      try {
-        localStorage.setItem('aeroftp-saved-servers', JSON.stringify(next));
-      } catch { /* best-effort */ }
+      await mergeSavedServerProfile(profileId, server => ({
+        ...server,
+        lastQuota: { used: quota.used, total: quota.total, fetched_at: new Date().toISOString() },
+      }));
       // Refresh the My Servers panel so the card reflects the new quota
       // without requiring a full app reload.
       setServersRefreshKey(k => k + 1);
@@ -1408,29 +1401,20 @@ interface UpdateVerificationInfo {
   ) => {
     if (!Number.isFinite(authVersion)) return;
     try {
-      const all = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers') || [];
+      const all = await loadSavedServerProfiles();
       const resolvedProfileId = profileId || (() => {
         if (!username) return undefined;
         const matches = all.filter(s => s.protocol === 'filen' && s.username === username);
         return matches.length === 1 ? matches[0]?.id : undefined;
       })();
       if (!resolvedProfileId) return;
-      const next = all.map(s => {
-        if (s.id !== resolvedProfileId) return s;
-        return {
-          ...s,
-          options: {
-            ...(s.options || {}),
-            filen_auth_version: authVersion,
-          },
-        };
-      });
-      await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', next);
-      try {
-        localStorage.setItem('aeroftp-saved-servers', JSON.stringify(next));
-      } catch {
-        // best-effort backup sync
-      }
+      await mergeSavedServerProfile(resolvedProfileId, server => ({
+        ...server,
+        options: {
+          ...(server.options || {}),
+          filen_auth_version: authVersion,
+        },
+      }));
       window.dispatchEvent(new CustomEvent('aeroftp-filen-auth-version-updated', {
         detail: { profileId: resolvedProfileId, authVersion }
       }));
