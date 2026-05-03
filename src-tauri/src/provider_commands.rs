@@ -7910,6 +7910,23 @@ pub async fn filen_notes_delete(
     filen.delete_note(&uuid).await.map_err(|e| e.to_string())
 }
 
+/// Returns the authVersion observed during Filen connect (/v3/auth/info).
+#[tauri::command]
+pub async fn filen_get_auth_version(
+    state: State<'_, ProviderState>,
+) -> Result<Option<u32>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    if provider.provider_type() != ProviderType::Filen {
+        return Err("Only available for Filen".into());
+    }
+    let filen = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::filen::FilenProvider>()
+        .ok_or("Failed to access Filen provider")?;
+    Ok(filen.auth_version())
+}
+
 /// Toggle favorite on a Filen note
 #[tauri::command]
 pub async fn filen_notes_toggle_favorite(

@@ -210,6 +210,8 @@ pub struct FilenProvider {
     retry_config: HttpRetryConfig,
     /// User UUID for Notes participant operations (from /v3/user/account)
     user_uuid: String,
+    /// Last auth version returned by /v3/auth/info after a successful connect.
+    auth_version: Option<u32>,
 }
 
 /// M3: Maximum number of cached directory/file-key entries to prevent unbounded memory growth.
@@ -237,7 +239,12 @@ impl FilenProvider {
             file_key_cache: HashMap::new(),
             retry_config: HttpRetryConfig::default(),
             user_uuid: String::new(),
+            auth_version: None,
         }
+    }
+
+    pub fn auth_version(&self) -> Option<u32> {
+        self.auth_version
     }
 
     /// M3: Insert into dir_cache with eviction when cap is reached.
@@ -269,24 +276,55 @@ impl FilenProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
-    /// Derive password hash and master key for authentication (PBKDF2-SHA512)
-    /// Returns (login_password, master_key)
+    /// Derive password hash and master key for authentication.
+    /// Returns (login_password, master_key).
     ///
-    /// TODO (F-AUTH-01): Filen v3 authentication uses Argon2id KDF instead of PBKDF2-SHA512.
-    /// When v3 auth is encountered (auth_version >= 3), the server expects an Argon2id-derived
-    /// password hash. Implementing this requires adding the `argon2` crate. Currently only
-    /// v1 (SHA-512) and v2 (PBKDF2-SHA512, 200k iterations) are supported. New Filen accounts
-    /// may default to v3, in which case authentication will fail with an error.
+    /// Filen v3 auth parameters are verified from the official Filen SDK:
+    /// - Repository: FilenCloudDienste/filen-sdk-ts
+    /// - Commit: 8d1291a4bda76718a5dc94253f92bf20e42f1696
+    /// - Source: src/crypto/utils.ts:374-382 (Argon2id v3 params)
+    /// - Source: src/index.ts:642-646 (salt from auth/info passed to derivation)
+    ///
+    /// v3 uses Argon2id with:
+    /// - memory: 65536 KiB
+    /// - iterations: 3
+    /// - parallelism: 4
+    /// - version: 0x13
+    /// - output length: 64 bytes
+    ///
+    /// Salt handling differs by auth version:
+    /// - v2: use salt as UTF-8 string bytes (PBKDF2-SHA512)
+    /// - v3: decode salt as hex bytes before Argon2id
     fn derive_auth_credentials(
         password: &str,
         salt: &str,
         auth_version: u32,
     ) -> Result<(String, String), ProviderError> {
         if auth_version >= 3 {
-            return Err(ProviderError::AuthenticationFailed(
-                "Filen v3 authentication (Argon2id) is not yet supported. Please contact support."
-                    .to_string(),
-            ));
+            // v3: Argon2id(password, hex_decode(salt), t=3, m=65536, p=4, v=0x13, dkLen=64)
+            let salt_bytes = hex::decode(salt).map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Invalid Filen v3 salt hex: {}", e))
+            })?;
+            let params = argon2::Params::new(65_536, 3, 4, Some(64)).map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Argon2id params error: {}", e))
+            })?;
+            let argon2 = argon2::Argon2::new(
+                argon2::Algorithm::Argon2id,
+                argon2::Version::V0x13,
+                params,
+            );
+            let mut derived = [0u8; 64];
+            argon2
+                .hash_password_into(password.as_bytes(), &salt_bytes, &mut derived)
+                .map_err(|e| {
+                    ProviderError::AuthenticationFailed(format!("Argon2id derivation error: {}", e))
+                })?;
+
+            let derived_hex = hex::encode(derived);
+            // First half = master key, second half = login password (per Filen SDK v3)
+            let master_key = derived_hex[..derived_hex.len() / 2].to_string();
+            let login_password = derived_hex[derived_hex.len() / 2..].to_string();
+            return Ok((login_password, master_key));
         }
         if auth_version >= 2 {
             // v2: PBKDF2-SHA512, 200000 iterations → 64 bytes
@@ -666,6 +704,8 @@ impl StorageProvider for FilenProvider {
         let auth_data = auth_info_resp
             .data
             .ok_or_else(|| ProviderError::AuthenticationFailed("No auth info data".to_string()))?;
+
+        self.auth_version = Some(auth_data.auth_version);
 
         // Step 2: Derive password hash and master key
         let (auth_hash, derived_master_key) =

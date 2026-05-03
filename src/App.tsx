@@ -1399,6 +1399,45 @@ interface UpdateVerificationInfo {
     } catch { /* best-effort */ }
   };
 
+  // Persist last observed Filen authVersion (v1/v2/v3) to the saved profile so
+  // My Servers cards can show a version badge after a successful connect.
+  const persistFilenAuthVersionToProfile = async (
+    profileId: string | undefined,
+    authVersion: number,
+    username?: string,
+  ) => {
+    if (!Number.isFinite(authVersion)) return;
+    try {
+      const all = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers') || [];
+      const resolvedProfileId = profileId || (() => {
+        if (!username) return undefined;
+        const matches = all.filter(s => s.protocol === 'filen' && s.username === username);
+        return matches.length === 1 ? matches[0]?.id : undefined;
+      })();
+      if (!resolvedProfileId) return;
+      const next = all.map(s => {
+        if (s.id !== resolvedProfileId) return s;
+        return {
+          ...s,
+          options: {
+            ...(s.options || {}),
+            filen_auth_version: authVersion,
+          },
+        };
+      });
+      await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', next);
+      try {
+        localStorage.setItem('aeroftp-saved-servers', JSON.stringify(next));
+      } catch {
+        // best-effort backup sync
+      }
+      window.dispatchEvent(new CustomEvent('aeroftp-filen-auth-version-updated', {
+        detail: { profileId: resolvedProfileId, authVersion }
+      }));
+      setServersRefreshKey(k => k + 1);
+    } catch { /* best-effort */ }
+  };
+
   // Fetch storage quota for a given protocol (call after successful connection/reconnection)
   const fetchStorageQuota = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
     const version = ++quotaVersionRef.current;
@@ -8633,7 +8672,25 @@ interface UpdateVerificationInfo {
                     }
                     const savedConnHost = connectedParams.server || getProviderHostFallback(connectedParams.protocol, connectedParams.username);
                     const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, connectedParams.port || 443, connectedParams.protocol || 'ftp');
-                    await invoke('provider_connect', { params: providerParams });
+                      await invoke('provider_connect', { params: providerParams });
+
+                      const isFilenConnect =
+                        connectedParams.protocol === 'filen' ||
+                        normalizedParams.protocol === 'filen' ||
+                        providerParams.protocol === 'filen';
+
+                      if (isFilenConnect) {
+                        const resolvedSavedServerId = connectedParams.savedServerId || normalizedParams.savedServerId;
+                        try {
+                          const filenAuthVersion = await invoke<number | null>('filen_get_auth_version');
+
+                          if (typeof filenAuthVersion === 'number') {
+                            void persistFilenAuthVersionToProfile(resolvedSavedServerId, filenAuthVersion, connectedParams.username);
+                          }
+                        } catch {
+                          // best-effort badge enrichment only
+                        }
+                      }
                     if (savedConnLogId) humanLog.updateEntry(savedConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedIp || savedConnHost, port: String(connectedParams.port || 443) }) });
                     logConnectionSuccess(connectedParams.protocol || 'ftp', connectedParams.username, {
                       tlsMode: connectedParams.options?.tlsMode,

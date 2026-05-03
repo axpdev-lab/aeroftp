@@ -279,6 +279,31 @@ export function MyServersPanel({
         setServers(getSavedServers());
     }, [lastUpdate]);
 
+    useEffect(() => {
+        const onFilenAuthVersionUpdated = (evt: Event) => {
+            const custom = evt as CustomEvent<{ profileId?: string; authVersion?: number }>;
+            const profileId = custom.detail?.profileId;
+            const authVersion = custom.detail?.authVersion;
+            if (!profileId || typeof authVersion !== 'number') return;
+
+            setServers(prev => prev.map(server => {
+                if (server.id !== profileId || server.protocol !== 'filen') return server;
+                return {
+                    ...server,
+                    options: {
+                        ...(server.options || {}),
+                        filen_auth_version: authVersion,
+                    },
+                };
+            }));
+        };
+
+        window.addEventListener('aeroftp-filen-auth-version-updated', onFilenAuthVersionUpdated as EventListener);
+        return () => {
+            window.removeEventListener('aeroftp-filen-auth-version-updated', onFilenAuthVersionUpdated as EventListener);
+        };
+    }, []);
+
     // Cross-Profile Transfer needs at least 2 servers. When the list drops below
     // that (e.g. user deletes their last server), purge any stale selection so the
     // toolbar badge and selection rings don't linger pointing at deleted ids.
@@ -628,6 +653,30 @@ export function MyServersPanel({
                 providerId: server.providerId,
                 savedServerId: server.id,
             }, server.initialPath, server.localInitialPath);
+
+            if (proto === 'filen') {
+                try {
+                    const authVersion = await invoke<number | null>('filen_get_auth_version');
+                    if (typeof authVersion === 'number') {
+                        const updatedWithAuth = servers.map(s =>
+                            s.id === server.id
+                                ? {
+                                    ...s,
+                                    options: {
+                                        ...(s.options || {}),
+                                        filen_auth_version: authVersion,
+                                    },
+                                }
+                                : s
+                        );
+                        setServers(updatedWithAuth);
+                        secureStoreAndClean('server_profiles', STORAGE_KEY, updatedWithAuth).catch(() => {});
+                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedWithAuth)); } catch { /* noop */ }
+                    }
+                } catch {
+                    // best-effort badge enrichment only
+                }
+            }
         } catch (e) {
             logger.error('Connection failed', e);
         } finally {

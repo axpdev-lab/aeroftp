@@ -13446,6 +13446,7 @@ pub fn run() {
             provider_commands::filen_notes_archive,
             provider_commands::filen_notes_restore,
             provider_commands::filen_notes_delete,
+            provider_commands::filen_get_auth_version,
             provider_commands::filen_notes_toggle_favorite,
             provider_commands::filen_notes_toggle_pinned,
             provider_commands::filen_notes_history,

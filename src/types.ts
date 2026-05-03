@@ -240,6 +240,7 @@ export interface ProviderOptions {
 
   // Filen-specific
   two_factor_code?: string; // Optional TOTP 2FA code
+  filen_auth_version?: number; // Last observed Filen authVersion (v1/v2/v3)
 
   // kDrive-specific
   drive_id?: string; // Infomaniak kDrive numeric ID

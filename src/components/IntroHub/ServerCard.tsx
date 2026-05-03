@@ -149,6 +149,14 @@ function ServerBadges({ server }: { server: ServerProfile }) {
                     {megaBadge.label}
                 </span>
             )}
+              {proto === 'filen' && typeof server.options?.filen_auth_version === 'number' && (
+                  <span
+                      className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                      title="Detected from Filen auth/info on successful connect"
+                  >
+                      v{server.options.filen_auth_version}
+                  </span>
+              )}
             {infiniCloudBadge && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${infiniCloudBadge.className}`}>
                     {infiniCloudBadge.label}
