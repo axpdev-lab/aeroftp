@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ServerProfile } from '../../types';
+import { getE2EBits, getProtocolClass, ServerProfile, type ProviderType } from '../../types';
 import type {
     MyServersColumnVisibility,
     MyServersSort,
@@ -66,6 +66,17 @@ const dateOf = (server: ServerProfile) => {
     return Number.isFinite(ts) ? ts : -1;
 };
 
+const badgeSortLabel = (server: ServerProfile) => {
+    const proto = (server.protocol || 'ftp') as ProviderType;
+    const protocolClass = getProtocolClass(proto);
+    const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto) : null;
+    if (server.providerId === 'felicloud') return 'API OCS';
+    return [
+        e2eBits ? `${protocolClass} ${e2eBits}-bit` : protocolClass,
+        server.providerId || server.protocol || '',
+    ].join(' ');
+};
+
 export function MyServersTable({
     servers,
     allServers,
@@ -120,6 +131,7 @@ export function MyServersTable({
         const comparators: Record<MyServersSortableColId, (a: ServerProfile, b: ServerProfile) => number> = {
             index: () => 0,
             name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+            badges: (a, b) => badgeSortLabel(a).localeCompare(badgeSortLabel(b), undefined, { numeric: true, sensitivity: 'base' }),
             used: (a, b) => (a.lastQuota?.used ?? -1) - (b.lastQuota?.used ?? -1),
             total: (a, b) => (a.lastQuota?.total ?? -1) - (b.lastQuota?.total ?? -1),
             pct: (a, b) => pctOf(a) - pctOf(b),

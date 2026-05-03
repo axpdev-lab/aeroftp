@@ -19,7 +19,7 @@ export type MyServersTableColId =
     | 'actions'
     | 'favorite';
 
-export type MyServersSortableColId = 'index' | 'name' | 'used' | 'total' | 'pct' | 'time' | 'favorite';
+export type MyServersSortableColId = 'index' | 'name' | 'badges' | 'used' | 'total' | 'pct' | 'time' | 'favorite';
 export type MyServersSortDir = 'asc' | 'desc';
 export type MyServersSort = { colId: MyServersSortableColId; dir: MyServersSortDir };
 export type MyServersColumnVisibility = Record<MyServersTableColId, boolean>;
@@ -35,8 +35,8 @@ export interface MyServersTableColumn {
 export const MY_SERVERS_TABLE_COLUMNS: MyServersTableColumn[] = [
     { id: 'index', labelKey: 'introHub.table.columns.index', sortable: true, className: 'w-16 text-right' },
     { id: 'icon', labelKey: 'introHub.table.columns.icon', sortable: false, className: 'w-14 text-center' },
-    { id: 'name', labelKey: 'introHub.table.columns.name', sortable: true, className: 'min-w-[180px]' },
-    { id: 'badges', labelKey: 'introHub.table.columns.badges', sortable: false, className: 'min-w-[120px]' },
+    { id: 'name', labelKey: 'introHub.table.columns.name', sortable: true, className: 'min-w-[160px]' },
+    { id: 'badges', labelKey: 'introHub.table.columns.badges', sortable: true, className: 'min-w-[120px]' },
     { id: 'subtitle', labelKey: 'introHub.table.columns.subtitle', sortable: false, className: 'min-w-[220px]' },
     { id: 'used', labelKey: 'introHub.table.columns.used', sortable: true, className: 'w-24 text-right tabular-nums' },
     { id: 'total', labelKey: 'introHub.table.columns.total', sortable: true, className: 'w-24 text-right tabular-nums' },
@@ -45,7 +45,7 @@ export const MY_SERVERS_TABLE_COLUMNS: MyServersTableColumn[] = [
     { id: 'time', labelKey: 'introHub.table.columns.time', sortable: true, className: 'w-24 text-right tabular-nums' },
     { id: 'health', labelKey: 'introHub.table.columns.health', sortable: false, className: 'w-20 text-center' },
     { id: 'actions', labelKey: 'introHub.table.columns.actions', sortable: false, className: 'w-28 text-right' },
-    { id: 'favorite', labelKey: 'introHub.table.columns.favorite', sortable: true, className: 'w-16 text-center' },
+    { id: 'favorite', labelKey: 'introHub.table.columns.favorite', sortable: true, className: 'w-14 text-center' },
 ];
 
 const COLUMN_IDS = MY_SERVERS_TABLE_COLUMNS.map(col => col.id);

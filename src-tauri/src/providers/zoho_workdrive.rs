@@ -13,7 +13,7 @@
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use serde::Deserialize;
+use serde::{de, Deserialize, Deserializer};
 use std::collections::HashMap;
 use tracing::{debug, info};
 
@@ -108,10 +108,79 @@ struct TeamResource {
 #[derive(Debug, Deserialize)]
 struct TeamAttributes {
     name: String,
-    #[serde(default)]
+    #[serde(
+        default,
+        alias = "used_storage",
+        alias = "storage_used_in_bytes",
+        alias = "used_storage_in_bytes",
+        deserialize_with = "deserialize_optional_byte_amount"
+    )]
     storage_used: Option<u64>,
-    #[serde(default)]
+    #[serde(
+        default,
+        alias = "storage_limit",
+        alias = "storage_total",
+        alias = "storage_quota_in_bytes",
+        alias = "quota_in_bytes",
+        deserialize_with = "deserialize_optional_byte_amount"
+    )]
     storage_quota: Option<u64>,
+}
+
+fn deserialize_optional_byte_amount<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Number(n)) => n
+            .as_u64()
+            .or_else(|| n.as_f64().filter(|v| v.is_finite() && *v >= 0.0).map(|v| v as u64))
+            .ok_or_else(|| de::Error::custom("invalid byte amount number"))
+            .map(Some),
+        Some(serde_json::Value::String(s)) => parse_byte_amount(&s)
+            .map(Some)
+            .map_err(de::Error::custom),
+        Some(other) => Err(de::Error::custom(format!("invalid byte amount: {}", other))),
+    }
+}
+
+fn parse_byte_amount(raw: &str) -> Result<u64, String> {
+    let cleaned = raw.trim().replace(',', "");
+    if cleaned.is_empty() {
+        return Ok(0);
+    }
+    let (number_part, unit_part) = if cleaned.contains(char::is_whitespace) {
+        let mut parts = cleaned.split_whitespace();
+        (
+            parts.next().ok_or_else(|| "empty byte amount".to_string())?,
+            parts.next().unwrap_or("bytes"),
+        )
+    } else {
+        let split_at = cleaned
+            .find(|ch: char| !(ch.is_ascii_digit() || ch == '.'))
+            .unwrap_or(cleaned.len());
+        let (number, unit) = cleaned.split_at(split_at);
+        (number, if unit.is_empty() { "bytes" } else { unit })
+    };
+    let number = number_part
+        .parse::<f64>()
+        .map_err(|e| format!("invalid byte amount '{}': {}", raw, e))?;
+    if !number.is_finite() || number < 0.0 {
+        return Err(format!("invalid byte amount '{}'", raw));
+    }
+    let unit = unit_part.to_ascii_lowercase();
+    let multiplier = match unit.as_str() {
+        "b" | "byte" | "bytes" => 1_f64,
+        "kb" | "kib" => 1024_f64,
+        "mb" | "mib" => 1024_f64.powi(2),
+        "gb" | "gib" => 1024_f64.powi(3),
+        "tb" | "tib" => 1024_f64.powi(4),
+        "pb" | "pib" => 1024_f64.powi(5),
+        _ => return Err(format!("unknown byte unit '{}'", unit)),
+    };
+    Ok((number * multiplier).round() as u64)
 }
 
 /// Team current user info (for getting teamUserID)
@@ -2847,8 +2916,35 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-        let used = team.data.attributes.storage_used.unwrap_or(0);
-        let total = team.data.attributes.storage_quota.unwrap_or(0);
+        let mut used = team.data.attributes.storage_used.unwrap_or(0);
+        let mut total = team.data.attributes.storage_quota.unwrap_or(0);
+        if total == 0 {
+            let teams_url = format!("{}/teams", self.api_base());
+            let teams_resp = self
+                .client
+                .get(&teams_url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            if teams_resp.status().is_success() {
+                let body = teams_resp
+                    .text()
+                    .await
+                    .map_err(|e| ProviderError::Other(format!("Read teams response: {}", e)))?;
+                if let Ok(teams) = serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body) {
+                    if let Some(found) = teams.data.into_iter().find(|team| team.id == *team_id) {
+                        used = found.attributes.storage_used.unwrap_or(used);
+                        total = found.attributes.storage_quota.unwrap_or(total);
+                    }
+                } else {
+                    debug!(
+                        "Zoho WorkDrive storage_info /teams fallback parse failed: {}",
+                        sanitize_api_error(&body)
+                    );
+                }
+            }
+        }
         let free = total.saturating_sub(used);
 
         Ok(StorageInfo { used, total, free })

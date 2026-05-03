@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ArrowDown, ArrowUp, Settings2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Settings2, Star } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import {
     MY_SERVERS_TABLE_COLUMNS,
@@ -46,6 +46,11 @@ export function MyServersTableHeader({
                 {visibleColumns.map((column) => {
                     const isSorted = sort?.colId === column.id;
                     const label = t(column.labelKey);
+                    const displayLabel = column.id === 'favorite'
+                        ? <Star size={12} fill={isSorted ? 'currentColor' : 'none'} />
+                        : column.id === 'index'
+                            ? '#'
+                            : label;
                     const title = column.id === 'index'
                         ? sort === null
                             ? t('introHub.table.manualOrderActive')
@@ -56,11 +61,26 @@ export function MyServersTableHeader({
                     const ariaSort = isSorted
                         ? sort.dir === 'asc' ? 'ascending' : 'descending'
                         : undefined;
+                    const alignClass = column.className.includes('text-right')
+                        ? 'justify-end'
+                        : column.className.includes('text-center') ? 'justify-center' : '';
                     const content = (
                         <span className={`flex items-center gap-1 ${column.className.includes('text-right') ? 'justify-end' : column.className.includes('text-center') ? 'justify-center' : ''}`}>
-                            <span>{column.id === 'index' ? '#' : label}</span>
+                            <span className="inline-flex items-center">{displayLabel}</span>
                             {isSorted && (sort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
                         </span>
+                    );
+                    const columnControl = column.sortable ? (
+                        <button
+                            type="button"
+                            onClick={() => onSort(nextSortFor(column, sort))}
+                            className="w-full cursor-pointer hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
+                            title={title}
+                        >
+                            {content}
+                        </button>
+                    ) : (
+                        <span title={title}>{content}</span>
                     );
 
                     return (
@@ -70,20 +90,10 @@ export function MyServersTableHeader({
                             aria-sort={ariaSort as React.AriaAttributes['aria-sort']}
                             className={`${column.className} relative px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400 tracking-wide whitespace-nowrap ${column.headerClassName || ''}`}
                         >
-                            {column.sortable ? (
-                                <button
-                                    type="button"
-                                    onClick={() => onSort(nextSortFor(column, sort))}
-                                    className="w-full cursor-pointer hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
-                                    title={title}
-                                >
-                                    {content}
-                                </button>
-                            ) : (
-                                <span title={title}>{content}</span>
-                            )}
-                            {column.id === lastVisibleId && (
-                                <details className="absolute right-1 top-1/2 -translate-y-1/2">
+                            {column.id === lastVisibleId ? (
+                                <div className={`flex items-center gap-1 ${alignClass}`}>
+                                    <div className="min-w-0 flex-1">{columnControl}</div>
+                                    <details className="relative shrink-0">
                                     <summary
                                         className="list-none p-1 rounded-md cursor-pointer text-gray-400 hover:text-gray-700 hover:bg-gray-200 dark:hover:text-gray-200 dark:hover:bg-gray-700"
                                         title={t('introHub.table.columnSettings')}
@@ -110,8 +120,9 @@ export function MyServersTableHeader({
                                             </label>
                                         ))}
                                     </div>
-                                </details>
-                            )}
+                                    </details>
+                                </div>
+                            ) : columnControl}
                         </th>
                     );
                 })}
