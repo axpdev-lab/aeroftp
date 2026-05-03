@@ -4056,7 +4056,7 @@
             "search": "खोजें...",
             "searchServers": "सर्वर खोजें...",
             "viewGrid": "ग्रिड व्यू",
-            "viewList": "सूची व्यू",
+            "viewList": "तालिका दृश्य",
             "filter": {
                 "all": "सभी",
                 "ftpSftp": "FTP / SFTP",
@@ -4109,7 +4109,30 @@
                 "clickToRetry": "पुनः जाँच करने के लिए क्लिक करें"
             },
             "densityCompact": "कॉम्पैक्ट पंक्तियाँ",
-            "densityComfortable": "आरामदायक पंक्तियाँ"
+            "densityComfortable": "आरामदायक पंक्तियाँ",
+            "table": {
+                "columnSettings": "Columns",
+                "manualOrderActive": "Manual order active",
+                "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
+                "clickToSortBy": "Sort by {column}",
+                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
+                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "columns": {
+                    "index": "#",
+                    "icon": "Icon",
+                    "name": "Name",
+                    "badges": "Badges",
+                    "subtitle": "Host",
+                    "used": "Used",
+                    "total": "Total",
+                    "pct": "%",
+                    "paths": "Paths",
+                    "time": "Last used",
+                    "health": "Health",
+                    "actions": "Actions",
+                    "favorite": "Favorite"
+                }
+            }
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",

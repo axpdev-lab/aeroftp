@@ -4056,7 +4056,7 @@
             "search": "Cari...",
             "searchServers": "Cari pelayan...",
             "viewGrid": "Paparan grid",
-            "viewList": "Paparan senarai",
+            "viewList": "Paparan jadual",
             "filter": {
                 "all": "Semua",
                 "ftpSftp": "FTP / SFTP",
@@ -4109,7 +4109,30 @@
                 "clickToRetry": "klik untuk semak semula"
             },
             "densityCompact": "Baris padat",
-            "densityComfortable": "Baris selesa"
+            "densityComfortable": "Baris selesa",
+            "table": {
+                "columnSettings": "Columns",
+                "manualOrderActive": "Manual order active",
+                "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
+                "clickToSortBy": "Sort by {column}",
+                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
+                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "columns": {
+                    "index": "#",
+                    "icon": "Icon",
+                    "name": "Name",
+                    "badges": "Badges",
+                    "subtitle": "Host",
+                    "used": "Used",
+                    "total": "Total",
+                    "pct": "%",
+                    "paths": "Paths",
+                    "time": "Last used",
+                    "health": "Health",
+                    "actions": "Actions",
+                    "favorite": "Favorite"
+                }
+            }
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

@@ -4053,7 +4053,7 @@
             "search": "Cerca...",
             "searchServers": "Cerca server...",
             "viewGrid": "Vista griglia",
-            "viewList": "Vista elenco",
+            "viewList": "Vista tabella",
             "filter": {
                 "all": "Tutti",
                 "ftpSftp": "FTP / SFTP",
@@ -4106,7 +4106,30 @@
                 "clickToRetry": "clic per riverificare"
             },
             "densityCompact": "Righe compatte",
-            "densityComfortable": "Righe comode"
+            "densityComfortable": "Righe comode",
+            "table": {
+                "columnSettings": "Colonne",
+                "manualOrderActive": "Ordine manuale attivo",
+                "clickToReturnManual": "Ordinato per {column}: clicca # per riabilitare il riordino manuale",
+                "clickToSortBy": "Ordina per {column}",
+                "footerSummary": "{count} server · {usage} · {quotaCount} con quota",
+                "footerDedupNote": "Alcuni profili possono condividere lo stesso spazio fisico; i totali deduplicati arrivano nella Fase 4.",
+                "columns": {
+                    "index": "#",
+                    "icon": "Icona",
+                    "name": "Nome",
+                    "badges": "Badge",
+                    "subtitle": "Host",
+                    "used": "Usato",
+                    "total": "Totale",
+                    "pct": "%",
+                    "paths": "Percorsi",
+                    "time": "Ultimo uso",
+                    "health": "Stato",
+                    "actions": "Azioni",
+                    "favorite": "Preferito"
+                }
+            }
         },
         "gitlab": {
             "projectPath": "Percorso progetto",

@@ -6,6 +6,7 @@ import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourS
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
 import { ServerCard } from './ServerCard';
+import { MyServersTable } from './MyServersTable';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
@@ -20,6 +21,7 @@ import { useProviderHealth, type HealthTarget } from '../../hooks/useProviderHea
 import { useCardLayout } from '../../hooks/useCardLayout';
 import { useStorageThresholds } from '../../hooks/useStorageThresholds';
 import { useMyServersDensity } from '../../hooks/useMyServersDensity';
+import { useMyServersColumns } from '../../hooks/useMyServersColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
@@ -374,6 +376,7 @@ export function MyServersPanel({
     // for the per-card health-radial gating; both readers share state via the
     // global `aeroftp-settings-changed` event.
     const cardLayout = useCardLayout();
+    const tableColumns = useMyServersColumns(cardLayout);
 
     // Toggle compact ↔ detailed cards from the toolbar. Mirrors the Settings >
     // Appearance checkbox: persists to the same vault/localStorage key that
@@ -395,7 +398,7 @@ export function MyServersPanel({
     // dragIdx/overIdx hold real indices into the full `servers` array — when
     // a filter is active we resolve the visible card to its real index by id,
     // so the reorder produces a coherent move in the underlying list.
-    const canDrag = true;
+    const canDrag = tableColumns.sort === null;
 
     const handleDragStart = useCallback((idx: number) => (e: React.DragEvent) => {
         setDragIdx(idx);
@@ -927,7 +930,6 @@ export function MyServersPanel({
                                     isRenaming={renamingId === server.id}
                                     onRenameSubmit={handleRenameSubmit}
                                     onRenameCancel={handleRenameCancel}
-                                    viewMode="grid"
                                     isDraggable={canDrag}
                                     isDragging={dragIdx === realIdx}
                                     isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
@@ -942,7 +944,6 @@ export function MyServersPanel({
                                     healthLatencyMs={health?.latencyMs}
                                     onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
                                     thresholds={thresholds}
-                                    density={density}
                                 />
                             );
                         })}
@@ -951,52 +952,46 @@ export function MyServersPanel({
             ) : (
                 <div
                     ref={scrollContainerRef}
-                    className="flex-1 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 custom-scroll-area"
+                    className="flex-1 overflow-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 custom-scroll-area"
                 >
-                    {filteredServers.map((server, idx) => {
-                        const realIdx = servers.findIndex(s => s.id === server.id);
-                        const selectionIndex = crossProfileSelection.indexOf(server.id);
-                        const selectionRole: 'source' | 'destination' | null =
-                            selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
-                        const health = cardLayout === 'detailed' ? getHealthStatus(server.id) : undefined;
-                        return (
-                            <ServerCard
-                                key={server.id}
-                                server={server}
-                                isConnecting={connectingId === server.id || oauthConnecting === server.id}
-                                credentialsMasked={credentialsMasked}
-                                hideUsername={hideUsername}
-                                isFavorite={favorites.has(server.id)}
-                                onConnect={handleConnect}
-                                onEdit={onEdit}
-                                onDuplicate={handleDuplicate}
-                                onDelete={handleDelete}
-                                onToggleFavorite={handleToggleFavorite}
-                                onContextMenu={handleContextMenu}
-                                onHoverChange={handleHoverChange}
-                                isRenaming={renamingId === server.id}
-                                onRenameSubmit={handleRenameSubmit}
-                                onRenameCancel={handleRenameCancel}
-                                viewMode="list"
-                                index={idx}
-                                isDraggable={canDrag}
-                                isDragging={dragIdx === realIdx}
-                                isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
-                                onDragStart={canDrag ? handleDragStart(realIdx) : undefined}
-                                onDragEnter={canDrag ? handleDragEnter(realIdx) : undefined}
-                                onDragOver={canDrag ? handleDragOver(realIdx) : undefined}
-                                onDrop={canDrag ? handleDrop(realIdx) : undefined}
-                                onDragEnd={canDrag ? handleDragEnd : undefined}
-                                selectionRole={selectionRole}
-                                onSelect={handleSelectServer}
-                                healthStatus={health?.status}
-                                healthLatencyMs={health?.latencyMs}
-                                onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
-                                thresholds={thresholds}
-                                density={density}
-                            />
-                        );
-                    })}
+                    <MyServersTable
+                        servers={filteredServers}
+                        allServers={servers}
+                        visibility={tableColumns.visibility}
+                        sort={tableColumns.sort}
+                        onSort={tableColumns.setSort}
+                        onVisibleChange={tableColumns.setColVisible}
+                        favorites={favorites}
+                        connectingId={connectingId}
+                        oauthConnecting={oauthConnecting}
+                        credentialsMasked={credentialsMasked}
+                        hideUsername={hideUsername}
+                        onConnect={handleConnect}
+                        onEdit={onEdit}
+                        onDuplicate={handleDuplicate}
+                        onDelete={handleDelete}
+                        onToggleFavorite={handleToggleFavorite}
+                        onContextMenu={handleContextMenu}
+                        onHoverChange={handleHoverChange}
+                        renamingId={renamingId}
+                        onRenameSubmit={handleRenameSubmit}
+                        onRenameCancel={handleRenameCancel}
+                        canDrag={canDrag}
+                        dragIdx={dragIdx}
+                        overIdx={overIdx}
+                        onDragStart={handleDragStart}
+                        onDragEnter={handleDragEnter}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                        onDragEnd={handleDragEnd}
+                        crossProfileSelection={crossProfileSelection}
+                        onSelect={handleSelectServer}
+                        cardLayout={cardLayout}
+                        getHealthStatus={getHealthStatus}
+                        onRetryHealth={handleRetryHealth}
+                        thresholds={thresholds}
+                        density={density}
+                    />
                 </div>
             )}
 

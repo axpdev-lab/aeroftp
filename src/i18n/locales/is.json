@@ -4075,7 +4075,7 @@
             "search": "Leita...",
             "searchServers": "Leita að þjónum...",
             "viewGrid": "Reitasýn",
-            "viewList": "Listasýn",
+            "viewList": "Töfluyfirlit",
             "filter": {
                 "all": "Allt",
                 "ftpSftp": "FTP / SFTP",
@@ -4128,7 +4128,30 @@
                 "clickToRetry": "smelltu til að athuga aftur"
             },
             "densityCompact": "Þéttar línur",
-            "densityComfortable": "Þægilegar línur"
+            "densityComfortable": "Þægilegar línur",
+            "table": {
+                "columnSettings": "Columns",
+                "manualOrderActive": "Manual order active",
+                "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
+                "clickToSortBy": "Sort by {column}",
+                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
+                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "columns": {
+                    "index": "#",
+                    "icon": "Icon",
+                    "name": "Name",
+                    "badges": "Badges",
+                    "subtitle": "Host",
+                    "used": "Used",
+                    "total": "Total",
+                    "pct": "%",
+                    "paths": "Paths",
+                    "time": "Last used",
+                    "health": "Health",
+                    "actions": "Actions",
+                    "favorite": "Favorite"
+                }
+            }
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

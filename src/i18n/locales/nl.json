@@ -4046,7 +4046,7 @@
             "search": "Zoeken...",
             "searchServers": "Servers zoeken...",
             "viewGrid": "Rasterweergave",
-            "viewList": "Lijstweergave",
+            "viewList": "Tabelweergave",
             "filter": {
                 "all": "Alles",
                 "ftpSftp": "FTP / SFTP",
@@ -4099,7 +4099,30 @@
                 "clickToRetry": "klik om opnieuw te controleren"
             },
             "densityCompact": "Compacte rijen",
-            "densityComfortable": "Comfortabele rijen"
+            "densityComfortable": "Comfortabele rijen",
+            "table": {
+                "columnSettings": "Columns",
+                "manualOrderActive": "Manual order active",
+                "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
+                "clickToSortBy": "Sort by {column}",
+                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
+                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "columns": {
+                    "index": "#",
+                    "icon": "Icon",
+                    "name": "Name",
+                    "badges": "Badges",
+                    "subtitle": "Host",
+                    "used": "Used",
+                    "total": "Total",
+                    "pct": "%",
+                    "paths": "Paths",
+                    "time": "Last used",
+                    "health": "Health",
+                    "actions": "Actions",
+                    "favorite": "Favorite"
+                }
+            }
         },
         "gitlab": {
             "projectPath": "Projectpad",

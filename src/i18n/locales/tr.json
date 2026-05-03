@@ -4056,7 +4056,7 @@
             "search": "Ara...",
             "searchServers": "Sunucu ara...",
             "viewGrid": "Izgara görünümü",
-            "viewList": "Liste görünümü",
+            "viewList": "Tablo görünümü",
             "filter": {
                 "all": "Tümü",
                 "ftpSftp": "FTP / SFTP",
@@ -4109,7 +4109,30 @@
                 "clickToRetry": "yeniden kontrol etmek için tıklayın"
             },
             "densityCompact": "Kompakt satırlar",
-            "densityComfortable": "Rahat satırlar"
+            "densityComfortable": "Rahat satırlar",
+            "table": {
+                "columnSettings": "Columns",
+                "manualOrderActive": "Manual order active",
+                "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
+                "clickToSortBy": "Sort by {column}",
+                "footerSummary": "{count} servers · {usage} · {quotaCount} with quota",
+                "footerDedupNote": "Profiles can share the same physical storage; deduped account totals land in Phase 4.",
+                "columns": {
+                    "index": "#",
+                    "icon": "Icon",
+                    "name": "Name",
+                    "badges": "Badges",
+                    "subtitle": "Host",
+                    "used": "Used",
+                    "total": "Total",
+                    "pct": "%",
+                    "paths": "Paths",
+                    "time": "Last used",
+                    "health": "Health",
+                    "actions": "Actions",
+                    "favorite": "Favorite"
+                }
+            }
         },
         "gitlab": {
             "projectPath": "Proje Yolu",
