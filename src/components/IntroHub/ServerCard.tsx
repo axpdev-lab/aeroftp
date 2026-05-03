@@ -4,6 +4,7 @@ import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, supportsStor
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
+import { getFilenAuthVersion } from '../../utils/filenAuthVersion';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { useTranslation } from '../../i18n';
 import { useCardLayout } from '../../hooks/useCardLayout';
@@ -83,6 +84,7 @@ export function ServerBadges({ server }: { server: ServerProfile }) {
     const gitHubBadge = proto === 'github' ? getGitHubConnectionBadge(server.options) : null;
     const megaBadge = proto === 'mega' ? getMegaConnectionBadge(server.options) : null;
     const infiniCloudBadge = server.providerId === 'infinicloud' ? getInfiniCloudConnectionBadge(server.options) : null;
+    const filenAuthVersion = getFilenAuthVersion(server);
     const protocolClass = getProtocolClass(proto as ProviderType);
     const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto as ProviderType) : null;
     const protocolClassLabel = e2eBits ? `E2E ${e2eBits}-bit` : protocolClass;
@@ -148,14 +150,14 @@ export function ServerBadges({ server }: { server: ServerProfile }) {
                     {megaBadge.label}
                 </span>
             )}
-              {proto === 'filen' && typeof server.options?.filen_auth_version === 'number' && (
-                  <span
-                      className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
-                      title="Detected from Filen auth/info on successful connect"
-                  >
-                      v{server.options.filen_auth_version}
-                  </span>
-              )}
+            {filenAuthVersion && (
+                <span
+                    className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                    title="Detected from Filen auth/info on successful connect"
+                >
+                    v{filenAuthVersion}
+                </span>
+            )}
             {infiniCloudBadge && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${infiniCloudBadge.className}`}>
                     {infiniCloudBadge.label}

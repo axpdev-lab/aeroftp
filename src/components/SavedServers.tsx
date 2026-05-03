@@ -15,6 +15,7 @@ import { getProviderById } from '../providers';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
+import { getFilenAuthVersion } from '../utils/filenAuthVersion';
 import { maskCredential } from '../utils/maskCredential';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
@@ -658,6 +659,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     const megaBadge = server.protocol === 'mega'
                         ? getMegaConnectionBadge(server.options)
                         : null;
+                    const filenAuthVersion = getFilenAuthVersion(server);
                     // Disable drag-to-reorder when search is active (indices don't match full list)
                     const isDraggable = !searchQuery;
                     return (
@@ -724,12 +726,12 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                             {megaBadge.label}
                                         </span>
                                     )}
-                                    {server.protocol === 'filen' && typeof server.options?.filen_auth_version === 'number' && (
+                                    {filenAuthVersion && (
                                         <span
                                             className="text-xs px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
                                             title="Detected from Filen auth/info on successful connect"
                                         >
-                                            v{server.options.filen_auth_version}
+                                            v{filenAuthVersion}
                                         </span>
                                     )}
                                 </div>
