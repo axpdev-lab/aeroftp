@@ -31,6 +31,10 @@ Big-batch release closing the P3-T01 wave (AeroRsync streaming + batch transport
 - **P3-T01 live smoke validated** — on the real `SSH MyCloud HD` profile, the two reference runs (initial 100x10KB upload and one-mutation resync: 1 uploaded, 99 skipped) confirm consistent file-level incremental behavior.
 - **AeroRsync UI** — SyncPanel shows the batch summary (`Delta: X files in Y session(s)` + `bytes_on_wire`); `types.ts` aligned with the new `SyncReport` shape.
 
+#### Fixed
+
+- **Filen v3 authentication (Argon2id)** — new Filen accounts using `authVersion >= 3` can now log in. AeroFTP now derives credentials with the same Argon2id parameters used by the official Filen SDK (`t=3`, `m=65536`, `p=4`, `v=0x13`, `dkLen=64`) and decodes `auth/info` salt as hex bytes for v3.
+
 #### Internal
 
 - P3-T01 closure docs consolidated under Appendix C-Y-D (final report and handoff with i18n / typecheck / live small+large smoke evidence on a real target).

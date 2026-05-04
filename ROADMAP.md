@@ -48,17 +48,13 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Delta sync local-to-local, the same wire-protocol-compatible engine extended to local filesystem pairs.
 - **Activity Log per-provider coverage**
   Beyond generic CRUD, surface provider-specific events such as share link rotated, version restored, label applied.
-- **Flathub publish**
-  Flatpak manifest done, `flathub-fork/` ready, awaiting acceptance into the Flathub remote.
+- **Persistent Mount Manager (GUI + CLI)**
+  Pick a free drive letter on Windows or a mount path on Linux, persist across reboots, with an Open Mount button in the dual panel. Also unlocks the "view the decrypted view of an encrypted sync" use case for Crypt and AeroVault overlays.
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
-- **Mobile companion app**
-  Android with Capacitor 6 and React. FTP, SFTP, and WebDAV protocols, plus AeroVault v2 import/export.
 
 ### 🔵 Up Next
 
-- **Persistent Mount Manager (GUI + CLI)**
-  Pick a free drive letter on Windows or a mount path on Linux, persist across reboots, with an Open Mount button in the dual panel. Also unlocks the "view the decrypted view of an encrypted sync" use case for Crypt and AeroVault overlays.
 - **Crypt as a dedicated profile type**
   Surface `crypt` in the `aeroftp-cli profiles` listing under the "Proto" column instead of hiding the encryption configuration inside `.sh` and `.ps1` automation scripts. Same on the GUI: Crypt becomes its own card on My Servers and Discover with a `256-bit 🔐` badge.
 - **Compression wrapper profile**
@@ -92,6 +88,10 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 - **AeroIndex**
   Content-aware file intelligence: cross-server deduplication, semantic tags, transactional preview, offline browsing, workspaces. A new way to think about files scattered across 40+ cloud services.
+- **Mobile companion app**
+  Android with Capacitor 6 and React. FTP, SFTP, and WebDAV protocols, plus AeroVault v2 import/export.
+- **Flathub publish**
+  Flatpak manifest done, `flathub-fork/` ready, awaiting acceptance into the Flathub remote.
 - **IPFS / Web3 Storage**
   Decentralized storage integration (NLnet grant submitted).
 - **Tor Support**

@@ -1026,7 +1026,7 @@ export const PROVIDERS: ProviderConfig[] = [
         stable: true,
         contactVerified: true,
         fields: [
-            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'your@email.com' },
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
             {
                 ...COMMON_FIELDS.password,
                 label: 'App Password',
@@ -1093,7 +1093,7 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#0099CC',
         stable: true,
         fields: [
-            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'your@email.com' },
+            { ...COMMON_FIELDS.username, label: 'Email', placeholder: 'email@example.com' },
             { ...COMMON_FIELDS.password, label: 'Password', helpText: 'Your regular OpenDrive login password' },
         ],
         defaults: {
@@ -1144,7 +1144,7 @@ export const PROVIDERS: ProviderConfig[] = [
             {
                 ...COMMON_FIELDS.username,
                 label: 'Email',
-                placeholder: 'your@email.com',
+                placeholder: 'email@example.com',
             },
             {
                 ...COMMON_FIELDS.password,
@@ -1185,7 +1185,7 @@ export const PROVIDERS: ProviderConfig[] = [
             {
                 ...COMMON_FIELDS.username,
                 label: 'User ID (Email)',
-                placeholder: 'your@email.com',
+                placeholder: 'email@example.com',
             },
             {
                 ...COMMON_FIELDS.password,
@@ -1416,7 +1416,7 @@ export const PROVIDERS: ProviderConfig[] = [
             {
                 ...COMMON_FIELDS.username,
                 label: 'Email',
-                placeholder: 'your@email.com',
+                placeholder: 'email@example.com',
             },
             {
                 ...COMMON_FIELDS.password,
@@ -1499,7 +1499,7 @@ export const PROVIDERS: ProviderConfig[] = [
                 label: 'Email',
                 type: 'email',
                 required: true,
-                placeholder: 'your@email.com',
+                placeholder: 'email@example.com',
                 group: 'credentials',
             },
             {

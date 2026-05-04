@@ -205,7 +205,7 @@ import DebugPanel, {
   deactivateNetworkCapture,
 } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, GitHubLogo, GitLabLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
+import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, OpenDriveLogo, FourSharedLogo, GitHubLogo, GitLabLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
@@ -4399,6 +4399,20 @@ interface UpdateVerificationInfo {
               timeoutSeconds: timeoutSeconds,
               commitMessage: commitMessage || null,
             });
+            if (protocol === 'opendrive') {
+              await invoke('opendrive_set_path_privacy', {
+                path: remoteRootForFolder,
+                isPublic: false,
+                isDir: true,
+              });
+            }
+            if (protocol === 'fourshared') {
+              await invoke('fourshared_set_path_privacy', {
+                path: remoteRootForFolder,
+                isPublic: false,
+                isDir: true,
+              });
+            }
           } finally {
             setScanningState(INITIAL_SCANNING_STATE);
           }
@@ -4487,6 +4501,20 @@ interface UpdateVerificationInfo {
           });
         } else if (isProvider) {
           await invoke('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null });
+          if (protocol === 'opendrive') {
+            await invoke('opendrive_set_path_privacy', {
+              path: remotePath,
+              isPublic: false,
+              isDir: false,
+            });
+          }
+          if (protocol === 'fourshared') {
+            await invoke('fourshared_set_path_privacy', {
+              path: remotePath,
+              isPublic: false,
+              isDir: false,
+            });
+          }
         } else {
           await invoke('upload_file', { params: { local_path: localFilePath, remote_path: remotePath } as UploadParams });
         }
@@ -6238,6 +6266,12 @@ interface UpdateVerificationInfo {
     const isFileLuContext = currentProtocol === 'filelu' && count === 1;
     const isFileLuPrivate = isFileLuContext && filePrivacy === 'private';
     const isFileLuPublic = isFileLuContext && filePrivacy === 'public';
+    const isFourSharedContext = currentProtocol === 'fourshared' && count === 1;
+    const isFourSharedPrivate = isFourSharedContext && (filePrivacy.includes('private') || filePrivacy === 'true');
+    const isFourSharedPublic = isFourSharedContext && (filePrivacy.includes('public') || filePrivacy === 'false');
+    const isOpenDriveContext = currentProtocol === 'opendrive' && count === 1;
+    const isOpenDrivePrivate = isOpenDriveContext && (filePrivacy.includes('private') || filePrivacy === '0');
+    const isOpenDrivePublic = isOpenDriveContext && (filePrivacy.includes('public') || filePrivacy === '1');
 
     const items: ContextMenuItem[] = [
       { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
@@ -6457,6 +6491,162 @@ interface UpdateVerificationInfo {
           icon: <span style={{ fontSize: 13 }}>🌐</span>,
           action: () => setFileLuRemoteUploadDialog({ destPath: file.path }),
           divider: true,
+        }] : []),
+      ] : []),
+      ...(currentProtocol === 'opendrive' ? [
+        ...(isOpenDriveContext ? [
+          {
+            label: t('contextMenu.setAsPrivate') || 'Set as Private',
+            icon: <OpenDriveLogo size={14} />,
+            action: async () => {
+              const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
+              const logId = humanLog.logRaw('activity.opendrive_set_private', 'INFO', { provider: 'OpenDrive', filename: file.name }, 'running');
+              try {
+                await invoke('opendrive_set_path_privacy', {
+                  path: targetPath,
+                  isPublic: false,
+                  isDir: !!file.is_dir,
+                });
+                notify.success(t('contextMenu.setAsPrivate') || 'Set as Private');
+                humanLog.updateEntry(logId, { status: 'success', message: '[OpenDrive] Set private' });
+                await loadRemoteFiles(undefined, true);
+              } catch (err) {
+                notify.error(String(err));
+                humanLog.updateEntry(logId, { status: 'error', message: '[OpenDrive] Set private failed' });
+              }
+            },
+            disabled: isOpenDrivePrivate,
+          },
+          {
+            label: t('contextMenu.setAsPublic') || 'Set as Public',
+            icon: <OpenDriveLogo size={14} />,
+            action: async () => {
+              const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
+              const logId = humanLog.logRaw('activity.opendrive_set_public', 'INFO', { provider: 'OpenDrive', filename: file.name }, 'running');
+              try {
+                await invoke('opendrive_set_path_privacy', {
+                  path: targetPath,
+                  isPublic: true,
+                  isDir: !!file.is_dir,
+                });
+                notify.success(t('contextMenu.setAsPublic') || 'Set as Public');
+                humanLog.updateEntry(logId, { status: 'success', message: '[OpenDrive] Set public' });
+                await loadRemoteFiles(undefined, true);
+              } catch (err) {
+                notify.error(String(err));
+                humanLog.updateEntry(logId, { status: 'error', message: '[OpenDrive] Set public failed' });
+              }
+            },
+            disabled: isOpenDrivePublic,
+          },
+        ] : []),
+        ...(count > 1 ? [{
+          label: t('contextMenu.makeAllPrivate') || 'Make all private',
+          icon: <OpenDriveLogo size={14} />,
+          action: async () => {
+            const selectedEntries = remoteFiles.filter(f => selection.has(f.name));
+            const logId = humanLog.logRaw('activity.opendrive_set_private_bulk', 'INFO', { provider: 'OpenDrive', filename: `${selectedEntries.length} items` }, 'running');
+            try {
+              const results = await Promise.allSettled(
+                selectedEntries.map(entry => invoke('opendrive_set_path_privacy', {
+                  path: entry.path,
+                  isPublic: false,
+                  isDir: !!entry.is_dir,
+                }))
+              );
+              const ok = results.filter(r => r.status === 'fulfilled').length;
+              const failed = results.length - ok;
+              if (failed === 0) {
+                notify.success(t('contextMenu.makeAllPrivate') || 'Make all private');
+                humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Set ${ok} entries private` });
+              } else {
+                notify.warning(`${t('contextMenu.makeAllPrivate') || 'Make all private'}: ${ok}/${results.length}`);
+                humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Set ${ok}/${results.length} entries private` });
+              }
+              await loadRemoteFiles(undefined, true);
+            } catch (err) {
+              notify.error(String(err));
+              humanLog.updateEntry(logId, { status: 'error', message: '[OpenDrive] Bulk private failed' });
+            }
+          }
+        }] : []),
+      ] : []),
+      ...(currentProtocol === 'fourshared' ? [
+        ...(isFourSharedContext ? [
+          {
+            label: t('contextMenu.setAsPrivate') || 'Set as Private',
+            icon: <FourSharedLogo size={14} />,
+            action: async () => {
+              const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
+              const logId = humanLog.logRaw('activity.fourshared_set_private', 'INFO', { provider: '4shared', filename: file.name }, 'running');
+              try {
+                await invoke('fourshared_set_path_privacy', {
+                  path: targetPath,
+                  isPublic: false,
+                  isDir: !!file.is_dir,
+                });
+                notify.success(t('contextMenu.setAsPrivate') || 'Set as Private');
+                humanLog.updateEntry(logId, { status: 'success', message: '[4shared] Set private' });
+                await loadRemoteFiles(undefined, true);
+              } catch (err) {
+                notify.error(String(err));
+                humanLog.updateEntry(logId, { status: 'error', message: '[4shared] Set private failed' });
+              }
+            },
+            disabled: isFourSharedPrivate,
+          },
+          {
+            label: t('contextMenu.setAsPublic') || 'Set as Public',
+            icon: <FourSharedLogo size={14} />,
+            action: async () => {
+              const targetPath = file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`;
+              const logId = humanLog.logRaw('activity.fourshared_set_public', 'INFO', { provider: '4shared', filename: file.name }, 'running');
+              try {
+                await invoke('fourshared_set_path_privacy', {
+                  path: targetPath,
+                  isPublic: true,
+                  isDir: !!file.is_dir,
+                });
+                notify.success(t('contextMenu.setAsPublic') || 'Set as Public');
+                humanLog.updateEntry(logId, { status: 'success', message: '[4shared] Set public' });
+                await loadRemoteFiles(undefined, true);
+              } catch (err) {
+                notify.error(String(err));
+                humanLog.updateEntry(logId, { status: 'error', message: '[4shared] Set public failed' });
+              }
+            },
+            disabled: isFourSharedPublic,
+          },
+        ] : []),
+        ...(count > 1 ? [{
+          label: t('contextMenu.makeAllPrivate') || 'Make all private',
+          icon: <FourSharedLogo size={14} />,
+          action: async () => {
+            const selectedEntries = remoteFiles.filter(f => selection.has(f.name));
+            const logId = humanLog.logRaw('activity.fourshared_set_private_bulk', 'INFO', { provider: '4shared', filename: `${selectedEntries.length} items` }, 'running');
+            try {
+              const results = await Promise.allSettled(
+                selectedEntries.map(entry => invoke('fourshared_set_path_privacy', {
+                  path: entry.path,
+                  isPublic: false,
+                  isDir: !!entry.is_dir,
+                }))
+              );
+              const ok = results.filter(r => r.status === 'fulfilled').length;
+              const failed = results.length - ok;
+              if (failed === 0) {
+                notify.success(t('contextMenu.makeAllPrivate') || 'Make all private');
+                humanLog.updateEntry(logId, { status: 'success', message: `[4shared] Set ${ok} entries private` });
+              } else {
+                notify.warning(`${t('contextMenu.makeAllPrivate') || 'Make all private'}: ${ok}/${results.length}`);
+                humanLog.updateEntry(logId, { status: 'error', message: `[4shared] Set ${ok}/${results.length} entries private` });
+              }
+              await loadRemoteFiles(undefined, true);
+            } catch (err) {
+              notify.error(String(err));
+              humanLog.updateEntry(logId, { status: 'error', message: '[4shared] Bulk private failed' });
+            }
+          }
         }] : []),
       ] : []),
       {

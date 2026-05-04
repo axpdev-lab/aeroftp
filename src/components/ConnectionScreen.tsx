@@ -544,6 +544,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Export/Import dialog state
     const [showExportImport, setShowExportImport] = useState(false);
     const [servers, setServers] = useState<ServerProfile[]>([]);
+    const [savedProfilesForNaming, setSavedProfilesForNaming] = useState<ServerProfile[]>([]);
 
     // Load servers when opening export/import dialog
     useEffect(() => {
@@ -560,6 +561,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             })();
         }
     }, [showExportImport]);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const loaded = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+            if (!cancelled) setSavedProfilesForNaming(loaded);
+        })();
+        return () => { cancelled = true; };
+    }, [savedServersUpdate, serversRefreshKey]);
     const [securityInfoOpen, setSecurityInfoOpen] = useState(false);
     const [gitHubAlert, setGitHubAlert] = useState<{ title: string; message: string; type: 'warning' | 'error' | 'info' } | null>(null);
     const [gitHubDeviceFlow, setGitHubDeviceFlow] = useState<{ userCode: string; verificationUri: string; deviceCode: string; interval: number } | null>(null);
@@ -676,6 +686,37 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
+    const normalizeEndpointForDuplicate = (value?: string) => {
+        const raw = (value || '').trim();
+        if (!raw) return '';
+        try {
+            const parsed = new URL(raw.includes('://') ? raw : `https://${raw}`);
+            const pathname = parsed.pathname.replace(/\/+$/, '').toLowerCase();
+            return `${parsed.protocol.toLowerCase()}//${parsed.host.toLowerCase()}${pathname}`;
+        } catch {
+            return raw.replace(/\/+$/, '').toLowerCase();
+        }
+    };
+
+    const findDuplicateProfile = (
+        profiles: ServerProfile[],
+        candidateName: string,
+        candidateHost: string,
+        candidateUsername?: string,
+        excludeId?: string | null,
+    ) => {
+        const nameKey = candidateName.trim().toLowerCase();
+        const hostKey = normalizeEndpointForDuplicate(candidateHost);
+        const userKey = (candidateUsername || '').trim().toLowerCase();
+        return profiles.find((profile) => {
+            if (excludeId && profile.id === excludeId) return false;
+            const profileName = (profile.name || '').trim().toLowerCase();
+            const profileHost = normalizeEndpointForDuplicate(profile.host);
+            const profileUser = (profile.username || '').trim().toLowerCase();
+            return profileName === nameKey || (profileHost === hostKey && profileUser === userKey);
+        });
+    };
+
     // Save the current connection to saved servers (or update existing)
     const saveToServers = async () => {
         // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
@@ -742,12 +783,27 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         if (editingProfileId) {
             const credentialStored = await tryStoreCredential(`server_${editingProfileId}`, connectionParams.password);
+            const editedName = connectionName || existingServers.find((s) => s.id === editingProfileId)?.name || normalizedParams.server || protocol;
+            const duplicate = findDuplicateProfile(
+                existingServers,
+                editedName,
+                normalizedParams.server,
+                normalizedParams.username,
+                editingProfileId,
+            );
+            if (duplicate) {
+                setGitHubAlert({
+                    title: 'Potential duplicate profile',
+                    message: `This profile matches ${duplicate.name} by name or endpoint+username.`,
+                    type: 'warning',
+                });
+            }
 
             const updatedServers = existingServers.map((s: ServerProfile) => {
                 if (s.id === editingProfileId) {
                     return {
                         ...s,
-                        name: connectionName || s.name,
+                        name: editedName,
                         host: normalizedParams.server,
                         port: normalizedParams.port || getDefaultPort(protocol),
                         username: normalizedParams.username,
@@ -768,10 +824,25 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         } else if (saveConnection) {
             const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
+            const newName = connectionName || normalizedParams.server || protocol;
+            const duplicate = findDuplicateProfile(
+                existingServers,
+                newName,
+                normalizedParams.server,
+                normalizedParams.username,
+                null,
+            );
+            if (duplicate) {
+                setGitHubAlert({
+                    title: 'Potential duplicate profile',
+                    message: `This new profile overlaps with ${duplicate.name} (same name or endpoint+username).`,
+                    type: 'warning',
+                });
+            }
 
             const newServer: ServerProfile = {
                 id: newId,
-                name: connectionName || normalizedParams.server || protocol,
+                name: newName,
                 host: normalizedParams.server,
                 port: normalizedParams.port || getDefaultPort(protocol),
                 username: normalizedParams.username,
@@ -1240,6 +1311,35 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return t('connection.username');
     };
 
+    const getUsernamePlaceholder = () => {
+        if (protocol === 's3') return 'AKIAIOSFODNN7EXAMPLE';
+        if (protocol === 'azure') return 'aeroftp2026';
+        if (protocol === 'opendrive' || protocol === 'webdav') return 'email@example.com';
+        const usernameField = selectedProvider?.fields?.find((f) => f.key === 'username');
+        if (usernameField?.placeholder) return usernameField.placeholder;
+        if ((usernameField?.label || '').toLowerCase().includes('email')) return 'email@example.com';
+        return t('connection.usernamePlaceholder');
+    };
+
+    const getSuggestedConnectionName = () => {
+        const baseRaw = (selectedProvider?.isGeneric && protocol)
+            ? protocol
+            : (selectedProviderId || protocol || 'connection');
+        const base = baseRaw.replace(/[_\-]+/g, ' ').trim().toLowerCase();
+        const taken = new Set(
+            savedProfilesForNaming
+                .filter((p) => p.id !== editingProfileId)
+                .map((p) => (p.name || '').trim().toLowerCase())
+                .filter(Boolean)
+        );
+        if (!taken.has(base)) return base;
+        for (let i = 2; i < 100; i += 1) {
+            const candidate = `${base} ${i}`;
+            if (!taken.has(candidate)) return candidate;
+        }
+        return base;
+    };
+
     // Dynamic server label based on protocol.
     // For URL-based protocols (WebDAV, S3, Azure) we use "Endpoint URL" with a
     // Link2 icon; for hostname-based protocols (FTP/SFTP/FTPS) the simple
@@ -1340,7 +1440,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             buttonColorClass,
             buttonText,
             remotePathPlaceholder = t('connection.initialRemotePath'),
-            connectionNameKey = t('connection.connectionNamePlaceholder'),
+            connectionNameKey = getSuggestedConnectionName(),
             showE2ENote,
             showIconPicker: showIcon = true,
             showCancelSaveAsNew = false,
@@ -1868,13 +1968,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             renderRightColumn({
                                                 disabled: !connectionParams.password,
                                                 buttonColorClass: 'bg-sky-600 hover:bg-sky-700',
-                                                connectionNameKey: t('filelu.connectionNamePlaceholder')
+                                                connectionNameKey: getSuggestedConnectionName()
                                             })
                                         ) : (
                                             renderRightColumn({
                                                 disabled: !connectionParams.password,
                                                 buttonColorClass: 'bg-sky-600 hover:bg-sky-700',
-                                                connectionNameKey: t('filelu.connectionNamePlaceholder')
+                                                connectionNameKey: getSuggestedConnectionName()
                                             })
                                         )}
                                     </div>
@@ -2055,7 +2155,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    placeholder={getSuggestedConnectionName()}
                                                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                 />
                                                 {renderIconPicker()}
@@ -2085,7 +2185,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('settings.username')}</label>
+                                            {renderUsernameLabel(t('connection.emailAccount'))}
                                             <input
                                                 type="text"
                                                 value={connectionParams.username}
@@ -2096,12 +2196,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     port: 443,
                                                 })}
                                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                                                placeholder={t('protocol.opendriveUsernamePlaceholder')}
+                                                placeholder="email@example.com"
                                                 autoFocus
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium mb-1.5">{t('settings.password')}</label>
+                                            {renderPasswordLabel(t('settings.password'))}
                                             <div className="relative">
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
@@ -2120,7 +2220,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </button>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-gray-400 mt-2">{t('protocol.opendriveAuthHelp')}</p>
+                                        <p className="text-xs text-gray-400 mt-2">{t('protocol.opendriveAuthHelp')} (not your OpenDrive API key)</p>
                                         </div>
 
                                         {formOnly ? (
@@ -2635,7 +2735,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    placeholder={getSuggestedConnectionName()}
                                                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                 />
                                                 {renderIconPicker()}
@@ -2769,7 +2869,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    placeholder={getSuggestedConnectionName()}
                                                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                                 />
                                                 {renderIconPicker()}
@@ -2935,7 +3035,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    placeholder={getSuggestedConnectionName()}
                                                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                                                 />
                                                 {renderIconPicker()}
@@ -3152,7 +3252,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNamePlaceholder')}
+                                                    placeholder={getSuggestedConnectionName()}
                                                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                                 />
                                                 {renderIconPicker()}
@@ -3810,7 +3910,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 value={connectionParams.username}
                                                 onChange={(e) => onConnectionParamsChange({ ...connectionParams, username: e.target.value })}
                                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                placeholder={protocol === 's3' ? 'AKIAIOSFODNN7EXAMPLE' : protocol === 'azure' ? 'aeroftp2026' : t('connection.usernamePlaceholder')}
+                                                placeholder={getUsernamePlaceholder()}
                                             />
                                         </div>
                                         <div>

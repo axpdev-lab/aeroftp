@@ -31,6 +31,8 @@ const STORAGE_KEY = 'aeroftp-saved-servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
 const HEALTH_SCAN_CHUNK_DELAY_MS = 180;
+const DRAG_SENTINEL_TOP = -1;
+const DRAG_SENTINEL_BOTTOM = -2;
 
 /** Load credential from vault with retry if store not ready */
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
@@ -414,6 +416,19 @@ export function MyServersPanel({
     // so the reorder produces a coherent move in the underlying list.
     const canDrag = tableColumns.sort === null;
 
+    const maybeAutoScrollWhileDrag = useCallback((clientY: number) => {
+        const el = scrollContainerRef.current;
+        if (!el || dragIdx === null) return;
+        const rect = el.getBoundingClientRect();
+        const edge = 64;
+        const step = 20;
+        if (clientY < rect.top + edge) {
+            el.scrollTop -= step;
+        } else if (clientY > rect.bottom - edge) {
+            el.scrollTop += step;
+        }
+    }, [dragIdx]);
+
     const handleDragStart = useCallback((idx: number) => (e: React.DragEvent) => {
         setDragIdx(idx);
         e.dataTransfer.effectAllowed = 'move';
@@ -423,35 +438,57 @@ export function MyServersPanel({
     const handleDragEnter = useCallback((idx: number) => (e: React.DragEvent) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
+        maybeAutoScrollWhileDrag(e.clientY);
         setOverIdx(idx);
-    }, []);
+    }, [maybeAutoScrollWhileDrag]);
 
     const handleDragOver = useCallback((idx: number) => (e: React.DragEvent) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
+        maybeAutoScrollWhileDrag(e.clientY);
         setOverIdx(idx);
-    }, []);
+    }, [maybeAutoScrollWhileDrag]);
 
     const handleDrop = useCallback((idx: number) => (e: React.DragEvent) => {
         e.preventDefault();
-        if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return; }
+        if (dragIdx === null) { setDragIdx(null); setOverIdx(null); return; }
+        const rawInsertIdx = idx === DRAG_SENTINEL_TOP
+            ? insertStartIdx
+            : idx === DRAG_SENTINEL_BOTTOM
+                ? insertEndIdx
+                : idx;
+        const boundedInsertIdx = Math.max(0, Math.min(rawInsertIdx, servers.length));
+        const target = dragIdx < boundedInsertIdx ? boundedInsertIdx - 1 : boundedInsertIdx;
+        if (dragIdx === target) { setDragIdx(null); setOverIdx(null); return; }
         const updated = [...servers];
         const [moved] = updated.splice(dragIdx, 1);
-        // After splice the target index shifts left by one when the moved item
-        // was earlier in the array — adjust so the dropped card lands where the
-        // user actually pointed.
-        const target = dragIdx < idx ? idx - 1 : idx;
         updated.splice(target, 0, moved);
         setServers(updated);
         secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
         setDragIdx(null);
         setOverIdx(null);
-    }, [dragIdx, servers]);
+    }, [dragIdx, insertEndIdx, insertStartIdx, servers]);
 
     const handleDragEnd = useCallback(() => {
         setDragIdx(null);
         setOverIdx(null);
     }, []);
+
+    useEffect(() => {
+        if (dragIdx === null) return;
+        const onKeyDown = (e: KeyboardEvent) => {
+            const el = scrollContainerRef.current;
+            if (!el) return;
+            if (e.key === 'ArrowUp') { el.scrollTop -= 48; e.preventDefault(); }
+            else if (e.key === 'ArrowDown') { el.scrollTop += 48; e.preventDefault(); }
+            else if (e.key === 'PageUp') { el.scrollTop -= el.clientHeight * 0.8; e.preventDefault(); }
+            else if (e.key === 'PageDown') { el.scrollTop += el.clientHeight * 0.8; e.preventDefault(); }
+            else if (e.key === 'Home') { el.scrollTop = 0; e.preventDefault(); }
+            else if (e.key === 'End') { el.scrollTop = el.scrollHeight; e.preventDefault(); }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [dragIdx]);
 
     const filteredServers = useMemo(() => {
         let result = servers;
@@ -474,6 +511,17 @@ export function MyServersPanel({
         }
         return result;
     }, [servers, searchQuery, activeFilter, favorites]);
+
+    const { insertStartIdx, insertEndIdx } = useMemo(() => {
+        if (filteredServers.length === 0) {
+            return { insertStartIdx: 0, insertEndIdx: servers.length };
+        }
+        const firstVisible = servers.findIndex((s) => s.id === filteredServers[0].id);
+        const lastVisible = servers.findIndex((s) => s.id === filteredServers[filteredServers.length - 1].id);
+        const safeFirst = firstVisible >= 0 ? firstVisible : 0;
+        const safeLast = lastVisible >= 0 ? lastVisible : Math.max(servers.length - 1, 0);
+        return { insertStartIdx: safeFirst, insertEndIdx: safeLast + 1 };
+    }, [filteredServers, servers]);
 
     // Per-server reachability probe — only meaningful in detailed layout, so
     // we skip the scan otherwise to avoid burning network on a probe nobody
@@ -923,11 +971,26 @@ export function MyServersPanel({
                     ref={scrollContainerRef}
                     className="flex-1 overflow-y-auto pr-3 custom-scroll-area"
                     style={{ willChange: 'scroll-position', transform: 'translateZ(0)' }}
+                    onWheelCapture={(e) => {
+                        if (dragIdx === null) return;
+                        const el = scrollContainerRef.current;
+                        if (!el) return;
+                        el.scrollTop += e.deltaY;
+                        e.preventDefault();
+                    }}
                 >
                     <div
                         className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 p-1"
                         style={{ contain: 'layout style' }}
                     >
+                        {canDrag && dragIdx !== null && (
+                            <div
+                                className={`col-span-full h-6 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_TOP ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
+                                onDragEnter={handleDragEnter(DRAG_SENTINEL_TOP)}
+                                onDragOver={handleDragOver(DRAG_SENTINEL_TOP)}
+                                onDrop={handleDrop(DRAG_SENTINEL_TOP)}
+                            />
+                        )}
                         {filteredServers.map((server) => {
                             // Resolve the real index in the full `servers` array so drag-reorder
                             // works correctly even with a filter or search applied.
@@ -971,6 +1034,14 @@ export function MyServersPanel({
                                 />
                             );
                         })}
+                        {canDrag && dragIdx !== null && (
+                            <div
+                                className={`col-span-full h-6 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_BOTTOM ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
+                                onDragEnter={handleDragEnter(DRAG_SENTINEL_BOTTOM)}
+                                onDragOver={handleDragOver(DRAG_SENTINEL_BOTTOM)}
+                                onDrop={handleDrop(DRAG_SENTINEL_BOTTOM)}
+                            />
+                        )}
                     </div>
                 </div>
             ) : (
@@ -978,7 +1049,22 @@ export function MyServersPanel({
                     <div
                         ref={scrollContainerRef}
                         className="flex-1 overflow-auto custom-scroll-area"
+                        onWheelCapture={(e) => {
+                            if (dragIdx === null) return;
+                            const el = scrollContainerRef.current;
+                            if (!el) return;
+                            el.scrollTop += e.deltaY;
+                            e.preventDefault();
+                        }}
                     >
+                    {canDrag && dragIdx !== null && (
+                        <div
+                            className={`mx-2 mt-2 h-5 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_TOP ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
+                            onDragEnter={handleDragEnter(DRAG_SENTINEL_TOP)}
+                            onDragOver={handleDragOver(DRAG_SENTINEL_TOP)}
+                            onDrop={handleDrop(DRAG_SENTINEL_TOP)}
+                        />
+                    )}
                     <MyServersTable
                         servers={filteredServers}
                         allServers={servers}
@@ -1018,6 +1104,14 @@ export function MyServersPanel({
                         <div className="px-3 pb-4">
                             <MyServersProtocolBreakdown servers={filteredServers} thresholds={thresholds} />
                         </div>
+                    )}
+                    {canDrag && dragIdx !== null && (
+                        <div
+                            className={`mx-2 mb-2 h-5 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_BOTTOM ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
+                            onDragEnter={handleDragEnter(DRAG_SENTINEL_BOTTOM)}
+                            onDragOver={handleDragOver(DRAG_SENTINEL_BOTTOM)}
+                            onDrop={handleDrop(DRAG_SENTINEL_BOTTOM)}
+                        />
                     )}
                     </div>
                     <MyServersTableFooter

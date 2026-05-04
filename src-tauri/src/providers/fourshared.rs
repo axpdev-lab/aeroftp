@@ -170,6 +170,8 @@ struct FourSharedFile {
     md5: Option<String>,
     #[serde(rename = "downloadPage")]
     download_page: Option<String>,
+    #[serde(rename = "ownerOnly")]
+    owner_only: Option<bool>,
     status: Option<String>,
 }
 
@@ -528,6 +530,58 @@ impl FourSharedProvider {
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))
     }
 
+    /// Set file visibility using FourShared file metadata endpoint.
+    /// ownerOnly=true => private, ownerOnly=false => public.
+    pub async fn set_file_privacy(
+        &mut self,
+        path: &str,
+        is_public: bool,
+    ) -> Result<(), ProviderError> {
+        let normalized = self.resolve_path(path);
+        let file_id = self.resolve_file_id(&normalized).await?;
+        let url = format!("{}/files/{}", API_BASE, file_id);
+        let owner_only = if is_public { "false" } else { "true" };
+        let form = [("ownerOnly", owner_only)];
+        let resp = self.signed_put_form(&url, &form).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Set file privacy failed ({}): {}",
+                status, body
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Set folder visibility using FourShared folder metadata endpoint.
+    /// access=private|public.
+    pub async fn set_folder_privacy(
+        &mut self,
+        path: &str,
+        is_public: bool,
+    ) -> Result<(), ProviderError> {
+        let normalized = self.resolve_path(path);
+        let folder_id = self.resolve_folder_id(&normalized).await?;
+        let url = format!("{}/folders/{}", API_BASE, folder_id);
+        let access = if is_public { "public" } else { "private" };
+        let form = [("access", access)];
+        let resp = self.signed_put_form(&url, &form).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Set folder privacy failed ({}): {}",
+                status, body
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Download file bytes from 4shared (uses retry via signed_get — FS-009)
     async fn download_bytes(&self, file_id: &str) -> Result<Vec<u8>, ProviderError> {
         let url = format!("{}/files/{}/download", API_BASE, file_id);
@@ -842,7 +896,7 @@ impl StorageProvider for FourSharedProvider {
                     is_dir: true,
                     size: 0,
                     modified: f.modified.clone(),
-                    permissions: None,
+                    permissions: f.access.clone(),
                     owner: None,
                     group: None,
                     is_symlink: false,
@@ -923,7 +977,11 @@ impl StorageProvider for FourSharedProvider {
                     is_dir: false,
                     size: f.size.unwrap_or(0) as u64,
                     modified: f.modified.clone(),
-                    permissions: None,
+                    permissions: Some(if f.owner_only.unwrap_or(false) {
+                        "private".to_string()
+                    } else {
+                        "public".to_string()
+                    }),
                     owner: None,
                     group: None,
                     is_symlink: false,
@@ -1363,7 +1421,11 @@ impl StorageProvider for FourSharedProvider {
                     is_dir: false,
                     size: file.size.unwrap_or(0) as u64,
                     modified: file.modified,
-                    permissions: None,
+                    permissions: Some(if file.owner_only.unwrap_or(false) {
+                        "private".to_string()
+                    } else {
+                        "public".to_string()
+                    }),
                     owner: None,
                     group: None,
                     is_symlink: false,
@@ -1397,7 +1459,7 @@ impl StorageProvider for FourSharedProvider {
             is_dir: true,
             size: 0,
             modified: folder.modified,
-            permissions: None,
+            permissions: folder.access,
             owner: None,
             group: None,
             is_symlink: false,

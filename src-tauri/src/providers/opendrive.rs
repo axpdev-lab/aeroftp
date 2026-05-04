@@ -1079,6 +1079,68 @@ impl OpenDriveProvider {
         self.delete_unit_relative(&format!("folder/trash.json/{}", self.session_id))
             .await
     }
+
+    pub async fn set_file_privacy(
+        &mut self,
+        path: &str,
+        is_public: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let resolved = self.resolve_path(path)?;
+        let file_ispublic = if is_public { "1" } else { "0" };
+
+        self.with_reauth(|this| {
+            let resolved = resolved.clone();
+            let file_ispublic = file_ispublic.to_string();
+            Box::pin(async move {
+                let file_id = this.resolve_file_id(&resolved).await?;
+                this.post_form_unit(
+                    "file/access.json",
+                    &[
+                        ("session_id", this.session_id.clone()),
+                        ("file_id", file_id),
+                        ("file_ispublic", file_ispublic),
+                    ],
+                )
+                .await
+            })
+        })
+        .await
+    }
+
+    pub async fn set_folder_privacy(
+        &mut self,
+        path: &str,
+        is_public: bool,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let resolved = self.resolve_path(path)?;
+        let folder_is_public = if is_public { "1" } else { "0" };
+
+        self.with_reauth(|this| {
+            let resolved = resolved.clone();
+            let folder_is_public = folder_is_public.to_string();
+            Box::pin(async move {
+                let folder_id = this.folder_id_by_path(&resolved).await?;
+                this.post_form_unit(
+                    "folder/setaccess.json",
+                    &[
+                        ("session_id", this.session_id.clone()),
+                        ("folder_id", folder_id),
+                        ("folder_is_public", folder_is_public),
+                    ],
+                )
+                .await
+            })
+        })
+        .await
+    }
 }
 
 #[async_trait]

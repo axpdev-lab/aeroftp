@@ -4852,6 +4852,78 @@ pub async fn opendrive_empty_trash(state: State<'_, ProviderState>) -> Result<()
         .map_err(|e| format!("Empty trash failed: {}", e))
 }
 
+/// Set OpenDrive privacy for a file or folder.
+/// is_public=false => private, is_public=true => public.
+#[tauri::command]
+pub async fn opendrive_set_path_privacy(
+    state: State<'_, ProviderState>,
+    path: String,
+    is_public: bool,
+    is_dir: bool,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::OpenDrive {
+        return Err("This operation is only available for OpenDrive".to_string());
+    }
+
+    let opendrive = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
+        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
+
+    if is_dir {
+        opendrive
+            .set_folder_privacy(&path, is_public)
+            .await
+            .map_err(|e| format!("Set folder privacy failed for {}: {}", path, e))
+    } else {
+        opendrive
+            .set_file_privacy(&path, is_public)
+            .await
+            .map_err(|e| format!("Set file privacy failed for {}: {}", path, e))
+    }
+}
+
+/// Set FourShared privacy for a file or folder.
+/// is_public=false => private, is_public=true => public.
+#[tauri::command]
+pub async fn fourshared_set_path_privacy(
+    state: State<'_, ProviderState>,
+    path: String,
+    is_public: bool,
+    is_dir: bool,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::FourShared {
+        return Err("This operation is only available for FourShared".to_string());
+    }
+
+    let fourshared = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::fourshared::FourSharedProvider>()
+        .ok_or_else(|| "Failed to access FourShared provider".to_string())?;
+
+    if is_dir {
+        fourshared
+            .set_folder_privacy(&path, is_public)
+            .await
+            .map_err(|e| format!("Set folder privacy failed for {}: {}", path, e))
+    } else {
+        fourshared
+            .set_file_privacy(&path, is_public)
+            .await
+            .map_err(|e| format!("Set file privacy failed for {}: {}", path, e))
+    }
+}
+
 // ─── Yandex Disk-Specific Commands ────────────────────────────────────────
 
 /// List items in Yandex Disk trash
