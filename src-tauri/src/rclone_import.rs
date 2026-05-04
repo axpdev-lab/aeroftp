@@ -630,7 +630,10 @@ fn map_crypt_remote(
         options.insert("rcloneCryptPassword".into(), serde_json::Value::String(pw));
     }
     if let Some(pw2) = get_password("password2") {
-        options.insert("rcloneCryptPassword2".into(), serde_json::Value::String(pw2));
+        options.insert(
+            "rcloneCryptPassword2".into(),
+            serde_json::Value::String(pw2),
+        );
     }
     if let Some(mode) = get_str("filename_encryption") {
         options.insert(
@@ -1249,7 +1252,10 @@ region = eu-west-1
 
         let opts = mapped.options.expect("options should exist");
         let obj = opts.as_object().expect("options must be object");
-        assert_eq!(obj.get("rcloneCryptEnabled").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            obj.get("rcloneCryptEnabled").and_then(|v| v.as_bool()),
+            Some(true)
+        );
         assert_eq!(
             obj.get("rcloneCryptRemote").and_then(|v| v.as_str()),
             Some("mynas:/encrypted")

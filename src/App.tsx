@@ -1097,13 +1097,13 @@ interface UpdateVerificationInfo {
       if (activePanel === 'remote') {
         const name = Array.from(selectedRemoteFiles)[0];
         if (!name) return;
-        const file = remoteFiles.find(f => f.name === name);
-        if (file?.is_dir) changeRemoteDirectory(file.name);
+        const file = sortedRemoteFiles.find(f => f.name === name) || remoteFiles.find(f => f.name === name);
+        if (file) void handleRemoteFileAction(file);
       } else {
         const name = Array.from(selectedLocalFiles)[0];
         if (!name) return;
-        const file = localFiles.find(f => f.name === name);
-        if (file?.is_dir) changeLocalDirectory(file.path);
+        const file = sortedLocalFiles.find(f => f.name === name) || localFiles.find(f => f.name === name);
+        if (file) void handleLocalFileAction(file);
       }
     },
 
@@ -4631,16 +4631,18 @@ interface UpdateVerificationInfo {
 
   // ======== File Clipboard (Cut/Copy/Paste) ========
 
+  const formatClipboardFileCount = (count: number) => count === 1 ? '1 file' : `${count} files`;
+
   const clipboardCopy = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'copy' };
     setHasClipboard(true);
-    notify.success(t('contextMenu.copied') || 'Copied', `${files.length} file(s)`);
+    notify.success(t('contextMenu.copied') || 'Copied', formatClipboardFileCount(files.length));
   };
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
     setHasClipboard(true);
-    notify.success(t('contextMenu.cut') || 'Cut', `${files.length} file(s)`);
+    notify.success(t('contextMenu.cut') || 'Cut', formatClipboardFileCount(files.length));
   };
 
   const clipboardPaste = async (targetIsRemote: boolean, targetDir: string) => {
@@ -7554,6 +7556,23 @@ interface UpdateVerificationInfo {
         // Download action
         await downloadFile(file.path, file.name, currentLocalPath, false);
       }
+    }
+  };
+
+  const handleLocalFileAction = async (file: LocalFile) => {
+    if (file.is_dir) {
+      await changeLocalDirectory(file.path);
+    } else if (doubleClickAction === 'preview') {
+      const category = getPreviewCategory(file.name);
+      if (['image', 'audio', 'video', 'pdf', 'markdown', 'text'].includes(category)) {
+        openUniversalPreview(file, false);
+      } else if (isPreviewable(file.name)) {
+        openDevToolsPreview(file, false);
+      }
+    } else if (isConnected) {
+      uploadFile(file.path, file.name, false);
+    } else {
+      await openInFileManager(file.path);
     }
   };
 

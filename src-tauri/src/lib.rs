@@ -57,8 +57,8 @@ pub mod delta_sync_rsync;
 pub mod delta_transport;
 mod number_parsing;
 pub mod profile_loader;
-pub mod storage_dedup;
 mod rsync_output;
+pub mod storage_dedup;
 // `pub` transitively so integration tests can construct `RsyncStats`
 // fixtures for MockDeltaTransport. Same accepted-debt note as above.
 pub mod rsync_over_ssh;
@@ -71,7 +71,6 @@ pub mod aerorsync;
 pub mod agent_session;
 mod file_tags;
 mod file_watcher;
-mod local_panel_watcher;
 mod filesystem;
 pub mod filezilla_import;
 mod ftp;
@@ -81,6 +80,7 @@ mod health_check;
 mod host_key_check;
 mod infinicloud;
 mod keystore_export;
+mod local_panel_watcher;
 mod master_password;
 pub mod mcp;
 mod plugin_registry;
@@ -304,16 +304,17 @@ async fn aerovault_overlay_unlock(
     if let Some(existing_id) = sessions
         .iter()
         .find(|(_, s)| {
-        s.vault_path == vault_path
-            && s.password.expose_secret() == password
-            && s.source == normalized_source
-            && s.remote_vault_path == remote_vault_path
-            && s.remote_local_path == remote_local_path
+            s.vault_path == vault_path
+                && s.password.expose_secret() == password
+                && s.source == normalized_source
+                && s.remote_vault_path == remote_vault_path
+                && s.remote_local_path == remote_local_path
         })
         .map(|(id, _)| id.clone())
     {
         if let Some(existing) = sessions.get_mut(&existing_id) {
-            let is_expired = now.duration_since(existing.last_activity).as_secs() > existing.idle_timeout_secs;
+            let is_expired =
+                now.duration_since(existing.last_activity).as_secs() > existing.idle_timeout_secs;
             if !is_expired {
                 existing.last_activity = now;
                 existing.idle_timeout_secs = idle_timeout_secs;
@@ -369,7 +370,8 @@ async fn aerovault_overlay_list(
             let session = sessions
                 .get_mut(&session_id)
                 .ok_or_else(|| "Overlay session not found".to_string())?;
-            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            let expired =
+                now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
             if !expired {
                 session.last_activity = now;
             }
@@ -505,7 +507,8 @@ async fn aerovault_overlay_extract_entry(
             let session = sessions
                 .get_mut(&session_id)
                 .ok_or_else(|| "Overlay session not found".to_string())?;
-            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            let expired =
+                now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
             if !expired {
                 session.last_activity = now;
             }
@@ -579,7 +582,8 @@ async fn aerovault_overlay_add_file(
             let session = sessions
                 .get_mut(&session_id)
                 .ok_or_else(|| "Overlay session not found".to_string())?;
-            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            let expired =
+                now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
             if !expired {
                 session.last_activity = now;
             }
@@ -688,7 +692,8 @@ async fn aerovault_overlay_create_directory(
             let session = sessions
                 .get_mut(&session_id)
                 .ok_or_else(|| "Overlay session not found".to_string())?;
-            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            let expired =
+                now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
             if !expired {
                 session.last_activity = now;
             }
@@ -731,7 +736,8 @@ async fn aerovault_overlay_delete_entries(
             let session = sessions
                 .get_mut(&session_id)
                 .ok_or_else(|| "Overlay session not found".to_string())?;
-            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            let expired =
+                now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
             if !expired {
                 session.last_activity = now;
             }
@@ -759,7 +765,8 @@ async fn aerovault_overlay_delete_entries(
         }
     }
 
-    let result = aerovault_v2::vault_v2_delete_entries(vault_path, password, normalized, recursive).await?;
+    let result =
+        aerovault_v2::vault_v2_delete_entries(vault_path, password, normalized, recursive).await?;
     let removed = result.get("removed").and_then(|v| v.as_u64()).unwrap_or(0);
     Ok(removed)
 }
@@ -781,7 +788,8 @@ async fn aerovault_overlay_move_entry(
             let session = sessions
                 .get_mut(&session_id)
                 .ok_or_else(|| "Overlay session not found".to_string())?;
-            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            let expired =
+                now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
             if !expired {
                 session.last_activity = now;
             }
@@ -828,7 +836,8 @@ async fn aerovault_overlay_rename_entry(
             let session = sessions
                 .get_mut(&session_id)
                 .ok_or_else(|| "Overlay session not found".to_string())?;
-            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            let expired =
+                now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
             if !expired {
                 session.last_activity = now;
             }
@@ -880,7 +889,8 @@ async fn aerovault_overlay_copy_entry(
             let session = sessions
                 .get_mut(&session_id)
                 .ok_or_else(|| "Overlay session not found".to_string())?;
-            let expired = now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
+            let expired =
+                now.duration_since(session.last_activity).as_secs() > session.idle_timeout_secs;
             if !expired {
                 session.last_activity = now;
             }
@@ -1163,8 +1173,12 @@ async fn rclone_crypt_provider_upload_file(
                 dir_iv = Some(new_iv);
             }
 
-            rclone_crypt::encrypt_name(&name_key, &dir_iv.expect("dirIV should be set"), &plain_name)
-                .map_err(|e| format!("Filename encryption failed: {}", e))?
+            rclone_crypt::encrypt_name(
+                &name_key,
+                &dir_iv.expect("dirIV should be set"),
+                &plain_name,
+            )
+            .map_err(|e| format!("Filename encryption failed: {}", e))?
         }
         rclone_crypt::FilenameEncryption::Obfuscate => {
             return Err("filename_encryption=obfuscate is not supported in this MVP".to_string());
@@ -12476,13 +12490,11 @@ pub fn run() {
                     log::warn!(
                         "tauri-plugin-localhost did not bind 127.0.0.1:{} within 5s ({}); \
                          splash and main window may briefly show a connection-refused page",
-                        port, e
+                        port,
+                        e
                     );
                 } else {
-                    log::info!(
-                        "tauri-plugin-localhost is listening on 127.0.0.1:{}",
-                        port
-                    );
+                    log::info!("tauri-plugin-localhost is listening on 127.0.0.1:{}", port);
                 }
             }
 

@@ -311,13 +311,7 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
         } else {
             profile.port
         };
-        return format!(
-            "host:{}:{}:{}:{}",
-            proto,
-            host,
-            port,
-            user_or_id()
-        );
+        return format!("host:{}:{}:{}:{}", proto, host, port, user_or_id());
     }
 
     format!("id:{}", profile.id)
@@ -366,8 +360,7 @@ pub fn aggregate(profiles: &[ProfileView<'_>]) -> AggregateSummary {
     }
 
     let mut buckets: HashMap<String, Bucket> = HashMap::new();
-    let mut profile_class_buckets: BTreeMap<ProtocolClass, BTreeMap<String, ()>> =
-        BTreeMap::new();
+    let mut profile_class_buckets: BTreeMap<ProtocolClass, BTreeMap<String, ()>> = BTreeMap::new();
     let mut profile_class_counts: BTreeMap<ProtocolClass, usize> = BTreeMap::new();
 
     for p in profiles {
@@ -410,7 +403,10 @@ pub fn aggregate(profiles: &[ProfileView<'_>]) -> AggregateSummary {
     // the TS aggregator surfaces the same drive in every protocol it served.
     let mut breakdown: Vec<ProtocolBreakdownRow> = Vec::new();
     for (class, profile_count) in profile_class_counts.iter() {
-        let bucket_keys = profile_class_buckets.get(class).cloned().unwrap_or_default();
+        let bucket_keys = profile_class_buckets
+            .get(class)
+            .cloned()
+            .unwrap_or_default();
         let unique = bucket_keys.len();
         let mut class_used: u128 = 0;
         let mut class_total: u128 = 0;
@@ -635,17 +631,15 @@ mod tests {
     fn case6_quota_summed_once_per_dedup_key() {
         // Three Wasabi profiles, same access key -> 1 unique drive.
         let profiles: Vec<ProfileView> = (0..3)
-            .map(|i| {
-                ProfileView {
-                    id: ["a", "b", "c"][i],
-                    protocol: "s3",
-                    provider_id: Some("wasabi"),
-                    host: "s3.wasabisys.com",
-                    port: 443,
-                    username: "AKIA_SAME_KEY_HERE_X",
-                    used: Some(1_000_000_000),
-                    total: Some(10_000_000_000),
-                }
+            .map(|i| ProfileView {
+                id: ["a", "b", "c"][i],
+                protocol: "s3",
+                provider_id: Some("wasabi"),
+                host: "s3.wasabisys.com",
+                port: 443,
+                username: "AKIA_SAME_KEY_HERE_X",
+                used: Some(1_000_000_000),
+                total: Some(10_000_000_000),
             })
             .collect();
         let summary = aggregate(&profiles);
@@ -721,8 +715,14 @@ mod tests {
 
     #[test]
     fn normalize_host_strips_scheme_path_and_www() {
-        assert_eq!(normalize_host("https://Www.Example.com/dav/"), "example.com");
-        assert_eq!(normalize_host("webdavs://nas.local:8080/share"), "nas.local:8080");
+        assert_eq!(
+            normalize_host("https://Www.Example.com/dav/"),
+            "example.com"
+        );
+        assert_eq!(
+            normalize_host("webdavs://nas.local:8080/share"),
+            "nas.local:8080"
+        );
     }
 
     #[test]

@@ -4188,7 +4188,11 @@ fn looks_like_opaque_token(s: &str) -> bool {
     if s.len() >= 32 && s.chars().all(|c| c.is_ascii_hexdigit()) {
         return true;
     }
-    if s.len() >= 36 && !s.contains('@') && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if s.len() >= 36
+        && !s.contains('@')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         return true;
     }
     false
@@ -4207,10 +4211,7 @@ fn host_subtitle(profile: &serde_json::Value) -> String {
         .get("protocol")
         .and_then(|v| v.as_str())
         .unwrap_or("ftp");
-    let host = profile
-        .get("host")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let host = profile.get("host").and_then(|v| v.as_str()).unwrap_or("");
     let port = profile.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
     let username = profile
         .get("username")
@@ -4471,8 +4472,8 @@ fn parse_col_list(raw: &str) -> Result<Vec<ProfileColId>, String> {
         if t.is_empty() {
             continue;
         }
-        let col = ProfileColId::from_cli_alias(t)
-            .ok_or_else(|| format!("unknown column `{}`", t))?;
+        let col =
+            ProfileColId::from_cli_alias(t).ok_or_else(|| format!("unknown column `{}`", t))?;
         out.push(col);
     }
     Ok(out)
@@ -4752,8 +4753,7 @@ fn render_profiles_text(
     }
 
     // Apply sort. Stable so equal keys keep the vault order.
-    let mut sorted: Vec<(usize, serde_json::Value)> =
-        profiles.into_iter().enumerate().collect();
+    let mut sorted: Vec<(usize, serde_json::Value)> = profiles.into_iter().enumerate().collect();
     if let Some(sort) = settings.sort {
         sorted.sort_by(|a, b| {
             let ord = compare_profiles(&a.1, &b.1, sort.col);
@@ -4892,7 +4892,11 @@ fn render_profiles_text(
                 }
                 ProfileColId::Subtitle => {
                     let host = host_subtitle(p);
-                    let display = if host.is_empty() { "—".to_string() } else { host };
+                    let display = if host.is_empty() {
+                        "—".to_string()
+                    } else {
+                        host
+                    };
                     format!("{:<w$}", truncate_cell(&display, host_width.max(1)), w = w)
                 }
                 ProfileColId::Used => {
@@ -4900,9 +4904,7 @@ fn render_profiles_text(
                         .get("lastQuota")
                         .and_then(|q| q.get("used"))
                         .and_then(|v| v.as_u64());
-                    let s = used
-                        .map(format_size)
-                        .unwrap_or_else(|| "—".to_string());
+                    let s = used.map(format_size).unwrap_or_else(|| "—".to_string());
                     format!("{:>w$}", s, w = w)
                 }
                 ProfileColId::Total => {
@@ -4910,9 +4912,7 @@ fn render_profiles_text(
                         .get("lastQuota")
                         .and_then(|q| q.get("total"))
                         .and_then(|v| v.as_u64());
-                    let s = total
-                        .map(format_size)
-                        .unwrap_or_else(|| "—".to_string());
+                    let s = total.map(format_size).unwrap_or_else(|| "—".to_string());
                     format!("{:>w$}", s, w = w)
                 }
                 ProfileColId::Pct => {
@@ -4933,10 +4933,7 @@ fn render_profiles_text(
                     paint_tone(&padded, tone, color_on)
                 }
                 ProfileColId::Paths => {
-                    let path = p
-                        .get("initialPath")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("/");
+                    let path = p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/");
                     let cap = path_width.max(c.header().chars().count());
                     format!("{:<w$}", truncate_cell(path, cap), w = w)
                 }
@@ -5004,10 +5001,7 @@ fn render_profiles_text(
     };
     println!(
         "  {}",
-        paint_dim(
-            &"\u{2500}".repeat(total_width_with_gaps),
-            color_on
-        )
+        paint_dim(&"\u{2500}".repeat(total_width_with_gaps), color_on)
     );
     let footer_line = if summary.deduped_quota_count > 0 {
         format!(
@@ -18997,14 +18991,18 @@ async fn cmd_rclone_crypt_put(
         }
     };
 
-    let encrypted = match ftp_client_gui_lib::rclone_crypt::encrypt_file_content(&plaintext, &data_key)
-    {
-        Ok(d) => d,
-        Err(e) => {
-            print_error(format, &format!("rclone content encryption failed: {}", e), 99);
-            return 99;
-        }
-    };
+    let encrypted =
+        match ftp_client_gui_lib::rclone_crypt::encrypt_file_content(&plaintext, &data_key) {
+            Ok(d) => d,
+            Err(e) => {
+                print_error(
+                    format,
+                    &format!("rclone content encryption failed: {}", e),
+                    99,
+                );
+                return 99;
+            }
+        };
 
     let plain_name = remote_name
         .map(|s| s.to_string())
@@ -19036,7 +19034,11 @@ async fn cmd_rclone_crypt_put(
             match ftp_client_gui_lib::rclone_crypt::encrypt_name(&name_key, &dir_iv, &plain_name) {
                 Ok(name) => name,
                 Err(e) => {
-                    print_error(format, &format!("rclone filename encryption failed: {}", e), 99);
+                    print_error(
+                        format,
+                        &format!("rclone filename encryption failed: {}", e),
+                        99,
+                    );
                     return 99;
                 }
             }
@@ -19054,7 +19056,11 @@ async fn cmd_rclone_crypt_put(
         }
     };
     if let Err(e) = std::fs::write(tmp.path(), &encrypted) {
-        print_error(format, &format!("Cannot write encrypted temp file: {}", e), 11);
+        print_error(
+            format,
+            &format!("Cannot write encrypted temp file: {}", e),
+            11,
+        );
         return 11;
     }
 
@@ -20447,12 +20453,18 @@ async fn cmd_cryptcheck(
         return 5;
     }
 
-    let pwd = password.unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD").unwrap_or_default());
+    let pwd = password
+        .unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD").unwrap_or_default());
     if pwd.is_empty() {
-        print_error(format, "wrong password or non-crypt remote (missing password)", 5);
+        print_error(
+            format,
+            "wrong password or non-crypt remote (missing password)",
+            5,
+        );
         return 5;
     }
-    let salt = password2.unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
+    let salt = password2
+        .unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
 
     let (name_key, data_key) = match ftp_client_gui_lib::rclone_crypt::derive_keys(&pwd, &salt) {
         Ok(keys) => keys,
@@ -20470,7 +20482,11 @@ async fn cmd_cryptcheck(
 
     let local_dir = Path::new(local_path);
     if !local_dir.is_dir() {
-        print_error(format, &format!("Local path is not a directory: {}", local_path), 5);
+        print_error(
+            format,
+            &format!("Local path is not a directory: {}", local_path),
+            5,
+        );
         let _ = provider.disconnect().await;
         return 5;
     }
@@ -20481,20 +20497,29 @@ async fn cmd_cryptcheck(
         max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
     };
-    
+
     let locals = scan_local_tree(local_path, &scan_opts);
     let remotes = scan_remote_tree(&mut provider, &remote_path_resolved, &scan_opts).await;
 
     let mut dir_ivs: std::collections::HashMap<String, [u8; 16]> = std::collections::HashMap::new();
     for r in &remotes {
-        let is_dir_iv = r.rel_path.ends_with("/dirIV") || r.rel_path.ends_with("/diriv") || r.rel_path.ends_with("/.diriv") || r.rel_path == "dirIV" || r.rel_path == "diriv" || r.rel_path == ".diriv";
+        let is_dir_iv = r.rel_path.ends_with("/dirIV")
+            || r.rel_path.ends_with("/diriv")
+            || r.rel_path.ends_with("/.diriv")
+            || r.rel_path == "dirIV"
+            || r.rel_path == "diriv"
+            || r.rel_path == ".diriv";
         if is_dir_iv {
             let full_path = format!("{}/{}", remote_path_resolved, r.rel_path);
             if let Ok(data) = provider.download_to_bytes(&full_path).await {
                 if data.len() == 16 {
                     let mut iv = [0u8; 16];
                     iv.copy_from_slice(&data);
-                    let parent = Path::new(&r.rel_path).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
+                    let parent = Path::new(&r.rel_path)
+                        .parent()
+                        .unwrap_or(Path::new(""))
+                        .to_string_lossy()
+                        .to_string();
                     dir_ivs.insert(parent, iv);
                 }
             }
@@ -20503,33 +20528,43 @@ async fn cmd_cryptcheck(
 
     let mut decrypted_remotes = std::collections::HashMap::new();
     for r in &remotes {
-        let is_dir_iv = r.rel_path.ends_with("/dirIV") || r.rel_path.ends_with("/diriv") || r.rel_path.ends_with("/.diriv") || r.rel_path == "dirIV" || r.rel_path == "diriv" || r.rel_path == ".diriv";
-        if is_dir_iv { continue; }
-        
+        let is_dir_iv = r.rel_path.ends_with("/dirIV")
+            || r.rel_path.ends_with("/diriv")
+            || r.rel_path.ends_with("/.diriv")
+            || r.rel_path == "dirIV"
+            || r.rel_path == "diriv"
+            || r.rel_path == ".diriv";
+        if is_dir_iv {
+            continue;
+        }
+
         let components: Vec<&str> = r.rel_path.split('/').collect();
         let mut current_enc_dir = String::new();
         let mut current_dec_dir = String::new();
         let mut ok = true;
-        
+
         for comp in components.iter() {
             let dir_iv = if current_enc_dir.is_empty() {
                 dir_ivs.get("").copied().or(Some([0u8; 16]))
             } else {
                 dir_ivs.get(&current_enc_dir).copied()
             };
-            
+
             let dec_comp = if filename_encryption == "off" {
                 comp.to_string()
             } else if let Some(iv) = dir_iv {
                 match ftp_client_gui_lib::rclone_crypt::decrypt_name(&name_key, &iv, comp) {
                     Ok(n) => n,
-                    Err(_) => { ok = false; break; }
+                    Err(_) => {
+                        ok = false;
+                        break;
+                    }
                 }
             } else {
                 ok = false;
                 break;
             };
-            
+
             if !current_enc_dir.is_empty() {
                 current_enc_dir.push('/');
                 current_dec_dir.push('/');
@@ -20537,7 +20572,7 @@ async fn cmd_cryptcheck(
             current_enc_dir.push_str(comp);
             current_dec_dir.push_str(&dec_comp);
         }
-        
+
         if ok {
             decrypted_remotes.insert(current_dec_dir.clone(), r.clone());
         }
@@ -20564,8 +20599,15 @@ async fn cmd_cryptcheck(
             checks.push((local_file.clone(), remote_file.clone()));
         } else {
             missing_remote += 1;
-            details.push(CliCheckEntry { path: rel.clone(), status: "missing_remote".to_string(), local_size: Some(local_file.size), remote_size: None });
-            if matches!(format, OutputFormat::Text) { eprintln!("- {}", rel); }
+            details.push(CliCheckEntry {
+                path: rel.clone(),
+                status: "missing_remote".to_string(),
+                local_size: Some(local_file.size),
+                remote_size: None,
+            });
+            if matches!(format, OutputFormat::Text) {
+                eprintln!("- {}", rel);
+            }
         }
     }
 
@@ -20598,7 +20640,7 @@ async fn cmd_cryptcheck(
             let rel = &local_file.rel_path;
             let local_full = format!("{}/{}", lp, rel);
             let local_bytes = tokio::fs::read(&local_full).await.unwrap_or_default();
-            
+
             let local_hash = if algo == "md5" {
                 use md5::Digest;
                 format!("{:x}", md5::Md5::digest(&local_bytes))
@@ -20606,20 +20648,26 @@ async fn cmd_cryptcheck(
                 use sha2::Digest;
                 format!("{:x}", sha2::Sha256::digest(&local_bytes))
             };
-            
+
             let remote_full = format!("{}/{}", rp, remote_file.rel_path);
             let remote_hash = if let Ok(mut p) = ProviderFactory::create(&c) {
                 if let Ok(()) = p.connect().await {
                     let remote_bytes = p.download_to_bytes(&remote_full).await.unwrap_or_default();
                     if algo == "md5" {
-                        match ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<md5::Md5>(&remote_bytes, &dk) {
+                        match ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<md5::Md5>(
+                            &remote_bytes,
+                            &dk,
+                        ) {
                             Ok((h, _)) => format!("{:x}", h),
-                            Err(_) => "error".to_string()
+                            Err(_) => "error".to_string(),
                         }
                     } else {
-                        match ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<sha2::Sha256>(&remote_bytes, &dk) {
+                        match ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<sha2::Sha256>(
+                            &remote_bytes,
+                            &dk,
+                        ) {
                             Ok((h, _)) => format!("{:x}", h),
-                            Err(_) => "error".to_string()
+                            Err(_) => "error".to_string(),
                         }
                     }
                 } else {
@@ -20631,11 +20679,20 @@ async fn cmd_cryptcheck(
 
             if local_hash == remote_hash {
                 *mc.lock().await += 1;
-                if matches!(format, OutputFormat::Text) { eprintln!("= {}", rel); }
+                if matches!(format, OutputFormat::Text) {
+                    eprintln!("= {}", rel);
+                }
             } else {
                 *dc.lock().await += 1;
-                ds.lock().await.push(CliCheckEntry { path: rel.clone(), status: "differ".to_string(), local_size: Some(local_bytes.len() as u64), remote_size: Some(remote_file.size) });
-                if matches!(format, OutputFormat::Text) { eprintln!("* {}", rel); }
+                ds.lock().await.push(CliCheckEntry {
+                    path: rel.clone(),
+                    status: "differ".to_string(),
+                    local_size: Some(local_bytes.len() as u64),
+                    remote_size: Some(remote_file.size),
+                });
+                if matches!(format, OutputFormat::Text) {
+                    eprintln!("* {}", rel);
+                }
             }
 
             drop(permit);
@@ -20653,8 +20710,15 @@ async fn cmd_cryptcheck(
     if !one_way {
         for (rel, remote_file) in decrypted_remotes {
             missing_local += 1;
-            details.push(CliCheckEntry { path: rel.clone(), status: "missing_local".to_string(), local_size: None, remote_size: Some(remote_file.size) });
-            if matches!(format, OutputFormat::Text) { eprintln!("+ {}", rel); }
+            details.push(CliCheckEntry {
+                path: rel.clone(),
+                status: "missing_local".to_string(),
+                local_size: None,
+                remote_size: Some(remote_file.size),
+            });
+            if matches!(format, OutputFormat::Text) {
+                eprintln!("+ {}", rel);
+            }
         }
     }
 

@@ -170,7 +170,7 @@ export function MyServersTable({
     }, [servers, sort, favorites]);
 
     return (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-my-servers-table>
             <table className="w-full min-w-[1100px] border-collapse text-left" style={{ tableLayout: 'fixed' }}>
                 <colgroup>
                     {orderedVisibleColumns.map((col) => (

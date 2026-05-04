@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 type KeyHandler = (e: KeyboardEvent) => void;
 
@@ -9,14 +9,27 @@ interface ShortcutConfig {
     [key: string]: KeyHandler;
 }
 
+const isTextEditingTarget = (element: HTMLElement | null): boolean => {
+    if (!element) return false;
+    const tag = element.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || element.isContentEditable) {
+        return true;
+    }
+    return !!element.closest('.monaco-editor, .xterm, [role="textbox"], [contenteditable="true"]');
+};
+
 export const useKeyboardShortcuts = (config: ShortcutConfig, deps: React.DependencyList = []) => {
+    const configRef = useRef(config);
+
+    useEffect(() => {
+        configRef.current = config;
+    });
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
-            // Ignore if input/textarea is active (unless it's a global shortcut like F-keys)
-            // Actually, for F-keys we might want to allow it.
-            // For now, let's just let the specific handlers decide, or block specific inputs.
-            const target = event.target as HTMLElement;
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+            const target = event.target instanceof HTMLElement ? event.target : null;
+            const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            if (isTextEditingTarget(target) || isTextEditingTarget(active)) {
                 // Allow F-keys and Escape even in inputs
                 if (!event.key.startsWith('F') && event.key !== 'Escape') {
                     return;
@@ -72,9 +85,10 @@ export const useKeyboardShortcuts = (config: ShortcutConfig, deps: React.Depende
             // Debug
             // console.log('Key pressed:', combo);
 
-            if (config[combo]) {
+            const handler = configRef.current[combo];
+            if (handler) {
                 event.preventDefault();
-                config[combo](event);
+                handler(event);
             }
         };
 

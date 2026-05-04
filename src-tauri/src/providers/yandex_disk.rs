@@ -242,9 +242,7 @@ fn is_yandex_terminal_auth_message(message: &str) -> bool {
 
 fn is_yandex_retryable_auth_error(err: &ProviderError) -> bool {
     match err {
-        ProviderError::AuthenticationFailed(message) => {
-            !is_yandex_terminal_auth_message(message)
-        }
+        ProviderError::AuthenticationFailed(message) => !is_yandex_terminal_auth_message(message),
         _ => false,
     }
 }
@@ -315,7 +313,10 @@ impl YandexDiskProvider {
         Ok(resp)
     }
 
-    async fn send_with_reauth<F>(&mut self, mut build: F) -> Result<reqwest::Response, ProviderError>
+    async fn send_with_reauth<F>(
+        &mut self,
+        mut build: F,
+    ) -> Result<reqwest::Response, ProviderError>
     where
         F: FnMut(&Self) -> reqwest::RequestBuilder,
     {
@@ -373,9 +374,9 @@ impl YandexDiskProvider {
             }
         }
         match status.as_u16() {
-            401 => ProviderError::AuthenticationFailed(yandex_auth_message(
-                &sanitize_api_error(&body),
-            )),
+            401 => {
+                ProviderError::AuthenticationFailed(yandex_auth_message(&sanitize_api_error(&body)))
+            }
             403 => ProviderError::PermissionDenied("Forbidden".into()),
             404 => ProviderError::NotFound(sanitize_api_error(&body)),
             409 => ProviderError::AlreadyExists(sanitize_api_error(&body)),

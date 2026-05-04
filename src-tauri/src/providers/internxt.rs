@@ -1961,10 +1961,7 @@ impl StorageProvider for InternxtProvider {
 
         let resp = self
             .send_with_reauth(|this| {
-                this.drive_request(
-                    reqwest::Method::DELETE,
-                    &format!("/files/{}", file_info.0),
-                )
+                this.drive_request(reqwest::Method::DELETE, &format!("/files/{}", file_info.0))
             })
             .await?;
 
@@ -2056,12 +2053,9 @@ impl StorageProvider for InternxtProvider {
                 });
                 let move_resp = self
                     .send_with_reauth(|this| {
-                        this.drive_request(
-                            reqwest::Method::PATCH,
-                            &format!("/files/{}", file_uuid),
-                        )
-                        .header(CONTENT_TYPE, "application/json")
-                        .json(&move_payload)
+                        this.drive_request(reqwest::Method::PATCH, &format!("/files/{}", file_uuid))
+                            .header(CONTENT_TYPE, "application/json")
+                            .json(&move_payload)
                     })
                     .await?;
 
@@ -2127,12 +2121,9 @@ impl StorageProvider for InternxtProvider {
             });
             let move_resp = self
                 .send_with_reauth(|this| {
-                    this.drive_request(
-                        reqwest::Method::PATCH,
-                        &format!("/folders/{}", folder_uuid),
-                    )
-                    .header(CONTENT_TYPE, "application/json")
-                    .json(&move_payload)
+                    this.drive_request(reqwest::Method::PATCH, &format!("/folders/{}", folder_uuid))
+                        .header(CONTENT_TYPE, "application/json")
+                        .json(&move_payload)
                 })
                 .await?;
 
@@ -2391,7 +2382,10 @@ impl InternxtProvider {
         }
     }
 
-    async fn send_with_reauth<F>(&mut self, mut build: F) -> Result<reqwest::Response, ProviderError>
+    async fn send_with_reauth<F>(
+        &mut self,
+        mut build: F,
+    ) -> Result<reqwest::Response, ProviderError>
     where
         F: FnMut(&Self) -> reqwest::RequestBuilder,
     {

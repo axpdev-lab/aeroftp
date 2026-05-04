@@ -47,7 +47,7 @@ pub async fn dispatch_gui_tool(
                 "theme": theme,
                 "message": format!("Theme changed to '{}'", theme)
             }))
-        
+
         }
         "app_info" => {
 
@@ -71,7 +71,7 @@ pub async fn dispatch_gui_tool(
             }
 
             Ok(info)
-        
+
         }
         "sync_control" => {
 
@@ -107,7 +107,7 @@ pub async fn dispatch_gui_tool(
                     action
                 )),
             }
-        
+
         }
         "vault_peek" => {
 
@@ -124,7 +124,7 @@ pub async fn dispatch_gui_tool(
 
             let info = crate::aerovault_v2::vault_v2_peek(path).await?;
             Ok(info)
-        
+
         }
         "cross_profile_transfer" => {
 
@@ -262,7 +262,7 @@ pub async fn dispatch_gui_tool(
                 "failed": failed,
                 "errors": errors,
             }))
-        
+
         }
         "preview_edit" => {
 
@@ -330,7 +330,7 @@ pub async fn dispatch_gui_tool(
                 "occurrences": occurrences,
                 "replaced": replaced,
             }))
-        
+
         }
         "hash_file" => {
 
@@ -351,7 +351,7 @@ pub async fn dispatch_gui_tool(
                 "algorithm": algorithm,
                 "hash": hash,
             }))
-        
+
         }
         "generate_transfer_plan" => {
 
@@ -490,7 +490,7 @@ pub async fn dispatch_gui_tool(
                 "summary": format!("Prepared {} {} operation(s) for {} source item(s).", operations.len(), direction, sources.len()),
                 "operations": operations,
             }))
-        
+
         }
         "upload_files" => {
 
@@ -630,7 +630,7 @@ pub async fn dispatch_gui_tool(
                 "files": uploaded,
                 "errors": errors,
             }))
-        
+
         }
         "download_files" => {
 
@@ -703,7 +703,7 @@ pub async fn dispatch_gui_tool(
                 "files": downloaded,
                 "errors": errors,
             }))
-        
+
         }
         "sync_preview" => {
 
@@ -800,7 +800,7 @@ pub async fn dispatch_gui_tool(
                 "size_different": size_diff,
                 "synced": only_local.is_empty() && only_remote.is_empty() && size_diff.is_empty(),
             }))
-        
+
         }
         "remote_edit" => {
 
@@ -878,7 +878,7 @@ pub async fn dispatch_gui_tool(
                 "occurrences": occurrences,
                 "replaced": replaced,
             }))
-        
+
         }
         _ => Err(tool_name.to_string()),
         }

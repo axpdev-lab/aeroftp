@@ -375,6 +375,16 @@ export function MyServersPanel({
         });
     }, [onOpenCrossProfile, crossProfileSelection]);
 
+    const handlePanelBlankClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        if (crossProfileSelection.length === 0) return;
+        const target = e.target as HTMLElement | null;
+        if (!target) return;
+        if (target.closest('button, input, textarea, select, a, [role="button"], [role="menuitem"], [data-my-server-card], [data-my-servers-table]')) {
+            return;
+        }
+        setCrossProfileSelection([]);
+    }, [crossProfileSelection.length]);
+
     // Card layout toggle (compact ↔ detailed) — read here so the toolbar
     // toggle handler below can flip it. The same hook is also consumed below
     // for the per-card health-radial gating; both readers share state via the
@@ -766,8 +776,10 @@ export function MyServersPanel({
             if (renamingId) return;
             if (deleteTarget || healthCheckTarget !== false || speedTestTarget !== false) return;
             const hasNarrowing = searchQuery !== '' || activeFilter !== 'all';
-            if (!hasNarrowing) return;
+            const hasCrossProfileSelection = crossProfileSelection.length > 0;
+            if (!hasNarrowing && !hasCrossProfileSelection) return;
             e.preventDefault();
+            if (hasCrossProfileSelection) setCrossProfileSelection([]);
             if (searchQuery) setSearchQuery('');
             if (activeFilter !== 'all') {
                 setActiveFilter('all');
@@ -776,7 +788,7 @@ export function MyServersPanel({
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [searchQuery, activeFilter, renamingId, deleteTarget, healthCheckTarget, speedTestTarget]);
+    }, [searchQuery, activeFilter, crossProfileSelection.length, renamingId, deleteTarget, healthCheckTarget, speedTestTarget]);
 
     const confirmDelete = useCallback(() => {
         if (!deleteTarget) return;
@@ -825,7 +837,7 @@ export function MyServersPanel({
     }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length]);
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col" onClick={handlePanelBlankClick}>
             <MyServersToolbar
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}

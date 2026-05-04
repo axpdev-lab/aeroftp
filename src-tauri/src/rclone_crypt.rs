@@ -794,13 +794,19 @@ pub async fn decrypt_and_hash_async<R: tokio::io::AsyncRead + Unpin, H: sha2::di
 ) -> Result<(sha2::digest::Output<H>, u64), String> {
     use tokio::io::AsyncReadExt;
     let mut header = [0u8; 8];
-    reader.read_exact(&mut header).await.map_err(|e| e.to_string())?;
+    reader
+        .read_exact(&mut header)
+        .await
+        .map_err(|e| e.to_string())?;
     if &header != b"RCLONE\x00\x00" {
         return Err("Invalid Rclone crypt header".to_string());
     }
-    
+
     let mut file_nonce = [0u8; 24];
-    reader.read_exact(&mut file_nonce).await.map_err(|e| e.to_string())?;
+    reader
+        .read_exact(&mut file_nonce)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let cipher = XSalsa20Poly1305::new(data_key.into());
     let mut hasher = H::new();
@@ -811,22 +817,31 @@ pub async fn decrypt_and_hash_async<R: tokio::io::AsyncRead + Unpin, H: sha2::di
         let mut chunk_buf = vec![0u8; CHUNK_CIPHER_SIZE];
         let mut chunk_len = 0;
         while chunk_len < CHUNK_CIPHER_SIZE {
-            let n = reader.read(&mut chunk_buf[chunk_len..]).await.map_err(|e| e.to_string())?;
-            if n == 0 { break; }
+            let n = reader
+                .read(&mut chunk_buf[chunk_len..])
+                .await
+                .map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
             chunk_len += n;
         }
-        if chunk_len == 0 { break; }
-        
+        if chunk_len == 0 {
+            break;
+        }
+
         let nonce = chunk_nonce(&file_nonce, chunk_num);
         let plain = cipher
             .decrypt((&nonce).into(), &chunk_buf[..chunk_len])
             .map_err(|_| format!("chunk {} decrypt failed", chunk_num))?;
-            
+
         hasher.update(&plain);
         total_len += plain.len() as u64;
         chunk_num += 1;
-        
-        if chunk_len < CHUNK_CIPHER_SIZE { break; }
+
+        if chunk_len < CHUNK_CIPHER_SIZE {
+            break;
+        }
     }
 
     Ok((hasher.finalize(), total_len))
@@ -842,29 +857,22 @@ mod tests {
     // Golden vectors copied from rclone/backend/crypt/cipher_test.go
     // (TestEncryptData + TestStandardEncryptFileNameBase32).
     const RCLONE_GOLDEN_FILE0: &[u8] = &[
-        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00,
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
+        0x17, 0x18,
     ];
     const RCLONE_GOLDEN_FILE1: &[u8] = &[
-        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00,
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-        0x09, 0x5b, 0x44, 0x6c, 0xd6, 0x23, 0x7b, 0xbc,
-        0xb0, 0x8d, 0x09, 0xfb, 0x52, 0x4c, 0xe5, 0x65,
-        0xaa,
+        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
+        0x17, 0x18, 0x09, 0x5b, 0x44, 0x6c, 0xd6, 0x23, 0x7b, 0xbc, 0xb0, 0x8d, 0x09, 0xfb, 0x52,
+        0x4c, 0xe5, 0x65, 0xaa,
     ];
     const RCLONE_GOLDEN_FILE16: &[u8] = &[
-        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00,
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-        0xb9, 0xc4, 0x55, 0x2a, 0x27, 0x10, 0x06, 0x29,
-        0x18, 0x96, 0x0a, 0x3e, 0x60, 0x8c, 0x29, 0xb9,
-        0xaa, 0x8a, 0x5e, 0x1e, 0x16, 0x5b, 0x6d, 0x07,
-        0x5d, 0xe4, 0xe9, 0xbb, 0x36, 0x7f, 0xd6, 0xd4,
+        0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
+        0x17, 0x18, 0xb9, 0xc4, 0x55, 0x2a, 0x27, 0x10, 0x06, 0x29, 0x18, 0x96, 0x0a, 0x3e, 0x60,
+        0x8c, 0x29, 0xb9, 0xaa, 0x8a, 0x5e, 0x1e, 0x16, 0x5b, 0x6d, 0x07, 0x5d, 0xe4, 0xe9, 0xbb,
+        0x36, 0x7f, 0xd6, 0xd4,
     ];
 
     // ── Phase 1 tests ──
@@ -1225,10 +1233,10 @@ mod tests {
         let (_, data_key) = derive_keys("hash-test", "salt").unwrap();
         let plaintext = b"streaming hash test";
         let encrypted = encrypt_file_content(plaintext, &data_key).unwrap();
-        
+
         let (hash, len) = decrypt_and_hash::<sha2::Sha256>(&encrypted, &data_key).unwrap();
         let expected_hash = sha2::Sha256::digest(plaintext);
-        
+
         assert_eq!(hash, expected_hash);
         assert_eq!(len, plaintext.len() as u64);
     }
@@ -1237,10 +1245,10 @@ mod tests {
     fn decrypt_and_hash_empty_file() {
         let (_, data_key) = derive_keys("empty-hash", "").unwrap();
         let encrypted = encrypt_file_content(&[], &data_key).unwrap();
-        
+
         let (hash, len) = decrypt_and_hash::<sha2::Sha256>(&encrypted, &data_key).unwrap();
         let expected_hash = sha2::Sha256::digest(b"");
-        
+
         assert_eq!(hash, expected_hash);
         assert_eq!(len, 0);
     }
@@ -1252,11 +1260,13 @@ mod tests {
             .map(|i| (i % 251) as u8)
             .collect();
         let encrypted = encrypt_file_content(&plaintext, &data_key).unwrap();
-        
+
         let cursor = std::io::Cursor::new(encrypted);
-        let (hash, len) = decrypt_and_hash_async::<_, sha2::Sha256>(cursor, &data_key).await.unwrap();
+        let (hash, len) = decrypt_and_hash_async::<_, sha2::Sha256>(cursor, &data_key)
+            .await
+            .unwrap();
         let expected_hash = sha2::Sha256::digest(&plaintext);
-        
+
         assert_eq!(hash, expected_hash);
         assert_eq!(len, plaintext.len() as u64);
     }

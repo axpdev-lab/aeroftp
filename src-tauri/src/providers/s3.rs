@@ -1191,8 +1191,7 @@ impl S3Provider {
             let agg = aggregate.clone();
             let stop = progress_stop.clone();
             Some(tokio::spawn(async move {
-                let mut ticker =
-                    tokio::time::interval(std::time::Duration::from_millis(100));
+                let mut ticker = tokio::time::interval(std::time::Duration::from_millis(100));
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 let mut last_emitted: u64 = u64::MAX;
                 loop {
@@ -3439,8 +3438,7 @@ async fn download_range_to_offset(
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
         StatusCode::RANGE_NOT_SATISFIABLE => {
             return Err(ProviderError::NotSupported(
-                "Server rejected Range request mid-flight (file may have changed)"
-                    .to_string(),
+                "Server rejected Range request mid-flight (file may have changed)".to_string(),
             ));
         }
         other => {
@@ -3593,7 +3591,10 @@ mod tests {
             }
         }
         // End-inclusive last range must hit total - 1
-        ranges.last().map(|(_, end)| *end + 1 == total).unwrap_or(false)
+        ranges
+            .last()
+            .map(|(_, end)| *end + 1 == total)
+            .unwrap_or(false)
     }
 
     #[test]

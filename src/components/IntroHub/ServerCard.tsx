@@ -387,6 +387,7 @@ export const ServerCard = React.memo(function ServerCard({
     // ===== GRID VIEW =====
     return (
         <div
+            data-my-server-card
             draggable={isDraggable}
             onDragStart={onDragStart}
             onDragEnter={onDragEnter}

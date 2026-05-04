@@ -308,11 +308,8 @@ impl FilenProvider {
             let params = argon2::Params::new(65_536, 3, 4, Some(64)).map_err(|e| {
                 ProviderError::AuthenticationFailed(format!("Argon2id params error: {}", e))
             })?;
-            let argon2 = argon2::Argon2::new(
-                argon2::Algorithm::Argon2id,
-                argon2::Version::V0x13,
-                params,
-            );
+            let argon2 =
+                argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
             let mut derived = [0u8; 64];
             argon2
                 .hash_password_into(password.as_bytes(), &salt_bytes, &mut derived)
