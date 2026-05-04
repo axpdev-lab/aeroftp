@@ -97,6 +97,7 @@ pub mod rclone_import;
 mod session_commands;
 mod session_manager;
 #[cfg(not(target_os = "macos"))]
+mod mount_manager;
 mod speech;
 mod ssh_shell;
 pub mod sync;
@@ -1238,6 +1239,13 @@ fn exit_app(app: &tauri::AppHandle) {
             warn!("Cloud Filter cleanup on exit: {}", e);
         }
     }
+    // Unmount any GUI-spawned mounts so the kernel does not keep dangling
+    // FUSE handles. Daemon-spawned mounts (Phase B autostart) are independent.
+    let app_clone = app.clone();
+    tauri::async_runtime::block_on(async move {
+        crate::mount_manager::stop_all().await;
+        let _ = app_clone;
+    });
     app.exit(0);
 }
 
@@ -12347,6 +12355,102 @@ pub async fn extract_tar_core(
     extract_tar(archive_path, output_dir, create_subfolder).await
 }
 
+// ============ Mount Manager Commands (T-MOUNT-MANAGER) ============
+
+#[tauri::command]
+async fn mount_list() -> Result<serde_json::Value, String> {
+    let registry = mount_manager::load_registry();
+    let with_status = mount_manager::list_with_status().await;
+    Ok(serde_json::json!({
+        "storage_mode": registry.storage_mode,
+        "mounts": with_status.into_iter().map(|(cfg, status)| {
+            serde_json::json!({ "config": cfg, "status": status })
+        }).collect::<Vec<_>>(),
+    }))
+}
+
+#[tauri::command]
+async fn mount_save_config(config: mount_manager::MountConfig) -> Result<mount_manager::MountConfig, String> {
+    mount_manager::upsert_config(config)
+}
+
+#[tauri::command]
+async fn mount_delete_config(id: String) -> Result<(), String> {
+    let _ = mount_manager::stop_mount(&id).await;
+    mount_manager::delete_config(&id)
+}
+
+#[tauri::command]
+async fn mount_start(id: String) -> Result<mount_manager::MountStatus, String> {
+    mount_manager::start_mount(&id).await
+}
+
+#[tauri::command]
+async fn mount_stop(id: String) -> Result<(), String> {
+    mount_manager::stop_mount(&id).await
+}
+
+#[tauri::command]
+async fn mount_open_in_explorer(id: String) -> Result<(), String> {
+    mount_manager::open_in_explorer(&id).await
+}
+
+#[tauri::command]
+async fn mount_suggest_path(profile: String) -> Result<String, String> {
+    Ok(mount_manager::suggest_mountpoint(&profile))
+}
+
+#[tauri::command]
+async fn mount_pick_drive_letter() -> Result<String, String> {
+    mount_manager::pick_free_drive_letter()
+}
+
+#[tauri::command]
+async fn mount_set_storage_mode(mode: String) -> Result<(), String> {
+    let target = match mode.as_str() {
+        "vault" => mount_manager::StorageMode::Vault,
+        "sidecar" => mount_manager::StorageMode::Sidecar,
+        other => return Err(format!("Unknown storage mode: {}", other)),
+    };
+    mount_manager::switch_storage_mode(target)
+}
+
+#[tauri::command]
+async fn mount_install_autostart(id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || mount_manager::install_autostart(&id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn mount_uninstall_autostart(id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || mount_manager::uninstall_autostart(&id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn mount_autostart_blocked() -> Option<String> {
+    mount_manager::autostart_blocked_reason()
+}
+
+/// Open Mount: idempotent quick-action used from the dual-panel "Open Mount"
+/// button. Starts the mount if stopped, then opens the OS file manager.
+#[tauri::command]
+async fn mount_open_quick(id: String) -> Result<(), String> {
+    // Check if already running.
+    let snapshot = mount_manager::list_with_status().await;
+    let already = snapshot
+        .iter()
+        .any(|(c, s)| c.id == id && matches!(s.state, mount_manager::MountState::Running));
+    if !already {
+        mount_manager::start_mount(&id).await?;
+        // Give FUSE/WebDAV a moment to settle.
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    }
+    mount_manager::open_in_explorer(&id).await
+}
+
 // ============ App Entry Point ============
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13698,6 +13802,20 @@ pub fn run() {
             // InfiniCloud REST API
             infinicloud::infinicloud_discover,
             infinicloud::infinicloud_quota,
+            // Mount Manager (T-MOUNT-MANAGER)
+            mount_list,
+            mount_save_config,
+            mount_delete_config,
+            mount_start,
+            mount_stop,
+            mount_open_in_explorer,
+            mount_suggest_path,
+            mount_pick_drive_letter,
+            mount_set_storage_mode,
+            mount_install_autostart,
+            mount_uninstall_autostart,
+            mount_autostart_blocked,
+            mount_open_quick,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

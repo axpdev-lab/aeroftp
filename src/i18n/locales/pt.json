@@ -3154,7 +3154,8 @@
             "providers": "Provedores",
             "website": "Site",
             "documentation": "Documentacao",
-            "mcp": "MCP Server..."
+            "mcp": "MCP Server...",
+            "mountManager": "[NEEDS TRANSLATION] Mount Manager..."
         },
         "activityPanel": {
             "awaitingCommands": "Aguardando comandos...",
@@ -4221,6 +4222,36 @@
             "dragToReorder": "Arrastar para reordenar",
             "dragToResize": "Arrastar para redimensionar coluna",
             "pinned": "Fixada"
+        },
+        "mountManager": {
+            "title": "[NEEDS TRANSLATION] Mount Manager",
+            "subtitle": "[NEEDS TRANSLATION] Mount saved servers as local drives. Mounts use the bundled aeroftp-cli (FUSE on Linux, WebDAV bridge on Windows).",
+            "addMount": "[NEEDS TRANSLATION] Add Mount",
+            "newMount": "[NEEDS TRANSLATION] New mount",
+            "editMount": "[NEEDS TRANSLATION] Edit mount",
+            "empty": "[NEEDS TRANSLATION] No mounts configured yet. Add one to expose a remote profile as a local drive.",
+            "start": "[NEEDS TRANSLATION] Mount",
+            "stop": "[NEEDS TRANSLATION] Unmount",
+            "openInExplorer": "[NEEDS TRANSLATION] Open in file manager",
+            "readOnly": "[NEEDS TRANSLATION] read-only",
+            "fieldName": "[NEEDS TRANSLATION] Display name",
+            "fieldNamePlaceholder": "[NEEDS TRANSLATION] Friendly label",
+            "fieldProfile": "[NEEDS TRANSLATION] Server profile",
+            "selectProfile": "[NEEDS TRANSLATION] Select a profile",
+            "fieldRemotePath": "[NEEDS TRANSLATION] Remote base path",
+            "fieldMountpoint": "[NEEDS TRANSLATION] Local mountpoint",
+            "fieldDriveLetter": "[NEEDS TRANSLATION] Drive letter",
+            "pickDrive": "[NEEDS TRANSLATION] Auto",
+            "fieldCacheTtl": "[NEEDS TRANSLATION] Metadata cache (seconds)",
+            "fieldReadOnly": "[NEEDS TRANSLATION] Mount read-only",
+            "fieldAllowOther": "[NEEDS TRANSLATION] Allow other system users",
+            "fieldAutoStart": "[NEEDS TRANSLATION] Mount automatically on startup",
+            "storageSidecar": "[NEEDS TRANSLATION] Sidecar",
+            "storageVault": "[NEEDS TRANSLATION] Vault",
+            "storageModeSidecarHint": "[NEEDS TRANSLATION] Plaintext registry under your config directory. Readable by autostart daemons without unlocking the vault.",
+            "storageModeVaultHint": "[NEEDS TRANSLATION] Mount registry encrypted under your master password. Vault must be unlocked at app start.",
+            "confirmDelete": "[NEEDS TRANSLATION] Delete mount '{{name}}'? This does not affect remote files.",
+            "openMountAction": "[NEEDS TRANSLATION] Open mount in file manager"
         }
     }
 }

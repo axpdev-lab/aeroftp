@@ -51,6 +51,7 @@ interface TitlebarProps {
     onShowShortcuts: () => void;
     onShowDependencies: () => void;
     onShowProviders: () => void;
+    onShowMountManager: () => void;
     masterPasswordSet: boolean;
     onLockApp: () => void;
     onSetupMasterPassword: () => void;
@@ -166,6 +167,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         isConnected, onDisconnect, onShowConnectionScreen, showConnectionScreen,
         onOpenSettings, onShowSupport, onShowCyberTools, onShowVault,
         onShowAbout, onShowMcp, onShowShortcuts, onShowDependencies, onShowProviders,
+        onShowMountManager,
         masterPasswordSet, onLockApp, onSetupMasterPassword,
         onRefresh, onNewFolder, onToggleDevTools, onToggleTheme,
         onToggleDebugMode, onRename, onDelete, onSelectAll,
@@ -209,6 +211,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const fileMenu: MenuEntry[] = [
         { label: t('menu.newFolder'), shortcut: 'Ctrl+N', onClick: onNewFolder, disabled: !hasFilePanel },
         { label: t('common.settings'), shortcut: 'Ctrl+,', onClick: onOpenSettings },
+        { label: t('menu.mountManager'), onClick: onShowMountManager },
         { separator: true },
         // L53: Debug Mode only visible in dev builds — in production, Cyber theme auto-enables it
         ...(import.meta.env.DEV ? [{ label: t('menu.debugMode'), shortcut: 'Ctrl+Shift+F12', onClick: onToggleDebugMode }] : []),

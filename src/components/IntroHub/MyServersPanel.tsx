@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -888,6 +888,36 @@ export function MyServersPanel({
         setDeleteTarget(null);
     }, [deleteTarget, servers, onServersChange]);
 
+    const handleOpenMount = useCallback(async (server: ServerProfile) => {
+        try {
+            type Row = { config: { id: string; profile: string }; status: { state: string } };
+            type Resp = { storage_mode: string; mounts: Row[] };
+            const data = await invoke<Resp>('mount_list');
+            let row = data.mounts.find(r => r.config.profile === server.name);
+            if (!row) {
+                const mountpoint = await invoke<string>('mount_suggest_path', { profile: server.name });
+                const created = await invoke<{ id: string }>('mount_save_config', {
+                    config: {
+                        id: '',
+                        name: server.name,
+                        profile: server.name,
+                        remote_path: server.initialPath || '/',
+                        mountpoint,
+                        read_only: false,
+                        cache_ttl: 30,
+                        allow_other: false,
+                        auto_start: false,
+                        created_at: '',
+                    },
+                });
+                row = { config: { id: created.id, profile: server.name }, status: { state: 'stopped' } };
+            }
+            await invoke('mount_open_quick', { id: row.config.id });
+        } catch (e) {
+            alert(String(e));
+        }
+    }, []);
+
     const handleContextMenu = useCallback((e: React.MouseEvent, server: ServerProfile) => {
         const isFav = favorites.has(server.id);
         const items: ContextMenuItem[] = [
@@ -918,10 +948,11 @@ export function MyServersPanel({
                 action: () => setSpeedTestTarget(server.id),
                 disabled: !supportsSpeedTest(server),
             },
+            { label: t('mountManager.openMountAction'), icon: <HardDrive size={14} />, action: () => handleOpenMount(server) },
             { label: t('common.delete'), icon: <Trash2 size={14} />, action: () => handleDelete(server), danger: true },
         );
         showContextMenu(e, items);
-    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length]);
+    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount]);
 
     return (
         <div className="h-full flex flex-col" onClick={handlePanelBlankClick}>

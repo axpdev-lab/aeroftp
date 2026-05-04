@@ -78,6 +78,7 @@ import McpDialog from './components/McpDialog';
 import { SupportDialog } from './components/SupportDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { ProvidersDialog } from './components/ProvidersDialog';
+import { MountManagerDialog } from './components/MountManagerDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
@@ -437,6 +438,7 @@ const App: React.FC = () => {
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [showCyberTools, setShowCyberTools] = useState(false);
   const [showProvidersDialog, setShowProvidersDialog] = useState(false);
+  const [showMountManager, setShowMountManager] = useState(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
   const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles, fileExistsAction });
   // Folder overwrite dialog state
@@ -7840,6 +7842,7 @@ interface UpdateVerificationInfo {
           onShowShortcuts={() => setShowShortcutsDialog(true)}
           onShowDependencies={() => setShowDependenciesPanel(true)}
           onShowProviders={() => setShowProvidersDialog(true)}
+          onShowMountManager={() => setShowMountManager(true)}
           masterPasswordSet={masterPasswordSet}
           onLockApp={async () => { await invoke('lock_credential_store'); setIsAppLocked(true); }}
           onSetupMasterPassword={() => setShowMasterPasswordSetup(true)}
@@ -8382,6 +8385,7 @@ interface UpdateVerificationInfo {
         <McpDialog isOpen={showMcpDialog} onClose={() => setShowMcpDialog(false)} />
         <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
         <ProvidersDialog isOpen={showProvidersDialog} onClose={() => setShowProvidersDialog(false)} />
+        {showMountManager && <MountManagerDialog onClose={() => setShowMountManager(false)} />}
         {showCommandPalette && (
           <CommandPalette
             commands={commandPaletteItems}
