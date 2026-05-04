@@ -482,6 +482,8 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'pcloud': PCloudLogo,
     'azure': AzureLogo,
     'filen': FilenLogo,
+    'filen-desktop-s3': FilenLogo,
+    'filen-desktop-webdav': FilenLogo,
     'jianguoyun': JianguoyunLogo,
     'infinicloud': InfiniCloudLogo,
     'alibaba-oss': AlibabaOSSLogo,
