@@ -10,7 +10,7 @@ import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } fro
 import { useTranslation } from '../../i18n';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS } from './discoverData';
 import { CatalogCategoryId } from '../../types/catalog';
-import { useProviderHealth, type HealthStatus, type HealthTarget } from '../../hooks/useProviderHealth';
+import { useProviderHealth, type HealthStatus } from '../../hooks/useProviderHealth';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
     Server: <Server size={16} />,
@@ -34,24 +34,14 @@ interface DiscoverPanelProps {
     onSelectProvider: (protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }) => void;
 }
 
-const HEALTH_COLORS: Record<HealthStatus, string> = {
-    up: 'bg-green-400',
-    slow: 'bg-amber-400',
-    down: 'bg-red-400',
-    pending: 'bg-gray-400/50 animate-pulse',
-    unknown: 'bg-gray-500/30',
-};
-const HEALTH_LABELS: Record<HealthStatus, string> = {
-    up: 'Online',
-    slow: 'Slow',
-    down: 'Unreachable',
-    pending: 'Checking...',
-    unknown: '',
-};
-
 function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onSelect: () => void; healthStatus?: HealthStatus }) {
     const t = useTranslation();
     const LogoComponent = PROVIDER_LOGOS[item.providerId || item.id] || PROVIDER_LOGOS[item.protocol];
+    // Mirrors the overlay-dot pattern from ServerCard so reachability is
+    // visible without expanding the card. Hidden on `unknown` to avoid a
+    // placeholder dot on services without a `healthCheckUrl`.
+    const showHealthDot = healthStatus && healthStatus !== 'unknown';
+    const healthTitle = showHealthDot ? t(`introHub.health.${healthStatus}`) : undefined;
 
     return (
         <button
@@ -59,11 +49,23 @@ function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onS
             className="group flex items-center gap-3 p-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30 rounded-lg transition-all text-left shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
         >
             {/* Logo - no container box, just the icon like original ProtocolSelector */}
-            <div className="w-7 h-7 shrink-0 flex items-center justify-center">
+            <div className="relative w-7 h-7 shrink-0 flex items-center justify-center">
                 {LogoComponent ? (
                     <LogoComponent size={22} />
                 ) : (
                     <ProtocolIcon protocol={item.protocol} size={22} />
+                )}
+                {showHealthDot && (
+                    <span
+                        className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${
+                            healthStatus === 'up' ? 'bg-green-500'
+                            : healthStatus === 'slow' ? 'bg-amber-500'
+                            : healthStatus === 'down' ? 'bg-red-500'
+                            : 'bg-gray-400 animate-pulse'
+                        }`}
+                        title={healthTitle}
+                        aria-label={healthTitle}
+                    />
                 )}
             </div>
 
@@ -104,14 +106,6 @@ function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onS
                     {(item.badge === 'API OCS' || item.badge === 'OCS') && <Globe size={10} />}
                     {item.badge}
                 </span>
-            )}
-
-            {/* Health status dot */}
-            {healthStatus && (
-                <span
-                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${HEALTH_COLORS[healthStatus]}`}
-                    title={HEALTH_LABELS[healthStatus] || undefined}
-                />
             )}
 
             {/* Arrow */}
