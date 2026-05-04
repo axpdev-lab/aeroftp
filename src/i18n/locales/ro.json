@@ -4238,6 +4238,8 @@
             "fieldNamePlaceholder": "Etichetă prietenoasă",
             "fieldProfile": "Profil server",
             "selectProfile": "Selectați un profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Cale de bază la distanță",
             "fieldMountpoint": "Punct de montare local",
             "fieldDriveLetter": "Literă de unitate",

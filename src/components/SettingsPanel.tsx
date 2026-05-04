@@ -45,6 +45,7 @@ import {
 import { useStorageThresholds, DEFAULT_THRESHOLDS } from '../hooks/useStorageThresholds';
 import { useMyServersDensity } from '../hooks/useMyServersDensity';
 import { createTauriListener } from '../hooks/useTauriListener';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 // Protocol colors for avatar (same as SavedServers)
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -374,6 +375,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [nativeRsyncCompiled, setNativeRsyncCompiled] = useState<boolean | null>(null);
     const [nativeRsyncEnabled, setNativeRsyncEnabled] = useState(false);
+    const modalDrag = useDraggableModal();
 
     // Resolve S3 endpoint from registry when editing a server that doesn't have it stored
     // Resolve S3 endpoint and accountId when editing a server
@@ -803,7 +805,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         }));
         setHasChanges(true);
     };
-
     return (
         <>
             <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
@@ -811,11 +812,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
                 {/* Panel */}
-                <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
-                    {/* Header. data-tauri-drag-region keeps the window movable
-                        while the modal is open (Tier 2 carry-over from #133). */}
+                <div
+                    {...modalDrag.panelProps}
+                    className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col"
+                >
+                    {/* Header: drag moves this modal, not the native app window. */}
                     <div
-                        data-tauri-drag-region
+                        {...modalDrag.dragHandleProps}
                         className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
                     >
                         <div className="flex items-center gap-2 pointer-events-none">

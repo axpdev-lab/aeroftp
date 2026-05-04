@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Venligt mærke",
             "fieldProfile": "Serverprofil",
             "selectProfile": "Vælg en profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Fjern basissti",
             "fieldMountpoint": "Lokalt mount-punkt",
             "fieldDriveLetter": "Drevbogstav",

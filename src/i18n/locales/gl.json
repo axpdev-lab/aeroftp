@@ -4267,6 +4267,8 @@
             "fieldNamePlaceholder": "Etiqueta amigable",
             "fieldProfile": "Perfil do servidor",
             "selectProfile": "Selecciona un perfil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Camiño base remoto",
             "fieldMountpoint": "Punto de montaxe local",
             "fieldDriveLetter": "Letra de unidade",

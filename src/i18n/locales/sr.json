@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Пријатељска ознака",
             "fieldProfile": "Профил сервера",
             "selectProfile": "Изаберите профил",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Удаљена основна путања",
             "fieldMountpoint": "Локална тачка монтирања",
             "fieldDriveLetter": "Слово диска",

@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "მეგობრული ეტიკეტი",
             "fieldProfile": "სერვერის პროფილი",
             "selectProfile": "აირჩიეთ პროფილი",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "დისტანციური ბაზური ბილიკი",
             "fieldMountpoint": "ლოკალური მონტაჟის წერტილი",
             "fieldDriveLetter": "დისკის ასო",

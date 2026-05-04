@@ -4267,6 +4267,8 @@
             "fieldNamePlaceholder": "ស្លាកមិត្តភាព",
             "fieldProfile": "ប្រវត្តិរូបម៉ាស៊ីនមេ",
             "selectProfile": "ជ្រើសរើសប្រវត្តិរូប",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "ផ្លូវមូលដ្ឋានពីចម្ងាយ",
             "fieldMountpoint": "ចំណុចភ្ជាប់ក្នុងស្រុក",
             "fieldDriveLetter": "អក្សរដ្រាយ",

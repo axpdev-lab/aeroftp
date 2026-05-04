@@ -4267,6 +4267,8 @@
             "fieldNamePlaceholder": "Etiketa atsegina",
             "fieldProfile": "Zerbitzariaren profila",
             "selectProfile": "Hautatu profila",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Urruneko oinarri-bidea",
             "fieldMountpoint": "Muntaketa-puntu lokala",
             "fieldDriveLetter": "Unitate-letra",

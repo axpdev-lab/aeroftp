@@ -4238,6 +4238,8 @@
             "fieldNamePlaceholder": "Vriendelijk label",
             "fieldProfile": "Serverprofiel",
             "selectProfile": "Selecteer een profiel",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Extern basispad",
             "fieldMountpoint": "Lokaal koppelpunt",
             "fieldDriveLetter": "Stationsletter",

@@ -12,6 +12,7 @@ import { VaultCreate } from './vault/VaultCreate';
 import { VaultOpen } from './vault/VaultOpen';
 import { VaultBrowse } from './vault/VaultBrowse';
 import type { AeroVaultOverlaySession } from '../types';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface VaultPanelProps {
     onClose: () => void;
@@ -28,6 +29,7 @@ export type { VaultMode } from './vault/useVaultState';
 
 export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = false, initialPath, initialFiles, initialMode, initialFolderPath, iconProvider, onOverlaySessionChange }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
 
     const state = useVaultState({
         initialMode,
@@ -127,11 +129,13 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
             aria-label="AeroVault"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-[700px] max-h-[85vh] flex flex-col animate-scale-in">
-                {/* Header. data-tauri-drag-region keeps the window movable while
-                    the modal is open. Buttons inside override pointer-events. */}
+            <div
+                {...modalDrag.panelProps}
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-[700px] max-h-[85vh] flex flex-col animate-scale-in"
+            >
+                {/* Header: drag moves this modal, not the native app window. */}
                 <div
-                    data-tauri-drag-region
+                    {...modalDrag.dragHandleProps}
                     className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
                 >
                     <div className="flex items-center gap-2 pointer-events-none">

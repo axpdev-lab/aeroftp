@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Բարեկամական պիտակ",
             "fieldProfile": "Սերվերի պրոֆիլ",
             "selectProfile": "Ընտրեք պրոֆիլ",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Հեռավոր բազային ուղի",
             "fieldMountpoint": "Տեղական միացման կետ",
             "fieldDriveLetter": "Սկավառակի տառ",

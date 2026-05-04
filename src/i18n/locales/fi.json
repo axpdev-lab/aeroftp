@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Ystävällinen tunniste",
             "fieldProfile": "Palvelinprofiili",
             "selectProfile": "Valitse profiili",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Etäpolun perusta",
             "fieldMountpoint": "Paikallinen liitäntäpiste",
             "fieldDriveLetter": "Asemakirjain",

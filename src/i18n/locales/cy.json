@@ -4267,6 +4267,8 @@
             "fieldNamePlaceholder": "Label cyfeillgar",
             "fieldProfile": "Proffil gweinydd",
             "selectProfile": "Dewiswch broffil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Llwybr sylfaen pell",
             "fieldMountpoint": "Pwynt mowntio lleol",
             "fieldDriveLetter": "Llythyren gyriant",

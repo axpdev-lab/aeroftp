@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "ป้ายกำกับที่เป็นมิตร",
             "fieldProfile": "โปรไฟล์เซิร์ฟเวอร์",
             "selectProfile": "เลือกโปรไฟล์",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "เส้นทางฐานระยะไกล",
             "fieldMountpoint": "จุดเมาท์ภายในเครื่อง",
             "fieldDriveLetter": "อักษรไดรฟ์",

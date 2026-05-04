@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Priateľský štítok",
             "fieldProfile": "Profil servera",
             "selectProfile": "Vyberte profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Vzdialená základná cesta",
             "fieldMountpoint": "Lokálny bod pripojenia",
             "fieldDriveLetter": "Písmeno disku",

@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "বন্ধুত্বপূর্ণ লেবেল",
             "fieldProfile": "সার্ভার প্রোফাইল",
             "selectProfile": "একটি প্রোফাইল নির্বাচন করুন",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "দূরবর্তী বেস পাথ",
             "fieldMountpoint": "স্থানীয় মাউন্টপয়েন্ট",
             "fieldDriveLetter": "ড্রাইভ অক্ষর",

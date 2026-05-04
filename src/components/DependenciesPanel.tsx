@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, RefreshCw, Package, CheckCircle, AlertTriangle, ArrowUpCircle, Loader2, Copy } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface DependencyInfo {
     name: string;
@@ -51,6 +52,7 @@ const StatusBadge: React.FC<{ status: DependencyWithLatest['status'] }> = ({ sta
 
 const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [deps, setDeps] = useState<DependencyWithLatest[]>([]);
     const [loading, setLoading] = useState(true);
     const [checking, setChecking] = useState(false);
@@ -142,10 +144,16 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[720px] max-h-[80vh] flex flex-col border border-gray-200 dark:border-gray-700 animate-scale-in">
+            <div
+                {...modalDrag.panelProps}
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[720px] max-h-[80vh] flex flex-col border border-gray-200 dark:border-gray-700 animate-scale-in"
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-2 pointer-events-none">
                         <Package size={18} className="text-blue-500" />
                         <h2 className="text-base font-semibold">{t('dependencies.title')}</h2>
                         <span className="text-xs text-gray-500">({stats.total} {t('dependencies.crates')})</span>

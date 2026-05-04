@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Vänlig etikett",
             "fieldProfile": "Serverprofil",
             "selectProfile": "Välj en profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Fjärrbasväg",
             "fieldMountpoint": "Lokal monteringspunkt",
             "fieldDriveLetter": "Enhetsbokstav",

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useTauriListener } from '../hooks/useTauriListener';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 import {
     SpeedTestCompareResult,
     SpeedTestDialogProps,
@@ -206,6 +207,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
     onClose,
 }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const supportedServers = useMemo(() => servers.filter(supportsSpeedTest), [servers]);
     const initialSupportedId = useMemo(() => {
         if (initialServerId && supportedServers.some(s => s.id === initialServerId)) return initialServerId;
@@ -972,11 +974,15 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
             onClick={(e) => { if (e.target === e.currentTarget && !anyRunning) onClose(); }}
         >
             <div
+                {...modalDrag.panelProps}
                 className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in max-h-[96vh] flex flex-col"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-grab active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-3 min-w-0 pointer-events-none">
                         <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg">
                             <Gauge size={20} className="text-indigo-600 dark:text-indigo-400" />
                         </div>

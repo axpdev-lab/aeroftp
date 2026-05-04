@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Přívětivý štítek",
             "fieldProfile": "Profil serveru",
             "selectProfile": "Vyberte profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Vzdálená základní cesta",
             "fieldMountpoint": "Místní bod připojení",
             "fieldDriveLetter": "Písmeno disku",

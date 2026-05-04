@@ -4238,6 +4238,8 @@
             "fieldNamePlaceholder": "Étiquette conviviale",
             "fieldProfile": "Profil du serveur",
             "selectProfile": "Sélectionnez un profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Chemin de base distant",
             "fieldMountpoint": "Point de montage local",
             "fieldDriveLetter": "Lettre de lecteur",

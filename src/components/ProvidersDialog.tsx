@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { X, Check, Minus } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { PROVIDER_LOGOS } from './ProviderLogos';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface ProvidersDialogProps {
   isOpen: boolean;
@@ -234,6 +235,7 @@ function getEnterpriseFeatures(p: ProviderFeatures): string[] {
 
 export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
   const t = useTranslation();
+  const modalDrag = useDraggableModal();
 
   useEffect(() => {
     if (isOpen) {
@@ -258,14 +260,18 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       <div
+        {...modalDrag.panelProps}
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-[700px] overflow-hidden flex flex-col animate-scale-in"
-        style={{ maxHeight: '90vh' }}
+        style={{ maxHeight: '90vh', ...modalDrag.panelProps.style }}
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div
+          {...modalDrag.dragHandleProps}
+          className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0 cursor-grab active:cursor-grabbing"
+        >
+          <div className="flex items-center gap-2.5 pointer-events-none">
             <img src="/icons/AeroFTP_simbol_color_512x512.png" alt="AeroFTP" className="w-6 h-6 object-contain" />
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
               {t('providers.title')}

@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Dostça etiket",
             "fieldProfile": "Sunucu profili",
             "selectProfile": "Bir profil seçin",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Uzak temel yol",
             "fieldMountpoint": "Yerel bağlama noktası",
             "fieldDriveLetter": "Sürücü harfi",

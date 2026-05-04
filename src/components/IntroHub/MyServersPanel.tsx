@@ -195,6 +195,8 @@ interface MyServersPanelProps {
     onServersChange?: (count: number) => void;
     /** Open the Cross-Profile Transfer modal. Pre-fills source/destination when provided. */
     onOpenCrossProfile?: (opts?: { sourceId?: string; sourcePath?: string; destId?: string; destPath?: string }) => void;
+    /** Open Mount Manager from the My Servers toolbar. */
+    onOpenMountManager?: () => void;
 }
 
 const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: React.ReactNode; iconColor: string }[] = [
@@ -215,6 +217,7 @@ export function MyServersPanel({
     onOpenExportImport,
     onServersChange,
     onOpenCrossProfile,
+    onOpenMountManager,
 }: MyServersPanelProps) {
     const t = useTranslation();
     const [servers, setServers] = useState<ServerProfile[]>([]);
@@ -974,6 +977,7 @@ export function MyServersPanel({
                 onHealthCheck={() => setHealthCheckTarget('all')}
                 onSpeedTest={() => setSpeedTestTarget(undefined)}
                 onOpenCrossProfile={onOpenCrossProfile && servers.length > 1 ? handleOpenCrossProfile : undefined}
+                onOpenMountManager={onOpenMountManager}
                 crossProfileSelectionCount={crossProfileSelection.length}
                 cardLayout={cardLayout}
                 onToggleCardLayout={handleToggleCardLayout}

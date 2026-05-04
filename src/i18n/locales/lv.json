@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Draudzīga etiķete",
             "fieldProfile": "Servera profils",
             "selectProfile": "Atlasiet profilu",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Attālais bāzes ceļš",
             "fieldMountpoint": "Lokālais montēšanas punkts",
             "fieldDriveLetter": "Diska burts",

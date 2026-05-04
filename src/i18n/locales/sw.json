@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Lebo rafiki",
             "fieldProfile": "Wasifu wa seva",
             "selectProfile": "Chagua wasifu",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Njia ya msingi ya mbali",
             "fieldMountpoint": "Sehemu ya upachikaji ya ndani",
             "fieldDriveLetter": "Herufi ya hifadhi",

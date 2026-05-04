@@ -12,6 +12,7 @@ import { X, Heart, Copy, Check, ExternalLink, CreditCard, Star } from 'lucide-re
 import { QRCodeSVG } from 'qrcode.react';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface SupportDialogProps {
     isOpen: boolean;
@@ -128,6 +129,7 @@ const CRYPTO_ADDRESSES = {
 
 export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [selectedCrypto, setSelectedCrypto] = useState<string | null>(null);
     const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
 
@@ -156,10 +158,16 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
             />
 
             {/* Dialog - Theme aware */}
-            <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-[540px] max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
+            <div
+                {...modalDrag.panelProps}
+                className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-[540px] max-h-[90vh] flex flex-col overflow-hidden animate-scale-in"
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-                    <div className="flex items-center gap-2">
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0 cursor-grab active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-2 pointer-events-none">
                         <Heart size={18} className="text-pink-500" />
                         <h2 className="text-base font-semibold">{t('support.title') || 'Support AeroFTP'}</h2>
                     </div>

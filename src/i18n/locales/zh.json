@@ -4238,6 +4238,8 @@
             "fieldNamePlaceholder": "友好标签",
             "fieldProfile": "服务器配置文件",
             "selectProfile": "选择一个配置文件",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "远程基础路径",
             "fieldMountpoint": "本地挂载点",
             "fieldDriveLetter": "驱动器号",

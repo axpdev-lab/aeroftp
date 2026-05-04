@@ -14,6 +14,7 @@ import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { Checkbox } from '../ui/Checkbox';
 import { TransferActionBar } from './TransferActionBar';
 import { TransferProgressBar } from '../TransferProgressBar';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 const getDefaultRemotePath = (profile: ServerProfile | null): string =>
     profile?.initialPath?.trim() ? profile.initialPath.trim() : '/';
@@ -204,6 +205,7 @@ const TransferBarsSpinner: React.FC<{ className?: string }> = ({ className = 'h-
 
 export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, initialSourceProfileId, initialSourcePath, initialDestProfileId, initialDestPath }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [profiles, setProfiles] = useState<ServerProfile[]>([]);
     const [sourceProfile, setSourceProfile] = useState<ServerProfile | null>(null);
     const [destProfile, setDestProfile] = useState<ServerProfile | null>(null);
@@ -491,10 +493,16 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                 if (e.target === e.currentTarget && phase !== 'executing') onClose();
             }}
         >
-            <div className="flex max-h-[calc(100vh-8rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+            <div
+                {...modalDrag.panelProps}
+                className="flex max-h-[calc(100vh-8rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-gray-800"
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex cursor-grab items-center justify-between border-b border-gray-200 p-4 active:cursor-grabbing dark:border-gray-700"
+                >
+                    <div className="flex items-center gap-2 pointer-events-none">
                         <ArrowRightLeft className="h-5 w-5 text-indigo-500" />
                         <div>
                             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">

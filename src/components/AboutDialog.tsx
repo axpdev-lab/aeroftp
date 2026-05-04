@@ -22,6 +22,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface AboutDialogProps {
     isOpen: boolean;
@@ -81,6 +82,7 @@ const InfoRow: React.FC<{ label: string; value: string | React.ReactNode; mono?:
 
 export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [activeTab, setActiveTab] = useState<TabId>('info');
     const [appVersion, setAppVersion] = useState('0.0.0');
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -145,10 +147,17 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
             <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-            <div className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: '85vh' }}>
+            <div
+                {...modalDrag.panelProps}
+                className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-scale-in"
+                style={{ maxHeight: '85vh', ...modalDrag.panelProps.style }}
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-                    <div className="flex items-center gap-2.5">
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0 cursor-grab active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-2.5 pointer-events-none">
                         <img
                             src="/icons/AeroFTP_simbol_color_512x512.png"
                             alt="AeroFTP"

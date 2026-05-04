@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Label ramah",
             "fieldProfile": "Profil server",
             "selectProfile": "Pilih profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Jalur dasar jarak jauh",
             "fieldMountpoint": "Titik mount lokal",
             "fieldDriveLetter": "Huruf drive",

@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Prijazna oznaka",
             "fieldProfile": "Profil strežnika",
             "selectProfile": "Izberite profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Oddaljena osnovna pot",
             "fieldMountpoint": "Lokalna točka priklopa",
             "fieldDriveLetter": "Črka pogona",

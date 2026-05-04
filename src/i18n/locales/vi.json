@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Nhãn thân thiện",
             "fieldProfile": "Hồ sơ máy chủ",
             "selectProfile": "Chọn một hồ sơ",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Đường dẫn cơ sở từ xa",
             "fieldMountpoint": "Điểm gắn kết cục bộ",
             "fieldDriveLetter": "Ký tự ổ đĩa",

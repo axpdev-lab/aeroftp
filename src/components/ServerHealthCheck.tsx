@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { ServerProfile, isOAuthProvider, isFourSharedProvider } from '../types';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface CheckDetail {
     name: string;
@@ -205,6 +206,7 @@ const StatusDot: React.FC<{ status: string; size?: number }> = ({ status, size =
 
 export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, onClose, singleServerId }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [results, setResults] = useState<Map<string, HealthCheckResult>>(new Map());
     const [checking, setChecking] = useState<Set<string>>(new Set());
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -348,11 +350,16 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm animate-fade-in"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in"
+            <div
+                {...modalDrag.panelProps}
+                className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in"
                 onClick={e => e.stopPropagation()}>
                 {/* Header */}
-                <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-grab active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-3 pointer-events-none">
                         <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
                             <Activity size={20} className="text-blue-600 dark:text-blue-400" />
                         </div>

@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Label mesra",
             "fieldProfile": "Profil pelayan",
             "selectProfile": "Pilih profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Laluan asas jauh",
             "fieldMountpoint": "Titik lekap tempatan",
             "fieldDriveLetter": "Huruf pemacu",

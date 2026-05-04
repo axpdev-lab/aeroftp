@@ -1786,6 +1786,8 @@
       "fieldNamePlaceholder": "Friendly label",
       "fieldProfile": "Server profile",
       "selectProfile": "Select a profile",
+      "filterProfiles": "Filter profiles",
+      "noProfileMatches": "No profiles match this filter",
       "fieldRemotePath": "Remote base path",
       "fieldMountpoint": "Local mountpoint",
       "fieldDriveLetter": "Drive letter",

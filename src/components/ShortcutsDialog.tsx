@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useEffect } from 'react';
 import { X, Keyboard } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface ShortcutsDialogProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface ShortcutsDialogProps {
 
 export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
 
     const shortcuts = [
         {
@@ -68,10 +70,16 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
             />
 
             {/* Dialog */}
-            <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-in">
+            <div
+                {...modalDrag.panelProps}
+                className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-in"
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-3">
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-3 pointer-events-none">
                         <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
                             <Keyboard size={20} className="text-blue-500" />
                         </div>

@@ -4238,6 +4238,8 @@
             "fieldNamePlaceholder": "わかりやすいラベル",
             "fieldProfile": "サーバープロファイル",
             "selectProfile": "プロファイルを選択",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "リモートベースパス",
             "fieldMountpoint": "ローカルマウントポイント",
             "fieldDriveLetter": "ドライブ文字",

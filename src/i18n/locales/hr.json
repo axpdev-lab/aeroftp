@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Prijateljska oznaka",
             "fieldProfile": "Profil poslužitelja",
             "selectProfile": "Odaberite profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Udaljena bazna putanja",
             "fieldMountpoint": "Lokalna točka montiranja",
             "fieldDriveLetter": "Slovo pogona",

@@ -5,6 +5,7 @@ import * as React from 'react';
 import { X, Copy, Check, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface McpDialogProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface McpDialogProps {
 
 const McpDialog: React.FC<McpDialogProps> = ({ isOpen, onClose }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [copiedField, setCopiedField] = React.useState<string | null>(null);
 
     React.useEffect(() => {
@@ -58,14 +60,18 @@ const McpDialog: React.FC<McpDialogProps> = ({ isOpen, onClose }) => {
         >
             <div className="absolute inset-0 bg-black/50" onClick={onClose} />
             <div
+                {...modalDrag.panelProps}
                 className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-scale-in"
-                style={{ maxHeight: '85vh' }}
+                style={{ maxHeight: '85vh', ...modalDrag.panelProps.style }}
                 role="dialog"
                 aria-modal="true"
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-                    <div className="flex items-center gap-2.5">
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0 cursor-grab active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-2.5 pointer-events-none">
                         <img src="/icons/AeroFTP_simbol_color_512x512.png" alt="AeroFTP" className="w-6 h-6 object-contain" />
                         <div>
                             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">

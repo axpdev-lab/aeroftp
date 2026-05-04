@@ -4238,6 +4238,8 @@
             "fieldNamePlaceholder": "친근한 레이블",
             "fieldProfile": "서버 프로필",
             "selectProfile": "프로필 선택",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "원격 기본 경로",
             "fieldMountpoint": "로컬 마운트 지점",
             "fieldDriveLetter": "드라이브 문자",

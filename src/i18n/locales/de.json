@@ -4238,6 +4238,8 @@
             "fieldNamePlaceholder": "Aussagekräftige Bezeichnung",
             "fieldProfile": "Serverprofil",
             "selectProfile": "Profil auswählen",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Remote-Basispfad",
             "fieldMountpoint": "Lokaler Einhängepunkt",
             "fieldDriveLetter": "Laufwerksbuchstabe",

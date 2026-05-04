@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Draugiška etiketė",
             "fieldProfile": "Serverio profilis",
             "selectProfile": "Pasirinkite profilį",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Nuotolinis bazinis kelias",
             "fieldMountpoint": "Vietinis prijungimo taškas",
             "fieldDriveLetter": "Disko raidė",

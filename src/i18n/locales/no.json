@@ -4267,6 +4267,8 @@
             "fieldNamePlaceholder": "Vennlig etikett",
             "fieldProfile": "Serverprofil",
             "selectProfile": "Velg en profil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Ekstern basesti",
             "fieldMountpoint": "Lokalt monteringspunkt",
             "fieldDriveLetter": "Stasjonsbokstav",

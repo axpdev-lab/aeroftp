@@ -3262,6 +3262,8 @@
             "fieldNamePlaceholder": "Etichetta",
             "fieldProfile": "Profilo server",
             "selectProfile": "Seleziona un profilo",
+            "filterProfiles": "Filtra profili",
+            "noProfileMatches": "Nessun profilo corrisponde al filtro",
             "fieldRemotePath": "Percorso remoto base",
             "fieldMountpoint": "Punto di mount locale",
             "fieldDriveLetter": "Lettera unità",

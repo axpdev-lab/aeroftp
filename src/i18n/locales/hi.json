@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "मैत्रीपूर्ण लेबल",
             "fieldProfile": "सर्वर प्रोफ़ाइल",
             "selectProfile": "एक प्रोफ़ाइल चुनें",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "दूरस्थ आधार पथ",
             "fieldMountpoint": "स्थानीय माउंट बिंदु",
             "fieldDriveLetter": "ड्राइव अक्षर",

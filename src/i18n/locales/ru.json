@@ -4238,6 +4238,8 @@
             "fieldNamePlaceholder": "Дружественная метка",
             "fieldProfile": "Профиль сервера",
             "selectProfile": "Выберите профиль",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Базовый удалённый путь",
             "fieldMountpoint": "Локальная точка монтирования",
             "fieldDriveLetter": "Буква диска",

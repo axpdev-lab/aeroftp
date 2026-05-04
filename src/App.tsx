@@ -53,6 +53,10 @@ interface RcloneCryptBrowserListResponse {
 }
 
 type TransferSpeedPreset = 'base' | 'fast' | 'super';
+type MountManagerOpenOptions = {
+  profileId?: string;
+  remotePath?: string;
+};
 
 const TRANSFER_SPEED_PRESETS: Record<TransferSpeedPreset, { label: string; channels: number }> = {
   base: { label: 'Safe', channels: 1 },
@@ -438,7 +442,7 @@ const App: React.FC = () => {
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
   const [showCyberTools, setShowCyberTools] = useState(false);
   const [showProvidersDialog, setShowProvidersDialog] = useState(false);
-  const [showMountManager, setShowMountManager] = useState(false);
+  const [showMountManager, setShowMountManager] = useState<false | MountManagerOpenOptions>(false);
   // Overwrite dialog: handled by useOverwriteCheck hook
   const { overwriteDialog, setOverwriteDialog, checkOverwrite, resetOverwriteSettings } = useOverwriteCheck({ localFiles, remoteFiles, fileExistsAction });
   // Folder overwrite dialog state
@@ -7842,7 +7846,7 @@ interface UpdateVerificationInfo {
           onShowShortcuts={() => setShowShortcutsDialog(true)}
           onShowDependencies={() => setShowDependenciesPanel(true)}
           onShowProviders={() => setShowProvidersDialog(true)}
-          onShowMountManager={() => setShowMountManager(true)}
+          onShowMountManager={() => setShowMountManager({})}
           masterPasswordSet={masterPasswordSet}
           onLockApp={async () => { await invoke('lock_credential_store'); setIsAppLocked(true); }}
           onSetupMasterPassword={() => setShowMasterPasswordSetup(true)}
@@ -8385,7 +8389,13 @@ interface UpdateVerificationInfo {
         <McpDialog isOpen={showMcpDialog} onClose={() => setShowMcpDialog(false)} />
         <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
         <ProvidersDialog isOpen={showProvidersDialog} onClose={() => setShowProvidersDialog(false)} />
-        {showMountManager && <MountManagerDialog onClose={() => setShowMountManager(false)} />}
+        {showMountManager && (
+          <MountManagerDialog
+            onClose={() => setShowMountManager(false)}
+            initialProfileId={showMountManager.profileId}
+            initialRemotePath={showMountManager.remotePath}
+          />
+        )}
         {showCommandPalette && (
           <CommandPalette
             commands={commandPaletteItems}
@@ -8804,6 +8814,7 @@ interface UpdateVerificationInfo {
               isAeroCloudPaused={isCloudPaused}
               onAeroFile={handleToggleAeroFile}
               onOpenCrossProfile={(opts) => setShowCrossProfilePanel(opts ?? {})}
+              onOpenMountManager={() => setShowMountManager({})}
               onSavedServerConnect={async (params, initialPath, localInitialPath) => {
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
@@ -9490,11 +9501,24 @@ interface UpdateVerificationInfo {
                       <button
                         onClick={() => setShowCrossProfilePanel({})}
                         className="flex-shrink-0 p-1.5 rounded text-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
-                        title="Cross-Profile Transfer"
+                        title={t('transfer.crossProfile.title')}
                       >
                         <ArrowRightLeft size={13} />
                       </button>
                     )}
+                    {isConnected && (() => {
+                      const activeSavedId = sessions.find(s => s.id === activeSessionId)?.savedServerId;
+                      if (!activeSavedId) return null;
+                      return (
+                        <button
+                          onClick={() => setShowMountManager({ profileId: activeSavedId, remotePath: currentRemotePath })}
+                          className="flex-shrink-0 p-1.5 rounded text-sky-500 hover:text-sky-400 hover:bg-sky-500/10 transition-colors"
+                          title={t('mountManager.title')}
+                        >
+                          <HardDrive size={13} />
+                        </button>
+                      );
+                    })()}
                     {debugMode && isConnected && (
                       <button
                         onClick={() => {

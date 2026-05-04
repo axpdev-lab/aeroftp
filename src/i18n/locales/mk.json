@@ -4267,6 +4267,8 @@
             "fieldNamePlaceholder": "Пријателска ознака",
             "fieldProfile": "Профил на сервер",
             "selectProfile": "Изберете профил",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Далечинска основна патека",
             "fieldMountpoint": "Локална точка за монтирање",
             "fieldDriveLetter": "Буква на уред",

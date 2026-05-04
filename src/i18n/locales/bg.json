@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Удобен етикет",
             "fieldProfile": "Профил на сървъра",
             "selectProfile": "Изберете профил",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Отдалечен базов път",
             "fieldMountpoint": "Локална точка на монтиране",
             "fieldDriveLetter": "Буква на устройство",

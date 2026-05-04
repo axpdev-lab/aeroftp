@@ -4267,6 +4267,8 @@
             "fieldNamePlaceholder": "Friendly na label",
             "fieldProfile": "Profile ng server",
             "selectProfile": "Pumili ng profile",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Remote base path",
             "fieldMountpoint": "Lokal na mountpoint",
             "fieldDriveLetter": "Letra ng drive",

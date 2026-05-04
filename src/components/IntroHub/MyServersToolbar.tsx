@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, BarChart3, Rows3, Rows2 } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, BarChart3, Rows3, Rows2, HardDrive } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -24,6 +24,8 @@ interface MyServersToolbarProps {
     onSpeedTest?: () => void;
     /** Open Cross-Profile Transfer modal (always available — pre-selection optional). */
     onOpenCrossProfile?: () => void;
+    /** Open Mount Manager modal. */
+    onOpenMountManager?: () => void;
     /** 0/1/2 — drives the 3 brightness states of the cross-profile button. */
     crossProfileSelectionCount?: number;
     /** Current card layout — drives the detailed-cards toggle visual state. */
@@ -54,6 +56,7 @@ export function MyServersToolbar({
     onHealthCheck,
     onSpeedTest,
     onOpenCrossProfile,
+    onOpenMountManager,
     crossProfileSelectionCount = 0,
     cardLayout = 'compact',
     onToggleCardLayout,
@@ -209,6 +212,16 @@ export function MyServersToolbar({
                             {crossProfileSelectionCount}
                         </span>
                     )}
+                </button>
+            )}
+
+            {onOpenMountManager && (
+                <button
+                    onClick={onOpenMountManager}
+                    className="p-2 rounded-lg bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-100 dark:hover:bg-sky-800/40 text-sky-600 dark:text-sky-400 transition-colors"
+                    title={t('mountManager.title')}
+                >
+                    <HardDrive size={15} />
                 </button>
             )}
 

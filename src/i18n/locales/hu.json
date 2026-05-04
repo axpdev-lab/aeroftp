@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Barátságos címke",
             "fieldProfile": "Kiszolgáló profil",
             "selectProfile": "Válasszon profilt",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Távoli alapútvonal",
             "fieldMountpoint": "Helyi csatolási pont",
             "fieldDriveLetter": "Meghajtóbetűjel",

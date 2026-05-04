@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Sõbralik silt",
             "fieldProfile": "Serveri profiil",
             "selectProfile": "Vali profiil",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Kauge baasrada",
             "fieldMountpoint": "Kohalik ühenduspunkt",
             "fieldDriveLetter": "Kettatäht",

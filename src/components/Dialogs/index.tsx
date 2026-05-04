@@ -12,6 +12,7 @@ import { useTranslation } from '../../i18n';
 import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock, Link as LinkIcon, User, Users, Loader2 } from 'lucide-react';
 import { formatBytes } from '../../utils/formatters';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 // ============ Alert Dialog ============
 interface AlertDialogProps {
@@ -716,6 +717,7 @@ interface MasterPasswordSetupDialogProps {
 
 export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps> = ({ onComplete, onClose, bootstrapMode = false }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -759,12 +761,13 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden animate-scale-in">
-                {/* Header (matches LockScreen / AeroVault style).
-                    data-tauri-drag-region keeps the window movable while the
-                    modal is open (Tier 2 carry-over from #133). */}
+            <div
+                {...modalDrag.panelProps}
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden animate-scale-in"
+            >
+                {/* Header: drag moves this modal, not the native app window. */}
                 <div
-                    data-tauri-drag-region
+                    {...modalDrag.dragHandleProps}
                     className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
                 >
                     <Shield size={18} className="text-emerald-500 dark:text-emerald-400 pointer-events-none" />

@@ -4267,6 +4267,8 @@
             "fieldNamePlaceholder": "Vinsamlegt merki",
             "fieldProfile": "Þjónasnið",
             "selectProfile": "Veldu snið",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Fjar grunnslóð",
             "fieldMountpoint": "Staðbundinn tengingarpunktur",
             "fieldDriveLetter": "Drifbókstafur",

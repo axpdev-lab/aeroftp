@@ -4248,6 +4248,8 @@
             "fieldNamePlaceholder": "Φιλική ετικέτα",
             "fieldProfile": "Προφίλ διακομιστή",
             "selectProfile": "Επιλέξτε προφίλ",
+            "filterProfiles": "Filter profiles",
+            "noProfileMatches": "No profiles match this filter",
             "fieldRemotePath": "Απομακρυσμένη βασική διαδρομή",
             "fieldMountpoint": "Τοπικό σημείο προσάρτησης",
             "fieldDriveLetter": "Γράμμα μονάδας",

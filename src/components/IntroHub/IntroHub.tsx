@@ -47,6 +47,7 @@ export interface IntroHubProps {
     isAeroCloudPaused?: boolean;
     onOpenCloudPanel?: () => void;
     onOpenCrossProfile?: (opts?: { sourceId?: string; sourcePath?: string; destId?: string; destPath?: string }) => void;
+    onOpenMountManager?: () => void;
     hasExistingSessions?: boolean;
     serversRefreshKey?: number;
     onServersChanged?: () => void;
@@ -73,6 +74,7 @@ export function IntroHub(props: IntroHubProps) {
         isAeroCloudPaused,
         onOpenCloudPanel,
         onOpenCrossProfile,
+        onOpenMountManager,
         hasExistingSessions,
         serversRefreshKey,
         onServersChanged,
@@ -346,6 +348,7 @@ export function IntroHub(props: IntroHubProps) {
                             } catch { setPaletteServers([]); }
                         }}
                         onOpenCrossProfile={onOpenCrossProfile}
+                        onOpenMountManager={onOpenMountManager}
                     />
                 )}
 
