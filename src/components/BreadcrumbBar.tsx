@@ -186,6 +186,12 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
     }
   }, [currentPath, onNavigate, isAboveMinPath]);
 
+  const handleEmptyAreaClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    if (e.target === e.currentTarget) {
+      enterEditMode();
+    }
+  }, [enterEditMode]);
+
   const handleChevronClick = useCallback(async (e: React.MouseEvent, segmentIndex: number) => {
     e.stopPropagation();
 
@@ -195,8 +201,9 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
       return;
     }
 
-    // The chevron after segment[i] lists siblings at the level of segment[i+1],
-    // i.e., directories inside segment[i].fullPath
+    // The chevron after segment[i] lists subfolders inside segment[i].fullPath.
+    // For the trailing chevron we pass `segments.length - 1` so the dropdown
+    // surfaces first-generation subfolders of the current location.
     const parentPath = segments[segmentIndex].fullPath;
 
     setChevronDropdown({ segmentIndex, items: [], loading: true });
@@ -426,6 +433,64 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
             </React.Fragment>
           );
         })}
+
+        {/* Trailing chevron: list first-generation subfolders of the current path */}
+        {segments.length > 0 && (() => {
+          const trailingIndex = segments.length - 1;
+          const isOpen = chevronDropdown?.segmentIndex === trailingIndex;
+          return (
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={(e) => handleChevronClick(e, trailingIndex)}
+                className="flex items-center p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/30 transition-colors group"
+                title={t('breadcrumb.browseChildren') || 'Browse subdirectories'}
+                aria-haspopup="menu"
+                aria-expanded={isOpen}
+              >
+                <ChevronRight
+                  size={14}
+                  className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 group-hover:text-blue-400 transition-colors"
+                />
+              </button>
+
+              {isOpen && (
+                <div
+                  ref={chevronDropdownRef}
+                  className="absolute top-full left-0 mt-1 bg-white border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-600 border rounded-lg py-1 max-h-60 overflow-y-auto z-50 min-w-[180px]"
+                >
+                  {chevronDropdown!.loading ? (
+                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
+                      <span className="animate-pulse">{t('breadcrumb.loading') || 'Loading...'}</span>
+                    </div>
+                  ) : chevronDropdown!.items.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-gray-500 italic">
+                      {t('breadcrumb.noSubdirectories') || 'No subdirectories'}
+                    </div>
+                  ) : (
+                    chevronDropdown!.items.map((dir) => (
+                      <button
+                        key={dir.path}
+                        onClick={() => handleDropdownNavigate(dir.path)}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm w-full text-left text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                      >
+                        <Folder size={14} className="flex-shrink-0 text-amber-400" />
+                        <span className="truncate">{dir.name}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Empty area filler: click to enter edit mode */}
+        <div
+          className="flex-1 self-stretch cursor-text"
+          onClick={handleEmptyAreaClick}
+          aria-hidden="true"
+          title={t('breadcrumb.editPath') || 'Edit path'}
+        />
       </div>
 
       {/* Edit button */}
