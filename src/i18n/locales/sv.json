@@ -940,7 +940,12 @@
             "densityCompact": "Kompakt",
             "densityComfortable": "Bekväm",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Anpassat ikonbibliotek",
+            "customIconsLibraryDesc": "Hantera uppladdade ikoner som återanvänds mellan profiler. Dra för att ordna om, dubbelklicka på namnet för att byta namn.",
+            "customIconsEmpty": "Inga anpassade ikoner ännu. Ladda upp SVG-, PNG-, JPG-, WEBP- eller ICO-filer för att bygga ditt bibliotek.",
+            "customIconsUpload": "Ladda upp",
+            "customIconsRenameHint": "Dubbelklicka för att byta namn"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrera lokala filer...",
             "search_files": "Sök filer",
             "clear": "Rensa sökning",
-            "resultsCount": "{count} resultat"
+            "resultsCount": "{count} resultat",
+            "flattenRecursive": "Rekursiv",
+            "flattenScanning": "Söker igenom underträd...",
+            "flattenTruncated": "avkortat",
+            "flattenTruncatedHint": "Nådde gränsen på 5 000 poster; förfina filtret eller gå in i en undermapp.",
+            "local_placeholder_flatten": "Filtrera lokala filer... (* för rekursiv)"
         },
         "versions": {
             "title": "Filversioner",
@@ -4225,7 +4235,9 @@
             "sort": "Sortera",
             "sortPopularity": "Populära först",
             "sortAlphabetical": "A-Ö",
-            "dragHint": "Dra för att ordna om"
+            "dragHint": "Dra för att ordna om",
+            "sortRecent": "Senaste",
+            "uploadHint": "Ladda upp SVG, PNG, JPG, WEBP eller ICO"
         },
         "twoFactor": {
             "title": "Tvåfaktorsautentisering krävs",

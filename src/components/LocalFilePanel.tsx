@@ -84,6 +84,11 @@ export interface LocalFilePanelProps {
   showSearchBar: boolean;
   setShowSearchBar: React.Dispatch<React.SetStateAction<boolean>>;
   searchRef: React.RefObject<HTMLInputElement>;
+  /** T-FLATTEN-DESCENDANTS: true when `*` / `**` is in the search box. */
+  flattenActive?: boolean;
+  flattenScanning?: boolean;
+  flattenTruncated?: boolean;
+  flattenCount?: number;
 
   // --- View & Display ---
   viewMode: 'list' | 'grid' | 'large';
@@ -187,6 +192,10 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   showSearchBar,
   setShowSearchBar,
   searchRef,
+  flattenActive,
+  flattenScanning,
+  flattenTruncated,
+  flattenCount,
   viewMode,
   showFileExtensions,
   debugMode,
@@ -411,13 +420,17 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
 
       {/* Search Bar */}
       {showSearchBar && (
-        <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 flex items-center gap-2">
-          <Search size={14} className="text-blue-500 flex-shrink-0" />
+        <div className={`px-3 py-1.5 border-b flex items-center gap-2 ${
+          flattenActive
+            ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800'
+            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+        }`}>
+          <Search size={14} className={flattenActive ? 'text-purple-500 flex-shrink-0' : 'text-blue-500 flex-shrink-0'} />
           <input
             autoFocus
             ref={searchRef}
             type="text"
-            placeholder={t('search.local_placeholder') || 'Filter local files...'}
+            placeholder={t('search.local_placeholder_flatten') || t('search.local_placeholder') || 'Filter local files... (* for recursive)'}
             value={searchFilter}
             onChange={e => setSearchFilter(e.target.value)}
             onKeyDown={e => {
@@ -428,10 +441,33 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             }}
             className="flex-1 text-sm bg-transparent border-none outline-none placeholder-gray-400"
           />
-          {searchFilter && (
-            <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
-              {t('search.resultsCount', { count: localFiles.filter(f => f.name.toLowerCase().includes(searchFilter.toLowerCase())).length })}
+          {flattenActive ? (
+            <span className="text-xs text-purple-600 dark:text-purple-400 flex-shrink-0 flex items-center gap-1">
+              {flattenScanning ? (
+                <span className="flex items-center gap-1">
+                  <RefreshCw size={11} className="animate-spin" />
+                  {t('search.flattenScanning') || 'Scanning subtree...'}
+                </span>
+              ) : (
+                <>
+                  {t('search.flattenRecursive') || 'Recursive'}
+                  {typeof flattenCount === 'number' && (
+                    <span className="opacity-80"> · {t('search.resultsCount', { count: flattenCount })}</span>
+                  )}
+                  {flattenTruncated && (
+                    <span className="ml-1 text-amber-600 dark:text-amber-400" title={t('search.flattenTruncatedHint') || 'Hit the 5,000 entry cap; refine your filter or descend into a subfolder.'}>
+                      ({t('search.flattenTruncated') || 'truncated'})
+                    </span>
+                  )}
+                </>
+              )}
             </span>
+          ) : (
+            searchFilter && (
+              <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
+                {t('search.resultsCount', { count: localFiles.filter(f => f.name.toLowerCase().includes(searchFilter.toLowerCase())).length })}
+              </span>
+            )
           )}
           <button
             onClick={() => { setShowSearchBar(false); setSearchFilter(''); }}

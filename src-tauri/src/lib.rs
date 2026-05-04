@@ -5088,6 +5088,124 @@ async fn get_local_files(
     Ok(files)
 }
 
+/// BFS-flatten the directory tree rooted at `base_path`. Returns one entry per
+/// descendant file/dir with the `name` field carrying the relative path from
+/// `base_path` (e.g. `subdir/file.txt`) so the existing local panel rendering
+/// can surface depth without a schema change. Capped at `max_entries`
+/// (default 5000) to keep the UI responsive on large trees, with `truncated`
+/// signalling that the cap was hit.
+#[derive(Serialize)]
+pub struct FlattenLocalResult {
+    pub entries: Vec<LocalFileInfo>,
+    pub truncated: bool,
+    pub total_scanned: u64,
+}
+
+#[tauri::command]
+async fn flatten_local_descendants(
+    base_path: String,
+    max_entries: Option<u32>,
+    show_hidden: Option<bool>,
+) -> Result<FlattenLocalResult, String> {
+    use std::collections::VecDeque;
+
+    validate_path(&base_path)?;
+    let base = PathBuf::from(&base_path);
+    if !base.exists() {
+        return Err(format!("Path does not exist: {}", base.display()));
+    }
+    if !base.is_dir() {
+        return Err(format!("Not a directory: {}", base.display()));
+    }
+    let cap = max_entries.unwrap_or(5000).min(20_000) as usize;
+    let show_hidden = show_hidden.unwrap_or(false);
+
+    // BFS with a max depth ceiling to avoid runaway scans on symlink loops.
+    const MAX_DEPTH: usize = 32;
+
+    let mut entries: Vec<LocalFileInfo> = Vec::new();
+    let mut total_scanned: u64 = 0;
+    let mut truncated = false;
+    let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
+    queue.push_back((base.clone(), 0));
+
+    while let Some((dir, depth)) = queue.pop_front() {
+        if depth > MAX_DEPTH {
+            continue;
+        }
+        let mut read = match tokio::fs::read_dir(&dir).await {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        loop {
+            match read.next_entry().await {
+                Ok(Some(entry)) => {
+                    total_scanned += 1;
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    if !show_hidden && file_name.starts_with('.') {
+                        continue;
+                    }
+                    let entry_path = entry.path();
+                    let metadata = match tokio::fs::symlink_metadata(&entry_path).await {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
+                    if metadata.file_type().is_symlink() {
+                        // Skip symlinks to avoid cycles. We could follow with a
+                        // visited-set, but symlink loops are the common case
+                        // and a single-step skip is the safe default.
+                        continue;
+                    }
+                    let is_dir = metadata.is_dir();
+                    // Compute relative path. base.join(rel) == entry_path, so
+                    // strip_prefix gives us the right substring with the OS
+                    // separator. Normalize to forward slashes for the UI.
+                    let relative = entry_path
+                        .strip_prefix(&base)
+                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_else(|_| file_name.clone());
+
+                    let modified = metadata.modified().ok().map(|t| {
+                        let datetime: chrono::DateTime<chrono::Local> = t.into();
+                        datetime.format("%Y-%m-%d %H:%M").to_string()
+                    });
+
+                    entries.push(LocalFileInfo {
+                        name: relative,
+                        path: entry_path.to_string_lossy().replace('\\', "/"),
+                        size: if is_dir { None } else { Some(metadata.len()) },
+                        is_dir,
+                        modified,
+                    });
+
+                    if entries.len() >= cap {
+                        truncated = true;
+                        break;
+                    }
+
+                    if is_dir {
+                        queue.push_back((entry_path, depth + 1));
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+        if truncated {
+            break;
+        }
+    }
+
+    // Sort by relative path so siblings cluster naturally.
+    entries.sort_by_key(|e| e.name.to_lowercase());
+
+    Ok(FlattenLocalResult {
+        entries,
+        truncated,
+        total_scanned,
+    })
+}
+
 #[tauri::command]
 async fn open_in_file_manager(path: String) -> Result<(), String> {
     validate_path(&path)?;
@@ -13252,6 +13370,7 @@ pub fn run() {
             import_sync_template_cmd,
             export_sync_script_cmd,
             import_sync_script_cmd,
+            flatten_local_descendants,
             create_sync_snapshot_cmd,
             list_sync_snapshots_cmd,
             load_sync_snapshot_cmd,

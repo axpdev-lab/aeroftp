@@ -940,7 +940,12 @@
             "densityCompact": "Compact",
             "densityComfortable": "Comfortabel",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Aangepaste pictogrammenbibliotheek",
+            "customIconsLibraryDesc": "Beheer geüploade pictogrammen die hergebruikt worden tussen profielen. Sleep om te herschikken, dubbelklik op de naam om te hernoemen.",
+            "customIconsEmpty": "Nog geen aangepaste pictogrammen. Upload SVG-, PNG-, JPG-, WEBP- of ICO-bestanden om uw bibliotheek op te bouwen.",
+            "customIconsUpload": "Uploaden",
+            "customIconsRenameHint": "Dubbelklik om te hernoemen"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Lokale bestanden filteren...",
             "search_files": "Bestanden zoeken",
             "clear": "Zoekopdracht wissen",
-            "resultsCount": "{count} resultaten"
+            "resultsCount": "{count} resultaten",
+            "flattenRecursive": "Recursief",
+            "flattenScanning": "Subboom scannen...",
+            "flattenTruncated": "afgekapt",
+            "flattenTruncatedHint": "Limiet van 5.000 vermeldingen bereikt; verfijn uw filter of ga naar een submap.",
+            "local_placeholder_flatten": "Lokale bestanden filteren... (* voor recursief)"
         },
         "versions": {
             "title": "Bestandsversies",
@@ -4215,7 +4225,9 @@
             "sort": "Sorteren",
             "sortPopularity": "Populair eerst",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Sleep om te herschikken"
+            "dragHint": "Sleep om te herschikken",
+            "sortRecent": "Recent",
+            "uploadHint": "SVG, PNG, JPG, WEBP of ICO uploaden"
         },
         "twoFactor": {
             "title": "Tweefactorauthenticatie vereist",

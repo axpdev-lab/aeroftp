@@ -940,7 +940,12 @@
             "densityCompact": "Compacta",
             "densityComfortable": "Cómoda",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Biblioteca de iconos personalizados",
+            "customIconsLibraryDesc": "Gestiona los iconos cargados reutilizados entre perfiles. Arrastra para reordenar, doble clic en el nombre para renombrar.",
+            "customIconsEmpty": "Aún no hay iconos personalizados. Sube archivos SVG, PNG, JPG, WEBP o ICO para crear tu biblioteca.",
+            "customIconsUpload": "Subir",
+            "customIconsRenameHint": "Doble clic para renombrar"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrar archivos locales...",
             "search_files": "Buscar archivos",
             "clear": "Limpiar búsqueda",
-            "resultsCount": "{count} resultados"
+            "resultsCount": "{count} resultados",
+            "flattenRecursive": "Recursivo",
+            "flattenScanning": "Escaneando subárbol...",
+            "flattenTruncated": "truncado",
+            "flattenTruncatedHint": "Alcanzado el límite de 5.000 entradas; refina el filtro o entra en una subcarpeta.",
+            "local_placeholder_flatten": "Filtrar archivos locales... (* para recursivo)"
         },
         "versions": {
             "title": "Versiones de archivo",
@@ -4215,7 +4225,9 @@
             "sort": "Ordenar",
             "sortPopularity": "Populares primero",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Arrastra para reordenar"
+            "dragHint": "Arrastra para reordenar",
+            "sortRecent": "Recientes",
+            "uploadHint": "Subir SVG, PNG, JPG, WEBP o ICO"
         },
         "twoFactor": {
             "title": "Se requiere autenticación de dos factores",

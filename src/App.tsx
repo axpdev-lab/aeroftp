@@ -670,6 +670,12 @@ const App: React.FC = () => {
 
   const [localSearchFilter, setLocalSearchFilter] = useState('');
   const [showLocalSearchBar, setShowLocalSearchBar] = useState(false);
+  // T-FLATTEN-DESCENDANTS: typing `*` or `**` (alone, or followed by a name
+  // filter) flattens the entire subtree under currentLocalPath. We keep the
+  // result separate from `localFiles` so leaving flatten mode is instant.
+  const [localFlattenedFiles, setLocalFlattenedFiles] = useState<LocalFile[] | null>(null);
+  const [localFlattenScanning, setLocalFlattenScanning] = useState(false);
+  const [localFlattenTruncated, setLocalFlattenTruncated] = useState(false);
   const insecureCertPreviouslyEnabledRef = useRef(false);
 
   const t = useTranslation();
@@ -1092,15 +1098,76 @@ interface UpdateVerificationInfo {
   } = preview;
   const [devToolsMaximized, setDevToolsMaximized] = useState(false);
 
-  // Filtered files (search filter applied) — memoized to avoid recomputation on unrelated renders (M25)
-  const filteredLocalFiles = useMemo(() => localFiles.filter(f => {
-    if (!f.name.toLowerCase().includes(localSearchFilter.toLowerCase())) return false;
-    if (fileTags.activeTagFilter) {
-      const tags = fileTags.getTagsForFile(f.path);
-      if (!tags.some(t => t.label_id === fileTags.activeTagFilter)) return false;
+  // T-FLATTEN-DESCENDANTS: parse the search filter and detect flatten intent.
+  // Forms accepted: `*`, `**`, `* foo`, `** foo`. Anything else falls back to
+  // the standard substring filter on the current directory.
+  const flattenSearchParse = useMemo(() => {
+    const trimmed = localSearchFilter.trim();
+    const match = /^(\*\*?)(?:\s+(.*))?$/.exec(trimmed);
+    if (!match) return { active: false, residualFilter: '' };
+    return { active: true, residualFilter: (match[2] || '').toLowerCase() };
+  }, [localSearchFilter]);
+
+  // Trigger the recursive scan whenever the user enables flatten mode or moves
+  // to a different folder while flatten mode is on. The scan is debounced so
+  // typing `*` and then a query character doesn't kick off two scans.
+  useEffect(() => {
+    if (!flattenSearchParse.active) {
+      setLocalFlattenedFiles(null);
+      setLocalFlattenTruncated(false);
+      setLocalFlattenScanning(false);
+      return;
     }
-    return true;
-  }), [localFiles, localSearchFilter, fileTags.activeTagFilter, fileTags.getTagsForFile]);
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setLocalFlattenScanning(true);
+      try {
+        const result = await invoke<{ entries: LocalFile[]; truncated: boolean; total_scanned: number }>(
+          'flatten_local_descendants',
+          { basePath: currentLocalPath, maxEntries: 5000, showHidden: false },
+        );
+        if (cancelled) return;
+        setLocalFlattenedFiles(result.entries);
+        setLocalFlattenTruncated(result.truncated);
+      } catch {
+        if (cancelled) return;
+        setLocalFlattenedFiles([]);
+        setLocalFlattenTruncated(false);
+      } finally {
+        if (!cancelled) setLocalFlattenScanning(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [flattenSearchParse.active, currentLocalPath]);
+
+  // Filtered files (search filter applied), memoized to avoid recomputation on unrelated renders (M25)
+  const filteredLocalFiles = useMemo(() => {
+    const source: LocalFile[] = flattenSearchParse.active && localFlattenedFiles
+      ? localFlattenedFiles
+      : localFiles;
+    const nameFilter = flattenSearchParse.active
+      ? flattenSearchParse.residualFilter
+      : localSearchFilter.toLowerCase();
+    return source.filter(f => {
+      if (nameFilter && !f.name.toLowerCase().includes(nameFilter)) return false;
+      if (fileTags.activeTagFilter) {
+        const tags = fileTags.getTagsForFile(f.path);
+        if (!tags.some(t => t.label_id === fileTags.activeTagFilter)) return false;
+      }
+      return true;
+    });
+  }, [
+    localFiles,
+    localFlattenedFiles,
+    flattenSearchParse.active,
+    flattenSearchParse.residualFilter,
+    localSearchFilter,
+    fileTags.activeTagFilter,
+    fileTags.getTagsForFile,
+  ]);
 
   // Keyboard Shortcuts
   useKeyboardShortcuts({
@@ -10143,6 +10210,10 @@ interface UpdateVerificationInfo {
                   showSearchBar={showLocalSearchBar}
                   setShowSearchBar={setShowLocalSearchBar}
                   searchRef={localSearchRef}
+                  flattenActive={flattenSearchParse.active}
+                  flattenScanning={localFlattenScanning}
+                  flattenTruncated={localFlattenTruncated}
+                  flattenCount={flattenSearchParse.active && localFlattenedFiles ? filteredLocalFiles.length : undefined}
                   viewMode={viewMode}
                   showFileExtensions={showFileExtensions}
                   debugMode={debugMode}

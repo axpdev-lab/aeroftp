@@ -940,7 +940,12 @@
             "densityCompact": "Kompaktný",
             "densityComfortable": "Pohodlný",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Knižnica vlastných ikon",
+            "customIconsLibraryDesc": "Spravujte nahrané ikony znovu použité v rámci profilov. Potiahnutím zmeníte poradie, dvojklikom na názov premenujete.",
+            "customIconsEmpty": "Zatiaľ žiadne vlastné ikony. Nahrajte súbory SVG, PNG, JPG, WEBP alebo ICO na vytvorenie knižnice.",
+            "customIconsUpload": "Nahrať",
+            "customIconsRenameHint": "Dvojklikom premenujete"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrovat lokalne subory...",
             "search_files": "Hladat subory",
             "clear": "Vymazat hladanie",
-            "resultsCount": "{count} výsledkov"
+            "resultsCount": "{count} výsledkov",
+            "flattenRecursive": "Rekurzívne",
+            "flattenScanning": "Skenovanie podstromu...",
+            "flattenTruncated": "skrátené",
+            "flattenTruncatedHint": "Dosiahnutý limit 5 000 položiek; spresnite filter alebo prejdite do podpriečinka.",
+            "local_placeholder_flatten": "Filtrovať lokálne súbory... (* pre rekurziu)"
         },
         "versions": {
             "title": "Verzie suboru",
@@ -4225,7 +4235,9 @@
             "sort": "Zoradiť",
             "sortPopularity": "Obľúbené prvé",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Potiahnite na zmenu poradia"
+            "dragHint": "Potiahnite na zmenu poradia",
+            "sortRecent": "Nedávne",
+            "uploadHint": "Nahrať SVG, PNG, JPG, WEBP alebo ICO"
         },
         "twoFactor": {
             "title": "Vyžaduje sa dvojfaktorové overenie",

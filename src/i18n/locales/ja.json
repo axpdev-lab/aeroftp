@@ -940,7 +940,12 @@
             "densityCompact": "コンパクト",
             "densityComfortable": "快適",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "カスタムアイコンライブラリ",
+            "customIconsLibraryDesc": "プロファイル間で再利用するアップロード済みアイコンを管理します。ドラッグして並べ替え、名前をダブルクリックして名前を変更します。",
+            "customIconsEmpty": "カスタムアイコンはまだありません。SVG、PNG、JPG、WEBP、またはICOファイルをアップロードしてライブラリを構築します。",
+            "customIconsUpload": "アップロード",
+            "customIconsRenameHint": "ダブルクリックで名前を変更"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1645,7 +1650,12 @@
             "local_placeholder": "ローカルファイルを絞り込み...",
             "search_files": "ファイルを検索",
             "clear": "検索をクリア",
-            "resultsCount": "{count}件の結果"
+            "resultsCount": "{count}件の結果",
+            "flattenRecursive": "再帰的",
+            "flattenScanning": "サブツリーをスキャン中...",
+            "flattenTruncated": "切り捨て",
+            "flattenTruncatedHint": "5,000エントリの上限に達しました。フィルターを絞り込むか、サブフォルダに移動してください。",
+            "local_placeholder_flatten": "ローカルファイルをフィルター... (再帰の場合は *)"
         },
         "versions": {
             "title": "ファイルのバージョン",
@@ -4215,7 +4225,9 @@
             "sort": "並べ替え",
             "sortPopularity": "人気順",
             "sortAlphabetical": "ABC順",
-            "dragHint": "ドラッグして並べ替え"
+            "dragHint": "ドラッグして並べ替え",
+            "sortRecent": "最近",
+            "uploadHint": "SVG、PNG、JPG、WEBP、またはICOをアップロード"
         },
         "twoFactor": {
             "title": "二要素認証が必要です",

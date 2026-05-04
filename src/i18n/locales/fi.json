@@ -940,7 +940,12 @@
             "densityCompact": "Tiivis",
             "densityComfortable": "Mukava",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Mukautettu kuvakekirjasto",
+            "customIconsLibraryDesc": "Hallinnoi profiilien välillä uudelleenkäytettyjä ladattuja kuvakkeita. Vedä järjestääksesi uudelleen, kaksoisnapsauta nimeä nimetäksesi uudelleen.",
+            "customIconsEmpty": "Ei vielä mukautettuja kuvakkeita. Lataa SVG-, PNG-, JPG-, WEBP- tai ICO-tiedostoja kirjastosi luomiseksi.",
+            "customIconsUpload": "Lataa",
+            "customIconsRenameHint": "Kaksoisnapsauta nimetäksesi uudelleen"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Suodata paikallisia tiedostoja...",
             "search_files": "Hae tiedostoja",
             "clear": "Tyhjennä haku",
-            "resultsCount": "{count} tulosta"
+            "resultsCount": "{count} tulosta",
+            "flattenRecursive": "Rekursiivinen",
+            "flattenScanning": "Skannataan alipuuta...",
+            "flattenTruncated": "katkaistu",
+            "flattenTruncatedHint": "Saavutettu 5 000 merkinnän raja; tarkenna suodatinta tai siirry alikansioon.",
+            "local_placeholder_flatten": "Suodata paikallisia tiedostoja... (* rekursiiviseen)"
         },
         "versions": {
             "title": "Tiedostoversiot",
@@ -4225,7 +4235,9 @@
             "sort": "Lajittele",
             "sortPopularity": "Suositut ensin",
             "sortAlphabetical": "A-Ö",
-            "dragHint": "Vedä järjestääksesi uudelleen"
+            "dragHint": "Vedä järjestääksesi uudelleen",
+            "sortRecent": "Viimeisimmät",
+            "uploadHint": "Lataa SVG, PNG, JPG, WEBP tai ICO"
         },
         "twoFactor": {
             "title": "Kaksivaiheinen todennus vaaditaan",

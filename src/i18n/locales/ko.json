@@ -940,7 +940,12 @@
             "densityCompact": "좁게",
             "densityComfortable": "편안하게",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "사용자 지정 아이콘 라이브러리",
+            "customIconsLibraryDesc": "프로필 전체에서 재사용되는 업로드된 아이콘을 관리합니다. 드래그하여 순서를 변경하고, 이름을 두 번 클릭하여 이름을 바꿉니다.",
+            "customIconsEmpty": "아직 사용자 지정 아이콘이 없습니다. SVG, PNG, JPG, WEBP 또는 ICO 파일을 업로드하여 라이브러리를 구축하세요.",
+            "customIconsUpload": "업로드",
+            "customIconsRenameHint": "두 번 클릭하여 이름 변경"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "로컬 파일 필터링...",
             "search_files": "파일 검색",
             "clear": "검색 지우기",
-            "resultsCount": "{count}개 결과"
+            "resultsCount": "{count}개 결과",
+            "flattenRecursive": "재귀적",
+            "flattenScanning": "하위 트리 스캔 중...",
+            "flattenTruncated": "잘림",
+            "flattenTruncatedHint": "5,000개 항목 한도에 도달했습니다. 필터를 세분화하거나 하위 폴더로 이동하세요.",
+            "local_placeholder_flatten": "로컬 파일 필터링... (재귀의 경우 *)"
         },
         "versions": {
             "title": "파일 버전",
@@ -4215,7 +4225,9 @@
             "sort": "정렬",
             "sortPopularity": "인기순",
             "sortAlphabetical": "ㄱ-ㅎ",
-            "dragHint": "드래그하여 순서 변경"
+            "dragHint": "드래그하여 순서 변경",
+            "sortRecent": "최근",
+            "uploadHint": "SVG, PNG, JPG, WEBP 또는 ICO 업로드"
         },
         "twoFactor": {
             "title": "2단계 인증 필요",

@@ -940,7 +940,12 @@
             "densityCompact": "Compacte",
             "densityComfortable": "Confortable",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Bibliothèque d'icônes personnalisées",
+            "customIconsLibraryDesc": "Gérez les icônes téléchargées réutilisées entre les profils. Faites glisser pour réorganiser, double-cliquez sur le nom pour renommer.",
+            "customIconsEmpty": "Aucune icône personnalisée pour le moment. Téléchargez des fichiers SVG, PNG, JPG, WEBP ou ICO pour constituer votre bibliothèque.",
+            "customIconsUpload": "Téléverser",
+            "customIconsRenameHint": "Double-cliquez pour renommer"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrer les fichiers locaux...",
             "search_files": "Rechercher des fichiers",
             "clear": "Effacer la recherche",
-            "resultsCount": "{count} résultats"
+            "resultsCount": "{count} résultats",
+            "flattenRecursive": "Récursif",
+            "flattenScanning": "Analyse du sous-arbre...",
+            "flattenTruncated": "tronqué",
+            "flattenTruncatedHint": "Limite de 5 000 entrées atteinte ; affinez votre filtre ou descendez dans un sous-dossier.",
+            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)"
         },
         "versions": {
             "title": "Versions du fichier",
@@ -4215,7 +4225,9 @@
             "sort": "Trier",
             "sortPopularity": "Populaires d'abord",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Glissez pour réorganiser"
+            "dragHint": "Glissez pour réorganiser",
+            "sortRecent": "Récents",
+            "uploadHint": "Téléverser SVG, PNG, JPG, WEBP ou ICO"
         },
         "twoFactor": {
             "title": "Authentification à deux facteurs requise",

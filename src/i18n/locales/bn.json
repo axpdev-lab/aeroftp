@@ -940,7 +940,12 @@
             "densityCompact": "কম্প্যাক্ট",
             "densityComfortable": "আরামদায়ক",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "কাস্টম আইকন লাইব্রেরি",
+            "customIconsLibraryDesc": "প্রোফাইল জুড়ে পুনরায় ব্যবহার করা আপলোড করা আইকনগুলি পরিচালনা করুন। পুনর্বিন্যাস করতে টেনে আনুন, নাম পরিবর্তন করতে নামের উপর ডাবল-ক্লিক করুন।",
+            "customIconsEmpty": "এখনও কোনো কাস্টম আইকন নেই। আপনার লাইব্রেরি তৈরি করতে SVG, PNG, JPG, WEBP, বা ICO ফাইল আপলোড করুন।",
+            "customIconsUpload": "আপলোড",
+            "customIconsRenameHint": "নাম পরিবর্তন করতে ডাবল-ক্লিক করুন"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "লোকাল ফাইল ফিল্টার করুন...",
             "search_files": "ফাইল অনুসন্ধান",
             "clear": "অনুসন্ধান সাফ করুন",
-            "resultsCount": "{count}টি ফলাফল"
+            "resultsCount": "{count}টি ফলাফল",
+            "flattenRecursive": "পুনরাবৃত্তিমূলক",
+            "flattenScanning": "সাবট্রি স্ক্যান করা হচ্ছে...",
+            "flattenTruncated": "ছাঁটা",
+            "flattenTruncatedHint": "৫,০০০ এন্ট্রির সীমায় পৌঁছেছে; আপনার ফিল্টার পরিমার্জন করুন বা একটি সাবফোল্ডারে যান।",
+            "local_placeholder_flatten": "লোকাল ফাইল ফিল্টার করুন... (পুনরাবৃত্তির জন্য *)"
         },
         "versions": {
             "title": "ফাইল সংস্করণ",
@@ -4225,7 +4235,9 @@
             "sort": "সাজান",
             "sortPopularity": "জনপ্রিয় প্রথমে",
             "sortAlphabetical": "অ-হ",
-            "dragHint": "পুনর্বিন্যাস করতে টানুন"
+            "dragHint": "পুনর্বিন্যাস করতে টানুন",
+            "sortRecent": "সাম্প্রতিক",
+            "uploadHint": "SVG, PNG, JPG, WEBP, বা ICO আপলোড করুন"
         },
         "twoFactor": {
             "title": "দ্বি-ফ্যাক্টর প্রমাণীকরণ প্রয়োজন",

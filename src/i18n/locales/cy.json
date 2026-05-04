@@ -940,7 +940,12 @@
             "densityCompact": "Cryno",
             "densityComfortable": "Cyfforddus",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Llyfrgell eiconau personol",
+            "customIconsLibraryDesc": "Rheoli eiconau wedi'u huwchlwytho a ailddefnyddir ar draws proffiliau. Llusgo i aildrefnu, clic dwbl ar yr enw i ailenwi.",
+            "customIconsEmpty": "Dim eiconau personol eto. Uwchlwythwch ffeiliau SVG, PNG, JPG, WEBP, neu ICO i adeiladu eich llyfrgell.",
+            "customIconsUpload": "Uwchlwytho",
+            "customIconsRenameHint": "Clic dwbl i ailenwi"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Hidlo ffeiliau lleol...",
             "search_files": "Chwilio ffeiliau",
             "clear": "Clirio chwiliad",
-            "resultsCount": "{count} canlyniadau"
+            "resultsCount": "{count} canlyniadau",
+            "flattenRecursive": "Ailadroddol",
+            "flattenScanning": "Yn sganio is-goeden...",
+            "flattenTruncated": "wedi'i docio",
+            "flattenTruncatedHint": "Wedi cyrraedd y terfyn o 5,000 cofnod; mireinio'ch hidlydd neu ewch i is-ffolder.",
+            "local_placeholder_flatten": "Hidlo ffeiliau lleol... (* ar gyfer ailadrodd)"
         },
         "versions": {
             "title": "Fersiynau Ffeiliau",
@@ -4244,7 +4254,9 @@
             "sort": "Trefnu",
             "sortPopularity": "Poblogaidd yn gyntaf",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Llusgwch i aildrefnu"
+            "dragHint": "Llusgwch i aildrefnu",
+            "sortRecent": "Diweddar",
+            "uploadHint": "Uwchlwytho SVG, PNG, JPG, WEBP, neu ICO"
         },
         "twoFactor": {
             "title": "Mae angen Dilysu Dau Ffactor",

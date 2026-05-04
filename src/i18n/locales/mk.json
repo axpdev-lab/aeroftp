@@ -940,7 +940,12 @@
             "densityCompact": "Компактен",
             "densityComfortable": "Удобен",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Библиотека на прилагодени икони",
+            "customIconsLibraryDesc": "Управувајте со прикачените икони повторно искористени низ профилите. Влечете за да преуредите, двоен клик на името за преименување.",
+            "customIconsEmpty": "Сè уште нема прилагодени икони. Прикачете SVG, PNG, JPG, WEBP или ICO датотеки за да ја изградите вашата библиотека.",
+            "customIconsUpload": "Прикачи",
+            "customIconsRenameHint": "Двоен клик за преименување"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Филтрирај локални датотеки...",
             "search_files": "Пребарај датотеки",
             "clear": "Исчисти пребарување",
-            "resultsCount": "{count} резултати"
+            "resultsCount": "{count} резултати",
+            "flattenRecursive": "Рекурзивно",
+            "flattenScanning": "Скенирање на поддрво...",
+            "flattenTruncated": "скратено",
+            "flattenTruncatedHint": "Достигнато ограничувањето од 5.000 записи; усовршете го филтерот или влезете во потпапка.",
+            "local_placeholder_flatten": "Филтрирај локални датотеки... (* за рекурзивно)"
         },
         "versions": {
             "title": "Верзии на датотека",
@@ -4244,7 +4254,9 @@
             "sort": "Подреди",
             "sortPopularity": "Популарни први",
             "sortAlphabetical": "А-Ш",
-            "dragHint": "Повлечете за прередување"
+            "dragHint": "Повлечете за прередување",
+            "sortRecent": "Неодамнешни",
+            "uploadHint": "Прикачи SVG, PNG, JPG, WEBP или ICO"
         },
         "twoFactor": {
             "title": "Потребна е двофакторска автентикација",

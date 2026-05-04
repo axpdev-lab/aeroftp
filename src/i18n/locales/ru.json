@@ -940,7 +940,12 @@
             "densityCompact": "Компактный",
             "densityComfortable": "Удобный",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Библиотека пользовательских значков",
+            "customIconsLibraryDesc": "Управляйте загруженными значками, повторно используемыми в разных профилях. Перетащите для изменения порядка, дважды щёлкните имя для переименования.",
+            "customIconsEmpty": "Пока нет пользовательских значков. Загрузите файлы SVG, PNG, JPG, WEBP или ICO, чтобы создать свою библиотеку.",
+            "customIconsUpload": "Загрузить",
+            "customIconsRenameHint": "Дважды щёлкните для переименования"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Фильтр локальных файлов...",
             "search_files": "Искать файлы",
             "clear": "Очистить поиск",
-            "resultsCount": "{count} результатов"
+            "resultsCount": "{count} результатов",
+            "flattenRecursive": "Рекурсивно",
+            "flattenScanning": "Сканирование поддерева...",
+            "flattenTruncated": "усечено",
+            "flattenTruncatedHint": "Достигнут лимит в 5 000 записей; уточните фильтр или перейдите во вложенную папку.",
+            "local_placeholder_flatten": "Фильтр локальных файлов... (* для рекурсивного)"
         },
         "versions": {
             "title": "Версии файла",
@@ -4215,7 +4225,9 @@
             "sort": "Сортировка",
             "sortPopularity": "Сначала популярные",
             "sortAlphabetical": "А-Я",
-            "dragHint": "Перетащите для изменения порядка"
+            "dragHint": "Перетащите для изменения порядка",
+            "sortRecent": "Недавние",
+            "uploadHint": "Загрузите SVG, PNG, JPG, WEBP или ICO"
         },
         "twoFactor": {
             "title": "Требуется двухфакторная аутентификация",

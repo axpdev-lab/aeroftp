@@ -940,7 +940,12 @@
             "densityCompact": "Compacta",
             "densityComfortable": "Còmoda",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Biblioteca d'icones personalitzades",
+            "customIconsLibraryDesc": "Gestiona les icones carregades reutilitzades als perfils. Arrossega per reordenar, fes doble clic al nom per canviar-lo.",
+            "customIconsEmpty": "Encara no hi ha icones personalitzades. Carrega fitxers SVG, PNG, JPG, WEBP o ICO per crear la teva biblioteca.",
+            "customIconsUpload": "Carrega",
+            "customIconsRenameHint": "Fes doble clic per canviar el nom"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrar fitxers locals...",
             "search_files": "Cercar fitxers",
             "clear": "Esborrar cerca",
-            "resultsCount": "{count} resultats"
+            "resultsCount": "{count} resultats",
+            "flattenRecursive": "Recursiu",
+            "flattenScanning": "S'està escanejant el subarbre...",
+            "flattenTruncated": "truncat",
+            "flattenTruncatedHint": "S'ha assolit el límit de 5.000 entrades; refina el filtre o entra en una subcarpeta.",
+            "local_placeholder_flatten": "Filtra fitxers locals... (* per recursiu)"
         },
         "versions": {
             "title": "Versions del fitxer",
@@ -4244,7 +4254,9 @@
             "sort": "Ordena",
             "sortPopularity": "Populars primer",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Arrossega per reordenar"
+            "dragHint": "Arrossega per reordenar",
+            "sortRecent": "Recents",
+            "uploadHint": "Carrega SVG, PNG, JPG, WEBP o ICO"
         },
         "twoFactor": {
             "title": "Cal autenticació de dos factors",

@@ -940,7 +940,12 @@
             "densityCompact": "Trinkoa",
             "densityComfortable": "Erosoa",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Ikono pertsonalizatuen liburutegia",
+            "customIconsLibraryDesc": "Kudeatu profiletan zehar berrerabilitako kargatutako ikonoak. Arrastatu berrantolatzeko, klik bikoitza izenean berrizendatzeko.",
+            "customIconsEmpty": "Oraindik ez dago ikono pertsonalizaturik. Kargatu SVG, PNG, JPG, WEBP edo ICO fitxategiak zure liburutegia eraikitzeko.",
+            "customIconsUpload": "Kargatu",
+            "customIconsRenameHint": "Klik bikoitza berrizendatzeko"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "search_files": "Bilatu fitxategiak",
             "clear": "Garbitu bilaketa",
             "results": "emaitza",
-            "resultsCount": "{count} emaitza"
+            "resultsCount": "{count} emaitza",
+            "flattenRecursive": "Errekurtsiboa",
+            "flattenScanning": "Azpizuhaitza eskaneatzen...",
+            "flattenTruncated": "moztua",
+            "flattenTruncatedHint": "5.000 sarrerako muga iritsi da; iragazkia findu edo azpikarpeta batera jaitsi.",
+            "local_placeholder_flatten": "Iragazi fitxategi lokalak... (* errekurtsiborako)"
         },
         "versions": {
             "title": "Fitxategi bertsioak",
@@ -4244,7 +4254,9 @@
             "sort": "Ordenatu",
             "sortPopularity": "Ezagunak lehenik",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Arrastatu berrantolatzeko"
+            "dragHint": "Arrastatu berrantolatzeko",
+            "sortRecent": "Berrienak",
+            "uploadHint": "Kargatu SVG, PNG, JPG, WEBP edo ICO"
         },
         "twoFactor": {
             "title": "Bi faktoreko autentifikazioa behar da",

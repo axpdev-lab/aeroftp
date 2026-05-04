@@ -1221,7 +1221,12 @@
             "densityCompact": "Compatta",
             "densityComfortable": "Comoda",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Libreria icone personalizzate",
+            "customIconsLibraryDesc": "Gestisci le icone caricate riutilizzabili nei profili. Trascina per riordinare, doppio click sul nome per rinominare.",
+            "customIconsEmpty": "Nessuna icona personalizzata. Carica file SVG, PNG, JPG, WEBP o ICO per costruire la tua libreria.",
+            "customIconsUpload": "Carica",
+            "customIconsRenameHint": "Doppio click per rinominare"
         },
         "appearance": {
             "patternCross": "Croce",
@@ -1754,7 +1759,12 @@
             "local_placeholder": "Filtra file locali...",
             "search_files": "Cerca file",
             "clear": "Cancella ricerca",
-            "resultsCount": "{count} risultati"
+            "resultsCount": "{count} risultati",
+            "flattenRecursive": "Ricorsivo",
+            "flattenScanning": "Scansione sottoalbero...",
+            "flattenTruncated": "troncato",
+            "flattenTruncatedHint": "Raggiunto il limite di 5.000 voci; affina il filtro o entra in una sottocartella.",
+            "local_placeholder_flatten": "Filtra file locali... (* per ricorsivo)"
         },
         "versions": {
             "title": "Versioni File",
@@ -4254,7 +4264,9 @@
             "sort": "Ordina",
             "sortPopularity": "Popolari prima",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Trascina per riordinare"
+            "dragHint": "Trascina per riordinare",
+            "sortRecent": "Recenti",
+            "uploadHint": "Carica SVG, PNG, JPG, WEBP o ICO"
         },
         "table": {
             "manageColumns": "Gestisci colonne",

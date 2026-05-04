@@ -940,7 +940,12 @@
             "densityCompact": "Þétt",
             "densityComfortable": "Þægilegt",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Sérsniðin táknasafn",
+            "customIconsLibraryDesc": "Stjórnaðu hlöðnum táknum sem eru endurnýtt á sniðmátum. Dragðu til að endurraða, tvísmelltu á nafnið til að endurnefna.",
+            "customIconsEmpty": "Engin sérsniðin tákn enn. Hlaðið upp SVG-, PNG-, JPG-, WEBP- eða ICO-skrám til að byggja upp safnið þitt.",
+            "customIconsUpload": "Hlaða upp",
+            "customIconsRenameHint": "Tvísmelltu til að endurnefna"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Sía staðbundnar skrár...",
             "search_files": "Leita í skrám",
             "clear": "Hreinsa leit",
-            "resultsCount": "{count} niðurstöður"
+            "resultsCount": "{count} niðurstöður",
+            "flattenRecursive": "Endurkvæmt",
+            "flattenScanning": "Skanna undirtré...",
+            "flattenTruncated": "stytt",
+            "flattenTruncatedHint": "Náði hámarki 5.000 færslur; betrumbættu síuna eða farðu í undirmöppu.",
+            "local_placeholder_flatten": "Sía staðbundnar skrár... (* fyrir endurkvæmt)"
         },
         "versions": {
             "title": "Skráarútgáfur",
@@ -4244,7 +4254,9 @@
             "sort": "Raða",
             "sortPopularity": "Vinsælar fyrst",
             "sortAlphabetical": "A-Ö",
-            "dragHint": "Dragðu til að endurraða"
+            "dragHint": "Dragðu til að endurraða",
+            "sortRecent": "Nýlegt",
+            "uploadHint": "Hlaða upp SVG, PNG, JPG, WEBP eða ICO"
         },
         "twoFactor": {
             "title": "Tveggja þátta auðkenningar krafist",

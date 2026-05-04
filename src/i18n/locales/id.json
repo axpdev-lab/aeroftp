@@ -940,7 +940,12 @@
             "densityCompact": "Ringkas",
             "densityComfortable": "Nyaman",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Pustaka ikon khusus",
+            "customIconsLibraryDesc": "Kelola ikon yang diunggah yang digunakan kembali di seluruh profil. Seret untuk mengatur ulang, klik dua kali nama untuk mengganti nama.",
+            "customIconsEmpty": "Belum ada ikon khusus. Unggah file SVG, PNG, JPG, WEBP, atau ICO untuk membangun pustaka Anda.",
+            "customIconsUpload": "Unggah",
+            "customIconsRenameHint": "Klik dua kali untuk mengganti nama"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filter file lokal...",
             "search_files": "Cari File",
             "clear": "Bersihkan pencarian",
-            "resultsCount": "{count} hasil"
+            "resultsCount": "{count} hasil",
+            "flattenRecursive": "Rekursif",
+            "flattenScanning": "Memindai subpohon...",
+            "flattenTruncated": "dipotong",
+            "flattenTruncatedHint": "Mencapai batas 5.000 entri; perbaiki filter Anda atau masuk ke subfolder.",
+            "local_placeholder_flatten": "Filter file lokal... (* untuk rekursif)"
         },
         "versions": {
             "title": "Versi File",
@@ -4225,7 +4235,9 @@
             "sort": "Urutkan",
             "sortPopularity": "Populer dahulu",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Seret untuk menyusun ulang"
+            "dragHint": "Seret untuk menyusun ulang",
+            "sortRecent": "Terbaru",
+            "uploadHint": "Unggah SVG, PNG, JPG, WEBP, atau ICO"
         },
         "twoFactor": {
             "title": "Autentikasi Dua Faktor Diperlukan",

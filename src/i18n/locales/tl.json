@@ -940,7 +940,12 @@
             "densityCompact": "Maigsi",
             "densityComfortable": "Maginhawa",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Library ng custom na icon",
+            "customIconsLibraryDesc": "Pamahalaan ang mga na-upload na icon na ginagamit muli sa lahat ng profile. I-drag upang muling ayusin, mag-double-click sa pangalan upang palitan ang pangalan.",
+            "customIconsEmpty": "Wala pang custom na icon. Mag-upload ng SVG, PNG, JPG, WEBP, o ICO files upang buuin ang iyong library.",
+            "customIconsUpload": "I-upload",
+            "customIconsRenameHint": "Mag-double-click upang palitan ang pangalan"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "I-filter ang mga lokal na file...",
             "search_files": "Maghanap ng mga file",
             "clear": "I-clear ang paghahanap",
-            "resultsCount": "{count} resulta"
+            "resultsCount": "{count} resulta",
+            "flattenRecursive": "Recursive",
+            "flattenScanning": "Sina-scan ang subtree...",
+            "flattenTruncated": "pinaikli",
+            "flattenTruncatedHint": "Naabot ang limitasyon na 5,000 entry; pinuhin ang iyong filter o pumasok sa isang subfolder.",
+            "local_placeholder_flatten": "I-filter ang mga lokal na file... (* para sa recursive)"
         },
         "versions": {
             "title": "Mga Bersyon ng File",
@@ -4244,7 +4254,9 @@
             "sort": "Pagbukud-bukurin",
             "sortPopularity": "Sikat muna",
             "sortAlphabetical": "A-Z",
-            "dragHint": "I-drag upang ayusin muli"
+            "dragHint": "I-drag upang ayusin muli",
+            "sortRecent": "Kamakailan",
+            "uploadHint": "Mag-upload ng SVG, PNG, JPG, WEBP, o ICO"
         },
         "twoFactor": {
             "title": "Kailangan ng Two-Factor Authentication",

@@ -940,7 +940,12 @@
             "densityCompact": "Kompaktowy",
             "densityComfortable": "Wygodny",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Biblioteka niestandardowych ikon",
+            "customIconsLibraryDesc": "Zarządzaj przesłanymi ikonami używanymi ponownie w profilach. Przeciągnij, aby zmienić kolejność, kliknij dwukrotnie nazwę, aby zmienić nazwę.",
+            "customIconsEmpty": "Brak jeszcze niestandardowych ikon. Prześlij pliki SVG, PNG, JPG, WEBP lub ICO, aby zbudować bibliotekę.",
+            "customIconsUpload": "Prześlij",
+            "customIconsRenameHint": "Kliknij dwukrotnie, aby zmienić nazwę"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtruj pliki lokalne...",
             "search_files": "Szukaj plików",
             "clear": "Wyczyść wyszukiwanie",
-            "resultsCount": "{count} wyników"
+            "resultsCount": "{count} wyników",
+            "flattenRecursive": "Rekurencyjny",
+            "flattenScanning": "Skanowanie poddrzewa...",
+            "flattenTruncated": "skrócono",
+            "flattenTruncatedHint": "Osiągnięto limit 5 000 wpisów; zawęź filtr lub wejdź do podfolderu.",
+            "local_placeholder_flatten": "Filtruj lokalne pliki... (* dla rekurencji)"
         },
         "versions": {
             "title": "Wersje pliku",
@@ -4215,7 +4225,9 @@
             "sort": "Sortuj",
             "sortPopularity": "Popularne najpierw",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Przeciągnij, aby zmienić kolejność"
+            "dragHint": "Przeciągnij, aby zmienić kolejność",
+            "sortRecent": "Ostatnie",
+            "uploadHint": "Prześlij SVG, PNG, JPG, WEBP lub ICO"
         },
         "twoFactor": {
             "title": "Wymagane uwierzytelnianie dwuskładnikowe",

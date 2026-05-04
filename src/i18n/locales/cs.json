@@ -940,7 +940,12 @@
             "densityCompact": "Kompaktní",
             "densityComfortable": "Pohodlný",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Knihovna vlastních ikon",
+            "customIconsLibraryDesc": "Spravujte nahrané ikony znovu použité napříč profily. Přetažením změníte pořadí, dvojitým kliknutím na název přejmenujete.",
+            "customIconsEmpty": "Zatím žádné vlastní ikony. Nahrajte soubory SVG, PNG, JPG, WEBP nebo ICO pro vytvoření knihovny.",
+            "customIconsUpload": "Nahrát",
+            "customIconsRenameHint": "Dvojitým kliknutím přejmenujete"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrovat lokalni soubory...",
             "search_files": "Hledat soubory",
             "clear": "Vymazat hledani",
-            "resultsCount": "{count} výsledků"
+            "resultsCount": "{count} výsledků",
+            "flattenRecursive": "Rekurzivně",
+            "flattenScanning": "Skenování podstromu...",
+            "flattenTruncated": "zkráceno",
+            "flattenTruncatedHint": "Dosažen limit 5 000 položek; upřesněte filtr nebo přejděte do podsložky.",
+            "local_placeholder_flatten": "Filtrovat místní soubory... (* pro rekurzi)"
         },
         "versions": {
             "title": "Verze souboru",
@@ -4225,7 +4235,9 @@
             "sort": "Řadit",
             "sortPopularity": "Oblíbené první",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Přetáhněte pro přeskupení"
+            "dragHint": "Přetáhněte pro přeskupení",
+            "sortRecent": "Nedávné",
+            "uploadHint": "Nahrát SVG, PNG, JPG, WEBP nebo ICO"
         },
         "twoFactor": {
             "title": "Vyžadováno dvoufaktorové ověření",

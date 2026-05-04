@@ -940,7 +940,12 @@
             "densityCompact": "კომპაქტური",
             "densityComfortable": "კომფორტული",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "მორგებული ხატულების ბიბლიოთეკა",
+            "customIconsLibraryDesc": "მართეთ ატვირთული ხატულები, რომლებიც გამოყენებულია პროფილებში. გადაათრიეთ რიგის შესაცვლელად, ორმაგად დააწკაპუნეთ სახელზე გადარქმევისთვის.",
+            "customIconsEmpty": "მორგებული ხატულები ჯერ არ არის. ატვირთეთ SVG, PNG, JPG, WEBP ან ICO ფაილები თქვენი ბიბლიოთეკის ასაგებად.",
+            "customIconsUpload": "ატვირთვა",
+            "customIconsRenameHint": "ორმაგი დაწკაპუნება გადარქმევისთვის"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "ლოკალური ფაილების გაფილტვრა...",
             "search_files": "ფაილების ძიება",
             "clear": "ძიების გასუფთავება",
-            "resultsCount": "{count} შედეგი"
+            "resultsCount": "{count} შედეგი",
+            "flattenRecursive": "რეკურსიული",
+            "flattenScanning": "ქვეხის სკანირება...",
+            "flattenTruncated": "შემოკლებული",
+            "flattenTruncatedHint": "მიღწეულია 5000 ჩანაწერის ლიმიტი; დააზუსტეთ ფილტრი ან ჩადით ქვესაქაღალდეში.",
+            "local_placeholder_flatten": "ლოკალური ფაილების ფილტრი... (* რეკურსიულისთვის)"
         },
         "versions": {
             "title": "ფაილის ვერსიები",
@@ -4225,7 +4235,9 @@
             "sort": "დახარისხება",
             "sortPopularity": "პოპულარული პირველი",
             "sortAlphabetical": "ა-ჰ",
-            "dragHint": "გადაიტანეთ გადასალაგებლად"
+            "dragHint": "გადაიტანეთ გადასალაგებლად",
+            "sortRecent": "ბოლო",
+            "uploadHint": "ატვირთეთ SVG, PNG, JPG, WEBP ან ICO"
         },
         "twoFactor": {
             "title": "საჭიროა ორფაქტორიანი ავთენტიფიკაცია",

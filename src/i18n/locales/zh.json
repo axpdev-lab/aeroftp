@@ -940,7 +940,12 @@
             "densityCompact": "紧凑",
             "densityComfortable": "舒适",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "自定义图标库",
+            "customIconsLibraryDesc": "管理跨配置文件重复使用的已上传图标。拖动以重新排序，双击名称以重命名。",
+            "customIconsEmpty": "尚无自定义图标。上传 SVG、PNG、JPG、WEBP 或 ICO 文件以构建您的图标库。",
+            "customIconsUpload": "上传",
+            "customIconsRenameHint": "双击以重命名"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "筛选本地文件...",
             "search_files": "搜索文件",
             "clear": "清除搜索",
-            "resultsCount": "{count}个结果"
+            "resultsCount": "{count}个结果",
+            "flattenRecursive": "递归",
+            "flattenScanning": "正在扫描子树...",
+            "flattenTruncated": "已截断",
+            "flattenTruncatedHint": "已达到 5,000 条目上限；请优化筛选条件或进入子文件夹。",
+            "local_placeholder_flatten": "筛选本地文件...（递归请用 *）"
         },
         "versions": {
             "title": "文件版本",
@@ -4215,7 +4225,9 @@
             "sort": "排序",
             "sortPopularity": "热门优先",
             "sortAlphabetical": "字母顺序",
-            "dragHint": "拖动以重新排序"
+            "dragHint": "拖动以重新排序",
+            "sortRecent": "最近",
+            "uploadHint": "上传 SVG、PNG、JPG、WEBP 或 ICO"
         },
         "twoFactor": {
             "title": "需要双因素身份验证",

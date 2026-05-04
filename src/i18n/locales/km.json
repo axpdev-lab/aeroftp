@@ -940,7 +940,12 @@
             "densityCompact": "បង្រួម",
             "densityComfortable": "ស្រួល",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "បណ្ណាល័យរូបតំណាងផ្ទាល់ខ្លួន",
+            "customIconsLibraryDesc": "គ្រប់គ្រងរូបតំណាងដែលបានផ្ទុកឡើងដែលប្រើឡើងវិញនៅទូទាំងប្រវត្តិរូប។ អូសដើម្បីរៀបចំឡើងវិញ ចុចពីរដងលើឈ្មោះដើម្បីប្តូរឈ្មោះ។",
+            "customIconsEmpty": "មិនទាន់មានរូបតំណាងផ្ទាល់ខ្លួននៅឡើយទេ។ ផ្ទុកឡើងឯកសារ SVG, PNG, JPG, WEBP ឬ ICO ដើម្បីកសាងបណ្ណាល័យរបស់អ្នក។",
+            "customIconsUpload": "ផ្ទុកឡើង",
+            "customIconsRenameHint": "ចុចពីរដងដើម្បីប្តូរឈ្មោះ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "ត្រងឯកសារមូលដ្ឋាន...",
             "search_files": "ស្វែងរកឯកសារ",
             "clear": "សម្អាតការស្វែងរក",
-            "resultsCount": "{count} លទ្ធផល"
+            "resultsCount": "{count} លទ្ធផល",
+            "flattenRecursive": "រង្វិលជុំ",
+            "flattenScanning": "កំពុងស្កេនមែកធាងរង...",
+            "flattenTruncated": "កាត់ខ្លី",
+            "flattenTruncatedHint": "បានឈានដល់ដែនកំណត់ ៥.០០០ ធាតុ; កែលម្អតម្រងរបស់អ្នក ឬចូលទៅក្នុងថតរង។",
+            "local_placeholder_flatten": "ត្រងឯកសារក្នុងស្រុក... (* សម្រាប់រង្វិលជុំ)"
         },
         "versions": {
             "title": "កំណែឯកសារ",
@@ -4244,7 +4254,9 @@
             "sort": "តម្រៀប",
             "sortPopularity": "ពេញនិយមមុន",
             "sortAlphabetical": "A-Z",
-            "dragHint": "អូសដើម្បីតម្រៀបឡើងវិញ"
+            "dragHint": "អូសដើម្បីតម្រៀបឡើងវិញ",
+            "sortRecent": "ថ្មីៗ",
+            "uploadHint": "ផ្ទុកឡើង SVG, PNG, JPG, WEBP ឬ ICO"
         },
         "twoFactor": {
             "title": "តម្រូវឱ្យមានការផ្ទៀងផ្ទាត់ពីរកត្តា",

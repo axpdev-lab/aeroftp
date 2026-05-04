@@ -940,7 +940,12 @@
             "densityCompact": "Kompakt",
             "densityComfortable": "Kényelmes",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Egyéni ikonok könyvtára",
+            "customIconsLibraryDesc": "Kezelje a profilok között újrahasznált feltöltött ikonokat. Húzza az átrendezéshez, kattintson duplán a névre az átnevezéshez.",
+            "customIconsEmpty": "Még nincsenek egyéni ikonok. Töltsön fel SVG-, PNG-, JPG-, WEBP- vagy ICO-fájlokat a könyvtár felépítéséhez.",
+            "customIconsUpload": "Feltöltés",
+            "customIconsRenameHint": "Kattintson duplán az átnevezéshez"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Helyi fájlok szűrése...",
             "search_files": "Fájlok keresése",
             "clear": "Keresés törlése",
-            "resultsCount": "{count} találat"
+            "resultsCount": "{count} találat",
+            "flattenRecursive": "Rekurzív",
+            "flattenScanning": "Részfa beolvasása...",
+            "flattenTruncated": "csonkítva",
+            "flattenTruncatedHint": "Elérte az 5 000 bejegyzéses korlátot; finomítsa a szűrőt, vagy lépjen be egy almappába.",
+            "local_placeholder_flatten": "Helyi fájlok szűrése... (* rekurzívhoz)"
         },
         "versions": {
             "title": "Fájlverziók",
@@ -4225,7 +4235,9 @@
             "sort": "Rendezés",
             "sortPopularity": "Népszerűek elöl",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Húzza az átrendezéshez"
+            "dragHint": "Húzza az átrendezéshez",
+            "sortRecent": "Legutóbbi",
+            "uploadHint": "Töltsön fel SVG, PNG, JPG, WEBP vagy ICO fájlt"
         },
         "twoFactor": {
             "title": "Kétfaktoros hitelesítés szükséges",

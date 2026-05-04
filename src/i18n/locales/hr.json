@@ -940,7 +940,12 @@
             "densityCompact": "Kompaktni",
             "densityComfortable": "Udobni",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Biblioteka prilagođenih ikona",
+            "customIconsLibraryDesc": "Upravljajte učitanim ikonama koje se ponovno koriste u profilima. Povucite za promjenu redoslijeda, dvostruki klik na naziv za preimenovanje.",
+            "customIconsEmpty": "Još nema prilagođenih ikona. Učitajte SVG, PNG, JPG, WEBP ili ICO datoteke da biste izgradili svoju biblioteku.",
+            "customIconsUpload": "Učitaj",
+            "customIconsRenameHint": "Dvostruki klik za preimenovanje"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "search_files": "Pretraži datoteke",
             "clear": "Očisti pretraživanje",
             "results": "rezultata",
-            "resultsCount": "{count} rezultata"
+            "resultsCount": "{count} rezultata",
+            "flattenRecursive": "Rekurzivno",
+            "flattenScanning": "Skeniranje podstabla...",
+            "flattenTruncated": "skraćeno",
+            "flattenTruncatedHint": "Dosegnut limit od 5.000 unosa; precizirajte filtar ili uđite u podmapu.",
+            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)"
         },
         "versions": {
             "title": "Verzije datoteke",
@@ -4225,7 +4235,9 @@
             "sort": "Sortiraj",
             "sortPopularity": "Popularni prvi",
             "sortAlphabetical": "A-Ž",
-            "dragHint": "Povucite za promjenu redoslijeda"
+            "dragHint": "Povucite za promjenu redoslijeda",
+            "sortRecent": "Nedavno",
+            "uploadHint": "Učitaj SVG, PNG, JPG, WEBP ili ICO"
         },
         "twoFactor": {
             "title": "Potrebna je dvofaktorska autentifikacija",

@@ -940,7 +940,12 @@
             "densityCompact": "कॉम्पैक्ट",
             "densityComfortable": "आरामदायक",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "कस्टम आइकन लाइब्रेरी",
+            "customIconsLibraryDesc": "प्रोफ़ाइलों में पुन: उपयोग किए गए अपलोड किए गए आइकन प्रबंधित करें। पुनः क्रमित करने के लिए खींचें, नाम बदलने के लिए नाम पर डबल-क्लिक करें।",
+            "customIconsEmpty": "अभी तक कोई कस्टम आइकन नहीं। अपनी लाइब्रेरी बनाने के लिए SVG, PNG, JPG, WEBP, या ICO फ़ाइलें अपलोड करें।",
+            "customIconsUpload": "अपलोड",
+            "customIconsRenameHint": "नाम बदलने के लिए डबल-क्लिक करें"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "search_files": "फ़ाइलें खोजें",
             "clear": "खोज साफ़ करें",
             "results": "परिणाम",
-            "resultsCount": "{count} परिणाम"
+            "resultsCount": "{count} परिणाम",
+            "flattenRecursive": "पुनरावर्ती",
+            "flattenScanning": "सबट्री स्कैन हो रहा है...",
+            "flattenTruncated": "काट-छाँट",
+            "flattenTruncatedHint": "5,000 प्रविष्टियों की सीमा तक पहुँच गए; अपना फ़िल्टर परिशोधित करें या किसी सबफ़ोल्डर में जाएँ।",
+            "local_placeholder_flatten": "स्थानीय फ़ाइलें फ़िल्टर करें... (पुनरावर्ती के लिए *)"
         },
         "versions": {
             "title": "फ़ाइल संस्करण",
@@ -4225,7 +4235,9 @@
             "sort": "क्रमबद्ध करें",
             "sortPopularity": "लोकप्रिय पहले",
             "sortAlphabetical": "अ-ज्ञ",
-            "dragHint": "पुनः क्रमित करने के लिए खींचें"
+            "dragHint": "पुनः क्रमित करने के लिए खींचें",
+            "sortRecent": "हाल के",
+            "uploadHint": "SVG, PNG, JPG, WEBP, या ICO अपलोड करें"
         },
         "twoFactor": {
             "title": "दो-कारक प्रमाणीकरण आवश्यक है",

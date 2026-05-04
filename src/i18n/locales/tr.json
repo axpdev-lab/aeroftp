@@ -940,7 +940,12 @@
             "densityCompact": "Kompakt",
             "densityComfortable": "Rahat",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Özel simge kitaplığı",
+            "customIconsLibraryDesc": "Profiller arasında yeniden kullanılan yüklenen simgeleri yönetin. Yeniden sıralamak için sürükleyin, yeniden adlandırmak için ada çift tıklayın.",
+            "customIconsEmpty": "Henüz özel simge yok. Kitaplığınızı oluşturmak için SVG, PNG, JPG, WEBP veya ICO dosyalarını yükleyin.",
+            "customIconsUpload": "Yükle",
+            "customIconsRenameHint": "Yeniden adlandırmak için çift tıklayın"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Yerel dosyaları filtrele...",
             "search_files": "Dosyaları ara",
             "clear": "Aramayı temizle",
-            "resultsCount": "{count} sonuç"
+            "resultsCount": "{count} sonuç",
+            "flattenRecursive": "Özyinelemeli",
+            "flattenScanning": "Alt ağaç taranıyor...",
+            "flattenTruncated": "kısaltıldı",
+            "flattenTruncatedHint": "5.000 giriş sınırına ulaşıldı; filtrenizi daraltın veya bir alt klasöre inin.",
+            "local_placeholder_flatten": "Yerel dosyaları filtrele... (özyinelemeli için *)"
         },
         "versions": {
             "title": "Dosya Sürümleri",
@@ -4225,7 +4235,9 @@
             "sort": "Sırala",
             "sortPopularity": "Önce popüler",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Yeniden sıralamak için sürükleyin"
+            "dragHint": "Yeniden sıralamak için sürükleyin",
+            "sortRecent": "Son",
+            "uploadHint": "SVG, PNG, JPG, WEBP veya ICO yükle"
         },
         "twoFactor": {
             "title": "İki Faktörlü Kimlik Doğrulama Gerekli",

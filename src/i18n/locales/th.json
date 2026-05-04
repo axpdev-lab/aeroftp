@@ -940,7 +940,12 @@
             "densityCompact": "กะทัดรัด",
             "densityComfortable": "สะดวกสบาย",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "คลังไอคอนที่กำหนดเอง",
+            "customIconsLibraryDesc": "จัดการไอคอนที่อัปโหลดซึ่งนำกลับมาใช้ในโปรไฟล์ต่างๆ ลากเพื่อจัดลำดับใหม่ ดับเบิลคลิกที่ชื่อเพื่อเปลี่ยนชื่อ",
+            "customIconsEmpty": "ยังไม่มีไอคอนที่กำหนดเอง อัปโหลดไฟล์ SVG, PNG, JPG, WEBP หรือ ICO เพื่อสร้างคลังของคุณ",
+            "customIconsUpload": "อัปโหลด",
+            "customIconsRenameHint": "ดับเบิลคลิกเพื่อเปลี่ยนชื่อ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "กรองไฟล์ในเครื่อง...",
             "search_files": "ค้นหาไฟล์",
             "clear": "ล้างการค้นหา",
-            "resultsCount": "{count} ผลลัพธ์"
+            "resultsCount": "{count} ผลลัพธ์",
+            "flattenRecursive": "แบบเรียกซ้ำ",
+            "flattenScanning": "กำลังสแกนแผนผังย่อย...",
+            "flattenTruncated": "ตัดทอน",
+            "flattenTruncatedHint": "ถึงขีดจำกัด 5,000 รายการ; ปรับแต่งตัวกรองของคุณหรือเข้าไปในโฟลเดอร์ย่อย",
+            "local_placeholder_flatten": "กรองไฟล์ในเครื่อง... (* สำหรับเรียกซ้ำ)"
         },
         "versions": {
             "title": "เวอร์ชันไฟล์",
@@ -4225,7 +4235,9 @@
             "sort": "เรียงลำดับ",
             "sortPopularity": "ยอดนิยมก่อน",
             "sortAlphabetical": "ก-ฮ",
-            "dragHint": "ลากเพื่อจัดเรียงใหม่"
+            "dragHint": "ลากเพื่อจัดเรียงใหม่",
+            "sortRecent": "ล่าสุด",
+            "uploadHint": "อัปโหลด SVG, PNG, JPG, WEBP หรือ ICO"
         },
         "twoFactor": {
             "title": "ต้องใช้การยืนยันตัวตนแบบสองปัจจัย",

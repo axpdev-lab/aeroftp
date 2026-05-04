@@ -940,7 +940,12 @@
             "densityCompact": "Kompakt",
             "densityComfortable": "Komfortabel",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Egendefinert ikonbibliotek",
+            "customIconsLibraryDesc": "Administrer opplastede ikoner som gjenbrukes på tvers av profiler. Dra for å omorganisere, dobbeltklikk på navnet for å gi nytt navn.",
+            "customIconsEmpty": "Ingen egendefinerte ikoner ennå. Last opp SVG-, PNG-, JPG-, WEBP- eller ICO-filer for å bygge biblioteket ditt.",
+            "customIconsUpload": "Last opp",
+            "customIconsRenameHint": "Dobbeltklikk for å gi nytt navn"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrer lokale filer...",
             "search_files": "Søk i filer",
             "clear": "Tøm søk",
-            "resultsCount": "{count} resultater"
+            "resultsCount": "{count} resultater",
+            "flattenRecursive": "Rekursiv",
+            "flattenScanning": "Skanner undertre...",
+            "flattenTruncated": "avkortet",
+            "flattenTruncatedHint": "Nådde grensen på 5 000 oppføringer; forbedre filteret eller gå inn i en undermappe.",
+            "local_placeholder_flatten": "Filtrer lokale filer... (* for rekursiv)"
         },
         "versions": {
             "title": "Filversjoner",
@@ -4244,7 +4254,9 @@
             "sort": "Sorter",
             "sortPopularity": "Populære først",
             "sortAlphabetical": "A-Å",
-            "dragHint": "Dra for å omorganisere"
+            "dragHint": "Dra for å omorganisere",
+            "sortRecent": "Nylige",
+            "uploadHint": "Last opp SVG, PNG, JPG, WEBP eller ICO"
         },
         "twoFactor": {
             "title": "Tofaktorautentisering påkrevd",

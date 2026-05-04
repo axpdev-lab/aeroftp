@@ -940,7 +940,12 @@
             "densityCompact": "Tihendatud",
             "densityComfortable": "Mugav",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Kohandatud ikoonide teek",
+            "customIconsLibraryDesc": "Halda profiilide vahel taaskasutatavaid üleslaaditud ikoone. Lohista ümberjärjestamiseks, topeltklõpsa nimel ümbernimetamiseks.",
+            "customIconsEmpty": "Kohandatud ikoone pole veel. Laadige üles SVG-, PNG-, JPG-, WEBP- või ICO-faile, et luua oma teek.",
+            "customIconsUpload": "Laadi üles",
+            "customIconsRenameHint": "Topeltklõps ümbernimetamiseks"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtreeri kohalikke faile...",
             "search_files": "Otsi faile",
             "clear": "Tühjenda otsing",
-            "resultsCount": "{count} tulemust"
+            "resultsCount": "{count} tulemust",
+            "flattenRecursive": "Rekursiivne",
+            "flattenScanning": "Alampuu skannimine...",
+            "flattenTruncated": "lühendatud",
+            "flattenTruncatedHint": "Saavutati 5000 kirje piirang; täpsustage filtrit või laskuge alamkausta.",
+            "local_placeholder_flatten": "Filtreeri kohalikke faile... (* rekursiivseks)"
         },
         "versions": {
             "title": "Failiversioonid",
@@ -4225,7 +4235,9 @@
             "sort": "Sorteeri",
             "sortPopularity": "Populaarsed esimesena",
             "sortAlphabetical": "A-Ü",
-            "dragHint": "Lohistage ümberjärjestamiseks"
+            "dragHint": "Lohistage ümberjärjestamiseks",
+            "sortRecent": "Hiljutised",
+            "uploadHint": "Laadi üles SVG, PNG, JPG, WEBP või ICO"
         },
         "twoFactor": {
             "title": "Vajalik on kaheastmeline autentimine",

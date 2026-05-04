@@ -940,7 +940,12 @@
             "densityCompact": "Компактен",
             "densityComfortable": "Удобен",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Библиотека с персонализирани икони",
+            "customIconsLibraryDesc": "Управлявайте качените икони за повторна употреба в профилите. Плъзнете за пренареждане, двойно щракване върху името за преименуване.",
+            "customIconsEmpty": "Все още няма персонализирани икони. Качете файлове SVG, PNG, JPG, WEBP или ICO, за да изградите библиотеката си.",
+            "customIconsUpload": "Качване",
+            "customIconsRenameHint": "Двойно щракване за преименуване"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Филтриране на локални файлове...",
             "search_files": "Търсене на файлове",
             "clear": "Изчистване на търсенето",
-            "resultsCount": "{count} резултата"
+            "resultsCount": "{count} резултата",
+            "flattenRecursive": "Рекурсивно",
+            "flattenScanning": "Сканиране на поддърво...",
+            "flattenTruncated": "отсечено",
+            "flattenTruncatedHint": "Достигнато ограничение от 5 000 записа; уточнете филтъра или влезте в подпапка.",
+            "local_placeholder_flatten": "Филтриране на локални файлове... (* за рекурсивно)"
         },
         "versions": {
             "title": "Версии на файла",
@@ -4225,7 +4235,9 @@
             "sort": "Сортиране",
             "sortPopularity": "Първо популярни",
             "sortAlphabetical": "А-Я",
-            "dragHint": "Плъзнете за пренареждане"
+            "dragHint": "Плъзнете за пренареждане",
+            "sortRecent": "Скорошни",
+            "uploadHint": "Качете SVG, PNG, JPG, WEBP или ICO"
         },
         "twoFactor": {
             "title": "Изисква се двуфакторна автентикация",

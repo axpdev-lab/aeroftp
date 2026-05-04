@@ -940,7 +940,12 @@
             "densityCompact": "Glaustas",
             "densityComfortable": "Patogus",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Pasirinktinių piktogramų biblioteka",
+            "customIconsLibraryDesc": "Tvarkykite įkeltas piktogramas, naudojamas pakartotinai visuose profiliuose. Vilkite, kad pertvarkytumėte, dukart spustelėkite pavadinimą, kad pervadintumėte.",
+            "customIconsEmpty": "Pasirinktinių piktogramų dar nėra. Įkelkite SVG, PNG, JPG, WEBP arba ICO failus, kad sukurtumėte savo biblioteką.",
+            "customIconsUpload": "Įkelti",
+            "customIconsRenameHint": "Dukart spustelėkite pervadinti"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtruoti vietinius failus...",
             "search_files": "Ieškoti failų",
             "clear": "Išvalyti paiešką",
-            "resultsCount": "{count} rezultatai"
+            "resultsCount": "{count} rezultatai",
+            "flattenRecursive": "Rekursyvus",
+            "flattenScanning": "Skenuojamas pomedis...",
+            "flattenTruncated": "sutrumpinta",
+            "flattenTruncatedHint": "Pasiekta 5 000 įrašų riba; patikslinkite filtrą arba įeikite į poaplankį.",
+            "local_placeholder_flatten": "Filtruoti vietinius failus... (* rekursiniam)"
         },
         "versions": {
             "title": "Failų versijos",
@@ -4225,7 +4235,9 @@
             "sort": "Rūšiuoti",
             "sortPopularity": "Populiarūs pirma",
             "sortAlphabetical": "A-Ž",
-            "dragHint": "Vilkite norėdami pertvarkyti"
+            "dragHint": "Vilkite norėdami pertvarkyti",
+            "sortRecent": "Naujausi",
+            "uploadHint": "Įkelti SVG, PNG, JPG, WEBP arba ICO"
         },
         "twoFactor": {
             "title": "Reikalingas dviejų veiksnių autentifikavimas",

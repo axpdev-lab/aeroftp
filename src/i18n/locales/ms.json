@@ -940,7 +940,12 @@
             "densityCompact": "Padat",
             "densityComfortable": "Selesa",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Pustaka ikon tersuai",
+            "customIconsLibraryDesc": "Urus ikon yang dimuat naik yang digunakan semula merentasi profil. Seret untuk menyusun semula, klik dua kali nama untuk menamakan semula.",
+            "customIconsEmpty": "Belum ada ikon tersuai. Muat naik fail SVG, PNG, JPG, WEBP, atau ICO untuk membina pustaka anda.",
+            "customIconsUpload": "Muat naik",
+            "customIconsRenameHint": "Klik dua kali untuk menamakan semula"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Tapis fail setempat...",
             "search_files": "Cari fail",
             "clear": "Kosongkan carian",
-            "resultsCount": "{count} hasil"
+            "resultsCount": "{count} hasil",
+            "flattenRecursive": "Rekursif",
+            "flattenScanning": "Mengimbas subpokok...",
+            "flattenTruncated": "dipotong",
+            "flattenTruncatedHint": "Mencapai had 5,000 entri; perhalusi penapis anda atau masuk ke subfolder.",
+            "local_placeholder_flatten": "Tapis fail tempatan... (* untuk rekursif)"
         },
         "versions": {
             "title": "Versi Fail",
@@ -4225,7 +4235,9 @@
             "sort": "Susun",
             "sortPopularity": "Popular dahulu",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Seret untuk menyusun semula"
+            "dragHint": "Seret untuk menyusun semula",
+            "sortRecent": "Terkini",
+            "uploadHint": "Muat naik SVG, PNG, JPG, WEBP, atau ICO"
         },
         "twoFactor": {
             "title": "Pengesahan Dua Faktor Diperlukan",

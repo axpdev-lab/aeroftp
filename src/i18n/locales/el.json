@@ -940,7 +940,12 @@
             "densityCompact": "Συμπαγής",
             "densityComfortable": "Άνετη",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Βιβλιοθήκη προσαρμοσμένων εικονιδίων",
+            "customIconsLibraryDesc": "Διαχειριστείτε μεταφορτωμένα εικονίδια που επαναχρησιμοποιούνται σε όλα τα προφίλ. Σύρετε για αναδιάταξη, διπλό κλικ στο όνομα για μετονομασία.",
+            "customIconsEmpty": "Δεν υπάρχουν ακόμη προσαρμοσμένα εικονίδια. Μεταφορτώστε αρχεία SVG, PNG, JPG, WEBP ή ICO για να δημιουργήσετε τη βιβλιοθήκη σας.",
+            "customIconsUpload": "Μεταφόρτωση",
+            "customIconsRenameHint": "Διπλό κλικ για μετονομασία"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Φιλτράρισμα τοπικών αρχείων...",
             "search_files": "Αναζήτηση αρχείων",
             "clear": "Εκκαθάριση αναζήτησης",
-            "resultsCount": "{count} αποτελέσματα"
+            "resultsCount": "{count} αποτελέσματα",
+            "flattenRecursive": "Αναδρομικό",
+            "flattenScanning": "Σάρωση υποδέντρου...",
+            "flattenTruncated": "περικομμένο",
+            "flattenTruncatedHint": "Επιτεύχθηκε το όριο των 5.000 εγγραφών· βελτιώστε το φίλτρο ή κατεβείτε σε υποφάκελο.",
+            "local_placeholder_flatten": "Φιλτράρισμα τοπικών αρχείων... (* για αναδρομικό)"
         },
         "versions": {
             "title": "Εκδόσεις Αρχείου",
@@ -4225,7 +4235,9 @@
             "sort": "Ταξινόμηση",
             "sortPopularity": "Δημοφιλή πρώτα",
             "sortAlphabetical": "Α-Ω",
-            "dragHint": "Σύρετε για αναδιάταξη"
+            "dragHint": "Σύρετε για αναδιάταξη",
+            "sortRecent": "Πρόσφατα",
+            "uploadHint": "Μεταφόρτωση SVG, PNG, JPG, WEBP ή ICO"
         },
         "twoFactor": {
             "title": "Απαιτείται έλεγχος ταυτότητας δύο παραγόντων",

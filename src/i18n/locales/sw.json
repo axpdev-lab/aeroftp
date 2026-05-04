@@ -940,7 +940,12 @@
             "densityCompact": "Mfupi",
             "densityComfortable": "Vizuri",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Maktaba ya aikoni maalum",
+            "customIconsLibraryDesc": "Dhibiti aikoni zilizopakiwa zinazotumika tena katika wasifu. Buruta kupanga upya, bofya mara mbili kwenye jina ili kubadilisha jina.",
+            "customIconsEmpty": "Bado hakuna aikoni maalum. Pakia faili za SVG, PNG, JPG, WEBP, au ICO ili kujenga maktaba yako.",
+            "customIconsUpload": "Pakia",
+            "customIconsRenameHint": "Bofya mara mbili kubadilisha jina"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Chuja faili za ndani...",
             "search_files": "Tafuta faili",
             "clear": "Futa utafutaji",
-            "resultsCount": "Matokeo {count}"
+            "resultsCount": "Matokeo {count}",
+            "flattenRecursive": "Rekursivu",
+            "flattenScanning": "Kuchanganua mti mdogo...",
+            "flattenTruncated": "kupunguzwa",
+            "flattenTruncatedHint": "Imefikia kikomo cha maingizo 5,000; boresha kichujio chako au shuka kwenye folda ndogo.",
+            "local_placeholder_flatten": "Chuja faili za ndani... (* kwa rekursivu)"
         },
         "versions": {
             "title": "Matoleo ya Faili",
@@ -4225,7 +4235,9 @@
             "sort": "Panga",
             "sortPopularity": "Maarufu kwanza",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Buruta ili kupanga upya"
+            "dragHint": "Buruta ili kupanga upya",
+            "sortRecent": "Hivi karibuni",
+            "uploadHint": "Pakia SVG, PNG, JPG, WEBP, au ICO"
         },
         "twoFactor": {
             "title": "Uthibitishaji wa Mambo Mawili Unahitajika",

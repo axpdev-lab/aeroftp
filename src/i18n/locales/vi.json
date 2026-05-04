@@ -940,7 +940,12 @@
             "densityCompact": "Nhỏ gọn",
             "densityComfortable": "Thoải mái",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Thư viện biểu tượng tùy chỉnh",
+            "customIconsLibraryDesc": "Quản lý các biểu tượng đã tải lên được sử dụng lại trên các hồ sơ. Kéo để sắp xếp lại, nhấp đúp vào tên để đổi tên.",
+            "customIconsEmpty": "Chưa có biểu tượng tùy chỉnh. Tải lên các tệp SVG, PNG, JPG, WEBP hoặc ICO để xây dựng thư viện của bạn.",
+            "customIconsUpload": "Tải lên",
+            "customIconsRenameHint": "Nhấp đúp để đổi tên"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Lọc tệp cục bộ...",
             "search_files": "Tìm kiếm tệp",
             "clear": "Xóa tìm kiếm",
-            "resultsCount": "{count} kết quả"
+            "resultsCount": "{count} kết quả",
+            "flattenRecursive": "Đệ quy",
+            "flattenScanning": "Đang quét cây con...",
+            "flattenTruncated": "đã cắt bớt",
+            "flattenTruncatedHint": "Đã đạt giới hạn 5.000 mục; tinh chỉnh bộ lọc của bạn hoặc đi vào thư mục con.",
+            "local_placeholder_flatten": "Lọc tệp cục bộ... (* cho đệ quy)"
         },
         "versions": {
             "title": "Phiên bản tệp",
@@ -4225,7 +4235,9 @@
             "sort": "Sắp xếp",
             "sortPopularity": "Phổ biến trước",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Kéo để sắp xếp lại"
+            "dragHint": "Kéo để sắp xếp lại",
+            "sortRecent": "Gần đây",
+            "uploadHint": "Tải lên SVG, PNG, JPG, WEBP hoặc ICO"
         },
         "twoFactor": {
             "title": "Yêu cầu Xác thực Hai Yếu tố",

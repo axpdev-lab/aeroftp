@@ -940,7 +940,12 @@
             "densityCompact": "Compacta",
             "densityComfortable": "Cómoda",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Biblioteca de iconas personalizadas",
+            "customIconsLibraryDesc": "Xestiona as iconas cargadas reutilizadas entre perfís. Arrastra para reordenar, dobre clic no nome para renomear.",
+            "customIconsEmpty": "Aínda non hai iconas personalizadas. Carga ficheiros SVG, PNG, JPG, WEBP ou ICO para crear a túa biblioteca.",
+            "customIconsUpload": "Cargar",
+            "customIconsRenameHint": "Dobre clic para renomear"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "search_files": "Buscar ficheiros",
             "clear": "Limpar busca",
             "results": "resultados",
-            "resultsCount": "{count} resultados"
+            "resultsCount": "{count} resultados",
+            "flattenRecursive": "Recursivo",
+            "flattenScanning": "Escaneando subárbore...",
+            "flattenTruncated": "truncado",
+            "flattenTruncatedHint": "Acadouse o límite de 5.000 entradas; refina o filtro ou entra nunha subcarpeta.",
+            "local_placeholder_flatten": "Filtrar ficheiros locais... (* para recursivo)"
         },
         "versions": {
             "title": "Versións de ficheiro",
@@ -4244,7 +4254,9 @@
             "sort": "Ordenar",
             "sortPopularity": "Populares primeiro",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Arrastra para reordenar"
+            "dragHint": "Arrastra para reordenar",
+            "sortRecent": "Recentes",
+            "uploadHint": "Cargar SVG, PNG, JPG, WEBP ou ICO"
         },
         "twoFactor": {
             "title": "Requírese autenticación de dous factores",

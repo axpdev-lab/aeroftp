@@ -940,7 +940,12 @@
             "densityCompact": "Kompakts",
             "densityComfortable": "Ērts",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Pielāgotu ikonu bibliotēka",
+            "customIconsLibraryDesc": "Pārvaldiet augšupielādētās ikonas, kas atkārtoti izmantotas visos profilos. Velciet, lai pārkārtotu, veiciet dubultklikšķi uz nosaukuma, lai pārdēvētu.",
+            "customIconsEmpty": "Vēl nav pielāgotu ikonu. Augšupielādējiet SVG, PNG, JPG, WEBP vai ICO failus, lai izveidotu savu bibliotēku.",
+            "customIconsUpload": "Augšupielādēt",
+            "customIconsRenameHint": "Veiciet dubultklikšķi, lai pārdēvētu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrēt lokālos failus...",
             "search_files": "Meklēt failus",
             "clear": "Notīrīt meklēšanu",
-            "resultsCount": "{count} rezultāti"
+            "resultsCount": "{count} rezultāti",
+            "flattenRecursive": "Rekursīvs",
+            "flattenScanning": "Skenē apakškoku...",
+            "flattenTruncated": "saīsināts",
+            "flattenTruncatedHint": "Sasniegts 5 000 ierakstu limits; precizējiet filtru vai ieejiet apakšmapē.",
+            "local_placeholder_flatten": "Filtrēt lokālos failus... (* rekursīvam)"
         },
         "versions": {
             "title": "Failu versijas",
@@ -4225,7 +4235,9 @@
             "sort": "Kārtot",
             "sortPopularity": "Populārākie vispirms",
             "sortAlphabetical": "A-Ž",
-            "dragHint": "Velciet, lai pārkārtotu"
+            "dragHint": "Velciet, lai pārkārtotu",
+            "sortRecent": "Nesenie",
+            "uploadHint": "Augšupielādējiet SVG, PNG, JPG, WEBP vai ICO"
         },
         "twoFactor": {
             "title": "Nepieciešama divfaktoru autentifikācija",

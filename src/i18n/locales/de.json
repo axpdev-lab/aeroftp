@@ -940,7 +940,12 @@
             "densityCompact": "Kompakt",
             "densityComfortable": "Komfortabel",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Benutzerdefinierte Symbolbibliothek",
+            "customIconsLibraryDesc": "Verwalten Sie hochgeladene Symbole, die profilübergreifend wiederverwendet werden. Ziehen zum Umordnen, Doppelklick auf den Namen zum Umbenennen.",
+            "customIconsEmpty": "Noch keine benutzerdefinierten Symbole. Laden Sie SVG-, PNG-, JPG-, WEBP- oder ICO-Dateien hoch, um Ihre Bibliothek aufzubauen.",
+            "customIconsUpload": "Hochladen",
+            "customIconsRenameHint": "Doppelklick zum Umbenennen"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Lokale Dateien filtern...",
             "search_files": "Dateien suchen",
             "clear": "Suche löschen",
-            "resultsCount": "{count} Ergebnisse"
+            "resultsCount": "{count} Ergebnisse",
+            "flattenRecursive": "Rekursiv",
+            "flattenScanning": "Unterbaum wird gescannt...",
+            "flattenTruncated": "gekürzt",
+            "flattenTruncatedHint": "Limit von 5.000 Einträgen erreicht; verfeinern Sie den Filter oder steigen Sie in einen Unterordner ab.",
+            "local_placeholder_flatten": "Lokale Dateien filtern... (* für rekursiv)"
         },
         "versions": {
             "title": "Dateiversionen",
@@ -4215,7 +4225,9 @@
             "sort": "Sortieren",
             "sortPopularity": "Beliebte zuerst",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Zum Neuanordnen ziehen"
+            "dragHint": "Zum Neuanordnen ziehen",
+            "sortRecent": "Zuletzt",
+            "uploadHint": "SVG, PNG, JPG, WEBP oder ICO hochladen"
         },
         "twoFactor": {
             "title": "Zwei-Faktor-Authentifizierung erforderlich",

@@ -940,7 +940,12 @@
             "densityCompact": "Компактни",
             "densityComfortable": "Удобни",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Библиотека прилагођених икона",
+            "customIconsLibraryDesc": "Управљајте отпремљеним иконама које се поново користе у профилима. Превуците да преуредите, двоструки клик на назив за преименовање.",
+            "customIconsEmpty": "Још нема прилагођених икона. Отпремите SVG, PNG, JPG, WEBP или ICO датотеке да изградите своју библиотеку.",
+            "customIconsUpload": "Отпреми",
+            "customIconsRenameHint": "Двоструки клик за преименовање"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtriraj lokalne fajlove...",
             "search_files": "Pretraži fajlove",
             "clear": "Obriši pretragu",
-            "resultsCount": "{count} резултата"
+            "resultsCount": "{count} резултата",
+            "flattenRecursive": "Рекурзивно",
+            "flattenScanning": "Скенирање подстабла...",
+            "flattenTruncated": "скраћено",
+            "flattenTruncatedHint": "Достигнут лимит од 5.000 уноса; прецизирајте филтер или уђите у подфасциклу.",
+            "local_placeholder_flatten": "Филтрирај локалне датотеке... (* за рекурзивно)"
         },
         "versions": {
             "title": "Verzije fajla",
@@ -4225,7 +4235,9 @@
             "sort": "Сортирај",
             "sortPopularity": "Популарни први",
             "sortAlphabetical": "А-Ш",
-            "dragHint": "Превуците за прераспоређивање"
+            "dragHint": "Превуците за прераспоређивање",
+            "sortRecent": "Недавно",
+            "uploadHint": "Отпреми SVG, PNG, JPG, WEBP или ICO"
         },
         "twoFactor": {
             "title": "Потребна је двофакторска аутентификација",

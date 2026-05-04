@@ -940,7 +940,12 @@
             "densityCompact": "Kompaktno",
             "densityComfortable": "Udobno",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Knjižnica ikon po meri",
+            "customIconsLibraryDesc": "Upravljajte naložene ikone, ponovno uporabljene med profili. Povlecite za preureditev, dvokliknite ime za preimenovanje.",
+            "customIconsEmpty": "Še ni ikon po meri. Naložite datoteke SVG, PNG, JPG, WEBP ali ICO, da zgradite svojo knjižnico.",
+            "customIconsUpload": "Naloži",
+            "customIconsRenameHint": "Dvokliknite za preimenovanje"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtriraj lokalne datoteke...",
             "search_files": "Iskanje datotek",
             "clear": "Počisti iskanje",
-            "resultsCount": "{count} rezultatov"
+            "resultsCount": "{count} rezultatov",
+            "flattenRecursive": "Rekurzivno",
+            "flattenScanning": "Pregledovanje poddrevesa...",
+            "flattenTruncated": "skrajšano",
+            "flattenTruncatedHint": "Dosežena omejitev 5.000 vnosov; izboljšajte filter ali se spustite v podmapo.",
+            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)"
         },
         "versions": {
             "title": "Različice datotek",
@@ -4225,7 +4235,9 @@
             "sort": "Razvrsti",
             "sortPopularity": "Priljubljeni najprej",
             "sortAlphabetical": "A-Ž",
-            "dragHint": "Povlecite za preurejanje"
+            "dragHint": "Povlecite za preurejanje",
+            "sortRecent": "Nedavno",
+            "uploadHint": "Naložite SVG, PNG, JPG, WEBP ali ICO"
         },
         "twoFactor": {
             "title": "Zahtevano je dvostopenjsko preverjanje pristnosti",

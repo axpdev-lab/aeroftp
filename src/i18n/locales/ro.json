@@ -940,7 +940,12 @@
             "densityCompact": "Compact",
             "densityComfortable": "Confortabil",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Biblioteca de pictograme personalizate",
+            "customIconsLibraryDesc": "Gestionați pictogramele încărcate reutilizate în toate profilurile. Trageți pentru a reordona, faceți dublu clic pe nume pentru a redenumi.",
+            "customIconsEmpty": "Încă nu există pictograme personalizate. Încărcați fișiere SVG, PNG, JPG, WEBP sau ICO pentru a vă construi biblioteca.",
+            "customIconsUpload": "Încarcă",
+            "customIconsRenameHint": "Faceți dublu clic pentru a redenumi"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrare fișiere locale...",
             "search_files": "Caută fișiere",
             "clear": "Șterge căutarea",
-            "resultsCount": "{count} rezultate"
+            "resultsCount": "{count} rezultate",
+            "flattenRecursive": "Recursiv",
+            "flattenScanning": "Se scanează subarborele...",
+            "flattenTruncated": "trunchiat",
+            "flattenTruncatedHint": "A fost atinsă limita de 5.000 de intrări; rafinați filtrul sau coborâți într-un subfolder.",
+            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)"
         },
         "versions": {
             "title": "Versiuni fișier",
@@ -4215,7 +4225,9 @@
             "sort": "Sortează",
             "sortPopularity": "Populare mai întâi",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Trageți pentru a rearanja"
+            "dragHint": "Trageți pentru a rearanja",
+            "sortRecent": "Recente",
+            "uploadHint": "Încărcați SVG, PNG, JPG, WEBP sau ICO"
         },
         "twoFactor": {
             "title": "Este necesară autentificarea cu doi factori",

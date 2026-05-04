@@ -940,7 +940,12 @@
             "densityCompact": "Compacta",
             "densityComfortable": "Confortável",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Biblioteca de ícones personalizados",
+            "customIconsLibraryDesc": "Gerencie ícones carregados reutilizados em todos os perfis. Arraste para reordenar, clique duplo no nome para renomear.",
+            "customIconsEmpty": "Ainda não há ícones personalizados. Carregue ficheiros SVG, PNG, JPG, WEBP ou ICO para construir a sua biblioteca.",
+            "customIconsUpload": "Carregar",
+            "customIconsRenameHint": "Clique duplo para renomear"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrar arquivos locais...",
             "search_files": "Pesquisar arquivos",
             "clear": "Limpar pesquisa",
-            "resultsCount": "{count} resultados"
+            "resultsCount": "{count} resultados",
+            "flattenRecursive": "Recursivo",
+            "flattenScanning": "A analisar subárvore...",
+            "flattenTruncated": "truncado",
+            "flattenTruncatedHint": "Limite de 5.000 entradas atingido; refine o filtro ou entre numa subpasta.",
+            "local_placeholder_flatten": "Filtrar ficheiros locais... (* para recursivo)"
         },
         "versions": {
             "title": "Versões do Arquivo",
@@ -4215,7 +4225,9 @@
             "sort": "Ordenar",
             "sortPopularity": "Populares primeiro",
             "sortAlphabetical": "A-Z",
-            "dragHint": "Arraste para reordenar"
+            "dragHint": "Arraste para reordenar",
+            "sortRecent": "Recentes",
+            "uploadHint": "Carregar SVG, PNG, JPG, WEBP ou ICO"
         },
         "twoFactor": {
             "title": "Autenticação de dois fatores necessária",

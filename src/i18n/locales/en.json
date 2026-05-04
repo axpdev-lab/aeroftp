@@ -2359,7 +2359,12 @@
     },
     "search": {
       "clear": "Clear search",
+      "flattenRecursive": "Recursive",
+      "flattenScanning": "Scanning subtree...",
+      "flattenTruncated": "truncated",
+      "flattenTruncatedHint": "Hit the 5,000 entry cap; refine your filter or descend into a subfolder.",
       "local_placeholder": "Filter local files...",
+      "local_placeholder_flatten": "Filter local files... (* for recursive)",
       "remote_placeholder": "Search remote files...",
       "results": "results",
       "resultsCount": "{count} results",
@@ -2395,6 +2400,11 @@
       "appearance": "Appearance",
       "appKey": "App Key",
       "applicationId": "Application (client) ID",
+      "customIconsLibrary": "Custom icons library",
+      "customIconsLibraryDesc": "Manage uploaded icons reused across profiles. Drag to reorder, double-click the name to rename.",
+      "customIconsEmpty": "No custom icons yet. Upload SVG, PNG, JPG, WEBP, or ICO files to build your library.",
+      "customIconsUpload": "Upload",
+      "customIconsRenameHint": "Double-click to rename",
       "appSecret": "App Secret",
       "ascii": "ASCII",
       "attemptsCount": "{n} attempts",
@@ -4170,6 +4180,8 @@
       "sort": "Sort",
       "sortPopularity": "Popular first",
       "sortAlphabetical": "A-Z",
+      "sortRecent": "Recent",
+      "uploadHint": "Upload SVG, PNG, JPG, WEBP, or ICO",
       "dragHint": "Drag to reorder"
     },
     "googledrive": {

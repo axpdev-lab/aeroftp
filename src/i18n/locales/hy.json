@@ -940,7 +940,12 @@
             "densityCompact": "Կոմպակտ",
             "densityComfortable": "Հարմարավետ",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Հատուկ պատկերակների գրադարան",
+            "customIconsLibraryDesc": "Կառավարեք պրոֆիլների միջև կրկին օգտագործվող վերբեռնված պատկերակները: Քաշեք վերադասավորելու համար, կրկնակի սեղմեք անվան վրա վերանվանելու համար:",
+            "customIconsEmpty": "Դեռ չկա հատուկ պատկերակներ: Վերբեռնեք SVG, PNG, JPG, WEBP կամ ICO ֆայլեր ձեր գրադարանը կառուցելու համար:",
+            "customIconsUpload": "Վերբեռնել",
+            "customIconsRenameHint": "Կրկնակի սեղմեք վերանվանելու համար"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1673,7 +1678,12 @@
             "search_files": "Որոնել ֆայլեր",
             "clear": "Մաքրել որոնումը",
             "results": "արդյունքներ",
-            "resultsCount": "{count} արդյունք"
+            "resultsCount": "{count} արդյունք",
+            "flattenRecursive": "Ռեկուրսիվ",
+            "flattenScanning": "Ենթածառի սկանավորում...",
+            "flattenTruncated": "կրճատված",
+            "flattenTruncatedHint": "Հասել է 5000 մուտքերի սահմանին. ճշգրտեք ձեր զտիչը կամ իջեք ենթաթղթապանակ:",
+            "local_placeholder_flatten": "Զտել տեղական ֆայլերը... (* ռեկուրսիվի համար)"
         },
         "versions": {
             "title": "Ֆայլի տարբերակներ",
@@ -4225,7 +4235,9 @@
             "sort": "Դասավորել",
             "sortPopularity": "Հանրաճանաչները նախ",
             "sortAlphabetical": "Ա-Ֆ",
-            "dragHint": "Քաշեք վերադասավորելու համար"
+            "dragHint": "Քաշեք վերադասավորելու համար",
+            "sortRecent": "Վերջին",
+            "uploadHint": "Վերբեռնեք SVG, PNG, JPG, WEBP կամ ICO"
         },
         "twoFactor": {
             "title": "Պահանջվում է երկգործոն իսկորոշում",

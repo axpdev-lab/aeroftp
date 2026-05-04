@@ -940,7 +940,12 @@
             "densityCompact": "Kompakt",
             "densityComfortable": "Komfortabel",
             "providerIconSize": "Provider icon size",
-            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
+            "customIconsLibrary": "Brugerdefineret ikonbibliotek",
+            "customIconsLibraryDesc": "Administrer uploadede ikoner, der genbruges på tværs af profiler. Træk for at omarrangere, dobbeltklik på navnet for at omdøbe.",
+            "customIconsEmpty": "Ingen brugerdefinerede ikoner endnu. Upload SVG-, PNG-, JPG-, WEBP- eller ICO-filer for at opbygge dit bibliotek.",
+            "customIconsUpload": "Upload",
+            "customIconsRenameHint": "Dobbeltklik for at omdøbe"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1680,7 +1685,12 @@
             "local_placeholder": "Filtrer lokale filer...",
             "search_files": "Søg filer",
             "clear": "Ryd søgning",
-            "resultsCount": "{count} resultater"
+            "resultsCount": "{count} resultater",
+            "flattenRecursive": "Rekursiv",
+            "flattenScanning": "Scanner undertræ...",
+            "flattenTruncated": "forkortet",
+            "flattenTruncatedHint": "Nåede grænsen på 5.000 poster; finjuster filteret eller gå ind i en undermappe.",
+            "local_placeholder_flatten": "Filtrer lokale filer... (* for rekursiv)"
         },
         "versions": {
             "title": "Filversioner",
@@ -4225,7 +4235,9 @@
             "sort": "Sortér",
             "sortPopularity": "Populære først",
             "sortAlphabetical": "A-Å",
-            "dragHint": "Træk for at omarrangere"
+            "dragHint": "Træk for at omarrangere",
+            "sortRecent": "Seneste",
+            "uploadHint": "Upload SVG, PNG, JPG, WEBP eller ICO"
         },
         "twoFactor": {
             "title": "Tofaktorgodkendelse påkrævet",
