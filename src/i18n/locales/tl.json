@@ -4237,6 +4237,13 @@
             "hint": "Buksan ang iyong authenticator app (Authy, Google Authenticator, atbp.) at kopyahin ang kasalukuyang code.",
             "connect": "Kumonekta",
             "connecting": "Kumokonekta..."
+        },
+        "table": {
+            "manageColumns": "Pamahalaan ang mga column",
+            "resetToDefaults": "I-reset sa default",
+            "dragToReorder": "I-drag upang muling ayusin",
+            "dragToResize": "I-drag upang baguhin ang sukat ng column",
+            "pinned": "Naka-pin"
         }
     }
 }

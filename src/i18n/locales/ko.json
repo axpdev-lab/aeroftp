@@ -4208,6 +4208,13 @@
             "hint": "인증 앱(Authy, Google Authenticator 등)을 열고 현재 코드를 복사하세요.",
             "connect": "연결",
             "connecting": "연결 중..."
+        },
+        "table": {
+            "manageColumns": "열 관리",
+            "resetToDefaults": "기본값으로 재설정",
+            "dragToReorder": "드래그하여 재정렬",
+            "dragToResize": "드래그하여 열 크기 조정",
+            "pinned": "고정됨"
         }
     }
 }

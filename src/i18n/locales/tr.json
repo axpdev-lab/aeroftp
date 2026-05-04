@@ -4218,6 +4218,13 @@
             "hint": "Kimlik doğrulayıcı uygulamanızı (Authy, Google Authenticator vb.) açın ve mevcut kodu kopyalayın.",
             "connect": "Bağlan",
             "connecting": "Bağlanıyor..."
+        },
+        "table": {
+            "manageColumns": "Sütunları yönet",
+            "resetToDefaults": "Varsayılanlara sıfırla",
+            "dragToReorder": "Yeniden sıralamak için sürükleyin",
+            "dragToResize": "Sütunu yeniden boyutlandırmak için sürükleyin",
+            "pinned": "Sabitlenmiş"
         }
     }
 }

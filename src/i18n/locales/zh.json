@@ -4208,6 +4208,13 @@
             "hint": "打开您的身份验证器应用(Authy、Google Authenticator 等)并复制当前代码。",
             "connect": "连接",
             "connecting": "正在连接..."
+        },
+        "table": {
+            "manageColumns": "管理列",
+            "resetToDefaults": "重置为默认",
+            "dragToReorder": "拖动以重新排序",
+            "dragToResize": "拖动以调整列宽",
+            "pinned": "已固定"
         }
     }
 }

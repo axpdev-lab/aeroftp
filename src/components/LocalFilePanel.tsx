@@ -17,7 +17,9 @@ import {
 } from 'lucide-react';
 import { BreadcrumbBar } from './BreadcrumbBar';
 import { PlacesSidebar } from './PlacesSidebar';
-import { SortableHeader, SortField, SortOrder } from './SortableHeader';
+import { SortField, SortOrder } from './SortableHeader';
+import { AeroFileTableHeader } from './AeroFileTableHeader';
+import type { AeroFileLocalColId, AeroFileLocalTableColumns } from '../hooks/useAeroFileTableColumns';
 import { LargeIconsGrid } from './LargeIconsGrid';
 import { ImageThumbnail } from './ImageThumbnail';
 import { getPreviewCategory, isPreviewable as isMediaPreviewable } from './Preview';
@@ -64,10 +66,17 @@ export interface LocalFilePanelProps {
   setActivePanel: (panel: 'remote' | 'local') => void;
   setPreviewFile: (file: LocalFile | null) => void;
 
-  // --- Sort ---
-  sortField: SortField;
-  sortOrder: SortOrder;
-  onSort: (field: SortField) => void;
+  // --- Sort & columns (Phase 5: lifted to useAeroFileLocalColumns hook) ---
+  /**
+   * Optional sort metadata. Kept as a back-compat prop so callers that still
+   * own their own sort state can pass it through. When `localColumns` is
+   * provided, the hook config is the source of truth and these are ignored.
+   */
+  sortField?: SortField;
+  sortOrder?: SortOrder;
+  onSort?: (field: SortField) => void;
+  /** New unified columns hook result (visibility + order + widths + sort). */
+  localColumns: AeroFileLocalTableColumns;
 
   // --- Search ---
   searchFilter: string;
@@ -78,7 +87,6 @@ export interface LocalFilePanelProps {
 
   // --- View & Display ---
   viewMode: 'list' | 'grid' | 'large';
-  visibleColumns: string[];
   showFileExtensions: boolean;
   debugMode: boolean;
   doubleClickAction: string;
@@ -173,16 +181,13 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   setLastSelectedIndex,
   setActivePanel,
   setPreviewFile,
-  sortField,
-  sortOrder,
-  onSort,
+  localColumns,
   searchFilter,
   setSearchFilter,
   showSearchBar,
   setShowSearchBar,
   searchRef,
   viewMode,
-  visibleColumns,
   showFileExtensions,
   debugMode,
   doubleClickAction,
@@ -525,15 +530,47 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
           </div>
         ) : viewMode === 'list' ? (
           /* ===================== LIST VIEW ===================== */
-          <table className="w-full text-sm" role="grid" aria-label={t('browser.name')}>
-            <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0" role="rowgroup">
-              <tr role="row">
-                <SortableHeader label={t('browser.name')} field="name" currentField={sortField} order={sortOrder} onClick={onSort} />
-                {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={sortField} order={sortOrder} onClick={onSort} />}
-                {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={sortField} order={sortOrder} onClick={onSort} className="hidden xl:table-cell" />}
-                {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={sortField} order={sortOrder} onClick={onSort} />}
-              </tr>
-            </thead>
+          (() => {
+            const visibility = localColumns.config.visibility;
+            const orderedVisible = localColumns.orderedVisibleColumns;
+            const orderedExtras = orderedVisible.filter(c => c.id !== 'name');
+            const colRefs: Record<string, HTMLTableColElement | null> = {};
+            const handleLiveResize = (id: AeroFileLocalColId, w: number) => {
+              const el = colRefs[id];
+              if (el) el.style.width = `${w}px`;
+            };
+            const renderEmptyExtra = (id: AeroFileLocalColId) => {
+              const cls = id === 'type' ? 'hidden xl:table-cell px-3 py-2 text-sm text-gray-400' : 'px-4 py-2 text-sm text-gray-400';
+              return <td key={id} className={cls}>—</td>;
+            };
+            const renderFileExtra = (id: AeroFileLocalColId, file: LocalFile) => {
+              switch (id) {
+                case 'size':
+                  return <td key="size" className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : formatBytes(file.size)) : '-'}</td>;
+                case 'type':
+                  return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>;
+                case 'modified':
+                  return <td key="modified" className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>;
+                default:
+                  return null;
+              }
+            };
+            return (
+          <table className="w-full text-sm" role="grid" aria-label={t('browser.name')} style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              {orderedVisible.map((col) => (
+                <col
+                  key={col.id}
+                  ref={(el) => { colRefs[col.id] = el; }}
+                  style={{ width: `${localColumns.config.widths[col.id]}px` }}
+                />
+              ))}
+            </colgroup>
+            <AeroFileTableHeader<AeroFileLocalColId>
+              columns={localColumns}
+              onLiveResize={handleLiveResize}
+              columnHeaderClassName={(id) => id === 'type' ? 'hidden xl:table-cell' : undefined}
+            />
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700" role="rowgroup">
               {/* Go Up Row */}
               <tr
@@ -545,9 +582,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   {iconProvider.getFolderUpIcon(16).icon}
                   <span className="italic">{t('browser.parentFolder')}</span>
                 </td>
-                {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-400">—</td>}
-                {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-sm text-gray-400">—</td>}
-                {visibleColumns.includes('modified') && <td className="px-4 py-2 text-sm text-gray-400">—</td>}
+                {orderedExtras.map((c) => visibility[c.id] ? renderEmptyExtra(c.id) : null)}
               </tr>
               {sortedFiles.map((file, i) => (
                 <tr
@@ -601,13 +636,13 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                     <FileTagBadge tags={getTagsForFile(file.path)} />
                     {getSyncBadge(file.path, file.modified || undefined, true)}
                   </td>
-                  {visibleColumns.includes('size') && <td className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : formatBytes(file.size)) : '-'}</td>}
-                  {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
-                  {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
+                  {orderedExtras.map((c) => visibility[c.id] ? renderFileExtra(c.id, file) : null)}
                 </tr>
               ))}
             </tbody>
           </table>
+            );
+          })()
         ) : viewMode === 'grid' ? (
           /* ===================== GRID VIEW ===================== */
           <div className="file-grid" role="grid" aria-label={t('browser.name')}>

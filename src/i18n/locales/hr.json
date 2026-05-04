@@ -4218,6 +4218,13 @@
             "hint": "Otvorite aplikaciju za autentifikaciju (Authy, Google Authenticator itd.) i kopirajte trenutni kod.",
             "connect": "Poveži",
             "connecting": "Povezivanje..."
+        },
+        "table": {
+            "manageColumns": "Upravljaj stupcima",
+            "resetToDefaults": "Vrati zadane vrijednosti",
+            "dragToReorder": "Povucite za promjenu redoslijeda",
+            "dragToResize": "Povucite za promjenu veličine stupca",
+            "pinned": "Pričvršćeno"
         }
     }
 }

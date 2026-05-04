@@ -4218,6 +4218,13 @@
             "hint": "আপনার অথেনটিকেটর অ্যাপ (Authy, Google Authenticator ইত্যাদি) খুলুন এবং বর্তমান কোডটি কপি করুন।",
             "connect": "সংযোগ করুন",
             "connecting": "সংযোগ করা হচ্ছে..."
+        },
+        "table": {
+            "manageColumns": "কলাম পরিচালনা",
+            "resetToDefaults": "ডিফল্টে রিসেট করুন",
+            "dragToReorder": "পুনর্বিন্যাস করতে টেনে আনুন",
+            "dragToResize": "কলামের আকার পরিবর্তন করতে টেনে আনুন",
+            "pinned": "পিন করা"
         }
     }
 }

@@ -4218,6 +4218,13 @@
             "hint": "Avaa todennussovelluksesi (Authy, Google Authenticator jne.) ja kopioi nykyinen koodi.",
             "connect": "Yhdistä",
             "connecting": "Yhdistetään..."
+        },
+        "table": {
+            "manageColumns": "Hallitse sarakkeita",
+            "resetToDefaults": "Palauta oletukset",
+            "dragToReorder": "Vedä järjestääksesi uudelleen",
+            "dragToResize": "Vedä muuttaaksesi sarakkeen kokoa",
+            "pinned": "Kiinnitetty"
         }
     }
 }

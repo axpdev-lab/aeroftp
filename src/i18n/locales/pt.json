@@ -4208,6 +4208,13 @@
             "hint": "Abra seu aplicativo autenticador (Authy, Google Authenticator, etc.) e copie o código atual.",
             "connect": "Conectar",
             "connecting": "Conectando..."
+        },
+        "table": {
+            "manageColumns": "Gerenciar colunas",
+            "resetToDefaults": "Restaurar padrões",
+            "dragToReorder": "Arrastar para reordenar",
+            "dragToResize": "Arrastar para redimensionar coluna",
+            "pinned": "Fixada"
         }
     }
 }

@@ -4208,6 +4208,13 @@
             "hint": "Open je authenticator-app (Authy, Google Authenticator, enz.) en kopieer de huidige code.",
             "connect": "Verbinden",
             "connecting": "Verbinden..."
+        },
+        "table": {
+            "manageColumns": "Kolommen beheren",
+            "resetToDefaults": "Standaardwaarden herstellen",
+            "dragToReorder": "Sleep om opnieuw te ordenen",
+            "dragToResize": "Sleep om kolomgrootte aan te passen",
+            "pinned": "Vastgemaakt"
         }
     }
 }

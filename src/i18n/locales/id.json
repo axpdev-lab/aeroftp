@@ -4218,6 +4218,13 @@
             "hint": "Buka aplikasi autentikator Anda (Authy, Google Authenticator, dll.) dan salin kode saat ini.",
             "connect": "Hubungkan",
             "connecting": "Menghubungkan..."
+        },
+        "table": {
+            "manageColumns": "Kelola kolom",
+            "resetToDefaults": "Atur ulang ke default",
+            "dragToReorder": "Tarik untuk menyusun ulang",
+            "dragToResize": "Tarik untuk mengubah ukuran kolom",
+            "pinned": "Disematkan"
         }
     }
 }

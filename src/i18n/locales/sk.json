@@ -4218,6 +4218,13 @@
             "hint": "Otvorte autentifikačnú aplikáciu (Authy, Google Authenticator atď.) a skopírujte aktuálny kód.",
             "connect": "Pripojiť",
             "connecting": "Pripája sa..."
+        },
+        "table": {
+            "manageColumns": "Spravovať stĺpce",
+            "resetToDefaults": "Obnoviť predvolené",
+            "dragToReorder": "Presuňte na zmenu poradia",
+            "dragToResize": "Presuňte na zmenu veľkosti stĺpca",
+            "pinned": "Pripnuté"
         }
     }
 }

@@ -4218,6 +4218,13 @@
             "hint": "Atveriet autentifikācijas lietotni (Authy, Google Authenticator u.c.) un nokopējiet pašreizējo kodu.",
             "connect": "Savienot",
             "connecting": "Savienojas..."
+        },
+        "table": {
+            "manageColumns": "Pārvaldīt kolonnas",
+            "resetToDefaults": "Atiestatīt uz noklusējumu",
+            "dragToReorder": "Velciet, lai pārkārtotu",
+            "dragToResize": "Velciet, lai mainītu kolonnas izmēru",
+            "pinned": "Piesprausts"
         }
     }
 }

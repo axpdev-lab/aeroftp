@@ -4237,6 +4237,13 @@
             "hint": "បើកកម្មវិធីផ្ទៀងផ្ទាត់របស់អ្នក (Authy, Google Authenticator ។ល។) ហើយចម្លងលេខកូដបច្ចុប្បន្ន។",
             "connect": "ភ្ជាប់",
             "connecting": "កំពុងភ្ជាប់..."
+        },
+        "table": {
+            "manageColumns": "គ្រប់គ្រងជួរឈរ",
+            "resetToDefaults": "កំណត់ឡើងវិញទៅលំនាំដើម",
+            "dragToReorder": "អូសដើម្បីរៀបរៀងឡើងវិញ",
+            "dragToResize": "អូសដើម្បីប្តូរទំហំជួរឈរ",
+            "pinned": "បានដោត"
         }
     }
 }

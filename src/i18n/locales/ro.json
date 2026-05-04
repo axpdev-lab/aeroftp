@@ -4208,6 +4208,13 @@
             "hint": "Deschideți aplicația de autentificare (Authy, Google Authenticator etc.) și copiați codul curent.",
             "connect": "Conectare",
             "connecting": "Se conectează..."
+        },
+        "table": {
+            "manageColumns": "Gestionați coloanele",
+            "resetToDefaults": "Resetați la valorile implicite",
+            "dragToReorder": "Trageți pentru a reordona",
+            "dragToResize": "Trageți pentru a redimensiona coloana",
+            "pinned": "Fixată"
         }
     }
 }

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
+
 import * as React from 'react';
 import { ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Loader2, Star, Trash2 } from 'lucide-react';
 import { ServerProfile, ProviderType, supportsStorageQuota } from '../../types';
@@ -10,7 +13,8 @@ import {
     type StorageThresholds,
 } from '../../hooks/useStorageThresholds';
 import type { MyServersDensity } from '../../hooks/useMyServersDensity';
-import type { MyServersColumnVisibility } from '../../hooks/useMyServersColumns';
+import type { MyServersTableColId } from '../../hooks/useMyServersColumns';
+import type { TableColumnDef } from '../../hooks/useTableColumns';
 import { useTranslation } from '../../i18n';
 import { HealthRadial } from './HealthRadial';
 import { getServerIcon, getTimeAgo, RenameInput, ServerBadges } from './ServerCard';
@@ -18,7 +22,7 @@ import { getServerIcon, getTimeAgo, RenameInput, ServerBadges } from './ServerCa
 interface MyServersTableRowProps {
     server: ServerProfile;
     index: number;
-    visibility: MyServersColumnVisibility;
+    orderedColumns: TableColumnDef<MyServersTableColId>[];
     isConnecting: boolean;
     credentialsMasked: boolean;
     hideUsername?: boolean;
@@ -54,7 +58,7 @@ interface MyServersTableRowProps {
 export const MyServersTableRow = React.memo(function MyServersTableRow({
     server,
     index,
-    visibility,
+    orderedColumns,
     isConnecting,
     credentialsMasked,
     hideUsername = false,
@@ -97,7 +101,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     const subtitle = React.useMemo(() => getServerSubtitle(server, {
         credentialsMasked,
         showUsername: !hideUsername,
-    }) || '\u00A0', [server, credentialsMasked, hideUsername]);
+    }) || ' ', [server, credentialsMasked, hideUsername]);
     const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
     const handleMouseLeave = onHoverChange ? () => onHoverChange(null) : undefined;
     const handleRetry = onRetryHealth ? () => onRetryHealth(server) : undefined;
@@ -153,6 +157,151 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         : t('introHub.storageQuotaUnavailable');
     const cellClass = `px-3 ${rowPadY} align-middle border-b border-gray-100 dark:border-gray-700/50`;
 
+    const renderCell = (id: MyServersTableColId): React.ReactNode => {
+        switch (id) {
+            case 'index':
+                return (
+                    <td key="index" className={`${cellClass} text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500`} title={dragDisabledTitle}>
+                        <div className="flex items-center justify-end gap-1.5">
+                            {isSelected && (
+                                <span className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full ${
+                                    isSource
+                                        ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-400/40'
+                                        : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-400/40'
+                                }`}>
+                                    {isSource ? <ArrowUpRight size={11} strokeWidth={2.5} /> : <ArrowDownLeft size={11} strokeWidth={2.5} />}
+                                </span>
+                            )}
+                            {isDraggable ? (
+                                <GripVertical size={isCompact ? 12 : 14} className="text-gray-400 opacity-0 group-hover:opacity-70" />
+                            ) : dragDisabledTitle ? (
+                                <GripVertical size={isCompact ? 12 : 14} className="text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-0 group-hover:opacity-70" />
+                            ) : null}
+                            <span>{index + 1}</span>
+                        </div>
+                    </td>
+                );
+            case 'icon':
+                return (
+                    <td key="icon" className={`${cellClass} text-center`}>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onConnect(server); }}
+                            className={`${iconBoxSize} mx-auto shrink-0 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer`}
+                            title={t('common.connect')}
+                        >
+                            {isConnecting ? <Loader2 size={iconSize} className="animate-spin text-blue-500" /> : getServerIcon(server, iconSize + 2)}
+                        </button>
+                    </td>
+                );
+            case 'name':
+                return (
+                    <td key="name" className={`${cellClass}`}>
+                        {isRenaming ? (
+                            <RenameInput
+                                initialValue={server.name}
+                                onSubmit={(v) => onRenameSubmit?.(server, v)}
+                                onCancel={() => onRenameCancel?.()}
+                                sizeClass="text-sm"
+                            />
+                        ) : (
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{server.name}</div>
+                        )}
+                    </td>
+                );
+            case 'badges':
+                return (
+                    <td key="badges" className={`${cellClass}`}>
+                        <ServerBadges server={server} />
+                    </td>
+                );
+            case 'subtitle':
+                return (
+                    <td key="subtitle" className={`${cellClass} text-xs text-gray-500 dark:text-gray-400 truncate`}>
+                        {subtitle}
+                    </td>
+                );
+            case 'used':
+                return <td key="used" className={`${cellClass} text-right text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={quotaTitle}>{quotaCells.used}</td>;
+            case 'total':
+                return <td key="total" className={`${cellClass} text-right text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={quotaTitle}>{quotaCells.total}</td>;
+            case 'pct':
+                return <td key="pct" className={`${cellClass} text-right text-[11px] font-medium tabular-nums ${quotaCells.toneText}`} title={quotaTitle}>{quotaCells.pct}</td>;
+            case 'paths':
+                return (
+                    <td key="paths" className={`${cellClass} text-right`}>
+                        <div className="flex flex-col gap-0.5 min-w-0 text-right">
+                            {server.initialPath && (
+                                <span className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500" title={server.initialPath}>
+                                    <Folder size={8} className="shrink-0" />
+                                    <span className="truncate" dir="rtl">{server.initialPath}</span>
+                                </span>
+                            )}
+                            {server.localInitialPath && (
+                                <span className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500" title={server.localInitialPath}>
+                                    <HardDrive size={8} className="shrink-0" />
+                                    <span className="truncate" dir="rtl">{server.localInitialPath}</span>
+                                </span>
+                            )}
+                        </div>
+                    </td>
+                );
+            case 'time':
+                return (
+                    <td key="time" className={`${cellClass} text-right text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`}>
+                        {timeAgo && <span className="inline-flex items-center gap-0.5"><Clock size={9} />{timeAgo}</span>}
+                    </td>
+                );
+            case 'health':
+                return (
+                    <td key="health" className={`${cellClass} text-center text-gray-300 dark:text-gray-600`}>
+                        <span className="inline-flex items-center justify-center">
+                            <HealthRadial
+                                status={healthStatus || 'unknown'}
+                                latencyMs={healthLatencyMs}
+                                size={16}
+                                title={radialTitle}
+                                onRetry={handleRetry}
+                            />
+                        </span>
+                    </td>
+                );
+            case 'actions':
+                return (
+                    <td key="actions" className={`${cellClass} text-right`}>
+                        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={(e) => { e.stopPropagation(); onEdit(server); }} className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title={t('common.edit')}>
+                                <Edit2 size={13} />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onDuplicate(server); }} className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title={t('common.duplicate')}>
+                                <Copy size={13} />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); onDelete(server); }} className="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title={t('common.delete')}>
+                                <Trash2 size={13} />
+                            </button>
+                        </div>
+                    </td>
+                );
+            case 'favorite':
+                return (
+                    <td key="favorite" className={`${cellClass} text-center`}>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onToggleFavorite(server); }}
+                            className={`p-1 rounded-lg transition-colors ${
+                                isFavorite
+                                    ? 'text-yellow-400 hover:text-yellow-500'
+                                    : 'text-gray-400 hover:text-yellow-400 opacity-0 group-hover:opacity-100'
+                            }`}
+                            title={isFavorite ? t('introHub.removeFavorite') : t('introHub.addFavorite')}
+                        >
+                            <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />
+                        </button>
+                    </td>
+                );
+            default:
+                return null;
+        }
+    };
+
     return (
         <tr
             draggable={isDraggable}
@@ -168,131 +317,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             title={selectionTitle || undefined}
             className={`group transition-colors ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''} ${selectionRingClass}`}
         >
-            {visibility.index && (
-                <td className={`${cellClass} w-16 text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500`} title={dragDisabledTitle}>
-                    <div className="flex items-center justify-end gap-1.5">
-                        {isSelected && (
-                            <span className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full ${
-                                isSource
-                                    ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-400/40'
-                                    : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-400/40'
-                            }`}>
-                                {isSource ? <ArrowUpRight size={11} strokeWidth={2.5} /> : <ArrowDownLeft size={11} strokeWidth={2.5} />}
-                            </span>
-                        )}
-                        {isDraggable ? (
-                            <GripVertical size={isCompact ? 12 : 14} className="text-gray-400 opacity-0 group-hover:opacity-70" />
-                        ) : dragDisabledTitle ? (
-                            <GripVertical size={isCompact ? 12 : 14} className="text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-0 group-hover:opacity-70" />
-                        ) : null}
-                        <span>{index + 1}</span>
-                    </div>
-                </td>
-            )}
-            {visibility.icon && (
-                <td className={`${cellClass} w-14 text-center`}>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onConnect(server); }}
-                        className={`${iconBoxSize} mx-auto shrink-0 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer`}
-                        title={t('common.connect')}
-                    >
-                        {isConnecting ? <Loader2 size={iconSize} className="animate-spin text-blue-500" /> : getServerIcon(server, iconSize + 2)}
-                    </button>
-                </td>
-            )}
-            {visibility.name && (
-                <td className={`${cellClass} min-w-[180px]`}>
-                    {isRenaming ? (
-                        <RenameInput
-                            initialValue={server.name}
-                            onSubmit={(v) => onRenameSubmit?.(server, v)}
-                            onCancel={() => onRenameCancel?.()}
-                            sizeClass="text-sm"
-                        />
-                    ) : (
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{server.name}</div>
-                    )}
-                </td>
-            )}
-            {visibility.badges && (
-                <td className={`${cellClass} min-w-[120px]`}>
-                    <ServerBadges server={server} />
-                </td>
-            )}
-            {visibility.subtitle && (
-                <td className={`${cellClass} min-w-[220px] text-xs text-gray-500 dark:text-gray-400 truncate`}>
-                    {subtitle}
-                </td>
-            )}
-            {visibility.used && <td className={`${cellClass} w-24 text-right text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={quotaTitle}>{quotaCells.used}</td>}
-            {visibility.total && <td className={`${cellClass} w-24 text-right text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={quotaTitle}>{quotaCells.total}</td>}
-            {visibility.pct && <td className={`${cellClass} w-20 text-right text-[11px] font-medium tabular-nums ${quotaCells.toneText}`} title={quotaTitle}>{quotaCells.pct}</td>}
-            {visibility.paths && (
-                <td className={`${cellClass} min-w-[220px] text-right`}>
-                    <div className="flex flex-col gap-0.5 min-w-0 text-right">
-                        {server.initialPath && (
-                            <span className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500" title={server.initialPath}>
-                                <Folder size={8} className="shrink-0" />
-                                <span className="truncate" dir="rtl">{server.initialPath}</span>
-                            </span>
-                        )}
-                        {server.localInitialPath && (
-                            <span className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500" title={server.localInitialPath}>
-                                <HardDrive size={8} className="shrink-0" />
-                                <span className="truncate" dir="rtl">{server.localInitialPath}</span>
-                            </span>
-                        )}
-                    </div>
-                </td>
-            )}
-            {visibility.time && (
-                <td className={`${cellClass} w-24 text-right text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`}>
-                    {timeAgo && <span className="inline-flex items-center gap-0.5"><Clock size={9} />{timeAgo}</span>}
-                </td>
-            )}
-            {visibility.health && (
-                <td className={`${cellClass} w-20 text-center text-gray-300 dark:text-gray-600`}>
-                    <span className="inline-flex items-center justify-center">
-                        <HealthRadial
-                            status={healthStatus || 'unknown'}
-                            latencyMs={healthLatencyMs}
-                            size={16}
-                            title={radialTitle}
-                            onRetry={handleRetry}
-                        />
-                    </span>
-                </td>
-            )}
-            {visibility.actions && (
-                <td className={`${cellClass} w-28 text-right`}>
-                    <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={(e) => { e.stopPropagation(); onEdit(server); }} className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title={t('common.edit')}>
-                            <Edit2 size={13} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onDuplicate(server); }} className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title={t('common.duplicate')}>
-                            <Copy size={13} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onDelete(server); }} className="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title={t('common.delete')}>
-                            <Trash2 size={13} />
-                        </button>
-                    </div>
-                </td>
-            )}
-            {visibility.favorite && (
-                <td className={`${cellClass} w-16 text-center`}>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onToggleFavorite(server); }}
-                        className={`p-1 rounded-lg transition-colors ${
-                            isFavorite
-                                ? 'text-yellow-400 hover:text-yellow-500'
-                                : 'text-gray-400 hover:text-yellow-400 opacity-0 group-hover:opacity-100'
-                        }`}
-                        title={isFavorite ? t('introHub.removeFavorite') : t('introHub.addFavorite')}
-                    >
-                        <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />
-                    </button>
-                </td>
-            )}
+            {orderedColumns.map(col => renderCell(col.id))}
         </tr>
     );
 });

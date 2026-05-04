@@ -4218,6 +4218,13 @@
             "hint": "เปิดแอปยืนยันตัวตน (Authy, Google Authenticator ฯลฯ) แล้วคัดลอกรหัสปัจจุบัน",
             "connect": "เชื่อมต่อ",
             "connecting": "กำลังเชื่อมต่อ..."
+        },
+        "table": {
+            "manageColumns": "จัดการคอลัมน์",
+            "resetToDefaults": "รีเซ็ตเป็นค่าเริ่มต้น",
+            "dragToReorder": "ลากเพื่อจัดเรียงใหม่",
+            "dragToResize": "ลากเพื่อปรับขนาดคอลัมน์",
+            "pinned": "ปักหมุด"
         }
     }
 }

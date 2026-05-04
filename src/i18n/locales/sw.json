@@ -4218,6 +4218,13 @@
             "hint": "Fungua programu yako ya uthibitishaji (Authy, Google Authenticator, n.k.) na nakili msimbo wa sasa.",
             "connect": "Unganisha",
             "connecting": "Inaunganisha..."
+        },
+        "table": {
+            "manageColumns": "Dhibiti safuwima",
+            "resetToDefaults": "Weka upya chaguomsingi",
+            "dragToReorder": "Buruta ili kupanga upya",
+            "dragToResize": "Buruta ili kubadilisha ukubwa wa safuwima",
+            "pinned": "Imebanwa"
         }
     }
 }

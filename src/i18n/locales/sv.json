@@ -4218,6 +4218,13 @@
             "hint": "Öppna din autentiseringsapp (Authy, Google Authenticator osv.) och kopiera den aktuella koden.",
             "connect": "Anslut",
             "connecting": "Ansluter..."
+        },
+        "table": {
+            "manageColumns": "Hantera kolumner",
+            "resetToDefaults": "Återställ till standard",
+            "dragToReorder": "Dra för att ordna om",
+            "dragToResize": "Dra för att ändra kolumnstorlek",
+            "pinned": "Fäst"
         }
     }
 }

@@ -4218,6 +4218,13 @@
             "hint": "अपना प्रमाणक ऐप (Authy, Google Authenticator आदि) खोलें और वर्तमान कोड कॉपी करें।",
             "connect": "कनेक्ट करें",
             "connecting": "कनेक्ट हो रहा है..."
+        },
+        "table": {
+            "manageColumns": "कॉलम प्रबंधित करें",
+            "resetToDefaults": "डिफ़ॉल्ट पर रीसेट करें",
+            "dragToReorder": "पुनर्व्यवस्थित करने के लिए खींचें",
+            "dragToResize": "कॉलम का आकार बदलने के लिए खींचें",
+            "pinned": "पिन किया गया"
         }
     }
 }

@@ -4237,6 +4237,13 @@
             "hint": "Agorwch eich ap dilysu (Authy, Google Authenticator, ac ati) a chopïwch y cod cyfredol.",
             "connect": "Cysylltu",
             "connecting": "Cysylltu..."
+        },
+        "table": {
+            "manageColumns": "Rheoli colofnau",
+            "resetToDefaults": "Ailosod i ddiofyn",
+            "dragToReorder": "Llusgwch i aildrefnu",
+            "dragToResize": "Llusgwch i newid maint y golofn",
+            "pinned": "Wedi'i binio"
         }
     }
 }

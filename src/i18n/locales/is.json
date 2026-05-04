@@ -4237,6 +4237,13 @@
             "hint": "Opnaðu auðkenningarforritið þitt (Authy, Google Authenticator o.s.frv.) og afritaðu núverandi kóða.",
             "connect": "Tengjast",
             "connecting": "Tengist..."
+        },
+        "table": {
+            "manageColumns": "Stjórna dálkum",
+            "resetToDefaults": "Endurstilla á sjálfgefið",
+            "dragToReorder": "Dragðu til að endurraða",
+            "dragToResize": "Dragðu til að breyta stærð dálks",
+            "pinned": "Fest"
         }
     }
 }

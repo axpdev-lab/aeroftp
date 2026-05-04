@@ -4208,6 +4208,13 @@
             "hint": "認証アプリ(Authy、Google Authenticator など)を開き、現在のコードをコピーしてください。",
             "connect": "接続",
             "connecting": "接続中..."
+        },
+        "table": {
+            "manageColumns": "列を管理",
+            "resetToDefaults": "デフォルトにリセット",
+            "dragToReorder": "ドラッグして並べ替え",
+            "dragToResize": "ドラッグして列のサイズを変更",
+            "pinned": "固定"
         }
     }
 }

@@ -1,12 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
+
 import * as React from 'react';
 import { getE2EBits, getProtocolClass, ServerProfile, type ProviderType } from '../../types';
-import type {
-    MyServersColumnVisibility,
-    MyServersSort,
-    MyServersSortableColId,
-    MyServersTableColId,
+import {
+    MY_SERVERS_TABLE_COLUMNS,
+    type MyServersSortableColId,
+    type MyServersTableColId,
+    type MyServersTableColumnsResult,
 } from '../../hooks/useMyServersColumns';
-import { MY_SERVERS_TABLE_COLUMNS } from '../../hooks/useMyServersColumns';
 import type { MyServersDensity } from '../../hooks/useMyServersDensity';
 import type { StorageThresholds } from '../../hooks/useStorageThresholds';
 import { useTranslation } from '../../i18n';
@@ -18,10 +20,7 @@ type HealthStatus = 'up' | 'slow' | 'down' | 'pending' | 'unknown';
 interface MyServersTableProps {
     servers: ServerProfile[];
     allServers: ServerProfile[];
-    visibility: MyServersColumnVisibility;
-    sort: MyServersSort | null;
-    onSort: (sort: MyServersSort | null) => void;
-    onVisibleChange: (colId: MyServersTableColId, visible: boolean) => void;
+    columns: MyServersTableColumnsResult;
     favorites: Set<string>;
     connectingId: string | null;
     oauthConnecting: string | null;
@@ -79,10 +78,7 @@ const badgeSortLabel = (server: ServerProfile) => {
 export function MyServersTable({
     servers,
     allServers,
-    visibility,
-    sort,
-    onSort,
-    onVisibleChange,
+    columns,
     favorites,
     connectingId,
     oauthConnecting,
@@ -115,15 +111,39 @@ export function MyServersTable({
     density,
 }: MyServersTableProps) {
     const t = useTranslation();
-    const effectiveVisibility = React.useMemo(() => {
-        const next = { ...visibility, health: visibility.health && cardLayout === 'detailed' };
-        if (!Object.values(next).some(Boolean)) next.name = true;
-        return next;
-    }, [visibility, cardLayout]);
-    const sortLabel = sort ? t(MY_SERVERS_TABLE_COLUMNS.find(col => col.id === sort.colId)?.labelKey || '') : '';
+    const { config, orderedVisibleColumns } = columns;
+    const sort = config.sort;
+    const sortLabel = sort
+        ? t(MY_SERVERS_TABLE_COLUMNS.find(col => col.id === sort.colId)?.labelKey || '')
+        : '';
     const dragDisabledTitle = sort
         ? t('introHub.table.clickToReturnManual', { column: sortLabel })
         : undefined;
+
+    // Live width override during pointermove. Persisted on pointerup (handled
+    // by useTableColumns.setWidth). We hold a ref to <colgroup> children and
+    // mutate their width directly to avoid re-rendering the whole table for
+    // every pixel.
+    const colRefs = React.useRef<Map<MyServersTableColId, HTMLTableColElement>>(new Map());
+    const handleLiveResize = React.useCallback((id: MyServersTableColId, widthPx: number) => {
+        const el = colRefs.current.get(id);
+        if (el) el.style.width = `${widthPx}px`;
+    }, []);
+
+    const handleReorder = React.useCallback((sourceId: MyServersTableColId, targetId: MyServersTableColId) => {
+        const middle = columns.orderedAllColumns
+            .filter(c => !c.pinnedStart && !c.pinnedEnd)
+            .map(c => c.id);
+        if (!middle.includes(sourceId) || !middle.includes(targetId)) return;
+        const next = middle.filter(id => id !== sourceId);
+        const idx = next.indexOf(targetId);
+        if (idx < 0) return;
+        next.splice(idx, 0, sourceId);
+        const startIds = columns.orderedAllColumns.filter(c => c.pinnedStart).map(c => c.id);
+        const endIds = columns.orderedAllColumns.filter(c => c.pinnedEnd).map(c => c.id);
+        columns.setOrder([...startIds, ...next, ...endIds]);
+    }, [columns]);
+
     const sortedServers = React.useMemo(() => {
         if (!sort) return servers;
         const comparators: Record<MyServersSortableColId, (a: ServerProfile, b: ServerProfile) => number> = {
@@ -137,70 +157,86 @@ export function MyServersTable({
             favorite: (a, b) => Number(favorites.has(b.id)) - Number(favorites.has(a.id)),
         };
         const direction = sort.dir === 'desc' ? -1 : 1;
+        const colId = sort.colId as MyServersSortableColId;
+        const cmp = comparators[colId];
+        if (!cmp) return servers;
         const withIndex = servers.map((server, index) => ({ server, index }));
         return withIndex
             .sort((a, b) => {
-                const result = comparators[sort.colId](a.server, b.server) * direction;
+                const result = cmp(a.server, b.server) * direction;
                 return result || a.index - b.index;
             })
             .map(item => item.server);
     }, [servers, sort, favorites]);
 
     return (
-        <table className="w-full min-w-[1100px] table-auto border-collapse text-left">
-            <MyServersTableHeader
-                visibility={effectiveVisibility}
-                sort={sort}
-                onSort={onSort}
-                onVisibleChange={onVisibleChange}
-            />
-            <tbody>
-                {sortedServers.map((server, idx) => {
-                    const realIdx = allServers.findIndex(s => s.id === server.id);
-                    const selectionIndex = crossProfileSelection.indexOf(server.id);
-                    const selectionRole: 'source' | 'destination' | null =
-                        selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
-                    const health = cardLayout === 'detailed' ? getHealthStatus(server.id) : undefined;
-                    return (
-                        <MyServersTableRow
-                            key={server.id}
-                            server={server}
-                            index={idx}
-                            visibility={effectiveVisibility}
-                            isConnecting={connectingId === server.id || oauthConnecting === server.id}
-                            credentialsMasked={credentialsMasked}
-                            hideUsername={hideUsername}
-                            isFavorite={favorites.has(server.id)}
-                            onConnect={onConnect}
-                            onEdit={onEdit}
-                            onDuplicate={onDuplicate}
-                            onDelete={onDelete}
-                            onToggleFavorite={onToggleFavorite}
-                            onContextMenu={onContextMenu}
-                            onHoverChange={onHoverChange}
-                            isRenaming={renamingId === server.id}
-                            onRenameSubmit={onRenameSubmit}
-                            onRenameCancel={onRenameCancel}
-                            isDraggable={canDrag}
-                            isDragging={dragIdx === realIdx}
-                            isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
-                            onDragStart={canDrag ? onDragStart(realIdx) : undefined}
-                            onDragEnter={canDrag ? onDragEnter(realIdx) : undefined}
-                            onDragOver={canDrag ? onDragOver(realIdx) : undefined}
-                            onDrop={canDrag ? onDrop(realIdx) : undefined}
-                            onDragEnd={canDrag ? onDragEnd : undefined}
-                            dragDisabledTitle={dragDisabledTitle}
-                            selectionRole={selectionRole}
-                            onSelect={onSelect}
-                            healthStatus={health?.status}
-                            healthLatencyMs={health?.latencyMs}
-                            onRetryHealth={cardLayout === 'detailed' ? onRetryHealth : undefined}
-                            thresholds={thresholds}
-                            density={density}
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[1100px] border-collapse text-left" style={{ tableLayout: 'fixed' }}>
+                <colgroup>
+                    {orderedVisibleColumns.map((col) => (
+                        <col
+                            key={col.id}
+                            ref={(el) => {
+                                if (el) colRefs.current.set(col.id, el);
+                                else colRefs.current.delete(col.id);
+                            }}
+                            style={{ width: `${config.widths[col.id]}px` }}
                         />
-                    );
-                })}
-            </tbody>
-        </table>
+                    ))}
+                </colgroup>
+                <MyServersTableHeader
+                    columns={columns}
+                    onReorder={handleReorder}
+                    onLiveResize={handleLiveResize}
+                />
+                <tbody>
+                    {sortedServers.map((server, idx) => {
+                        const realIdx = allServers.findIndex(s => s.id === server.id);
+                        const selectionIndex = crossProfileSelection.indexOf(server.id);
+                        const selectionRole: 'source' | 'destination' | null =
+                            selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
+                        const health = cardLayout === 'detailed' ? getHealthStatus(server.id) : undefined;
+                        return (
+                            <MyServersTableRow
+                                key={server.id}
+                                server={server}
+                                index={idx}
+                                orderedColumns={orderedVisibleColumns}
+                                isConnecting={connectingId === server.id || oauthConnecting === server.id}
+                                credentialsMasked={credentialsMasked}
+                                hideUsername={hideUsername}
+                                isFavorite={favorites.has(server.id)}
+                                onConnect={onConnect}
+                                onEdit={onEdit}
+                                onDuplicate={onDuplicate}
+                                onDelete={onDelete}
+                                onToggleFavorite={onToggleFavorite}
+                                onContextMenu={onContextMenu}
+                                onHoverChange={onHoverChange}
+                                isRenaming={renamingId === server.id}
+                                onRenameSubmit={onRenameSubmit}
+                                onRenameCancel={onRenameCancel}
+                                isDraggable={canDrag}
+                                isDragging={dragIdx === realIdx}
+                                isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
+                                onDragStart={canDrag ? onDragStart(realIdx) : undefined}
+                                onDragEnter={canDrag ? onDragEnter(realIdx) : undefined}
+                                onDragOver={canDrag ? onDragOver(realIdx) : undefined}
+                                onDrop={canDrag ? onDrop(realIdx) : undefined}
+                                onDragEnd={canDrag ? onDragEnd : undefined}
+                                dragDisabledTitle={dragDisabledTitle}
+                                selectionRole={selectionRole}
+                                onSelect={onSelect}
+                                healthStatus={health?.status}
+                                healthLatencyMs={health?.latencyMs}
+                                onRetryHealth={cardLayout === 'detailed' ? onRetryHealth : undefined}
+                                thresholds={thresholds}
+                                density={density}
+                            />
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
     );
 }

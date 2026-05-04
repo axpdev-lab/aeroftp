@@ -4218,6 +4218,13 @@
             "hint": "Mở ứng dụng xác thực của bạn (Authy, Google Authenticator, v.v.) và sao chép mã hiện tại.",
             "connect": "Kết nối",
             "connecting": "Đang kết nối..."
+        },
+        "table": {
+            "manageColumns": "Quản lý cột",
+            "resetToDefaults": "Đặt lại mặc định",
+            "dragToReorder": "Kéo để sắp xếp lại",
+            "dragToResize": "Kéo để thay đổi kích thước cột",
+            "pinned": "Đã ghim"
         }
     }
 }

@@ -4218,6 +4218,13 @@
             "hint": "Åbn din autentificeringsapp (Authy, Google Authenticator osv.) og kopiér den aktuelle kode.",
             "connect": "Tilslut",
             "connecting": "Tilslutter..."
+        },
+        "table": {
+            "manageColumns": "Administrer kolonner",
+            "resetToDefaults": "Nulstil til standard",
+            "dragToReorder": "Træk for at omarrangere",
+            "dragToResize": "Træk for at ændre størrelse på kolonne",
+            "pinned": "Fastgjort"
         }
     }
 }

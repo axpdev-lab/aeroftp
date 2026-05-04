@@ -1,23 +1,31 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
+
 import * as React from 'react';
 import { ArrowDown, ArrowUp, Settings2, Star } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import {
     MY_SERVERS_TABLE_COLUMNS,
-    type MyServersColumnVisibility,
     type MyServersSort,
     type MyServersSortableColId,
     type MyServersTableColId,
     type MyServersTableColumn,
+    type MyServersTableColumnsResult,
 } from '../../hooks/useMyServersColumns';
+import type { TableColumnDef } from '../../hooks/useTableColumns';
+import { TableColResizer } from '../ui/TableColResizer';
+import { TableColumnsManager } from '../ui/TableColumnsManager';
 
 interface MyServersTableHeaderProps {
-    visibility: MyServersColumnVisibility;
-    sort: MyServersSort | null;
-    onSort: (sort: MyServersSort | null) => void;
-    onVisibleChange: (colId: MyServersTableColId, visible: boolean) => void;
+    columns: MyServersTableColumnsResult;
+    onReorder: (sourceId: MyServersTableColId, targetId: MyServersTableColId) => void;
+    onLiveResize: (id: MyServersTableColId, widthPx: number) => void;
 }
 
-const nextSortFor = (column: MyServersTableColumn, sort: MyServersSort | null): MyServersSort | null => {
+const nextSortFor = (
+    column: MyServersTableColumn,
+    sort: MyServersSort | null,
+): MyServersSort | null => {
     if (column.id === 'index') return null;
     if (!column.sortable) return sort;
     if (!sort || sort.colId !== column.id) {
@@ -29,21 +37,43 @@ const nextSortFor = (column: MyServersTableColumn, sort: MyServersSort | null): 
     return null;
 };
 
-export function MyServersTableHeader({
-    visibility,
-    sort,
-    onSort,
-    onVisibleChange,
-}: MyServersTableHeaderProps) {
+const findLegacyClass = (id: MyServersTableColId): string =>
+    MY_SERVERS_TABLE_COLUMNS.find(col => col.id === id)?.className || '';
+
+export function MyServersTableHeader({ columns, onReorder, onLiveResize }: MyServersTableHeaderProps) {
     const t = useTranslation();
-    const visibleColumns = MY_SERVERS_TABLE_COLUMNS.filter(col => visibility[col.id]);
-    const lastVisibleId = visibleColumns[visibleColumns.length - 1]?.id;
-    const sortLabel = sort ? t(MY_SERVERS_TABLE_COLUMNS.find(col => col.id === sort.colId)?.labelKey || '') : '';
+    const { config, orderedVisibleColumns, orderedAllColumns, setSort, setVisible, setWidth, reset } = columns;
+    const sort = config.sort as MyServersSort | null;
+    const sortLabel = sort
+        ? t(MY_SERVERS_TABLE_COLUMNS.find(col => col.id === sort.colId)?.labelKey || '')
+        : '';
+    const lastVisibleId = orderedVisibleColumns[orderedVisibleColumns.length - 1]?.id;
+
+    const [showManager, setShowManager] = React.useState(false);
+    const [dragId, setDragId] = React.useState<MyServersTableColId | null>(null);
+    const [overId, setOverId] = React.useState<MyServersTableColId | null>(null);
+    const managerWrapperRef = React.useRef<HTMLDivElement | null>(null);
+
+    React.useEffect(() => {
+        if (!showManager) return;
+        const onClickOutside = (e: MouseEvent) => {
+            if (!managerWrapperRef.current) return;
+            if (!managerWrapperRef.current.contains(e.target as Node)) setShowManager(false);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowManager(false); };
+        document.addEventListener('mousedown', onClickOutside);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onClickOutside);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [showManager]);
 
     return (
         <thead className="sticky top-0 z-20 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
             <tr>
-                {visibleColumns.map((column) => {
+                {orderedVisibleColumns.map((column: TableColumnDef<MyServersTableColId>) => {
+                    const legacy = MY_SERVERS_TABLE_COLUMNS.find(c => c.id === column.id);
                     const isSorted = sort?.colId === column.id;
                     const label = t(column.labelKey);
                     const displayLabel = column.id === 'favorite'
@@ -51,29 +81,36 @@ export function MyServersTableHeader({
                         : column.id === 'index'
                             ? '#'
                             : label;
+                    const isPinned = !!(column.pinnedStart || column.pinnedEnd);
+                    const canDrag = !isPinned;
+                    const sortable = !!legacy?.sortable;
                     const title = column.id === 'index'
                         ? sort === null
                             ? t('introHub.table.manualOrderActive')
                             : t('introHub.table.clickToReturnManual', { column: sortLabel })
-                        : column.sortable
+                        : sortable
                             ? t('introHub.table.clickToSortBy', { column: label })
                             : label;
                     const ariaSort = isSorted
                         ? sort.dir === 'asc' ? 'ascending' : 'descending'
                         : undefined;
-                    const alignClass = column.className.includes('text-right')
+                    const legacyCls = findLegacyClass(column.id);
+                    const alignClass = legacyCls.includes('text-right')
                         ? 'justify-end'
-                        : column.className.includes('text-center') ? 'justify-center' : '';
+                        : legacyCls.includes('text-center') ? 'justify-center' : '';
+                    const isDragTarget = overId === column.id && dragId !== null && dragId !== column.id;
+                    const isDragging = dragId === column.id;
+
                     const content = (
-                        <span className={`flex items-center gap-1 ${column.className.includes('text-right') ? 'justify-end' : column.className.includes('text-center') ? 'justify-center' : ''}`}>
+                        <span className={`flex items-center gap-1 ${alignClass}`}>
                             <span className="inline-flex items-center">{displayLabel}</span>
                             {isSorted && (sort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)}
                         </span>
                     );
-                    const columnControl = column.sortable ? (
+                    const columnControl = sortable ? (
                         <button
                             type="button"
-                            onClick={() => onSort(nextSortFor(column, sort))}
+                            onClick={() => setSort(nextSortFor(legacy, sort))}
                             className="w-full cursor-pointer hover:text-gray-800 dark:hover:text-gray-100 transition-colors"
                             title={title}
                         >
@@ -88,41 +125,70 @@ export function MyServersTableHeader({
                             key={column.id}
                             scope="col"
                             aria-sort={ariaSort as React.AriaAttributes['aria-sort']}
-                            className={`${column.className} relative px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400 tracking-wide whitespace-nowrap ${column.headerClassName || ''}`}
+                            draggable={canDrag}
+                            onDragStart={canDrag ? (e) => {
+                                setDragId(column.id);
+                                e.dataTransfer.effectAllowed = 'move';
+                                try { e.dataTransfer.setData('text/plain', column.id); } catch { /* ignore */ }
+                            } : undefined}
+                            onDragEnter={canDrag ? (e) => {
+                                e.preventDefault();
+                                if (dragId && dragId !== column.id && !column.pinnedStart && !column.pinnedEnd) {
+                                    setOverId(column.id);
+                                }
+                            } : undefined}
+                            onDragOver={canDrag ? (e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'move';
+                            } : undefined}
+                            onDrop={canDrag ? (e) => {
+                                e.preventDefault();
+                                if (dragId && dragId !== column.id) onReorder(dragId, column.id);
+                                setDragId(null);
+                                setOverId(null);
+                            } : undefined}
+                            onDragEnd={canDrag ? () => { setDragId(null); setOverId(null); } : undefined}
+                            className={`${legacyCls} relative px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400 tracking-wide whitespace-nowrap
+                                ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}
+                                ${isDragging ? 'opacity-40' : ''}
+                                ${isDragTarget ? 'bg-blue-100 dark:bg-blue-900/30' : ''}`}
                         >
                             {column.id === lastVisibleId ? (
                                 <div className={`flex items-center gap-1 ${alignClass}`}>
                                     <div className="min-w-0 flex-1">{columnControl}</div>
-                                    <details className="relative shrink-0">
-                                    <summary
-                                        className="list-none p-1 rounded-md cursor-pointer text-gray-400 hover:text-gray-700 hover:bg-gray-200 dark:hover:text-gray-200 dark:hover:bg-gray-700"
-                                        title={t('introHub.table.columnSettings')}
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <Settings2 size={13} />
-                                    </summary>
-                                    <div
-                                        className="absolute right-0 mt-2 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl p-2 normal-case tracking-normal text-left"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        {MY_SERVERS_TABLE_COLUMNS.map((item) => (
-                                            <label
-                                                key={item.id}
-                                                className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-xs text-gray-700 dark:text-gray-200 cursor-pointer"
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={visibility[item.id]}
-                                                    onChange={(e) => onVisibleChange(item.id, e.target.checked)}
-                                                    className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-                                                />
-                                                <span className="truncate">{item.id === 'index' ? '#' : t(item.labelKey)}</span>
-                                            </label>
-                                        ))}
+                                    <div ref={managerWrapperRef} className="relative shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); setShowManager(s => !s); }}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            className="p-1 rounded-md cursor-pointer text-gray-400 hover:text-gray-700 hover:bg-gray-200 dark:hover:text-gray-200 dark:hover:bg-gray-700"
+                                            title={t('table.manageColumns')}
+                                        >
+                                            <Settings2 size={13} />
+                                        </button>
+                                        {showManager && (
+                                            <TableColumnsManager
+                                                columns={orderedAllColumns}
+                                                visibility={config.visibility}
+                                                orderedAllColumns={orderedAllColumns}
+                                                onSetVisible={setVisible}
+                                                onSetOrder={(order) => columns.setOrder(order)}
+                                                onReset={() => { reset(); setShowManager(false); }}
+                                                onClose={() => setShowManager(false)}
+                                            />
+                                        )}
                                     </div>
-                                    </details>
                                 </div>
                             ) : columnControl}
+                            {!column.pinnedEnd && (
+                                <TableColResizer
+                                    currentWidth={config.widths[column.id]}
+                                    minWidth={column.minWidth}
+                                    onResize={(w) => onLiveResize(column.id, w)}
+                                    onResizeEnd={(w) => setWidth(column.id, w)}
+                                    title={t('table.dragToResize')}
+                                />
+                            )}
                         </th>
                     );
                 })}

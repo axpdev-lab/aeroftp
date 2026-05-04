@@ -970,10 +970,7 @@ export function MyServersPanel({
                     <MyServersTable
                         servers={filteredServers}
                         allServers={servers}
-                        visibility={tableColumns.visibility}
-                        sort={tableColumns.sort}
-                        onSort={tableColumns.setSort}
-                        onVisibleChange={tableColumns.setColVisible}
+                        columns={tableColumns}
                         favorites={favorites}
                         connectingId={connectingId}
                         oauthConnecting={oauthConnecting}

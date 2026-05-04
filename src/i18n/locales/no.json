@@ -4237,6 +4237,13 @@
             "hint": "Åpne autentiseringsappen din (Authy, Google Authenticator osv.) og kopier gjeldende kode.",
             "connect": "Koble til",
             "connecting": "Kobler til..."
+        },
+        "table": {
+            "manageColumns": "Administrer kolonner",
+            "resetToDefaults": "Tilbakestill til standard",
+            "dragToReorder": "Dra for å omorganisere",
+            "dragToResize": "Dra for å endre størrelse på kolonne",
+            "pinned": "Festet"
         }
     }
 }

@@ -4218,6 +4218,13 @@
             "hint": "Odprite aplikacijo za preverjanje pristnosti (Authy, Google Authenticator itd.) in kopirajte trenutno kodo.",
             "connect": "Poveži",
             "connecting": "Povezovanje..."
+        },
+        "table": {
+            "manageColumns": "Upravljanje stolpcev",
+            "resetToDefaults": "Ponastavi na privzete",
+            "dragToReorder": "Povlecite za razvrščanje",
+            "dragToResize": "Povlecite za spreminjanje velikosti stolpca",
+            "pinned": "Pripeto"
         }
     }
 }

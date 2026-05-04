@@ -4237,6 +4237,13 @@
             "hint": "Ireki zure autentifikazio-aplikazioa (Authy, Google Authenticator, etab.) eta kopiatu uneko kodea.",
             "connect": "Konektatu",
             "connecting": "Konektatzen..."
+        },
+        "table": {
+            "manageColumns": "Kudeatu zutabeak",
+            "resetToDefaults": "Berrezarri lehenetsiak",
+            "dragToReorder": "Arrastatu berrantolatzeko",
+            "dragToResize": "Arrastatu zutabearen tamaina aldatzeko",
+            "pinned": "Finkatua"
         }
     }
 }

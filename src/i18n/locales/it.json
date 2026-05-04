@@ -4208,6 +4208,13 @@
             "onServerDescription": "Appena rilevata scansionando il server",
             "scanning": "Scansione del server...",
             "scanningDescription": "Cerco la favicon attuale"
+        },
+        "table": {
+            "manageColumns": "Gestisci colonne",
+            "resetToDefaults": "Ripristina predefiniti",
+            "dragToReorder": "Trascina per riordinare",
+            "dragToResize": "Trascina per ridimensionare la colonna",
+            "pinned": "Fissata"
         }
     }
 }

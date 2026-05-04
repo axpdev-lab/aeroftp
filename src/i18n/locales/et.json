@@ -4218,6 +4218,13 @@
             "hint": "Avage oma autentimisrakendus (Authy, Google Authenticator vms) ja kopeerige praegune kood.",
             "connect": "Ühenda",
             "connecting": "Ühendamine..."
+        },
+        "table": {
+            "manageColumns": "Halda veerge",
+            "resetToDefaults": "Lähtesta vaikeväärtused",
+            "dragToReorder": "Lohista ümberjärjestamiseks",
+            "dragToResize": "Lohista veeru suuruse muutmiseks",
+            "pinned": "Kinnitatud"
         }
     }
 }

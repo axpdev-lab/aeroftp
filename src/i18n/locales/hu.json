@@ -4218,6 +4218,13 @@
             "hint": "Nyissa meg a hitelesítő alkalmazást (Authy, Google Authenticator stb.), és másolja ki az aktuális kódot.",
             "connect": "Kapcsolódás",
             "connecting": "Kapcsolódás..."
+        },
+        "table": {
+            "manageColumns": "Oszlopok kezelése",
+            "resetToDefaults": "Alapértelmezések visszaállítása",
+            "dragToReorder": "Húzza az átrendezéshez",
+            "dragToResize": "Húzza az oszlop átméretezéséhez",
+            "pinned": "Rögzítve"
         }
     }
 }

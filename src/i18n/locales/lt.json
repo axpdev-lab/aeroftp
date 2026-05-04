@@ -4218,6 +4218,13 @@
             "hint": "Atidarykite autentifikavimo programėlę (Authy, Google Authenticator ir kt.) ir nukopijuokite dabartinį kodą.",
             "connect": "Prisijungti",
             "connecting": "Jungiamasi..."
+        },
+        "table": {
+            "manageColumns": "Tvarkyti stulpelius",
+            "resetToDefaults": "Atkurti numatytąsias",
+            "dragToReorder": "Vilkite, kad pertvarkytumėte",
+            "dragToResize": "Vilkite, kad pakeistumėte stulpelio dydį",
+            "pinned": "Prisegta"
         }
     }
 }

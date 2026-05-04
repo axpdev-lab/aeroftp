@@ -4237,6 +4237,13 @@
             "hint": "Obriu la vostra aplicació d'autenticació (Authy, Google Authenticator, etc.) i copieu el codi actual.",
             "connect": "Connecta",
             "connecting": "Connectant..."
+        },
+        "table": {
+            "manageColumns": "Gestionar columnes",
+            "resetToDefaults": "Restablir per defecte",
+            "dragToReorder": "Arrossegueu per reordenar",
+            "dragToResize": "Arrossegueu per redimensionar la columna",
+            "pinned": "Fixada"
         }
     }
 }

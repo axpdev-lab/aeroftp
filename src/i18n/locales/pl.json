@@ -4208,6 +4208,13 @@
             "hint": "Otwórz aplikację uwierzytelniającą (Authy, Google Authenticator itp.) i skopiuj bieżący kod.",
             "connect": "Połącz",
             "connecting": "Łączenie..."
+        },
+        "table": {
+            "manageColumns": "Zarządzaj kolumnami",
+            "resetToDefaults": "Przywróć domyślne",
+            "dragToReorder": "Przeciągnij, aby zmienić kolejność",
+            "dragToResize": "Przeciągnij, aby zmienić rozmiar kolumny",
+            "pinned": "Przypięte"
         }
     }
 }

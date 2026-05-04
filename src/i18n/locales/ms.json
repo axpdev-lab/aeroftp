@@ -4218,6 +4218,13 @@
             "hint": "Buka aplikasi pengesah anda (Authy, Google Authenticator, dll.) dan salin kod semasa.",
             "connect": "Sambung",
             "connecting": "Menyambung..."
+        },
+        "table": {
+            "manageColumns": "Urus lajur",
+            "resetToDefaults": "Tetapkan semula ke lalai",
+            "dragToReorder": "Seret untuk susun semula",
+            "dragToResize": "Seret untuk ubah saiz lajur",
+            "pinned": "Disemat"
         }
     }
 }

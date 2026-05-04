@@ -164,6 +164,13 @@ import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
 import { LocalFilePanel } from './components/LocalFilePanel';
+import { AeroFileTableHeader } from './components/AeroFileTableHeader';
+import {
+  type AeroFileLocalColId,
+  type AeroFileRemoteColId,
+  useAeroFileLocalColumns,
+  useAeroFileRemoteColumns,
+} from './hooks/useAeroFileTableColumns';
 import { QuickLookOverlay } from './components/QuickLookOverlay';
 import DuplicateFinderDialog from './components/DuplicateFinderDialog';
 import DiskUsageTreemap from './components/DiskUsageTreemap';
@@ -382,10 +389,14 @@ const App: React.FC = () => {
   const [scanningState, setScanningState] = useState<ScanningState>(INITIAL_SCANNING_STATE);
   const hasActivity = hasActiveTransfer;  // Track if upload/download in progress
   const [activePanel, setActivePanel] = useState<'remote' | 'local'>('remote');
-  const [remoteSortField, setRemoteSortField] = useState<SortField>('name');
-  const [remoteSortOrder, setRemoteSortOrder] = useState<SortOrder>('asc');
-  const [localSortField, setLocalSortField] = useState<SortField>('name');
-  const [localSortOrder, setLocalSortOrder] = useState<SortOrder>('asc');
+  // Phase 5: column visibility/order/widths/sort for AeroFile tables now live
+  // in useAeroFile{Local,Remote}Columns. Sort is derived from hook config below.
+  const localColumns = useAeroFileLocalColumns();
+  const remoteColumns = useAeroFileRemoteColumns();
+  const remoteSortField: SortField = (remoteColumns.config.sort?.colId ?? 'name') as SortField;
+  const remoteSortOrder: SortOrder = remoteColumns.config.sort?.dir ?? 'asc';
+  const localSortField: SortField = (localColumns.config.sort?.colId ?? 'name') as SortField;
+  const localSortOrder: SortOrder = localColumns.config.sort?.dir ?? 'asc';
   const [selectedLocalFiles, setSelectedLocalFiles] = useState<Set<string>>(new Set());
   const [selectedRemoteFiles, setSelectedRemoteFiles] = useState<Set<string>>(new Set());
   const [lastSelectedRemoteIndex, setLastSelectedRemoteIndex] = useState<number | null>(null);
@@ -1582,13 +1593,23 @@ interface UpdateVerificationInfo {
   sortedRemoteFilesRef.current = sortedRemoteFiles;
 
   const handleRemoteSort = (field: SortField) => {
-    if (remoteSortField === field) setRemoteSortOrder(remoteSortOrder === 'asc' ? 'desc' : 'asc');
-    else { setRemoteSortField(field); setRemoteSortOrder('asc'); }
+    const cur = remoteColumns.config.sort;
+    const colId = field as AeroFileRemoteColId;
+    if (cur && cur.colId === colId) {
+      remoteColumns.setSort({ colId, dir: cur.dir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      remoteColumns.setSort({ colId, dir: 'asc' });
+    }
   };
 
   const handleLocalSort = (field: SortField) => {
-    if (localSortField === field) setLocalSortOrder(localSortOrder === 'asc' ? 'desc' : 'asc');
-    else { setLocalSortField(field); setLocalSortOrder('asc'); }
+    const cur = localColumns.config.sort;
+    const colId = field as AeroFileLocalColId;
+    if (cur && cur.colId === colId) {
+      localColumns.setSort({ colId, dir: cur.dir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      localColumns.setSort({ colId, dir: 'asc' });
+    }
   };
 
   // === Local Path Tabs ===
@@ -9322,16 +9343,37 @@ interface UpdateVerificationInfo {
                         </button>
                       </div>
                     ) : viewMode === 'list' ? (
-                      <table className="w-full text-sm" role="grid" aria-label="Remote files">
-                        <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0" role="rowgroup">
-                          <tr role="row">
-                            <SortableHeader label={t('browser.name')} field="name" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />
-                            {visibleColumns.includes('size') && <SortableHeader label={t('browser.size')} field="size" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
-                            {visibleColumns.includes('type') && <SortableHeader label={t('browser.type')} field="type" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} className="hidden xl:table-cell" />}
-                            {visibleColumns.includes('permissions') && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">{t('browser.permsHeader')}</th>}
-                            {visibleColumns.includes('modified') && <SortableHeader label={t('browser.modified')} field="modified" currentField={remoteSortField} order={remoteSortOrder} onClick={handleRemoteSort} />}
-                          </tr>
-                        </thead>
+                      (() => {
+                        const visibility = remoteColumns.config.visibility;
+                        const orderedVisible = remoteColumns.orderedVisibleColumns;
+                        const orderedExtras = orderedVisible.filter(c => c.id !== 'name');
+                        const remoteColRefs: Record<string, HTMLTableColElement | null> = {};
+                        const handleRemoteLiveResize = (id: AeroFileRemoteColId, w: number) => {
+                          const el = remoteColRefs[id];
+                          if (el) el.style.width = `${w}px`;
+                        };
+                        const renderEmptyExtra = (id: AeroFileRemoteColId) => {
+                          const cls = id === 'type' || id === 'permissions'
+                            ? 'hidden xl:table-cell px-3 py-2 text-xs text-gray-400'
+                            : 'px-4 py-2 text-xs text-gray-400';
+                          return <td key={id} className={cls}>—</td>;
+                        };
+                        return (
+                      <table className="w-full text-sm" role="grid" aria-label="Remote files" style={{ tableLayout: 'fixed' }}>
+                        <colgroup>
+                          {orderedVisible.map((col) => (
+                            <col
+                              key={col.id}
+                              ref={(el) => { remoteColRefs[col.id] = el; }}
+                              style={{ width: `${remoteColumns.config.widths[col.id]}px` }}
+                            />
+                          ))}
+                        </colgroup>
+                        <AeroFileTableHeader<AeroFileRemoteColId>
+                          columns={remoteColumns}
+                          onLiveResize={handleRemoteLiveResize}
+                          columnHeaderClassName={(id) => (id === 'type' || id === 'permissions') ? 'hidden xl:table-cell' : undefined}
+                        />
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700" role="rowgroup">
                           {/* Go Up Row - always visible, disabled at root or sync base */}
                           {(() => {
@@ -9347,10 +9389,7 @@ interface UpdateVerificationInfo {
                                   {iconProvider.getFolderUpIcon(16).icon}
                                   <span className="italic">{t('browser.parentFolder')}</span>
                                 </td>
-                                {visibleColumns.includes('size') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
-                                {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-400">—</td>}
-                                {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-4 py-2 text-xs text-gray-400">—</td>}
-                                {visibleColumns.includes('modified') && <td className="px-4 py-2 text-xs text-gray-400">—</td>}
+                                {orderedExtras.map((c) => visibility[c.id] ? renderEmptyExtra(c.id) : null)}
                               </tr>
                             );
                           })()}
@@ -9457,14 +9496,27 @@ interface UpdateVerificationInfo {
                                 {lockedFiles.has(file.path) && <span title={t('browser.locked')}><Lock size={12} className="text-orange-500" /></span>}
                                 {getSyncBadge(file.path, file.modified || undefined, false)}
                               </td>
-                              {visibleColumns.includes('size') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : '-')}</td>}
-                              {visibleColumns.includes('type') && <td className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>}
-                              {visibleColumns.includes('permissions') && <td className="hidden xl:table-cell px-3 py-2"><FeatureBadge value={file.permissions} locked={isPasswordProtectedFile(file)} watermarked={file.metadata?.watermarked === 'true'} /></td>}
-                              {visibleColumns.includes('modified') && <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>}
+                              {orderedExtras.map((c) => {
+                                if (!visibility[c.id]) return null;
+                                switch (c.id) {
+                                  case 'size':
+                                    return <td key="size" className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : '-')}</td>;
+                                  case 'type':
+                                    return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>;
+                                  case 'permissions':
+                                    return <td key="permissions" className="hidden xl:table-cell px-3 py-2"><FeatureBadge value={file.permissions} locked={isPasswordProtectedFile(file)} watermarked={file.metadata?.watermarked === 'true'} /></td>;
+                                  case 'modified':
+                                    return <td key="modified" className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>;
+                                  default:
+                                    return null;
+                                }
+                              })}
                             </tr>
                           ))}
                         </tbody>
                       </table>
+                        );
+                      })()
                     ) : viewMode === 'large' ? (
                       /* Large Icons View */
                       <LargeIconsGrid
@@ -9656,16 +9708,13 @@ interface UpdateVerificationInfo {
                   setLastSelectedIndex={setLastSelectedLocalIndex}
                   setActivePanel={setActivePanel}
                   setPreviewFile={setPreviewFile}
-                  sortField={localSortField}
-                  sortOrder={localSortOrder}
-                  onSort={handleLocalSort}
+                  localColumns={localColumns}
                   searchFilter={localSearchFilter}
                   setSearchFilter={setLocalSearchFilter}
                   showSearchBar={showLocalSearchBar}
                   setShowSearchBar={setShowLocalSearchBar}
                   searchRef={localSearchRef}
                   viewMode={viewMode}
-                  visibleColumns={visibleColumns}
                   showFileExtensions={showFileExtensions}
                   debugMode={debugMode}
                   doubleClickAction={doubleClickAction}
