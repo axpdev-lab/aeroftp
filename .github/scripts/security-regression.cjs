@@ -131,7 +131,7 @@ function checkOauthSettingsLeakGuard() {
   );
 
   assert(
-    savedServers.includes('SEC: Load credentials from vault only — no localStorage fallback.'),
+    savedServers.includes('SEC: Load credentials from vault only: no localStorage fallback.'),
     `oauth leak guard regression: missing vault-only guard comment in ${savedServersFile}`
   );
 
@@ -184,7 +184,7 @@ function checkPluginSandboxConstraints() {
   const content = read(file);
 
   const requiredTokens = [
-    'SEC: Direct argv execution — no shell interpretation.',
+    'SEC: Direct argv execution: no shell interpretation.',
     'Plugin command contains forbidden shell metacharacters',
     'let argv: Vec<&str> = command.split_whitespace().collect();',
     'if program.contains("..") || program.starts_with(\'/\')',

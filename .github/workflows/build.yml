@@ -71,7 +71,7 @@ jobs:
               break
             fi
             if [ "$i" -eq 5 ]; then
-              echo "snapcraft install still failing after 5 attempts; continuing — Snap step is continue-on-error"
+              echo "snapcraft install still failing after 5 attempts; continuing: Snap step is continue-on-error"
               break
             fi
             echo "snap install failed (attempt $i/5), retry in 60s..."
@@ -84,7 +84,7 @@ jobs:
       - name: Run security regression suite (MVP)
         run: npm run security:regression
 
-      # Quality gates — run on Linux only to avoid duplicating work across platforms
+      # Quality gates: run on Linux only to avoid duplicating work across platforms
       - name: TypeScript type check
         if: matrix.target == 'linux'
         run: npx tsc --noEmit
@@ -117,7 +117,7 @@ jobs:
       #
       # Fix: remove ALL bundled shared libraries. The AppImage uses system libs
       # at runtime. Tested on Arch (EndeavourOS) + KDE Wayland + Intel Haswell.
-      # The binary's C API linkage is stable across distros — only the bundled
+      # The binary's C API linkage is stable across distros: only the bundled
       # libs caused ABI conflicts. The user must have webkit2gtk-4.1 installed
       # (same requirement as the .deb and AUR packages).
       #
@@ -159,7 +159,7 @@ jobs:
           APPIMAGETOOL_SHA256="a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0"
           wget -q "$APPIMAGETOOL_URL" -O appimagetool
           echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c - || {
-            echo "::error::appimagetool checksum mismatch — possible supply chain compromise. Update APPIMAGETOOL_SHA256 in build.yml after verification."
+            echo "::error::appimagetool checksum mismatch: possible supply chain compromise. Update APPIMAGETOOL_SHA256 in build.yml after verification."
             echo "Actual checksum: $(sha256sum appimagetool | cut -d' ' -f1)"
             exit 1
           }

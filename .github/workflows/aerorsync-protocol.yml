@@ -1,7 +1,7 @@
 name: Aerorsync Protocol
 
 # Dedicated workflow for the `aerorsync` native rsync wire-protocol module.
-# The production `build.yml` workflow stays untouched — this file lives
+# The production `build.yml` workflow stays untouched: this file lives
 # next to it and is entirely additive.
 #
 # Originally created as `strada-c-prototype.yml` while the module was an
@@ -100,7 +100,7 @@ jobs:
         run: cargo check --lib
 
   # ------------------------------------------------------------------
-  # lane2: Docker-backed lane 2 — our own `aerorsync_serve` binary
+  # lane2: Docker-backed lane 2: our own `aerorsync_serve` binary
   # runs inside a container and the driver speaks the protocol we wrote.
   # Useful for catching drift between the serve side and the driver
   # side of our encoder/decoder pair.
@@ -148,7 +148,7 @@ jobs:
         run: docker compose -f docker-compose.native.yml down -v
 
   # ------------------------------------------------------------------
-  # lane3: Docker-backed lane 3 — a real `rsync 3.2.7` server over SSH.
+  # lane3: Docker-backed lane 3: a real `rsync 3.2.7` server over SSH.
   # The test drives the full upload + finish_session round-trip against
   # a live rsync and surfaces any regression in the native protocol
   # implementation immediately. S8j closed the prior NDX_DONE / xxh128

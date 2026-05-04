@@ -62,7 +62,7 @@ jobs:
       # The Git-for-Windows Perl that `shell: bash` picks up is missing those
       # modules (BEGIN failed at Params/Check.pm). Strawberry Perl ships them,
       # but after `choco install` the Strawberry bin dirs only hit the PATH of
-      # newly-spawned steps — we also have to prepend them to GITHUB_PATH so
+      # newly-spawned steps: we also have to prepend them to GITHUB_PATH so
       # they actually win against Git Bash's Perl on the next step's lookup.
       - name: Install Strawberry Perl (Windows)
         if: runner.os == 'Windows'
