@@ -3010,7 +3010,17 @@
             "checksumVerification": "Натисніть для обчислення контрольної суми файлу",
             "checksumFolderNA": "Контрольні суми недоступні для тек",
             "readOnly": "Лише для читання",
-            "hidden": "Прихований"
+            "hidden": "Прихований",
+            "contains": "Містить",
+            "foldersOnly": "Лише папки",
+            "location": "Розташування",
+            "mixed": "Змішано",
+            "multipleSelected": "Вибрано елементів: {count}",
+            "newestModified": "Найновіша зміна",
+            "oldestModified": "Найстаріша зміна",
+            "selectedItems": "Вибрані елементи",
+            "sizesPartial": "(деякі розміри невідомі)",
+            "totalSize": "Загальний розмір"
         },
         "duplicates": {
             "title": "Пошук дублікатів",

@@ -3010,7 +3010,17 @@
             "checksumVerification": "Kliknij, aby obliczyć sumę kontrolną pliku",
             "checksumFolderNA": "Sumy kontrolne nie są dostępne dla folderów",
             "readOnly": "Tylko do odczytu",
-            "hidden": "Ukryty"
+            "hidden": "Ukryty",
+            "contains": "Zawiera",
+            "foldersOnly": "Tylko foldery",
+            "location": "Lokalizacja",
+            "mixed": "Mieszane",
+            "multipleSelected": "Zaznaczono {count} elementów",
+            "newestModified": "Najnowsza modyfikacja",
+            "oldestModified": "Najstarsza modyfikacja",
+            "selectedItems": "Zaznaczone elementy",
+            "sizesPartial": "(niektóre rozmiary nieznane)",
+            "totalSize": "Łączny rozmiar"
         },
         "duplicates": {
             "title": "Znajdź duplikaty",

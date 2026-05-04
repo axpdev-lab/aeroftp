@@ -3010,7 +3010,17 @@
             "checksumVerification": "Napsauta laskeaksesi tiedoston tarkistussumman",
             "checksumFolderNA": "Tarkistussummat eivät ole saatavilla kansioille",
             "readOnly": "Vain luku",
-            "hidden": "Piilotettu"
+            "hidden": "Piilotettu",
+            "contains": "Sisältää",
+            "foldersOnly": "Vain kansiot",
+            "location": "Sijainti",
+            "mixed": "Sekalainen",
+            "multipleSelected": "{count} kohdetta valittu",
+            "newestModified": "Viimeisin muutos",
+            "oldestModified": "Vanhin muutos",
+            "selectedItems": "Valitut kohteet",
+            "sizesPartial": "(jotkin koot tuntemattomia)",
+            "totalSize": "Kokonaiskoko"
         },
         "duplicates": {
             "title": "Etsi kaksoiskappaleet",

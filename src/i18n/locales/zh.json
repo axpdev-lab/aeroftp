@@ -3010,7 +3010,17 @@
             "checksumVerification": "点击计算文件校验和",
             "checksumFolderNA": "文件夹不支持校验和",
             "readOnly": "只读",
-            "hidden": "隐藏"
+            "hidden": "隐藏",
+            "contains": "包含",
+            "foldersOnly": "仅文件夹",
+            "location": "位置",
+            "mixed": "混合",
+            "multipleSelected": "已选择 {count} 项",
+            "newestModified": "最新修改",
+            "oldestModified": "最早修改",
+            "selectedItems": "已选项目",
+            "sizesPartial": "(部分大小未知)",
+            "totalSize": "总大小"
         },
         "duplicates": {
             "title": "查找重复文件",

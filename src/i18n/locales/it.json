@@ -3100,7 +3100,17 @@
             "checksumVerification": "Clicca per calcolare il checksum del file",
             "checksumFolderNA": "I checksum non sono disponibili per le cartelle",
             "readOnly": "Sola lettura",
-            "hidden": "Nascosto"
+            "hidden": "Nascosto",
+            "contains": "Contiene",
+            "foldersOnly": "Solo cartelle",
+            "location": "Percorso",
+            "mixed": "Misto",
+            "multipleSelected": "{count} elementi selezionati",
+            "newestModified": "Ultima modifica",
+            "oldestModified": "Modifica meno recente",
+            "selectedItems": "Elementi selezionati",
+            "sizesPartial": "(alcune dimensioni sconosciute)",
+            "totalSize": "Dimensione totale"
         },
         "duplicates": {
             "title": "Trova Duplicati",

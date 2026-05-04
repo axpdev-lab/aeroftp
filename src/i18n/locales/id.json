@@ -3010,7 +3010,17 @@
             "checksumVerification": "Klik untuk menghitung checksum file",
             "checksumFolderNA": "Checksum tidak tersedia untuk folder",
             "readOnly": "Hanya baca",
-            "hidden": "Tersembunyi"
+            "hidden": "Tersembunyi",
+            "contains": "Berisi",
+            "foldersOnly": "Hanya folder",
+            "location": "Lokasi",
+            "mixed": "Campuran",
+            "multipleSelected": "{count} item dipilih",
+            "newestModified": "Paling baru diubah",
+            "oldestModified": "Paling lama diubah",
+            "selectedItems": "Item terpilih",
+            "sizesPartial": "(beberapa ukuran tidak diketahui)",
+            "totalSize": "Ukuran total"
         },
         "duplicates": {
             "title": "Cari Duplikat",

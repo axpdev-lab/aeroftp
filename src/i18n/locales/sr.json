@@ -3010,7 +3010,17 @@
             "checksumVerification": "Kliknite za izračunavanje kontrolnog zbira fajla",
             "checksumFolderNA": "Kontrolni zbirovi nisu dostupni za fascikle",
             "readOnly": "Само за читање",
-            "hidden": "Скривено"
+            "hidden": "Скривено",
+            "contains": "Садржи",
+            "foldersOnly": "Само фасцикле",
+            "location": "Локација",
+            "mixed": "Мешано",
+            "multipleSelected": "Изабрано ставки: {count}",
+            "newestModified": "Најновија измена",
+            "oldestModified": "Најстарија измена",
+            "selectedItems": "Изабране ставке",
+            "sizesPartial": "(неке величине непознате)",
+            "totalSize": "Укупна величина"
         },
         "duplicates": {
             "title": "Pronađi duplikate",

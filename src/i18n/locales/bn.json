@@ -3010,7 +3010,17 @@
             "checksumVerification": "ফাইলের চেকসাম গণনা করতে ক্লিক করুন",
             "checksumFolderNA": "ফোল্ডারের জন্য চেকসাম উপলব্ধ নয়",
             "readOnly": "শুধুমাত্র পঠনযোগ্য",
-            "hidden": "লুকানো"
+            "hidden": "লুকানো",
+            "contains": "ধারণ করে",
+            "foldersOnly": "শুধুমাত্র ফোল্ডার",
+            "location": "অবস্থান",
+            "mixed": "মিশ্র",
+            "multipleSelected": "{count}টি আইটেম নির্বাচিত",
+            "newestModified": "সর্বশেষ পরিবর্তিত",
+            "oldestModified": "সবচেয়ে পুরানো পরিবর্তন",
+            "selectedItems": "নির্বাচিত আইটেম",
+            "sizesPartial": "(কিছু আকার অজানা)",
+            "totalSize": "মোট আকার"
         },
         "duplicates": {
             "title": "ডুপ্লিকেট খুঁজুন",

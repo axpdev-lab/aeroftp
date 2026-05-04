@@ -3010,7 +3010,17 @@
             "checksumVerification": "Klicka för att beräkna filens kontrollsumma",
             "checksumFolderNA": "Kontrollsummor är inte tillgängliga för mappar",
             "readOnly": "Skrivskyddad",
-            "hidden": "Dold"
+            "hidden": "Dold",
+            "contains": "Innehåller",
+            "foldersOnly": "Endast mappar",
+            "location": "Plats",
+            "mixed": "Blandat",
+            "multipleSelected": "{count} objekt valda",
+            "newestModified": "Senaste ändring",
+            "oldestModified": "Äldsta ändring",
+            "selectedItems": "Valda objekt",
+            "sizesPartial": "(vissa storlekar okända)",
+            "totalSize": "Total storlek"
         },
         "duplicates": {
             "title": "Hitta dubbletter",

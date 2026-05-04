@@ -3010,7 +3010,17 @@
             "checksumVerification": "Smelltu til að reikna tékksummu skráar",
             "checksumFolderNA": "Tékksummur ekki í boði fyrir möppur",
             "readOnly": "Skrifvarið",
-            "hidden": "Falið"
+            "hidden": "Falið",
+            "contains": "Inniheldur",
+            "foldersOnly": "Aðeins möppur",
+            "location": "Staðsetning",
+            "mixed": "Blandað",
+            "multipleSelected": "{count} atriði valin",
+            "newestModified": "Nýjast breytt",
+            "oldestModified": "Elst breytt",
+            "selectedItems": "Valin atriði",
+            "sizesPartial": "(sumar stærðir óþekktar)",
+            "totalSize": "Heildarstærð"
         },
         "duplicates": {
             "title": "Finna Tvírit",

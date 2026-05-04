@@ -3010,7 +3010,17 @@
             "checksumVerification": "Nhấn để tính tổng kiểm tra tệp",
             "checksumFolderNA": "Tổng kiểm tra không khả dụng cho thư mục",
             "readOnly": "Chỉ đọc",
-            "hidden": "Ẩn"
+            "hidden": "Ẩn",
+            "contains": "Chứa",
+            "foldersOnly": "Chỉ thư mục",
+            "location": "Vị trí",
+            "mixed": "Hỗn hợp",
+            "multipleSelected": "Đã chọn {count} mục",
+            "newestModified": "Sửa đổi mới nhất",
+            "oldestModified": "Sửa đổi cũ nhất",
+            "selectedItems": "Mục đã chọn",
+            "sizesPartial": "(một số kích thước không xác định)",
+            "totalSize": "Tổng kích thước"
         },
         "duplicates": {
             "title": "Tìm tệp trùng lặp",

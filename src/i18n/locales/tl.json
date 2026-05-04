@@ -3010,7 +3010,17 @@
             "checksumVerification": "I-click para kalkulahin ang checksum ng file",
             "checksumFolderNA": "Hindi available ang checksum para sa mga folder",
             "readOnly": "Basahin lamang",
-            "hidden": "Nakatago"
+            "hidden": "Nakatago",
+            "contains": "Naglalaman ng",
+            "foldersOnly": "Mga folder lamang",
+            "location": "Lokasyon",
+            "mixed": "Halo-halo",
+            "multipleSelected": "{count} item na napili",
+            "newestModified": "Pinakabagong binago",
+            "oldestModified": "Pinakalumang binago",
+            "selectedItems": "Mga napiling item",
+            "sizesPartial": "(ilang sukat ay hindi alam)",
+            "totalSize": "Kabuuang sukat"
         },
         "duplicates": {
             "title": "Hanapin ang mga Duplikado",

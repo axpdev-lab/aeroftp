@@ -3010,7 +3010,17 @@
             "checksumVerification": "Cliciwch i gyfrifo swm gwirio'r ffeil",
             "checksumFolderNA": "Nid yw symiau gwirio ar gael ar gyfer ffolderi",
             "readOnly": "Darllen yn unig",
-            "hidden": "Cudd"
+            "hidden": "Cudd",
+            "contains": "Yn cynnwys",
+            "foldersOnly": "Ffolderi yn unig",
+            "location": "Lleoliad",
+            "mixed": "Cymysg",
+            "multipleSelected": "{count} eitem wedi'u dewis",
+            "newestModified": "Wedi'i addasu ddiweddaraf",
+            "oldestModified": "Wedi'i addasu hynaf",
+            "selectedItems": "Eitemau a ddewiswyd",
+            "sizesPartial": "(rhai meintiau'n anhysbys)",
+            "totalSize": "Cyfanswm maint"
         },
         "duplicates": {
             "title": "Dod o Hyd i Ddyblygu",

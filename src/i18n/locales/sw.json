@@ -3010,7 +3010,17 @@
             "checksumVerification": "Bonyeza kuhesabu checksum ya faili",
             "checksumFolderNA": "Checksum haipatikani kwa folda",
             "readOnly": "Kusoma tu",
-            "hidden": "Iliyofichwa"
+            "hidden": "Iliyofichwa",
+            "contains": "Ina",
+            "foldersOnly": "Folda pekee",
+            "location": "Mahali",
+            "mixed": "Mchanganyiko",
+            "multipleSelected": "Vipengele {count} vimechaguliwa",
+            "newestModified": "Ilibadilishwa hivi karibuni",
+            "oldestModified": "Ilibadilishwa zamani zaidi",
+            "selectedItems": "Vipengele vilivyochaguliwa",
+            "sizesPartial": "(baadhi ya ukubwa hauwijulikani)",
+            "totalSize": "Ukubwa wa jumla"
         },
         "duplicates": {
             "title": "Tafuta Nakala",

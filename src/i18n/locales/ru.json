@@ -3010,7 +3010,17 @@
             "checksumVerification": "Нажмите для вычисления контрольной суммы файла",
             "checksumFolderNA": "Контрольные суммы недоступны для папок",
             "readOnly": "Только чтение",
-            "hidden": "Скрытый"
+            "hidden": "Скрытый",
+            "contains": "Содержит",
+            "foldersOnly": "Только папки",
+            "location": "Расположение",
+            "mixed": "Смешанные",
+            "multipleSelected": "Выбрано элементов: {count}",
+            "newestModified": "Последнее изменение",
+            "oldestModified": "Самое раннее изменение",
+            "selectedItems": "Выбранные элементы",
+            "sizesPartial": "(некоторые размеры неизвестны)",
+            "totalSize": "Общий размер"
         },
         "duplicates": {
             "title": "Поиск дубликатов",

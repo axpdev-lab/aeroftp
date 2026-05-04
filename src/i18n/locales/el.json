@@ -3010,7 +3010,17 @@
             "checksumVerification": "Κάντε κλικ για υπολογισμό checksum αρχείου",
             "checksumFolderNA": "Τα checksums δεν είναι διαθέσιμα για φακέλους",
             "readOnly": "Μόνο για ανάγνωση",
-            "hidden": "Κρυφό"
+            "hidden": "Κρυφό",
+            "contains": "Περιέχει",
+            "foldersOnly": "Μόνο φάκελοι",
+            "location": "Τοποθεσία",
+            "mixed": "Μικτό",
+            "multipleSelected": "{count} επιλεγμένα στοιχεία",
+            "newestModified": "Πιο πρόσφατη τροποποίηση",
+            "oldestModified": "Παλαιότερη τροποποίηση",
+            "selectedItems": "Επιλεγμένα στοιχεία",
+            "sizesPartial": "(ορισμένα μεγέθη άγνωστα)",
+            "totalSize": "Συνολικό μέγεθος"
         },
         "duplicates": {
             "title": "Εύρεση Διπλοτύπων",

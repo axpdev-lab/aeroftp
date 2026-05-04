@@ -3010,7 +3010,17 @@
             "checksumVerification": "Klikk for å beregne filsjekksum",
             "checksumFolderNA": "Sjekksummer er ikke tilgjengelig for mapper",
             "readOnly": "Skrivebeskyttet",
-            "hidden": "Skjult"
+            "hidden": "Skjult",
+            "contains": "Inneholder",
+            "foldersOnly": "Bare mapper",
+            "location": "Plassering",
+            "mixed": "Blandet",
+            "multipleSelected": "{count} elementer valgt",
+            "newestModified": "Nyest endret",
+            "oldestModified": "Eldst endret",
+            "selectedItems": "Valgte elementer",
+            "sizesPartial": "(noen størrelser ukjent)",
+            "totalSize": "Total størrelse"
         },
         "duplicates": {
             "title": "Finn duplikater",

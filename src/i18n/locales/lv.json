@@ -3010,7 +3010,17 @@
             "checksumVerification": "Noklikšķiniet faila kontrolsummas aprēķināšanai",
             "checksumFolderNA": "Kontrolsummas nav pieejamas mapēm",
             "readOnly": "Tikai lasāms",
-            "hidden": "Slēpts"
+            "hidden": "Slēpts",
+            "contains": "Satur",
+            "foldersOnly": "Tikai mapes",
+            "location": "Atrašanās vieta",
+            "mixed": "Jaukts",
+            "multipleSelected": "Atlasīti {count} vienumi",
+            "newestModified": "Jaunākais labots",
+            "oldestModified": "Vecākais labots",
+            "selectedItems": "Atlasītie vienumi",
+            "sizesPartial": "(daži izmēri nezināmi)",
+            "totalSize": "Kopējais izmērs"
         },
         "duplicates": {
             "title": "Atrast dublikātus",

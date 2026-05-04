@@ -3010,7 +3010,17 @@
             "checksumVerification": "Klõpsake faili kontrollsumma arvutamiseks",
             "checksumFolderNA": "Kontrollsummad pole kaustade jaoks saadaval",
             "readOnly": "Kirjutuskaitstud",
-            "hidden": "Peidetud"
+            "hidden": "Peidetud",
+            "contains": "Sisaldab",
+            "foldersOnly": "Ainult kaustad",
+            "location": "Asukoht",
+            "mixed": "Segatud",
+            "multipleSelected": "{count} üksust valitud",
+            "newestModified": "Viimati muudetud",
+            "oldestModified": "Vanim muudetud",
+            "selectedItems": "Valitud üksused",
+            "sizesPartial": "(mõned suurused teadmata)",
+            "totalSize": "Kogusuurus"
         },
         "duplicates": {
             "title": "Leia duplikaadid",

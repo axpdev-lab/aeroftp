@@ -3010,7 +3010,17 @@
             "checksumVerification": "Kliknete pro vypocet kontrolniho souctu souboru",
             "checksumFolderNA": "Kontrolni soucty nejsou pro slozky dostupne",
             "readOnly": "Jen pro čtení",
-            "hidden": "Skrytý"
+            "hidden": "Skrytý",
+            "contains": "Obsahuje",
+            "foldersOnly": "Pouze složky",
+            "location": "Umístění",
+            "mixed": "Smíšené",
+            "multipleSelected": "Vybráno {count} položek",
+            "newestModified": "Nejnovější úprava",
+            "oldestModified": "Nejstarší úprava",
+            "selectedItems": "Vybrané položky",
+            "sizesPartial": "(některé velikosti neznámé)",
+            "totalSize": "Celková velikost"
         },
         "duplicates": {
             "title": "Najit duplikaty",

@@ -3003,7 +3003,17 @@
             "folderContents": "{files} ֆայլ, {dirs} պանակ",
             "notAvailable": "Հասանելի չէ",
             "readOnly": "Միայն կարդալու",
-            "hidden": "Թաքնված"
+            "hidden": "Թաքնված",
+            "contains": "Պարունակում է",
+            "foldersOnly": "Միայն թղթապանակներ",
+            "location": "Գտնվելու վայր",
+            "mixed": "Խառը",
+            "multipleSelected": "Ընտրված է {count} տարր",
+            "newestModified": "Ամենավերջին փոփոխված",
+            "oldestModified": "Ամենահին փոփոխված",
+            "selectedItems": "Ընտրված տարրեր",
+            "sizesPartial": "(որոշ չափերն անհայտ են)",
+            "totalSize": "Ընդհանուր չափ"
         },
         "duplicates": {
             "title": "Գտնել կրկնօրինակներ",

@@ -3010,7 +3010,17 @@
             "checksumVerification": "ចុចដើម្បីគណនា checksum ឯកសារ",
             "checksumFolderNA": "Checksums មិនមានសម្រាប់ថតទេ",
             "readOnly": "អានតែប៉ុណ្ណោះ",
-            "hidden": "លាក់"
+            "hidden": "លាក់",
+            "contains": "មានផ្ទុក",
+            "foldersOnly": "តែថតប៉ុណ្ណោះ",
+            "location": "ទីតាំង",
+            "mixed": "លាយឡំ",
+            "multipleSelected": "បានជ្រើសរើស {count} ធាតុ",
+            "newestModified": "បានកែប្រែថ្មីបំផុត",
+            "oldestModified": "បានកែប្រែចាស់បំផុត",
+            "selectedItems": "ធាតុដែលបានជ្រើសរើស",
+            "sizesPartial": "(ទំហំខ្លះមិនស្គាល់)",
+            "totalSize": "ទំហំសរុប"
         },
         "duplicates": {
             "title": "ស្វែងរកស្ទួន",

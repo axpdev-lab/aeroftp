@@ -3010,7 +3010,17 @@
             "checksumVerification": "Clique para calcular o checksum do arquivo",
             "checksumFolderNA": "Checksums não estão disponíveis para pastas",
             "readOnly": "Somente leitura",
-            "hidden": "Oculto"
+            "hidden": "Oculto",
+            "contains": "Contém",
+            "foldersOnly": "Apenas pastas",
+            "location": "Localização",
+            "mixed": "Misto",
+            "multipleSelected": "{count} itens selecionados",
+            "newestModified": "Modificação mais recente",
+            "oldestModified": "Modificação mais antiga",
+            "selectedItems": "Itens selecionados",
+            "sizesPartial": "(alguns tamanhos desconhecidos)",
+            "totalSize": "Tamanho total"
         },
         "duplicates": {
             "title": "Encontrar Duplicados",

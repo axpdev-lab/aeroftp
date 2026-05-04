@@ -3010,7 +3010,17 @@
             "folderContents": "{files} fitxategi, {dirs} karpeta",
             "notAvailable": "Ez dago eskuragarri",
             "readOnly": "Irakurtzeko soilik",
-            "hidden": "Ezkutatua"
+            "hidden": "Ezkutatua",
+            "contains": "Edukia",
+            "foldersOnly": "Karpetak soilik",
+            "location": "Kokapena",
+            "mixed": "Nahasia",
+            "multipleSelected": "{count} elementu hautatuta",
+            "newestModified": "Berrikiena aldatua",
+            "oldestModified": "Zaharrena aldatua",
+            "selectedItems": "Hautatutako elementuak",
+            "sizesPartial": "(tamaina batzuk ezezagunak)",
+            "totalSize": "Tamaina osoa"
         },
         "duplicates": {
             "title": "Bilatu bikoiztuak",

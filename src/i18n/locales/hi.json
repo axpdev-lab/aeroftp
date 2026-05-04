@@ -3010,7 +3010,17 @@
             "folderContents": "{files} फ़ाइलें, {dirs} फ़ोल्डर",
             "notAvailable": "उपलब्ध नहीं",
             "readOnly": "केवल पढ़ने योग्य",
-            "hidden": "छिपा हुआ"
+            "hidden": "छिपा हुआ",
+            "contains": "शामिल है",
+            "foldersOnly": "केवल फ़ोल्डर",
+            "location": "स्थान",
+            "mixed": "मिश्रित",
+            "multipleSelected": "{count} आइटम चयनित",
+            "newestModified": "नवीनतम संशोधित",
+            "oldestModified": "सबसे पुराना संशोधित",
+            "selectedItems": "चयनित आइटम",
+            "sizesPartial": "(कुछ आकार अज्ञात)",
+            "totalSize": "कुल आकार"
         },
         "duplicates": {
             "title": "डुप्लिकेट खोजें",

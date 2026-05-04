@@ -217,7 +217,7 @@ import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { useTranslation } from './i18n';
 
 // Components
-import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
+import { ConfirmDialog, InputDialog, SyncNavDialog, PropertiesDialog, FileProperties, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, reopenTransferToast } from './components/Transfer/TransferToastContainer';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
@@ -457,6 +457,7 @@ const App: React.FC = () => {
   const inlineRenameRef = useRef<HTMLInputElement>(null);
   const inlineRenameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [propertiesDialog, setPropertiesDialog] = useState<FileProperties | null>(null);
+  const [multiPropertiesDialog, setMultiPropertiesDialog] = useState<MultiFileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showMcpDialog, setShowMcpDialog] = useState(false);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
@@ -1335,9 +1336,10 @@ interface UpdateVerificationInfo {
       }
     },
 
-    // Alt+Enter: open properties for selected file
+    // Alt+Enter: open properties for selected file (single or aggregate when multiple)
     'Alt+Enter': () => {
-      if (activePanel === 'local' && selectedLocalFiles.size === 1) {
+      if (activePanel !== 'local' || selectedLocalFiles.size === 0) return;
+      if (selectedLocalFiles.size === 1) {
         const fileName = [...selectedLocalFiles][0];
         const file = localFiles.find(f => f.name === fileName);
         if (file) {
@@ -1350,7 +1352,19 @@ interface UpdateVerificationInfo {
             isRemote: false,
           });
         }
+        return;
       }
+      const selectedFiles = localFiles
+        .filter(f => selectedLocalFiles.has(f.name))
+        .map(f => ({
+          name: f.name,
+          path: f.path || `${currentLocalPath}/${f.name}`,
+          size: f.size,
+          is_dir: f.is_dir,
+          modified: f.modified,
+          isRemote: false,
+        } as FileProperties));
+      setMultiPropertiesDialog({ files: selectedFiles, isRemote: false });
     },
 
     // Arrow Down: select next file
@@ -6396,16 +6410,32 @@ interface UpdateVerificationInfo {
       }] : []),
       ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
       {
-        label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => setPropertiesDialog({
-          name: file.name,
-          path: file.path,
-          size: file.size,
-          is_dir: file.is_dir,
-          modified: file.modified,
-          permissions: file.permissions,
-          isRemote: true,
-          protocol: currentProtocol,
-        }), disabled: count > 1
+        label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => {
+          if (count > 1) {
+            const selectedRemote = remoteFiles.filter(f => selection.has(f.name)).map(f => ({
+              name: f.name,
+              path: f.path,
+              size: f.size,
+              is_dir: f.is_dir,
+              modified: f.modified,
+              permissions: f.permissions,
+              isRemote: true,
+              protocol: currentProtocol,
+            } as FileProperties));
+            setMultiPropertiesDialog({ files: selectedRemote, isRemote: true, protocol: currentProtocol });
+            return;
+          }
+          setPropertiesDialog({
+            name: file.name,
+            path: file.path,
+            size: file.size,
+            is_dir: file.is_dir,
+            modified: file.modified,
+            permissions: file.permissions,
+            isRemote: true,
+            protocol: currentProtocol,
+          });
+        }
       },
       { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
       // Jottacloud: Move to Trash (soft delete — recoverable, separate from hard delete above)
@@ -7486,6 +7516,39 @@ interface UpdateVerificationInfo {
       }] : []),
       {
         label: t('contextMenu.properties'), icon: <Info size={14} />, action: async () => {
+          if (count > 1) {
+            const selectedFiles = localFiles.filter(f => selection.has(f.name)).map(f => ({
+              name: f.name,
+              path: f.path || `${currentLocalPath}/${f.name}`,
+              size: f.size,
+              is_dir: f.is_dir,
+              modified: f.modified,
+              isRemote: false,
+            } as FileProperties));
+            setMultiPropertiesDialog({ files: selectedFiles, isRemote: false });
+            // Lazy-load extended attributes per file (read-only / hidden) so the
+            // mixed-state indicators surface without blocking first paint.
+            (async () => {
+              const enriched = await Promise.all(selectedFiles.map(async (sf) => {
+                try {
+                  const detailed = await invoke<any>('get_file_properties', { path: sf.path });
+                  return {
+                    ...sf,
+                    permissions: detailed.permissions_text || sf.permissions,
+                    permissions_mode: detailed.permissions_mode,
+                    is_readonly: detailed.is_readonly,
+                    is_hidden: detailed.is_hidden,
+                    owner: detailed.owner,
+                    group: detailed.group,
+                  } as FileProperties;
+                } catch {
+                  return sf;
+                }
+              }));
+              setMultiPropertiesDialog(prev => prev && prev.files.length === enriched.length ? { ...prev, files: enriched } : prev);
+            })();
+            return;
+          }
           const filePath = file.path || `${currentLocalPath}/${file.name}`;
           setPropertiesDialog({
             name: file.name,
@@ -7516,7 +7579,7 @@ interface UpdateVerificationInfo {
           } catch {
             // Silently fail - basic properties are still shown
           }
-        }, disabled: count > 1
+        }
       },
       { label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
       {
@@ -8541,6 +8604,12 @@ interface UpdateVerificationInfo {
             } : undefined}
             folderSize={propertiesDialog.is_dir ? folderSizeCache.get(propertiesDialog.path) ?? null : null}
             folderSizeCalculating={propertiesDialog.is_dir ? folderSizeCalculating.has(propertiesDialog.path) : false}
+          />
+        )}
+        {multiPropertiesDialog && (
+          <MultiFilePropertiesDialog
+            selection={multiPropertiesDialog}
+            onClose={() => setMultiPropertiesDialog(null)}
           />
         )}
         {quickLookOpen && sortedLocalFiles[quickLookIndex] && (

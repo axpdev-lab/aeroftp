@@ -3010,7 +3010,17 @@
             "checksumVerification": "Dosya sağlama toplamını hesaplamak için tıklayın",
             "checksumFolderNA": "Sağlama toplamları klasörler için kullanılamaz",
             "readOnly": "Salt okunur",
-            "hidden": "Gizli"
+            "hidden": "Gizli",
+            "contains": "İçerir",
+            "foldersOnly": "Yalnızca klasörler",
+            "location": "Konum",
+            "mixed": "Karışık",
+            "multipleSelected": "{count} öğe seçildi",
+            "newestModified": "En son değiştirilen",
+            "oldestModified": "En eski değiştirilen",
+            "selectedItems": "Seçili öğeler",
+            "sizesPartial": "(bazı boyutlar bilinmiyor)",
+            "totalSize": "Toplam boyut"
         },
         "duplicates": {
             "title": "Yinelenenleri Bul",

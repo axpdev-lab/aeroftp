@@ -3010,7 +3010,17 @@
             "checksumVerification": "Kliknite za izračun kontrolne vsote datoteke",
             "checksumFolderNA": "Kontrolne vsote niso na voljo za mape",
             "readOnly": "Samo za branje",
-            "hidden": "Skrito"
+            "hidden": "Skrito",
+            "contains": "Vsebuje",
+            "foldersOnly": "Samo mape",
+            "location": "Mesto",
+            "mixed": "Mešano",
+            "multipleSelected": "Izbranih elementov: {count}",
+            "newestModified": "Najnovejša sprememba",
+            "oldestModified": "Najstarejša sprememba",
+            "selectedItems": "Izbrani elementi",
+            "sizesPartial": "(nekatere velikosti niso znane)",
+            "totalSize": "Skupna velikost"
         },
         "duplicates": {
             "title": "Poišči podvojene",

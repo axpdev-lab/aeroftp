@@ -3010,7 +3010,17 @@
             "checksumVerification": "Натиснете за изчисляване на контролна сума на файла",
             "checksumFolderNA": "Контролните суми не са налични за папки",
             "readOnly": "Само за четене",
-            "hidden": "Скрит"
+            "hidden": "Скрит",
+            "contains": "Съдържа",
+            "foldersOnly": "Само папки",
+            "location": "Местоположение",
+            "mixed": "Смесено",
+            "multipleSelected": "{count} избрани елемента",
+            "newestModified": "Най-нова промяна",
+            "oldestModified": "Най-стара промяна",
+            "selectedItems": "Избрани елементи",
+            "sizesPartial": "(някои размери са неизвестни)",
+            "totalSize": "Общ размер"
         },
         "duplicates": {
             "title": "Намиране на дубликати",

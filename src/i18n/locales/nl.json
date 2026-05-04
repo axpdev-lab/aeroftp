@@ -3010,7 +3010,17 @@
             "checksumVerification": "Klik om bestandscontrolesom te berekenen",
             "checksumFolderNA": "Controlesommen zijn niet beschikbaar voor mappen",
             "readOnly": "Alleen-lezen",
-            "hidden": "Verborgen"
+            "hidden": "Verborgen",
+            "contains": "Bevat",
+            "foldersOnly": "Alleen mappen",
+            "location": "Locatie",
+            "mixed": "Gemengd",
+            "multipleSelected": "{count} items geselecteerd",
+            "newestModified": "Nieuwst gewijzigd",
+            "oldestModified": "Oudst gewijzigd",
+            "selectedItems": "Geselecteerde items",
+            "sizesPartial": "(sommige groottes onbekend)",
+            "totalSize": "Totale grootte"
         },
         "duplicates": {
             "title": "Duplicaten zoeken",

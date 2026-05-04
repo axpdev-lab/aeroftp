@@ -3010,7 +3010,17 @@
             "folderContents": "{files} datoteka, {dirs} mapa",
             "notAvailable": "Nije dostupno",
             "readOnly": "Samo za čitanje",
-            "hidden": "Skriveno"
+            "hidden": "Skriveno",
+            "contains": "Sadrži",
+            "foldersOnly": "Samo mape",
+            "location": "Lokacija",
+            "mixed": "Mješovito",
+            "multipleSelected": "{count} odabranih stavki",
+            "newestModified": "Najnovije izmijenjeno",
+            "oldestModified": "Najstarije izmijenjeno",
+            "selectedItems": "Odabrane stavke",
+            "sizesPartial": "(neke veličine nepoznate)",
+            "totalSize": "Ukupna veličina"
         },
         "duplicates": {
             "title": "Pronađi duplikate",

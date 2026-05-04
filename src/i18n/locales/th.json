@@ -3010,7 +3010,17 @@
             "checksumVerification": "คลิกเพื่อคำนวณค่าตรวจสอบไฟล์",
             "checksumFolderNA": "ค่าตรวจสอบไม่สามารถใช้ได้กับโฟลเดอร์",
             "readOnly": "อ่านอย่างเดียว",
-            "hidden": "ซ่อนอยู่"
+            "hidden": "ซ่อนอยู่",
+            "contains": "ประกอบด้วย",
+            "foldersOnly": "โฟลเดอร์เท่านั้น",
+            "location": "ตำแหน่งที่ตั้ง",
+            "mixed": "ผสม",
+            "multipleSelected": "เลือก {count} รายการ",
+            "newestModified": "แก้ไขล่าสุด",
+            "oldestModified": "แก้ไขเก่าสุด",
+            "selectedItems": "รายการที่เลือก",
+            "sizesPartial": "(ไม่ทราบขนาดบางรายการ)",
+            "totalSize": "ขนาดรวม"
         },
         "duplicates": {
             "title": "ค้นหาไฟล์ซ้ำ",

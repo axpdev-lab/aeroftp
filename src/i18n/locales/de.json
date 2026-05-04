@@ -3010,7 +3010,17 @@
             "checksumVerification": "Klicken Sie, um die Dateiprüfsumme zu berechnen",
             "checksumFolderNA": "Prüfsummen sind für Ordner nicht verfügbar",
             "readOnly": "Schreibgeschützt",
-            "hidden": "Versteckt"
+            "hidden": "Versteckt",
+            "contains": "Enthält",
+            "foldersOnly": "Nur Ordner",
+            "location": "Speicherort",
+            "mixed": "Gemischt",
+            "multipleSelected": "{count} Elemente ausgewählt",
+            "newestModified": "Zuletzt geändert",
+            "oldestModified": "Zuerst geändert",
+            "selectedItems": "Ausgewählte Elemente",
+            "sizesPartial": "(einige Größen unbekannt)",
+            "totalSize": "Gesamtgröße"
         },
         "duplicates": {
             "title": "Duplikate finden",

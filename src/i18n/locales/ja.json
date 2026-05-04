@@ -2975,7 +2975,17 @@
             "checksumVerification": "クリックしてファイルのチェックサムを計算",
             "checksumFolderNA": "フォルダではチェックサムは利用できません",
             "readOnly": "読み取り専用",
-            "hidden": "非表示"
+            "hidden": "非表示",
+            "contains": "内容",
+            "foldersOnly": "フォルダーのみ",
+            "location": "場所",
+            "mixed": "混在",
+            "multipleSelected": "{count} 個の項目を選択",
+            "newestModified": "最新の更新",
+            "oldestModified": "最古の更新",
+            "selectedItems": "選択した項目",
+            "sizesPartial": "(一部のサイズ不明)",
+            "totalSize": "合計サイズ"
         },
         "duplicates": {
             "title": "重複を検索",

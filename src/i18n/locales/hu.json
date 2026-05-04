@@ -3010,7 +3010,17 @@
             "checksumVerification": "Kattintson a fájl ellenőrző összeg számításához",
             "checksumFolderNA": "Ellenőrző összeg nem elérhető mappákhoz",
             "readOnly": "Csak olvasható",
-            "hidden": "Rejtett"
+            "hidden": "Rejtett",
+            "contains": "Tartalmaz",
+            "foldersOnly": "Csak mappák",
+            "location": "Hely",
+            "mixed": "Vegyes",
+            "multipleSelected": "{count} elem kiválasztva",
+            "newestModified": "Legutóbb módosítva",
+            "oldestModified": "Legrégebben módosítva",
+            "selectedItems": "Kiválasztott elemek",
+            "sizesPartial": "(egyes méretek ismeretlenek)",
+            "totalSize": "Teljes méret"
         },
         "duplicates": {
             "title": "Duplikátumok keresése",

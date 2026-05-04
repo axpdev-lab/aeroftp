@@ -3010,7 +3010,17 @@
             "folderContents": "{files} ficheiros, {dirs} cartafoles",
             "notAvailable": "Non dispoñible",
             "readOnly": "Só lectura",
-            "hidden": "Oculto"
+            "hidden": "Oculto",
+            "contains": "Contén",
+            "foldersOnly": "Só cartafoles",
+            "location": "Localización",
+            "mixed": "Mixto",
+            "multipleSelected": "{count} elementos seleccionados",
+            "newestModified": "Modificado máis recente",
+            "oldestModified": "Modificado máis antigo",
+            "selectedItems": "Elementos seleccionados",
+            "sizesPartial": "(algúns tamaños descoñecidos)",
+            "totalSize": "Tamaño total"
         },
         "duplicates": {
             "title": "Atopar duplicados",

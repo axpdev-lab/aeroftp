@@ -3010,7 +3010,17 @@
             "checksumVerification": "დააჭირეთ ფაილის საკონტროლო ჯამის გამოსათვლელად",
             "checksumFolderNA": "საკონტროლო ჯამები მიუწვდომელია საქაღალდეებისთვის",
             "readOnly": "მხოლოდ წასაკითხი",
-            "hidden": "დამალული"
+            "hidden": "დამალული",
+            "contains": "შეიცავს",
+            "foldersOnly": "მხოლოდ საქაღალდეები",
+            "location": "მდებარეობა",
+            "mixed": "შერეული",
+            "multipleSelected": "{count} ერთეული არჩეულია",
+            "newestModified": "ბოლოს შეცვლილი",
+            "oldestModified": "ყველაზე ძველი ცვლილება",
+            "selectedItems": "არჩეული ერთეულები",
+            "sizesPartial": "(ზოგიერთი ზომა უცნობია)",
+            "totalSize": "ჯამური ზომა"
         },
         "duplicates": {
             "title": "დუბლიკატების ძებნა",

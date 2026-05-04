@@ -3010,7 +3010,17 @@
             "checksumVerification": "Кликнете за пресметување контролна сума на датотека",
             "checksumFolderNA": "Контролните суми не се достапни за папки",
             "readOnly": "Само за читање",
-            "hidden": "Скриено"
+            "hidden": "Скриено",
+            "contains": "Содржи",
+            "foldersOnly": "Само папки",
+            "location": "Локација",
+            "mixed": "Мешано",
+            "multipleSelected": "Избрани се {count} ставки",
+            "newestModified": "Најново изменето",
+            "oldestModified": "Најстаро изменето",
+            "selectedItems": "Избрани ставки",
+            "sizesPartial": "(некои големини непознати)",
+            "totalSize": "Вкупна големина"
         },
         "duplicates": {
             "title": "Пронајди дупликати",

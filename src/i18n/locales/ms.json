@@ -3010,7 +3010,17 @@
             "checksumVerification": "Klik untuk mengira checksum fail",
             "checksumFolderNA": "Checksum tidak tersedia untuk folder",
             "readOnly": "Baca sahaja",
-            "hidden": "Tersembunyi"
+            "hidden": "Tersembunyi",
+            "contains": "Mengandungi",
+            "foldersOnly": "Folder sahaja",
+            "location": "Lokasi",
+            "mixed": "Bercampur",
+            "multipleSelected": "{count} item dipilih",
+            "newestModified": "Diubah suai terbaru",
+            "oldestModified": "Diubah suai paling lama",
+            "selectedItems": "Item yang dipilih",
+            "sizesPartial": "(beberapa saiz tidak diketahui)",
+            "totalSize": "Jumlah saiz"
         },
         "duplicates": {
             "title": "Cari Pendua",

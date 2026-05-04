@@ -3010,7 +3010,17 @@
             "checksumVerification": "파일 체크섬을 계산하려면 클릭하세요",
             "checksumFolderNA": "폴더에는 체크섬을 사용할 수 없습니다",
             "readOnly": "읽기 전용",
-            "hidden": "숨김"
+            "hidden": "숨김",
+            "contains": "포함",
+            "foldersOnly": "폴더만",
+            "location": "위치",
+            "mixed": "혼합",
+            "multipleSelected": "{count}개 항목 선택됨",
+            "newestModified": "가장 최근 수정",
+            "oldestModified": "가장 오래된 수정",
+            "selectedItems": "선택된 항목",
+            "sizesPartial": "(일부 크기 알 수 없음)",
+            "totalSize": "총 크기"
         },
         "duplicates": {
             "title": "중복 파일 찾기",

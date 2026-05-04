@@ -3010,7 +3010,17 @@
             "checksumVerification": "Spustelėkite failo kontrolinei sumai apskaičiuoti",
             "checksumFolderNA": "Kontrolinės sumos nėra pasiekiamos aplankams",
             "readOnly": "Tik skaitymui",
-            "hidden": "Paslėptas"
+            "hidden": "Paslėptas",
+            "contains": "Talpina",
+            "foldersOnly": "Tik aplankai",
+            "location": "Vieta",
+            "mixed": "Mišrus",
+            "multipleSelected": "Pasirinkta {count} elementų",
+            "newestModified": "Naujausias keitimas",
+            "oldestModified": "Seniausias keitimas",
+            "selectedItems": "Pasirinkti elementai",
+            "sizesPartial": "(kai kurie dydžiai nežinomi)",
+            "totalSize": "Bendras dydis"
         },
         "duplicates": {
             "title": "Rasti dublikatus",

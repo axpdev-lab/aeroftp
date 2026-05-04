@@ -3010,7 +3010,17 @@
             "checksumVerification": "Kliknite pre vypocet kontrolneho suctu suboru",
             "checksumFolderNA": "Kontrolne sucty nie su pre priecinky dostupne",
             "readOnly": "Len na čítanie",
-            "hidden": "Skrytý"
+            "hidden": "Skrytý",
+            "contains": "Obsahuje",
+            "foldersOnly": "Iba priečinky",
+            "location": "Umiestnenie",
+            "mixed": "Zmiešané",
+            "multipleSelected": "Vybraných položiek: {count}",
+            "newestModified": "Najnovšia úprava",
+            "oldestModified": "Najstaršia úprava",
+            "selectedItems": "Vybrané položky",
+            "sizesPartial": "(niektoré veľkosti neznáme)",
+            "totalSize": "Celková veľkosť"
         },
         "duplicates": {
             "title": "Najst duplikaty",

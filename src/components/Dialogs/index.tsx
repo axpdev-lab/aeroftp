@@ -9,7 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
-import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock, Link as LinkIcon, User, Users, Loader2 } from 'lucide-react';
+import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock, Link as LinkIcon, User, Users, Loader2, Files as FilesIcon } from 'lucide-react';
 import { formatBytes } from '../../utils/formatters';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
@@ -694,6 +694,267 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                 </div>
 
                 {/* Footer */}
+                <div className="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+                    >
+                        {t('common.close')}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ============ Multi-File Properties Dialog ============
+//
+// Aggregate Properties view for a multi-file selection (Windows-style).
+// Shows total size, kind breakdown, common parent path, oldest/newest mtime,
+// and a "Mixed" indicator for permissions when not uniform across the set.
+
+export interface MultiFileProperties {
+    files: FileProperties[];
+    isRemote: boolean;
+    protocol?: string;
+}
+
+interface MultiFilePropertiesDialogProps {
+    selection: MultiFileProperties;
+    onClose: () => void;
+}
+
+const computeCommonParent = (paths: string[]): string => {
+    if (paths.length === 0) return '';
+    const sep = paths[0].includes('\\') && !paths[0].includes('/') ? '\\' : '/';
+    const splitPaths = paths.map(p => p.split(sep));
+    // Drop the trailing filename component before comparing.
+    const minLen = Math.min(...splitPaths.map(s => Math.max(s.length - 1, 0)));
+    const out: string[] = [];
+    for (let i = 0; i < minLen; i++) {
+        const seg = splitPaths[0][i];
+        if (splitPaths.every(s => s[i] === seg)) out.push(seg);
+        else break;
+    }
+    const joined = out.join(sep);
+    if (joined.length > 0) return joined;
+    // POSIX absolute path with no shared prefix beyond root.
+    if (paths.every(p => p.startsWith('/'))) return '/';
+    return '';
+};
+
+export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps> = ({
+    selection,
+    onClose,
+}) => {
+    const t = useTranslation();
+    const { files, isRemote, protocol } = selection;
+
+    useEffect(() => {
+        document.documentElement.classList.add('modal-open');
+        return () => { document.documentElement.classList.remove('modal-open'); };
+    }, []);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
+    const fileCount = files.filter(f => !f.is_dir).length;
+    const folderCount = files.filter(f => f.is_dir).length;
+    const knownSizes = files.filter(f => !f.is_dir && typeof f.size === 'number');
+    const totalSize = knownSizes.reduce((acc, f) => acc + (f.size || 0), 0);
+    const sizesUnknown = files.some(f => !f.is_dir && (f.size == null));
+
+    const commonParent = computeCommonParent(files.map(f => f.path));
+
+    const mtimes = files
+        .map(f => (f.modified ? new Date(f.modified).getTime() : NaN))
+        .filter(t => !Number.isNaN(t));
+    const oldestMtime = mtimes.length ? new Date(Math.min(...mtimes)) : null;
+    const newestMtime = mtimes.length ? new Date(Math.max(...mtimes)) : null;
+
+    const formatDate = (date: Date | null): string => {
+        if (!date) return '-';
+        try { return date.toLocaleString(); } catch { return '-'; }
+    };
+
+    // Permission strings: collapse to a single value if uniform, else "Mixed".
+    const permsSet = new Set(files.map(f => f.permissions || '').filter(Boolean));
+    const permsUniform = permsSet.size === 1 ? Array.from(permsSet)[0] : null;
+    const permsMixed = permsSet.size > 1;
+
+    // Read-only / hidden mixed-state (only meaningful when set on every entry).
+    const aggregateBool = (pick: (f: FileProperties) => boolean | null | undefined): 'all' | 'none' | 'some' | 'unknown' => {
+        const known = files.filter(f => pick(f) != null);
+        if (known.length === 0) return 'unknown';
+        const yes = known.filter(f => pick(f) === true).length;
+        if (yes === known.length) return 'all';
+        if (yes === 0) return 'none';
+        return 'some';
+    };
+    const readonlyState = aggregateBool(f => f.is_readonly);
+    const hiddenState = aggregateBool(f => f.is_hidden);
+
+    const tristateLabel = (state: 'all' | 'none' | 'some' | 'unknown'): string | null => {
+        if (state === 'all') return t('common.yes');
+        if (state === 'none') return t('common.no');
+        if (state === 'some') return t('properties.mixed');
+        return null;
+    };
+
+    const Row: React.FC<{ icon: React.ReactNode; label: string; value: React.ReactNode; mono?: boolean }> =
+        ({ icon, label, value, mono = false }) => (
+        <div className="flex items-start gap-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+            <div className="text-gray-400 mt-0.5">{icon}</div>
+            <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
+                <div className={`text-sm text-gray-900 dark:text-gray-100 break-all ${mono ? 'font-mono' : ''}`}>
+                    {value}
+                </div>
+            </div>
+        </div>
+    );
+
+    return (
+        <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('properties.multipleSelected', { count: files.length })}
+            onClick={onClose}
+        >
+            <div
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[560px] max-w-[92vw] max-h-[85vh] overflow-hidden animate-scale-in"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-3">
+                        <FilesIcon size={24} className="text-blue-500" />
+                        <div>
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                                {t('properties.multipleSelected', { count: files.length })}
+                            </h3>
+                            <span className="text-xs text-gray-500">
+                                {isRemote ? `${t('properties.remote')} (${protocol?.toUpperCase() || 'FTP'})` : t('properties.local')}
+                            </span>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
+                        aria-label={t('common.close')}
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="p-4 overflow-y-auto max-h-[calc(85vh-140px)]">
+                    <Row
+                        icon={<FilesIcon size={16} />}
+                        label={t('properties.contains')}
+                        value={`${fileCount.toLocaleString()} ${t('properties.files')}, ${folderCount.toLocaleString()} ${t('properties.folders')}`}
+                    />
+                    <Row
+                        icon={<Hash size={16} />}
+                        label={t('properties.totalSize')}
+                        value={
+                            knownSizes.length === 0 && folderCount > 0 ? (
+                                <span className="text-gray-500">{t('properties.foldersOnly')}</span>
+                            ) : (
+                                <>
+                                    {formatBytes(totalSize)}
+                                    <span className="text-gray-500"> ({totalSize.toLocaleString()} bytes)</span>
+                                    {sizesUnknown && (
+                                        <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">
+                                            {t('properties.sizesPartial')}
+                                        </span>
+                                    )}
+                                </>
+                            )
+                        }
+                    />
+                    {commonParent && (
+                        <Row
+                            icon={<Folder size={16} />}
+                            label={t('properties.location')}
+                            value={commonParent}
+                            mono
+                        />
+                    )}
+                    {oldestMtime && newestMtime && (
+                        oldestMtime.getTime() === newestMtime.getTime() ? (
+                            <Row
+                                icon={<Calendar size={16} />}
+                                label={t('properties.modified')}
+                                value={formatDate(oldestMtime)}
+                            />
+                        ) : (
+                            <>
+                                <Row
+                                    icon={<Calendar size={16} />}
+                                    label={t('properties.oldestModified')}
+                                    value={formatDate(oldestMtime)}
+                                />
+                                <Row
+                                    icon={<Calendar size={16} />}
+                                    label={t('properties.newestModified')}
+                                    value={formatDate(newestMtime)}
+                                />
+                            </>
+                        )
+                    )}
+                    {(permsUniform || permsMixed) && (
+                        <Row
+                            icon={<Shield size={16} />}
+                            label={t('properties.permissionsText')}
+                            value={permsMixed ? t('properties.mixed') : (permsUniform || '')}
+                            mono={!permsMixed}
+                        />
+                    )}
+                    {tristateLabel(readonlyState) && (
+                        <Row
+                            icon={<Lock size={16} />}
+                            label={t('properties.readOnly')}
+                            value={tristateLabel(readonlyState)!}
+                        />
+                    )}
+                    {tristateLabel(hiddenState) && (
+                        <Row
+                            icon={hiddenState === 'all' ? <EyeOff size={16} /> : <Eye size={16} />}
+                            label={t('properties.hidden')}
+                            value={tristateLabel(hiddenState)!}
+                        />
+                    )}
+
+                    <div className="mt-4">
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                            {t('properties.selectedItems')}
+                        </div>
+                        <div className="border border-gray-200 dark:border-gray-700 rounded max-h-44 overflow-y-auto">
+                            {files.map((f, idx) => (
+                                <div
+                                    key={`${f.path}-${idx}`}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-gray-100 dark:border-gray-700 last:border-0"
+                                >
+                                    {f.is_dir ? (
+                                        <Folder size={12} className="text-yellow-500 shrink-0" />
+                                    ) : (
+                                        <FileText size={12} className="text-blue-500 shrink-0" />
+                                    )}
+                                    <span className="truncate text-gray-700 dark:text-gray-300" title={f.path}>{f.name}</span>
+                                    {!f.is_dir && f.size != null && (
+                                        <span className="ml-auto text-gray-500 shrink-0">{formatBytes(f.size)}</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
                 <div className="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700">
                     <button
                         onClick={onClose}

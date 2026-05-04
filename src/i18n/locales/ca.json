@@ -3010,7 +3010,17 @@
             "checksumVerification": "Feu clic per calcular la suma de verificació del fitxer",
             "checksumFolderNA": "Les sumes de verificació no estan disponibles per a carpetes",
             "readOnly": "Només lectura",
-            "hidden": "Ocult"
+            "hidden": "Ocult",
+            "contains": "Conté",
+            "foldersOnly": "Només carpetes",
+            "location": "Ubicació",
+            "mixed": "Mixt",
+            "multipleSelected": "{count} elements seleccionats",
+            "newestModified": "Modificat més recent",
+            "oldestModified": "Modificat més antic",
+            "selectedItems": "Elements seleccionats",
+            "sizesPartial": "(algunes mides desconegudes)",
+            "totalSize": "Mida total"
         },
         "duplicates": {
             "title": "Trobar duplicats",

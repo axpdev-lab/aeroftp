@@ -3010,7 +3010,17 @@
             "checksumVerification": "Cliquez pour calculer la somme de controle du fichier",
             "checksumFolderNA": "Les sommes de controle ne sont pas disponibles pour les dossiers",
             "readOnly": "Lecture seule",
-            "hidden": "Masqué"
+            "hidden": "Masqué",
+            "contains": "Contient",
+            "foldersOnly": "Dossiers uniquement",
+            "location": "Emplacement",
+            "mixed": "Mixte",
+            "multipleSelected": "{count} éléments sélectionnés",
+            "newestModified": "Modifié le plus récent",
+            "oldestModified": "Modifié le plus ancien",
+            "selectedItems": "Éléments sélectionnés",
+            "sizesPartial": "(certaines tailles inconnues)",
+            "totalSize": "Taille totale"
         },
         "duplicates": {
             "title": "Rechercher les doublons",

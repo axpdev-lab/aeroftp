@@ -3010,7 +3010,17 @@
             "checksumVerification": "Click pentru a calcula suma de control a fișierului",
             "checksumFolderNA": "Sumele de control nu sunt disponibile pentru dosare",
             "readOnly": "Doar citire",
-            "hidden": "Ascuns"
+            "hidden": "Ascuns",
+            "contains": "Conține",
+            "foldersOnly": "Doar foldere",
+            "location": "Locație",
+            "mixed": "Mixt",
+            "multipleSelected": "{count} elemente selectate",
+            "newestModified": "Cea mai recentă modificare",
+            "oldestModified": "Cea mai veche modificare",
+            "selectedItems": "Elemente selectate",
+            "sizesPartial": "(unele dimensiuni necunoscute)",
+            "totalSize": "Dimensiune totală"
         },
         "duplicates": {
             "title": "Găsește duplicate",
