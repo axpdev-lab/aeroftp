@@ -185,7 +185,7 @@ const MountProfileCarousel: React.FC<MountProfileCarouselProps> = ({ title, prof
                     className="h-9 min-w-[180px] rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-sky-500/30 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                 />
             </div>
-            <div ref={listRef} className="max-h-64 space-y-1 overflow-y-auto p-2">
+            <div ref={listRef} className="max-h-[8.25rem] space-y-1 overflow-y-auto p-2">
                 {orderedProfiles.map((profile) => {
                     const isSelected = profile.name === selectedName;
                     return (
@@ -403,15 +403,18 @@ export function MountManagerDialog({ onClose, initialProfileId, initialRemotePat
 
     const onProfileChange = async (profileName: string) => {
         if (!draft) return;
-        const updates: Partial<MountConfig> = { profile: profileName };
-        if (!draft.mountpoint || draft.mountpoint === '') {
-            try {
-                updates.mountpoint = await invoke<string>('mount_suggest_path', { profile: profileName });
-            } catch {
-                // ignore
-            }
+        const selectedProfile = profiles.find(profile => profile.name === profileName);
+        const updates: Partial<MountConfig> = {
+            profile: profileName,
+            name: profileName,
+            remote_path: selectedProfile?.initialPath?.trim() || '/',
+        };
+
+        try {
+            updates.mountpoint = await invoke<string>('mount_suggest_path', { profile: profileName });
+        } catch {
+            // Keep the field editable if the backend cannot suggest a platform-specific path.
         }
-        if (!draft.name) updates.name = profileName;
         updateDraft(updates);
     };
 
@@ -622,12 +625,9 @@ export function MountManagerDialog({ onClose, initialProfileId, initialRemotePat
                     )}
 
                     {draft && (
-                        <div className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50/60 p-3 shadow-sm dark:border-sky-800/80 dark:bg-sky-950/20">
-                            <div className="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                                {draft.id ? t('mountManager.editMount') : t('mountManager.newMount')}
-                            </div>
+                        <div className="mt-3 space-y-3">
                             <MountProfileCarousel
-                                title={t('mountManager.fieldProfile')}
+                                title={draft.id ? t('mountManager.editMount') : t('mountManager.newMount')}
                                 profiles={profiles}
                                 selectedName={draft.profile}
                                 onSelect={onProfileChange}
