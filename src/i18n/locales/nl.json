@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Meer informatie",
             "deltaDisabledFallback": "Delta Sync is niet actief voor deze sessie. Zie de hint Overdrachtsbeheer voor de reden.",
             "deltaBatchSummary": "Delta: {files} bestanden in {sessions} sessie(s)",
-            "deltaBytesOnWire": "{bytesOnWire} over het netwerk"
+            "deltaBytesOnWire": "{bytesOnWire} over het netwerk",
+            "templateFormat": "Formaat",
+            "templateFormatAerosync": ".aerosync-sjabloon",
+            "templateFormatBash": "Bash-script (.sh)",
+            "templateFormatPwsh": "PowerShell-script (.ps1)",
+            "templateScriptExportedToast": "Script geëxporteerd",
+            "templateScriptImportedToast": "Scriptmetadata geladen",
+            "templateScriptInvalidToast": "Script bevat geen AeroFTP-metadata"
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -2939,7 +2946,8 @@
             "showAll": "Samengevouwen segmenten tonen",
             "browseSiblings": "Gelijkwaardige mappen verkennen",
             "loading": "Laden...",
-            "noSubdirectories": "Geen submappen"
+            "noSubdirectories": "Geen submappen",
+            "browseChildren": "Subdirectories doorbladeren"
         },
         "trash": {
             "title": "Prullenbak",

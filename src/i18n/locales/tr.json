@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Daha fazla bilgi",
             "deltaDisabledFallback": "Delta Sync bu oturum için şu anda etkin değil. Nedeni için Aktarım Denetimi ipucuna bakın.",
             "deltaBatchSummary": "Delta: {files} dosya, {sessions} oturumda",
-            "deltaBytesOnWire": "Ağ üzerinde {bytesOnWire}"
+            "deltaBytesOnWire": "Ağ üzerinde {bytesOnWire}",
+            "templateFormat": "Biçim",
+            "templateFormatAerosync": ".aerosync şablonu",
+            "templateFormatBash": "Bash betiği (.sh)",
+            "templateFormatPwsh": "PowerShell betiği (.ps1)",
+            "templateScriptExportedToast": "Betik dışa aktarıldı",
+            "templateScriptImportedToast": "Betik meta verileri yüklendi",
+            "templateScriptInvalidToast": "Betik AeroFTP meta verileri içermiyor"
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -2939,7 +2946,8 @@
             "showAll": "Daraltılmış bölümleri göster",
             "browseSiblings": "Kardeş dizinlere gözat",
             "loading": "Yükleniyor...",
-            "noSubdirectories": "Alt dizin yok"
+            "noSubdirectories": "Alt dizin yok",
+            "browseChildren": "Alt klasörlere göz at"
         },
         "trash": {
             "title": "Çöp Kutusu",

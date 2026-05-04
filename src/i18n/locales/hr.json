@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Saznaj više",
             "deltaDisabledFallback": "Delta Sync trenutno nije aktivan za ovu sesiju. Razlog potražite u savjetu Upravljanje prijenosom.",
             "deltaBatchSummary": "Delta: {files} datoteka u {sessions} sesiji(a)",
-            "deltaBytesOnWire": "{bytesOnWire} preko mreže"
+            "deltaBytesOnWire": "{bytesOnWire} preko mreže",
+            "templateFormat": "Format",
+            "templateFormatAerosync": "Predložak .aerosync",
+            "templateFormatBash": "Bash skripta (.sh)",
+            "templateFormatPwsh": "PowerShell skripta (.ps1)",
+            "templateScriptExportedToast": "Skripta izvezena",
+            "templateScriptImportedToast": "Metapodaci skripte učitani",
+            "templateScriptInvalidToast": "Skripta ne sadrži metapodatke AeroFTP-a"
         },
         "ui": {
             "syncing": "Sinkronizacija...",
@@ -2939,7 +2946,8 @@
             "showAll": "Prikaži sažete segmente",
             "browseSiblings": "Pregledaj susjedne direktorije",
             "noSubdirectories": "Nema poddirektorija",
-            "loading": "Učitavanje..."
+            "loading": "Učitavanje...",
+            "browseChildren": "Pregledaj podmape"
         },
         "trash": {
             "title": "Smeće",

@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Uzzināt vairāk",
             "deltaDisabledFallback": "Delta Sync šajā sesijā pašlaik nav aktīvs. Iemeslu skatiet pārsūtīšanas vadības padomā.",
             "deltaBatchSummary": "Delta: {files} faili {sessions} sesijā(s)",
-            "deltaBytesOnWire": "{bytesOnWire} tīklā"
+            "deltaBytesOnWire": "{bytesOnWire} tīklā",
+            "templateFormat": "Formāts",
+            "templateFormatAerosync": ".aerosync veidne",
+            "templateFormatBash": "Bash skripts (.sh)",
+            "templateFormatPwsh": "PowerShell skripts (.ps1)",
+            "templateScriptExportedToast": "Skripts eksportēts",
+            "templateScriptImportedToast": "Skripta metadati ielādēti",
+            "templateScriptInvalidToast": "Skripts nesatur AeroFTP metadatus"
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -2939,7 +2946,8 @@
             "showAll": "Rādīt saklātos segmentus",
             "browseSiblings": "Pārlūkot līdzāsēs direktorijas",
             "loading": "Ielādē...",
-            "noSubdirectories": "Nav apakšdirektoriju"
+            "noSubdirectories": "Nav apakšdirektoriju",
+            "browseChildren": "Pārlūkot apakšmapes"
         },
         "trash": {
             "title": "Atkritne",

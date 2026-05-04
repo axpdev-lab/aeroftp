@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Viac informácií",
             "deltaDisabledFallback": "Delta Sync nie je pre túto reláciu aktívny. Dôvod nájdete v rade Ovládanie prenosu.",
             "deltaBatchSummary": "Delta: {files} súborov v {sessions} relácii(ách)",
-            "deltaBytesOnWire": "{bytesOnWire} po sieti"
+            "deltaBytesOnWire": "{bytesOnWire} po sieti",
+            "templateFormat": "Formát",
+            "templateFormatAerosync": "Šablóna .aerosync",
+            "templateFormatBash": "Skript Bash (.sh)",
+            "templateFormatPwsh": "Skript PowerShell (.ps1)",
+            "templateScriptExportedToast": "Skript exportovaný",
+            "templateScriptImportedToast": "Metadáta skriptu načítané",
+            "templateScriptInvalidToast": "Skript neobsahuje metadáta AeroFTP"
         },
         "ui": {
             "syncing": "Synchronizacia...",
@@ -2939,7 +2946,8 @@
             "showAll": "Zobrazit zbalene segmenty",
             "browseSiblings": "Prehladavat susedne adresare",
             "loading": "Nacitavanie...",
-            "noSubdirectories": "Ziadne podadresare"
+            "noSubdirectories": "Ziadne podadresare",
+            "browseChildren": "Prehliadať podadresáre"
         },
         "trash": {
             "title": "Kos",

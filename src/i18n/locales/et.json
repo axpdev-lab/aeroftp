@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Lisateave",
             "deltaDisabledFallback": "Delta Sync pole selle seansi jaoks aktiivne. Põhjuse leiate ülekande juhtimise vihjest.",
             "deltaBatchSummary": "Delta: {files} faili {sessions} seansi jooksul",
-            "deltaBytesOnWire": "{bytesOnWire} võrgus"
+            "deltaBytesOnWire": "{bytesOnWire} võrgus",
+            "templateFormat": "Vorming",
+            "templateFormatAerosync": ".aerosync mall",
+            "templateFormatBash": "Bash-skript (.sh)",
+            "templateFormatPwsh": "PowerShell-skript (.ps1)",
+            "templateScriptExportedToast": "Skript eksporditud",
+            "templateScriptImportedToast": "Skripti metaandmed laaditud",
+            "templateScriptInvalidToast": "Skript ei sisalda AeroFTP metaandmeid"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -2939,7 +2946,8 @@
             "showAll": "Näita kokkupandud segmente",
             "browseSiblings": "Sirvi õdekkatalooge",
             "loading": "Laadimine...",
-            "noSubdirectories": "Alamkatalooge pole"
+            "noSubdirectories": "Alamkatalooge pole",
+            "browseChildren": "Sirvi alamkaustu"
         },
         "trash": {
             "title": "Prügikast",

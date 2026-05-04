@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Sužinokite daugiau",
             "deltaDisabledFallback": "Delta Sync šiuo metu šiame seanse neaktyvus. Priežastį rasite Perdavimo valdymo patarime.",
             "deltaBatchSummary": "Delta: {files} failų per {sessions} seansą(-us)",
-            "deltaBytesOnWire": "{bytesOnWire} tinkle"
+            "deltaBytesOnWire": "{bytesOnWire} tinkle",
+            "templateFormat": "Formatas",
+            "templateFormatAerosync": ".aerosync šablonas",
+            "templateFormatBash": "Bash scenarijus (.sh)",
+            "templateFormatPwsh": "PowerShell scenarijus (.ps1)",
+            "templateScriptExportedToast": "Scenarijus eksportuotas",
+            "templateScriptImportedToast": "Scenarijaus metaduomenys įkelti",
+            "templateScriptInvalidToast": "Scenarijuje nėra AeroFTP metaduomenų"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -2939,7 +2946,8 @@
             "showAll": "Rodyti sutrauktus segmentus",
             "browseSiblings": "Naršyti gretimuosius katalogus",
             "loading": "Įkeliama...",
-            "noSubdirectories": "Nėra pakatalogų"
+            "noSubdirectories": "Nėra pakatalogų",
+            "browseChildren": "Naršyti pakatalogiuose"
         },
         "trash": {
             "title": "Šiukšlinė",

@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Научи повече",
             "deltaDisabledFallback": "Delta Sync не е активен за тази сесия. Вижте подсказката „Контрол на трансфера“ за причината.",
             "deltaBatchSummary": "Delta: {files} файла в {sessions} сесия(и)",
-            "deltaBytesOnWire": "{bytesOnWire} по мрежата"
+            "deltaBytesOnWire": "{bytesOnWire} по мрежата",
+            "templateFormat": "Формат",
+            "templateFormatAerosync": "Шаблон .aerosync",
+            "templateFormatBash": "Bash скрипт (.sh)",
+            "templateFormatPwsh": "PowerShell скрипт (.ps1)",
+            "templateScriptExportedToast": "Скриптът е експортиран",
+            "templateScriptImportedToast": "Метаданните на скрипта са заредени",
+            "templateScriptInvalidToast": "Скриптът не съдържа метаданни на AeroFTP"
         },
         "ui": {
             "syncing": "Синхронизиране...",
@@ -2939,7 +2946,8 @@
             "showAll": "Показване на скритите сегменти",
             "browseSiblings": "Преглед на съседни директории",
             "loading": "Зареждане...",
-            "noSubdirectories": "Няма поддиректории"
+            "noSubdirectories": "Няма поддиректории",
+            "browseChildren": "Преглед на подпапки"
         },
         "trash": {
             "title": "Кошче",

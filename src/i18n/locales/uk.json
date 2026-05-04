@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Дізнатися більше",
             "deltaDisabledFallback": "Delta Sync наразі не активний для цього сеансу. Причину дивіться у підказці «Керування передачею».",
             "deltaBatchSummary": "Delta: {files} файлів у {sessions} сесії(ях)",
-            "deltaBytesOnWire": "{bytesOnWire} мережею"
+            "deltaBytesOnWire": "{bytesOnWire} мережею",
+            "templateFormat": "Формат",
+            "templateFormatAerosync": "Шаблон .aerosync",
+            "templateFormatBash": "Скрипт Bash (.sh)",
+            "templateFormatPwsh": "Скрипт PowerShell (.ps1)",
+            "templateScriptExportedToast": "Скрипт експортовано",
+            "templateScriptImportedToast": "Метадані скрипта завантажено",
+            "templateScriptInvalidToast": "Скрипт не містить метаданих AeroFTP"
         },
         "ui": {
             "syncing": "Синхронізація...",
@@ -2939,7 +2946,8 @@
             "showAll": "Показати згорнуті сегменти",
             "browseSiblings": "Переглянути сусідні каталоги",
             "loading": "Завантаження...",
-            "noSubdirectories": "Немає підкаталогів"
+            "noSubdirectories": "Немає підкаталогів",
+            "browseChildren": "Переглянути підкаталоги"
         },
         "trash": {
             "title": "Кошик",

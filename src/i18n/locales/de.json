@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Mehr erfahren",
             "deltaDisabledFallback": "Delta Sync ist für diese Sitzung nicht aktiv. Den Grund finden Sie im Hinweis zur Übertragungssteuerung.",
             "deltaBatchSummary": "Delta: {files} Dateien in {sessions} Sitzung(en)",
-            "deltaBytesOnWire": "{bytesOnWire} über das Netzwerk"
+            "deltaBytesOnWire": "{bytesOnWire} über das Netzwerk",
+            "templateFormat": "Format",
+            "templateFormatAerosync": ".aerosync-Vorlage",
+            "templateFormatBash": "Bash-Skript (.sh)",
+            "templateFormatPwsh": "PowerShell-Skript (.ps1)",
+            "templateScriptExportedToast": "Skript exportiert",
+            "templateScriptImportedToast": "Skript-Metadaten geladen",
+            "templateScriptInvalidToast": "Skript enthält keine AeroFTP-Metadaten"
         },
         "ui": {
             "syncing": "Synchronisiere...",
@@ -2939,7 +2946,8 @@
             "showAll": "Eingeklappte Segmente anzeigen",
             "browseSiblings": "Geschwisterverzeichnisse durchsuchen",
             "loading": "Lade...",
-            "noSubdirectories": "Keine Unterverzeichnisse"
+            "noSubdirectories": "Keine Unterverzeichnisse",
+            "browseChildren": "Unterordner durchsuchen"
         },
         "trash": {
             "title": "Papierkorb",

@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Més informació",
             "deltaDisabledFallback": "Delta Sync no està actiu en aquesta sessió. Consulteu el consell de Control de transferència per saber-ne el motiu.",
             "deltaBatchSummary": "Delta: {files} fitxers en {sessions} sessió(ns)",
-            "deltaBytesOnWire": "{bytesOnWire} en xarxa"
+            "deltaBytesOnWire": "{bytesOnWire} en xarxa",
+            "templateFormat": "Format",
+            "templateFormatAerosync": "Plantilla .aerosync",
+            "templateFormatBash": "Script Bash (.sh)",
+            "templateFormatPwsh": "Script PowerShell (.ps1)",
+            "templateScriptExportedToast": "Script exportat",
+            "templateScriptImportedToast": "Metadades del script carregades",
+            "templateScriptInvalidToast": "L'script no conté metadades d'AeroFTP"
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -2939,7 +2946,8 @@
             "showAll": "Mostrar segments col·lapsats",
             "browseSiblings": "Explorar directoris germans",
             "loading": "Carregant...",
-            "noSubdirectories": "No hi ha subdirectoris"
+            "noSubdirectories": "No hi ha subdirectoris",
+            "browseChildren": "Explora subcarpetes"
         },
         "trash": {
             "title": "Paperera",

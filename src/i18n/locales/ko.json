@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "자세히 알아보기",
             "deltaDisabledFallback": "현재 이 세션에서는 Delta Sync가 활성화되어 있지 않습니다. 이유는 전송 제어 힌트를 참조하세요.",
             "deltaBatchSummary": "Delta: {files}개 파일, {sessions}개 세션",
-            "deltaBytesOnWire": "네트워크 전송량 {bytesOnWire}"
+            "deltaBytesOnWire": "네트워크 전송량 {bytesOnWire}",
+            "templateFormat": "형식",
+            "templateFormatAerosync": ".aerosync 템플릿",
+            "templateFormatBash": "Bash 스크립트 (.sh)",
+            "templateFormatPwsh": "PowerShell 스크립트 (.ps1)",
+            "templateScriptExportedToast": "스크립트를 내보냈습니다",
+            "templateScriptImportedToast": "스크립트 메타데이터를 불러왔습니다",
+            "templateScriptInvalidToast": "스크립트에 AeroFTP 메타데이터가 없습니다"
         },
         "ui": {
             "syncing": "동기화 중...",
@@ -2939,7 +2946,8 @@
             "showAll": "축소된 세그먼트 표시",
             "browseSiblings": "형제 디렉토리 탐색",
             "loading": "로딩 중...",
-            "noSubdirectories": "하위 디렉토리 없음"
+            "noSubdirectories": "하위 디렉토리 없음",
+            "browseChildren": "하위 디렉터리 탐색"
         },
         "trash": {
             "title": "휴지통",

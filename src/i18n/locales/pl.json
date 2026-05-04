@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Dowiedz się więcej",
             "deltaDisabledFallback": "Delta Sync nie jest aktywna dla tej sesji. Powód znajdziesz we wskazówce Sterowanie transferem.",
             "deltaBatchSummary": "Delta: {files} plików w {sessions} sesji(ach)",
-            "deltaBytesOnWire": "{bytesOnWire} w sieci"
+            "deltaBytesOnWire": "{bytesOnWire} w sieci",
+            "templateFormat": "Format",
+            "templateFormatAerosync": "Szablon .aerosync",
+            "templateFormatBash": "Skrypt Bash (.sh)",
+            "templateFormatPwsh": "Skrypt PowerShell (.ps1)",
+            "templateScriptExportedToast": "Skrypt wyeksportowany",
+            "templateScriptImportedToast": "Metadane skryptu wczytane",
+            "templateScriptInvalidToast": "Skrypt nie zawiera metadanych AeroFTP"
         },
         "ui": {
             "syncing": "Synchronizacja...",
@@ -2939,7 +2946,8 @@
             "showAll": "Pokaż zwinięte segmenty",
             "browseSiblings": "Przeglądaj katalogi równorzędne",
             "loading": "Ładowanie...",
-            "noSubdirectories": "Brak podkatalogów"
+            "noSubdirectories": "Brak podkatalogów",
+            "browseChildren": "Przeglądaj podkatalogi"
         },
         "trash": {
             "title": "Kosz",

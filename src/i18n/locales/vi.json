@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Tìm hiểu thêm",
             "deltaDisabledFallback": "Delta Sync hiện không hoạt động cho phiên này. Xem gợi ý Điều khiển truyền để biết lý do.",
             "deltaBatchSummary": "Delta: {files} tệp trong {sessions} phiên",
-            "deltaBytesOnWire": "{bytesOnWire} trên mạng"
+            "deltaBytesOnWire": "{bytesOnWire} trên mạng",
+            "templateFormat": "Định dạng",
+            "templateFormatAerosync": "Mẫu .aerosync",
+            "templateFormatBash": "Tập lệnh Bash (.sh)",
+            "templateFormatPwsh": "Tập lệnh PowerShell (.ps1)",
+            "templateScriptExportedToast": "Đã xuất tập lệnh",
+            "templateScriptImportedToast": "Đã tải siêu dữ liệu tập lệnh",
+            "templateScriptInvalidToast": "Tập lệnh không chứa siêu dữ liệu AeroFTP"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -2939,7 +2946,8 @@
             "showAll": "Hiển thị các phân đoạn đã thu gọn",
             "browseSiblings": "Duyệt thư mục cùng cấp",
             "loading": "Đang tải...",
-            "noSubdirectories": "Không có thư mục con"
+            "noSubdirectories": "Không có thư mục con",
+            "browseChildren": "Duyệt thư mục con"
         },
         "trash": {
             "title": "Thùng rác",

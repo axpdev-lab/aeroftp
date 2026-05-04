@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Tudjon meg többet",
             "deltaDisabledFallback": "A Delta Sync ebben a munkamenetben nem aktív. Az okot az Átvitel vezérlése tippben találja.",
             "deltaBatchSummary": "Delta: {files} fájl {sessions} munkamenetben",
-            "deltaBytesOnWire": "{bytesOnWire} a hálózaton"
+            "deltaBytesOnWire": "{bytesOnWire} a hálózaton",
+            "templateFormat": "Formátum",
+            "templateFormatAerosync": ".aerosync sablon",
+            "templateFormatBash": "Bash-szkript (.sh)",
+            "templateFormatPwsh": "PowerShell-szkript (.ps1)",
+            "templateScriptExportedToast": "Szkript exportálva",
+            "templateScriptImportedToast": "Szkript metaadatai betöltve",
+            "templateScriptInvalidToast": "A szkript nem tartalmaz AeroFTP-metaadatokat"
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -2939,7 +2946,8 @@
             "showAll": "Rejtett szegmensek mutatása",
             "browseSiblings": "Testvér könyvtárak böngészése",
             "loading": "Betöltés...",
-            "noSubdirectories": "Nincsenek alkönyvtárak"
+            "noSubdirectories": "Nincsenek alkönyvtárak",
+            "browseChildren": "Almappák böngészése"
         },
         "trash": {
             "title": "Kuka",

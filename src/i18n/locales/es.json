@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Más información",
             "deltaDisabledFallback": "Delta Sync no está activo en esta sesión. Consulta la sugerencia de Control de transferencia para conocer el motivo.",
             "deltaBatchSummary": "Delta: {files} archivos en {sessions} sesión(es)",
-            "deltaBytesOnWire": "{bytesOnWire} en red"
+            "deltaBytesOnWire": "{bytesOnWire} en red",
+            "templateFormat": "Formato",
+            "templateFormatAerosync": "Plantilla .aerosync",
+            "templateFormatBash": "Script Bash (.sh)",
+            "templateFormatPwsh": "Script PowerShell (.ps1)",
+            "templateScriptExportedToast": "Script exportado",
+            "templateScriptImportedToast": "Metadatos del script cargados",
+            "templateScriptInvalidToast": "El script no contiene metadatos de AeroFTP"
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -2939,7 +2946,8 @@
             "showAll": "Mostrar segmentos colapsados",
             "browseSiblings": "Explorar directorios hermanos",
             "loading": "Cargando...",
-            "noSubdirectories": "Sin subdirectorios"
+            "noSubdirectories": "Sin subdirectorios",
+            "browseChildren": "Explorar subcarpetas"
         },
         "trash": {
             "title": "Papelera",

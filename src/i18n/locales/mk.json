@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Дознај повеќе",
             "deltaDisabledFallback": "Delta Sync моментално не е активен за оваа сесија. Видете го советот Контрола на пренос за причината.",
             "deltaBatchSummary": "Delta: {files} датотеки во {sessions} сесија(и)",
-            "deltaBytesOnWire": "{bytesOnWire} преку мрежа"
+            "deltaBytesOnWire": "{bytesOnWire} преку мрежа",
+            "templateFormat": "Формат",
+            "templateFormatAerosync": "Шаблон .aerosync",
+            "templateFormatBash": "Bash скрипта (.sh)",
+            "templateFormatPwsh": "PowerShell скрипта (.ps1)",
+            "templateScriptExportedToast": "Скриптата е извезена",
+            "templateScriptImportedToast": "Метаподатоците на скриптата се вчитани",
+            "templateScriptInvalidToast": "Скриптата не содржи метаподатоци за AeroFTP"
         },
         "ui": {
             "syncing": "Синхронизирање...",
@@ -2939,7 +2946,8 @@
             "showAll": "Прикажи свиткани сегменти",
             "browseSiblings": "Прелистај соседни директориуми",
             "loading": "Вчитување...",
-            "noSubdirectories": "Нема поддиректориуми"
+            "noSubdirectories": "Нема поддиректориуми",
+            "browseChildren": "Прелистај подфасцикли"
         },
         "trash": {
             "title": "Корпа",

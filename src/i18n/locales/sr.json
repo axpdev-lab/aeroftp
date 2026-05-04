@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Сазнај више",
             "deltaDisabledFallback": "Delta Sync тренутно није активан за ову сесију. Разлог потражите у савету Контрола преноса.",
             "deltaBatchSummary": "Delta: {files} датотека у {sessions} сесији(а)",
-            "deltaBytesOnWire": "{bytesOnWire} преко мреже"
+            "deltaBytesOnWire": "{bytesOnWire} преко мреже",
+            "templateFormat": "Формат",
+            "templateFormatAerosync": "Шаблон .aerosync",
+            "templateFormatBash": "Bash скрипта (.sh)",
+            "templateFormatPwsh": "PowerShell скрипта (.ps1)",
+            "templateScriptExportedToast": "Скрипта је извезена",
+            "templateScriptImportedToast": "Метаподаци скрипте су учитани",
+            "templateScriptInvalidToast": "Скрипта не садржи метаподатке AeroFTP-а"
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -2939,7 +2946,8 @@
             "showAll": "Prikaži skrivene segmente",
             "browseSiblings": "Pregledaj susedne direktorijume",
             "loading": "Učitavanje...",
-            "noSubdirectories": "Nema poddirektorijuma"
+            "noSubdirectories": "Nema poddirektorijuma",
+            "browseChildren": "Прегледај подфасцикле"
         },
         "trash": {
             "title": "Korpa za otpatke",

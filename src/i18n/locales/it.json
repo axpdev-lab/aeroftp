@@ -2096,7 +2096,14 @@
             "deltaBytesOnWire": "{bytesOnWire} su rete",
             "deltaTitle": "Risparmio delta",
             "deltaSummaryOptimized": "{files} file trasferiti con ottimizzazione",
-            "deltaTitleOptimized": "Trasferimento ottimizzato"
+            "deltaTitleOptimized": "Trasferimento ottimizzato",
+            "templateFormat": "Formato",
+            "templateFormatAerosync": "Template .aerosync",
+            "templateFormatBash": "Script Bash (.sh)",
+            "templateFormatPwsh": "Script PowerShell (.ps1)",
+            "templateScriptExportedToast": "Script esportato",
+            "templateScriptImportedToast": "Metadati script caricati",
+            "templateScriptInvalidToast": "Lo script non contiene metadati AeroFTP"
         },
         "ui": {
             "syncing": "Sincronizzazione...",
@@ -3029,7 +3036,8 @@
             "showAll": "Mostra segmenti compressi",
             "browseSiblings": "Sfoglia cartelle adiacenti",
             "loading": "Caricamento...",
-            "noSubdirectories": "Nessuna sottocartella"
+            "noSubdirectories": "Nessuna sottocartella",
+            "browseChildren": "Sfoglia sottocartelle"
         },
         "trash": {
             "title": "Cestino",

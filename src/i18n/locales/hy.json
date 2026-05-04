@@ -2015,7 +2015,14 @@
             "deltaEligibilityLearnMore": "Իմանալ ավելին",
             "deltaDisabledFallback": "Delta Sync-ը ներկայումս ակտիվ չէ այս նստաշրջանի համար։ Պատճառի համար տե՛ս Փոխանցման կառավարման հուշումը։",
             "deltaBatchSummary": "Delta: {files} ֆայլ՝ {sessions} նիստ(երում)",
-            "deltaBytesOnWire": "{bytesOnWire} ցանցում"
+            "deltaBytesOnWire": "{bytesOnWire} ցանցում",
+            "templateFormat": "Ֆորմատ",
+            "templateFormatAerosync": ".aerosync ձևանմուշ",
+            "templateFormatBash": "Bash սկրիպտ (.sh)",
+            "templateFormatPwsh": "PowerShell սկրիպտ (.ps1)",
+            "templateScriptExportedToast": "Սկրիպտը արտահանվեց",
+            "templateScriptImportedToast": "Սկրիպտի մետատվյալները բեռնված են",
+            "templateScriptInvalidToast": "Սկրիպտը չի պարունակում AeroFTP մետատվյալներ"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",
@@ -2932,7 +2939,8 @@
             "showAll": "Ցուցադրել բոլորը",
             "browseSiblings": "Զննել հարևանները",
             "noSubdirectories": "Ենթապանակներ չկան",
-            "loading": "Բեռնվում..."
+            "loading": "Բեռնվում...",
+            "browseChildren": "Բացել ենթադարանները"
         },
         "trash": {
             "title": "Աղբարկղ",

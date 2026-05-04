@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Matuto pa",
             "deltaDisabledFallback": "Hindi kasalukuyang aktibo ang Delta Sync para sa session na ito. Tingnan ang pahiwatig ng Kontrol ng Paglilipat para sa dahilan.",
             "deltaBatchSummary": "Delta: {files} file sa {sessions} session",
-            "deltaBytesOnWire": "{bytesOnWire} sa network"
+            "deltaBytesOnWire": "{bytesOnWire} sa network",
+            "templateFormat": "Format",
+            "templateFormatAerosync": "Template ng .aerosync",
+            "templateFormatBash": "Bash script (.sh)",
+            "templateFormatPwsh": "PowerShell script (.ps1)",
+            "templateScriptExportedToast": "Na-export ang script",
+            "templateScriptImportedToast": "Na-load ang metadata ng script",
+            "templateScriptInvalidToast": "Walang AeroFTP metadata ang script"
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -2939,7 +2946,8 @@
             "showAll": "Ipakita ang mga nakatago na segment",
             "browseSiblings": "Mag-browse ng mga kapatid na direktoryo",
             "loading": "Naglo-load...",
-            "noSubdirectories": "Walang mga subdirectory"
+            "noSubdirectories": "Walang mga subdirectory",
+            "browseChildren": "Mag-browse ng mga subdirectory"
         },
         "trash": {
             "title": "Basurahan",

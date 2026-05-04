@@ -677,6 +677,22 @@ export interface MultiPathConfig {
   parallel_pairs: boolean;
 }
 
+// Sync Script Export (T-AEROSYNC-SCRIPT-EXPORT)
+export type SyncScriptFormat = "bash" | "pwsh";
+
+export interface SyncScriptMeta {
+  schema: number;
+  profile_id: string;
+  profile_name: string;
+  local_path: string;
+  remote_path: string;
+  direction: SyncDirection;
+  delete_orphans: boolean;
+  exclude_patterns: string[];
+  retries: number | null;
+  retries_sleep: string | null;
+}
+
 // Sync Templates (#153)
 export interface SyncTemplate {
   schema_version: number;

@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "了解更多",
             "deltaDisabledFallback": "当前会话未启用 Delta Sync。请查看“传输控制”提示了解原因。",
             "deltaBatchSummary": "Delta：{files} 个文件，{sessions} 个会话",
-            "deltaBytesOnWire": "网络传输 {bytesOnWire}"
+            "deltaBytesOnWire": "网络传输 {bytesOnWire}",
+            "templateFormat": "格式",
+            "templateFormatAerosync": ".aerosync 模板",
+            "templateFormatBash": "Bash 脚本 (.sh)",
+            "templateFormatPwsh": "PowerShell 脚本 (.ps1)",
+            "templateScriptExportedToast": "脚本已导出",
+            "templateScriptImportedToast": "已加载脚本元数据",
+            "templateScriptInvalidToast": "脚本不包含 AeroFTP 元数据"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -2939,7 +2946,8 @@
             "showAll": "显示折叠的路径段",
             "browseSiblings": "浏览同级目录",
             "loading": "加载中...",
-            "noSubdirectories": "没有子目录"
+            "noSubdirectories": "没有子目录",
+            "browseChildren": "浏览子目录"
         },
         "trash": {
             "title": "回收站",

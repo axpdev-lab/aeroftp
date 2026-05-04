@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Les mer",
             "deltaDisabledFallback": "Delta Sync er ikke aktiv for denne økten. Se hintet Overføringskontroll for årsaken.",
             "deltaBatchSummary": "Delta: {files} filer i {sessions} økt(er)",
-            "deltaBytesOnWire": "{bytesOnWire} over nettverket"
+            "deltaBytesOnWire": "{bytesOnWire} over nettverket",
+            "templateFormat": "Format",
+            "templateFormatAerosync": ".aerosync-mal",
+            "templateFormatBash": "Bash-skript (.sh)",
+            "templateFormatPwsh": "PowerShell-skript (.ps1)",
+            "templateScriptExportedToast": "Skript eksportert",
+            "templateScriptImportedToast": "Skriptmetadata lastet inn",
+            "templateScriptInvalidToast": "Skriptet inneholder ikke AeroFTP-metadata"
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -2939,7 +2946,8 @@
             "showAll": "Vis sammenslåtte segmenter",
             "browseSiblings": "Bla gjennom søsterkataloger",
             "loading": "Laster...",
-            "noSubdirectories": "Ingen underkataloger"
+            "noSubdirectories": "Ingen underkataloger",
+            "browseChildren": "Bla gjennom undermapper"
         },
         "trash": {
             "title": "Papirkurv",

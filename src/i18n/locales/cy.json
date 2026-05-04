@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Dysgu mwy",
             "deltaDisabledFallback": "Nid yw Delta Sync yn weithredol ar gyfer y sesiwn hon. Gweler yr awgrym Rheoli Trosglwyddiad am y rheswm.",
             "deltaBatchSummary": "Delta: {files} ffeil mewn {sessions} sesiwn",
-            "deltaBytesOnWire": "{bytesOnWire} dros y rhwydwaith"
+            "deltaBytesOnWire": "{bytesOnWire} dros y rhwydwaith",
+            "templateFormat": "Fformat",
+            "templateFormatAerosync": "Templed .aerosync",
+            "templateFormatBash": "Sgript Bash (.sh)",
+            "templateFormatPwsh": "Sgript PowerShell (.ps1)",
+            "templateScriptExportedToast": "Sgript wedi ei allforio",
+            "templateScriptImportedToast": "Metadata sgript wedi ei lwytho",
+            "templateScriptInvalidToast": "Nid yw'r sgript yn cynnwys metadata AeroFTP"
         },
         "ui": {
             "syncing": "Yn cysoni...",
@@ -2939,7 +2946,8 @@
             "showAll": "Dangos segmentau cwympiedig",
             "browseSiblings": "Pori cyfeiriaduron brawd/chwaer",
             "loading": "Yn llwytho...",
-            "noSubdirectories": "Dim is-gyfeiriaduron"
+            "noSubdirectories": "Dim is-gyfeiriaduron",
+            "browseChildren": "Pori isgyfeiriaduron"
         },
         "trash": {
             "title": "Sbwriel",

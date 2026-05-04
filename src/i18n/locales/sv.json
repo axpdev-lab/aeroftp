@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Läs mer",
             "deltaDisabledFallback": "Delta Sync är inte aktivt för den här sessionen. Se tipset Överföringskontroll för anledningen.",
             "deltaBatchSummary": "Delta: {files} filer i {sessions} session(er)",
-            "deltaBytesOnWire": "{bytesOnWire} över nätverket"
+            "deltaBytesOnWire": "{bytesOnWire} över nätverket",
+            "templateFormat": "Format",
+            "templateFormatAerosync": ".aerosync-mall",
+            "templateFormatBash": "Bash-skript (.sh)",
+            "templateFormatPwsh": "PowerShell-skript (.ps1)",
+            "templateScriptExportedToast": "Skript exporterat",
+            "templateScriptImportedToast": "Skriptmetadata inläst",
+            "templateScriptInvalidToast": "Skriptet innehåller inga AeroFTP-metadata"
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -2939,7 +2946,8 @@
             "showAll": "Visa dolda segment",
             "browseSiblings": "Bläddra bland syskonkataloger",
             "loading": "Laddar...",
-            "noSubdirectories": "Inga underkataloger"
+            "noSubdirectories": "Inga underkataloger",
+            "browseChildren": "Bläddra i underkataloger"
         },
         "trash": {
             "title": "Papperskorg",

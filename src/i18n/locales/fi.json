@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Lue lisää",
             "deltaDisabledFallback": "Delta Sync ei ole aktiivinen tässä istunnossa. Katso syy Siirron hallinta -vihjeestä.",
             "deltaBatchSummary": "Delta: {files} tiedostoa {sessions} istunnossa",
-            "deltaBytesOnWire": "{bytesOnWire} verkossa"
+            "deltaBytesOnWire": "{bytesOnWire} verkossa",
+            "templateFormat": "Muoto",
+            "templateFormatAerosync": ".aerosync-malli",
+            "templateFormatBash": "Bash-komentosarja (.sh)",
+            "templateFormatPwsh": "PowerShell-komentosarja (.ps1)",
+            "templateScriptExportedToast": "Komentosarja viety",
+            "templateScriptImportedToast": "Komentosarjan metatiedot ladattu",
+            "templateScriptInvalidToast": "Komentosarja ei sisällä AeroFTP-metatietoja"
         },
         "ui": {
             "syncing": "Synkronoidaan...",
@@ -2939,7 +2946,8 @@
             "showAll": "Näytä piilotetut osat",
             "browseSiblings": "Selaa sisarhakemistoja",
             "loading": "Ladataan...",
-            "noSubdirectories": "Ei alihakemistoja"
+            "noSubdirectories": "Ei alihakemistoja",
+            "browseChildren": "Selaa alihakemistoja"
         },
         "trash": {
             "title": "Roskakori",

@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "მეტის ცოდნა",
             "deltaDisabledFallback": "Delta Sync ამჟამად არ არის აქტიური ამ სესიისთვის. მიზეზისთვის იხილეთ გადაცემის მართვის მინიშნება.",
             "deltaBatchSummary": "Delta: {files} ფაილი {sessions} სესიაში",
-            "deltaBytesOnWire": "{bytesOnWire} ქსელზე"
+            "deltaBytesOnWire": "{bytesOnWire} ქსელზე",
+            "templateFormat": "ფორმატი",
+            "templateFormatAerosync": ".aerosync შაბლონი",
+            "templateFormatBash": "Bash სკრიპტი (.sh)",
+            "templateFormatPwsh": "PowerShell სკრიპტი (.ps1)",
+            "templateScriptExportedToast": "სკრიპტი ექსპორტირებულია",
+            "templateScriptImportedToast": "სკრიპტის მეტამონაცემები ჩაიტვირთა",
+            "templateScriptInvalidToast": "სკრიპტი არ შეიცავს AeroFTP-ის მეტამონაცემებს"
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
@@ -2939,7 +2946,8 @@
             "showAll": "დაკეცილი სეგმენტების ჩვენება",
             "browseSiblings": "მეზობელი დირექტორიების დათვალიერება",
             "loading": "ჩატვირთვა...",
-            "noSubdirectories": "ქვესაქაღალდეები არ არის"
+            "noSubdirectories": "ქვესაქაღალდეები არ არის",
+            "browseChildren": "ქვედირექტორიების დათვალიერება"
         },
         "trash": {
             "title": "ნაგავი",

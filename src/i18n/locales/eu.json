@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Gehiago jakin",
             "deltaDisabledFallback": "Delta Sync ez dago aktibo saio honetan. Arrazoia ikusteko, begiratu Transferentzia kontrolaren oharra.",
             "deltaBatchSummary": "Delta: {files} fitxategi {sessions} saio(tan)",
-            "deltaBytesOnWire": "{bytesOnWire} sarean"
+            "deltaBytesOnWire": "{bytesOnWire} sarean",
+            "templateFormat": "Formatua",
+            "templateFormatAerosync": ".aerosync txantiloia",
+            "templateFormatBash": "Bash script-a (.sh)",
+            "templateFormatPwsh": "PowerShell script-a (.ps1)",
+            "templateScriptExportedToast": "Script-a esportatua",
+            "templateScriptImportedToast": "Script-aren metadatuak kargatuta",
+            "templateScriptInvalidToast": "Script-ak ez du AeroFTP metadaturik"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -2939,7 +2946,8 @@
             "showAll": "Erakutsi segmentu tolestuak",
             "browseSiblings": "Arakatu senide direktorioak",
             "noSubdirectories": "Azpidirektoriorik ez",
-            "loading": "Kargatzen..."
+            "loading": "Kargatzen...",
+            "browseChildren": "Azpikarpetak arakatu"
         },
         "trash": {
             "title": "Zakarrontzia",

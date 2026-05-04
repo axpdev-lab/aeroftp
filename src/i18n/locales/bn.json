@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "আরও জানুন",
             "deltaDisabledFallback": "এই সেশনের জন্য Delta Sync বর্তমানে সক্রিয় নয়। কারণের জন্য ট্রান্সফার নিয়ন্ত্রণ ইঙ্গিতটি দেখুন।",
             "deltaBatchSummary": "Delta: {files}টি ফাইল, {sessions}টি সেশনে",
-            "deltaBytesOnWire": "নেটে {bytesOnWire}"
+            "deltaBytesOnWire": "নেটে {bytesOnWire}",
+            "templateFormat": "ফরম্যাট",
+            "templateFormatAerosync": ".aerosync টেমপ্লেট",
+            "templateFormatBash": "Bash স্ক্রিপ্ট (.sh)",
+            "templateFormatPwsh": "PowerShell স্ক্রিপ্ট (.ps1)",
+            "templateScriptExportedToast": "স্ক্রিপ্ট রপ্তানি করা হয়েছে",
+            "templateScriptImportedToast": "স্ক্রিপ্ট মেটাডেটা লোড করা হয়েছে",
+            "templateScriptInvalidToast": "স্ক্রিপ্টে AeroFTP মেটাডেটা নেই"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
@@ -2939,7 +2946,8 @@
             "showAll": "লুকানো সেগমেন্ট দেখান",
             "browseSiblings": "ভাই-বোন ডিরেক্টরি ব্রাউজ করুন",
             "loading": "লোড হচ্ছে...",
-            "noSubdirectories": "কোনো সাব-ডিরেক্টরি নেই"
+            "noSubdirectories": "কোনো সাব-ডিরেক্টরি নেই",
+            "browseChildren": "উপ-ডিরেক্টরিগুলি ব্রাউজ করুন"
         },
         "trash": {
             "title": "আবর্জনা",

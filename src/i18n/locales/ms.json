@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Ketahui lebih lanjut",
             "deltaDisabledFallback": "Delta Sync tidak aktif buat masa ini untuk sesi ini. Lihat petunjuk Kawalan Pemindahan untuk sebabnya.",
             "deltaBatchSummary": "Delta: {files} fail dalam {sessions} sesi",
-            "deltaBytesOnWire": "{bytesOnWire} di rangkaian"
+            "deltaBytesOnWire": "{bytesOnWire} di rangkaian",
+            "templateFormat": "Format",
+            "templateFormatAerosync": "Templat .aerosync",
+            "templateFormatBash": "Skrip Bash (.sh)",
+            "templateFormatPwsh": "Skrip PowerShell (.ps1)",
+            "templateScriptExportedToast": "Skrip dieksport",
+            "templateScriptImportedToast": "Metadata skrip dimuatkan",
+            "templateScriptInvalidToast": "Skrip tidak mengandungi metadata AeroFTP"
         },
         "ui": {
             "syncing": "Menyegerak...",
@@ -2939,7 +2946,8 @@
             "showAll": "Papar segmen yang diruntuhkan",
             "browseSiblings": "Layari direktori adik-beradik",
             "loading": "Memuatkan...",
-            "noSubdirectories": "Tiada subdirektori"
+            "noSubdirectories": "Tiada subdirektori",
+            "browseChildren": "Layari subdirektori"
         },
         "trash": {
             "title": "Tong Sampah",

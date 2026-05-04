@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "और जानें",
             "deltaDisabledFallback": "इस सत्र के लिए Delta Sync वर्तमान में सक्रिय नहीं है। कारण के लिए ट्रांसफ़र कंट्रोल संकेत देखें।",
             "deltaBatchSummary": "Delta: {files} फ़ाइलें, {sessions} सत्र में",
-            "deltaBytesOnWire": "नेटवर्क पर {bytesOnWire}"
+            "deltaBytesOnWire": "नेटवर्क पर {bytesOnWire}",
+            "templateFormat": "प्रारूप",
+            "templateFormatAerosync": ".aerosync टेम्पलेट",
+            "templateFormatBash": "Bash स्क्रिप्ट (.sh)",
+            "templateFormatPwsh": "PowerShell स्क्रिप्ट (.ps1)",
+            "templateScriptExportedToast": "स्क्रिप्ट निर्यात की गई",
+            "templateScriptImportedToast": "स्क्रिप्ट मेटाडेटा लोड किया गया",
+            "templateScriptInvalidToast": "स्क्रिप्ट में AeroFTP मेटाडेटा नहीं है"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",
@@ -2939,7 +2946,8 @@
             "showAll": "संक्षिप्त खंड दिखाएं",
             "browseSiblings": "सिबलिंग निर्देशिकाएं ब्राउज़ करें",
             "noSubdirectories": "कोई उप-निर्देशिका नहीं",
-            "loading": "लोड हो रहा है..."
+            "loading": "लोड हो रहा है...",
+            "browseChildren": "उप-निर्देशिकाएँ ब्राउज़ करें"
         },
         "trash": {
             "title": "ट्रैश",

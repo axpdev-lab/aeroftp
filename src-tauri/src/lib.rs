@@ -8853,6 +8853,44 @@ fn import_sync_template_cmd(json_content: String) -> Result<sync::SyncTemplate, 
     Ok(template)
 }
 
+#[derive(serde::Deserialize)]
+struct SyncScriptExportArgs {
+    profile_id: String,
+    profile_display_name: String,
+    template_name: String,
+    template_description: String,
+    local_path: String,
+    remote_path: String,
+    exclude_patterns: Vec<String>,
+    format: String,
+}
+
+#[tauri::command]
+fn export_sync_script_cmd(args: SyncScriptExportArgs) -> Result<String, String> {
+    let format = sync::SyncScriptFormat::parse(&args.format)
+        .ok_or_else(|| format!("Unsupported script format: {}", args.format))?;
+    let profiles = sync::load_sync_profiles()?;
+    let profile = profiles
+        .iter()
+        .find(|p| p.id == args.profile_id)
+        .ok_or_else(|| format!("Profile '{}' not found", args.profile_id))?;
+    sync::export_sync_script(sync::SyncScriptExportOptions {
+        profile,
+        profile_display_name: &args.profile_display_name,
+        template_name: &args.template_name,
+        template_description: &args.template_description,
+        local_path: &args.local_path,
+        remote_path: &args.remote_path,
+        exclude_patterns: &args.exclude_patterns,
+        format,
+    })
+}
+
+#[tauri::command]
+fn import_sync_script_cmd(script_content: String) -> Result<sync::SyncScriptMeta, String> {
+    sync::import_sync_script(&script_content)
+}
+
 // =============================
 // Rollback Commands (#154)
 // =============================
@@ -13212,6 +13250,8 @@ pub fn run() {
             remove_path_pair,
             export_sync_template_cmd,
             import_sync_template_cmd,
+            export_sync_script_cmd,
+            import_sync_script_cmd,
             create_sync_snapshot_cmd,
             list_sync_snapshots_cmd,
             load_sync_snapshot_cmd,

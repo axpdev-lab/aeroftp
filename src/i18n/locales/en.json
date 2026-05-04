@@ -827,6 +827,7 @@
       "title": "Batch Rename"
     },
     "breadcrumb": {
+      "browseChildren": "Browse subdirectories",
       "browseSiblings": "Browse sibling directories",
       "confirm": "Confirm",
       "editPath": "Edit path",
@@ -3213,6 +3214,13 @@
       "templates": "Templates",
       "templateExportDesc": "Save current sync configuration as a reusable .aerosync template",
       "templateImportDesc": "Load a .aerosync template to apply its sync configuration",
+      "templateFormat": "Format",
+      "templateFormatAerosync": ".aerosync template",
+      "templateFormatBash": "Bash script (.sh)",
+      "templateFormatPwsh": "PowerShell script (.ps1)",
+      "templateScriptExportedToast": "Script exported",
+      "templateScriptImportedToast": "Script metadata loaded",
+      "templateScriptInvalidToast": "Script does not contain AeroFTP metadata",
       "maniacActive": "Active",
       "speedStreams": "{count} streams",
       "parallelTurboLabel": "Turbo",

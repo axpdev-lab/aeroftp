@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "เรียนรู้เพิ่มเติม",
             "deltaDisabledFallback": "ขณะนี้ Delta Sync ไม่เปิดใช้งานสำหรับเซสชันนี้ ดูเหตุผลได้ที่คำแนะนำการควบคุมการถ่ายโอน",
             "deltaBatchSummary": "Delta: {files} ไฟล์ ใน {sessions} เซสชัน",
-            "deltaBytesOnWire": "{bytesOnWire} บนเครือข่าย"
+            "deltaBytesOnWire": "{bytesOnWire} บนเครือข่าย",
+            "templateFormat": "รูปแบบ",
+            "templateFormatAerosync": "เทมเพลต .aerosync",
+            "templateFormatBash": "สคริปต์ Bash (.sh)",
+            "templateFormatPwsh": "สคริปต์ PowerShell (.ps1)",
+            "templateScriptExportedToast": "ส่งออกสคริปต์แล้ว",
+            "templateScriptImportedToast": "โหลดข้อมูลเมตาของสคริปต์แล้ว",
+            "templateScriptInvalidToast": "สคริปต์ไม่มีข้อมูลเมตาของ AeroFTP"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",
@@ -2939,7 +2946,8 @@
             "showAll": "แสดงส่วนที่ซ่อน",
             "browseSiblings": "เรียกดูไดเรกทอรีข้างเคียง",
             "loading": "กำลังโหลด...",
-            "noSubdirectories": "ไม่มีไดเรกทอรีย่อย"
+            "noSubdirectories": "ไม่มีไดเรกทอรีย่อย",
+            "browseChildren": "เรียกดูไดเรกทอรีย่อย"
         },
         "trash": {
             "title": "ถังขยะ",

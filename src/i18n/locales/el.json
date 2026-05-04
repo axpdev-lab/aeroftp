@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Μάθετε περισσότερα",
             "deltaDisabledFallback": "Το Delta Sync δεν είναι ενεργό για αυτή τη συνεδρία. Δείτε τη συμβουλή Έλεγχος μεταφοράς για τον λόγο.",
             "deltaBatchSummary": "Delta: {files} αρχεία σε {sessions} συνεδρία(ες)",
-            "deltaBytesOnWire": "{bytesOnWire} στο δίκτυο"
+            "deltaBytesOnWire": "{bytesOnWire} στο δίκτυο",
+            "templateFormat": "Μορφή",
+            "templateFormatAerosync": "Πρότυπο .aerosync",
+            "templateFormatBash": "Σενάριο Bash (.sh)",
+            "templateFormatPwsh": "Σενάριο PowerShell (.ps1)",
+            "templateScriptExportedToast": "Το σενάριο εξήχθη",
+            "templateScriptImportedToast": "Τα μεταδεδομένα του σεναρίου φορτώθηκαν",
+            "templateScriptInvalidToast": "Το σενάριο δεν περιέχει μεταδεδομένα AeroFTP"
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
@@ -2939,7 +2946,8 @@
             "showAll": "Εμφάνιση σμπτυγμένων τμημάτων",
             "browseSiblings": "Περιήγηση αδελφών καταλόγων",
             "loading": "Φόρτωση...",
-            "noSubdirectories": "Δεν υπάρχουν υποκατάλογοι"
+            "noSubdirectories": "Δεν υπάρχουν υποκατάλογοι",
+            "browseChildren": "Περιήγηση σε υποφακέλους"
         },
         "trash": {
             "title": "Κάδος Απορριμμάτων",

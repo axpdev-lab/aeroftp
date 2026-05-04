@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Подробнее",
             "deltaDisabledFallback": "Delta Sync сейчас не активен для этого сеанса. Причину смотрите в подсказке «Управление передачей».",
             "deltaBatchSummary": "Delta: {files} файлов в {sessions} сессии(ях)",
-            "deltaBytesOnWire": "{bytesOnWire} по сети"
+            "deltaBytesOnWire": "{bytesOnWire} по сети",
+            "templateFormat": "Формат",
+            "templateFormatAerosync": "Шаблон .aerosync",
+            "templateFormatBash": "Скрипт Bash (.sh)",
+            "templateFormatPwsh": "Скрипт PowerShell (.ps1)",
+            "templateScriptExportedToast": "Скрипт экспортирован",
+            "templateScriptImportedToast": "Метаданные скрипта загружены",
+            "templateScriptInvalidToast": "Скрипт не содержит метаданных AeroFTP"
         },
         "ui": {
             "syncing": "Синхронизация...",
@@ -2939,7 +2946,8 @@
             "showAll": "Показать свёрнутые сегменты",
             "browseSiblings": "Просмотреть соседние каталоги",
             "loading": "Загрузка...",
-            "noSubdirectories": "Нет подкаталогов"
+            "noSubdirectories": "Нет подкаталогов",
+            "browseChildren": "Просмотр подкаталогов"
         },
         "trash": {
             "title": "Корзина",

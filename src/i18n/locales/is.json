@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Nánar",
             "deltaDisabledFallback": "Delta Sync er ekki virkt í þessari lotu. Sjá ábendinguna Stjórn flutnings fyrir ástæðuna.",
             "deltaBatchSummary": "Delta: {files} skrár í {sessions} lotu(m)",
-            "deltaBytesOnWire": "{bytesOnWire} á netinu"
+            "deltaBytesOnWire": "{bytesOnWire} á netinu",
+            "templateFormat": "Snið",
+            "templateFormatAerosync": ".aerosync-sniðmát",
+            "templateFormatBash": "Bash-skrifta (.sh)",
+            "templateFormatPwsh": "PowerShell-skrifta (.ps1)",
+            "templateScriptExportedToast": "Skrifta flutt út",
+            "templateScriptImportedToast": "Lýsigögn skriftu hlaðin",
+            "templateScriptInvalidToast": "Skriftan inniheldur ekki AeroFTP-lýsigögn"
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -2939,7 +2946,8 @@
             "showAll": "Sýna Samandregna Hluta",
             "browseSiblings": "Skoða systkinamöppur",
             "loading": "Hleður...",
-            "noSubdirectories": "Engar undirmöppur"
+            "noSubdirectories": "Engar undirmöppur",
+            "browseChildren": "Skoða undirmöppur"
         },
         "trash": {
             "title": "Rusl",

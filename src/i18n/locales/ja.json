@@ -1987,7 +1987,14 @@
             "deltaEligibilityLearnMore": "詳細",
             "deltaDisabledFallback": "現在このセッションでは Delta Sync が有効になっていません。理由は「転送コントロール」のヒントを参照してください。",
             "deltaBatchSummary": "Delta: {files} 個のファイルを {sessions} セッションで処理",
-            "deltaBytesOnWire": "ネットワーク上: {bytesOnWire}"
+            "deltaBytesOnWire": "ネットワーク上: {bytesOnWire}",
+            "templateFormat": "形式",
+            "templateFormatAerosync": ".aerosync テンプレート",
+            "templateFormatBash": "Bash スクリプト (.sh)",
+            "templateFormatPwsh": "PowerShell スクリプト (.ps1)",
+            "templateScriptExportedToast": "スクリプトをエクスポートしました",
+            "templateScriptImportedToast": "スクリプトのメタデータを読み込みました",
+            "templateScriptInvalidToast": "スクリプトに AeroFTP のメタデータが含まれていません"
         },
         "ui": {
             "syncing": "同期中...",
@@ -2904,7 +2911,8 @@
             "showAll": "折りたたまれたセグメントを表示",
             "browseSiblings": "同階層のディレクトリを参照",
             "loading": "読み込み中...",
-            "noSubdirectories": "サブディレクトリはありません"
+            "noSubdirectories": "サブディレクトリはありません",
+            "browseChildren": "サブディレクトリを参照"
         },
         "trash": {
             "title": "ゴミ箱",

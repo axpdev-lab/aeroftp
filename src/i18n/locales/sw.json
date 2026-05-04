@@ -2022,7 +2022,14 @@
             "deltaEligibilityLearnMore": "Jifunze zaidi",
             "deltaDisabledFallback": "Delta Sync haijawashwa kwa kipindi hiki. Angalia kidokezo cha Udhibiti wa Uhamisho kwa sababu.",
             "deltaBatchSummary": "Delta: faili {files} katika kipindi {sessions}",
-            "deltaBytesOnWire": "{bytesOnWire} kwenye mtandao"
+            "deltaBytesOnWire": "{bytesOnWire} kwenye mtandao",
+            "templateFormat": "Muundo",
+            "templateFormatAerosync": "Kiolezo cha .aerosync",
+            "templateFormatBash": "Hati ya Bash (.sh)",
+            "templateFormatPwsh": "Hati ya PowerShell (.ps1)",
+            "templateScriptExportedToast": "Hati imehamishwa",
+            "templateScriptImportedToast": "Metadata ya hati imepakiwa",
+            "templateScriptInvalidToast": "Hati haina metadata ya AeroFTP"
         },
         "ui": {
             "syncing": "Inasawazisha...",
@@ -2939,7 +2946,8 @@
             "showAll": "Onyesha sehemu zilizofichwa",
             "browseSiblings": "Vinjari saraka ndugu",
             "loading": "Inapakia...",
-            "noSubdirectories": "Hakuna saraka ndogo"
+            "noSubdirectories": "Hakuna saraka ndogo",
+            "browseChildren": "Vinjari direktori ndogo"
         },
         "trash": {
             "title": "Tupio",

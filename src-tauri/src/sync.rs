@@ -3053,6 +3053,352 @@ fn portable_path(path: &str) -> String {
 }
 
 // =============================
+// Sync Script Export (T-AEROSYNC-SCRIPT-EXPORT)
+// =============================
+
+/// Output format for `aeroftp-cli sync` wrapper scripts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncScriptFormat {
+    /// POSIX bash script (`.sh`)
+    Bash,
+    /// PowerShell script (`.ps1`)
+    PowerShell,
+}
+
+impl SyncScriptFormat {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "bash" | "sh" | "posix" => Some(Self::Bash),
+            "pwsh" | "powershell" | "ps1" => Some(Self::PowerShell),
+            _ => None,
+        }
+    }
+}
+
+/// Embedded round-trip metadata: this is what `import_sync_script` parses back.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncScriptMeta {
+    pub schema: u32,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub local_path: String,
+    pub remote_path: String,
+    pub direction: CompareDirection,
+    pub delete_orphans: bool,
+    pub exclude_patterns: Vec<String>,
+    #[serde(default)]
+    pub retries: Option<u32>,
+    #[serde(default)]
+    pub retries_sleep: Option<String>,
+}
+
+const SYNC_SCRIPT_META_PREFIX: &str = "AEROFTP-META: ";
+const SYNC_SCRIPT_SCHEMA: u32 = 1;
+
+/// Inputs for `export_sync_script`. Bundled to keep the call site clean.
+pub struct SyncScriptExportOptions<'a> {
+    pub profile: &'a SyncProfile,
+    pub profile_display_name: &'a str,
+    pub template_name: &'a str,
+    pub template_description: &'a str,
+    pub local_path: &'a str,
+    pub remote_path: &'a str,
+    pub exclude_patterns: &'a [String],
+    pub format: SyncScriptFormat,
+}
+
+/// Escape a string so it can be safely placed inside a POSIX single-quoted literal.
+fn shell_quote_bash(s: &str) -> String {
+    // POSIX single-quote rule: cannot include a literal single quote.
+    // Replace ' with '\'' (close, escaped quote, reopen).
+    let escaped = s.replace('\'', "'\\''");
+    format!("'{}'", escaped)
+}
+
+/// Escape a string so it can be safely placed inside a PowerShell single-quoted literal.
+fn shell_quote_pwsh(s: &str) -> String {
+    // PowerShell single-quote rule: a literal ' is written as ''.
+    let escaped = s.replace('\'', "''");
+    format!("'{}'", escaped)
+}
+
+fn direction_cli_value(direction: CompareDirection) -> &'static str {
+    match direction {
+        CompareDirection::LocalToRemote => "upload",
+        CompareDirection::RemoteToLocal => "download",
+        CompareDirection::Bidirectional => "both",
+    }
+}
+
+/// Format the retry policy as `Some(("3", "1s"))` if it differs from the CLI defaults.
+fn retry_overrides(policy: &RetryPolicy) -> (Option<u32>, Option<String>) {
+    let max_retries = if policy.max_retries == 3 {
+        None
+    } else {
+        Some(policy.max_retries)
+    };
+    // CLI default for --retries-sleep is "1s"; emit override only when meaningfully different.
+    let sleep = if policy.base_delay_ms == 1000 {
+        None
+    } else if policy.base_delay_ms % 1000 == 0 {
+        Some(format!("{}s", policy.base_delay_ms / 1000))
+    } else {
+        Some(format!("{}ms", policy.base_delay_ms))
+    };
+    (max_retries, sleep)
+}
+
+/// Build the wrapper script content. The script always embeds an
+/// `AEROFTP-META:` JSON line so `import_sync_script` can round-trip it.
+pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, String> {
+    let SyncScriptExportOptions {
+        profile,
+        profile_display_name,
+        template_name,
+        template_description,
+        local_path,
+        remote_path,
+        exclude_patterns,
+        format,
+    } = opts;
+    let (max_retries, retries_sleep) = retry_overrides(&profile.retry_policy);
+
+    let meta = SyncScriptMeta {
+        schema: SYNC_SCRIPT_SCHEMA,
+        profile_id: profile.id.clone(),
+        profile_name: profile_display_name.to_string(),
+        local_path: local_path.to_string(),
+        remote_path: remote_path.to_string(),
+        direction: profile.direction,
+        delete_orphans: profile.delete_orphans,
+        exclude_patterns: exclude_patterns.to_vec(),
+        retries: max_retries,
+        retries_sleep: retries_sleep.clone(),
+    };
+    let meta_json = serde_json::to_string(&meta).map_err(|e| e.to_string())?;
+
+    let generated_at = Utc::now().to_rfc3339();
+    let direction = direction_cli_value(profile.direction);
+    let mut out = String::new();
+
+    match format {
+        SyncScriptFormat::Bash => {
+            out.push_str("#!/usr/bin/env bash\n");
+            out.push_str("# AeroFTP sync script (auto-generated)\n");
+            out.push_str(&format!("# Generated: {}\n", generated_at));
+            if !template_name.is_empty() {
+                out.push_str(&format!("# Template: {}\n", template_name.replace('\n', " ")));
+            }
+            if !template_description.is_empty() {
+                out.push_str(&format!(
+                    "# Description: {}\n",
+                    template_description.replace('\n', " ")
+                ));
+            }
+            out.push_str(&format!("# Profile: {}\n", profile_display_name.replace('\n', " ")));
+            out.push_str("# Re-import via AeroSync > Templates > Import.\n");
+            out.push_str(&format!("# {}{}\n", SYNC_SCRIPT_META_PREFIX, meta_json));
+            out.push_str("set -euo pipefail\n\n");
+            out.push_str(&format!("PROFILE={}\n", shell_quote_bash(profile_display_name)));
+            out.push_str(&format!("LOCAL={}\n", shell_quote_bash(local_path)));
+            out.push_str(&format!("REMOTE={}\n\n", shell_quote_bash(remote_path)));
+            out.push_str("aeroftp-cli sync \\\n");
+            out.push_str("  --profile \"$PROFILE\" \\\n");
+            out.push_str("  \"$LOCAL\" \\\n");
+            out.push_str("  \"$REMOTE\" \\\n");
+            out.push_str(&format!("  --direction {} \\\n", direction));
+            if profile.delete_orphans {
+                out.push_str("  --delete \\\n");
+            }
+            for pattern in exclude_patterns {
+                out.push_str(&format!("  --exclude {} \\\n", shell_quote_bash(pattern)));
+            }
+            if let Some(retries) = max_retries {
+                out.push_str(&format!("  --retries {} \\\n", retries));
+            }
+            if let Some(sleep) = &retries_sleep {
+                out.push_str(&format!("  --retries-sleep {} \\\n", shell_quote_bash(sleep)));
+            }
+            // Drop the trailing " \\\n" from the last argument and newline-terminate.
+            if out.ends_with(" \\\n") {
+                out.truncate(out.len() - 3);
+                out.push('\n');
+            }
+        }
+        SyncScriptFormat::PowerShell => {
+            out.push_str("#!/usr/bin/env pwsh\n");
+            out.push_str("# AeroFTP sync script (auto-generated)\n");
+            out.push_str(&format!("# Generated: {}\n", generated_at));
+            if !template_name.is_empty() {
+                out.push_str(&format!("# Template: {}\n", template_name.replace('\n', " ")));
+            }
+            if !template_description.is_empty() {
+                out.push_str(&format!(
+                    "# Description: {}\n",
+                    template_description.replace('\n', " ")
+                ));
+            }
+            out.push_str(&format!("# Profile: {}\n", profile_display_name.replace('\n', " ")));
+            out.push_str("# Re-import via AeroSync > Templates > Import.\n");
+            out.push_str(&format!("# {}{}\n", SYNC_SCRIPT_META_PREFIX, meta_json));
+            out.push_str("$ErrorActionPreference = 'Stop'\n\n");
+            out.push_str(&format!(
+                "$Profile = {}\n",
+                shell_quote_pwsh(profile_display_name)
+            ));
+            out.push_str(&format!("$Local   = {}\n", shell_quote_pwsh(local_path)));
+            out.push_str(&format!("$Remote  = {}\n\n", shell_quote_pwsh(remote_path)));
+            out.push_str("aeroftp-cli sync `\n");
+            out.push_str("  --profile $Profile `\n");
+            out.push_str("  $Local `\n");
+            out.push_str("  $Remote `\n");
+            out.push_str(&format!("  --direction {} `\n", direction));
+            if profile.delete_orphans {
+                out.push_str("  --delete `\n");
+            }
+            for pattern in exclude_patterns {
+                out.push_str(&format!("  --exclude {} `\n", shell_quote_pwsh(pattern)));
+            }
+            if let Some(retries) = max_retries {
+                out.push_str(&format!("  --retries {} `\n", retries));
+            }
+            if let Some(sleep) = &retries_sleep {
+                out.push_str(&format!("  --retries-sleep {} `\n", shell_quote_pwsh(sleep)));
+            }
+            if out.ends_with(" `\n") {
+                out.truncate(out.len() - 3);
+                out.push('\n');
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Parse the `AEROFTP-META: {...}` line back into a SyncScriptMeta.
+/// We only round-trip scripts emitted by `export_sync_script`; arbitrary
+/// hand-edited shell scripts are out of scope.
+pub fn import_sync_script(script: &str) -> Result<SyncScriptMeta, String> {
+    for raw_line in script.lines() {
+        let line = raw_line.trim_start_matches(|c: char| c == '#' || c.is_whitespace());
+        if let Some(rest) = line.strip_prefix(SYNC_SCRIPT_META_PREFIX) {
+            let meta: SyncScriptMeta = serde_json::from_str(rest.trim())
+                .map_err(|e| format!("Malformed AEROFTP-META payload: {}", e))?;
+            if meta.schema != SYNC_SCRIPT_SCHEMA {
+                return Err(format!(
+                    "Unsupported script schema version: {}",
+                    meta.schema
+                ));
+            }
+            return Ok(meta);
+        }
+    }
+    Err("No AEROFTP-META marker found in script".to_string())
+}
+
+#[cfg(test)]
+mod sync_script_tests {
+    use super::*;
+
+    fn sample_profile() -> SyncProfile {
+        let mut p = SyncProfile::mirror();
+        p.id = "mirror".to_string();
+        p.delete_orphans = true;
+        p.exclude_patterns = vec!["*.tmp".to_string(), "node_modules".to_string()];
+        p.retry_policy = RetryPolicy {
+            max_retries: 5,
+            base_delay_ms: 2000,
+            max_delay_ms: 10_000,
+            backoff_multiplier: 2.0,
+            timeout_ms: 120_000,
+        };
+        p
+    }
+
+    #[test]
+    fn bash_export_round_trips_via_meta() {
+        let profile = sample_profile();
+        let script = export_sync_script(SyncScriptExportOptions {
+            profile: &profile,
+            profile_display_name: "My Server",
+            template_name: "Daily Backup",
+            template_description: "Nightly mirror",
+            local_path: "/home/me/proj",
+            remote_path: "/backups/proj",
+            exclude_patterns: &profile.exclude_patterns,
+            format: SyncScriptFormat::Bash,
+        })
+        .unwrap();
+        assert!(script.starts_with("#!/usr/bin/env bash"));
+        assert!(script.contains("--direction upload"));
+        assert!(script.contains("--delete"));
+        assert!(script.contains("--retries 5"));
+        assert!(script.contains("--retries-sleep '2s'"));
+        let meta = import_sync_script(&script).unwrap();
+        assert_eq!(meta.profile_name, "My Server");
+        assert_eq!(meta.local_path, "/home/me/proj");
+        assert_eq!(meta.remote_path, "/backups/proj");
+        assert_eq!(meta.direction, CompareDirection::LocalToRemote);
+        assert!(meta.delete_orphans);
+        assert_eq!(meta.exclude_patterns, vec!["*.tmp", "node_modules"]);
+        assert_eq!(meta.retries, Some(5));
+        assert_eq!(meta.retries_sleep.as_deref(), Some("2s"));
+    }
+
+    #[test]
+    fn pwsh_export_round_trips_via_meta() {
+        let profile = sample_profile();
+        let script = export_sync_script(SyncScriptExportOptions {
+            profile: &profile,
+            profile_display_name: "My Server",
+            template_name: "",
+            template_description: "",
+            local_path: "C:\\Users\\Me\\proj",
+            remote_path: "/backups/proj",
+            exclude_patterns: &profile.exclude_patterns,
+            format: SyncScriptFormat::PowerShell,
+        })
+        .unwrap();
+        assert!(script.starts_with("#!/usr/bin/env pwsh"));
+        assert!(script.contains("$ErrorActionPreference = 'Stop'"));
+        let meta = import_sync_script(&script).unwrap();
+        assert_eq!(meta.local_path, "C:\\Users\\Me\\proj");
+    }
+
+    #[test]
+    fn shell_quote_bash_escapes_apostrophe() {
+        assert_eq!(shell_quote_bash("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn shell_quote_pwsh_doubles_apostrophe() {
+        assert_eq!(shell_quote_pwsh("it's"), "'it''s'");
+    }
+
+    #[test]
+    fn import_rejects_missing_marker() {
+        assert!(import_sync_script("#!/usr/bin/env bash\necho hi\n").is_err());
+    }
+
+    #[test]
+    fn cli_default_policy_omits_overrides() {
+        // The CLI defaults to `--retries 3` and `--retries-sleep "1s"`. A
+        // profile that already matches those should emit no override flags.
+        let p = SyncProfile {
+            retry_policy: RetryPolicy {
+                max_retries: 3,
+                base_delay_ms: 1000,
+                max_delay_ms: 10_000,
+                backoff_multiplier: 2.0,
+                timeout_ms: 120_000,
+            },
+            ..SyncProfile::mirror()
+        };
+        let (r, s) = retry_overrides(&p.retry_policy);
+        assert!(r.is_none() && s.is_none());
+    }
+}
+
+// =============================
 // Metadata-Aware Rollback (#154)
 // =============================
 
