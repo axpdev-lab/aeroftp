@@ -52,6 +52,27 @@ interface RcloneCryptBrowserListResponse {
   files: RcloneCryptBrowserEntry[];
 }
 
+interface ImportedServerProfile {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  protocol?: string;
+  initialPath?: string;
+  localInitialPath?: string;
+  color?: string;
+  lastConnected?: string;
+  options?: Record<string, unknown>;
+  providerId?: string;
+  credential?: string;
+  hasStoredCredential?: boolean;
+}
+
+interface ServerProfilesImportResult {
+  servers: ImportedServerProfile[];
+}
+
 type TransferSpeedPreset = 'base' | 'fast' | 'super';
 type MountManagerOpenOptions = {
   profileId?: string;
@@ -190,8 +211,9 @@ import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
 import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
-import { loadSavedServerProfiles, mergeSavedServerProfile } from './utils/serverProfileStore';
+import { loadSavedServerProfiles, mergeSavedServerProfile, storeSavedServerProfiles } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
+import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { useTranslation } from './i18n';
 
 // Components
@@ -7127,6 +7149,162 @@ interface UpdateVerificationInfo {
     contextMenu.show(e, items);
   };
 
+  const mergeImportedServerProfiles = useCallback(async (importedServers: ImportedServerProfile[]) => {
+    const currentServers = await loadSavedServerProfiles();
+    const existingKeys = new Set(currentServers.map(s => `${s.host}:${s.port}:${s.username}`));
+    const existingIds = new Set(currentServers.map(s => s.id));
+
+    const newServers: ServerProfile[] = importedServers
+      .filter(s => !existingKeys.has(`${s.host}:${s.port}:${s.username}`) && !existingIds.has(s.id))
+      .map(s => ({
+        id: s.id,
+        name: s.name,
+        host: s.host,
+        port: s.port,
+        username: s.username,
+        protocol: s.protocol as ServerProfile['protocol'],
+        initialPath: s.initialPath,
+        localInitialPath: s.localInitialPath,
+        color: s.color,
+        lastConnected: s.lastConnected,
+        options: s.options,
+        providerId: s.providerId,
+        hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
+      }));
+
+    if (newServers.length > 0) {
+      await storeSavedServerProfiles([...currentServers, ...newServers]);
+      setServersRefreshKey(k => k + 1);
+    }
+
+    return {
+      imported: newServers.length,
+      skipped: importedServers.length - newServers.length,
+    };
+  }, []);
+
+  const refreshProfilesFromImportedKeystore = useCallback(async () => {
+    try {
+      const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
+      if (!profilesJson) return;
+      const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
+      if (!Array.isArray(importedProfiles) || importedProfiles.length === 0) return;
+      await storeSavedServerProfiles(importedProfiles);
+      setServersRefreshKey(k => k + 1);
+    } catch {
+      // Keystore may not include a profile list. Credentials are still imported.
+    }
+  }, []);
+
+  const importAeroFtpProfileFile = useCallback((filePath: string) => {
+    setInputDialog({
+      title: t('settings.importServers') || 'Import Servers',
+      defaultValue: '',
+      isPassword: true,
+      onConfirm: async (password: string) => {
+        setInputDialog(null);
+        if (!password) {
+          notify.warning(t('settings.passwordRequired') || 'Password required');
+          return;
+        }
+
+        try {
+          const result = await invoke<ServerProfilesImportResult>('import_server_profiles', {
+            filePath,
+            password,
+          });
+          const merged = await mergeImportedServerProfiles(result.servers);
+          notify.success(
+            (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(merged.imported)),
+            merged.skipped > 0 ? `${merged.skipped} ${t('settings.duplicatesSkipped') || 'duplicates skipped'}` : undefined,
+          );
+        } catch (err) {
+          const message = String(err);
+          notify.error(
+            'Import failed',
+            message.includes('Invalid password') ? (t('settings.invalidPassword') || 'Invalid password') : message,
+          );
+        }
+      },
+    });
+  }, [mergeImportedServerProfiles, notify, t]);
+
+  const importAeroFtpKeystoreFile = useCallback((filePath: string) => {
+    setInputDialog({
+      title: t('settings.importKeystore') || 'Import Keystore',
+      defaultValue: '',
+      isPassword: true,
+      onConfirm: async (password: string) => {
+        setInputDialog(null);
+        if (password.length < 8) {
+          notify.warning(t('settings.passwordTooShort') || 'Password must be at least 8 characters');
+          return;
+        }
+
+        try {
+          const result = await invoke<{ imported: number; skipped: number; total: number }>('import_keystore', {
+            password,
+            filePath,
+            mergeStrategy: 'skip_existing',
+          });
+          await refreshProfilesFromImportedKeystore();
+          notify.success(
+            t('settings.importKeystore') || 'Import Keystore',
+            t('settings.keystoreImported', { imported: result.imported, skipped: result.skipped }),
+          );
+        } catch (err) {
+          const message = String(err);
+          notify.error(
+            'Import failed',
+            message.includes('Invalid password') || message.includes('decrypt')
+              ? (t('settings.invalidPassword') || 'Invalid password')
+              : message,
+          );
+        }
+      },
+    });
+  }, [notify, refreshProfilesFromImportedKeystore, t]);
+
+  const handleOpenWithDefaultApp = useCallback(async (file: LocalFile) => {
+    try {
+      const path = file.path || `${currentLocalPath}/${file.name}`;
+      const route = getOpenWithDefaultRoute(path, file.is_dir);
+
+      if (route.kind === 'aerovault') {
+        setShowVaultPanel({ mode: 'open', path });
+        return;
+      }
+
+      if (route.kind === 'aeroftp-profile') {
+        importAeroFtpProfileFile(path);
+        return;
+      }
+
+      if (route.kind === 'aeroftp-keystore') {
+        importAeroFtpKeystoreFile(path);
+        return;
+      }
+
+      if (route.kind === 'terminal') {
+        setDevToolsOpen(true);
+        window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' }));
+        window.dispatchEvent(new CustomEvent('terminal-execute', {
+          detail: { command: route.command, insertOnly: true },
+        }));
+        notify.success(t('contextMenu.openInTerminal') || 'Open in Terminal', route.command);
+        return;
+      }
+
+      if (file.is_dir) {
+        await openInFileManager(path);
+      } else {
+        await invoke('open_local_file', { path });
+      }
+    } catch (err) {
+      notify.error('Open with default app', String(err));
+    }
+  }, [currentLocalPath, importAeroFtpKeystoreFile, importAeroFtpProfileFile, notify, t]);
+
   const showLocalContextMenu = (e: React.MouseEvent, file: LocalFile) => {
     e.preventDefault();
 
@@ -7154,6 +7332,12 @@ interface UpdateVerificationInfo {
         icon: _activeProto === 'github' ? <Github size={14} /> : _activeProto === 'gitlab' ? <GitLabLogo size={14} /> : <Cloud size={14} />,
         action: () => uploadMultipleFiles(filesToUpload),
         disabled: !isConnected
+      },
+      {
+        label: 'Open with default app',
+        icon: <ExternalLink size={14} />,
+        action: () => handleOpenWithDefaultApp(file),
+        disabled: count > 1,
       },
       // .aerovault — Open with AeroVault (right after Upload)
       ...(isAeroVaultFile ? [{

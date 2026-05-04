@@ -310,6 +310,11 @@ interface TerminalSettings {
 
 const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = { themeName: 'tokyo-night', fontSize: 14 };
 
+type PendingTerminalCommand = {
+    command: string;
+    insertOnly?: boolean;
+};
+
 // Synchronous fallback used as the React initial state — vault reads are
 // async and we can't block the render. The full vault refresh happens
 // right after mount in a useEffect (see `loadSettingsFromVault` below).
@@ -449,7 +454,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     // Map tabId → pty session id (backend)
     const ptySessionIds = useRef<Map<string, string>>(new Map());
     // Pending command queued by AeroAgent when no terminal was open
-    const pendingCommandRef = useRef<string | null>(null);
+    const pendingCommandRef = useRef<PendingTerminalCommand | null>(null);
 
     // One xterm container per tab. xterm.open(container) is called ONCE per
     // tab when its xterm instance is created, then we just show/hide the
@@ -863,11 +868,12 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 // Wait for shell prompt to be ready (after clear screen)
                 setTimeout(async () => {
                     try {
+                        const data = pendingCmd.insertOnly ? pendingCmd.command : pendingCmd.command + '\n';
                         if (tab.type === 'ssh' && sessionId) {
-                            await invoke('ssh_shell_write', { sessionId, data: pendingCmd + '\n' });
+                            await invoke('ssh_shell_write', { sessionId, data });
                         } else {
                             if (sessionId) {
-                                await invoke('pty_write', { data: pendingCmd + '\n', sessionId });
+                                await invoke('pty_write', { data, sessionId });
                             }
                         }
                     } catch { /* ignore */ }
@@ -986,7 +992,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     // Listen for terminal-execute events from AeroAgent
     useEffect(() => {
         const handleTerminalExecute = (e: Event) => {
-            const { command, displayOnly } = (e as CustomEvent).detail;
+            const { command, displayOnly, insertOnly } = (e as CustomEvent).detail;
             if (!command) return;
 
             // displayOnly: shell_execute already ran the command in Rust backend.
@@ -1013,7 +1019,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 const connectedTabIds = Array.from(connectedTabs.current);
                 if (connectedTabIds.length === 0) {
                     // No connected terminals — auto-create a local tab and queue the command
-                    pendingCommandRef.current = command;
+                    pendingCommandRef.current = { command, insertOnly };
                     addTab();
                     return;
                 }
@@ -1021,10 +1027,11 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 const targetTab = connectedTabIds[0];
                 const sessionId = ptySessionIds.current.get(targetTab);
                 const tab = tabs.find(t => t.id === targetTab);
+                const data = insertOnly ? command : command + '\n';
                 if (tab?.type === 'ssh' && sessionId) {
-                    invoke('ssh_shell_write', { sessionId, data: command + '\n' }).catch(() => {});
+                    invoke('ssh_shell_write', { sessionId, data }).catch(() => {});
                 } else if (sessionId) {
-                    invoke('pty_write', { data: command + '\n', sessionId }).catch(() => {});
+                    invoke('pty_write', { data, sessionId }).catch(() => {});
                 }
                 setActiveTabId(targetTab);
                 return;
@@ -1033,10 +1040,11 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             // Write to active tab
             const sessionId = ptySessionIds.current.get(tabId);
             const tab = tabs.find(t => t.id === tabId);
+            const data = insertOnly ? command : command + '\n';
             if (tab?.type === 'ssh' && sessionId) {
-                invoke('ssh_shell_write', { sessionId, data: command + '\n' }).catch(() => {});
+                invoke('ssh_shell_write', { sessionId, data }).catch(() => {});
             } else if (sessionId) {
-                invoke('pty_write', { data: command + '\n', sessionId }).catch(() => {});
+                invoke('pty_write', { data, sessionId }).catch(() => {});
             }
         };
 
