@@ -7,6 +7,7 @@ import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId }
 import { MyServersToolbar } from './MyServersToolbar';
 import { ServerCard } from './ServerCard';
 import { MyServersTable } from './MyServersTable';
+import { MyServersTableFooter } from './MyServersTableFooter';
 import { MyServersProtocolBreakdown, breakdownIsAvailable } from './MyServersProtocolBreakdown';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
@@ -961,10 +962,11 @@ export function MyServersPanel({
                     </div>
                 </div>
             ) : (
-                <div
-                    ref={scrollContainerRef}
-                    className="flex-1 overflow-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 custom-scroll-area"
-                >
+                <div className="flex-1 flex flex-col bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div
+                        ref={scrollContainerRef}
+                        className="flex-1 overflow-auto custom-scroll-area"
+                    >
                     <MyServersTable
                         servers={filteredServers}
                         allServers={servers}
@@ -1002,15 +1004,19 @@ export function MyServersPanel({
                         onRetryHealth={handleRetryHealth}
                         thresholds={thresholds}
                         density={density}
-                        breakdownAvailable={breakdownIsAvailable(filteredServers)}
-                        breakdownOpen={breakdownOpen}
-                        onToggleBreakdown={() => setBreakdownOpen(prev => !prev)}
                     />
                     {breakdownOpen && (
                         <div className="px-3 pb-4">
                             <MyServersProtocolBreakdown servers={filteredServers} thresholds={thresholds} />
                         </div>
                     )}
+                    </div>
+                    <MyServersTableFooter
+                        servers={filteredServers}
+                        breakdownAvailable={breakdownIsAvailable(filteredServers)}
+                        breakdownOpen={breakdownOpen}
+                        onToggleBreakdown={() => setBreakdownOpen(prev => !prev)}
+                    />
                 </div>
             )}
 

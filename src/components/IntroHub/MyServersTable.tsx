@@ -12,7 +12,6 @@ import type { StorageThresholds } from '../../hooks/useStorageThresholds';
 import { useTranslation } from '../../i18n';
 import { MyServersTableHeader } from './MyServersTableHeader';
 import { MyServersTableRow } from './MyServersTableRow';
-import { MyServersTableFooter } from './MyServersTableFooter';
 
 type HealthStatus = 'up' | 'slow' | 'down' | 'pending' | 'unknown';
 
@@ -53,9 +52,6 @@ interface MyServersTableProps {
     onRetryHealth: (server: ServerProfile) => void;
     thresholds: StorageThresholds;
     density: MyServersDensity;
-    breakdownAvailable?: boolean;
-    breakdownOpen?: boolean;
-    onToggleBreakdown?: () => void;
 }
 
 const pctOf = (server: ServerProfile) => {
@@ -117,9 +113,6 @@ export function MyServersTable({
     onRetryHealth,
     thresholds,
     density,
-    breakdownAvailable,
-    breakdownOpen,
-    onToggleBreakdown,
 }: MyServersTableProps) {
     const t = useTranslation();
     const effectiveVisibility = React.useMemo(() => {
@@ -127,7 +120,6 @@ export function MyServersTable({
         if (!Object.values(next).some(Boolean)) next.name = true;
         return next;
     }, [visibility, cardLayout]);
-    const visibleColumnCount = MY_SERVERS_TABLE_COLUMNS.filter(col => effectiveVisibility[col.id]).length;
     const sortLabel = sort ? t(MY_SERVERS_TABLE_COLUMNS.find(col => col.id === sort.colId)?.labelKey || '') : '';
     const dragDisabledTitle = sort
         ? t('introHub.table.clickToReturnManual', { column: sortLabel })
@@ -209,13 +201,6 @@ export function MyServersTable({
                     );
                 })}
             </tbody>
-            <MyServersTableFooter
-                servers={servers}
-                colSpan={visibleColumnCount}
-                breakdownAvailable={breakdownAvailable}
-                breakdownOpen={breakdownOpen}
-                onToggleBreakdown={onToggleBreakdown}
-            />
         </table>
     );
 }
