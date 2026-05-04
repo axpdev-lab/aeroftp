@@ -4210,7 +4210,11 @@
             "scanning": "Serveri skannimine...",
             "scanningDescription": "Otsib praegust favicon-i",
             "confirmDelete": "Kas eemaldada „{name}“ teie kohandatud ikoonide kogust?",
-            "dropHere": "Kukuta fail üleslaadimiseks"
+            "dropHere": "Kukuta fail üleslaadimiseks",
+            "sort": "Sorteeri",
+            "sortPopularity": "Populaarsed esimesena",
+            "sortAlphabetical": "A-Ü",
+            "dragHint": "Lohistage ümberjärjestamiseks"
         },
         "twoFactor": {
             "title": "Vajalik on kaheastmeline autentimine",

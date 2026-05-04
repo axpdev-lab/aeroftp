@@ -4229,7 +4229,11 @@
             "scanning": "Escanejant servidor...",
             "scanningDescription": "Cercant la favicon actual",
             "confirmDelete": "Voleu eliminar «{name}» de la vostra biblioteca d'icones personalitzada?",
-            "dropHere": "Deixa anar el fitxer per pujar-lo"
+            "dropHere": "Deixa anar el fitxer per pujar-lo",
+            "sort": "Ordena",
+            "sortPopularity": "Populars primer",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Arrossega per reordenar"
         },
         "twoFactor": {
             "title": "Cal autenticació de dos factors",

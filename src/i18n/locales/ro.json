@@ -4200,7 +4200,11 @@
             "scanning": "Se scanează serverul...",
             "scanningDescription": "Caut favicon-ul curent",
             "confirmDelete": "Eliminați „{name}” din biblioteca dvs. de pictograme personalizate?",
-            "dropHere": "Plasați fișierul pentru încărcare"
+            "dropHere": "Plasați fișierul pentru încărcare",
+            "sort": "Sortează",
+            "sortPopularity": "Populare mai întâi",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Trageți pentru a rearanja"
         },
         "twoFactor": {
             "title": "Este necesară autentificarea cu doi factori",

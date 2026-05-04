@@ -4210,7 +4210,11 @@
             "scanning": "Đang quét máy chủ...",
             "scanningDescription": "Đang tìm favicon hiện tại",
             "confirmDelete": "Xóa \"{name}\" khỏi thư viện biểu tượng tùy chỉnh của bạn?",
-            "dropHere": "Thả tệp để tải lên"
+            "dropHere": "Thả tệp để tải lên",
+            "sort": "Sắp xếp",
+            "sortPopularity": "Phổ biến trước",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Kéo để sắp xếp lại"
         },
         "twoFactor": {
             "title": "Yêu cầu Xác thực Hai Yếu tố",

@@ -4123,7 +4123,11 @@
       "onServer": "On server",
       "onServerDescription": "Just detected by scanning the server now",
       "scanning": "Scanning server...",
-      "scanningDescription": "Looking for the current favicon"
+      "scanningDescription": "Looking for the current favicon",
+      "sort": "Sort",
+      "sortPopularity": "Popular first",
+      "sortAlphabetical": "A-Z",
+      "dragHint": "Drag to reorder"
     },
     "googledrive": {
       "star": "Star",

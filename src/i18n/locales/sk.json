@@ -4210,7 +4210,11 @@
             "scanning": "Skenovanie servera...",
             "scanningDescription": "Hľadám aktuálnu favicon",
             "confirmDelete": "Odstrániť „{name}“ z vašej knižnice vlastných ikon?",
-            "dropHere": "Pustite súbor na nahranie"
+            "dropHere": "Pustite súbor na nahranie",
+            "sort": "Zoradiť",
+            "sortPopularity": "Obľúbené prvé",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Potiahnite na zmenu poradia"
         },
         "twoFactor": {
             "title": "Vyžaduje sa dvojfaktorové overenie",

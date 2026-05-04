@@ -4210,7 +4210,11 @@
             "scanning": "Memindai server...",
             "scanningDescription": "Mencari favicon saat ini",
             "confirmDelete": "Hapus \"{name}\" dari pustaka ikon kustom Anda?",
-            "dropHere": "Lepaskan file untuk mengunggah"
+            "dropHere": "Lepaskan file untuk mengunggah",
+            "sort": "Urutkan",
+            "sortPopularity": "Populer dahulu",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Seret untuk menyusun ulang"
         },
         "twoFactor": {
             "title": "Autentikasi Dua Faktor Diperlukan",

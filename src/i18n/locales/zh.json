@@ -4200,7 +4200,11 @@
             "scanning": "扫描服务器中...",
             "scanningDescription": "正在查找当前 favicon",
             "confirmDelete": "从您的自定义图标库中移除“{name}”吗？",
-            "dropHere": "拖放文件以上传"
+            "dropHere": "拖放文件以上传",
+            "sort": "排序",
+            "sortPopularity": "热门优先",
+            "sortAlphabetical": "字母顺序",
+            "dragHint": "拖动以重新排序"
         },
         "twoFactor": {
             "title": "需要双因素身份验证",

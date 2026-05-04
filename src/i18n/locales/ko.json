@@ -4200,7 +4200,11 @@
             "scanning": "서버 스캔 중...",
             "scanningDescription": "현재 파비콘 검색 중",
             "confirmDelete": "사용자 지정 아이콘 라이브러리에서 \"{name}\"을(를) 제거하시겠습니까?",
-            "dropHere": "파일을 놓아 업로드"
+            "dropHere": "파일을 놓아 업로드",
+            "sort": "정렬",
+            "sortPopularity": "인기순",
+            "sortAlphabetical": "ㄱ-ㅎ",
+            "dragHint": "드래그하여 순서 변경"
         },
         "twoFactor": {
             "title": "2단계 인증 필요",

@@ -4210,7 +4210,11 @@
             "scanning": "Nuskaitomas serveris...",
             "scanningDescription": "Ieškau dabartinės favicon",
             "confirmDelete": "Pašalinti „{name}“ iš jūsų pasirinktinės piktogramų bibliotekos?",
-            "dropHere": "Numeskite failą įkėlimui"
+            "dropHere": "Numeskite failą įkėlimui",
+            "sort": "Rūšiuoti",
+            "sortPopularity": "Populiarūs pirma",
+            "sortAlphabetical": "A-Ž",
+            "dragHint": "Vilkite norėdami pertvarkyti"
         },
         "twoFactor": {
             "title": "Reikalingas dviejų veiksnių autentifikavimas",

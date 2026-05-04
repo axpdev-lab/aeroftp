@@ -4207,7 +4207,11 @@
             "onServer": "Sul server",
             "onServerDescription": "Appena rilevata scansionando il server",
             "scanning": "Scansione del server...",
-            "scanningDescription": "Cerco la favicon attuale"
+            "scanningDescription": "Cerco la favicon attuale",
+            "sort": "Ordina",
+            "sortPopularity": "Popolari prima",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Trascina per riordinare"
         },
         "table": {
             "manageColumns": "Gestisci colonne",

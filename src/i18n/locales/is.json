@@ -4229,7 +4229,11 @@
             "scanning": "Skanna þjón...",
             "scanningDescription": "Leita að núverandi favicon",
             "confirmDelete": "Fjarlægja „{name}“ úr sérsniðnu táknasafni þínu?",
-            "dropHere": "Slepptu skrá til að hlaða upp"
+            "dropHere": "Slepptu skrá til að hlaða upp",
+            "sort": "Raða",
+            "sortPopularity": "Vinsælar fyrst",
+            "sortAlphabetical": "A-Ö",
+            "dragHint": "Dragðu til að endurraða"
         },
         "twoFactor": {
             "title": "Tveggja þátta auðkenningar krafist",

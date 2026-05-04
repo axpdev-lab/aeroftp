@@ -4210,7 +4210,11 @@
             "scanning": "Sunucu taranıyor...",
             "scanningDescription": "Mevcut favicon aranıyor",
             "confirmDelete": "\"{name}\" özel simge kitaplığınızdan kaldırılsın mı?",
-            "dropHere": "Yüklemek için dosyayı bırakın"
+            "dropHere": "Yüklemek için dosyayı bırakın",
+            "sort": "Sırala",
+            "sortPopularity": "Önce popüler",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Yeniden sıralamak için sürükleyin"
         },
         "twoFactor": {
             "title": "İki Faktörlü Kimlik Doğrulama Gerekli",

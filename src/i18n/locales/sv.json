@@ -4210,7 +4210,11 @@
             "scanning": "Skannar servern...",
             "scanningDescription": "Letar efter den aktuella favicon",
             "confirmDelete": "Ta bort \"{name}\" från ditt anpassade ikonbibliotek?",
-            "dropHere": "Släpp fil för att ladda upp"
+            "dropHere": "Släpp fil för att ladda upp",
+            "sort": "Sortera",
+            "sortPopularity": "Populära först",
+            "sortAlphabetical": "A-Ö",
+            "dragHint": "Dra för att ordna om"
         },
         "twoFactor": {
             "title": "Tvåfaktorsautentisering krävs",

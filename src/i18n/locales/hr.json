@@ -4210,7 +4210,11 @@
             "scanning": "Skeniranje poslužitelja...",
             "scanningDescription": "Tražim trenutnu favicon",
             "confirmDelete": "Ukloniti „{name}“ iz vaše knjižnice prilagođenih ikona?",
-            "dropHere": "Ispustite datoteku za prijenos"
+            "dropHere": "Ispustite datoteku za prijenos",
+            "sort": "Sortiraj",
+            "sortPopularity": "Popularni prvi",
+            "sortAlphabetical": "A-Ž",
+            "dragHint": "Povucite za promjenu redoslijeda"
         },
         "twoFactor": {
             "title": "Potrebna je dvofaktorska autentifikacija",

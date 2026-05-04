@@ -4210,7 +4210,11 @@
             "scanning": "Mengimbas pelayan...",
             "scanningDescription": "Mencari favicon semasa",
             "confirmDelete": "Alih keluar \"{name}\" daripada pustaka ikon tersuai anda?",
-            "dropHere": "Lepaskan fail untuk muat naik"
+            "dropHere": "Lepaskan fail untuk muat naik",
+            "sort": "Susun",
+            "sortPopularity": "Popular dahulu",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Seret untuk menyusun semula"
         },
         "twoFactor": {
             "title": "Pengesahan Dua Faktor Diperlukan",

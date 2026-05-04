@@ -4200,7 +4200,11 @@
             "scanning": "Server wird gescannt...",
             "scanningDescription": "Suche nach aktuellem Favicon",
             "confirmDelete": "„{name}“ aus Ihrer benutzerdefinierten Symbolbibliothek entfernen?",
-            "dropHere": "Datei zum Hochladen ablegen"
+            "dropHere": "Datei zum Hochladen ablegen",
+            "sort": "Sortieren",
+            "sortPopularity": "Beliebte zuerst",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Zum Neuanordnen ziehen"
         },
         "twoFactor": {
             "title": "Zwei-Faktor-Authentifizierung erforderlich",

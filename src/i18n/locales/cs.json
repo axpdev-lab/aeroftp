@@ -4210,7 +4210,11 @@
             "scanning": "Skenuji server...",
             "scanningDescription": "Hledám aktuální favicon",
             "confirmDelete": "Odebrat „{name}“ z vaší knihovny vlastních ikon?",
-            "dropHere": "Přetáhněte soubor pro nahrání"
+            "dropHere": "Přetáhněte soubor pro nahrání",
+            "sort": "Řadit",
+            "sortPopularity": "Oblíbené první",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Přetáhněte pro přeskupení"
         },
         "twoFactor": {
             "title": "Vyžadováno dvoufaktorové ověření",

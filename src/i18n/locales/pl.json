@@ -4200,7 +4200,11 @@
             "scanning": "Skanowanie serwera...",
             "scanningDescription": "Szukam aktualnej favicon",
             "confirmDelete": "Usunąć „{name}” z Twojej biblioteki niestandardowych ikon?",
-            "dropHere": "Upuść plik, aby przesłać"
+            "dropHere": "Upuść plik, aby przesłać",
+            "sort": "Sortuj",
+            "sortPopularity": "Popularne najpierw",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Przeciągnij, aby zmienić kolejność"
         },
         "twoFactor": {
             "title": "Wymagane uwierzytelnianie dwuskładnikowe",

@@ -4229,7 +4229,11 @@
             "scanning": "Sini-scan ang server...",
             "scanningDescription": "Hinahanap ang kasalukuyang favicon",
             "confirmDelete": "Alisin ang \"{name}\" sa iyong custom na library ng icon?",
-            "dropHere": "I-drop ang file para mag-upload"
+            "dropHere": "I-drop ang file para mag-upload",
+            "sort": "Pagbukud-bukurin",
+            "sortPopularity": "Sikat muna",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "I-drag upang ayusin muli"
         },
         "twoFactor": {
             "title": "Kailangan ng Two-Factor Authentication",

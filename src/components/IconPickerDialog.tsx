@@ -38,6 +38,22 @@ const POPULARITY_PRIORITY: Record<string, number> = {
 };
 
 const CUSTOM_ICONS_KEY = 'aeroftp-custom-icons';
+const SHIPPED_SORT_KEY = 'aeroftp-icon-picker-sort';
+
+type ShippedSort = 'popularity' | 'alphabetical';
+
+function loadShippedSort(): ShippedSort {
+    try {
+        const v = localStorage.getItem(SHIPPED_SORT_KEY);
+        return v === 'alphabetical' ? 'alphabetical' : 'popularity';
+    } catch {
+        return 'popularity';
+    }
+}
+
+function persistShippedSort(sort: ShippedSort) {
+    try { localStorage.setItem(SHIPPED_SORT_KEY, sort); } catch { /* ignore */ }
+}
 
 interface CustomIcon {
     id: string;
@@ -161,6 +177,17 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
     const [search, setSearch] = useState('');
     const [customIcons, setCustomIcons] = useState<CustomIcon[]>(() => loadCustomIcons());
     const [uploading, setUploading] = useState(false);
+    const [shippedSort, setShippedSortState] = useState<ShippedSort>(() => loadShippedSort());
+    const setShippedSort = useCallback((sort: ShippedSort) => {
+        setShippedSortState(sort);
+        persistShippedSort(sort);
+    }, []);
+
+    // Drag-reorder state for the Custom icons grid. `dragIdx` tracks the
+    // source index, `overIdx` the current hover target. Both reset on drop or
+    // dragend, including when the drop happens outside the dialog.
+    const [dragIdx, setDragIdx] = useState<number | null>(null);
+    const [overIdx, setOverIdx] = useState<number | null>(null);
 
     // Live re-scan state. `liveDetected === undefined` means "not yet scanned"
     // (or no rescan callback provided). `null` = scanned, no favicon found.
@@ -230,18 +257,22 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                 items.push({ key, name: item.name, Logo });
             }
             if (items.length > 0) {
-                // Curated "popular first", then alphabetical for the long tail.
-                items.sort((a, b) => {
-                    const pa = POPULARITY_PRIORITY[a.key] ?? Number.POSITIVE_INFINITY;
-                    const pb = POPULARITY_PRIORITY[b.key] ?? Number.POSITIVE_INFINITY;
-                    if (pa !== pb) return pa - pb;
-                    return a.name.localeCompare(b.name);
-                });
+                if (shippedSort === 'alphabetical') {
+                    items.sort((a, b) => a.name.localeCompare(b.name));
+                } else {
+                    // Curated "popular first", then alphabetical for the long tail.
+                    items.sort((a, b) => {
+                        const pa = POPULARITY_PRIORITY[a.key] ?? Number.POSITIVE_INFINITY;
+                        const pb = POPULARITY_PRIORITY[b.key] ?? Number.POSITIVE_INFINITY;
+                        if (pa !== pb) return pa - pb;
+                        return a.name.localeCompare(b.name);
+                    });
+                }
                 result.push({ id: cat.id, labelKey: cat.labelKey, items });
             }
         }
         return result;
-    }, []);
+    }, [shippedSort]);
 
     const filteredShipped = useMemo(() => {
         if (!search.trim()) return shippedByCategory;
@@ -263,6 +294,47 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
         onSelect(icon.dataUrl);
         onClose();
     }, [onSelect, onClose]);
+
+    // Custom icons drag-reorder. Mirrors the pattern in MyServersPanel but
+    // simpler: single flat list, no filtering, no sentinels, no auto-scroll
+    // (the dialog grid is short enough to fit without virtualization).
+    const handleIconDragStart = useCallback((idx: number) => (e: React.DragEvent) => {
+        setDragIdx(idx);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', idx.toString());
+    }, []);
+
+    const handleIconDragOver = useCallback((idx: number) => (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setOverIdx(idx);
+    }, []);
+
+    const handleIconDrop = useCallback((idx: number) => (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (dragIdx === null || dragIdx === idx) {
+            setDragIdx(null);
+            setOverIdx(null);
+            return;
+        }
+        setCustomIcons(prev => {
+            if (dragIdx < 0 || dragIdx >= prev.length) return prev;
+            const next = [...prev];
+            const [moved] = next.splice(dragIdx, 1);
+            const target = dragIdx < idx ? idx - 1 : idx;
+            next.splice(target, 0, moved);
+            persistCustomIcons(next);
+            return next;
+        });
+        setDragIdx(null);
+        setOverIdx(null);
+    }, [dragIdx]);
+
+    const handleIconDragEnd = useCallback(() => {
+        setDragIdx(null);
+        setOverIdx(null);
+    }, []);
 
     const handleDeleteCustom = useCallback((id: string) => {
         setCustomIcons(prev => {
@@ -436,9 +508,9 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                     ))}
                 </div>
 
-                {/* Search (shipped tab only) */}
+                {/* Search + sort toggle (shipped tab only) */}
                 {tab === 'shipped' && (
-                    <div className="px-5 pt-2">
+                    <div className="px-5 pt-2 space-y-2">
                         <div className="relative">
                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                             <input
@@ -448,6 +520,35 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                                 placeholder={t('iconPicker.search')}
                                 className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                             />
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px]">
+                            <span className="text-gray-500 dark:text-gray-400">{t('iconPicker.sort')}:</span>
+                            <div className="inline-flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setShippedSort('popularity')}
+                                    aria-pressed={shippedSort === 'popularity'}
+                                    className={`px-2 py-1 transition-colors ${
+                                        shippedSort === 'popularity'
+                                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
+                                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                                    }`}
+                                >
+                                    {t('iconPicker.sortPopularity')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShippedSort('alphabetical')}
+                                    aria-pressed={shippedSort === 'alphabetical'}
+                                    className={`px-2 py-1 border-l border-gray-200 dark:border-gray-700 transition-colors ${
+                                        shippedSort === 'alphabetical'
+                                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
+                                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                                    }`}
+                                >
+                                    {t('iconPicker.sortAlphabetical')}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -592,10 +693,22 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                                 )
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                                    {customIcons.map(icon => (
+                                    {customIcons.map((icon, idx) => (
                                         <div
                                             key={icon.id}
-                                            className="group relative flex flex-col items-center gap-1.5 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500/60 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                            draggable
+                                            onDragStart={handleIconDragStart(idx)}
+                                            onDragOver={handleIconDragOver(idx)}
+                                            onDrop={handleIconDrop(idx)}
+                                            onDragEnd={handleIconDragEnd}
+                                            title={t('iconPicker.dragHint')}
+                                            className={`group relative flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-colors cursor-grab active:cursor-grabbing ${
+                                                dragIdx === idx
+                                                    ? 'opacity-50 border-blue-300 dark:border-blue-500/40'
+                                                    : overIdx === idx && dragIdx !== null && dragIdx !== idx
+                                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-400/40'
+                                                        : 'border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500/60 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                                            }`}
                                         >
                                             <button
                                                 onClick={() => handleSelectCustom(icon)}

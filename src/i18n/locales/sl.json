@@ -4210,7 +4210,11 @@
             "scanning": "Pregledovanje strežnika...",
             "scanningDescription": "Iščem trenutno favicon",
             "confirmDelete": "Ali želite odstraniti »{name}« iz vaše knjižnice ikon po meri?",
-            "dropHere": "Spustite datoteko za nalaganje"
+            "dropHere": "Spustite datoteko za nalaganje",
+            "sort": "Razvrsti",
+            "sortPopularity": "Priljubljeni najprej",
+            "sortAlphabetical": "A-Ž",
+            "dragHint": "Povlecite za preurejanje"
         },
         "twoFactor": {
             "title": "Zahtevano je dvostopenjsko preverjanje pristnosti",

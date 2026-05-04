@@ -4210,7 +4210,11 @@
             "scanning": "Kiszolgáló átvizsgálása...",
             "scanningDescription": "Keresem a jelenlegi favicont",
             "confirmDelete": "Eltávolítja a(z) „{name}” elemet az egyéni ikonkönyvtárból?",
-            "dropHere": "Engedje ide a fájlt a feltöltéshez"
+            "dropHere": "Engedje ide a fájlt a feltöltéshez",
+            "sort": "Rendezés",
+            "sortPopularity": "Népszerűek elöl",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Húzza az átrendezéshez"
         },
         "twoFactor": {
             "title": "Kétfaktoros hitelesítés szükséges",

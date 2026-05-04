@@ -4229,7 +4229,11 @@
             "scanning": "Escaneando servidor...",
             "scanningDescription": "Buscando a favicon actual",
             "confirmDelete": "Eliminar «{name}» da súa biblioteca de iconas personalizada?",
-            "dropHere": "Solte o ficheiro para cargalo"
+            "dropHere": "Solte o ficheiro para cargalo",
+            "sort": "Ordenar",
+            "sortPopularity": "Populares primeiro",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Arrastra para reordenar"
         },
         "twoFactor": {
             "title": "Requírese autenticación de dous factores",

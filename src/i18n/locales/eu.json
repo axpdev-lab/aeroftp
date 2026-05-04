@@ -4229,7 +4229,11 @@
             "scanning": "Zerbitzaria eskaneatzen...",
             "scanningDescription": "Uneko favicon-a bilatzen",
             "confirmDelete": "«{name}» zure ikono pertsonalizatuen liburutegitik kendu?",
-            "dropHere": "Jaregin fitxategia kargatzeko"
+            "dropHere": "Jaregin fitxategia kargatzeko",
+            "sort": "Ordenatu",
+            "sortPopularity": "Ezagunak lehenik",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Arrastatu berrantolatzeko"
         },
         "twoFactor": {
             "title": "Bi faktoreko autentifikazioa behar da",

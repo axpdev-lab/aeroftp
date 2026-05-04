@@ -4210,7 +4210,11 @@
             "scanning": "Inakagua seva...",
             "scanningDescription": "Inatafuta favicon ya sasa",
             "confirmDelete": "Ondoa \"{name}\" kutoka kwenye maktaba yako ya aikoni maalum?",
-            "dropHere": "Dondosha faili ili kupakia"
+            "dropHere": "Dondosha faili ili kupakia",
+            "sort": "Panga",
+            "sortPopularity": "Maarufu kwanza",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Buruta ili kupanga upya"
         },
         "twoFactor": {
             "title": "Uthibitishaji wa Mambo Mawili Unahitajika",

@@ -4200,7 +4200,11 @@
             "scanning": "サーバーをスキャン中...",
             "scanningDescription": "現在のファビコンを探しています",
             "confirmDelete": "カスタムアイコンライブラリから「{name}」を削除しますか？",
-            "dropHere": "ファイルをドロップしてアップロード"
+            "dropHere": "ファイルをドロップしてアップロード",
+            "sort": "並べ替え",
+            "sortPopularity": "人気順",
+            "sortAlphabetical": "ABC順",
+            "dragHint": "ドラッグして並べ替え"
         },
         "twoFactor": {
             "title": "二要素認証が必要です",

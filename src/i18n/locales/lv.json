@@ -4210,7 +4210,11 @@
             "scanning": "Skenē serveri...",
             "scanningDescription": "Meklē pašreizējo favicon",
             "confirmDelete": "Noņemt “{name}” no jūsu pielāgotās ikonu bibliotēkas?",
-            "dropHere": "Nometiet failu, lai augšupielādētu"
+            "dropHere": "Nometiet failu, lai augšupielādētu",
+            "sort": "Kārtot",
+            "sortPopularity": "Populārākie vispirms",
+            "sortAlphabetical": "A-Ž",
+            "dragHint": "Velciet, lai pārkārtotu"
         },
         "twoFactor": {
             "title": "Nepieciešama divfaktoru autentifikācija",

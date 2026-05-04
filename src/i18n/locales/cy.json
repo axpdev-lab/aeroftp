@@ -4229,7 +4229,11 @@
             "scanning": "Sganio'r gweinydd...",
             "scanningDescription": "Yn chwilio am y favicon cyfredol",
             "confirmDelete": "Tynnu \"{name}\" o'ch llyfrgell eiconau personol?",
-            "dropHere": "Gollyngwch ffeil i'w llwytho"
+            "dropHere": "Gollyngwch ffeil i'w llwytho",
+            "sort": "Trefnu",
+            "sortPopularity": "Poblogaidd yn gyntaf",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Llusgwch i aildrefnu"
         },
         "twoFactor": {
             "title": "Mae angen Dilysu Dau Ffactor",

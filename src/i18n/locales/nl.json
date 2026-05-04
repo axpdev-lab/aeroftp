@@ -4200,7 +4200,11 @@
             "scanning": "Server scannen...",
             "scanningDescription": "Op zoek naar de huidige favicon",
             "confirmDelete": "\"{name}\" verwijderen uit je aangepaste pictogrammenbibliotheek?",
-            "dropHere": "Bestand neerzetten om te uploaden"
+            "dropHere": "Bestand neerzetten om te uploaden",
+            "sort": "Sorteren",
+            "sortPopularity": "Populair eerst",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Sleep om te herschikken"
         },
         "twoFactor": {
             "title": "Tweefactorauthenticatie vereist",

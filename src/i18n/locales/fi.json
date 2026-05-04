@@ -4210,7 +4210,11 @@
             "scanning": "Skannataan palvelinta...",
             "scanningDescription": "Etsitään nykyistä favicon-kuvaketta",
             "confirmDelete": "Poistetaanko ”{name}” mukautettujen kuvakkeiden kirjastosta?",
-            "dropHere": "Pudota tiedosto ladataksesi"
+            "dropHere": "Pudota tiedosto ladataksesi",
+            "sort": "Lajittele",
+            "sortPopularity": "Suositut ensin",
+            "sortAlphabetical": "A-Ö",
+            "dragHint": "Vedä järjestääksesi uudelleen"
         },
         "twoFactor": {
             "title": "Kaksivaiheinen todennus vaaditaan",

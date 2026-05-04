@@ -4210,7 +4210,11 @@
             "scanning": "Scanner server...",
             "scanningDescription": "Leder efter den aktuelle favicon",
             "confirmDelete": "Fjern \"{name}\" fra dit brugerdefinerede ikonbibliotek?",
-            "dropHere": "Slip fil for at uploade"
+            "dropHere": "Slip fil for at uploade",
+            "sort": "Sortér",
+            "sortPopularity": "Populære først",
+            "sortAlphabetical": "A-Å",
+            "dragHint": "Træk for at omarrangere"
         },
         "twoFactor": {
             "title": "Tofaktorgodkendelse påkrævet",

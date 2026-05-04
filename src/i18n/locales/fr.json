@@ -4200,7 +4200,11 @@
             "scanning": "Analyse du serveur...",
             "scanningDescription": "Recherche de la favicon actuelle",
             "confirmDelete": "Supprimer « {name} » de votre bibliothèque d'icônes personnalisée ?",
-            "dropHere": "Déposez le fichier pour téléverser"
+            "dropHere": "Déposez le fichier pour téléverser",
+            "sort": "Trier",
+            "sortPopularity": "Populaires d'abord",
+            "sortAlphabetical": "A-Z",
+            "dragHint": "Glissez pour réorganiser"
         },
         "twoFactor": {
             "title": "Authentification à deux facteurs requise",

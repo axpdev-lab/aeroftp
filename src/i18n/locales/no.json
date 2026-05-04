@@ -4229,7 +4229,11 @@
             "scanning": "Skanner serveren...",
             "scanningDescription": "Leter etter gjeldende favicon",
             "confirmDelete": "Fjerne «{name}» fra ditt egendefinerte ikonbibliotek?",
-            "dropHere": "Slipp fil for å laste opp"
+            "dropHere": "Slipp fil for å laste opp",
+            "sort": "Sorter",
+            "sortPopularity": "Populære først",
+            "sortAlphabetical": "A-Å",
+            "dragHint": "Dra for å omorganisere"
         },
         "twoFactor": {
             "title": "Tofaktorautentisering påkrevd",
