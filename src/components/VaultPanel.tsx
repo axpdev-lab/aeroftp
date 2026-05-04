@@ -128,9 +128,13 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-[700px] max-h-[85vh] flex flex-col animate-scale-in">
-                {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
+                {/* Header. data-tauri-drag-region keeps the window movable while
+                    the modal is open. Buttons inside override pointer-events. */}
+                <div
+                    data-tauri-drag-region
+                    className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
+                >
+                    <div className="flex items-center gap-2 pointer-events-none">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" className="text-emerald-400">
                             <path d="M12 21l.88-.38a11 11 0 006.63-9.26l.43-5.52a1 1 0 00-.76-1L12 3 4.82 4.8a1 1 0 00-.76 1l.43 5.52a11 11 0 006.63 9.26z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                             <rect x="9.25" y="11" width="5.5" height="4" rx="0.75" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

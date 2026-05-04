@@ -413,15 +413,29 @@ export const ServerCard = React.memo(function ServerCard({
             )}
             {/* Top row: clickable icon + name + badge */}
             <div className="flex items-start gap-3">
-                {/* Icon = connect button */}
-                <button
-                    onClick={(e) => { e.stopPropagation(); onConnect(server); }}
-                    disabled={isConnecting}
-                    className="w-10 h-10 shrink-0 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer disabled:cursor-wait"
-                    title={t('common.connect')}
-                >
-                    {isConnecting ? <Loader2 size={18} className="animate-spin text-blue-500" /> : getServerIcon(server)}
-                </button>
+                {/* Icon = connect button (with reachability dot overlay in compact layout) */}
+                <div className="relative shrink-0">
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onConnect(server); }}
+                        disabled={isConnecting}
+                        className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer disabled:cursor-wait"
+                        title={t('common.connect')}
+                    >
+                        {isConnecting ? <Loader2 size={18} className="animate-spin text-blue-500" /> : getServerIcon(server)}
+                    </button>
+                    {cardLayout !== 'detailed' && healthStatus && healthStatus !== 'unknown' && (
+                        <span
+                            className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-gray-800 pointer-events-none ${
+                                healthStatus === 'up' ? 'bg-green-500'
+                                : healthStatus === 'slow' ? 'bg-amber-500'
+                                : healthStatus === 'down' ? 'bg-red-500'
+                                : 'bg-gray-400 animate-pulse'
+                            }`}
+                            title={radialTitle}
+                            aria-label={radialTitle}
+                        />
+                    )}
+                </div>
                 <div className="flex-1 min-w-0">
                     {isRenaming ? (
                         <RenameInput

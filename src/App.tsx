@@ -210,6 +210,7 @@ import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLo
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
 import { useActivityLog } from './hooks/useActivityLog';
+import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useSettings } from './hooks/useSettings';
 import { useFontSizeShortcuts, FontSizeIndicator } from './hooks/useFontSizeShortcuts';
@@ -3074,6 +3075,12 @@ interface UpdateVerificationInfo {
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
         await invoke('provider_connect', { params: providerParams });
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
+        // Flip the My Servers card health dot to green immediately on a confirmed
+        // connect, so users don't see a stale "unknown" indicator while waiting
+        // for the next batched health scan to refresh the cache.
+        if (effectiveParams.savedServerId) {
+          markProfileHealthy(effectiveParams.savedServerId);
+        }
 
         logConnectionSuccess(protocol, effectiveParams.username, {
           tlsMode: effectiveParams.options?.tlsMode,
@@ -6279,7 +6286,7 @@ interface UpdateVerificationInfo {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 || currentProtocol === 'immich' },
+      { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
       ...(count > 1 && currentProtocol !== 'immich' ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
@@ -7207,7 +7214,7 @@ interface UpdateVerificationInfo {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1 },
+      { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1, shortcut: 'F2' },
       ...(count > 1 ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,

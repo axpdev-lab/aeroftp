@@ -32,7 +32,9 @@ export type OperationType =
     | 'ERROR'
     | 'INFO'
     | 'SUCCESS'
-    | 'RESTORE';
+    | 'RESTORE'
+    | 'PROFILE_SAVE'
+    | 'PROFILE_DUPLICATE';
 
 export type OperationStatus = 'pending' | 'running' | 'success' | 'error';
 
@@ -222,6 +224,8 @@ export function getOperationIcon(operation: OperationType): string {
         INFO: 'info',
         SUCCESS: 'check-circle',
         RESTORE: 'rotate-ccw',
+        PROFILE_SAVE: 'server',
+        PROFILE_DUPLICATE: 'copy',
     };
     return icons[operation];
 }

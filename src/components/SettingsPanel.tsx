@@ -795,9 +795,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                 {/* Panel */}
                 <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
-                    {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center gap-2">
+                    {/* Header. data-tauri-drag-region keeps the window movable
+                        while the modal is open (Tier 2 carry-over from #133). */}
+                    <div
+                        data-tauri-drag-region
+                        className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
+                    >
+                        <div className="flex items-center gap-2 pointer-events-none">
                             <Settings size={20} />
                             <h2 className="text-lg font-semibold">{t('settings.title')}</h2>
                         </div>

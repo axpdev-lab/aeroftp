@@ -1179,6 +1179,13 @@ enum Commands {
         /// (the default JSON shape — a flat array — stays back-compatible).
         #[arg(long)]
         breakdown: bool,
+
+        /// Drop into an interactive prompt after the table (rclone-config-style).
+        /// Single-letter actions on a numbered profile: `<n>l` lists, `<n>t` trees,
+        /// `<n>d` deletes from the vault, `q` quits. Requires a TTY; ignored
+        /// in JSON / non-interactive mode.
+        #[arg(long, short = 'i')]
+        interactive: bool,
     },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
@@ -3953,6 +3960,10 @@ struct ProfilesViewOverrides {
     hide: Option<String>,
     show: Option<String>,
     breakdown: bool,
+    /// When true and stdin/stderr are TTYs, drop into a rclone-config-style
+    /// prompt loop after rendering the table: `<n>l` lists a profile,
+    /// `<n>t` trees it, `<n>d` deletes it from the vault, `q` quits.
+    interactive: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -5101,11 +5112,240 @@ fn render_profiles_text(
 
     if std::io::stderr().is_terminal() {
         eprintln!(
-            "\nTip: aeroftp-cli ls --profile \"Name\" [path]    \u{00B7}    --sort=used:desc / --hide=path,fav / --breakdown"
+            "\nTip: aeroftp-cli ls --profile \"Name\" [path]    \u{00B7}    --sort=used:desc / --hide=path,fav / --breakdown    \u{00B7}    -i for interactive mode"
         );
     }
 
+    if overrides.interactive
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal()
+    {
+        let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
+        return interactive_profiles_loop(store, ordered);
+    }
+
     0
+}
+
+/// rclone-config-style prompt loop on `aeroftp profiles -i`.
+///
+/// Accepts compact tokens like `1l`, `2t`, `3d` (digits then action letter,
+/// either order) plus `q`/`quit`. After a destructive action the table is
+/// re-rendered from a fresh vault read so the user sees the new state. We
+/// reuse the running binary via subprocess for `l` and `t` so the listing /
+/// tree output stays bit-for-bit identical to the standalone command.
+fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::Value>) -> i32 {
+    use std::io::{self, BufRead, Write};
+
+    let mut current = profiles;
+
+    loop {
+        if current.is_empty() {
+            eprintln!("\nNo profiles left. Exiting interactive mode.");
+            return 0;
+        }
+
+        eprintln!(
+            "\nInteractive: <n>l = ls, <n>t = tree, <n>d = delete, q = quit (e.g. '1l' or 'l1')"
+        );
+        eprint!("profiles> ");
+        let _ = io::stderr().flush();
+
+        let mut line = String::new();
+        match io::stdin().lock().read_line(&mut line) {
+            Ok(0) => {
+                eprintln!();
+                return 0;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("Read error: {}. Exiting interactive mode.", e);
+                return 1;
+            }
+        }
+        let raw = line.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let lower = raw.to_lowercase();
+        if lower == "q" || lower == "quit" || lower == "exit" {
+            return 0;
+        }
+        if lower == "help" || lower == "?" {
+            eprintln!("  <n>l    list root of profile #n");
+            eprintln!("  <n>t    tree (depth 2) of profile #n");
+            eprintln!("  <n>d    delete profile #n from the vault");
+            eprintln!("  f       favourite toggle (planned for Phase 4 vault migration)");
+            eprintln!("  q       quit");
+            continue;
+        }
+        if lower.starts_with('f') || lower.ends_with('f') {
+            // Surface the same caveat already present in the table renderer.
+            eprintln!(
+                "Favourite toggle is not yet wired to the vault: it currently lives in localStorage. Tracked under Phase 4 of CLI parity."
+            );
+            continue;
+        }
+
+        let (idx, action) = match parse_interactive_token(&lower) {
+            Some(v) => v,
+            None => {
+                eprintln!("Unrecognized command. Type '?' for help.");
+                continue;
+            }
+        };
+        let zero = match idx.checked_sub(1) {
+            Some(v) => v,
+            None => {
+                eprintln!("Profile numbers start at 1.");
+                continue;
+            }
+        };
+        let target = match current.get(zero) {
+            Some(p) => p.clone(),
+            None => {
+                eprintln!(
+                    "No profile at index {}. Range: 1..={}.",
+                    idx,
+                    current.len()
+                );
+                continue;
+            }
+        };
+        let name = target
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let id = target
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if name.is_empty() {
+            eprintln!("Profile #{} has no name; skipping.", idx);
+            continue;
+        }
+
+        match action {
+            'l' => {
+                run_self_subcommand(&["ls", "/", "--profile", &name]);
+            }
+            't' => {
+                run_self_subcommand(&["tree", "/", "--profile", &name, "-d", "2"]);
+            }
+            'd' => {
+                eprintln!(
+                    "About to delete profile '{}' (#{}) from the vault. This removes the saved configuration only. Remote data is untouched.",
+                    name, idx
+                );
+                eprint!("Type the profile name to confirm: ");
+                let _ = io::stderr().flush();
+                let mut confirm = String::new();
+                if io::stdin().lock().read_line(&mut confirm).is_err() {
+                    eprintln!("Read error. Aborting.");
+                    continue;
+                }
+                if confirm.trim() != name {
+                    eprintln!("Confirmation did not match: profile NOT deleted.");
+                    continue;
+                }
+                match delete_profile_in_vault(store, &id) {
+                    Ok(remaining) => {
+                        eprintln!("Profile '{}' removed.", name);
+                        current = remaining;
+                    }
+                    Err(e) => {
+                        eprintln!("Delete failed: {}", e);
+                    }
+                }
+            }
+            _ => {
+                eprintln!("Unknown action '{}'. Type '?' for help.", action);
+            }
+        }
+    }
+}
+
+/// Parse a compact token like `1l`, `l1`, `12d`, `t  3` into `(index, action)`.
+/// Whitespace between digits and letter is allowed; case-insensitive.
+fn parse_interactive_token(s: &str) -> Option<(usize, char)> {
+    let cleaned: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    if cleaned.len() < 2 {
+        return None;
+    }
+    let bytes = cleaned.as_bytes();
+    // Letter-then-digits, e.g. `l1`.
+    if bytes[0].is_ascii_alphabetic() && bytes[1..].iter().all(|b| b.is_ascii_digit()) {
+        let action = bytes[0] as char;
+        let idx: usize = cleaned[1..].parse().ok()?;
+        return Some((idx, action));
+    }
+    // Digits-then-letter, e.g. `1l`.
+    let split = bytes.iter().position(|b| b.is_ascii_alphabetic())?;
+    if split == 0 {
+        return None;
+    }
+    if !bytes[..split].iter().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    if bytes[split + 1..].iter().any(|b| !b.is_ascii_alphabetic()) {
+        return None;
+    }
+    let idx: usize = cleaned[..split].parse().ok()?;
+    let action = bytes[split] as char;
+    Some((idx, action))
+}
+
+/// Re-invoke the running binary with the given arguments, inheriting stdio.
+/// Used by the interactive loop so `l` / `t` produce output identical to the
+/// standalone subcommand. Returns the child exit code (clamped to i32 :: 99).
+fn run_self_subcommand(args: &[&str]) -> i32 {
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Cannot resolve current executable: {}", e);
+            return 99;
+        }
+    };
+    let status = std::process::Command::new(&exe)
+        .args(args)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status();
+    match status {
+        Ok(s) => s.code().unwrap_or(99),
+        Err(e) => {
+            eprintln!("Subcommand failed to spawn: {}", e);
+            99
+        }
+    }
+}
+
+/// Remove a single profile by id from `config_server_profiles` and write the
+/// updated list back. Returns the new profile list so the caller can update
+/// its in-memory state without re-reading the vault.
+fn delete_profile_in_vault(
+    store: &CredentialStore,
+    profile_id: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let raw = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("Failed to read profiles: {}", e))?;
+    let mut profiles: Vec<serde_json::Value> =
+        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    let before = profiles.len();
+    profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
+    if profiles.len() == before {
+        return Err(format!("Profile id '{}' not found in vault", profile_id));
+    }
+    let json = serde_json::to_string(&profiles)
+        .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
+    store
+        .store("config_server_profiles", &json)
+        .map_err(|e| format!("Failed to write profiles: {}", e))?;
+    Ok(profiles)
 }
 
 /// Tiny wrapper around `storage_tone` that consumes the `u128` totals from
@@ -26469,6 +26709,7 @@ async fn main() {
             hide,
             show,
             breakdown,
+            interactive,
         } => list_vault_profiles(
             &cli,
             format,
@@ -26477,6 +26718,7 @@ async fn main() {
                 hide: hide.clone(),
                 show: show.clone(),
                 breakdown: *breakdown,
+                interactive: *interactive,
             },
         ),
         Commands::AiModels => list_ai_models(&cli, format),
@@ -26918,6 +27160,7 @@ mod tests {
                 hide: None,
                 show: None,
                 breakdown: false,
+                interactive: false,
             },
         }
     }

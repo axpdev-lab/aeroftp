@@ -449,13 +449,20 @@ export function MyServersPanel({
         setOverIdx(idx);
     }, [maybeAutoScrollWhileDrag]);
 
+    // The drop handler reads insertStartIdx/insertEndIdx, but those are
+    // declared further down (computed from filteredServers). We mirror them
+    // through a ref so the callback stays stable and TypeScript no longer
+    // complains about temporal dead zone access.
+    const insertEdgesRef = useRef({ insertStartIdx: 0, insertEndIdx: 0 });
+
     const handleDrop = useCallback((idx: number) => (e: React.DragEvent) => {
         e.preventDefault();
         if (dragIdx === null) { setDragIdx(null); setOverIdx(null); return; }
+        const { insertStartIdx: insStart, insertEndIdx: insEnd } = insertEdgesRef.current;
         const rawInsertIdx = idx === DRAG_SENTINEL_TOP
-            ? insertStartIdx
+            ? insStart
             : idx === DRAG_SENTINEL_BOTTOM
-                ? insertEndIdx
+                ? insEnd
                 : idx;
         const boundedInsertIdx = Math.max(0, Math.min(rawInsertIdx, servers.length));
         const target = dragIdx < boundedInsertIdx ? boundedInsertIdx - 1 : boundedInsertIdx;
@@ -467,7 +474,7 @@ export function MyServersPanel({
         secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
         setDragIdx(null);
         setOverIdx(null);
-    }, [dragIdx, insertEndIdx, insertStartIdx, servers]);
+    }, [dragIdx, servers]);
 
     const handleDragEnd = useCallback(() => {
         setDragIdx(null);
@@ -523,6 +530,11 @@ export function MyServersPanel({
         return { insertStartIdx: safeFirst, insertEndIdx: safeLast + 1 };
     }, [filteredServers, servers]);
 
+    // Keep the drop-handler ref in sync with the memoized edges.
+    useEffect(() => {
+        insertEdgesRef.current = { insertStartIdx, insertEndIdx };
+    }, [insertStartIdx, insertEndIdx]);
+
     // Per-server reachability probe — only meaningful in detailed layout, so
     // we skip the scan otherwise to avoid burning network on a probe nobody
     // can see. `cardLayout` is read above (toolbar toggle uses it too).
@@ -560,6 +572,33 @@ export function MyServersPanel({
             window.clearTimeout(timer);
         };
     }, [cardLayout, healthTargets, scanHealth]);
+
+    // Initial batched probe: runs once when the saved-server list first
+    // populates, regardless of layout, so the small reachability dot on every
+    // card flips from "unknown" to a real status without waiting for the user
+    // to open detailed mode. The hook caches per profile for 5 minutes; a
+    // tab/layout switch reuses those entries instead of re-probing.
+    const initialScanDoneRef = useRef(false);
+    useEffect(() => {
+        if (initialScanDoneRef.current) return;
+        if (servers.length === 0) return;
+        const targets = servers
+            .map(buildHealthTarget)
+            .filter((target): target is HealthTarget => target !== null);
+        if (targets.length === 0) return;
+        initialScanDoneRef.current = true;
+        const timer = window.setTimeout(() => {
+            void (async () => {
+                for (let i = 0; i < targets.length; i += HEALTH_SCAN_CHUNK_SIZE) {
+                    await scanHealth(targets.slice(i, i + HEALTH_SCAN_CHUNK_SIZE));
+                    if (i + HEALTH_SCAN_CHUNK_SIZE < targets.length) {
+                        await wait(HEALTH_SCAN_CHUNK_DELAY_MS);
+                    }
+                }
+            })();
+        }, 800);
+        return () => window.clearTimeout(timer);
+    }, [servers, scanHealth]);
 
     /** Re-scan a single profile. Builds the same target shape as the bulk
      *  scan (so backend probe path is identical) and forces past the cache. */
@@ -998,7 +1037,10 @@ export function MyServersPanel({
                             const selectionIndex = crossProfileSelection.indexOf(server.id);
                             const selectionRole: 'source' | 'destination' | null =
                                 selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
-                            const health = cardLayout === 'detailed' ? getHealthStatus(server.id) : undefined;
+                            // Always read the cached status: in detailed layout it
+                            // drives the 16px radial; in compact it powers the small
+                            // overlay dot on the icon (T-HEALTH-CIRCLES).
+                            const health = getHealthStatus(server.id);
                             return (
                                 <ServerCard
                                     key={server.id}

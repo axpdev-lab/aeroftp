@@ -15,6 +15,8 @@ export interface ContextMenuItem {
     divider?: boolean;
     /** Small badge rendered after the label (e.g. PRO) */
     badge?: React.ReactNode;
+    /** Optional keyboard shortcut hint rendered right-aligned (e.g. "F2", "Ctrl+C") */
+    shortcut?: string;
     /** Submenu items - renders a hover-expandable nested menu */
     children?: ContextMenuItem[];
 }
@@ -184,6 +186,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                                 {item.icon}
                             </span>
                             <span className="font-medium flex-1">{item.label}{item.badge && <>{' '}{item.badge}</>}</span>
+                            {item.shortcut && !item.children && (
+                                <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums tracking-tight ml-2">
+                                    {item.shortcut}
+                                </span>
+                            )}
                             {item.children && item.children.length > 0 && (
                                 <ChevronRight size={14} className="opacity-50" />
                             )}
@@ -230,7 +237,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                                 <span className="w-4 h-4 flex items-center justify-center opacity-70">
                                     {item.icon}
                                 </span>
-                                <span className="font-medium">{item.label}{item.badge && <>{' '}{item.badge}</>}</span>
+                                <span className="font-medium flex-1">{item.label}{item.badge && <>{' '}{item.badge}</>}</span>
+                                {item.shortcut && (
+                                    <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums tracking-tight ml-2">
+                                        {item.shortcut}
+                                    </span>
+                                )}
                             </button>
                         </React.Fragment>
                     ))}

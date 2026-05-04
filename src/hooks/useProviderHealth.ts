@@ -47,6 +47,24 @@ const healthCache: Map<string, { state: ProviderHealthState; timestamp: number }
 /** Generation counter — increments each scan, used to make stable scan IDs */
 let scanGeneration = 0;
 
+/**
+ * External mark-as-healthy entry point. Used by the connect flow so a
+ * successful `provider_connect` immediately flips the My Servers card dot
+ * from "unknown / pending" to green without waiting for the next batched
+ * health scan. Notifies every mounted `useProviderHealth` instance via a
+ * window custom event so subscribers re-read the cache.
+ */
+export function markProfileHealthy(id: string, latencyMs = 0): void {
+    if (!id) return;
+    healthCache.set(id, {
+        state: { status: 'up', latencyMs },
+        timestamp: Date.now(),
+    });
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('provider-health-updated', { detail: { id } }));
+    }
+}
+
 export function useProviderHealth() {
     const [results, setResults] = useState<Map<string, ProviderHealthState>>(new Map());
     const [scanning, setScanning] = useState(false);
@@ -92,6 +110,14 @@ export function useProviderHealth() {
         }
         setResults(view);
     }, []);
+
+    // External cache writes (e.g. markProfileHealthy on connect success): rebuild
+    // the local view so the dot flips immediately without waiting for a scan.
+    useEffect(() => {
+        const onUpdate = () => syncFromCache();
+        window.addEventListener('provider-health-updated', onUpdate);
+        return () => window.removeEventListener('provider-health-updated', onUpdate);
+    }, [syncFromCache]);
 
     /**
      * Scan a specific list of items (the currently visible tab).

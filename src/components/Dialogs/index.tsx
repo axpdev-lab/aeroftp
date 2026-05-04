@@ -760,11 +760,16 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden animate-scale-in">
-                {/* Header — matches LockScreen / AeroVault style */}
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                    <Shield size={18} className="text-emerald-500 dark:text-emerald-400" />
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{t('masterPassword.setupTitle')}</span>
-                    <span className="text-xs text-gray-400 ml-auto">{bootstrapMode ? 'Keyring unavailable: bootstrap master mode' : t('masterPassword.setupDescription')}</span>
+                {/* Header (matches LockScreen / AeroVault style).
+                    data-tauri-drag-region keeps the window movable while the
+                    modal is open (Tier 2 carry-over from #133). */}
+                <div
+                    data-tauri-drag-region
+                    className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
+                >
+                    <Shield size={18} className="text-emerald-500 dark:text-emerald-400 pointer-events-none" />
+                    <span className="font-medium text-gray-900 dark:text-gray-100 pointer-events-none">{t('masterPassword.setupTitle')}</span>
+                    <span className="text-xs text-gray-400 ml-auto pointer-events-none">{bootstrapMode ? 'Keyring unavailable: bootstrap master mode' : t('masterPassword.setupDescription')}</span>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 ml-2">
                         <X size={16} />
                     </button>

@@ -24,6 +24,8 @@ import { IconPickerDialog } from './IconPickerDialog';
 import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { getStorageDedupKey } from '../utils/storageDedup';
+import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
 
@@ -470,6 +472,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     onTabLabelChange,
 }) => {
     const t = useTranslation();
+    const { log: logActivity } = useActivityLog();
     const protocol = connectionParams.protocol; // Can be undefined
 
     // Connections are always saved (the legacy "Save this connection" checkbox
@@ -797,6 +800,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     message: `This profile matches ${duplicate.name} by name or endpoint+username.`,
                     type: 'warning',
                 });
+                const dedupKey = getStorageDedupKey({
+                    id: editingProfileId,
+                    name: editedName,
+                    host: normalizedParams.server,
+                    port: normalizedParams.port || getDefaultPort(protocol),
+                    username: normalizedParams.username,
+                    protocol: protocol as ProviderType,
+                    providerId: selectedProviderId,
+                } as ServerProfile);
+                logActivity(
+                    'PROFILE_DUPLICATE',
+                    `Duplicate profile detected: "${editedName}" overlaps with "${duplicate.name}"`,
+                    'success',
+                    `dedupKey=${dedupKey}`,
+                );
             }
 
             const updatedServers = existingServers.map((s: ServerProfile) => {
@@ -821,6 +839,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
             await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updatedServers).catch(() => { });
             setSavedServersUpdate(Date.now());
+            const savedServer = updatedServers.find((s) => s.id === editingProfileId);
+            if (savedServer) {
+                logActivity(
+                    'PROFILE_SAVE',
+                    `Profile updated: "${savedServer.name}"`,
+                    'success',
+                    `dedupKey=${getStorageDedupKey(savedServer)}`,
+                );
+            }
         } else if (saveConnection) {
             const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
@@ -838,6 +865,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     message: `This new profile overlaps with ${duplicate.name} (same name or endpoint+username).`,
                     type: 'warning',
                 });
+                const dedupKey = getStorageDedupKey({
+                    id: newId,
+                    name: newName,
+                    host: normalizedParams.server,
+                    port: normalizedParams.port || getDefaultPort(protocol),
+                    username: normalizedParams.username,
+                    protocol: protocol as ProviderType,
+                    providerId: selectedProviderId,
+                } as ServerProfile);
+                logActivity(
+                    'PROFILE_DUPLICATE',
+                    `Duplicate profile detected: "${newName}" overlaps with "${duplicate.name}"`,
+                    'success',
+                    `dedupKey=${dedupKey}`,
+                );
             }
 
             const newServer: ServerProfile = {
@@ -858,6 +900,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             const newServers = [...existingServers, newServer];
             await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
             setSavedServersUpdate(Date.now());
+            logActivity(
+                'PROFILE_SAVE',
+                `Profile saved: "${newServer.name}"`,
+                'success',
+                `dedupKey=${getStorageDedupKey(newServer)}`,
+            );
         }
     };
 
