@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * FileTagBadge — Finder-style colored dot badges next to filenames.
+ * FileTagBadge: Finder-style colored dot badges next to filenames.
  *
  * Shows up to 3 color dots; overflow indicated with "+N".
  * React.memo for render performance in large file lists.

@@ -1,4 +1,4 @@
-//! .aeroignore — gitignore-style pattern exclusion for AeroCloud sync.
+//! .aeroignore: gitignore-style pattern exclusion for AeroCloud sync.
 //!
 //! Reads a `.aeroignore` file from the sync root directory and provides
 //! pattern matching compatible with `.gitignore` / `.stignore` syntax:
@@ -9,7 +9,7 @@
 //! - Case-sensitive on Linux, case-insensitive on Windows/macOS
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use globset::Glob;
 use std::path::Path;
@@ -28,7 +28,7 @@ struct IgnoreRule {
 /// Parsed and compiled .aeroignore file.
 #[derive(Debug)]
 pub struct AeroIgnore {
-    /// Rules in file order — needed for negation precedence (last-match-wins)
+    /// Rules in file order: needed for negation precedence (last-match-wins)
     rules: Vec<IgnoreRule>,
     /// Individual compiled globs matching the rules (same indices)
     individual_globs: Vec<globset::GlobMatcher>,
@@ -36,7 +36,7 @@ pub struct AeroIgnore {
 
 /// Default .aeroignore template with common patterns (commented out).
 pub const DEFAULT_AEROIGNORE_TEMPLATE: &str = "\
-# AeroCloud ignore file — uncomment patterns as needed
+# AeroCloud ignore file: uncomment patterns as needed
 # Syntax: same as .gitignore
 #
 # node_modules/

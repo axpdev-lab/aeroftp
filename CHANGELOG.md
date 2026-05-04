@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.1] - 2026-05-04
+
+### Mount Manager + community wishlist push (issue #147)
+
+A community-driven release closing the v3.7.x medium-effort cluster from issue #147 and shipping the first big-feature ask from the same thread, the persistent Mount Manager. Filen Desktop's local WebDAV and S3 bridges now connect on the first try, AeroFile gains an aggregate multi-file Properties view and a recursive `*` flatten search, AeroSync wrapper scripts round-trip as `.sh` / `.ps1`, and a long list of polish items lands in one batch (PathBar empty-area edit, Settings keyboard model, smart Open with default app, configurable provider icon size, drag-reorder custom icons, dedup-aware Server Health dots on Discover, S3Drive icon + setup banner). My Servers gains a unified table layout with drag-to-reorder columns and a per-protocol dedup footer.
+
+#### Added
+
+- **Mount Manager**: new persistent mount registry reachable from File > Mount Manager, the My Servers toolbar, and the connected remote address bar. Saves multiple mount configs (profile, remote path, mountpoint, read-only, cache TTL, allow-other, auto-start) in either a plaintext sidecar JSON (default, daemon-friendly) or in the encrypted vault, toggleable from the dialog header. Per-row Mount / Unmount / Open in file manager / Edit / Delete actions, with a "Pick free drive letter" helper on Windows. Phase B autostart installs systemd-user units on Linux and Task Scheduler ONLOGON entries on Windows. Phase C "Open mount in file manager" auto-creates a default mount for the connected profile when none exists, waits 800ms for FUSE / WebDAV to settle, then opens the OS file manager. Tracked mounts inherit the GUI's vault credentials through `aeroftp-cli --profile`; mount configs themselves never carry secrets.
+- **Filen Desktop local presets**: two new Discover entries connect AeroFTP to a logged-in Filen Desktop instance over the local Network Drive bridges. **Filen Desktop (local WebDAV)** runs at `local.webdav.filen.io:1900` over HTTP with basic auth (username and password set in Filen Desktop > Network Drive > WebDAV, separate from the Filen account). **Filen Desktop (local S3)** runs at `local.s3.filen.io:1700` with literal `filen` region and bucket and path-style addressing. Both presets ship inline setup steps that surface the Filen Desktop configuration path the user has to walk before the bridge accepts connections.
+- **Multi-file Properties**: right-clicking on two or more files in AeroFile (local panel and any of the 22 remote providers) now opens a dedicated aggregate Properties dialog, mirroring the Windows multi-select view. Reports total file count and folder count, summed bytes with formatted units, common parent path, modified-date range (single Modified row when all entries share the same mtime, otherwise Oldest / Newest pair), and a "Mixed" indicator on the permissions row when entries do not agree. Tri-state Read-only and Hidden rows surface from a parallel `get_file_properties` lazy load. A scrollable list of selected entries with kind icon, name, and per-item size sits at the bottom.
+- **Recursive search in AeroFile**: typing `*` or `**` in the local search box now flattens the subtree under the current directory, every descendant file and folder is listed with its relative path, BFS-bounded at 32 levels and 5,000 entries (clamped to 20,000). Optional residual filter after the marker (`* foo`, `** foo`) narrows the result by substring on the relative path. Search bar flips purple while flatten mode is active and warns when the entry cap is reached.
+- **Custom Icons Manager**: Settings > Appearance > Icons hosts a standalone gallery for the global custom-icon library, with upload of SVG / PNG / JPG / WEBP / ICO, sort by recent or A-Z, drag-reorder (in recent mode), inline rename via double-click, and delete with confirmation. Shares storage with the per-profile Choose Icon dialog so changes round-trip both ways through a `aeroftp-custom-icons-changed` window event.
+- **AeroSync wrapper script export**: the AeroSync Templates dialog now exports the active sync configuration as a POSIX `.sh` or PowerShell `.ps1` script, defaulting to bash on Linux / macOS and pwsh on Windows. Generated scripts wrap `aeroftp-cli sync` with the right flags and embed an `# AEROFTP-META` JSON line so importing a `.sh` or `.ps1` reconstructs the AeroSync settings without parsing the rest of the script. Round-trip is supported, hand-edited scripts are explicitly out of scope.
+- **PathBar polish**: clicking the empty area to the right of the last segment now drops straight into edit mode (Enter commits, Escape / blur cancels), and a trailing `>` chevron after the current segment opens a dropdown listing the first-generation subdirectories so users can dive deeper without leaving the keyboard.
+- **Settings keyboard navigation**: Settings now behaves like a proper modal. Escape closes, Tab and Shift+Tab stay inside the dialog, the forward Tab cycle wraps from footer back to first focusable. The sidebar is a vertical `tablist` with Arrow Up/Down/Left/Right + Home/End. Settings > Appearance subtabs (Theme / Icons / Interface / Backgrounds) mirror the same model with a horizontal `tablist`.
+- **Open with default app**: AeroFile right-click adds a smart routing entry. `.aerovault` / `.aeroftp` / `.aeroftp-keystore` open inside AeroFTP, scripts (`.ps1` / `.sh`) drop into AeroTools Terminal with the right shell prefix and POSIX-quoted path, every other extension goes through the OS default via `tauri-plugin-opener`.
+- **Configurable provider icon size**: Settings > Appearance > Interface exposes a Provider icon size slider (18-32 px, default 24). Both `ServerCard` (My Servers compact + detailed) and `DiscoverPanel` cards size from the shared preference, including custom uploaded icons and favicons.
+- **Custom icon drag-reorder + sort toggle**: each tile in the IconPickerDialog Custom tab is now draggable, drop on another tile splices the array and persists the new order. Shipped tab gets a "Sort: Popular first / A-Z" chip pair below the search input, persisted in `localStorage['aeroftp-icon-picker-sort']`.
+- **Server Health dot on Discover cards**: each `ServiceCard` in the Discover panel now renders the same overlay-dot pattern as `ServerCard`, gated on `healthStatus !== 'unknown'` so services without a `healthCheckUrl` stay clean.
+- **CLI `aeroftp-cli profiles -i`**: interactive prompt loop after the table renders, with compact `1l` / `2t` / `3d` / `q` tokens (number-then-letter and letter-then-number both accepted) for list / tree / delete a numbered profile. Delete is gated by name-typed confirmation, the loop reuses the running binary via `current_exe()` so output stays bit-for-bit identical to the standalone subcommand.
+- **F2 keyboard shortcut hint**: `ContextMenuItem` gains an optional `shortcut` prop rendered right-aligned in monospace. Local + remote AeroFile rename entries advertise `F2` so the keyboard shortcut is discoverable from the menu.
+- **Provider setup steps banner**: connection forms with `setupInstructions` (S3Drive, Filen Desktop S3, Filen Desktop WebDAV, MEGAcmd) now render a numbered checklist above their credential fields with a link to the upstream documentation.
+- **My Servers unified table**: five-phase rework brings storage Used / Total / % columns with configurable warning thresholds, a real semantic `<table>` with sticky `<thead>` / `<tfoot>` and click-to-sort on every column, dedup-aware footer and a per-protocol "Storage by protocol" expandable panel, CLI `aeroftp-cli profiles` parity with the GUI columns and JSON / CSV output, and column drag-to-reorder + resize (also applied to AeroFile remote and local panels through a shared `useTableColumns<T>` hook). Storage column visibility persists in vault keys (`my_servers_table`, `aero_file_remote_table`, `aero_file_local_table`).
+
+#### Fixed
+
+- **WebDAV scheme detection rewrite** (root cause for the Filen Desktop local-WebDAV failure reported on #128): `WebDavConfig::from_provider_config` was falling back to "port == 80, http, otherwise https", so HTTPS handshakes hit Filen Desktop's HTTP listener on port 1900 and failed before any auth or path negotiation. Detection is now layered: explicit scheme on the host string wins, then the new `tls_mode` extra field ("http" / "https" / "auto"), then "auto" maps localhost / 127.0.0.1 / RFC 1918 / `*.local` / `*.localhost` / Filen Desktop hostnames to HTTP on any port. The `ProviderConnectionParams` path now forwards `tls_mode` and `verify_cert` into the WebDAV `extra` map, `ConnectionScreen` propagates `options.webdavScheme` from a provider preset into the connection params. 7 unit tests in `webdav_config_tests` cover the new precedence rules.
+- **Filen v3 Argon2id authentication**: new Filen accounts using `authVersion >= 3` can now log in. AeroFTP derives credentials with the same Argon2id parameters used by the official Filen SDK (`t=3`, `m=65536`, `p=4`, `v=0x13`, `dkLen=64`) and decodes `auth/info` salt as hex bytes for v3. v1 (SHA-512) and v2 (PBKDF2-SHA512) accounts continue to work unchanged. New "Auth version" badge `v1` / `v2` / `v3` on saved cards, surfaced after first successful connect.
+- **Storage quota persistence on OAuth providers**: Dropbox, Google Drive, and pCloud showed quota in the bottom status bar but not on the saved server card. The OAuth call paths now pass `effectiveParams` / `normalizedParams` so `savedServerId` flows through `persistQuotaToProfile`, a localStorage mirror plus `serversRefreshKey` bump re-renders My Servers without a full reopen.
+- **Koofr WebDAV quota**: Koofr does not implement RFC 4331 quota properties, so PROPFIND returned empty values. The WebDAV provider now detects `app.koofr.net` and falls back to the native Koofr REST API (`/api/v2/mounts`) using the same basic-auth credentials.
+- **Terminal goes black on tab switch**: replaced the single shared DOM container + `xterm.open()` reattach pattern with one persistent DOM container per tab, hidden via CSS when inactive. `xterm.open()` is now called exactly once per xterm instance. Verified end-to-end on Linux (WebKitGTK) and Windows 11 (WebView2).
+- **Ctrl+- / Ctrl+= / Ctrl+0 / Ctrl+wheel on the focused terminal**: global font-size hooks now skip events originating in `.xterm` or `.monaco-editor`, and xterm's `attachCustomKeyEventHandler` stops the keys being forwarded to the shell as control sequences. Settings > Appearance > Interface > Font Size updates in real time when the global hotkeys fire.
+- **F2 inline rename in AeroFile Large Icons view**: input was frozen on the initial filename character because `setSelectionRange(0, dotIndex)` was running before the `<input>` had its initial value committed. Fixed by sharing a single `inlineRenameValue` binding across list and grid views in both panels (local + remote).
+- **Forward / Back mouse buttons (X1 / X2)**: X1 (event.button 3) navigates Back, X2 (event.button 4) Forward, mimicking File Explorer / Nautilus / Finder. 64-entry capped history stack with redo-truncation on new navigation. When a modal is open or history is empty, falls back to the existing Escape synthesis so "Back closes the open dialog" still works.
+- **MEGAcmd anonymous WebDAV**: the WebDAV backend now supports explicit anonymous requests, so local bridges no longer receive an empty `Authorization: Basic` header.
+- **S3Drive icon + Filen Desktop logos**: the S3Drive provider entry was falling back to the generic HardDrive lucide icon, the two Filen Desktop bridges had no PROVIDER_LOGOS mapping and were rendering the protocol icon instead of the Filen logo. Both are wired correctly now.
+- **Choose Icon dialog regressions**: PNG-backed provider logos (Hetzner, MinIO, Koofr, FileLu, Blomp, OpenDrive, and 8 more) silently failed on click because `reactLogoToSvgDataUrl()` searched for an `<svg>` that was never rendered, now an `<img>` fallback returns the image src so every shipped catalog entry is selectable. Custom icons box accepts drag and drop with visible feedback and deletes go through a confirmation prompt.
+- **Cross-Profile transfer dedup**: the same source / destination pair queued multiple times no longer enqueues duplicate jobs.
+
+#### Changed
+
+- **Backblaze B2 native Quick Connect form**: native B2 no longer falls through to the generic FTP / server template. Quick Connect now renders Application Key ID, Application Key, and Bucket Name. `options.bucket` round-trips through saved profiles and is forwarded into `provider_connect`.
+- **Quick Connect form rework** (round 1 of the issue #147 feedback): removed the redundant footer from WebDAV preset Quick Connect pages, moved Generate password / Create Account links inline next to the Password / Username fields, dropped the "Save this connection" checkbox in favour of an always-visible connection-name input, moved the Docs link to the top-right corner, renamed Server to Endpoint URL with a `Link2` chain icon for URL-based protocols (WebDAV, S3, Azure), added a Generate personal login token link to Jottacloud Quick Connect.
+- **Cipher-strength badges go bit-precise**: MEGA shows `E2E 128-bit` (AES-128, Curve25519 keypair), Filen and Internxt show `E2E 256-bit` (AES-256), rclone-crypt overlay backends show plain `128-bit` / `256-bit` without the `E2E` prefix because the server has no key.
+- **Multi-thread chunk parallel download for S3 (Phase 1)**: new global flags `--multi-thread-streams N` (default 1, opt-in up to 16) and `--multi-thread-cutoff` (default 250 MiB), HTTP `Range` parallel streams over `tokio::JoinSet`, sparse pre-allocation, atomic `.aerotmp` finalize. Auto-fallback to single-stream when `Accept-Ranges` is missing.
+- **`with_reauth` pattern brought to Internxt and Yandex Disk**: Internxt's 7-day JWT now does a fast-path `keep_alive` with a fresh-login fallback, Yandex Disk distinguishes transient `AuthenticationFailed` retry from terminal `AuthenticationRevoked`.
+- **`aeroftp-cli cryptcheck`** (carry-over from the v3.7.0 to v3.7.1 window): plaintext-vs-rclone-crypt integrity verification with streaming decrypt + hash. `--algorithm sha256|md5`, `--json`, `--one-way`. Exit codes aligned with `check`. No plaintext is ever written to disk during verification.
+- **i18n**: 100+ new keys translated into all 47 locales via the GLM batch method, including Armenian native script. `i18n:validate` is clean (0 errors, 0 warnings, 0 placeholders).
+
+#### Internal
+
+- Activity Log gains `PROFILE_SAVE` and `PROFILE_DUPLICATE` event types so saved-profile dedup events are auditable, keyed by `getStorageDedupKey`.
+- Headers of `SettingsPanel`, `VaultPanel`, and `MasterPasswordSetupDialog` carry `data-tauri-drag-region` so the window-move gesture works directly on the modal title bar.
+- Pre-push gates green at release cut: `npx tsc --noEmit`, `npm run i18n:validate`, `cargo clippy --all-targets`, `npm run build`, regression scan.
+
 ## [3.7.0] - 2026-05-01
 
 ### AeroRsync session batch + Crypto overlay + Server Health Check + CLI/MCP parity
@@ -13,27 +69,27 @@ Big-batch release closing the P3-T01 wave (AeroRsync streaming + batch transport
 
 #### Added
 
-- **AeroRsync session-cached batch transport** — new `AerorsyncBatch` trait (W3.1) + russh implementation with channel + raw stream + key auth (W3.2) + generic `do_upload` / `do_download` helpers (W3.2 b2). A single SSH session now amortizes many consecutive delta transfers.
-- **AeroRsync batch surface end-to-end** — `open_delta_batch` + `try_delta_transfer_with_batch` wired into `sync_tree_core` (W4.1 + W4.2). `SyncReport` exposes `delta_files` and `bytes_on_wire`; SyncPanel surfaces the new batch counters.
-- **Rclone-crypt provider session** — rclone-style crypto overlay with deterministic filename obfuscation, streaming chunk-based encrypt/decrypt, `rclone_crypt_provider_*` Tauri commands and a `RcloneCryptUnlock` dialog for interactive unlock.
-- **AeroVault overlay session model** — open/list/upload/download routed transparently through an active encrypted overlay, status badge in App.tsx, `aerovault_overlay_*` commands wired in `lib.rs`, spec updated in `docs/AEROVAULT-V2-SPEC.md`. The `aerovault` crate is bumped to 0.3.4 with the overlay API + KEK derivation polish.
-- **Server Health Check engine** — `health_check.rs` runs real DNS / TCP / TLS / HTTP probes with latency measurements, 0-100 health scoring, and a per-protocol capability matrix. `useProviderHealth` hook does parallel batch refresh with auto-cleanup, `HealthRadial` SVG gauge is wired to the live results, `MyServersPanel` + `ServerCard` show contextual badges and a right-click context menu.
-- **CLI/MCP parity wrap-up** — `aeroftp-cli` and `mcp/tools.rs` align argument shapes and output schemas with wave-5 (cross-profile transfer) and wave-6 (Gap 4 caps + 6 ops tools) so an LLM can use either surface interchangeably.
-- **MCP wave-5 — cross-profile transfer tools** (tool count 25 → 27): `aeroftp_transfer` / `aeroftp_transfer_tree` (and `remote_transfer` / `remote_transfer_tree` aliases). Single-file or recursive copy between two saved profiles, source and destination provider opened once and reused across the whole batch. Path validation rejects `..`, null bytes, leading `-`, empty paths and >4096 chars on both sides; identical src/dst profiles refused by id and canonical name; audit log includes profile ids, paths, bytes, duration. Progress streaming throttled at every ~5 files or 2% delta.
-- **MCP wave-6 — Gap 4 caps + 6 ops tools** (tool count 27 → 39): `aeroftp_check_tree` gains per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`, all falling back to `max_entries_reported`) plus `omit_match` to drop the noise bucket entirely from `groups` while keeping the counter in `summary`. Six new ops tools wrapping CLI semantics: `aeroftp_touch` (create empty file or report exists), `aeroftp_cleanup` (BFS for orphan `.aerotmp`, dry-run by default, caps 100k entries / depth 100), `aeroftp_speed` (random-payload upload+download+SHA-256 throughput probe, 4 MiB default / 64 MiB max, 1..3 iterations), `aeroftp_sync_doctor` (preflight risk summary with `suggested_next_command`), `aeroftp_dedupe` (SHA-256 dup detection grouped per size, modes `newest`/`oldest`/`largest`/`smallest`/`list`, dry-run by default), `aeroftp_reconcile` (categorized size-only diff variant of `check_tree` with `elapsed_secs` and `suggested_next_command`). Each new tool ships with a `remote_*` alias.
+- **AeroRsync session-cached batch transport**: new `AerorsyncBatch` trait (W3.1) + russh implementation with channel + raw stream + key auth (W3.2) + generic `do_upload` / `do_download` helpers (W3.2 b2). A single SSH session now amortizes many consecutive delta transfers.
+- **AeroRsync batch surface end-to-end**: `open_delta_batch` + `try_delta_transfer_with_batch` wired into `sync_tree_core` (W4.1 + W4.2). `SyncReport` exposes `delta_files` and `bytes_on_wire`; SyncPanel surfaces the new batch counters.
+- **Rclone-crypt provider session**: rclone-style crypto overlay with deterministic filename obfuscation, streaming chunk-based encrypt/decrypt, `rclone_crypt_provider_*` Tauri commands and a `RcloneCryptUnlock` dialog for interactive unlock.
+- **AeroVault overlay session model**: open/list/upload/download routed transparently through an active encrypted overlay, status badge in App.tsx, `aerovault_overlay_*` commands wired in `lib.rs`, spec updated in `docs/AEROVAULT-V2-SPEC.md`. The `aerovault` crate is bumped to 0.3.4 with the overlay API + KEK derivation polish.
+- **Server Health Check engine**: `health_check.rs` runs real DNS / TCP / TLS / HTTP probes with latency measurements, 0-100 health scoring, and a per-protocol capability matrix. `useProviderHealth` hook does parallel batch refresh with auto-cleanup, `HealthRadial` SVG gauge is wired to the live results, `MyServersPanel` + `ServerCard` show contextual badges and a right-click context menu.
+- **CLI/MCP parity wrap-up**: `aeroftp-cli` and `mcp/tools.rs` align argument shapes and output schemas with wave-5 (cross-profile transfer) and wave-6 (Gap 4 caps + 6 ops tools) so an LLM can use either surface interchangeably.
+- **MCP wave-5: cross-profile transfer tools** (tool count 25 → 27): `aeroftp_transfer` / `aeroftp_transfer_tree` (and `remote_transfer` / `remote_transfer_tree` aliases). Single-file or recursive copy between two saved profiles, source and destination provider opened once and reused across the whole batch. Path validation rejects `..`, null bytes, leading `-`, empty paths and >4096 chars on both sides; identical src/dst profiles refused by id and canonical name; audit log includes profile ids, paths, bytes, duration. Progress streaming throttled at every ~5 files or 2% delta.
+- **MCP wave-6: Gap 4 caps + 6 ops tools** (tool count 27 → 39): `aeroftp_check_tree` gains per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`, all falling back to `max_entries_reported`) plus `omit_match` to drop the noise bucket entirely from `groups` while keeping the counter in `summary`. Six new ops tools wrapping CLI semantics: `aeroftp_touch` (create empty file or report exists), `aeroftp_cleanup` (BFS for orphan `.aerotmp`, dry-run by default, caps 100k entries / depth 100), `aeroftp_speed` (random-payload upload+download+SHA-256 throughput probe, 4 MiB default / 64 MiB max, 1..3 iterations), `aeroftp_sync_doctor` (preflight risk summary with `suggested_next_command`), `aeroftp_dedupe` (SHA-256 dup detection grouped per size, modes `newest`/`oldest`/`largest`/`smallest`/`list`, dry-run by default), `aeroftp_reconcile` (categorized size-only diff variant of `check_tree` with `elapsed_secs` and `suggested_next_command`). Each new tool ships with a `remote_*` alias.
 
 #### Changed
 
-- **MEGA Native crypto polish** — non-regressive cleanup on top of the v3.6.10 canonical-layout fix (less log noise, nonce/key edge cases, listing pagination).
-- **B2 native v4 hardening** — auth/list/upload/download retry surface aligned with provider-trait expectations; coverage extended in `integration_b2.rs`.
-- **`aerovault` 0.3 → 0.3.4** — new overlay-session API, refreshed KEK derivation, three crypto helpers exposed via the `aerovault_overlay_*` commands.
-- **i18n GLM batch cleanup** — leftover `[NEEDS TRANSLATION]` placeholders removed across all propagated locales; `i18n:validate` is clean (0 errors, 0 warnings, 0 placeholders). New keys: `deltaBatchSummary`, `deltaBytesOnWire`, `storageQuotaUnavailable`, IntroHub probe states (`unknown`, `clickToRetry`).
-- **P3-T01 live smoke validated** — on the real `SSH MyCloud HD` profile, the two reference runs (initial 100x10KB upload and one-mutation resync: 1 uploaded, 99 skipped) confirm consistent file-level incremental behavior.
-- **AeroRsync UI** — SyncPanel shows the batch summary (`Delta: X files in Y session(s)` + `bytes_on_wire`); `types.ts` aligned with the new `SyncReport` shape.
+- **MEGA Native crypto polish**: non-regressive cleanup on top of the v3.6.10 canonical-layout fix (less log noise, nonce/key edge cases, listing pagination).
+- **B2 native v4 hardening**: auth/list/upload/download retry surface aligned with provider-trait expectations; coverage extended in `integration_b2.rs`.
+- **`aerovault` 0.3 → 0.3.4**: new overlay-session API, refreshed KEK derivation, three crypto helpers exposed via the `aerovault_overlay_*` commands.
+- **i18n GLM batch cleanup**: leftover `[NEEDS TRANSLATION]` placeholders removed across all propagated locales; `i18n:validate` is clean (0 errors, 0 warnings, 0 placeholders). New keys: `deltaBatchSummary`, `deltaBytesOnWire`, `storageQuotaUnavailable`, IntroHub probe states (`unknown`, `clickToRetry`).
+- **P3-T01 live smoke validated**: on the real `SSH MyCloud HD` profile, the two reference runs (initial 100x10KB upload and one-mutation resync: 1 uploaded, 99 skipped) confirm consistent file-level incremental behavior.
+- **AeroRsync UI**: SyncPanel shows the batch summary (`Delta: X files in Y session(s)` + `bytes_on_wire`); `types.ts` aligned with the new `SyncReport` shape.
 
 #### Fixed
 
-- **Filen v3 authentication (Argon2id)** — new Filen accounts using `authVersion >= 3` can now log in. AeroFTP now derives credentials with the same Argon2id parameters used by the official Filen SDK (`t=3`, `m=65536`, `p=4`, `v=0x13`, `dkLen=64`) and decodes `auth/info` salt as hex bytes for v3.
+- **Filen v3 authentication (Argon2id)**: new Filen accounts using `authVersion >= 3` can now log in. AeroFTP now derives credentials with the same Argon2id parameters used by the official Filen SDK (`t=3`, `m=65536`, `p=4`, `v=0x13`, `dkLen=64`) and decodes `auth/info` salt as hex bytes for v3.
 
 #### Internal
 
@@ -48,18 +104,18 @@ Same-day rollup on top of v3.6.8. The originally-tagged v3.6.9 build was deleted
 
 ### Fixed
 
-- **MEGAcmd login on Linux/macOS (critical)** — saved-profile connect against the MEGAcmd backend was failing every time on Unix with `Extra args required in non-interactive mode. Usage: login [...] email password | exportedfolderurl#key | session`. The Unix path was passing only the email as a CLI arg and piping the password to stdin, on the assumption (carried forward from AUTH-01 audit notes) that this kept it out of `ps` listings. In reality `mega-login` is a non-interactive one-shot wrapper that talks to the background `mega-cmd-server` and does not read stdin at all in that mode; the stdin trick only worked inside the interactive `mega-cmd` shell, which AeroFTP never invokes. Fixed by passing email + password as CLI args on every platform, matching what rclone, the official MEGA Sync, and every other MEGAcmd integration already does. The brief `ps` exposure window during login (~1s) is the same surface area that env var or password-file alternatives would have, so there is no real security regression. Reproduced by @aleimob on a fresh Ubuntu install with a saved MEGA-CMD profile against `dev@aeroftp.app`.
-- **MEGA Native upload interoperability with MEGA Web (critical)** — file node keys uploaded by AeroFTP through the MEGA Native API were stored in a non-canonical layout (raw 16-byte file key followed by nonce + meta-MAC), so AeroFTP could decrypt its own uploads but MEGA Web, MEGA Mobile, and any other official MEGA client derived the AES key from the canonical obfuscated layout and decrypted the payload with the wrong key, producing what looked like ciphertext-on-display. The fix in `mega_crypto.rs::pack_node_key()` now stores the MEGA-compatible obfuscated 32-byte node key, `unpack_node_key_with_mac()` derives the AES key by XOR-ing the first 16 bytes against the nonce / meta-MAC half, `compute_attr_key()` uses the canonical key for file attributes, and `meta_mac()` condenses the chunk MAC with the required `[mac[0..4] ^ mac[4..8], mac[8..12] ^ mac[12..16]]` XOR pairs. A `unpack_node_key_legacy()` fallback is kept so AeroFTP can still read files uploaded by the buggy older builds; download paths verify the canonical MAC first, then fall back to the legacy layout if needed. Existing legacy uploads must be re-uploaded if they need to open in MEGA Web (MEGA Web cannot use the legacy fallback). Independently verified end-to-end with `megajs` decoding the file name and plaintext from a fresh share link, and visually verified by the user in MEGA Web.
-- **2FA prompt modal did not open from saved-card click** (issue #128 follow-up) — saved-card connect goes through `onSavedServerConnect` and tab reconnect goes through `switchSession`. Neither path called `tryShowTwoFactorPrompt`, so the modal advertised in v3.6.8 never appeared when users clicked a saved MEGA / Filen / Internxt card whose persisted session had expired. The dispatcher is now wired into all three catch handlers; pattern matching against the backend's E_MFAREQUIRED / ENOTOKEN messages is shared so the matching surface is identical across paths. Test reproduction confirmed by the original reporter (@EhudKirsh).
+- **MEGAcmd login on Linux/macOS (critical)**: saved-profile connect against the MEGAcmd backend was failing every time on Unix with `Extra args required in non-interactive mode. Usage: login [...] email password | exportedfolderurl#key | session`. The Unix path was passing only the email as a CLI arg and piping the password to stdin, on the assumption (carried forward from AUTH-01 audit notes) that this kept it out of `ps` listings. In reality `mega-login` is a non-interactive one-shot wrapper that talks to the background `mega-cmd-server` and does not read stdin at all in that mode; the stdin trick only worked inside the interactive `mega-cmd` shell, which AeroFTP never invokes. Fixed by passing email + password as CLI args on every platform, matching what rclone, the official MEGA Sync, and every other MEGAcmd integration already does. The brief `ps` exposure window during login (~1s) is the same surface area that env var or password-file alternatives would have, so there is no real security regression. Reproduced by @aleimob on a fresh Ubuntu install with a saved MEGA-CMD profile against `dev@aeroftp.app`.
+- **MEGA Native upload interoperability with MEGA Web (critical)**: file node keys uploaded by AeroFTP through the MEGA Native API were stored in a non-canonical layout (raw 16-byte file key followed by nonce + meta-MAC), so AeroFTP could decrypt its own uploads but MEGA Web, MEGA Mobile, and any other official MEGA client derived the AES key from the canonical obfuscated layout and decrypted the payload with the wrong key, producing what looked like ciphertext-on-display. The fix in `mega_crypto.rs::pack_node_key()` now stores the MEGA-compatible obfuscated 32-byte node key, `unpack_node_key_with_mac()` derives the AES key by XOR-ing the first 16 bytes against the nonce / meta-MAC half, `compute_attr_key()` uses the canonical key for file attributes, and `meta_mac()` condenses the chunk MAC with the required `[mac[0..4] ^ mac[4..8], mac[8..12] ^ mac[12..16]]` XOR pairs. A `unpack_node_key_legacy()` fallback is kept so AeroFTP can still read files uploaded by the buggy older builds; download paths verify the canonical MAC first, then fall back to the legacy layout if needed. Existing legacy uploads must be re-uploaded if they need to open in MEGA Web (MEGA Web cannot use the legacy fallback). Independently verified end-to-end with `megajs` decoding the file name and plaintext from a fresh share link, and visually verified by the user in MEGA Web.
+- **2FA prompt modal did not open from saved-card click** (issue #128 follow-up): saved-card connect goes through `onSavedServerConnect` and tab reconnect goes through `switchSession`. Neither path called `tryShowTwoFactorPrompt`, so the modal advertised in v3.6.8 never appeared when users clicked a saved MEGA / Filen / Internxt card whose persisted session had expired. The dispatcher is now wired into all three catch handlers; pattern matching against the backend's E_MFAREQUIRED / ENOTOKEN messages is shared so the matching surface is identical across paths. Test reproduction confirmed by the original reporter (@EhudKirsh).
 
 ### Added
 
-- **Mouse Back button (button code 3) closes the topmost modal** — the side button on gaming and productivity mice (the one that fires `event.button === 3` and `event.buttons === 8` in the HTML mouse events spec) now triggers a synthetic Escape keydown event that bubbles to the topmost open modal, dialog, dropdown or popover. Every dialog in the app already wires Esc (TwoFactorPromptDialog, HostKeyDialog, OverwriteDialog, SettingsPanel, VaultPanel, AISettingsPanel, ConnectionScreen, the delete-profile confirmation, the Quick Connect form, etc.), so re-routing Back through the same channel gives correct stacked-modal behavior with zero per-component churn: the topmost handler closes and self-removes, the next Back closes the next layer, all the way back to the My Servers home. Implemented as a single `useMouseBackButton()` hook mounted at the App root: listens for `mousedown`, `mouseup` and `auxclick` in the capture phase, suppresses the WebKitGTK history-back default that was beginning to fire on recent builds, and synthesizes the Escape on `mouseup` so the gesture timing matches what the user expects on releasing the side button. (reported by @EhudKirsh)
-- **AeroFTP master password TOTP setup QR code** — Settings > Security > Two-Factor Authentication > Setup now renders the actual QR code (`qrcode.react` `QRCodeSVG`, level M, 180px on a white tile so it scans cleanly under the Cyber / Tokyo Night themes) instead of just the otpauth URI as copyable text, so the user can point Authy / Google Authenticator / 1Password / Bitwarden directly at the dialog. Account name in the URI changed from "AeroFTP Vault" to "Desktop 2FA" because Authy was rendering the entry as the awkward "AeroFTP : AeroFTP Vault" duplication. The URI also now carries a Google-extension `image=https://docs.aeroftp.app/web-app-manifest-512x512.png` parameter so authenticators that honor it (FreeOTP+, Yubico Authenticator, Bitwarden, recent Google Authenticator) can show the AeroFTP logo. Authy ignores `image=` and pulls icons from a Twilio-internal database, so an AeroFTP logo there would require a separate submission to Twilio support; until then Authy will fall back to its generic icon, which is a vendor limitation, not a URI problem.
+- **Mouse Back button (button code 3) closes the topmost modal**: the side button on gaming and productivity mice (the one that fires `event.button === 3` and `event.buttons === 8` in the HTML mouse events spec) now triggers a synthetic Escape keydown event that bubbles to the topmost open modal, dialog, dropdown or popover. Every dialog in the app already wires Esc (TwoFactorPromptDialog, HostKeyDialog, OverwriteDialog, SettingsPanel, VaultPanel, AISettingsPanel, ConnectionScreen, the delete-profile confirmation, the Quick Connect form, etc.), so re-routing Back through the same channel gives correct stacked-modal behavior with zero per-component churn: the topmost handler closes and self-removes, the next Back closes the next layer, all the way back to the My Servers home. Implemented as a single `useMouseBackButton()` hook mounted at the App root: listens for `mousedown`, `mouseup` and `auxclick` in the capture phase, suppresses the WebKitGTK history-back default that was beginning to fire on recent builds, and synthesizes the Escape on `mouseup` so the gesture timing matches what the user expects on releasing the side button. (reported by @EhudKirsh)
+- **AeroFTP master password TOTP setup QR code**: Settings > Security > Two-Factor Authentication > Setup now renders the actual QR code (`qrcode.react` `QRCodeSVG`, level M, 180px on a white tile so it scans cleanly under the Cyber / Tokyo Night themes) instead of just the otpauth URI as copyable text, so the user can point Authy / Google Authenticator / 1Password / Bitwarden directly at the dialog. Account name in the URI changed from "AeroFTP Vault" to "Desktop 2FA" because Authy was rendering the entry as the awkward "AeroFTP : AeroFTP Vault" duplication. The URI also now carries a Google-extension `image=https://docs.aeroftp.app/web-app-manifest-512x512.png` parameter so authenticators that honor it (FreeOTP+, Yubico Authenticator, Bitwarden, recent Google Authenticator) can show the AeroFTP logo. Authy ignores `image=` and pulls icons from a Twilio-internal database, so an AeroFTP logo there would require a separate submission to Twilio support; until then Authy will fall back to its generic icon, which is a vendor limitation, not a URI problem.
 
 ### Changed
 
-- **Agent / MCP / CLI internal cleanup pass** — coordinated set of refactors across `agent_session.rs`, `ai_core/{agent_tools, gui_tools, tools}.rs`, `ai_tools.rs`, `bin/aeroftp_cli.rs` (+326 lines, the largest single delta), `cross_profile_transfer.rs`, `lib.rs`, `mcp/tools.rs`, `profile_auth_state.rs`, `providers/{azure, jottacloud, xml_text}.rs`, and `speedtest.rs`. Same-batch cleanup that landed alongside the MEGA Native crypto fix; behavior-preserving changes that improve consistency across the agent, MCP and CLI surfaces. No public API change.
+- **Agent / MCP / CLI internal cleanup pass**: coordinated set of refactors across `agent_session.rs`, `ai_core/{agent_tools, gui_tools, tools}.rs`, `ai_tools.rs`, `bin/aeroftp_cli.rs` (+326 lines, the largest single delta), `cross_profile_transfer.rs`, `lib.rs`, `mcp/tools.rs`, `profile_auth_state.rs`, `providers/{azure, jottacloud, xml_text}.rs`, and `speedtest.rs`. Same-batch cleanup that landed alongside the MEGA Native crypto fix; behavior-preserving changes that improve consistency across the agent, MCP and CLI surfaces. No public API change.
 
 ### Notes on accessibility
 
@@ -77,23 +133,23 @@ A focused patch release built around the v3.6.8 wishlist thread (issue #133) plu
 
 ### Fixed
 
-- **Yandex Disk preset "Docs" link 404** — the registry entry for `yandexdisk-webdav` pointed at `yandex.com/support/disk-desktop-windows/start/webdav-client.html`, which no longer exists. Repointed to `yandex.com/support/disk/` (verified 200 OK). (reported by @EhudKirsh)
-- **WebDAV Edit form helper links** — the provider footer with Create Account / Docs / Generate password buttons was hidden in Edit mode via a `editingProfileId` guard, so users editing a Yandex / OpenDrive / Koofr profile could not jump back to the docs or password generator. The guard is gone; the footer renders the same on first connect and on Edit. (reported by @EhudKirsh)
-- **WebDAV Edit form Server Endpoint URL editable in Edit** — the Server Endpoint URL and Port fields were locked on first connect for pre-configured providers but became editable on Edit, which was easy to break by accident. Both fields are now `readOnly` when `selectedProvider.defaults?.server` is set, with a muted visual state. (reported by @EhudKirsh)
-- **OneDrive logo misshapen at small sizes** — the previous SVG layered three paths on a 24x24 box, producing an outline that did not look like the canonical Microsoft cloud icon, especially in the Discover Services grid. Redrawn with the standard 4-cloud composition on a 32x24 viewBox, four fill stops. (reported by @EhudKirsh)
-- **Speed Test modal "Run comparison" button cropped at large font sizes** — the modal used `pt-[5vh]` + `max-h-[90vh]`, leaving the footer below the fold for users on 19 / 22 px font sizes. Vertical budget expanded to `pt-[2vh] pb-[2vh]` + `max-h-[96vh]`. (reported by @EhudKirsh)
-- **Activity Log badge counter ignored the active filter** — the bottom-bar Log badge counted every emitted event, so it crept up to 99+ even when the panel was filtered to Errors only. The panel now persists `filterType` and `showCloudSync` in localStorage and broadcasts CustomEvents on every change; App.tsx subscribes and recomputes the badge using the same filter predicates as the panel. (reported by @EhudKirsh)
-- **Provider icons in the Choose Icon dialog silently failed to select** — Hetzner, MinIO, Koofr, FileLu, Blomp, OpenDrive, FeliCloud, Pixelunion, Aspnix, DriveHQ, Quotaless, Jianguoyun, Yandex Disk, Immich and other PNG-backed provider logos render as `<img>`, but `reactLogoToSvgDataUrl()` searched for an `<svg>` and returned `null`, so the click was a no-op. Added an `<img>` fallback that returns the image src as the data URL — works unchanged with the existing `customIconUrl` consumer. (reported by @EhudKirsh)
-- **Custom icons "No custom icons yet" placeholder shown next to an existing icon** — the empty-state copy contradicted the Current / On-server section above when a user had already picked an icon. The placeholder is now suppressed when either is non-empty. (reported by @EhudKirsh)
-- **Filen TOTP code persisted across reconnects (issue #128)** — the 6-digit 2FA Code field was saved into the profile's `options.two_factor_code` on connect, so a reconnect a few minutes later replayed yesterday's code and the API rejected it with "Wrong Two Factor Authentication code". TOTPs are single-use and rotate every 30 seconds; the saved-profile path now strips `two_factor_code` from `optionsToSave` on both Edit and New Server flows, the same way Filen / Internxt / MEGA web clients ask for the code on every login. (reported by @EhudKirsh)
+- **Yandex Disk preset "Docs" link 404**: the registry entry for `yandexdisk-webdav` pointed at `yandex.com/support/disk-desktop-windows/start/webdav-client.html`, which no longer exists. Repointed to `yandex.com/support/disk/` (verified 200 OK). (reported by @EhudKirsh)
+- **WebDAV Edit form helper links**: the provider footer with Create Account / Docs / Generate password buttons was hidden in Edit mode via a `editingProfileId` guard, so users editing a Yandex / OpenDrive / Koofr profile could not jump back to the docs or password generator. The guard is gone; the footer renders the same on first connect and on Edit. (reported by @EhudKirsh)
+- **WebDAV Edit form Server Endpoint URL editable in Edit**: the Server Endpoint URL and Port fields were locked on first connect for pre-configured providers but became editable on Edit, which was easy to break by accident. Both fields are now `readOnly` when `selectedProvider.defaults?.server` is set, with a muted visual state. (reported by @EhudKirsh)
+- **OneDrive logo misshapen at small sizes**: the previous SVG layered three paths on a 24x24 box, producing an outline that did not look like the canonical Microsoft cloud icon, especially in the Discover Services grid. Redrawn with the standard 4-cloud composition on a 32x24 viewBox, four fill stops. (reported by @EhudKirsh)
+- **Speed Test modal "Run comparison" button cropped at large font sizes**: the modal used `pt-[5vh]` + `max-h-[90vh]`, leaving the footer below the fold for users on 19 / 22 px font sizes. Vertical budget expanded to `pt-[2vh] pb-[2vh]` + `max-h-[96vh]`. (reported by @EhudKirsh)
+- **Activity Log badge counter ignored the active filter**: the bottom-bar Log badge counted every emitted event, so it crept up to 99+ even when the panel was filtered to Errors only. The panel now persists `filterType` and `showCloudSync` in localStorage and broadcasts CustomEvents on every change; App.tsx subscribes and recomputes the badge using the same filter predicates as the panel. (reported by @EhudKirsh)
+- **Provider icons in the Choose Icon dialog silently failed to select**: Hetzner, MinIO, Koofr, FileLu, Blomp, OpenDrive, FeliCloud, Pixelunion, Aspnix, DriveHQ, Quotaless, Jianguoyun, Yandex Disk, Immich and other PNG-backed provider logos render as `<img>`, but `reactLogoToSvgDataUrl()` searched for an `<svg>` and returned `null`, so the click was a no-op. Added an `<img>` fallback that returns the image src as the data URL: works unchanged with the existing `customIconUrl` consumer. (reported by @EhudKirsh)
+- **Custom icons "No custom icons yet" placeholder shown next to an existing icon**: the empty-state copy contradicted the Current / On-server section above when a user had already picked an icon. The placeholder is now suppressed when either is non-empty. (reported by @EhudKirsh)
+- **Filen TOTP code persisted across reconnects (issue #128)**: the 6-digit 2FA Code field was saved into the profile's `options.two_factor_code` on connect, so a reconnect a few minutes later replayed yesterday's code and the API rejected it with "Wrong Two Factor Authentication code". TOTPs are single-use and rotate every 30 seconds; the saved-profile path now strips `two_factor_code` from `optionsToSave` on both Edit and New Server flows, the same way Filen / Internxt / MEGA web clients ask for the code on every login. (reported by @EhudKirsh)
 
 ### Added
 
-- **Hide username on My Servers cards** — new toggle in the toolbar (AtSign icon, persists across sessions as `aeroftp_hide_server_username`). When active, the `user@host` subtitle becomes host-only across grid and list views, freeing visual space and removing the email leak. (reported by @EhudKirsh)
-- **Drag and drop on Custom icons upload box** — files dropped on the box are ingested through the same `ingestIconBytes()` path as the file picker. Visual feedback while a file is hovered: solid blue border and a "Drop file to upload" label. Allowed extensions: SVG, PNG, JPG / JPEG, GIF, WEBP, ICO. (reported by @EhudKirsh)
-- **Custom icons delete confirmation** — removing an icon from the library now goes through a confirmation prompt that includes the icon's own name in the message, same surface as the existing profile delete dialog. (reported by @EhudKirsh)
-- **Activity Log multi-select filter** — the single-pick `<select>` dropdown is gone, replaced by a button + popover with one checkbox per operation (Connect, Disconnect, Upload, Download, Delete, Restore, Navigate, Errors) plus an "All" reset entry at the top. Empty selection is the new "show all" state, so users can mix Errors + File operations without losing one when they pick the other. State migrates automatically from the legacy single-pick value. (reported by @EhudKirsh)
-- **MEGA 2FA TOTP support (issue #128)** — Quick Connect MEGA gains a "2FA Code" field below Password, mirroring the Filen / Internxt block (6-digit numeric, `inputMode="numeric"`, `autoComplete="one-time-code"`). Backend: `MegaConfig` extended with `two_factor_code: Option<String>` deserialized from `extra["two_factor_code"]`; both `login_v1` and `login_v2` inject `"mfa": <code>` into the `us` (login) request when present. Server returns `-26` (E_MFAREQUIRED) when the field is absent on a 2FA-enabled account, and `-9` / `-16` on a wrong code; both surface to the user as the same generic auth failure as a wrong password, so no extra plumbing is required. (reported by @EhudKirsh)
+- **Hide username on My Servers cards**: new toggle in the toolbar (AtSign icon, persists across sessions as `aeroftp_hide_server_username`). When active, the `user@host` subtitle becomes host-only across grid and list views, freeing visual space and removing the email leak. (reported by @EhudKirsh)
+- **Drag and drop on Custom icons upload box**: files dropped on the box are ingested through the same `ingestIconBytes()` path as the file picker. Visual feedback while a file is hovered: solid blue border and a "Drop file to upload" label. Allowed extensions: SVG, PNG, JPG / JPEG, GIF, WEBP, ICO. (reported by @EhudKirsh)
+- **Custom icons delete confirmation**: removing an icon from the library now goes through a confirmation prompt that includes the icon's own name in the message, same surface as the existing profile delete dialog. (reported by @EhudKirsh)
+- **Activity Log multi-select filter**: the single-pick `<select>` dropdown is gone, replaced by a button + popover with one checkbox per operation (Connect, Disconnect, Upload, Download, Delete, Restore, Navigate, Errors) plus an "All" reset entry at the top. Empty selection is the new "show all" state, so users can mix Errors + File operations without losing one when they pick the other. State migrates automatically from the legacy single-pick value. (reported by @EhudKirsh)
+- **MEGA 2FA TOTP support (issue #128)**: Quick Connect MEGA gains a "2FA Code" field below Password, mirroring the Filen / Internxt block (6-digit numeric, `inputMode="numeric"`, `autoComplete="one-time-code"`). Backend: `MegaConfig` extended with `two_factor_code: Option<String>` deserialized from `extra["two_factor_code"]`; both `login_v1` and `login_v2` inject `"mfa": <code>` into the `us` (login) request when present. Server returns `-26` (E_MFAREQUIRED) when the field is absent on a 2FA-enabled account, and `-9` / `-16` on a wrong code; both surface to the user as the same generic auth failure as a wrong password, so no extra plumbing is required. (reported by @EhudKirsh)
 
 ### Changed
 
@@ -107,22 +163,22 @@ A focused patch release. The headline is a silent regression on MEGA Native shar
 
 ### Fixed
 
-- **MEGA Native share link** — `aeroftp-cli link --profile <mega-native>` was building `mega.nz/file/<internal-node-handle>#<key>` instead of `mega.nz/file/<public-handle>#<key>`. The encryption key portion was always correct, only the 8-character handle in the path was wrong, so generated links opened on a "File cannot be accessed" page on `mega.nz`. Fix: capture the public handle returned by the MEGA API `l` (export) command and use that in the URL. `mega_native.rs::create_share_link`.
-- **S3 explicit endpoint precedence** — when a saved server profile has both a configured S3 endpoint and a host populated by the GUI, the explicit endpoint now wins. Also detects bucket-addressing errors and reports them as `ProviderError::Configuration` so they are actionable on the CLI side. (commit `27d2ccc8`, originally merged via #132 into the local tree, formally rolled into this release.)
-- **Edit Server form, S3 Path-Style toggle** — the Path-Style URLs checkbox was wired into QuickConnect via `ProtocolSelector` but never plumbed into Settings > Servers > Edit Server, so users could not flip the toggle on a saved profile after creation. Now exposed in the S3 section of Edit Server, sharing the existing `protocol.pathStyle` i18n key. Surfaced by @voland-key on #132.
-- **Edit Server form, Public URL Base scope** — the "Public URL Base" field was rendered in Edit Server for every protocol including S3 / Azure / MEGA / Filen / GitHub / OAuth providers, with a caption that explicitly reads "Enter the HTTP URL that maps to your FTP root folder". The field is only meaningful for filesystem-mounted protocols whose tree maps to a plain HTTP service. Now gated to FTP / SFTP / WebDAV; other providers build their share links via native APIs and do not consume this field.
+- **MEGA Native share link**: `aeroftp-cli link --profile <mega-native>` was building `mega.nz/file/<internal-node-handle>#<key>` instead of `mega.nz/file/<public-handle>#<key>`. The encryption key portion was always correct, only the 8-character handle in the path was wrong, so generated links opened on a "File cannot be accessed" page on `mega.nz`. Fix: capture the public handle returned by the MEGA API `l` (export) command and use that in the URL. `mega_native.rs::create_share_link`.
+- **S3 explicit endpoint precedence**: when a saved server profile has both a configured S3 endpoint and a host populated by the GUI, the explicit endpoint now wins. Also detects bucket-addressing errors and reports them as `ProviderError::Configuration` so they are actionable on the CLI side. (commit `27d2ccc8`, originally merged via #132 into the local tree, formally rolled into this release.)
+- **Edit Server form, S3 Path-Style toggle**: the Path-Style URLs checkbox was wired into QuickConnect via `ProtocolSelector` but never plumbed into Settings > Servers > Edit Server, so users could not flip the toggle on a saved profile after creation. Now exposed in the S3 section of Edit Server, sharing the existing `protocol.pathStyle` i18n key. Surfaced by @voland-key on #132.
+- **Edit Server form, Public URL Base scope**: the "Public URL Base" field was rendered in Edit Server for every protocol including S3 / Azure / MEGA / Filen / GitHub / OAuth providers, with a caption that explicitly reads "Enter the HTTP URL that maps to your FTP root folder". The field is only meaningful for filesystem-mounted protocols whose tree maps to a plain HTTP service. Now gated to FTP / SFTP / WebDAV; other providers build their share links via native APIs and do not consume this field.
 
-### Changed (FTP layer — suppaftp 8.0.1 to 8.0.3)
+### Changed (FTP layer: suppaftp 8.0.1 to 8.0.3)
 
 - **suppaftp upgraded from 8.0.1 to 8.0.3** after a fresh upstream review (analysis archived in `docs/dev/reports/2026-04-27-suppaftp-upgrade-analysis.md`). The pin held since 8.0.2 introduced an ungated `std::os::fd::AsFd` call that broke Windows builds. Upstream still ships that code in 8.0.3, but it is feature-gated behind `tokio-async-native-tls`, which AeroFTP does not enable (we use `tokio-rustls-aws-lc-rs`). Verified by reading `tokio_ftp/tls/native_tls.rs` in the upstream 8.0.3 source. The legacy `FTP_CLIENT` crate stays pinned at 8.0.1 because it uses the broken feature.
 - The upgrade brings 14 upstream fixes that affect AeroFTP's hot path: undefined behavior in the tokio TLS `tcp_stream()` borrow chain (PR 135); replaced `unwrap()` panics on server-controlled EPSV / SIZE / MDTM responses with proper error handling (PR 146); infinite loop in async `feat()` on mid-response disconnect (PR 137) and the same fix for `read_response_in()` on multiline + disconnect (PR 138); `data_connection_open` flag now set only after successful open, removing a class of false `DataConnectionAlreadyOpen` errors (PR 136); MLSX parser accepts `cdir` / `pdir` per RFC 3659 (PR 139) and 4-digit `unix.mode` like `0755` (PR 140); DOS LIST parser handles sizes with commas like `1,234,567` (PR 142); `parse_lstime` adjusts year for future dates the way GNU `ls` does (PR 143); DOS time parser handles a space before AM/PM (PR 144); `abort()` no longer appends when the server sends a direct 226 (PR 141); active mode uses EPRT for IPv6 (PR 145); `cwd()` accepts `200 Command OK` in addition to `250` for non-RFC-959 servers (PR 153). All `cargo check` / `cargo clippy --all-targets -- -D warnings` clean.
 
 ### Added
 
-- **`aeroftp-cli link --verify`** — optional reachability probe. After the share link is generated, the CLI runs an HTTP GET against the URL with a 15-second timeout, follows up to 5 redirects, and reports the resulting status code. Exits with code 4 on a non-2xx/3xx status. JSON output gains a `verified: { http_status, ok }` block. Useful in CI smoke tests and post-release validation to catch silent regressions like the MEGA one above. Uses GET, not HEAD: SigV4-presigned URLs across S3-compatible providers reject HEAD when only `host` is in `SignedHeaders`.
-- **CLI smoke step for `--verify` flag** — `cli-smoke.yml` now asserts that `aeroftp-cli link --help` advertises `--verify`, so removing the flag accidentally fails CI on every supported OS (Linux / macOS / Windows). Live reachability probes against credentialed profiles stay an operator-side check; the smoke verifies surface, not transport.
-- **BLAKE3 in the File Properties Checksum tab** — fifth row alongside MD5 / SHA-1 / SHA-256 / SHA-512. The `blake3` crate was already vendored for the Hash Forge Cyber tool, so this is purely surface plumbing: backend `calculate_checksum` accepts `"blake3"` (alias `"b3"`), the dialog renders a new row, the props type widens accordingly. Output is the standard hex-encoded digest.
-- **Esc clears narrowing on My Servers** — pressing Escape while focused on the My Servers grid (no input selected, no modal open) clears the search query and resets the active filter chip back to "All". Mirrors the v3.6.6 Esc gesture that clears file selections in AeroFile panels and answers a wishlist follow-up.
+- **`aeroftp-cli link --verify`**: optional reachability probe. After the share link is generated, the CLI runs an HTTP GET against the URL with a 15-second timeout, follows up to 5 redirects, and reports the resulting status code. Exits with code 4 on a non-2xx/3xx status. JSON output gains a `verified: { http_status, ok }` block. Useful in CI smoke tests and post-release validation to catch silent regressions like the MEGA one above. Uses GET, not HEAD: SigV4-presigned URLs across S3-compatible providers reject HEAD when only `host` is in `SignedHeaders`.
+- **CLI smoke step for `--verify` flag**: `cli-smoke.yml` now asserts that `aeroftp-cli link --help` advertises `--verify`, so removing the flag accidentally fails CI on every supported OS (Linux / macOS / Windows). Live reachability probes against credentialed profiles stay an operator-side check; the smoke verifies surface, not transport.
+- **BLAKE3 in the File Properties Checksum tab**: fifth row alongside MD5 / SHA-1 / SHA-256 / SHA-512. The `blake3` crate was already vendored for the Hash Forge Cyber tool, so this is purely surface plumbing: backend `calculate_checksum` accepts `"blake3"` (alias `"b3"`), the dialog renders a new row, the props type widens accordingly. Output is the standard hex-encoded digest.
+- **Esc clears narrowing on My Servers**: pressing Escape while focused on the My Servers grid (no input selected, no modal open) clears the search query and resets the active filter chip back to "All". Mirrors the v3.6.6 Esc gesture that clears file selections in AeroFile panels and answers a wishlist follow-up.
 
 ### Changed
 
@@ -132,50 +188,50 @@ A focused patch release. The headline is a silent regression on MEGA Native shar
 
 ### Agent surface, onboarding polish, server speedtest, community wishlist
 
-The full v3.6.6 cycle ran in roughly 36 hours and is shaped by two parallel community feedback waves. Issue #125 (`@EhudKirsh`) — a clean reproduction of CLI/Terminal bugs — prompted a 4-Sonnet black-box audit of the AI-agent surface that surfaced 13 friction points; the same thread invited Ehud to point an AI assistant at `agent-info --json` and `agent-bootstrap --json`, and the audit closes that loop. Issue #130 (`@scottonanski`) reframed the first-run empty state, and most of the onboarding polish ships in response. Issue #129 stayed open as the v3.6.6 wishlist thread, and many of the small UX wins below answer specific items voted up there.
+The full v3.6.6 cycle ran in roughly 36 hours and is shaped by two parallel community feedback waves. Issue #125 (`@EhudKirsh`): a clean reproduction of CLI/Terminal bugs: prompted a 4-Sonnet black-box audit of the AI-agent surface that surfaced 13 friction points; the same thread invited Ehud to point an AI assistant at `agent-info --json` and `agent-bootstrap --json`, and the audit closes that loop. Issue #130 (`@scottonanski`) reframed the first-run empty state, and most of the onboarding polish ships in response. Issue #129 stayed open as the v3.6.6 wishlist thread, and many of the small UX wins below answer specific items voted up there.
 
 ### Added
 
-- **`aeroftp-cli agent-connect <profile>`** + **MCP tool `aeroftp_agent_connect`** — single-shot connect surface for AI agents. Returns one JSON payload with per-block status (`connect`, `capabilities`, `quota`, `path`), replacing the boilerplate sequence `connect → about → df → ls /`. Block status values are `ok` / `unsupported` / `unavailable` / `error`; agents read `connect.status` for the go/no-go decision and degrade gracefully on the rest. Live-connect allowlist (FTP / FTPS / SFTP / WebDAV / S3 / GitHub / GitLab) is documented inline in `--help`. For protocols outside the allowlist (pCloud, Filen, Dropbox, etc.) the response still includes valid `capabilities`, `path` and `profile` blocks; only the `connect` block reports `status: "unsupported"` and the CLI exits 0 because the rest of the payload is still actionable. New lib module `agent_session.rs` is the single source of truth, also translating profile.options camelCase keys (bucket, region, tlsMode, privateKeyPath, …) into ProviderConfig.extra snake_case so S3 / Azure / SFTP-key / FTPS profiles connect via vault for the first time on the agent path.
-- **`agent-info --json` exposes a `protocol_features` map** keyed by protocol → list of feature tokens (`share_links`, `resume`, `server_copy`, `versions`, `thumbnails`, `change_tracking`, etc.) plus an `agent_connect_supported_protocols` array. Collapses what used to require N `agent-connect` calls (one per profile) into a single batch query — driven by the audit's Battery D where one agent had to walk 69 profiles to discover share-link capability.
+- **`aeroftp-cli agent-connect <profile>`** + **MCP tool `aeroftp_agent_connect`**: single-shot connect surface for AI agents. Returns one JSON payload with per-block status (`connect`, `capabilities`, `quota`, `path`), replacing the boilerplate sequence `connect → about → df → ls /`. Block status values are `ok` / `unsupported` / `unavailable` / `error`; agents read `connect.status` for the go/no-go decision and degrade gracefully on the rest. Live-connect allowlist (FTP / FTPS / SFTP / WebDAV / S3 / GitHub / GitLab) is documented inline in `--help`. For protocols outside the allowlist (pCloud, Filen, Dropbox, etc.) the response still includes valid `capabilities`, `path` and `profile` blocks; only the `connect` block reports `status: "unsupported"` and the CLI exits 0 because the rest of the payload is still actionable. New lib module `agent_session.rs` is the single source of truth, also translating profile.options camelCase keys (bucket, region, tlsMode, privateKeyPath, …) into ProviderConfig.extra snake_case so S3 / Azure / SFTP-key / FTPS profiles connect via vault for the first time on the agent path.
+- **`agent-info --json` exposes a `protocol_features` map** keyed by protocol → list of feature tokens (`share_links`, `resume`, `server_copy`, `versions`, `thumbnails`, `change_tracking`, etc.) plus an `agent_connect_supported_protocols` array. Collapses what used to require N `agent-connect` calls (one per profile) into a single batch query: driven by the audit's Battery D where one agent had to walk 69 profiles to discover share-link capability.
 - **`head -c / --bytes <N>`** byte-range preview for remote files. Works on binary content (returns base64 in JSON when bytes aren't valid UTF-8) and reports `bytes_returned` / `total_size` / `truncated` / `encoding`. Closes the audit's Battery A "no way to get the first 4KB without a full download" gap.
 - **`ls --limit N`, `--files-only`, `--dirs-only`** flags. Summary now carries `truncated: bool` and `total_before_limit: int` so agents can detect partial results unambiguously. Same trio added to `find`, plus a `--name <glob>` alias for the positional pattern (the natural first-attempt form for agents who expect named args).
-- **Cross-profile multi-select on My Servers** — click a server card body to toggle Cross-Profile selection (icon button still triggers Connect). Up to two cards selected; third click drops the oldest FIFO. Indigo ring + arrow-up-right badge for source, emerald + arrow-down-left for destination. Always-visible Cross-Profile button in the toolbar with three brightness states (0 / 1 / 2 selected) and a counter badge. Right-click context menu offers Set as source / destination for direct assignment. Drag-to-reorder now works while a filter chip is active or a search query is typed.
-- **Server SpeedTest** — new isolated benchmark dialog and CLI parity. GUI: Single / Compare tabs, multi-select up to 8 servers, parallel selector, ranked compare table with tri-state integrity, history summary card with regression warning (last < median × 0.7), Esc cancels running test. CLI: `speed` subcommand upgraded with random non-compressible payload (was zeros), SHA-256 integrity, TTFB measurement, `--no-integrity` flag, `--json-out`. New `speed-compare` subcommand emits JSON v1, CSV, and Markdown reports. `redact_url_for_display()` is applied to every report and error path so passwords never appear in stdout / JSON / CSV / MD; `csv_cell_safe()` neutralizes spreadsheet formula triggers (`=`, `+`, `-`, `@`); `md_cell_safe()` escapes pipes / newlines / backslashes. Streaming download to `NamedTempFile` with TTFB measurement, tempfile pre-allocation before connect to eliminate orphan/leak windows, SQLite history (WAL, 0600/0700 perms, 1000-row cap, `server_name` forced NULL at insert as defense in depth), spawn_blocking for SHA-256 hashing and random payload generation. 22 speedtest lib tests + 6 CLI tests for `redact_url`, CSV/MD escaping. Schema `aeroftp.speedtest.v1` is stable across CLI and GUI.
-- **Selected-server chips on the Compare tab** — each chip shows the display name, protocol tag, and an inline X to remove the server from the comparison without scrolling the list.
-- **Provider IconPicker dialog** (closes Ehud's wishlist ask in #129 modeled on KeePassXC's icon library) — replaces the bare file dialog under "Choose icon" with a structured picker. "Provider icons" tab shows every entry in `PROVIDER_LOGOS` grouped by catalog category with curated popularity priority; "Custom icons" tab is the user's persisted library (localStorage `aeroftp-custom-icons`) with per-icon trash button. Live free-text search. SVG support throughout: Tauri file dialog accepts `.svg` and stores them as `data:image/svg+xml;base64,…` data URLs without canvas rasterization, preserving vector fidelity at every render size. Always consumed via `<img src>` so embedded scripts are sandboxed. Live re-detection on dialog open: "On server" card auto-fires `detect_*_favicon` and surfaces the live result, with a "Matches server" check on the In Use card when the live and saved values agree.
-- **Server Health Check legend** — dialog header shows the threshold dots inline (green 80+, yellow 50-79, red <50) instead of only on hover; ScoreGauge stacks `/100` under the numeric score. Closes Ehud's specific "name the boundaries" ask in #129 for both single-server and Check All runs.
+- **Cross-profile multi-select on My Servers**: click a server card body to toggle Cross-Profile selection (icon button still triggers Connect). Up to two cards selected; third click drops the oldest FIFO. Indigo ring + arrow-up-right badge for source, emerald + arrow-down-left for destination. Always-visible Cross-Profile button in the toolbar with three brightness states (0 / 1 / 2 selected) and a counter badge. Right-click context menu offers Set as source / destination for direct assignment. Drag-to-reorder now works while a filter chip is active or a search query is typed.
+- **Server SpeedTest**: new isolated benchmark dialog and CLI parity. GUI: Single / Compare tabs, multi-select up to 8 servers, parallel selector, ranked compare table with tri-state integrity, history summary card with regression warning (last < median × 0.7), Esc cancels running test. CLI: `speed` subcommand upgraded with random non-compressible payload (was zeros), SHA-256 integrity, TTFB measurement, `--no-integrity` flag, `--json-out`. New `speed-compare` subcommand emits JSON v1, CSV, and Markdown reports. `redact_url_for_display()` is applied to every report and error path so passwords never appear in stdout / JSON / CSV / MD; `csv_cell_safe()` neutralizes spreadsheet formula triggers (`=`, `+`, `-`, `@`); `md_cell_safe()` escapes pipes / newlines / backslashes. Streaming download to `NamedTempFile` with TTFB measurement, tempfile pre-allocation before connect to eliminate orphan/leak windows, SQLite history (WAL, 0600/0700 perms, 1000-row cap, `server_name` forced NULL at insert as defense in depth), spawn_blocking for SHA-256 hashing and random payload generation. 22 speedtest lib tests + 6 CLI tests for `redact_url`, CSV/MD escaping. Schema `aeroftp.speedtest.v1` is stable across CLI and GUI.
+- **Selected-server chips on the Compare tab**: each chip shows the display name, protocol tag, and an inline X to remove the server from the comparison without scrolling the list.
+- **Provider IconPicker dialog** (closes Ehud's wishlist ask in #129 modeled on KeePassXC's icon library): replaces the bare file dialog under "Choose icon" with a structured picker. "Provider icons" tab shows every entry in `PROVIDER_LOGOS` grouped by catalog category with curated popularity priority; "Custom icons" tab is the user's persisted library (localStorage `aeroftp-custom-icons`) with per-icon trash button. Live free-text search. SVG support throughout: Tauri file dialog accepts `.svg` and stores them as `data:image/svg+xml;base64,…` data URLs without canvas rasterization, preserving vector fidelity at every render size. Always consumed via `<img src>` so embedded scripts are sandboxed. Live re-detection on dialog open: "On server" card auto-fires `detect_*_favicon` and surfaces the live result, with a "Matches server" check on the In Use card when the live and saved values agree.
+- **Server Health Check legend**: dialog header shows the threshold dots inline (green 80+, yellow 50-79, red <50) instead of only on hover; ScoreGauge stacks `/100` under the numeric score. Closes Ehud's specific "name the boundaries" ask in #129 for both single-server and Check All runs.
 - **Two WebDAV provider presets** (closes Ehud's #129 suggestions): OpenDrive WebDAV (`opendrive-webdav`, server `https://webdav.opendrive.com`, regular login password) and Yandex Disk WebDAV (`yandexdisk-webdav`, server `https://webdav.yandex.ru`, app-specific password with deep-link to `id.yandex.com/security/app-passwords`). Both appear automatically in the Discover catalog under WebDAV.
-- **`passwordGenUrl` field on `ProviderConfig`** — surfaces in the connection-form footer as a "Generate password" link (amber, key icon) next to the existing Create Account / Docs links. Wired up for Koofr WebDAV and Yandex WebDAV.
-- **`PasswordStrengthBar` in the Export Encrypted Backup flow** — same component as AeroVault, gives users a 0-100 score with color-coded feedback while typing. Was previously only inside Vault; parity was the user-visible ask.
-- **File associations for `.aeroftp` and `.aeroftp-keystore`** — Tauri `fileAssociations` extended with `application/x-aeroftp` (server-profiles export bundle) and `application/x-aeroftp-keystore` (full keystore). Linux MIME XML extended with both new types alongside the existing AeroVault entry. Per-format icons not shipped yet — file managers fall back to the generic AeroFTP icon.
+- **`passwordGenUrl` field on `ProviderConfig`**: surfaces in the connection-form footer as a "Generate password" link (amber, key icon) next to the existing Create Account / Docs links. Wired up for Koofr WebDAV and Yandex WebDAV.
+- **`PasswordStrengthBar` in the Export Encrypted Backup flow**: same component as AeroVault, gives users a 0-100 score with color-coded feedback while typing. Was previously only inside Vault; parity was the user-visible ask.
+- **File associations for `.aeroftp` and `.aeroftp-keystore`**: Tauri `fileAssociations` extended with `application/x-aeroftp` (server-profiles export bundle) and `application/x-aeroftp-keystore` (full keystore). Linux MIME XML extended with both new types alongside the existing AeroVault entry. Per-format icons not shipped yet: file managers fall back to the generic AeroFTP icon.
 - **"Close to tray instead of quitting" Settings toggle** (closes Ehud's #129 follow-up). When enabled, clicking the window close button hides AeroFTP to the system tray instead of terminating, so background tasks like AeroCloud sync keep running. Independent from "Start minimized on autostart"; default off to preserve existing behaviour. Esc on either panel now clears file selections when no modal/dialog/preview is open, mirroring the right-click-empty-area gesture.
 - **`mkdir --json` reports `already_existed: bool`** so audit trails distinguish "I created it" from "it was already there" on idempotent `-p` invocations.
 - **Inline saved-profile inventory in `agent-bootstrap --json`** plus per-profile `auth_state` (`valid` / `expired` / `needs_refresh` / `no_credentials` / `unknown`) wired into all three list surfaces (`profiles --json`, `agent-bootstrap --json`, MCP `aeroftp_list_servers`). Eliminates the round-trip an agent had to do after `agent-bootstrap` and stops connect-then-fail loops on profiles whose OAuth tokens expired silently. New `profile_auth_state` lib module is the single source of truth; pure local, never touches the network.
 
 ### Changed
 
-- **First-run empty state on My Servers** (issue #130, `@scottonanski`) — visible "+ New" header label instead of icon-only `+`. Empty state now reads "Get started" with a primary CTA "Add your first server" (was "Quick Connect", which read as "rapid versus what?") and a 2x3 category grid (Protocols / S3 / WebDAV / Cloud / Media / Developer) that jumps straight into the relevant Discover slice in one click.
-- **Cross-Profile gating** — toolbar button, card click selection, and right-click "Set as source / destination" menu items are now gated on `servers.length > 1`. Selecting a single server as source/destination was nonsensical and used to ship a confusing badge in the toolbar.
-- **Discover service cards** — replaced the responsive `grid-cols-1/2/3/4/5` cascade with `auto-fill minmax(260px, 1fr)`. Earlier breakpoints were truncating provider names to "Cloudflar...", "Backblaz...", "S3 Co...". The auto-fill grid keeps each card readable and only adds columns when the panel actually has room. WebDAV preset logos (OpenDrive, Yandex Disk) mapped to the existing `PROVIDER_LOGOS` so the new presets show proper icons everywhere (Discover, ConnectionScreen, SessionTabs, SettingsPanel, MyServers).
-- **My Servers grid breakpoints** — `grid-cols-2 md:3 lg:4 xl:5 2xl:6` with `p-1` breathing room so the selection ring is no longer clipped at the edges. IntroHub container spans the same width as the connected file manager view, so switching between IntroHub and an active session no longer produces a visual jump.
-- **Titlebar Connect/Disconnect anchored leftmost** (Ehud, #129) — Connect/Disconnect now sits at the leftmost position of the right toolbar with its own trailing separator. Previously it was placed after the Vault / Lock / Settings trio, so every connect/disconnect shifted those three icons sideways and made it easy to land on Lock or Settings instead of the button you aimed for. Now the dynamic button enters and exits on the left without nudging anything else.
-- **Redundant gray protocol badge collapsed on server cards** — for non-FTP/FTPS/SFTP protocols the displayProto badge was rendering gray and duplicating the colored protocolClass badge that follows it (e.g. "WEBDAV" gray + "WebDAV" purple, "S3" gray + "S3" orange). The protocol badge now renders only when it carries dedicated color; otherwise the provider icon and colored class badge already convey the info.
+- **First-run empty state on My Servers** (issue #130, `@scottonanski`): visible "+ New" header label instead of icon-only `+`. Empty state now reads "Get started" with a primary CTA "Add your first server" (was "Quick Connect", which read as "rapid versus what?") and a 2x3 category grid (Protocols / S3 / WebDAV / Cloud / Media / Developer) that jumps straight into the relevant Discover slice in one click.
+- **Cross-Profile gating**: toolbar button, card click selection, and right-click "Set as source / destination" menu items are now gated on `servers.length > 1`. Selecting a single server as source/destination was nonsensical and used to ship a confusing badge in the toolbar.
+- **Discover service cards**: replaced the responsive `grid-cols-1/2/3/4/5` cascade with `auto-fill minmax(260px, 1fr)`. Earlier breakpoints were truncating provider names to "Cloudflar...", "Backblaz...", "S3 Co...". The auto-fill grid keeps each card readable and only adds columns when the panel actually has room. WebDAV preset logos (OpenDrive, Yandex Disk) mapped to the existing `PROVIDER_LOGOS` so the new presets show proper icons everywhere (Discover, ConnectionScreen, SessionTabs, SettingsPanel, MyServers).
+- **My Servers grid breakpoints**: `grid-cols-2 md:3 lg:4 xl:5 2xl:6` with `p-1` breathing room so the selection ring is no longer clipped at the edges. IntroHub container spans the same width as the connected file manager view, so switching between IntroHub and an active session no longer produces a visual jump.
+- **Titlebar Connect/Disconnect anchored leftmost** (Ehud, #129): Connect/Disconnect now sits at the leftmost position of the right toolbar with its own trailing separator. Previously it was placed after the Vault / Lock / Settings trio, so every connect/disconnect shifted those three icons sideways and made it easy to land on Lock or Settings instead of the button you aimed for. Now the dynamic button enters and exits on the left without nudging anything else.
+- **Redundant gray protocol badge collapsed on server cards**: for non-FTP/FTPS/SFTP protocols the displayProto badge was rendering gray and duplicating the colored protocolClass badge that follows it (e.g. "WEBDAV" gray + "WebDAV" purple, "S3" gray + "S3" orange). The protocol badge now renders only when it carries dedicated color; otherwise the provider icon and colored class badge already convey the info.
 - **`get` warns on stderr when the resolved local destination already exists** (audit Battery C). Suppressed under `--quiet`, `--immutable`, and `--json` (the JSON envelope already includes the destination path so agents can diff against their own state).
 - **`stat` errors with exit code 2 emit a single `stat failed: <path> not found`** instead of the cascaded four-layer chain `Path not found: File not found: No such file: No such file` that was leaking through nested provider error wrappings. Exit code 2 is unchanged.
-- **"Using profile:" banner suppressed on stderr when `--json` is set** via a global `JSON_MODE` atomic. Earlier behaviour mixed the banner into combined-stream captures, corrupting JSON parsers. Surfaced by every audit agent — Battery C lost a verify-read step to it.
-- **AeroRsync delta transport wired into cross-profile transfer and DevTools save_remote_file** for SFTP destinations with key-based auth. `cross_profile_transfer::copy_one_file` now consults `try_delta_transfer` on the destination provider before falling back to the classic temp-file upload. `save_remote_file` (DevTools Code Editor save button) gets the same treatment — a save against an SFTP destination with key-based auth ships only the diff. Big win for files in the 50KB-50MB range that change in small spots (CSS, JSON, YAML, TOML, log tails, source). Both paths are SFTP-only today and gated by the existing `native_rsync_enabled` runtime toggle; other providers fall through unchanged. New opt-in E2E delta path docker harness (`AEROFTP_SEED_AERORSYNC_E2E=1`) seeds two SFTP profiles pointing at a `linuxserver/openssh-server` + rsync container with the mandatory non-ed25519 host-key removal that works around the U-02 libssh2/russh negotiation asymmetry.
-- **CI: legacy macOS Intel build target dropped** (`x86_64-apple-darwin`). Recurring source of flaky `bundle_dmg.sh` failures without a matching audience — Apple Silicon (`macos-latest`, aarch64) stays as the macOS leg; Intel users with demand can pin to v3.6.5 or earlier. Drops the orphaned `macos-intel` artifact path from the cosign sign loop, the DMG-rename step, and the per-target release-upload step. README Platform Status table dropped the corresponding row. If Intel demand returns, restoring the matrix entry is a 6-line revert.
+- **"Using profile:" banner suppressed on stderr when `--json` is set** via a global `JSON_MODE` atomic. Earlier behaviour mixed the banner into combined-stream captures, corrupting JSON parsers. Surfaced by every audit agent: Battery C lost a verify-read step to it.
+- **AeroRsync delta transport wired into cross-profile transfer and DevTools save_remote_file** for SFTP destinations with key-based auth. `cross_profile_transfer::copy_one_file` now consults `try_delta_transfer` on the destination provider before falling back to the classic temp-file upload. `save_remote_file` (DevTools Code Editor save button) gets the same treatment: a save against an SFTP destination with key-based auth ships only the diff. Big win for files in the 50KB-50MB range that change in small spots (CSS, JSON, YAML, TOML, log tails, source). Both paths are SFTP-only today and gated by the existing `native_rsync_enabled` runtime toggle; other providers fall through unchanged. New opt-in E2E delta path docker harness (`AEROFTP_SEED_AERORSYNC_E2E=1`) seeds two SFTP profiles pointing at a `linuxserver/openssh-server` + rsync container with the mandatory non-ed25519 host-key removal that works around the U-02 libssh2/russh negotiation asymmetry.
+- **CI: legacy macOS Intel build target dropped** (`x86_64-apple-darwin`). Recurring source of flaky `bundle_dmg.sh` failures without a matching audience: Apple Silicon (`macos-latest`, aarch64) stays as the macOS leg; Intel users with demand can pin to v3.6.5 or earlier. Drops the orphaned `macos-intel` artifact path from the cosign sign loop, the DMG-rename step, and the per-target release-upload step. README Platform Status table dropped the corresponding row. If Intel demand returns, restoring the matrix entry is a 6-line revert.
 - **Quota block in `agent-connect`** auto-downgrades to `unsupported` when `total_bytes == 0`. Some WebDAV servers (Koofr WebDAV, certain InfiniCloud configs) report 0/0 when their backend has no quota API, indistinguishable from a genuinely empty account. Now agents see the right signal.
 - **`agent-connect` exit code 0 when capabilities are still valid** even if the live connect block reports `status: "unsupported"` (protocol outside the allowlist). Previously this returned exit 1 even though the JSON body was perfectly usable. Audit Battery D's pCloud detour was the canonical case.
-- **`profiles list` now works as a no-op alias of `profiles`** — same ergonomics as `alias list`; the muscle memory was tripping people up.
+- **`profiles list` now works as a no-op alias of `profiles`**: same ergonomics as `alias list`; the muscle memory was tripping people up.
 
 ### Fixed
 
-- **XML entity decoding broken on listings across S3 / Nextcloud-WebDAV / Azure Blob / Jottacloud** — file/object names containing characters that get XML-escaped on the wire (`&`, `'`, `<`, `>`, `"`) were either truncated, doubled, or stripped. Concretely: `&` in S3/WebDAV/Azure listings emitted as `&amp;` made quick-xml fire a separate `Event::GeneralRef("amp")` between text fragments, and the parsers (which assigned the last fragment instead of accumulating) silently dropped the leading half (`a&b.txt` listed as `b.txt`). Storj specifically uses the numeric form `&#39;` instead of `&apos;` for `'`, and a builtin-only translator dropped it (`a'b.txt` listed as `ab.txt`). Jottacloud stores file names as XML attributes; quick-xml does not auto-resolve entities on attribute values, so the raw `&amp;` was making it through (`a&b.txt` listed as `a&amp;b.txt`). New `providers::xml_text` module exposes `xml_entity_to_str` (the five XML builtins + decimal/hex numeric character references) and `attr_value` (entity-aware attribute decode). Six text-extraction call sites in s3.rs, webdav.rs (three parsers) and azure.rs (list + error) converted from "assign last fragment" to "accumulate fragments + handle GeneralRef". Seven `String::from_utf8_lossy(&attr.value).to_string()` sites in jottacloud.rs swapped for `xml_text::attr_value(&attr)`. Validated live against Storj S3, InfiniCloud WebDAV, CloudMe WebDAV and Jottacloud with a 13-name fixture (`&`, `'`, `<`, `>`, `"`, space, `perché.txt`, `🚀`, `中文`, `%`, `#`, `+=`); all four providers now agree with rclone byte-for-byte.
-- **Jottacloud paths with `+`, `#` or `%` were 404ing** — `jfs_url()` (and `trash_url()`) concatenated raw paths into the request URL without per-segment percent-encoding. JFS gateway interpreted `+` as space (`a+b=c.txt` → 404), reqwest treated `#` as the start of a URL fragment (`cool#1.txt` → 404, server saw `cool`), and `100%.txt` was wrong on round-trip too. Per-segment `urlencoding::encode` already used by the upload path is now hoisted into the URL builder so list / get / stat / rename / trash all benefit. Slash separators kept; only segment contents encoded. Unit test covering `+` `#` `%` space `&` locks in the expected `%2B` / `%23` / `%25` / `%20` / `%26` output.
-- **Cross-Profile Transfer dialog seeded source with the display name instead of the saved server id** — clicking the remote-panel button opened the dialog without the active connection pre-filled. Fixed by passing the actual `savedServerId` through `ConnectionParams` / `FtpSession` and using it for source seeding.
-- **Stale Cross-Profile selection after deleting saved servers** — `crossProfileSelection` is now cleared when the saved-server count drops below 2. Previously, deleting the last server left a stale selection pointing at a deleted id and the toolbar badge persisted across the empty state until a manual refresh.
+- **XML entity decoding broken on listings across S3 / Nextcloud-WebDAV / Azure Blob / Jottacloud**: file/object names containing characters that get XML-escaped on the wire (`&`, `'`, `<`, `>`, `"`) were either truncated, doubled, or stripped. Concretely: `&` in S3/WebDAV/Azure listings emitted as `&amp;` made quick-xml fire a separate `Event::GeneralRef("amp")` between text fragments, and the parsers (which assigned the last fragment instead of accumulating) silently dropped the leading half (`a&b.txt` listed as `b.txt`). Storj specifically uses the numeric form `&#39;` instead of `&apos;` for `'`, and a builtin-only translator dropped it (`a'b.txt` listed as `ab.txt`). Jottacloud stores file names as XML attributes; quick-xml does not auto-resolve entities on attribute values, so the raw `&amp;` was making it through (`a&b.txt` listed as `a&amp;b.txt`). New `providers::xml_text` module exposes `xml_entity_to_str` (the five XML builtins + decimal/hex numeric character references) and `attr_value` (entity-aware attribute decode). Six text-extraction call sites in s3.rs, webdav.rs (three parsers) and azure.rs (list + error) converted from "assign last fragment" to "accumulate fragments + handle GeneralRef". Seven `String::from_utf8_lossy(&attr.value).to_string()` sites in jottacloud.rs swapped for `xml_text::attr_value(&attr)`. Validated live against Storj S3, InfiniCloud WebDAV, CloudMe WebDAV and Jottacloud with a 13-name fixture (`&`, `'`, `<`, `>`, `"`, space, `perché.txt`, `🚀`, `中文`, `%`, `#`, `+=`); all four providers now agree with rclone byte-for-byte.
+- **Jottacloud paths with `+`, `#` or `%` were 404ing**: `jfs_url()` (and `trash_url()`) concatenated raw paths into the request URL without per-segment percent-encoding. JFS gateway interpreted `+` as space (`a+b=c.txt` → 404), reqwest treated `#` as the start of a URL fragment (`cool#1.txt` → 404, server saw `cool`), and `100%.txt` was wrong on round-trip too. Per-segment `urlencoding::encode` already used by the upload path is now hoisted into the URL builder so list / get / stat / rename / trash all benefit. Slash separators kept; only segment contents encoded. Unit test covering `+` `#` `%` space `&` locks in the expected `%2B` / `%23` / `%25` / `%20` / `%26` output.
+- **Cross-Profile Transfer dialog seeded source with the display name instead of the saved server id**: clicking the remote-panel button opened the dialog without the active connection pre-filled. Fixed by passing the actual `savedServerId` through `ConnectionParams` / `FtpSession` and using it for source seeding.
+- **Stale Cross-Profile selection after deleting saved servers**: `crossProfileSelection` is now cleared when the saved-server count drops below 2. Previously, deleting the last server left a stale selection pointing at a deleted id and the toolbar badge persisted across the empty state until a manual refresh.
 
 ### i18n
 
@@ -195,11 +251,11 @@ Drop-in patch driven by an end-to-end stress test of `aeroftp-cli 3.6.4` against
 
 - **FTP CLI now respects the server-provided home directory** - `aeroftp-cli` was issuing a hard `CWD /` after login, which overrode the home directory negotiated by the FTP server (typically `/home/user` on non-chroot installations like default vsftpd) and landed the session at the filesystem root, which is usually non-writable. This surfaced in a head-to-head benchmark vs rclone where the same `put rel/path/file.txt` worked under rclone but produced `550 Permission denied` here. Three coordinated fixes: the FTP provider skips the post-login CWD when `initial_path` is bare `/` (aligning with rclone, lftp, FileZilla, ftp(1) and curl which all defer to PWD post-login); the CLI path resolver now returns empty for empty user input so the provider's canonical default kicks in instead of an artificial absolute root; and `mkdir -p` preserves relative-vs-absolute semantics instead of always prefixing `/`, so `mkdir -p rel/path` issues `MKD rel`/`MKD rel/path` (which the server can satisfy under the user's home) instead of `MKD /rel/path` (which non-chroot servers reject for the same write-permission reason). Absolute paths like `/etc` continue to target the filesystem root verbatim. Validated end-to-end against vsftpd in a Docker harness, no regression on the existing chroot case.
 - **OAuth saved servers can now be renamed from the Edit dialog** (issue #127) - In My Servers, hovering over an OAuth tile (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared) and clicking the Edit pen now opens a form whose display name is editable, matching the behaviour of WebDAV / E2E / API providers. Two root causes: the `OAuthConnect` "Active" branch (rendered when tokens already exist for the provider) skipped the Save toggle and the Connection Name input entirely, so there was no field to type into. And the OAuth save callback in `ConnectionScreen` searched for the existing profile by `name === saveName`, so the moment the user changed the name the lookup failed and a brand-new profile was created next to the original instead of renaming it. Fix: render the Save toggle + name input in the Active branch (gated on the same `wantToSave` flag the inactive branch uses), and prefer the explicit `editingProfileId` over the name-match heuristic when persisting an OAuth edit. OAuth-specific fields (clientId, clientSecret, scope, region) stay locked - renaming a saved server is purely a local label change.
-- **`find` glob matched as substring across 7 providers** — `aeroftp-cli find /path "*.txt"` was returning `report.TXT.rtf` and any file whose name *contained* the literal `txt`, because the per-provider `find()` implementations forwarded the pattern straight to the upstream search API (which is substring-by-name on most clouds) without re-applying glob semantics on the response. Affected: Dropbox, OneDrive, Box, Koofr, Zoho WorkDrive, Drime, kDrive. Fix: server-side query is now broad-prefiltered (glob characters stripped, only the literal portion sent), then the response is re-filtered client-side via the shared `matches_find_pattern` helper that powers the rest of the CLI. Google Drive (already filtered against its own catalog) gets the same belt-and-braces second pass.
-- **`mkdir` + `put` failing on empty-prefix object stores** — `aeroftp-cli put file.bin s3://bucket/key` returned `exit=2 "Parent does not exist"` on a fresh bucket because the put plumbing was issuing a separate `mkdir` call before the upload, which is a hard error on S3 / Azure / Backblaze (no real directory primitive). Fix: skip the parent-directory pre-flight when the provider declares `is_object_store()`. Validated end-to-end on Backblaze and Storj.
-- **`ls` of a missing FTPS path returned `exit=0` with `(empty directory)`** — the unhappy path was indistinguishable from an actually empty directory, so scripts piping the output couldn't tell. Fix: return `exit=2 "Path not found"` when the upstream `LIST` rejects the resolved path. The empty-directory case (path exists, no entries) still exits `0`.
-- **Dropbox `get` of a missing file took 3.5s + 3 retries before failing** — the `path/lookup/not_found` JSON error was being classified as transient and retried, instead of as a permanent client error. Fix: detect `path/not_found` upstream and return `exit=2` immediately. Drops the failure latency from ~3.5 s to ~150 ms.
-- **Koofr WebDAV default Remote Path was `/dav/Koofr/`** (issue #126) — the discovery preset paired `server: https://app.koofr.net/dav/Koofr` with `basePath: /dav/Koofr/`, so the joined request URL doubled to `/dav/Koofr/dav/Koofr/...`, which Koofr rejected with `Invalid credentials`. Fix: default `basePath` is now `/`. Existing saved profiles need to be edited once.
+- **`find` glob matched as substring across 7 providers**: `aeroftp-cli find /path "*.txt"` was returning `report.TXT.rtf` and any file whose name *contained* the literal `txt`, because the per-provider `find()` implementations forwarded the pattern straight to the upstream search API (which is substring-by-name on most clouds) without re-applying glob semantics on the response. Affected: Dropbox, OneDrive, Box, Koofr, Zoho WorkDrive, Drime, kDrive. Fix: server-side query is now broad-prefiltered (glob characters stripped, only the literal portion sent), then the response is re-filtered client-side via the shared `matches_find_pattern` helper that powers the rest of the CLI. Google Drive (already filtered against its own catalog) gets the same belt-and-braces second pass.
+- **`mkdir` + `put` failing on empty-prefix object stores**: `aeroftp-cli put file.bin s3://bucket/key` returned `exit=2 "Parent does not exist"` on a fresh bucket because the put plumbing was issuing a separate `mkdir` call before the upload, which is a hard error on S3 / Azure / Backblaze (no real directory primitive). Fix: skip the parent-directory pre-flight when the provider declares `is_object_store()`. Validated end-to-end on Backblaze and Storj.
+- **`ls` of a missing FTPS path returned `exit=0` with `(empty directory)`**: the unhappy path was indistinguishable from an actually empty directory, so scripts piping the output couldn't tell. Fix: return `exit=2 "Path not found"` when the upstream `LIST` rejects the resolved path. The empty-directory case (path exists, no entries) still exits `0`.
+- **Dropbox `get` of a missing file took 3.5s + 3 retries before failing**: the `path/lookup/not_found` JSON error was being classified as transient and retried, instead of as a permanent client error. Fix: detect `path/not_found` upstream and return `exit=2` immediately. Drops the failure latency from ~3.5 s to ~150 ms.
+- **Koofr WebDAV default Remote Path was `/dav/Koofr/`** (issue #126): the discovery preset paired `server: https://app.koofr.net/dav/Koofr` with `basePath: /dav/Koofr/`, so the joined request URL doubled to `/dav/Koofr/dav/Koofr/...`, which Koofr rejected with `Invalid credentials`. Fix: default `basePath` is now `/`. Existing saved profiles need to be edited once.
 
 ### Added
 
@@ -215,12 +271,12 @@ Drop-in patch driven by an end-to-end stress test of `aeroftp-cli 3.6.4` against
   - Subcommand help screens no longer reprint the ASCII banner. Banner is suppressed when stderr isn't a TTY, when `AEROFTP_NO_BANNER` is set, or when `--no-banner` is on the command line. Top-level `--help` still shows it once.
   - 11 connection globals (`--bucket`, `--region`, `--container`, `--token`, `--tls`, `--key`, `--key-passphrase`, `--password-stdin`, `--insecure`, `--trust-host-key`, `--two-factor`) move under a `Connection options` heading so per-subcommand help is no longer 30 random flags. 6 output flags move under `Output options`.
   - 39 sentinel `default_value = "_"` arguments now carry `hide_default_value = true` so subcommand help stops rendering `[default: _]` for every URL/path positional.
-  - `cleanup` description rewritten to a single accurate sentence (was a confusing two-line run-on suggesting it handled duplicates, which it doesn't — that lives in `dedupe`).
+  - `cleanup` description rewritten to a single accurate sentence (was a confusing two-line run-on suggesting it handled duplicates, which it doesn't: that lives in `dedupe`).
   - `dedupe` gained the missing description.
   - `tree --depth` help no longer leaks the internal "TypeId mismatch" implementation note.
   - `Invalid URL` error now suggests `--profile <name>` when the input has no scheme, instead of leaking the raw `url::ParseError` message.
 
-### Skipped — flagged for follow-up
+### Skipped: flagged for follow-up
 
 - `--exclude` rename: `sync` already has a local `--exclude` (with `-e` short) whose `Vec<String>` semantics differ from the global `--exclude-global`; unifying them would force a refactor of the per-command merge loop. Out of scope for a polish pass; tracked for a dedicated PR with proper test coverage.
 
@@ -232,22 +288,22 @@ Small but high-impact patch release driven by two community bug reports (issues 
 
 ### Fixed
 
-- **Windows keystore export `os error 5`** (issue #124) — Exporting a vault backup from Settings → Backup raised "IO error: Access is denied. (os error 5)" on every Windows machine and left an `aeroftp_keystore_*.tmp` file in place of the final `.aeroftp-keystore`. Root cause: the atomic write helper opened the freshly-written temp file with `File::open` (read-only on Windows) and then called `sync_all`, which on Windows maps to `FlushFileBuffers` and requires a `GENERIC_WRITE` handle. The flush failed before the rename ran. Fix: keep the existing write handle through `flush + sync_all` and gate the parent-directory fsync to Unix only, since `File::open` on a directory needs `FILE_FLAG_BACKUP_SEMANTICS` on Windows and is a no-op for durability there anyway.
-- **Windows internal Terminal frozen on Start** (issue #125) — Opening AeroTools → Terminal → Start on Windows produced a blinking cursor with no shell prompt and no response to keystrokes; the only escape was restarting the app. Root cause: the launcher passed `-Command "function prompt { ... }"` to PowerShell to inject a colored prompt, but on Windows 10 with the default ExecutionPolicy the parser stalled inside `-Command`, `spawn_command` never returned, the Tauri invoke awaited forever, the frontend never received a session id, and every keystroke was silently dropped at the connected-tab gate. Fix: drop the prompt customization on Windows and start PowerShell as a plain `-NoLogo` interactive shell. Linux and macOS were unaffected. A user-level colored prompt can be added via `$PROFILE` if desired.
-- **NSIS installer now reports the PATH change in the install log** (issue #125 follow-up) — After registering `$INSTDIR` in `HKCU\Environment\Path`, the installer now prints "Open a NEW terminal to run 'aeroftp-cli'" so users who installed via WinGet/UniGetUI in an already-open PowerShell are not surprised when `aeroftp-cli` is "not recognized" — existing shells cache `%PATH%` at launch and need to be reopened.
+- **Windows keystore export `os error 5`** (issue #124): Exporting a vault backup from Settings → Backup raised "IO error: Access is denied. (os error 5)" on every Windows machine and left an `aeroftp_keystore_*.tmp` file in place of the final `.aeroftp-keystore`. Root cause: the atomic write helper opened the freshly-written temp file with `File::open` (read-only on Windows) and then called `sync_all`, which on Windows maps to `FlushFileBuffers` and requires a `GENERIC_WRITE` handle. The flush failed before the rename ran. Fix: keep the existing write handle through `flush + sync_all` and gate the parent-directory fsync to Unix only, since `File::open` on a directory needs `FILE_FLAG_BACKUP_SEMANTICS` on Windows and is a no-op for durability there anyway.
+- **Windows internal Terminal frozen on Start** (issue #125): Opening AeroTools → Terminal → Start on Windows produced a blinking cursor with no shell prompt and no response to keystrokes; the only escape was restarting the app. Root cause: the launcher passed `-Command "function prompt { ... }"` to PowerShell to inject a colored prompt, but on Windows 10 with the default ExecutionPolicy the parser stalled inside `-Command`, `spawn_command` never returned, the Tauri invoke awaited forever, the frontend never received a session id, and every keystroke was silently dropped at the connected-tab gate. Fix: drop the prompt customization on Windows and start PowerShell as a plain `-NoLogo` interactive shell. Linux and macOS were unaffected. A user-level colored prompt can be added via `$PROFILE` if desired.
+- **NSIS installer now reports the PATH change in the install log** (issue #125 follow-up): After registering `$INSTDIR` in `HKCU\Environment\Path`, the installer now prints "Open a NEW terminal to run 'aeroftp-cli'" so users who installed via WinGet/UniGetUI in an already-open PowerShell are not surprised when `aeroftp-cli` is "not recognized": existing shells cache `%PATH%` at launch and need to be reopened.
 
 ### Added
 
-- **Password strength meter on the keystore backup form** — The Export Keystore section now shows the same animated 4-segment strength bar already used by AeroVault, with a 0–100 score and a colour-coded label (Weak/Fair/Strong/Excellent). Reuses [`PasswordStrengthBar`](src/components/vault/PasswordStrengthBar.tsx) so future tweaks land in both places at once.
-- **Start minimized to tray on autostart** (issue #123) — New "Start minimized to tray" checkbox under Settings → General → Startup (visible only when "Launch on system startup" is enabled). When the OS launches AeroFTP from the autostart entry, the main window stays hidden and only the tray icon appears, matching the behaviour expected from background sync apps. Manual launches (double-click on the desktop or Start menu shortcut) always show the window. Detection uses a new `--autostart` argument passed by `tauri-plugin-autostart` and surfaced to the frontend via `is_autostart_launch`. Default off — existing users see no change.
-- **Don't check for updates** toggle (issue #123) — New checkbox under Settings → General → Software Updates that disables both the 5-second startup check and the periodic 24-hour check. The manual "Check for Updates" button continues to work, so the option simply gives users who manage AeroFTP through external package managers (WinGet, AUR, Snap auto-refresh) a way to opt out of the in-app update prompts and bandwidth.
+- **Password strength meter on the keystore backup form**: The Export Keystore section now shows the same animated 4-segment strength bar already used by AeroVault, with a 0–100 score and a colour-coded label (Weak/Fair/Strong/Excellent). Reuses [`PasswordStrengthBar`](src/components/vault/PasswordStrengthBar.tsx) so future tweaks land in both places at once.
+- **Start minimized to tray on autostart** (issue #123): New "Start minimized to tray" checkbox under Settings → General → Startup (visible only when "Launch on system startup" is enabled). When the OS launches AeroFTP from the autostart entry, the main window stays hidden and only the tray icon appears, matching the behaviour expected from background sync apps. Manual launches (double-click on the desktop or Start menu shortcut) always show the window. Detection uses a new `--autostart` argument passed by `tauri-plugin-autostart` and surfaced to the frontend via `is_autostart_launch`. Default off: existing users see no change.
+- **Don't check for updates** toggle (issue #123): New checkbox under Settings → General → Software Updates that disables both the 5-second startup check and the periodic 24-hour check. The manual "Check for Updates" button continues to work, so the option simply gives users who manage AeroFTP through external package managers (WinGet, AUR, Snap auto-refresh) a way to opt out of the in-app update prompts and bandwidth.
 
 ### Changed
 
-- **NSIS installer no longer reinstates the desktop shortcut on every upgrade** (issue #123) — On a fresh install the bundler still creates `Desktop\AeroFTP.lnk` as before. On an upgrade, however, the installer now snapshots the desktop shortcut state in the pre-install hook and, if the user had previously deleted the shortcut, removes the one the bundler just recreated. Users who keep the shortcut see no change.
-- **Windows NSIS post-install hooks now actually run** (issue #125 root cause) — From v3.6.2 onward the installer hook file defined the four lifecycle hooks as `CUSTOM_{PRE,POST}_{INSTALL,UNINSTALL}`, but Tauri's bundled `installer.nsi` invokes them gated on `!ifmacrodef NSIS_HOOK_{PRE,POST}{INSTALL,UNINSTALL}`. The macro names didn't match, so `!ifmacrodef` returned false and every hook in the file was skipped silently — the HKCU PATH registration, the `.aerovault` file association, the VC++ Runtime bootstrap, the new desktop-shortcut snapshot logic — none of it ran in any shipped Windows installer. Renaming the macros to the names Tauri actually checks for activates all of them in v3.6.4. Existing installs with no PATH entry will get one on the next upgrade. Diagnosed thanks to a Windows-side investigation reported in `docs/dev/aeroftp-windows-path-hook-bug-report-2026-04-25.md`.
-- **Silent uninstall preserves user data** — The pre-uninstall hook prompts the user via three `MessageBox` dialogs to selectively remove saved servers, AI chat history and cache. Now that the hook actually runs, those dialogs would have surfaced during every WinGet upgrade (which silently uninstalls the old version before installing the new one), either popping blocking modals or — depending on Windows version — defaulting to "yes" and wiping data. The hook now bails out early via `IfSilent`, preserving everything when not in interactive mode.
-- **Cross-Profile Transfer pre-selects the active server** — When the dialog is opened from the remote pane while connected, the source profile and source path are now pre-populated from the active session, so the most common flow (copy from the server you're already looking at to another saved server) takes one click instead of three. Source/destination filtering — already in place — still excludes the chosen source from the destination list.
+- **NSIS installer no longer reinstates the desktop shortcut on every upgrade** (issue #123): On a fresh install the bundler still creates `Desktop\AeroFTP.lnk` as before. On an upgrade, however, the installer now snapshots the desktop shortcut state in the pre-install hook and, if the user had previously deleted the shortcut, removes the one the bundler just recreated. Users who keep the shortcut see no change.
+- **Windows NSIS post-install hooks now actually run** (issue #125 root cause): From v3.6.2 onward the installer hook file defined the four lifecycle hooks as `CUSTOM_{PRE,POST}_{INSTALL,UNINSTALL}`, but Tauri's bundled `installer.nsi` invokes them gated on `!ifmacrodef NSIS_HOOK_{PRE,POST}{INSTALL,UNINSTALL}`. The macro names didn't match, so `!ifmacrodef` returned false and every hook in the file was skipped silently: the HKCU PATH registration, the `.aerovault` file association, the VC++ Runtime bootstrap, the new desktop-shortcut snapshot logic: none of it ran in any shipped Windows installer. Renaming the macros to the names Tauri actually checks for activates all of them in v3.6.4. Existing installs with no PATH entry will get one on the next upgrade. Diagnosed thanks to a Windows-side investigation reported in `docs/dev/aeroftp-windows-path-hook-bug-report-2026-04-25.md`.
+- **Silent uninstall preserves user data**: The pre-uninstall hook prompts the user via three `MessageBox` dialogs to selectively remove saved servers, AI chat history and cache. Now that the hook actually runs, those dialogs would have surfaced during every WinGet upgrade (which silently uninstalls the old version before installing the new one), either popping blocking modals or: depending on Windows version: defaulting to "yes" and wiping data. The hook now bails out early via `IfSilent`, preserving everything when not in interactive mode.
+- **Cross-Profile Transfer pre-selects the active server**: When the dialog is opened from the remote pane while connected, the source profile and source path are now pre-populated from the active session, so the most common flow (copy from the server you're already looking at to another saved server) takes one click instead of three. Source/destination filtering: already in place: still excludes the chosen source from the destination list.
 
 ### Translations
 
@@ -261,49 +317,49 @@ The post-3.6.2 sprint consolidates three years of organically-grown AeroAgent su
 
 ### Added
 
-- **Unified AI tool dispatcher (T3 Gate 2)** — All AeroAgent tools (53 entries across local, system, remote and RAG/memory areas) now flow through a single `ai_core::tools::dispatch_tool` with surface-aware filtering (GUI / CLI / MCP). Per-area handler modules (`local_tools.rs`, `system_tools.rs`, `remote_tools.rs`, `agent_tools.rs`) host the canonical implementations; per-surface `ToolCtx` impls (`TauriToolCtx`, `CliToolCtx`, `McpToolCtx`) bridge to the appropriate runtime. The legacy `execute_ai_tool` / `execute_cli_tool` / `mcp::execute_tool` dispatchers stay as thin fast-path wrappers, eliminating the long-standing drift between three parallel match statements. 11 parity tests prove identical output across surfaces; the security regression suite gains an Area B check ensuring `system_tools` always delegates `shell_execute` to the canonical denylist source. **Behavioural wins**: `local_trash` is now available on CLI, `clipboard_*` and `archive_compress`/`archive_decompress` use native Rust libraries instead of subprocess shellouts (no more `xclip`/`zip`/`tar`/`7z` runtime dependencies on CLI), and `validate_path` adopts component-aware matching so `/bootcamp` is no longer falsely flagged as `/boot`.
-- **Provider trait expansion — 7 new optional methods**: `list_trash`, `restore_from_trash`, `permanent_delete`, `list_versions`, `download_version`, `restore_version`, `create_share_link`, `get_storage_quota`. The `RemoteEntry` struct grows MIME type, owner/group, octal permissions, symlink target, and a free-form metadata bag. Box, Google Drive, Dropbox, OneDrive, Zoho WorkDrive light up the full feature matrix.
+- **Unified AI tool dispatcher (T3 Gate 2)**: All AeroAgent tools (53 entries across local, system, remote and RAG/memory areas) now flow through a single `ai_core::tools::dispatch_tool` with surface-aware filtering (GUI / CLI / MCP). Per-area handler modules (`local_tools.rs`, `system_tools.rs`, `remote_tools.rs`, `agent_tools.rs`) host the canonical implementations; per-surface `ToolCtx` impls (`TauriToolCtx`, `CliToolCtx`, `McpToolCtx`) bridge to the appropriate runtime. The legacy `execute_ai_tool` / `execute_cli_tool` / `mcp::execute_tool` dispatchers stay as thin fast-path wrappers, eliminating the long-standing drift between three parallel match statements. 11 parity tests prove identical output across surfaces; the security regression suite gains an Area B check ensuring `system_tools` always delegates `shell_execute` to the canonical denylist source. **Behavioural wins**: `local_trash` is now available on CLI, `clipboard_*` and `archive_compress`/`archive_decompress` use native Rust libraries instead of subprocess shellouts (no more `xclip`/`zip`/`tar`/`7z` runtime dependencies on CLI), and `validate_path` adopts component-aware matching so `/bootcamp` is no longer falsely flagged as `/boot`.
+- **Provider trait expansion: 7 new optional methods**: `list_trash`, `restore_from_trash`, `permanent_delete`, `list_versions`, `download_version`, `restore_version`, `create_share_link`, `get_storage_quota`. The `RemoteEntry` struct grows MIME type, owner/group, octal permissions, symlink target, and a free-form metadata bag. Box, Google Drive, Dropbox, OneDrive, Zoho WorkDrive light up the full feature matrix.
 - **Box Pro feature set**: trash management, file move/comment/collaboration, watermark (Enterprise), folder locks (Enterprise), inline tag chips with PRO badge.
 - **Google Drive starring + comments + properties**: star/unstar from context menu, add comments via prompt dialog, set custom key-value properties and description; file listing now includes `starred`, `description`, `properties` fields.
 - **Dropbox tag management + Trash Manager**: full tag CRUD via Dropbox Tags API (reuses generic `BoxTagsDialog`); dedicated modal for deleted files (restore + permanent delete).
 - **OneDrive Trash Manager**: full recycle bin lifecycle (move to trash, list, restore, permanent delete).
 - **Zoho WorkDrive labels + versioning**: list team labels, get/add/remove labels on files via `ZohoLabelsDialog` with color-coded toggle list; list versions, download specific version, restore/promote version through the StorageProvider trait.
-- **Server Health Check** — Real-time diagnostics for saved servers: DNS / TCP / TLS / HTTP probes with latency stats, 0–100 health score, SVG radial gauge, latency bars, Canvas 2D area chart for trend. Right-click any server card → Connect / Edit / Duplicate / Health Check / Delete (`useContextMenu` hook). Batch health check across all saved servers in parallel with healthy/degraded/unreachable summary.
-- **TOTP 2FA scaffold (`totp.rs`)** — RFC 6238 authenticator core ready for the optional vault second factor: issuer, period, digits, base32 secret import/export, code verification with drift window. Will surface in Settings > Security in a follow-up release.
-- **Vault history (`vault_history.rs`)** — SQLite-backed recents tracker for AeroVault Pro: last-opened timestamp, security badges, dedupe by canonical path. Powers the new VaultHome recents grid and "reopen" one-click flow.
+- **Server Health Check**: Real-time diagnostics for saved servers: DNS / TCP / TLS / HTTP probes with latency stats, 0–100 health score, SVG radial gauge, latency bars, Canvas 2D area chart for trend. Right-click any server card → Connect / Edit / Duplicate / Health Check / Delete (`useContextMenu` hook). Batch health check across all saved servers in parallel with healthy/degraded/unreachable summary.
+- **TOTP 2FA scaffold (`totp.rs`)**: RFC 6238 authenticator core ready for the optional vault second factor: issuer, period, digits, base32 secret import/export, code verification with drift window. Will surface in Settings > Security in a follow-up release.
+- **Vault history (`vault_history.rs`)**: SQLite-backed recents tracker for AeroVault Pro: last-opened timestamp, security badges, dedupe by canonical path. Powers the new VaultHome recents grid and "reopen" one-click flow.
 - **AeroAgent server context tools registered in unified registry**: `server_list_saved`, `server_exec`, plus the full `aeroftp_*` ↔ `remote_*` alias map (including newly-registered `server_list_saved` alias).
-- **Aerorsync standalone serve binary** — `bin/aerorsync_serve.rs` (renamed from `rsync_proto_serve.rs`) ships as a separate `[[bin]]` target for capture/test workflows.
+- **Aerorsync standalone serve binary**: `bin/aerorsync_serve.rs` (renamed from `rsync_proto_serve.rs`) ships as a separate `[[bin]]` target for capture/test workflows.
 
 ### Changed
 
-- **`rsync_native_proto/` module renamed to `aerorsync/`** — Aligns the experimental Rust-native rsync protocol implementation with the AeroFTP product naming. 41 source files, the capture harness, all fixtures and the standalone serve binary move under `src-tauri/src/aerorsync/`. CI workflows, Cargo bin section, `lib.rs` module declaration and the integration test path are updated to match. **No on-the-wire changes**: the protocol stays byte-identical to v3.6.x.
-- **AeroAgent tool count: 53 unified registry entries** — formerly counted as ~47 across three parallel dispatchers, now consolidated into a single `TOOL_DEFINITIONS` table where the same handler runs unmodified on GUI, CLI and MCP.
-- **CLI relative-path resolution snapshot at process start** — `CliToolCtx::new()` captures `std::env::current_dir()` once at construction and exposes it via `ToolCtx::context_local_path()`. Eliminates the silent regression where the unified dispatcher saw paths "as-is" instead of resolved against cwd. Behaviour matches the legacy CLI `resolve_path` closure exactly.
-- **`shell_execute` working_dir validation hardened** — The unified `system_tools::shell_execute` now runs `validate_path(working_dir, ...)` against the system deny-list (`/etc/shadow`, `/proc`, `/sys`, `/boot`, `/root`, `/etc/ssh`, `/etc/sudoers`, …) before delegating to the legacy GUI helper, restoring CLI parity that was lost during Area B migration.
-- **`upload_many` / `delete_many` now report real elapsed seconds** — the placeholder `elapsed_secs: 0u64` returned to MCP and AI clients is replaced with `Instant::now().elapsed().as_secs()` measured around the inner loop.
-- **Vite 5 → 8 + `@vitejs/plugin-react` 4 → 6** — Major bump of the frontend build chain. Dev server, production build and Tauri packaging stay green. `package-lock.json` regenerated.
-- **`Cargo.lock` refreshed** — picks up transitive dependency churn from the v3.6.x feature work (provider crates, ai_core additions, server_health, totp, vault history, aerorsync rename).
+- **`rsync_native_proto/` module renamed to `aerorsync/`**: Aligns the experimental Rust-native rsync protocol implementation with the AeroFTP product naming. 41 source files, the capture harness, all fixtures and the standalone serve binary move under `src-tauri/src/aerorsync/`. CI workflows, Cargo bin section, `lib.rs` module declaration and the integration test path are updated to match. **No on-the-wire changes**: the protocol stays byte-identical to v3.6.x.
+- **AeroAgent tool count: 53 unified registry entries**: formerly counted as ~47 across three parallel dispatchers, now consolidated into a single `TOOL_DEFINITIONS` table where the same handler runs unmodified on GUI, CLI and MCP.
+- **CLI relative-path resolution snapshot at process start**: `CliToolCtx::new()` captures `std::env::current_dir()` once at construction and exposes it via `ToolCtx::context_local_path()`. Eliminates the silent regression where the unified dispatcher saw paths "as-is" instead of resolved against cwd. Behaviour matches the legacy CLI `resolve_path` closure exactly.
+- **`shell_execute` working_dir validation hardened**: The unified `system_tools::shell_execute` now runs `validate_path(working_dir, ...)` against the system deny-list (`/etc/shadow`, `/proc`, `/sys`, `/boot`, `/root`, `/etc/ssh`, `/etc/sudoers`, …) before delegating to the legacy GUI helper, restoring CLI parity that was lost during Area B migration.
+- **`upload_many` / `delete_many` now report real elapsed seconds**: the placeholder `elapsed_secs: 0u64` returned to MCP and AI clients is replaced with `Instant::now().elapsed().as_secs()` measured around the inner loop.
+- **Vite 5 → 8 + `@vitejs/plugin-react` 4 → 6**: Major bump of the frontend build chain. Dev server, production build and Tauri packaging stay green. `package-lock.json` regenerated.
+- **`Cargo.lock` refreshed**: picks up transitive dependency churn from the v3.6.x feature work (provider crates, ai_core additions, server_health, totp, vault history, aerorsync rename).
 
 ### Fixed
 
-- **SFTP symlink-aware listing** — `SftpProvider::list()` now follows symlinks via `sftp.metadata()` so directory traversal works on NAS devices that report symlinks for share roots (WD MyCloud, Synology DSM6, ASUSTOR ADM).
-- **Azure Blob server-side copy** — `Copy Blob` API with `x-ms-copy-source` and safe `resolve_blob_path()` prefix resolution; eliminates the GET+PUT roundtrip for in-account moves.
-- **`local_trash` now available on CLI** — was GUI-only in the legacy dispatcher; the unified registry exposes it on both surfaces with the same semantics.
-- **`path_style` no longer false-coalesced in App.tsx** — Drop the `|| false` on `effectiveParams.options?.pathStyle` and `cloudServer.options?.pathStyle` so explicit user choices (`true` / `false` / `undefined`) reach the backend faithfully without being squashed.
-- **`vault_remote.rs` validation tightened** — null-byte rejection on remote vault paths, symlink refusal on Unix mode lookup, parent canonicalization before opening `.aerovault` files served from remote providers.
+- **SFTP symlink-aware listing**: `SftpProvider::list()` now follows symlinks via `sftp.metadata()` so directory traversal works on NAS devices that report symlinks for share roots (WD MyCloud, Synology DSM6, ASUSTOR ADM).
+- **Azure Blob server-side copy**: `Copy Blob` API with `x-ms-copy-source` and safe `resolve_blob_path()` prefix resolution; eliminates the GET+PUT roundtrip for in-account moves.
+- **`local_trash` now available on CLI**: was GUI-only in the legacy dispatcher; the unified registry exposes it on both surfaces with the same semantics.
+- **`path_style` no longer false-coalesced in App.tsx**: Drop the `|| false` on `effectiveParams.options?.pathStyle` and `cloudServer.options?.pathStyle` so explicit user choices (`true` / `false` / `undefined`) reach the backend faithfully without being squashed.
+- **`vault_remote.rs` validation tightened**: null-byte rejection on remote vault paths, symlink refusal on Unix mode lookup, parent canonicalization before opening `.aerovault` files served from remote providers.
 
 ### Security
 
-- **russh 0.59 → 0.60.1** — Closes Dependabot HIGH (GHSA-f5v4-2wr6-hqmg): pre-auth DoS via unbounded allocation in the keyboard-interactive auth handler. AeroFTP exposes a russh-based SSH server through `aeroftp-cli serve sftp`, so the fix is mandatory. The bump required updating the ed25519 server-key generation call site to the new `CryptoRng` bound — added a narrow `rand_010` (rand 0.10) alias for that single line, with the rest of the codebase staying on rand 0.8.
-- **rand 0.8.5 → 0.8.6** — Closes Dependabot LOW (GHSA-cq8v-f236-94qc): rand was unsound when paired with a custom logger using `rand::rng()`. Direct dep bump only; the build-time-only transitive `rand 0.7.3` (pulled by phf_generator 0.8.0 / selectors 0.24.0 in the Tauri stack) is left in place — not in the runtime path and the upstream chain is locked at this combination by Tauri's wry dependency.
-- **`validate_path` component-aware matching** — `path_matches_prefix(path, prefix)` helper replaces 11 occurrences of `s.starts_with(d)`. Eliminates false positives on prefix matches (e.g. `/bootcamp` was being blocked as if it were under `/boot`).
-- **Single source of truth for `shell_execute` denylist** — Both the GUI fast-path and the new `system_tools::shell_execute` delegate to `ai_tools::shell_execute` for the canonical 35+ regex denylist + meta-character filter. The CI security regression script (`security-regression.cjs`) now actively verifies this delegation chain stays intact.
+- **russh 0.59 → 0.60.1**: Closes Dependabot HIGH (GHSA-f5v4-2wr6-hqmg): pre-auth DoS via unbounded allocation in the keyboard-interactive auth handler. AeroFTP exposes a russh-based SSH server through `aeroftp-cli serve sftp`, so the fix is mandatory. The bump required updating the ed25519 server-key generation call site to the new `CryptoRng` bound: added a narrow `rand_010` (rand 0.10) alias for that single line, with the rest of the codebase staying on rand 0.8.
+- **rand 0.8.5 → 0.8.6**: Closes Dependabot LOW (GHSA-cq8v-f236-94qc): rand was unsound when paired with a custom logger using `rand::rng()`. Direct dep bump only; the build-time-only transitive `rand 0.7.3` (pulled by phf_generator 0.8.0 / selectors 0.24.0 in the Tauri stack) is left in place: not in the runtime path and the upstream chain is locked at this combination by Tauri's wry dependency.
+- **`validate_path` component-aware matching**: `path_matches_prefix(path, prefix)` helper replaces 11 occurrences of `s.starts_with(d)`. Eliminates false positives on prefix matches (e.g. `/bootcamp` was being blocked as if it were under `/boot`).
+- **Single source of truth for `shell_execute` denylist**: Both the GUI fast-path and the new `system_tools::shell_execute` delegate to `ai_tools::shell_execute` for the canonical 35+ regex denylist + meta-character filter. The CI security regression script (`security-regression.cjs`) now actively verifies this delegation chain stays intact.
 
 ### Internal
 
 - **53 entries in `TOOL_DEFINITIONS`** distributed: Area A `local_*` = 21, Area B `clipboard/shell/archive` = 5, Area C `remote_*`/`aeroftp_*`/`server_exec` = 24 (incl. `server_list_saved` alias), Area D `rag_*`/`agent_memory_*` = 3.
-- **`tool_parity.rs` integration test suite** — 11 tests proving identical output across GUI and CLI surfaces for `local_read`, `local_write`, `local_mkdir`, `local_delete`, `local_grep`, `shell_execute`, `rag_index`, `rag_search`, plus 3 remote alias parity tests with a `FakeRemoteBackend`.
-- **`security-regression.cjs` Area B coverage** — verifies `system_tools::shell_execute` calls `crate::ai_tools::shell_execute` (single denylist source) and validates `working_dir` against the deny-list before the call.
+- **`tool_parity.rs` integration test suite**: 11 tests proving identical output across GUI and CLI surfaces for `local_read`, `local_write`, `local_mkdir`, `local_delete`, `local_grep`, `shell_execute`, `rag_index`, `rag_search`, plus 3 remote alias parity tests with a `FakeRemoteBackend`.
+- **`security-regression.cjs` Area B coverage**: verifies `system_tools::shell_execute` calls `crate::ai_tools::shell_execute` (single denylist source) and validates `working_dir` against the deny-list before the call.
 - **Quality bar at closure**: `cargo check --features aerorsync --lib`, `cargo clippy --all-targets --features aerorsync -- -D warnings`, `cargo test --features aerorsync --lib` (1018 / 1018 passed), `cargo test --features aerorsync --test tool_parity` (11 / 11 passed) and `node .github/scripts/security-regression.cjs` (5 / 5 passed) all green.
 
 ## [3.6.2] - 2026-04-24
@@ -314,15 +370,15 @@ Incremental hardening release bundling two AeroCloud UX fixes, five new AeroAgen
 
 ### Added
 
-- **AeroAgent Provider Marketplace — 5 new providers** (19 → 24 total): **NVIDIA NIM** (`integrate.api.nvidia.com/v1`, DGX-grade hosted inference for Llama 3.3 Nemotron / DeepSeek / Mixtral, 1000-request free tier), **Z.AI (Zhipu GLM)** (`api.z.ai/api/paas/v4`, GLM-4.6 flagship + GLM-4-Plus + GLM-4V-Plus, bilingual reasoning with strong tool-use), **Yi (01.AI)** (`api.lingyiwanwu.com/v1`, Yi-Large + Yi-Vision from Kai-Fu Lee's lab, 200K context), **Hyperbolic** (`api.hyperbolic.xyz/v1`, affordable hosted Llama 3.3 70B / DeepSeek V3 / Qwen), **Novita AI** (`api.novita.ai/v3/openai`, serverless aggregator with 100+ open models). All five are OpenAI-compatible at `/chat/completions` and ride the existing `openai_compat::call` dispatch arm — no new adapter code. Branded SVG icons ship in the marketplace, settings list, and chat header.
+- **AeroAgent Provider Marketplace: 5 new providers** (19 → 24 total): **NVIDIA NIM** (`integrate.api.nvidia.com/v1`, DGX-grade hosted inference for Llama 3.3 Nemotron / DeepSeek / Mixtral, 1000-request free tier), **Z.AI (Zhipu GLM)** (`api.z.ai/api/paas/v4`, GLM-4.6 flagship + GLM-4-Plus + GLM-4V-Plus, bilingual reasoning with strong tool-use), **Yi (01.AI)** (`api.lingyiwanwu.com/v1`, Yi-Large + Yi-Vision from Kai-Fu Lee's lab, 200K context), **Hyperbolic** (`api.hyperbolic.xyz/v1`, affordable hosted Llama 3.3 70B / DeepSeek V3 / Qwen), **Novita AI** (`api.novita.ai/v3/openai`, serverless aggregator with 100+ open models). All five are OpenAI-compatible at `/chat/completions` and ride the existing `openai_compat::call` dispatch arm: no new adapter code. Branded SVG icons ship in the marketplace, settings list, and chat header.
 - **AeroCloud pause-with-preserved-config**: the AeroCloud toggle in Settings now invokes the new `pause_aerocloud` / `resume_aerocloud` Tauri commands. Pausing stops the background worker but keeps the full configuration on disk and emits a dedicated `"paused"` status event. The top-right titlebar button, the session tab, and the status-bar button all render amber when paused (visually distinct from both "syncing" cyan and "inactive" grey). The `paused` flag persists across app restarts via a new field on `CloudConfig`.
-- **CloudPanel Disable action with confirmation**: a new `disable_aerocloud` command wipes the configuration entirely after a `window.confirm()` prompt, so re-enabling requires running the setup wizard again — matching the user-expected Disable semantics where Pause preserves config and Disable does not.
-- **AeroCloud Settings modal — responsive two-column layout**: the gear-icon panel inside CloudPanel has been rewritten from a single `max-w-md` column to a `max-w-4xl` `grid md:grid-cols-2` with a sticky header and footer and scrollable middle. Left column groups Connection & Location (cloud name, local folder, remote folder, server profile, public URL); right column groups Sync & Versioning (interval, selective sync, versioning strategy, scheduler, watcher). Mobile collapses to a single column unchanged. Modal height roughly halved, Save button always in view.
-- **NSIS installer — HKCU PATH registration**: `src-tauri/installer/hooks.nsh` now appends `$INSTDIR` to `HKCU\Environment\Path` at install time (idempotent guard) and broadcasts `WM_SETTINGCHANGE` so running shells refresh without logoff. `aeroftp-cli` now resolves in VS Code extension hosts, terminal `where aeroftp-cli`, and integration scripts out of the box on fresh installs. `CUSTOM_PRE_UNINSTALL` mirrors the deregistration.
+- **CloudPanel Disable action with confirmation**: a new `disable_aerocloud` command wipes the configuration entirely after a `window.confirm()` prompt, so re-enabling requires running the setup wizard again: matching the user-expected Disable semantics where Pause preserves config and Disable does not.
+- **AeroCloud Settings modal: responsive two-column layout**: the gear-icon panel inside CloudPanel has been rewritten from a single `max-w-md` column to a `max-w-4xl` `grid md:grid-cols-2` with a sticky header and footer and scrollable middle. Left column groups Connection & Location (cloud name, local folder, remote folder, server profile, public URL); right column groups Sync & Versioning (interval, selective sync, versioning strategy, scheduler, watcher). Mobile collapses to a single column unchanged. Modal height roughly halved, Save button always in view.
+- **NSIS installer: HKCU PATH registration**: `src-tauri/installer/hooks.nsh` now appends `$INSTDIR` to `HKCU\Environment\Path` at install time (idempotent guard) and broadcasts `WM_SETTINGCHANGE` so running shells refresh without logoff. `aeroftp-cli` now resolves in VS Code extension hosts, terminal `where aeroftp-cli`, and integration scripts out of the box on fresh installs. `CUSTOM_PRE_UNINSTALL` mirrors the deregistration.
 
 ### Fixed
 
-- **Windows delta sync checkbox stayed disabled despite valid session (PR-T11 F8)**: `get_transfer_optimization_hints` (powering the AeroSync Advanced-tab checkbox and badges) consulted a different eligibility source than `sftp_probe_delta_eligibility` (powering the modal). On Windows the two codepaths disagreed — the modal reported eligible while the checkbox stayed disabled. Both sources now ask the provider instance the same question (`delta_transport()` availability), eliminating the split-brain. The derived `private_key_configured` flag is preserved for the user-facing `delta_sync_note` fallback message.
+- **Windows delta sync checkbox stayed disabled despite valid session (PR-T11 F8)**: `get_transfer_optimization_hints` (powering the AeroSync Advanced-tab checkbox and badges) consulted a different eligibility source than `sftp_probe_delta_eligibility` (powering the modal). On Windows the two codepaths disagreed: the modal reported eligible while the checkbox stayed disabled. Both sources now ask the provider instance the same question (`delta_transport()` availability), eliminating the split-brain. The derived `private_key_configured` flag is preserved for the user-facing `delta_sync_note` fallback message.
 - **AeroCloud status indicators ignored pause state**: the top-right titlebar button, the session tab, and the status bar all stayed cyan/"active" even when the Settings toggle had been flipped. The shared `useCloudSync` hook now handles the `"paused"` event, clears state on `"disabled"`, and propagates `isCloudPaused` to every consumer. The auto-start effect skips `start_background_sync` when paused.
 - **Raw i18n keys visible in AeroCloud Settings modal**: the code pattern `t('cloud.X') || 'fallback'` never triggered the fallback because `t()` returns the key itself on miss (truthy). 14 missing `cloud.*` keys added to `en.json` + `it.json` and propagated in all 47 locales (`selectiveSync`, `selectiveSyncDesc`, `versioningStrategy`, `versioningDesc`, `browseVersions`, `versioningDisabled`, `versioningTrashCan{,7,90}`, `versioningSimple`, `versioningStaggered`, `sectionConnection`, `sectionSync`, `disableConfirm`).
 - **AeroSync "Delta Sync · available" misread as "ready to enable"**: the slate-gray tone label on the Advanced-tab badge has been renamed to "inactive" so the visible text matches the visual tone (slate-gray fallback = not active). Disabled `Delta Sync` checkbox now carries a `title` tooltip sourced from the backend-provided `delta_sync_note` (no SFTP session, no key, feature off, session needs reconnect, etc.), with a new `syncPanel.deltaDisabledFallback` fallback string translated in all 47 languages.
@@ -330,7 +386,7 @@ Incremental hardening release bundling two AeroCloud UX fixes, five new AeroAgen
 ### Changed
 
 - **`load_native_rsync_enabled()` default stays OFF on fresh install**: the v3.6.1 Windows activation attempted to flip the first-run default to ON so the Windows UX did not greet the user with a disabled checkbox. The flip broke the Linux integration-test lane because the Docker SFTP fixture exposes multiple host-key algorithms and the two SSH libraries (`ssh2` for classic SFTP, `russh` for the native probe) negotiated different ones, producing a fingerprint mismatch the native prototype's host-key pinning rejected. Until the pinning tolerates that negotiation asymmetry, the default stays OFF and first-run UX relies on the Settings toggle. Tracked as a host-key-algorithm follow-up.
-- **Windows CI `windows-native` job — compile-only gate, test runner deferred**: `cargo test --lib` on `windows-latest` could not link the test binary under MSVC because `whisper-rs-sys` left eight C runtime imports unresolved in the test profile. The `.msi` / `.exe` release profile linked fine (Tauri's own build job produces them on the same runner). Step 2 of the job has been reshaped from `cargo test` to `cargo check --all-targets` with default features — this still compiles every Tauri binary and the lib-test target without linking the test binary, protecting the compile surface without gating on a MSVC link issue that is its own hardening story. Linux lanes remain the authoritative test runner.
+- **Windows CI `windows-native` job: compile-only gate, test runner deferred**: `cargo test --lib` on `windows-latest` could not link the test binary under MSVC because `whisper-rs-sys` left eight C runtime imports unresolved in the test profile. The `.msi` / `.exe` release profile linked fine (Tauri's own build job produces them on the same runner). Step 2 of the job has been reshaped from `cargo test` to `cargo check --all-targets` with default features: this still compiles every Tauri binary and the lib-test target without linking the test binary, protecting the compile surface without gating on a MSVC link issue that is its own hardening story. Linux lanes remain the authoritative test runner.
 - **`windows-native` job timeout 20 → 40 min**: the old ceiling was tight even before v3.6.1 made `proto_native_rsync` default-on, and MSVC link on the aeroftp lib crate is roughly 2× slower than Ubuntu. Cold-cache runs were being cancelled at the boundary.
 
 ### i18n
@@ -351,9 +407,9 @@ The "historical step" release: byte-level delta sync becomes a first-class citiz
 ### Added
 
 - **Windows cross-OS delta sync**: `SftpProvider::delta_transport()` dispatches cross-platform. When the `proto_native_rsync` feature is compiled in (default from this release) and a session has SFTP + SSH key auth, Windows uses the native Rust rsync implementation end-to-end; the binary-rsync classic fallback stays available on Unix through the same `DeltaTransport` trait surface. No binary shipping, no WSL dependency.
-- **Delta Sync eligibility gate (PR-T08)**: before starting an AeroSync run, a cached Tauri probe (`sftp_probe_delta_eligibility`, 5 s timeout) verifies that the current session can actually exercise the delta path. When it can't, a modal surfaces the sanitized reason, a "Don't show again for this server" persistent preference on the saved profile, and a "Learn more" link to the public docs page. The modal fires only when the delta toggle is on and the server is SFTP — classic-only sessions are never interrupted.
-- **Fallback reason surfacing (PR-T05)**: `FileOutcome` and `TransferEvent` carry an optional `fallback_reason` populated only when the delta path was *attempted* for the file and fell through transparently. SyncPanel renders a grey `classic` badge (with the sanitized reason as tooltip) next to affected files — distinguishing "classic by design" from "classic after delta attempt". 7 new i18n keys translated in all 47 supported languages.
-- **CI Windows native build lane**: new `windows-native` job in `delta-sync-integration.yml` — `cargo check` with and without feature, unit tests with and without feature on `windows-latest`. Catches cross-OS regressions at PR time.
+- **Delta Sync eligibility gate (PR-T08)**: before starting an AeroSync run, a cached Tauri probe (`sftp_probe_delta_eligibility`, 5 s timeout) verifies that the current session can actually exercise the delta path. When it can't, a modal surfaces the sanitized reason, a "Don't show again for this server" persistent preference on the saved profile, and a "Learn more" link to the public docs page. The modal fires only when the delta toggle is on and the server is SFTP: classic-only sessions are never interrupted.
+- **Fallback reason surfacing (PR-T05)**: `FileOutcome` and `TransferEvent` carry an optional `fallback_reason` populated only when the delta path was *attempted* for the file and fell through transparently. SyncPanel renders a grey `classic` badge (with the sanitized reason as tooltip) next to affected files: distinguishing "classic by design" from "classic after delta attempt". 7 new i18n keys translated in all 47 supported languages.
+- **CI Windows native build lane**: new `windows-native` job in `delta-sync-integration.yml`: `cargo check` with and without feature, unit tests with and without feature on `windows-latest`. Catches cross-OS regressions at PR time.
 
 ### Fixed
 
@@ -363,13 +419,13 @@ The "historical step" release: byte-level delta sync becomes a first-class citiz
 
 ### Security
 
-- **openssl crate bumped 0.10.77 → 0.10.78**: closes 5 of 6 open Dependabot alerts — CVE-2026-41676 (high), GHSA-xmgf-hq76-4vx2 (low), CVE-2026-41678 (high), GHSA-hppc-g8h3-xhp3 (high), CVE-2026-41681 (high). `openssl-sys 0.9.113 → 0.9.114` bumped transitively. The sixth alert (`rand 0.10.0` soundness) is not applicable — our lockfile carries `rand 0.7.3` / `0.8.5` / `0.9.4`.
+- **openssl crate bumped 0.10.77 → 0.10.78**: closes 5 of 6 open Dependabot alerts: CVE-2026-41676 (high), GHSA-xmgf-hq76-4vx2 (low), CVE-2026-41678 (high), GHSA-hppc-g8h3-xhp3 (high), CVE-2026-41681 (high). `openssl-sys 0.9.113 → 0.9.114` bumped transitively. The sixth alert (`rand 0.10.0` soundness) is not applicable: our lockfile carries `rand 0.7.3` / `0.8.5` / `0.9.4`.
 
 ### Changed
 
 - **`proto_native_rsync` feature is default-on**: the native rsync protocol implementation is now compiled by default. Build with `--no-default-features` if you want a leaner binary without native delta support (classic binary rsync stays available on Unix regardless).
 - **`rsync_native_proto/` module moved into the tree**: the native implementation, previously gitignored as a scaffold, is now versioned mainline source. Large capture harnesses (Docker images, rsync reference binaries, frozen transcripts) stay out of git via targeted `.gitignore` patterns on their specific subdirectories.
-- **Native rsync toggle eligible on Windows**: `native_rsync_feature_compiled()` no longer requires `cfg(unix)` — the dispatch is now cross-platform, so the runtime toggle surfaces on any OS where the feature is compiled in.
+- **Native rsync toggle eligible on Windows**: `native_rsync_feature_compiled()` no longer requires `cfg(unix)`: the dispatch is now cross-platform, so the runtime toggle surfaces on any OS where the feature is compiled in.
 - **CI retrigger surface widened**: `delta-sync-integration.yml` `paths:` filter now includes `lib.rs`, `settings.rs`, and `Cargo.lock`, so future changes that affect the delta stack transitively retrigger the lane automatically.
 
 ### Licensing note
@@ -389,12 +445,12 @@ Release focused on making the AeroSync optimized-transfer path visible to the us
 
 ### Fixed
 
-- **Critical: `Host Key Changed` dialog no longer reappears after Accept**: the russh library reports the changed-key line number as 1-based; the internal `sftp_remove_host_key` command was treating it as a 0-based array index, which meant Accept surgically removed the line *after* the stale entry instead of the stale one itself. Repeated Accept clicks piled valid entries on top of the original stale one, and every subsequent connection hit the stale line first and re-triggered the dialog. The fix uses 1-based indexing correctly and now also prunes any other plaintext entry for the same `(host, port, algorithm)` tuple that matches the incoming key's algorithm — so files already corrupted by earlier broken attempts get cleaned up in the same pass. 11 new unit tests pin the regression cases (line zero rejected, 1-based indexing, duplicate pruning, host-mismatch corruption guard, hashed-entry tolerance).
+- **Critical: `Host Key Changed` dialog no longer reappears after Accept**: the russh library reports the changed-key line number as 1-based; the internal `sftp_remove_host_key` command was treating it as a 0-based array index, which meant Accept surgically removed the line *after* the stale entry instead of the stale one itself. Repeated Accept clicks piled valid entries on top of the original stale one, and every subsequent connection hit the stale line first and re-triggered the dialog. The fix uses 1-based indexing correctly and now also prunes any other plaintext entry for the same `(host, port, algorithm)` tuple that matches the incoming key's algorithm: so files already corrupted by earlier broken attempts get cleaned up in the same pass. 11 new unit tests pin the regression cases (line zero rejected, 1-based indexing, duplicate pruning, host-mismatch corruption guard, hashed-entry tolerance).
 
 ### Changed
 
-- **Optimized transfer path reachable from SyncPanel on SFTP**: earlier releases had the decision wired in the unified sync core only — AeroSync UI actually iterates per-file commands that never entered that branch. This release extends the decision to `upload_file` / `download_file` / `provider_upload_file` / `provider_download_file` so sessions with SFTP + SSH key authentication + a capable remote now actually exercise the optimization in the day-to-day UI flow. The decision remains self-gated (silent fallback to classic when the session is not eligible); hard rejections (SSH host-key mismatch, permission denied) surface as transfer errors without silent retry.
-- **`TransferEvent` now propagates optional `delta_stats`**: the event emitted to the frontend on `complete` carries per-file stats from the optimized path when applicable (serialized with `skip_serializing_if`, absent for classic transfers — no wire overhead for non-SFTP providers). Frontend accumulates these into the session-level summary client-side.
+- **Optimized transfer path reachable from SyncPanel on SFTP**: earlier releases had the decision wired in the unified sync core only: AeroSync UI actually iterates per-file commands that never entered that branch. This release extends the decision to `upload_file` / `download_file` / `provider_upload_file` / `provider_download_file` so sessions with SFTP + SSH key authentication + a capable remote now actually exercise the optimization in the day-to-day UI flow. The decision remains self-gated (silent fallback to classic when the session is not eligible); hard rejections (SSH host-key mismatch, permission denied) surface as transfer errors without silent retry.
+- **`TransferEvent` now propagates optional `delta_stats`**: the event emitted to the frontend on `complete` carries per-file stats from the optimized path when applicable (serialized with `skip_serializing_if`, absent for classic transfers: no wire overhead for non-SFTP providers). Frontend accumulates these into the session-level summary client-side.
 
 ### MCP (pre-release carryovers from v3.6.0 cycle)
 
@@ -407,7 +463,7 @@ Release focused on making the AeroSync optimized-transfer path visible to the us
 
 ### Internals
 
-- **`SyncReport` domain types expanded**: `DeltaSavingsSummary` (aggregate) and new `DeltaFileEntry` (per-file breakdown) are public types; `DELTA_FILES_CAP = 500` exposed as a crate-level constant. The accumulator is one branch driving both aggregate and per-file tracking — impossible to drift.
+- **`SyncReport` domain types expanded**: `DeltaSavingsSummary` (aggregate) and new `DeltaFileEntry` (per-file breakdown) are public types; `DELTA_FILES_CAP = 500` exposed as a crate-level constant. The accumulator is one branch driving both aggregate and per-file tracking: impossible to drift.
 - **Stderr sanitizer hardened**: `/home/<user>`, `/Users/<user>`, `C:\Users\<user>` and `.ssh/*` path segments redacted before `fallback_reason` / `hard_error` messages flow to UI, logs, or MCP responses. Message capped at 512 characters to keep response arrays bounded.
 - **`RsyncStats.warnings` downgraded to `pub(crate)`**: entries may contain remote file paths and must not leak without sanitization.
 
@@ -423,8 +479,8 @@ Follow-up patch to v3.5.8 focused entirely on the CLI surface. All items are sma
 
 ### Fixed
 
-- **Missing-parent uploads now explain the failure**: `put` runs a pre-flight `stat` on the remote parent directory. If the parent is missing the CLI errors out with *"Parent directory '/X/Y' does not exist on the remote. Create it first with: aeroftp-cli mkdir -p '/X/Y'"* — one crisp message instead of three retries of a generic `553 Can't open that file: No such file or directory` returned by the hoster. `is_retryable_exit` now excludes exit code `2` (not-found) so the retry loop stops burning attempts on stable failures.
-- **Sync remote scanner auto-reconnects on transport failure**: `sync_core::scan_remote_tree` now classifies `list()` errors against the same `is_transport_level` pattern used by the MCP pool (variant matches on `NotConnected`/`ConnectionFailed`/`Timeout`/`NetworkError`/`IoError` plus message patterns like *"Data connection is already open"*, *"broken pipe"*, *"connection reset"*). When it fires, the provider is disconnected and reconnected, then `list()` is retried once. Previously the scanner logged a warning and treated the failure as an empty directory — which let sync silently duplicate files that actually existed on the remote.
+- **Missing-parent uploads now explain the failure**: `put` runs a pre-flight `stat` on the remote parent directory. If the parent is missing the CLI errors out with *"Parent directory '/X/Y' does not exist on the remote. Create it first with: aeroftp-cli mkdir -p '/X/Y'"*: one crisp message instead of three retries of a generic `553 Can't open that file: No such file or directory` returned by the hoster. `is_retryable_exit` now excludes exit code `2` (not-found) so the retry loop stops burning attempts on stable failures.
+- **Sync remote scanner auto-reconnects on transport failure**: `sync_core::scan_remote_tree` now classifies `list()` errors against the same `is_transport_level` pattern used by the MCP pool (variant matches on `NotConnected`/`ConnectionFailed`/`Timeout`/`NetworkError`/`IoError` plus message patterns like *"Data connection is already open"*, *"broken pipe"*, *"connection reset"*). When it fires, the provider is disconnected and reconnected, then `list()` is retried once. Previously the scanner logged a warning and treated the failure as an empty directory: which let sync silently duplicate files that actually existed on the remote.
 - **`ls` follow-up hint no longer ships a literal `*.ext` placeholder**: `suggest_ls_followup` now renders `"*"` so agents copy-pasting the hint get real results. The `*.ext` string survives only in bootstrap playbook JSON where it is documented as a placeholder the user must substitute.
 
 ### Build
@@ -439,7 +495,7 @@ Hardening pass on the MCP server surface (connection pool recovery, batch operat
 
 ### Fixed (MCP)
 
-- **Connection pool auto-reset on transport failure**: after a tool call fails with a transport-level error (stale data channel on FTP, broken pipe, `NotConnected`, `Timeout`, network errors, message patterns like *"Data connection is already open"*, *"connection reset"*, *"eof from server"*), the pool entry is now invalidated synchronously with a fire-and-forget disconnect and the operation transparently retried once on a freshly opened connection. Upload/download sites invalidate without retry — the caller decides whether to re-transfer, but the next call on the same profile starts clean. Business-level errors (`NotFound`, `AlreadyExists`, `PermissionDenied`, `AuthenticationFailed`) are intentionally kept out of the classifier so a harmless 404 never churns connections.
+- **Connection pool auto-reset on transport failure**: after a tool call fails with a transport-level error (stale data channel on FTP, broken pipe, `NotConnected`, `Timeout`, network errors, message patterns like *"Data connection is already open"*, *"connection reset"*, *"eof from server"*), the pool entry is now invalidated synchronously with a fire-and-forget disconnect and the operation transparently retried once on a freshly opened connection. Upload/download sites invalidate without retry: the caller decides whether to re-transfer, but the next call on the same profile starts clean. Business-level errors (`NotFound`, `AlreadyExists`, `PermissionDenied`, `AuthenticationFailed`) are intentionally kept out of the classifier so a harmless 404 never churns connections.
 - **`aeroftp_sync_tree` dry-run returns an actionable plan**: the previous response only carried aggregate `summary.uploaded=0 / downloaded=0` counters. The dispatch now captures every `on_file_start` → `on_file_done` pair from `sync_tree_core` and returns a `plan[]` array (`{op, path, reason, bytes}`) plus a `planned.{uploaded, downloaded, deleted, skipped}` block. Real (non-dry-run) runs are unchanged.
 - **`aeroftp_check_tree` compares server-side checksums when available**: with `checksum=true`, the tool now requests the remote hash via `provider.checksum()` whenever `supports_checksum()` returns true, picks a preferred algorithm (SHA-256 → SHA-1 → MD5), and compares algo-for-algo against the locally computed SHA-256. Cross-algorithm mismatches safely fall back to size-only comparison. A new `compare_method: "checksum" | "size"` field on each `DiffEntry` and a top-level `checksum_remote_supported` flag make the decision transparent to the caller. A one-byte swap in a same-size file now correctly lands in `differ` instead of silently showing as `match`.
 
@@ -448,9 +504,9 @@ Hardening pass on the MCP server surface (connection pool recovery, batch operat
 - **`aeroftp_delete_many`**: batch delete of up to 100 remote paths per call with a configurable inter-delete backoff (`delay_ms` default 200 ms, cap 2 000 ms). `recursive` and `continue_on_error` round out the surface; the response carries a per-item result (`path`, `deleted`, `is_dir`, `error?`) plus an aggregate summary (`planned`, `processed`, `deleted`, `errors`, `aborted_after`). Uses the same pool auto-reset wrapper as single-shot tools.
 - **`aeroftp_list_servers` filters**: optional `name_contains`, `protocol`, `limit` (default 200, cap 1 000), `offset`. Response adds `total_matched`, `offset`, `limit`, `truncated` for pagination. Lets callers work against large vaults without returning the full profile set on every invocation.
 - **`aeroftp_read_file` configurable preview window**: new `preview_kb` argument (default 5, hard cap 1 024). The preview-too-small error message now names the current window and the cap so the caller can raise it before falling back to `aeroftp_download_file`.
-- **`aeroftp_upload_file` auto-mkdir**: new `create_parents` boolean. When true, the tool recursively `mkdir`s every missing parent of the destination (idempotent — already-exists errors are swallowed; other mkdir errors fail fast with the exact missing segment).
+- **`aeroftp_upload_file` auto-mkdir**: new `create_parents` boolean. When true, the tool recursively `mkdir`s every missing parent of the destination (idempotent: already-exists errors are swallowed; other mkdir errors fail fast with the exact missing segment).
 
-### Closed (Appendix C — CLI rclone parity)
+### Closed (Appendix C: CLI rclone parity)
 
 - **FTP stale data-connection recovery** on the CLI side: `parse_unix_listing` / `parse_dos_listing` path fix plus an auto-reconnect + retry wrapper. Same root cause as the MCP pool fix above, different recovery shape.
 - **Reconcile plan loader** round-trip coverage (2 new unit tests).
@@ -458,13 +514,13 @@ Hardening pass on the MCP server surface (connection pool recovery, batch operat
 
 ### Build & Dependencies
 
-- Six Dependabot PRs rolled in from main (`axum`, `tokio`, `uuid`, `postcss`, `autoprefixer`, `typescript` — patch/minor bumps).
+- Six Dependabot PRs rolled in from main (`axum`, `tokio`, `uuid`, `postcss`, `autoprefixer`, `typescript`: patch/minor bumps).
 - `rustfmt` cleanup on `mcp/server.rs` and `cross_profile_commands.rs` (indentation only, no logic change).
 
 ### Tests
 
-- `mcp::tools::tests`: 14 unit tests (was 6) — transport-error classifier (variant, message-pattern, business-negative), `parent_remote_dir`, `delete_many` registry, `list_servers` filter schema.
-- `sync_core::compare::tests`: 6 unit tests (was 3) — checksum mismatch with equal size, checksum match, size-only fallback.
+- `mcp::tools::tests`: 14 unit tests (was 6): transport-error classifier (variant, message-pattern, business-negative), `parent_remote_dir`, `delete_many` registry, `list_servers` filter schema.
+- `sync_core::compare::tests`: 6 unit tests (was 3): checksum mismatch with equal size, checksum match, size-only fallback.
 - CLI binary suite: 103/103 green.
 - `cargo clippy --all-targets -- -D warnings` clean.
 
@@ -476,13 +532,13 @@ Emergency patch for the startup panic introduced by v3.5.6.
 
 ### Fixed
 
-- **App failed to launch on Linux and Windows**: the cross-profile plan TTL sweeper added in v3.5.6 (Phase 4.2 of the resource-lifecycle audit) called `tokio::spawn` inside `CrossProfileState::new()`. That constructor runs from `builder.manage(...)` during the synchronous Tauri builder setup, before the async runtime is up. The spawn panicked with *"there is no reactor running, must be called from the context of a Tokio 1.x runtime"* and the binary exited immediately after `main`. The sweeper is now armed lazily by `ensure_sweeper_started()` on the first `store_plan` call — guaranteed to run inside an async Tauri command handler where the runtime is active. All other v3.5.6 improvements are preserved.
+- **App failed to launch on Linux and Windows**: the cross-profile plan TTL sweeper added in v3.5.6 (Phase 4.2 of the resource-lifecycle audit) called `tokio::spawn` inside `CrossProfileState::new()`. That constructor runs from `builder.manage(...)` during the synchronous Tauri builder setup, before the async runtime is up. The spawn panicked with *"there is no reactor running, must be called from the context of a Tokio 1.x runtime"* and the binary exited immediately after `main`. The sweeper is now armed lazily by `ensure_sweeper_started()` on the first `store_plan` call: guaranteed to run inside an async Tauri command handler where the runtime is active. All other v3.5.6 improvements are preserved.
 
 ## [3.5.6] - 2026-04-19
 
 ### Resource-Lifecycle Hardening
 
-60+ findings from a 5-auditor external and internal review (4x Claude Opus 4.7 + GPT-5.3 Codex) closed across four phases. The sprint delivered a platform, not a patch set — five reusable primitives now absorb the four "leak shapes" the audit surfaced (orphan listeners, spawn-without-handle, MutexGuard across I/O, timer leaks after debounce). Audit grade **C to A-** across all tracks.
+60+ findings from a 5-auditor external and internal review (4x Claude Opus 4.7 + GPT-5.3 Codex) closed across four phases. The sprint delivered a platform, not a patch set: five reusable primitives now absorb the four "leak shapes" the audit surfaced (orphan listeners, spawn-without-handle, MutexGuard across I/O, timer leaks after debounce). Audit grade **C to A-** across all tracks.
 
 ### Added
 
@@ -490,19 +546,19 @@ Emergency patch for the startup panic introduced by v3.5.6.
 - **`usePointerDrag` hook** (`src/hooks/usePointerDrag.ts`): replaces 6 sites that attached `document`-level mousemove/mouseup globals from inside `onMouseDown` and never cleaned them up on unmount mid-drag.
 - **`util::AbortOnDrop<T>`** (`src-tauri/src/util/abort_on_drop.rs`): wraps a `JoinHandle`, aborts on drop, exposes `.wait()` for `tokio::select!` composition. Replaces every `let _ = tokio::spawn(...)` outside explicit daemon sites.
 - **`util::ProviderGuard`** (`src-tauri/src/util/provider_guard.rs`): RAII guard that disconnects the wrapped `Box<dyn StorageProvider>` on drop, regardless of which `?`-style error skipped the manual cleanup.
-- **`util::shutdown_signal`** (`src-tauri/src/util/shutdown.rs`): cross-platform first-signal future (SIGINT / SIGTERM / Ctrl+Break). Replaces `tokio::signal::ctrl_c()` which silently ignored SIGTERM — the normal systemd / Docker stop signal.
+- **`util::shutdown_signal`** (`src-tauri/src/util/shutdown.rs`): cross-platform first-signal future (SIGINT / SIGTERM / Ctrl+Break). Replaces `tokio::signal::ctrl_c()` which silently ignored SIGTERM: the normal systemd / Docker stop signal.
 - **New `ai_cancel_chat` Tauri command**: plumbs `CancellationToken` through non-streaming AI requests so "Cancel" actually cancels.
 
 ### Fixed
 
 - **Orphan Tauri listeners** (11 sites): App.tsx × 6, CustomTitlebar, CloudPanel × 3, useVaultState × 2, useCloudSync × 3, useTransferEvents × 2, useTraySync × 2, useProviderHealth, PlacesSidebar, SyncScheduler, WatcherStatus, ToolProgressIndicator, SSHTerminal, AIChat, AISettingsPanel, SettingsPanel, SyncPanel. All migrated to `useTauriListener` / `createTauriListener` / `guardedUnlisten`.
-- **`provider_connect` overwrite** (R2 Critical): the previous provider was abandoned without `disconnect()` — a dead TCP session leaked until GC. The new implementation `await`s the disconnect before the swap.
+- **`provider_connect` overwrite** (R2 Critical): the previous provider was abandoned without `disconnect()`: a dead TCP session leaked until GC. The new implementation `await`s the disconnect before the swap.
 - **OAuth callback TCP listener** (R2 Critical): the callback task and its listener were leaked on timeout, port open failure, or early error. Now wrapped in `AbortOnDrop` + `tokio::select!` so every exit path releases the port.
 - **MCP progress emitter** (R3 Critical): replaced a `tokio::spawn`-per-progress-sample leak (measured at 262k spawned tasks under high-volume MCP workloads) with a bounded `mpsc::channel(32)` + single consumer.
 - **S3 multipart abort on failure** (R2 High): one failed part left siblings running and never issued `AbortMultipartUpload`, leaving dangling multipart uploads in the bucket. Now uses `JoinSet`, aborts siblings on first failure, drains, and calls `AbortMultipartUpload`.
 - **FTP session pool lease** (R2 High): `Drop` without `release()` left the next lease with dirty session state; now spawns async reset/disconnect if not released.
 - **MCP pool eviction** (R3 High): `last_used_ms` is now `AtomicU64` read outside the lock; disconnect is deferred outside the lock; eviction is refcount-gated so in-use connections survive.
-- **MCP per-profile serialization** (R3 High): `HashMap<String, Arc<Mutex<()>>>` leaked one lock per unique profile name — now `Weak<Mutex<()>>` with prune-on-access.
+- **MCP per-profile serialization** (R3 High): `HashMap<String, Arc<Mutex<()>>>` leaked one lock per unique profile name: now `Weak<Mutex<()>>` with prune-on-access.
 - **Retry sleeps honour cancellation** (R2 Critical, 5 sites): `provider_commands`, `provider_transfer_executor`, `ftp_transfer_executor`, `lib::background_sync_worker`, `cross_profile_commands`. Previously the user's Cancel meant "finish after the next poll"; now every retry sleep is a `tokio::select!` race against the cancel token.
 - **CLI server shutdown surfaces** (R4 Critical × 2, High × 3): `serve http`, `serve webdav`, `serve ftp`, `serve sftp`, `daemon`, `mount` (Linux FUSE + Windows map-as-drive). All observe SIGINT and SIGTERM; `serve sftp` drains per-connection tasks with a 5s grace window; FUSE uses `fuser::spawn_mount2` and drops the `BackgroundSession` on signal (was blocking `mount2` with no cancel surface).
 - **Plugin hook `kill_on_drop(true)`** (GPT Critical): plugin children used to outlive panics / timeouts.
@@ -526,8 +582,8 @@ Emergency patch for the startup panic introduced by v3.5.6.
 
 ### Audit artefacts
 
-- `docs/dev/audit/2026-04-19-resource-lifecycle/APPENDIX-RETROSPECTIVE.md` — primitives, fix index, regression greps, lessons learned.
-- `docs/dev/audit/2026-04-19-resource-lifecycle/AUDIT-POST-FIX.md` — post-fix review, 6 dimensions, grade A-.
+- `docs/dev/audit/2026-04-19-resource-lifecycle/APPENDIX-RETROSPECTIVE.md`: primitives, fix index, regression greps, lessons learned.
+- `docs/dev/audit/2026-04-19-resource-lifecycle/AUDIT-POST-FIX.md`: post-fix review, 6 dimensions, grade A-.
 
 ## [3.5.5] - 2026-04-19
 
@@ -553,13 +609,13 @@ Net MCP parity coverage moves from ~40% of CLI capabilities to ~70%; the killer 
 
 - **CI main branch unbroken**: commit `763b3253` ships the `seed_test_profiles` source file that v3.5.4 referenced in `src-tauri/Cargo.toml` but forgot to stage. Every Build AeroFTP / Strada C Prototype / Delta Sync Integration run on main from 2026-04-18 to 2026-04-19 failed during cargo target resolution with `can't find bin 'seed_test_profiles'`. The file is a local test helper that seeds six Docker-harness profiles (FTP, FTPS, SFTP ed25519/RSA, WebDAV, MinIO) into the encrypted vault for reproducible live-battery runs. All passwords are test literals; zero production credentials. Run with `cargo run --bin seed_test_profiles` after opening the vault.
 
-### Added (Strada C scaffolding — experimental, dormant)
+### Added (Strada C scaffolding: experimental, dormant)
 
 - **Native rsync delta transport (scaffolding only)**: built-in Rust implementation of rsync protocol 31 wired into the `DeltaTransport` trait. Compiled only when the `proto_native_rsync` Cargo feature is enabled (off by default in shipped builds). The runtime toggle lives at Settings > Advanced Sync > "Enable native rsync for SFTP delta sync" and renders only on Unix feature-on builds. **Not yet routed by the sync executor**: `provider_transfer_executor` still calls `provider.download`/`upload` directly; wiring `delta_sync_rsync::try_delta_transfer` into the executor is a follow-up sinergia. Enabling the toggle persists the opt-in but does not change transfer behaviour today.
 - **Native SSH host-key pinning**: when the native leg becomes reachable, it pins the SHA-256 fingerprint captured by the parent SFTP handshake (`SshHandler::check_server_key`). Sessions without a captured fingerprint refuse to open the native path (secure default, closes the MITM window that `AcceptAny` left on a fresh TCP socket).
 - **Fallback policy**: `RsyncError::HardRejection` + `DeltaSyncResult::hard_error` surface security or invariant failures to the UI with no silent classic fallback. Pre-rename atomic-write failures and environmental errors fall back transparently to classic; rename-stage or host-key failures surface as hard errors.
 
-### In progress — Delta Sync Fase 1 (SFTP via rsync-over-SSH)
+### In progress: Delta Sync Fase 1 (SFTP via rsync-over-SSH)
 
 First concrete step toward the v3.6.0 "SFTP delta flagship" release. The long-standing phantom `deltaSyncEnabled` toggle in `SyncPanel.tsx` (a UI switch with no backend wiring) is being replaced with a real implementation: on SFTP connections with a local rsync binary and a rsync-capable server, transfers fall through to a managed `rsync -e ssh` invocation that delivers real bandwidth savings measured against the network, not simulated.
 
@@ -573,11 +629,11 @@ This entry tracks infrastructure already landed on `main`. Nothing here is user-
 - **`delta_sync_rsync.rs`** (Unix): thin adapter the sync loop will call instead of `provider.download()` / `provider.upload()`. 5-minute per-session capability cache, typed `DeltaSyncResult { used_delta, stats, fallback_reason }` so the loop can always report why delta wasn't used. 5 unit tests
 - **`delta_transport.rs`** (Unix): `DeltaTransport` trait (object-safe, async via `async_trait`) that abstracts the transport mechanism behind delta sync. Today's only implementation, `RsyncBinaryTransport`, wraps the subprocess path; the future native-rsync protocol (strada C) plugs in as a second implementation with zero churn in the adapter or the sync loop
 - **`providers::sftp::SharedSshHandle` + `handle_shared()` getter**: exposes the authenticated russh handle for `ssh_exec` reuse without reopening a second SSH connection
-- **`SftpProvider::delta_transport()` factory + `try_delta_transfer()` helper**: single choke point where a connected SFTP session becomes a `Box<dyn DeltaTransport>`, and a public entry point the executor will call from one line. Uses the existing `as_any_mut()` trait escape hatch — zero new methods on `StorageProvider`
+- **`SftpProvider::delta_transport()` factory + `try_delta_transfer()` helper**: single choke point where a connected SFTP session becomes a `Box<dyn DeltaTransport>`, and a public entry point the executor will call from one line. Uses the existing `as_any_mut()` trait escape hatch: zero new methods on `StorageProvider`
 
 #### Added (test infrastructure)
 
-- **Docker fixture `tests/fixtures/sftp-rsync/`**: alpine + openssh + rsync on `127.0.0.1:2222`. Single-command bring-up (`setup.sh && docker compose up -d --build`). Honest security posture — `StrictModes yes` preserved via an entrypoint script that normalizes ownership and mode on the bind-mounted authorized_keys
+- **Docker fixture `tests/fixtures/sftp-rsync/`**: alpine + openssh + rsync on `127.0.0.1:2222`. Single-command bring-up (`setup.sh && docker compose up -d --build`). Honest security posture: `StrictModes yes` preserved via an entrypoint script that normalizes ownership and mode on the bind-mounted authorized_keys
 - **`tests/integration_delta_sync.rs`**: `#[ignore]`-gated live checks that verify the fixture has rsync and prove delta savings on a redundant upload (65 bytes sent for a 2 MiB identical file → 99.997% bandwidth reduction, validated against the local fixture)
 - **`.github/workflows/delta-sync-integration.yml`**: path-scoped GitHub Actions job that brings up the fixture, runs the unit tests for every new module, then the live integration test. Only triggers when delta-sync files change, so unrelated PRs don't pay the cost. Pinned to the same action SHAs used by `build.yml`
 
@@ -592,7 +648,7 @@ This entry tracks infrastructure already landed on `main`. Nothing here is user-
 
 #### Forward-compatibility with the native rsync (strada C)
 
-The public API of `rsync_over_ssh` intentionally exposes no subprocess types (`Child`, `Command`, stdio pipes) — only `RsyncCapability`, `RsyncConfig`, `RsyncStats`, `RsyncError`, `rsync_download()`, `rsync_upload()`. When the Rust-native rsync protocol implementation (multi-month Strada C effort) is ready, the internal transport flips from `tokio::process::Command` to an in-process Rust state machine without any change to callers. `delta_sync_rsync` and `sync.rs` stay untouched.
+The public API of `rsync_over_ssh` intentionally exposes no subprocess types (`Child`, `Command`, stdio pipes): only `RsyncCapability`, `RsyncConfig`, `RsyncStats`, `RsyncError`, `rsync_download()`, `rsync_upload()`. When the Rust-native rsync protocol implementation (multi-month Strada C effort) is ready, the internal transport flips from `tokio::process::Command` to an in-process Rust state machine without any change to callers. `delta_sync_rsync` and `sync.rs` stay untouched.
 
 ## [3.5.4] - 2026-04-17
 
@@ -966,12 +1022,12 @@ A second independent audit (Claude Opus 4.7, 250 live tool calls across MCP and 
 
 #### Added
 
-- **AeroSync conflict strategy**: Automatic conflict resolution with configurable strategy per profile — newer, older, larger, smaller, skip, or ask per file
+- **AeroSync conflict strategy**: Automatic conflict resolution with configurable strategy per profile: newer, older, larger, smaller, skip, or ask per file
 - **AeroSync delete orphans**: Option to delete files on the destination that no longer exist on the source, with versioning backup strategies (trash can 30 days, keep last 5, staggered hourly/daily/weekly, or disabled)
 - **AeroSync rename detection**: SHA-256 based rename detection identifies moved/renamed files instead of re-transferring them
 - **AeroSync file filters**: Min/max file size and min/max file age filters to control which files are included in synchronization
 - **AeroSync bandwidth schedule**: Preset schedules for bandwidth throttling during office hours (08-18) or night mode (18-08) at 512 KB/s
-- **AeroSync transfer budget**: Configurable total data limit per sync session (100 MB to 50 GB) — sync stops when the budget is exhausted
+- **AeroSync transfer budget**: Configurable total data limit per sync session (100 MB to 50 GB): sync stops when the budget is exhausted
 - **AeroSync snapshot rollback**: Full restore from snapshot with confirmation dialog showing file count to re-download (previously "coming soon")
 - **AeroSync delete safety confirmation**: Overlay warning showing the exact number of files that will be permanently deleted before sync proceeds
 - **AeroSync pre-delete archival**: Automatic backup of deleted files to `.aeroversions/` with 30-day retention before removal during pull sync
@@ -990,7 +1046,7 @@ A second independent audit (Claude Opus 4.7, 250 live tool calls across MCP and 
 - **Archive path traversal prevention**: Reject archive entries containing `..` components, absolute paths, or Windows drive prefixes during extraction
 - **Archive atomic extraction**: Files are extracted to a `.aerotmp` temporary path and renamed on completion, preventing partial data on interrupted extractions
 - **API key leak prevention**: Regex-based sanitization strips API keys (Google, Anthropic, OpenAI, Bearer tokens, x-api-key headers) from error messages before they reach the UI
-- **Plugin integrity verification**: SHA-256 hash check for plugin tools and hooks — execution is skipped if files have been modified. Shell metacharacters in hook commands are rejected
+- **Plugin integrity verification**: SHA-256 hash check for plugin tools and hooks: execution is skipped if files have been modified. Shell metacharacters in hook commands are rejected
 - **Shell denylist expansion**: Added crontab, nohup, systemctl, service, mount, umount, fdisk, parted, iptables, useradd, userdel, passwd, sudo, pkill, killall to the AI shell command denylist
 - **MCP tool argument validation**: Centralized `validate_tool_args()` with path sandbox checks for all MCP tool operations
 - **MCP rate limiting by category**: File operations, metadata queries, and compute tasks now have separate rate limit buckets
@@ -1024,7 +1080,7 @@ A second independent audit (Claude Opus 4.7, 250 live tool calls across MCP and 
 - **`mount` virtual filesystem** (cross-platform): New `aeroftp mount <mountpoint>` mounts any remote as a local filesystem. On Linux/macOS uses FUSE with full read-write support (create, write, mkdir, rm, rmdir, rename, statfs). On Windows uses a WebDAV bridge that maps to a drive letter (`aeroftp mount Z: --profile "MyServer"`). Features: `--read-only` flag, metadata cache with configurable TTL (`--cache-ttl`), range read with fallback, `--allow-other` for multi-user access, graceful unmount. Tested on 8 providers across S3, FTP, WebDAV, and MEGA
 - **`serve ftp`**: New `aeroftp serve ftp` exposes any remote as a local FTP server via `libunftp`. Full read-write: LIST, RETR, STOR, DELE, MKD, RMD, RNFR/RNTO, CWD. Anonymous access, configurable passive port range (`--passive-ports`). Any FTP client can now access S3, WebDAV, MEGA, or any other AeroFTP provider as if it were a standard FTP server
 - **Background daemon and job queue**: New `aeroftp daemon start/stop/status` runs a background service with HTTP RC API on localhost. `aeroftp jobs add/list/status/cancel` manages persistent transfer jobs via SQLite. Health monitoring via `curl http://localhost:14320/health`. Enables persistent mounts, scheduled transfers, and automation
-- **Crypt overlay — zero-knowledge encryption**: New `aeroftp crypt init/ls/put/get` provides transparent encryption on any provider. Content encrypted with AES-256-GCM (64KB blocks, HW accelerated), filenames encrypted with AES-256-SIV, key derivation via Argon2id (64MB, 3 iterations). The cloud provider never sees your file names or content. Overhead: ~33 bytes for small files, <0.1% for large files
+- **Crypt overlay: zero-knowledge encryption**: New `aeroftp crypt init/ls/put/get` provides transparent encryption on any provider. Content encrypted with AES-256-GCM (64KB blocks, HW accelerated), filenames encrypted with AES-256-SIV, key derivation via Argon2id (64MB, 3 iterations). The cloud provider never sees your file names or content. Overhead: ~33 bytes for small files, <0.1% for large files
 - **`serve sftp`**: New `aeroftp serve sftp` exposes any remote as a local SFTP server via `russh`. Full SFTP v3 protocol: LIST, STAT, READ, WRITE, REMOVE, MKDIR, RMDIR, RENAME, REALPATH. Anonymous access with ED25519 host key. Any SFTP client (sftp, WinSCP, FileZilla, curl sftp://) can now access all 27 AeroFTP providers
 
 #### Fixed
@@ -1521,9 +1577,9 @@ Full native MEGA protocol implementation eliminating the MEGAcmd external depend
 
 ## [3.1.5] - 2026-03-27
 
-### AeroAgent Hardening — APPENDIX-A Execution & Security Audit
+### AeroAgent Hardening: APPENDIX-A Execution & Security Audit
 
-Full execution of the AeroAgent evolution plan (APPENDIX-A): 6 areas implemented end-to-end, validated by independent security audit. 19 findings identified, 17 resolved — including 4 HIGH severity.
+Full execution of the AeroAgent evolution plan (APPENDIX-A): 6 areas implemented end-to-end, validated by independent security audit. 19 findings identified, 17 resolved: including 4 HIGH severity.
 
 #### Added
 
@@ -1536,7 +1592,7 @@ Full execution of the AeroAgent evolution plan (APPENDIX-A): 6 areas implemented
 
 #### Changed
 
-- **Tool pipeline failure propagation**: Pipeline now tracks failed tools and skips dependents with transitive propagation — no more cascading errors when a prerequisite fails
+- **Tool pipeline failure propagation**: Pipeline now tracks failed tools and skips dependents with transitive propagation: no more cascading errors when a prerequisite fails
 - **Tool approval cache scoping**: `ToolApproval` and `BatchToolApproval` now forward `sessionId` for correct cache isolation
 - **Cache key includes remote server context**: Cache key disambiguated by active server connection, preventing cross-server result leakage
 - **Public documentation synchronized with validated behavior**: CLI, AeroAgent, GitHub integration, and credential-isolation docs now avoid stale command/protocol counts, clarify profile-backed provider support (including 4shared and Drime), document provider-dependent quota reporting, and align GitHub commit semantics with current REST + GraphQL behavior
@@ -1544,9 +1600,9 @@ Full execution of the AeroAgent evolution plan (APPENDIX-A): 6 areas implemented
 
 #### Fixed
 
-- **macOS frozen UI on launch**: Removed App Sandbox from `entitlements.plist` for direct distribution — without Apple Developer signature, sandbox blocks WebKit from loading frontend. Added missing JIT and library validation entitlements required for WebKit. Closes [#62](https://github.com/axpdev-lab/aeroftp/issues/62)
+- **macOS frozen UI on launch**: Removed App Sandbox from `entitlements.plist` for direct distribution: without Apple Developer signature, sandbox blocks WebKit from loading frontend. Added missing JIT and library validation entitlements required for WebKit. Closes [#62](https://github.com/axpdev-lab/aeroftp/issues/62)
 - **CLI `shell_execute` meta-char bypass**: Added shell metacharacter blocking (pipe, semicolon, backtick, `$`, `&`, parens, braces, newlines) to CLI shell execution, closing trivial deny-list bypass via pipes or subshells
-- **CLI `shell_execute` working directory not validated**: Now validates working directory against deny-list before use — prevents operating in sensitive directories
+- **CLI `shell_execute` working directory not validated**: Now validates working directory against deny-list before use: prevents operating in sensitive directories
 - **CLI `shell_execute` deny-list expanded**: Extended from 17 to 39 patterns (added sudo, crontab, systemctl, mount, fdisk, passwd, eval, shred, etc.)
 - **CLI local_trash/batch_rename/stat_batch path validation**: All three tools now validate each individual path, closing deny-list bypass via MCP
 - **MCP argument validation incomplete**: Added `output_path`, `path_a`, `path_b`, `project_path` to validated parameters, plus recursive validation of nested JSON structures
@@ -1558,9 +1614,9 @@ Full execution of the AeroAgent evolution plan (APPENDIX-A): 6 areas implemented
 - **FTP CLI recursive/find/stat regressions closed**: `put -r` now pre-creates nested remote directories in parent-first order, FTP `find` uses real glob matching, and FTP `stat` no longer emits duplicated `entry.path` values from MLST/MLSD responses
 - **FTPS CLI security semantics aligned with GUI**: Removed automatic insecure retry after certificate verification failures; live validation on saved Aruba profile `aeroftp.app` now fails closed with `hostname mismatch` unless invalid/self-signed certificate acceptance is explicitly enabled
 
-#### Security (Independent Audit — 19 findings, 17 resolved)
+#### Security (Independent Audit: 19 findings, 17 resolved)
 
-- Independent security audit: 4 HIGH, 7 MEDIUM, 8 LOW findings across 6 areas — all HIGH resolved
+- Independent security audit: 4 HIGH, 7 MEDIUM, 8 LOW findings across 6 areas: all HIGH resolved
 - Post-audit hardening verified by second independent review pass
 - macOS entitlements restructured for safe direct distribution without Apple code signing
 - 8 security fixes across CLI/MCP path validation, shell execution, memory storage, and model integrity
@@ -1569,7 +1625,7 @@ Full execution of the AeroAgent evolution plan (APPENDIX-A): 6 areas implemented
 
 ### Provider & Protocol Sprint (APPENDIX-B)
 
-Comprehensive provider gap closure: S3/Azure enterprise features, new provider presets, trash management for 2 additional providers, FTP checksum commands, and feature matrix overhaul. Audited with 2 external reviews — 6 findings identified and resolved.
+Comprehensive provider gap closure: S3/Azure enterprise features, new provider presets, trash management for 2 additional providers, FTP checksum commands, and feature matrix overhaul. Audited with 2 external reviews: 6 findings identified and resolved.
 
 #### Added
 
@@ -1589,7 +1645,7 @@ Comprehensive provider gap closure: S3/Azure enterprise features, new provider p
 
 #### Changed
 
-- **ProvidersDialog accuracy**: Box versioning, Amazon S3 shareLink+versioning, kDrive versioning+trash, Nextcloud shareLink+trash+versioning, MEGA shareLink — all now accurately reflected in feature matrix
+- **ProvidersDialog accuracy**: Box versioning, Amazon S3 shareLink+versioning, kDrive versioning+trash, Nextcloud shareLink+trash+versioning, MEGA shareLink: all now accurately reflected in feature matrix
 - **S3 enterprise fields E2E**: `storage_class`, `sse_mode`, `sse_kms_key_id` wired from registry form → ProviderOptions → providerParams → ProviderConnectionParams → S3Config → upload headers
 
 ### AeroCloud APPENDIX-D Closure + FileLu v2
@@ -1599,20 +1655,20 @@ AeroCloud sprint hardening closure: 3 external audit findings resolved, VersionB
 #### Added
 
 - **VersionBrowser browse-all mode**: New `list_all_file_versions` Tauri command walks `.aeroversions/` recursively. VersionBrowser opens in modal from CloudPanel settings with versioning strategy selector (Disabled, TrashCan 7/30/90 days, Simple 5, Staggered). Shows file name + timestamp in browse-all mode
-- **FileLu Trash permanent delete**: `PERMANENT_DELETE_ENABLED` activated — uses `file/permanent_delete?file_code=X` endpoint confirmed by FileLu team
+- **FileLu Trash permanent delete**: `PERMANENT_DELETE_ENABLED` activated: uses `file/permanent_delete?file_code=X` endpoint confirmed by FileLu team
 
 #### Changed
 
-- **FileLu v2 API migration**: Download (`apiv2/file/direct_link?file_path=`), rename (`apiv2/file/rename?file_path=`), move (`apiv2/file/set_folder?file_path=&destination_folder_path=`), folder rename (`apiv2/folder/rename?folder_path=`), folder delete (`apiv2/folder/delete?folder_path=`) — all migrated to path-based v2 API. Listing uses hybrid v1 files (fld_id) + v2 folders (folder_path) because v2 file/list does not filter by folder
+- **FileLu v2 API migration**: Download (`apiv2/file/direct_link?file_path=`), rename (`apiv2/file/rename?file_path=`), move (`apiv2/file/set_folder?file_path=&destination_folder_path=`), folder rename (`apiv2/folder/rename?folder_path=`), folder delete (`apiv2/folder/delete?folder_path=`): all migrated to path-based v2 API. Listing uses hybrid v1 files (fld_id) + v2 folders (folder_path) because v2 file/list does not filter by folder
 - **FileLu promoted to Stable**: Classified as stable protocol in AeroCloud sync (was Alpha). Now 12/23 protocols at stable tier. Caveat updated to note US-based servers with geographic latency
 - **AeroCloud compare_checksum dynamic**: Enabled automatically when provider supplies content hashes (FileLu, pCloud). Fallback to size-only for providers without hash support
 
 #### Fixed
 
-- **Restore path traversal (SEC)**: `restore_file_version` now validates `original_relative` — rejects `..`, absolute paths, and verifies target stays within sync folder. Closes external audit HIGH finding
-- **VersionBrowser empty modal**: Fixed browse-all mode — previously `list_file_versions` required `filePath` and modal opened empty. Now uses `list_all_file_versions` when no specific file selected
+- **Restore path traversal (SEC)**: `restore_file_version` now validates `original_relative`: rejects `..`, absolute paths, and verifies target stays within sync folder. Closes external audit HIGH finding
+- **VersionBrowser empty modal**: Fixed browse-all mode: previously `list_file_versions` required `filePath` and modal opened empty. Now uses `list_all_file_versions` when no specific file selected
 - **FileLu phantom files in root**: v2 `file/list` with `folder_path` returned ALL account files unfiltered. Reverted file listing to v1 `file/list?fld_id=` which correctly filters by folder
-- **FileLu delete "Invalid option"**: `file/remove` without `remove=1` returns error. FileLu API has no soft-delete — delete uses `file/remove?file_code=X&remove=1` (permanent). Trash is web-UI only
+- **FileLu delete "Invalid option"**: `file/remove` without `remove=1` returns error. FileLu API has no soft-delete: delete uses `file/remove?file_code=X&remove=1` (permanent). Trash is web-UI only
 
 #### Security (Audit Closure)
 
@@ -1621,17 +1677,17 @@ AeroCloud sprint hardening closure: 3 external audit findings resolved, VersionB
 
 ## [3.1.3] - 2026-03-26
 
-### AeroCloud Hardening — Production-Grade Sync Engine
+### AeroCloud Hardening: Production-Grade Sync Engine
 
-Comprehensive AeroCloud sync overhaul: 6-phase sprint covering engine hardening, protocol fixes (OpenDrive, FileLu, 4shared), selective sync, file versioning, and .aeroignore support. Audited with 5 parallel independent reviewers — 10 findings identified and resolved.
+Comprehensive AeroCloud sync overhaul: 6-phase sprint covering engine hardening, protocol fixes (OpenDrive, FileLu, 4shared), selective sync, file versioning, and .aeroignore support. Audited with 5 parallel independent reviewers: 10 findings identified and resolved.
 
 #### Added
 
 - **Selective sync**: Exclude remote folders from sync via tree-view checkbox UI in CloudPanel settings. Backend skips excluded folders in both scan and comparison phases. New `SelectiveSyncTree` component with collapse/expand, parent cascade, and dirty-state tracking
-- **File versioning (.aeroversions/)**: Automatic backup of overwritten/deleted files during sync. Three strategies — TrashCan (cleanup after N days), Simple (keep last N copies), Staggered (1/hour for 24h, 1/day for 30d, 1/week older). New `VersionBrowser` component with restore, cleanup, and disk usage display
+- **File versioning (.aeroversions/)**: Automatic backup of overwritten/deleted files during sync. Three strategies: TrashCan (cleanup after N days), Simple (keep last N copies), Staggered (1/hour for 24h, 1/day for 30d, 1/week older). New `VersionBrowser` component with restore, cleanup, and disk usage display
 - **.aeroignore file**: Gitignore-compatible pattern exclusion in sync root. Supports `*`/`**` globs, `!` negation (re-include), `#` comments, directory-only trailing `/`. Default template created on setup. Applied to all 3 scan paths (local, FTP remote, provider remote)
 - **Protocol maturity badges**: Stable/Beta/Alpha classification for all 21 AeroCloud protocols in setup wizard, dashboard, and wizard preview. Tooltip with one-line limitation per protocol
-- **Re-authorization banner**: Token revocation detection for OAuth 1.0a providers (4shared) — red banner with "Re-authorize" button in CloudPanel, triggered via `cloud-reauth-required` Tauri event
+- **Re-authorization banner**: Token revocation detection for OAuth 1.0a providers (4shared): red banner with "Re-authorize" button in CloudPanel, triggered via `cloud-reauth-required` Tauri event
 - **FileLu content hash**: `hash` field captured from FileLu API responses, propagated as `content_hash` metadata for hash-based sync comparison (no mtime modification of local files)
 - **Tauri commands**: `update_excluded_folders`, `list_remote_folders_tree`, `list_file_versions`, `restore_file_version`, `cleanup_versions`, `versions_disk_usage`
 
@@ -1640,18 +1696,18 @@ Comprehensive AeroCloud sync overhaul: 6-phase sprint covering engine hardening,
 - **Conflict naming**: Dropbox-style format `report (AeroCloud conflict 2026-03-26 14-30-22 hostname).pdf` replaces `report_conflict_20260326143052.pdf`. Includes machine hostname for multi-device disambiguation
 - **Timestamp fallback**: Size-only comparison when file timestamps are absent (providers like FileLu). `timestamps_equal(None, None)` now returns `true`. Sync index comparison falls back to size-only when cached mtime is `None`. Prevents infinite re-sync loops
 - **OpenDrive session management**: Proactive session refresh at 50-minute threshold via `ensure_session()`. Automatic re-authentication on 401 with single retry in `list()`. `last_activity` tracking across all operations (list, cd, download, upload, mkdir, delete, rename)
-- **4shared auth hardening**: `check_auth_status()` applied to all 4 HTTP methods (GET, POST, DELETE, PUT). 401 responses produce `AuthenticationFailed("4shared_token_revoked: ...")` — sync loop aborts and emits frontend event
+- **4shared auth hardening**: `check_auth_status()` applied to all 4 HTTP methods (GET, POST, DELETE, PUT). 401 responses produce `AuthenticationFailed("4shared_token_revoked: ...")`: sync loop aborts and emits frontend event
 - **Default exclude patterns**: `.aeroignore` and `.aeroversions` added to default `exclude_patterns` in `CloudConfig`
 - **File watcher**: `.aeroversions` added to `EXCLUDED_HIDDEN` list to prevent watcher events from versioning directory
 
 #### Fixed
 
-- **FTP download versioning**: Archive hook was missing in FTP sync path — local files were overwritten without backup. Now both FTP and provider paths archive before download (SEC audit finding #7)
+- **FTP download versioning**: Archive hook was missing in FTP sync path: local files were overwritten without backup. Now both FTP and provider paths archive before download (SEC audit finding #7)
 - **Version restore safety**: `restore()` now archives the current file before overwriting, preventing data loss on restore operations (audit finding #10)
 - **Restore path traversal**: `restore_file_version` command validates `archive_path` is within `.aeroversions/` and rejects `..` traversal (SEC audit finding #8)
 - **Local scan excluded_folders**: `scan_local_folder()` now skips directories listed in `excluded_folders`, preventing unwanted uploads of excluded content (audit finding #9)
-- **OpenDrive operations coverage**: `ensure_session()` added to `download_to_bytes`, `mkdir`, `delete`, `rmdir_recursive`, `rename` — previously only `list`/`cd`/`download`/`upload` were covered (audit findings #1-3)
-- **4shared PUT auth check**: `signed_put_form` now calls `check_auth_status()` — previously 401 on rename/move produced generic error instead of triggering sync abort (audit finding #4)
+- **OpenDrive operations coverage**: `ensure_session()` added to `download_to_bytes`, `mkdir`, `delete`, `rmdir_recursive`, `rename`: previously only `list`/`cd`/`download`/`upload` were covered (audit findings #1-3)
+- **4shared PUT auth check**: `signed_put_form` now calls `check_auth_status()`: previously 401 on rename/move produced generic error instead of triggering sync abort (audit finding #4)
 
 #### Security
 
@@ -1661,7 +1717,7 @@ Comprehensive AeroCloud sync overhaul: 6-phase sprint covering engine hardening,
 
 ## [3.1.2] - 2026-03-25
 
-### Zoho WorkDrive — Full MCP Parity & Native Document Support
+### Zoho WorkDrive: Full MCP Parity & Native Document Support
 
 Complete Zoho WorkDrive integration upgrade: all 22 MCP tools covered, native Zoho document creation and auto-conversion, share link management UI, and enhanced OAuth scopes.
 
@@ -1675,7 +1731,7 @@ Complete Zoho WorkDrive integration upgrade: all 22 MCP tools covered, native Zo
 - **Manage Share Links dialog**: Dark-themed modal listing all share links with one-click copy and delete, accessible via right-click context menu on Zoho WorkDrive files
 - **New Document context menu**: Right-click empty area shows "Zoho Writer", "Zoho Sheet", "Zoho Show" options with themed InputDialog for document name
 - **Share link session tracking**: Deleted link IDs tracked per-session to filter Zoho GET cache returning stale entries
-- **7 new i18n keys**: manageShareLinks, noShareLinks, noShareLinksDesc, shareLinksFor, deleteShareLinkPrompt, shareLinkDeleted, newDocumentName — translated to all 46 languages
+- **7 new i18n keys**: manageShareLinks, noShareLinks, noShareLinksDesc, shareLinksFor, deleteShareLinkPrompt, shareLinkDeleted, newDocumentName: translated to all 46 languages
 
 #### Changed
 
@@ -1749,9 +1805,9 @@ GitHub multi-file atomic commits via GraphQL, unpushed local commit detection wi
 
 #### Added
 
-- **GitHub batch upload**: Multi-file upload creates a single atomic commit via GraphQL `createCommitOnBranch` — no more 1-commit-per-file pollution. Binary file support with base64 encoding, 50 MB batch limit
+- **GitHub batch upload**: Multi-file upload creates a single atomic commit via GraphQL `createCommitOnBranch`: no more 1-commit-per-file pollution. Binary file support with base64 encoding, 50 MB batch limit
 - **GitHub batch delete**: Atomic multi-file deletion in a single commit via GraphQL
-- **GitHub pre-push detection**: Detects unpushed local commits before API upload — warns with push-first/continue/cancel dialog to prevent merge conflicts and skipped local changes
+- **GitHub pre-push detection**: Detects unpushed local commits before API upload: warns with push-first/continue/cancel dialog to prevent merge conflicts and skipped local changes
 - **GitHub `git push` from app**: "Push First" button in warning dialog runs `git push` on the local repo before proceeding with API upload
 - **CLI `about` command**: Show server info, account details, and storage quota (`aeroftp-cli about sftp://host`)
 - **CLI `dedupe` command**: Find duplicate files by content hash with interactive/dry-run resolution modes
@@ -1761,7 +1817,7 @@ GitHub multi-file atomic commits via GraphQL, unpushed local commit detection wi
 
 #### Fixed
 
-- **WiX installer dialog image**: Replaced dark background BMP with proper light-themed image — installer text now readable on Windows MSI wizard
+- **WiX installer dialog image**: Replaced dark background BMP with proper light-themed image: installer text now readable on Windows MSI wizard
 - **ProvidersDialog layout**: Refactored from 3-tab to unified single-table view with compact column labels (Share, Versions, Collab.)
 
 #### Changed
@@ -1779,19 +1835,19 @@ GitHub multi-file atomic commits via GraphQL, unpushed local commit detection wi
 #### Added
 
 - **`head` / `tail` commands**: Print first/last N lines of remote files. Default 20, configurable with `-n`. Binary file detection with exit code 5
-- **`hashsum` command**: Compute remote file hash — md5, sha1, sha256, sha512, blake3. Output matches `sha256sum` format. JSON mode with algorithm, hash, size
+- **`hashsum` command**: Compute remote file hash: md5, sha1, sha256, sha512, blake3. Output matches `sha256sum` format. JSON mode with algorithm, hash, size
 - **`touch` command**: Create empty remote file or confirm existence. Returns `action: "created"` or `action: "exists"` in JSON mode
-- **`check` command**: Verify local/remote directory match — reports matches, differences, missing files. Supports `--checksum` (SHA-256) and `--one-way` modes
+- **`check` command**: Verify local/remote directory match: reports matches, differences, missing files. Supports `--checksum` (SHA-256) and `--one-way` modes
 - **Advanced filter system**: `--include`, `--exclude-global` (glob patterns), `--include-from`, `--exclude-from` (file-based), `--min-size`, `--max-size`, `--min-age`, `--max-age`. Applies to ls, get, put, sync, find
 - **`--max-delete` sync safety**: Abort if deletion count exceeds limit (absolute `50` or percentage `25%`). Prevents accidental mass deletion
 - **`--backup-dir` / `--backup-suffix`**: Sync flags for backing up overwritten files (struct ready)
 
 #### Fixed
 
-- **`--profile` without URL placeholder**: All 19 CLI commands now work with just `--profile "name"` — no `_` dummy URL needed. Positional arg shift handles profile mode transparently
+- **`--profile` without URL placeholder**: All 19 CLI commands now work with just `--profile "name"`: no `_` dummy URL needed. Positional arg shift handles profile mode transparently
 - **`connect` command with `--profile`**: Was bypassing vault profile resolution, going direct to URL parser. Now uses `create_and_connect` with full OAuth/profile support
 - **4shared CLI support**: OAuth 1.0 tokens now correctly read from vault (`oauth_fourshared` key with `token:secret` format + individual consumer key/secret)
-- **Azure container from profile**: `options.bucket` auto-mapped to `container` for Azure provider — no manual `--container` flag needed when using saved profiles
+- **Azure container from profile**: `options.bucket` auto-mapped to `container` for Azure provider: no manual `--container` flag needed when using saved profiles
 
 #### Changed
 
@@ -1807,22 +1863,22 @@ End-to-end encrypted notes for Filen with per-note AES-256-GCM keys, provider-sp
 
 #### Added
 
-- **Filen Encrypted Notes (Beta)**: Full CRUD for Filen's E2E encrypted notes — create, read, edit, trash, archive, restore, delete. Per-note AES-256-GCM key derived via PBKDF2, encrypted with master key. Auto-save (2s debounce) + manual save button. Version history viewer with restore. Tag management (create, rename, delete, assign/remove). Filter by All/Favorites/Pinned/Archived/Trash. 20 Tauri commands, `filen/notes.rs` module (660 lines)
-- **Filen Notes toolbar button**: Emerald `FileText` icon in remote address bar when connected to Filen — same pattern as GitHub Actions/Releases/Pages buttons
+- **Filen Encrypted Notes (Beta)**: Full CRUD for Filen's E2E encrypted notes: create, read, edit, trash, archive, restore, delete. Per-note AES-256-GCM key derived via PBKDF2, encrypted with master key. Auto-save (2s debounce) + manual save button. Version history viewer with restore. Tag management (create, rename, delete, assign/remove). Filter by All/Favorites/Pinned/Archived/Trash. 20 Tauri commands, `filen/notes.rs` module (660 lines)
+- **Filen Notes toolbar button**: Emerald `FileText` icon in remote address bar when connected to Filen: same pattern as GitHub Actions/Releases/Pages buttons
 - **Provider trash toolbar button**: Single conditional `Trash2` button in remote address bar for 10 providers (Zoho, Jottacloud, MEGA, Google Drive, Box, Dropbox, FileLu, Koofr, OpenDrive, Yandex). Replaces per-provider "View Trash" entries in context menu
 - **Connect loading spinner**: Persistent `Loader2` spinner on saved server connect button with disabled state preventing double-click. Awaits full connection lifecycle via async `onConnect`
-- **GitHub file dates**: Parallel per-file last-commit date fetching via Commits API (10 concurrent, capped at 60 entries) — GitHub file listings now show modification dates
+- **GitHub file dates**: Parallel per-file last-commit date fetching via Commits API (10 concurrent, capped at 60 entries): GitHub file listings now show modification dates
 
 #### Fixed
 
-- **GitHub sync navigation**: `resolve_path("/")` was treating root as current directory — synchronized navigation broke on upward traversal when remote panel received `cd("/")`
+- **GitHub sync navigation**: `resolve_path("/")` was treating root as current directory: synchronized navigation broke on upward traversal when remote panel received `cd("/")`
 - **Filen module structure**: Refactored `filen.rs` (1607 lines) into `filen/mod.rs` + `filen/notes.rs` directory module for maintainability
-- **Context menu cleanup**: Removed ~50 lines of "View Trash" entries from right-click menu across 10 providers — now accessible via toolbar button
+- **Context menu cleanup**: Removed ~50 lines of "View Trash" entries from right-click menu across 10 providers: now accessible via toolbar button
 
 #### Changed
 
-- **Saved Servers button styling**: Health Check (emerald) and Export/Import (amber) buttons match AeroCloud/AeroFile compact badge style — `p-1.5` padding, 16px icons, colored backgrounds
-- **Save feedback in note editor**: Three-state indicator — amber "Unsaved", blue spinner "Saving...", green check "Saved"
+- **Saved Servers button styling**: Health Check (emerald) and Export/Import (amber) buttons match AeroCloud/AeroFile compact badge style: `p-1.5` padding, 16px icons, colored backgrounds
+- **Save feedback in note editor**: Three-state indicator: amber "Unsaved", blue spinner "Saving...", green check "Saved"
 - **18 i18n keys**: Filen Notes UI strings translated in all 47 languages
 
 ## [3.0.6] - 2026-03-21
@@ -1835,10 +1891,10 @@ Complete GitHub CI/CD monitoring with Actions workflow panel, universal file sea
 
 #### Added
 
-- **GitHub Actions browser**: Live workflow runs monitor with status semaphore (green/amber/red), duration, commit SHA, actor, branch. Re-run all jobs, re-run failed only, cancel in-progress — all from the app. Auto-polls every 15s when runs are active
+- **GitHub Actions browser**: Live workflow runs monitor with status semaphore (green/amber/red), duration, commit SHA, actor, branch. Re-run all jobs, re-run failed only, cancel in-progress: all from the app. Auto-polls every 15s when runs are active
 - **GitHub code search**: `find()` implementation via Git Trees API with recursive listing and case-insensitive filename matching
 - **Universal file filter**: Client-side live filter enabled for all 22 providers (was disabled for FTP, SFTP, WebDAV, S3, Azure, GitHub). Type to filter files in current directory with result counter
-- **GitHub App credentials vault**: App ID and Installation ID saved alongside PEM in vault. New connections pre-populate all fields — just enter the repo name
+- **GitHub App credentials vault**: App ID and Installation ID saved alongside PEM in vault. New connections pre-populate all fields: just enter the repo name
 - **GitHub PAT vault storage**: Personal Access Tokens encrypted in vault on first use; pre-populated for new connections to different repos
 - **GitHub OAuth vault storage**: Device Flow tokens stored in vault; "Already authorized" badge for instant multi-repo setup
 - **GitHub connection form UX**: Auth method tabs hidden until clicked (no default selection), locked fields with "Edit" link (S3 pattern), "PEM found in vault" auto-detection
@@ -1847,13 +1903,13 @@ Complete GitHub CI/CD monitoring with Actions workflow panel, universal file sea
 #### Fixed
 
 - **GitHub co-authoring contributor display**: Commits via App mode now use `Co-authored-by` trailer ensuring `aeroftp[bot]` appears as contributor (not just committer) on GitHub
-- **GitHub PEM reconnection**: Token auto-refresh on connect using vault-stored PEM — no manual re-import needed after token expiry
+- **GitHub PEM reconnection**: Token auto-refresh on connect using vault-stored PEM: no manual re-import needed after token expiry
 - **Remote search 0 results**: Search bar was calling API-based `provider_find` on Enter but not applying client-side filter. Now filters live on keystroke
 - **Version bump**: All 5 version files updated to 3.0.6 (was showing 3.0.4 in splash screen on v3.0.5 release)
 
 #### Changed
 
-- **Audit remediation**: 4 findings fixed from 3-agent code review — setState side effect in polling, dead code removal, deduplicated methods, unified action handlers
+- **Audit remediation**: 4 findings fixed from 3-agent code review: setState side effect in polling, dead code removal, deduplicated methods, unified action handlers
 - **`post_empty` HTTP method**: Added to GitHub HTTP client for Actions API endpoints that return 201/202 with no body
 
 ## [3.0.5] - 2026-03-20
@@ -1871,7 +1927,7 @@ Critical fix for SFTP file uploads, complete GitHub integration with multi-repo,
 
 #### Added
 
-- **GitHub PEM vault storage**: GitHub App `.pem` private keys are now encrypted (AES-256-GCM) and stored in the vault on first import. Reconnection uses the vault copy — the original `.pem` file can be safely deleted
+- **GitHub PEM vault storage**: GitHub App `.pem` private keys are now encrypted (AES-256-GCM) and stored in the vault on first import. Reconnection uses the vault copy: the original `.pem` file can be safely deleted
 - **GitHub token expiry badges**: Dynamic status indicators show token state (valid, expiring soon, expired) with auto-refresh messaging
 - **GitHub PEM error messages**: Specific, actionable error messages for missing, empty, or invalid PEM files instead of generic "InvalidKeyFormat"
 - **ssh2 dependency**: Added `ssh2 0.9.5` with vendored OpenSSL for reliable SFTP uploads via SCP protocol
@@ -1891,7 +1947,7 @@ Critical fix for SFTP file uploads, complete GitHub integration with multi-repo,
 
 #### Changed
 
-- **SFTP upload architecture**: Hybrid model — russh for SSH connection lifecycle, listing, downloads; ssh2/SCP for uploads with post-upload size verification
+- **SFTP upload architecture**: Hybrid model: russh for SSH connection lifecycle, listing, downloads; ssh2/SCP for uploads with post-upload size verification
 - **README**: AeroCloud documentation link updated to docs.aeroftp.app
 
 ## [3.0.4] - 2026-03-19
@@ -1940,10 +1996,10 @@ Comprehensive fixes to AeroAgent tool execution, AI provider compatibility, and 
 - **AeroAgent relative path resolution**: All local file tools (`local_read`, `local_write`, `local_edit`, `local_list`, `local_search`, `local_rename`, `local_copy_files`, `local_move_files`, `archive_compress`, `archive_decompress`, `upload_files`, `download_files`) now correctly resolve relative paths against the current local directory context
 - **AeroAgent tool validation**: Pre-execution validation no longer falsely reports "file not found" or "parent directory does not exist" for relative paths that will be resolved at execution time
 - **AeroAgent upload_files recursive**: Directories passed to `upload_files` are now expanded recursively with per-level remote `mkdir`, enabling full directory tree upload to remote servers
-- **AeroAgent server_exec credentials**: Fixed credential lookup from vault — reads password from `server_{id}` key and profile data from `config_server_profiles`, matching the frontend's storage format
+- **AeroAgent server_exec credentials**: Fixed credential lookup from vault: reads password from `server_{id}` key and profile data from `config_server_profiles`, matching the frontend's storage format
 - **AeroAgent server_exec TLS**: Automatic retry with `verify_cert=false` when FTP/TLS connection fails due to hostname mismatch or self-signed certificates (common on shared hosting)
 - **AeroAgent server_exec active session**: Detects when the target server is already connected in the active session and returns an informative message suggesting `remote_list`/`upload_files` instead
-- **AeroAgent Cohere streaming**: Excluded `stream_options` field from Cohere and Perplexity API requests — these providers reject unknown fields with HTTP 400
+- **AeroAgent Cohere streaming**: Excluded `stream_options` field from Cohere and Perplexity API requests: these providers reject unknown fields with HTTP 400
 - **AeroAgent empty messages**: Assistant messages containing only thinking/tool calls (no visible text) now include a `(tool execution)` placeholder, preventing Cohere from rejecting the conversation history
 - **AeroAgent local_copy_files**: Single file-to-file copy now works correctly (e.g., copy `test.txt` as `backup.txt`) instead of treating destination as directory
 - **Cohere API endpoint**: Fixed from `/compatibility` to `/compatibility/v1`
@@ -1958,11 +2014,11 @@ Comprehensive fixes to AeroAgent tool execution, AI provider compatibility, and 
 
 #### Changed
 
-- **Default model capabilities**: Models added from provider's model list now default to `supportsTools: true` — previously defaulted to false, causing tools to be silently disabled
-- **Hardcoded DEFAULT_MODELS removed**: Provider model presets cleared — models change too frequently, users select from live provider catalog via the Models button
+- **Default model capabilities**: Models added from provider's model list now default to `supportsTools: true`: previously defaulted to false, causing tools to be silently disabled
+- **Hardcoded DEFAULT_MODELS removed**: Provider model presets cleared: models change too frequently, users select from live provider catalog via the Models button
 - **About dialog**: Protocol count updated to 22
 - **Snapcraft**: Website field updated to `https://aeroftp.app`
-- **AUR PKGBUILD**: Switched from AppImage to .deb extraction — resolves `EGL_BAD_PARAMETER` error on Arch Linux with certain GPU drivers
+- **AUR PKGBUILD**: Switched from AppImage to .deb extraction: resolves `EGL_BAD_PARAMETER` error on Arch Linux with certain GPU drivers
 - **Tool error messages**: Improved pattern matching for tool-related errors with informative hints
 
 ---
@@ -1976,15 +2032,15 @@ Critical fixes for folder upload navigation, settings propagation, and session t
 #### Fixed
 
 - **Folder upload remote panel navigation** (critical): Uploading a folder with subfolders while using smart comparison modes (overwrite-if-newer, overwrite-if-different, skip-if-identical) caused the remote panel to navigate into the last subdirectory after upload completed. Root cause: FTP `change_dir()` during metadata collection phase was not restored to original directory
-- **Settings not applied on first transfer**: Changing file handling settings (e.g. from "Ask" to "Overwrite if newer") required two transfer attempts before taking effect. Root cause: `checkFolderOverwrite` useCallback had stale closure — missing `fileExistsAction` in dependency array
+- **Settings not applied on first transfer**: Changing file handling settings (e.g. from "Ask" to "Overwrite if newer") required two transfer attempts before taking effect. Root cause: `checkFolderOverwrite` useCallback had stale closure: missing `fileExistsAction` in dependency array
 - **Settings save lag and double-click**: Save Changes button had no visual feedback during async vault write, causing users to click multiple times. Now shows spinner while saving, checkmark on success, and auto-closes after brief confirmation
 - **Settings sync delay**: Settings changes dispatched via custom event required async vault re-read before propagating to App.tsx. Now passes settings inline in CustomEvent detail for immediate synchronous application
 
 #### Changed
 
-- **Session tabs locked during transfers**: Non-active server tabs are visually dimmed (opacity 40%) and completely non-interactive during active file transfers — prevents accidental session switching that would queue a reconnection and confuse users during long batch transfers
+- **Session tabs locked during transfers**: Non-active server tabs are visually dimmed (opacity 40%) and completely non-interactive during active file transfers: prevents accidental session switching that would queue a reconnection and confuse users during long batch transfers
 - **Settings panel header**: Removed gradient badge icon, replaced with plain icon to match other modal dialogs
-- **Windows NSIS installer**: Auto-downloads and installs VC++ Redistributable 2015-2022 if `vcruntime140.dll` is missing — fixes `STATUS_DLL_NOT_FOUND` crash on clean Windows installs. Uses `NSISdl` (same built-in plugin as Tauri's WebView2 bootstrapper)
+- **Windows NSIS installer**: Auto-downloads and installs VC++ Redistributable 2015-2022 if `vcruntime140.dll` is missing: fixes `STATUS_DLL_NOT_FOUND` crash on clean Windows installs. Uses `NSISdl` (same built-in plugin as Tauri's WebView2 bootstrapper)
 - **README**: Added website and documentation links (aeroftp.app, docs.aeroftp.app)
 
 ---
@@ -1997,18 +2053,18 @@ Critical fix for GitHub App (.pem) authentication and comprehensive mtime preser
 
 #### Fixed
 
-- **GitHub App .pem token generation panic** (critical): `jsonwebtoken` 10.x requires `rust_crypto` feature — missing feature caused thread panic on JWT signing, blocking token generation entirely
-- **GitHub App token timeout**: Added 30s timeout on all GitHub auth HTTP requests — previously hung indefinitely on network issues
+- **GitHub App .pem token generation panic** (critical): `jsonwebtoken` 10.x requires `rust_crypto` feature: missing feature caused thread panic on JWT signing, blocking token generation entirely
+- **GitHub App token timeout**: Added 30s timeout on all GitHub auth HTTP requests: previously hung indefinitely on network issues
 - **GitHub App error messages**: Specific error messages for 401 (invalid PEM/App ID), 403 (missing permissions), 404 (wrong Installation ID), timeout
-- **GitHub protected branch bypass**: New `DirectWriteProtected` mode — attempts direct push first when user/app has ruleset bypass, falls back to working branch only if rejected. Previously always created a working branch even when bypass was configured
-- **AeroCloud manual sync protocol support** (critical): Manual sync was hardcoded to FTP manager — failed with "Not connected to FTP server" on SFTP, WebDAV, S3, and all other protocols. Now uses the same multi-protocol factory as background sync
+- **GitHub protected branch bypass**: New `DirectWriteProtected` mode: attempts direct push first when user/app has ruleset bypass, falls back to working branch only if rejected. Previously always created a working branch even when bypass was configured
+- **AeroCloud manual sync protocol support** (critical): Manual sync was hardcoded to FTP manager: failed with "Not connected to FTP server" on SFTP, WebDAV, S3, and all other protocols. Now uses the same multi-protocol factory as background sync
 - **Sync ping-pong elimination**: Removed `set_file_mtime(now)` after upload that corrupted local timestamps, causing files to be re-transferred on every sync cycle
 
 #### Added
 
 - **SFTP mtime preservation**: `setstat` after upload sets remote file mtime to match local file's original timestamp
 - **FTP MFMT support**: RFC draft `MFMT` command after upload preserves mtime on servers that support it (ProFTPD, FileZilla Server). Auto-detected via `FEAT`
-- **Universal sync mtime alignment**: After upload on any provider, `stat()` reads the server-assigned mtime and applies it to the local file — ensures both sides match for accurate timestamp comparison
+- **Universal sync mtime alignment**: After upload on any provider, `stat()` reads the server-assigned mtime and applies it to the local file: ensures both sides match for accurate timestamp comparison
 - **Download mtime preservation (provider path)**: After download via StorageProvider, remote mtime is applied to the local file
 - **Token expiry local timezone**: GitHub App token expiry displayed in user's local timezone instead of raw UTC
 - **Auth mode lock on edit**: When editing a saved GitHub connection, authentication mode buttons are locked to prevent accidental mode switching
@@ -2023,24 +2079,24 @@ Critical fix for GitHub App (.pem) authentication and comprehensive mtime preser
 
 ## [3.0.0] - 2026-03-17
 
-### GitHub Integration — 23rd Protocol, Custom Commit Identity & Developer Program
+### GitHub Integration: 23rd Protocol, Custom Commit Identity & Developer Program
 
 AeroFTP enters GitHub. Browse repositories as filesystems, upload files that become commits, manage release assets, and customize your commit identity with your own GitHub App logo. The first file transfer client with native GitHub API integration across GUI, CLI, and AI agents.
 
 #### Added
 
-- **GitHub as 23rd protocol**: Full repository filesystem — browse, upload (commit), download, delete (commit), rename, mkdir, search, tree. Every write operation creates a real Git commit
+- **GitHub as 23rd protocol**: Full repository filesystem: browse, upload (commit), download, delete (commit), rename, mkdir, search, tree. Every write operation creates a real Git commit
 - **Three authentication modes**: Authorize with GitHub (Device Flow one-click), Personal Access Token (manual), GitHub App with .pem (bot mode with custom logo in commits)
-- **Custom commit identity**: Create your own GitHub App with your logo — commits show your app's name and avatar in the repository's contributor list. Same mechanism used by GitHub Actions and Dependabot
+- **Custom commit identity**: Create your own GitHub App with your logo: commits show your app's name and avatar in the repository's contributor list. Same mechanism used by GitHub Actions and Dependabot
 - **Release asset management**: Releases as virtual directories (`.github-releases/`), asset upload as raw binary (up to 2 GiB), download, delete
 - **Branch awareness**: Direct push on writable branches, automatic working branch (`aeroftp/{user}/{base}`) for protected branches, read-only mode detection. Write mode indicator in status bar
 - **GitHub-specific GUI**: Branch selector dropdown in toolbar, write mode indicator, commit message dialog for uploads/deletes, batch commit prompt (single message for multi-file operations), branch protection info box
 - **Context menu**: "View on GitHub", "Copy Raw URL", "File History" with working branch awareness
 - **Protocol selector reorganized**: "Protocols" section (FTP, SFTP, WebDAV, S3, Azure) + "Services" section (GitHub first, then cloud providers)
-- **AeroCloud dynamic button**: Cloud icon with green LED in Quick Connect header — opens AeroCloud if configured, setup wizard if not
-- **GitHub App created**: [github.com/apps/aeroftp](https://github.com/apps/aeroftp) — official AeroFTP GitHub App for Device Flow authorization
-- **GitHub provider documentation**: [docs/GITHUB-INTEGRATION.md](docs/GITHUB-INTEGRATION.md) — comprehensive guide for all three auth modes, custom identity, and technical details
-- **47 new i18n keys**: GitHub auth, commit dialog, branch selector, write mode, protection info — translated in all 47 languages
+- **AeroCloud dynamic button**: Cloud icon with green LED in Quick Connect header: opens AeroCloud if configured, setup wizard if not
+- **GitHub App created**: [github.com/apps/aeroftp](https://github.com/apps/aeroftp): official AeroFTP GitHub App for Device Flow authorization
+- **GitHub provider documentation**: [docs/GITHUB-INTEGRATION.md](docs/GITHUB-INTEGRATION.md): comprehensive guide for all three auth modes, custom identity, and technical details
+- **47 new i18n keys**: GitHub auth, commit dialog, branch selector, write mode, protection info: translated in all 47 languages
 - **CLI `github://` URL scheme**: `aeroftp ls github://token@owner/repo /path/`
 - **CLI `--profile` for GitHub**: Connect to saved GitHub repos without exposing tokens
 - **`agent-info` command**: Structured JSON capability discovery for AI agents, includes GitHub in supported protocols
@@ -2063,9 +2119,9 @@ AeroFTP enters GitHub. Browse repositories as filesystems, upload files that bec
 #### Security (Dual 10-auditor review)
 
 - 83+ findings from 5 Claude auditors (security, performance, UX, Rust quality, OAuth)
-- 7 findings from full integration review (4 HIGH, 3 MEDIUM — all resolved)
+- 7 findings from full integration review (4 HIGH, 3 MEDIUM: all resolved)
 - Shell injection eliminated, symlink escape protection, token detection hardened
-- `.pem` private key read in Rust backend only — path crosses IPC, never key content
+- `.pem` private key read in Rust backend only: path crosses IPC, never key content
 - Committer identity conditional: bot for installation tokens, user identity for PAT/Device Flow
 
 ---
@@ -2074,11 +2130,11 @@ AeroFTP enters GitHub. Browse repositories as filesystems, upload files that bec
 
 ### CLI Vault Profiles, FTP/TLS Upload Fix & 5-Auditor Security Hardening
 
-Major CLI evolution: saved server profiles accessible via `--profile` flag — connect to any of 22 protocols without exposing credentials. Critical fix for FTP/TLS upload truncation and WebDAV HTTP upload failures. 83-finding security audit across 5 specialized auditors with all CRITICAL/HIGH/MEDIUM resolved.
+Major CLI evolution: saved server profiles accessible via `--profile` flag: connect to any of 22 protocols without exposing credentials. Critical fix for FTP/TLS upload truncation and WebDAV HTTP upload failures. 83-finding security audit across 5 specialized auditors with all CRITICAL/HIGH/MEDIUM resolved.
 
 #### Added
 
-- **CLI `--profile` flag**: Connect to any saved server profile from the encrypted vault without exposing credentials. Supports all 22 protocols. `aeroftp ls --profile "My Server" /path/` — zero passwords in command line, shell history, or process list. Fuzzy name matching with exact-match priority and ambiguous-match disambiguation
+- **CLI `--profile` flag**: Connect to any saved server profile from the encrypted vault without exposing credentials. Supports all 22 protocols. `aeroftp ls --profile "My Server" /path/`: zero passwords in command line, shell history, or process list. Fuzzy name matching with exact-match priority and ambiguous-match disambiguation
 - **CLI `profiles` command**: List all saved server profiles with protocol, host, and path. `aeroftp profiles` (table) or `aeroftp profiles --json` (machine-readable). Never shows credentials
 - **CLI OAuth provider support**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive accessible via `--profile` when tokens are authorized from GUI. pCloud verified working end-to-end
 - **CLI `--master-password` flag**: Unlock vault with master password for headless/CI use. Supports `AEROFTP_MASTER_PASSWORD` env var for secure scripting
@@ -2096,7 +2152,7 @@ Major CLI evolution: saved server profiles accessible via `--profile` flag — c
 - **Recursive upload limits**: `put -r` now capped at 100 depth levels and 500K entries, matching download limits
 - **UTF-8 string truncation safety**: Fixed potential panic on multi-byte UTF-8 characters in output truncation
 
-#### Security (5-Auditor CLI Audit — 83 findings, all CRITICAL/HIGH/MEDIUM resolved)
+#### Security (5-Auditor CLI Audit: 83 findings, all CRITICAL/HIGH/MEDIUM resolved)
 
 - **SEC-001**: Master password hidden input (was visible echo)
 - **SEC-002**: CLI arg exposure warning for `--master-password`
@@ -2120,7 +2176,7 @@ OpenDrive joins as the 22nd protocol with a full native REST API provider. Yande
 #### Added
 
 - **OpenDrive provider** (22nd protocol): Native REST API integration with session-based authentication (username/password), 5 GB free storage. Full StorageProvider trait: list, upload, download, mkdir, delete, move, stat, storage quota. Trash management (list/restore/permanent delete/empty). MD5 checksums, zlib compression, expiring share links. `opendrive.rs` ~1562 lines. OpenDriveTrashManager.tsx component. 4 Tauri commands for trash operations. Integrated in cloud provider factory, CLI, and AeroAgent
-- **Yandex Disk Trash Manager**: Full trash lifecycle — list, restore, permanent delete, empty trash. `YandexTrashManager.tsx` component with sky-blue theme, 4 Tauri commands (`yandex_list_trash`, `yandex_restore_from_trash`, `yandex_permanent_delete`, `yandex_empty_trash`). Context menu "View Trash" entry for Yandex Disk connections
+- **Yandex Disk Trash Manager**: Full trash lifecycle: list, restore, permanent delete, empty trash. `YandexTrashManager.tsx` component with sky-blue theme, 4 Tauri commands (`yandex_list_trash`, `yandex_restore_from_trash`, `yandex_permanent_delete`, `yandex_empty_trash`). Context menu "View Trash" entry for Yandex Disk connections
 - **Yandex Disk OAuth in Settings**: Client ID and Client Secret configuration fields added to Settings > Cloud Providers tab with link to Yandex OAuth console
 - **Zoho WorkDrive OAuth in Settings**: Client ID and Client Secret configuration fields added to Settings > Cloud Providers tab with link to Zoho API console
 - **OpenDrive i18n**: 9 keys translated in all 47 languages (trash title, description, tooltip, auth help, username placeholder, display name, protocol label, settings label)
@@ -2128,7 +2184,7 @@ OpenDrive joins as the 22nd protocol with a full native REST API provider. Yande
 #### Fixed
 
 - **Windows credential persistence** (critical): `secureStoreAndClean` was removing localStorage after vault write, but if the vault had transient issues on Windows (file locking, ACL), server profiles were permanently lost from both storage layers. Now localStorage is kept as a resilient write-through backup alongside the encrypted vault
-- **Server import credential loss**: `import_server_profiles` silently ignored credential storage failures (`let _ = store.store(...)`) — imported passwords and API keys were lost without any error. Now logs warnings and properly reports vault-not-ready conditions
+- **Server import credential loss**: `import_server_profiles` silently ignored credential storage failures (`let _ = store.store(...)`): imported passwords and API keys were lost without any error. Now logs warnings and properly reports vault-not-ready conditions
 - **Server export silent failure**: `export_server_profiles` silently skipped credentials when vault was unavailable. Now logs warnings so users know credentials were not included
 
 #### Changed
@@ -2152,7 +2208,7 @@ Yandex Disk native API as the 21st protocol. Extended share link support to all 
 - **Folder scan progress toast**: Centered toast with animated spinner shows real-time scan progress during recursive folder operations (delete and download). Displays folder name and live counters ("Scanning... 245 files, 12 folders found"). Auto-dismisses when the actual operation begins
 - **Delete scan progress events**: Rust backend now emits `scanning` events every 500ms during recursive folder deletion Phase 1, matching the existing download scan pattern. Previously, deleting a large remote folder showed no feedback for minutes during the directory tree traversal
 - **Update install overlay**: Fullscreen overlay with spinner and status message ("Installing update...") appears immediately after clicking "Install & Restart" and entering the system password. Covers the entire app to clearly signal the imminent restart, eliminating the confusing idle gap between password entry and app restart
-- **15 new i18n keys**: Share link settings (3), scanning toast (4), update overlay (2), `common.optional` — translated in all 47 languages
+- **15 new i18n keys**: Share link settings (3), scanning toast (4), update overlay (2), `common.optional`: translated in all 47 languages
 - **AI Agent & CI/CD integration docs**: New README section documenting AeroFTP CLI compatibility with AI coding agents (OpenClaw, Claude Code, Codex, Cursor, Devin) and CI/CD pipelines. Highlights `--json` output, semantic exit codes, URL-based connections, `NO_COLOR` compliance, and batch scripting for automated deployments
 - **Extended file preview support**: Dotfiles (`.gitignore`, `.dockerignore`, `.editorconfig`, `.npmrc`, `.eslintrc`, `.prettierrc`), config variants (`.htaccess.production`, `.env.local`), extensionless files (`Makefile`, `Dockerfile`, `LICENSE`, `README`, `Vagrantfile`, `Gemfile`), and `.manifest` files now open in Quick Look, Monaco editor, and DevTools preview. Language detection maps each to appropriate syntax highlighting (ini, json, ruby, dockerfile, markdown)
 - **OAuth credentials always visible**: Client ID and Client Secret fields in the OAuth connection panel are now shown immediately instead of being hidden behind a "Configure Credentials" toggle. Users see exactly what they need to fill in without extra clicks
@@ -2191,7 +2247,7 @@ Critical fix for remote file timestamps displayed in UTC instead of local timezo
 
 #### Changed
 
-- **11 provider backends updated**: ftp.rs (MLSD), sftp.rs, kdrive.rs, koofr.rs, jottacloud.rs, drime_cloud.rs, zoho_workdrive.rs, lib.rs, provider_commands.rs — all UTC timestamps now carry `Z` suffix
+- **11 provider backends updated**: ftp.rs (MLSD), sftp.rs, kdrive.rs, koofr.rs, jottacloud.rs, drime_cloud.rs, zoho_workdrive.rs, lib.rs, provider_commands.rs: all UTC timestamps now carry `Z` suffix
 
 ---
 
@@ -2204,15 +2260,15 @@ Full 8-area security audit (103 findings) + independent counter-audit (14 findin
 #### Added
 
 - **Yandex Object Storage S3 preset**: S3-compatible cloud storage (BETA) with path-style access, `ru-central1` region, and official Yandex Cloud SVG logo
-- **DOMPurify sanitization**: All `dangerouslySetInnerHTML` usages now sanitized via DOMPurify — applied to Prism.js code blocks in MarkdownRenderer and TextViewer
+- **DOMPurify sanitization**: All `dangerouslySetInnerHTML` usages now sanitized via DOMPurify: applied to Prism.js code blocks in MarkdownRenderer and TextViewer
 
 #### Fixed
 
 - **Shell denylist expansion** (A1-05): Added redirect operators (`>`, `<`, `>>`, `<<`), command substitution (backtick, `$(`), and `rm -r` on home/root paths to shell_execute deny patterns
-- **NEVER_AUTO_APPROVE hardened** (A1-01): `server_exec` and `vault_manage` added to auto-approval blocklist — prevents auto-execution in Extreme Mode
+- **NEVER_AUTO_APPROVE hardened** (A1-01): `server_exec` and `vault_manage` added to auto-approval blocklist: prevents auto-execution in Extreme Mode
 - **Vault write crash safety** (A2-01): `fsync()` errors now propagated (not silently ignored), parent directory fsync after rename ensures directory entry durability
-- **TOTP-before-cache flow** (A2-08): Vault cache only populated after successful TOTP verification — prevents accessing vault contents before 2FA
-- **Keystore import rollback** (GPT A2-02): Import now stages entries and commits all-or-nothing with lossless rollback — overwrites restore original values, new entries deleted on failure
+- **TOTP-before-cache flow** (A2-08): Vault cache only populated after successful TOTP verification: prevents accessing vault contents before 2FA
+- **Keystore import rollback** (GPT A2-02): Import now stages entries and commits all-or-nothing with lossless rollback: overwrites restore original values, new entries deleted on failure
 - **Keystore merge strategy validation**: `normalize_merge_strategy()` validates input against whitelist, rejecting unknown strategies
 - **pCloud client_secret** (A3-02): Token exchange sends `client_secret` in POST body instead of URL query parameter
 - **OAuth callback timeout** (A3-04): 120s read timeout on OAuth callback listener socket
@@ -2220,15 +2276,15 @@ Full 8-area security audit (103 findings) + independent counter-audit (14 findin
 - **Vault remote path confinement** (A7-05): `vault_v2_upload_remote` verifies canonicalized temp path stays within system temp directory
 - **File tags path validation** (A4-01): `validate_path()` applied to all 5 file_tags commands accepting paths from frontend
 - **Sync path traversal** (A5-01): `validate_relative_path()` applied in `build_comparison_results` for GUI sync flow
-- **Archive symlink following** (A7-02): 7z and TAR compression use `follow_links(false)` in WalkDir — prevents symlink escape
+- **Archive symlink following** (A7-02): 7z and TAR compression use `follow_links(false)` in WalkDir: prevents symlink escape
 - **Image edit atomic write** (A7-01): `process_image` replace-original mode uses temp+rename pattern
-- **Editor reload path match** (GPT A6-01): Changed from suffix match to exact path equality — prevents reloading wrong file
+- **Editor reload path match** (GPT A6-01): Changed from suffix match to exact path equality: prevents reloading wrong file
 - **install_windows_update dead code removed** (A8-01): Unused Windows update function removed from lib.rs
 
 #### Changed
 
 - **S3 preset reordering**: DigitalOcean Spaces and Oracle Cloud (untested BETA) moved to bottom of S3 provider list
-- **FileLu S3 preset removed**: S3 endpoint was too slow — WebDAV and native API work better
+- **FileLu S3 preset removed**: S3 endpoint was too slow: WebDAV and native API work better
 
 ---
 
@@ -2238,31 +2294,31 @@ Full 8-area security audit (103 findings) + independent counter-audit (14 findin
 
 #### Added
 
-- **Server Health Check**: Real-time network diagnostics for saved servers — DNS resolution, TCP connect, TLS handshake, and HTTP response probes with latency measurements, health scoring (0-100), and professional modal with SVG radial gauge, latency bars, and Canvas 2D area chart
+- **Server Health Check**: Real-time network diagnostics for saved servers: DNS resolution, TCP connect, TLS handshake, and HTTP response probes with latency measurements, health scoring (0-100), and professional modal with SVG radial gauge, latency bars, and Canvas 2D area chart
 - **Server context menu**: Right-click on saved server cards for Connect, Edit, Duplicate, Health Check, and Delete actions via reusable `useContextMenu` hook
 - **Batch health check**: "Check All" button in home screen header runs parallel diagnostics across all saved servers with healthy/degraded/unreachable summary and batch progress toast
-- **Cloud API host mapping**: Health checks work across all 20 protocols — cloud providers probe their actual API endpoints (e.g., `www.googleapis.com` for Google Drive, `api.dropboxapi.com` for Dropbox)
+- **Cloud API host mapping**: Health checks work across all 20 protocols: cloud providers probe their actual API endpoints (e.g., `www.googleapis.com` for Google Drive, `api.dropboxapi.com` for Dropbox)
 - **Provider-specific health probes**: 16 cloud providers use dedicated lightweight endpoints (pCloud `/getapiserver`, kDrive `/1/ping`, Filen `/v3/health`, MEGA `/cs`, etc.) instead of generic HEAD / for accurate reachability detection
 - **Copy health check results**: One-click copy of formatted diagnostic report with scores, check details, latencies, and healthy/degraded/unreachable summary
-- **AeroSync Pull preset**: Remote → Local mirror with orphan deletion and size verification — downloads remote state to local
-- **AeroSync Remote Backup preset**: Remote → Local with checksum verification and no deletes — safely backs up remote files locally
+- **AeroSync Pull preset**: Remote → Local mirror with orphan deletion and size verification: downloads remote state to local
+- **AeroSync Remote Backup preset**: Remote → Local with checksum verification and no deletes: safely backs up remote files locally
 - **AeroVault Pro modular architecture**: VaultPanel refactored from 1117-line monolith into 5 focused components (VaultHome, VaultCreate, VaultOpen, VaultBrowse, useVaultState hook)
 - **Recent Vaults**: SQLite WAL-backed vault history with last-opened tracking, security badges, and one-click reopen from VaultHome screen
 - **Folder encryption**: Encrypt entire directories as AeroVault containers with recursive `walkdir` scan, progress events, and folder preview (file count, dir count, total size)
-- **Provider Integration Guide**: Comprehensive developer reference for adding new storage protocols — StorageProvider trait, 7 auth patterns, upload strategies, XML parsing, pagination
+- **Provider Integration Guide**: Comprehensive developer reference for adding new storage protocols: StorageProvider trait, 7 auth patterns, upload strategies, XML parsing, pagination
 
 #### Fixed
 
-- **Download mtime preservation**: Downloaded files now retain the remote server's modification timestamp via `filetime` crate — fixes sync/overwrite-if-newer producing incorrect results after download because local files had download-time as mtime
-- **AeroSync missing directions**: Mirror and Backup were Local → Remote only — added Pull (Remote → Local mirror) and Remote Backup (Remote → Local backup) to Quick Sync presets, covering all 5 sync patterns
+- **Download mtime preservation**: Downloaded files now retain the remote server's modification timestamp via `filetime` crate: fixes sync/overwrite-if-newer producing incorrect results after download because local files had download-time as mtime
+- **AeroSync missing directions**: Mirror and Backup were Local → Remote only: added Pull (Remote → Local mirror) and Remote Backup (Remote → Local backup) to Quick Sync presets, covering all 5 sync patterns
 - **Health check false positives**: SFTP no longer penalized for TLS (uses SSH), WebDAV on port 80 probed via HTTP not HTTPS, cloud API 404/400/429 treated as reachable, S3 resolves saved endpoint instead of localhost placeholder, TLS timeout on open TCP port scored as skip instead of fail, HEAD→GET fallback for providers that reject HEAD
-- **Health check React Strict Mode**: `mountedRef` correctly reset on remount — fixes single and batch checks staying permanently in loading state
+- **Health check React Strict Mode**: `mountedRef` correctly reset on remount: fixes single and batch checks staying permanently in loading state
 - **AeroVault icon consistency**: Titlebar and modal header now use outline-only shield+lock icon matching other titlebar icons; removed redundant Lock badge from VaultHome
 - **i18n vault keys**: 6 missing `vault.errors.*` keys propagated to all 46 non-English locales, 5 stale keys removed, 4 extra root-level keys cleaned up
 
 #### Changed
 
-- **Snap Store auto-publish disabled**: Commented out pending manual review approval — `.snap` still built and uploaded to GitHub Releases. Re-enable when Snap Store review clears
+- **Snap Store auto-publish disabled**: Commented out pending manual review approval: `.snap` still built and uploaded to GitHub Releases. Re-enable when Snap Store review clears
 - **`filetime` crate added**: Cross-platform file modification time setting for mtime preservation after downloads
 
 ---
@@ -2273,8 +2329,8 @@ Full 8-area security audit (103 findings) + independent counter-audit (14 findin
 
 #### Fixed
 
-- **AeroVault MIME icon on Ubuntu**: Icons now installed in active icon theme (Yaru, Adwaita, Papirus, Breeze, etc.) via deb postinst script — fixes missing icon in Nautilus and other file managers that don't fall back to hicolor
-- **AeroVault "Open with" handler**: Custom `.desktop` template with `MimeType` and `%f` argument replaces Tauri-generated minimal desktop entry — enables right-click "Open with AeroFTP" and double-click association
+- **AeroVault MIME icon on Ubuntu**: Icons now installed in active icon theme (Yaru, Adwaita, Papirus, Breeze, etc.) via deb postinst script: fixes missing icon in Nautilus and other file managers that don't fall back to hicolor
+- **AeroVault "Open with" handler**: Custom `.desktop` template with `MimeType` and `%f` argument replaces Tauri-generated minimal desktop entry: enables right-click "Open with AeroFTP" and double-click association
 - **AeroVault icon in app**: VaultIcon component used for `.aerovault` files in filled icon theme
 - **CVE-2026-31812**: Update quinn-proto 0.11.13 → 0.11.14 fixing unauthenticated remote DoS via panic in QUIC transport parameter parsing
 
@@ -2297,7 +2353,7 @@ Production-ready CLI with batch scripting engine, backend-agnostic AI architectu
 - **CLI tree command**: Recursive directory tree with Unicode box-drawing, BFS depth limit, cycle detection, and JSON output
 - **CLI glob uploads**: Pattern-based multi-file uploads (e.g., `aeroftp put sftp://host "*.csv"`) via globset crate
 - **CLI documentation**: Comprehensive [CLI Guide](docs/CLI-GUIDE.md) with usage examples, batch scripting reference, and CI/CD integration patterns
-- **AI Core abstraction layer**: `EventSink`, `CredentialProvider`, `RemoteBackend` traits decoupling AI streaming from Tauri — foundation for CLI agent mode
+- **AI Core abstraction layer**: `EventSink`, `CredentialProvider`, `RemoteBackend` traits decoupling AI streaming from Tauri: foundation for CLI agent mode
 - **AeroVault MIME type icon**: Custom shield+lock icon in 8 PNG sizes (16-512px) + SVG + ICO + ICNS for all platforms
 - **AeroVault file association**: Double-click `.aerovault` files to open directly in AeroFTP (Linux .deb, Snap, Windows NSIS, macOS)
 - **Deep-link handler**: Single-instance argv forwarding and first-launch file open with path validation
@@ -2311,7 +2367,7 @@ Production-ready CLI with batch scripting engine, backend-agnostic AI architectu
 
 #### Changed
 
-- **AI streaming refactored**: `ai_chat_stream_with_sink()` replaces direct `app.emit()` calls — all stream functions now accept `&dyn EventSink`
+- **AI streaming refactored**: `ai_chat_stream_with_sink()` replaces direct `app.emit()` calls: all stream functions now accept `&dyn EventSink`
 - **VaultIcon unified**: Shield+lock design matching OS MIME icon replaces old safe/vault icon across frontend (modal, context menus, icon themes)
 
 ---
@@ -2323,7 +2379,7 @@ Production-ready CLI with batch scripting engine, backend-agnostic AI architectu
 #### Fixed
 
 - **Snap Store metadata redflag**: Softened description keywords ("Military-grade" -> "Strong", "shell commands" -> "scripting", "Autonomous" -> "Multi-step") to pass automated Snap Store review
-- **MEGA session handling**: Removed confusing EXP badge — backend auto-reauth handles session renewal transparently
+- **MEGA session handling**: Removed confusing EXP badge: backend auto-reauth handles session renewal transparently
 - **Jottacloud token persistence**: OAuth tokens properly saved and restored across sessions
 - **Activity Log auto-open**: Activity Log panel opens automatically on sync completion
 
@@ -2344,7 +2400,7 @@ Comprehensive security audit closure with 6 residual findings resolved, AeroClou
 
 - **AeroVault crate dependency**: Replaced inline `aerovault_v2.rs` crypto implementation (562 → 14 lines of wrapper code) with `aerovault = "0.3"` from crates.io
 - **Removed direct crypto dependencies**: `aes-gcm-siv` and `subtle` crates removed from direct dependencies (now transitive via aerovault crate)
-- **AeroCloud multi-protocol rebrand**: Removed "FTP-based" from all AeroCloud descriptions across code and 47 languages — AeroCloud now correctly reflects support for all 20 protocols
+- **AeroCloud multi-protocol rebrand**: Removed "FTP-based" from all AeroCloud descriptions across code and 47 languages: AeroCloud now correctly reflects support for all 20 protocols
 
 #### Added
 
@@ -2353,10 +2409,10 @@ Comprehensive security audit closure with 6 residual findings resolved, AeroClou
 #### Fixed
 
 - **A5-06 journal signing key**: Signing key for sync journal moved from `localStorage` to Tauri process-side storage (`~/.config/aeroftp/sync-journal/signing.key`). Derived per-path-pair via HMAC-SHA256. Eliminates XSS exfiltration risk
-- **A3-05 provider password zeroization**: `config.zeroize_password()` called after `ProviderFactory::create()` in session commands — password no longer persists in session config struct
+- **A3-05 provider password zeroization**: `config.zeroize_password()` called after `ProviderFactory::create()` in session commands: password no longer persists in session config struct
 - **A7-07 Cryptomator SecretString**: `cryptomator_unlock` and `cryptomator_create` wrap password in `secrecy::SecretString` for automatic zeroization on drop
 - **A3-03 WebDAV insecure detection**: `connectionSecurity` in App.tsx now detects `http://` WebDAV servers and shows "Insecure" badge
-- **A1-07 shell denylist expanded**: `DENIED_COMMAND_PATTERNS` extended from 18 to 35 patterns — added crontab, nohup, systemctl, service, mount, umount, fdisk, parted, iptables, useradd, userdel, passwd, sudo, pkill, killall
+- **A1-07 shell denylist expanded**: `DENIED_COMMAND_PATTERNS` extended from 18 to 35 patterns: added crontab, nohup, systemctl, service, mount, umount, fdisk, parted, iptables, useradd, userdel, passwd, sudo, pkill, killall
 
 #### Security
 
@@ -2387,11 +2443,11 @@ AeroVault v2 encryption engine extracted to the standalone [`aerovault`](https:/
 
 #### Fixed
 
-- **Updater URL whitelist**: Corrected GitHub repository URL in `ALLOWED_URL_PREFIXES` from `AXP-OS/AeroFTP` to `axpdev-lab/aeroftp` — without this fix, auto-update would reject all legitimate release downloads
+- **Updater URL whitelist**: Corrected GitHub repository URL in `ALLOWED_URL_PREFIXES` from `AXP-OS/AeroFTP` to `axpdev-lab/aeroftp`: without this fix, auto-update would reject all legitimate release downloads
 
 #### Added
 
-- **Privacy Policy**: `PRIVACY.md` added to repository — required for SignPath OSS code signing application. Documents zero-telemetry, local-only storage, and explicit-connection-only external access
+- **Privacy Policy**: `PRIVACY.md` added to repository: required for SignPath OSS code signing application. Documents zero-telemetry, local-only storage, and explicit-connection-only external access
 
 ---
 
@@ -2403,15 +2459,15 @@ Comprehensive cross-audit reaching grade A- with 45+ security fixes, updater int
 
 #### Added
 
-- **Server duplication**: Clone saved servers with one click — duplicate button in server list, "Save as New" in edit mode (ConnectionScreen + Settings). Credentials copied from vault, auto-rename with "(Copy)" suffix
-- **Updater URL whitelist**: `download_update()` restricted to official GitHub releases domain. Path validation ensures install files are in Downloads/temp only — closes XSS-to-root-RCE attack chain
-- **CSP connect-src hardened**: Removed wildcard `https:` and `wss:` from production CSP. Frontend can only communicate via Tauri IPC — no direct external HTTP connections possible
+- **Server duplication**: Clone saved servers with one click: duplicate button in server list, "Save as New" in edit mode (ConnectionScreen + Settings). Credentials copied from vault, auto-rename with "(Copy)" suffix
+- **Updater URL whitelist**: `download_update()` restricted to official GitHub releases domain. Path validation ensures install files are in Downloads/temp only: closes XSS-to-root-RCE attack chain
+- **CSP connect-src hardened**: Removed wildcard `https:` and `wss:` from production CSP. Frontend can only communicate via Tauri IPC: no direct external HTTP connections possible
 - **Updater path validation**: `validate_update_path()` canonicalizes and verifies downloaded files are in expected directories before `pkexec` execution
 
 #### Fixed
 
 - **AeroAgent paste bug**: Text paste in chat was blocked by unconditional `e.preventDefault()` in clipboard image fallback. Now skips arboard when clipboard contains text
-- **AeroAgent paste latency**: Arboard X11 clipboard read caused ~7s timeout on text paste. Added early return when `text/plain` detected — instant paste
+- **AeroAgent paste latency**: Arboard X11 clipboard read caused ~7s timeout on text paste. Added early return when `text/plain` detected: instant paste
 - **KDF upgrade for exports**: Profile and keystore exports now use `derive_key_strong` (Argon2id 128 MiB) with backward-compatible fallback for legacy files
 - **Atomic file writes**: Export files use temp+rename pattern to prevent corruption on crash
 - **File permissions**: Export files set to `0600` on Unix for credential protection
@@ -2542,16 +2598,16 @@ Comprehensive audit of all 13 cloud providers (Google Drive, Dropbox, OneDrive, 
 
 ### Koofr Native API, Production CLI & AeroAgent Server Exec
 
-Koofr joins as the 20th protocol with a native REST API provider. The CLI binary graduates from stub to production-grade with 13 commands across all 20 protocols, tested live against 5 real servers. AeroAgent gains the ability to connect to any saved server — passwords resolved securely from the vault, never exposed to the AI model. License infrastructure laid for future Pro features.
+Koofr joins as the 20th protocol with a native REST API provider. The CLI binary graduates from stub to production-grade with 13 commands across all 20 protocols, tested live against 5 real servers. AeroAgent gains the ability to connect to any saved server: passwords resolved securely from the vault, never exposed to the AI model. License infrastructure laid for future Pro features.
 
 #### Added
 
 - **Koofr native REST API** (20th protocol): Full `StorageProvider` implementation with OAuth2 PKCE authentication, EU-based privacy (10 GB free). File operations, trash management (list/restore/empty), storage quota display. Dedicated `koofr.rs` provider with 3 Tauri commands
 - **Production CLI** (`aeroftp-cli`): 13 commands (connect, ls, get, put, mkdir, rm, mv, cat, find, stat, df, tree, sync) across all 20 protocols. URL-based connections (`sftp://user@host/path`), progress bars with indicatif, `--json` output for automation, glob pattern matching, recursive operations. 13 unit tests, all passing
 - **AeroAgent `server_list_saved` tool**: Lists all saved server profiles (names, protocols, hosts) without exposing passwords. Danger level: safe
-- **AeroAgent `server_exec` tool**: Executes operations (ls/cat/get/put/mkdir/rm/mv/stat/find/df) on any saved server. Creates temporary connection using vault-stored credentials — password never transits to the AI model. Fuzzy server name matching with ambiguity detection. Danger level: high (requires ToolApproval)
-- **Ed25519 license verification**: Offline-first token verification in Rust with `ed25519-dalek`. Tokens are self-contained signed payloads — no network required for validation
-- **License UI (dev-only)**: License tab in Settings, NagBanner for free users, activation dialog — all gated behind `import.meta.env.DEV`
+- **AeroAgent `server_exec` tool**: Executes operations (ls/cat/get/put/mkdir/rm/mv/stat/find/df) on any saved server. Creates temporary connection using vault-stored credentials: password never transits to the AI model. Fuzzy server name matching with ambiguity detection. Danger level: high (requires ToolApproval)
+- **Ed25519 license verification**: Offline-first token verification in Rust with `ed25519-dalek`. Tokens are self-contained signed payloads: no network required for validation
+- **License UI (dev-only)**: License tab in Settings, NagBanner for free users, activation dialog: all gated behind `import.meta.env.DEV`
 - **Supabase Edge Functions**: `verify-purchase` (Google Play purchase verification + token signing) and `activate-device` (multi-device management with max 5 devices)
 - **PostgreSQL schema**: `licenses` and `device_activations` tables with RLS policies and `enforce_max_devices` trigger for atomic device limit enforcement
 - **Human-readable license keys**: `AERO-XXXX-XXXX-XXXX-XXXX` format derived from SHA-256 + BASE32, consistent between Rust and TypeScript
@@ -2577,15 +2633,15 @@ Koofr joins as the 20th protocol with a native REST API provider. The CLI binary
 - **SEC-MEDIUM: Dead code removed**: `ProBadge.tsx` and `LicenseActivationDialog.tsx` deleted (never imported)
 - **SEC-MEDIUM: Fingerprint exposure**: LicenseTab truncates device fingerprint display (16...8 chars)
 - **SEC-MEDIUM: Timer memory leak**: NagBanner timer cleanup on unmount and state change
-- **SEC-MEDIUM: LicenseContext exposure**: Internal context no longer exported — only `useLicense` and `LicenseProvider` are public API
+- **SEC-MEDIUM: LicenseContext exposure**: Internal context no longer exported: only `useLicense` and `LicenseProvider` are public API
 - **SEC-MEDIUM: Device list disclosure**: `activate-device` error responses no longer expose device names and timestamps
 - **Token validation hardened**: Added `tier` validation (must be "pro") and `iat` future-date check (5-min clock skew tolerance)
 
 #### Security
 
-- **3-auditor security review**: Backend (23 findings), Frontend (26 findings), Architecture (22 findings) — all CRITICAL and HIGH resolved
+- **3-auditor security review**: Backend (23 findings), Frontend (26 findings), Architecture (22 findings): all CRITICAL and HIGH resolved
 - **Security grade**: C+/D elevated to B+ after remediation
-- **AeroAgent server_exec security**: Passwords resolved from vault in Rust — never exposed to AI model. OAuth providers excluded with clear error message. Path validation on local_path (get/put). Vault-must-be-unlocked guard
+- **AeroAgent server_exec security**: Passwords resolved from vault in Rust: never exposed to AI model. OAuth providers excluded with clear error message. Path validation on local_path (get/put). Vault-must-be-unlocked guard
 
 ---
 
@@ -2597,11 +2653,11 @@ Critical fixes for AeroCloud background sync with non-FTP protocols. WebDAV and 
 
 #### Fixed
 
-- **AeroCloud SFTP connection failure**: `parse_server_field()` separates hostname from embedded port — fixes DNS lookup failure when vault stored `host:port` as hostname
-- **AeroCloud WebDAV malformed URL**: Port appended after WebDAV path (`host/path:80`) now correctly parsed — fixes `error sending request` with mangled URLs
-- **WebDAV DNS resolution log noise**: Hostname extraction in App.tsx strips path and port for WebDAV-style servers — eliminates spurious "DNS resolution failed" warnings on successful connections
-- **WebDAV root boundary enforcement**: `cd()` and `cd_up()` now respect `initial_path` — prevents navigation above the configured WebDAV root
-- **CloudPanel port handling**: Host and port saved separately — hostname stored without port, port goes into `connectionParams`
+- **AeroCloud SFTP connection failure**: `parse_server_field()` separates hostname from embedded port: fixes DNS lookup failure when vault stored `host:port` as hostname
+- **AeroCloud WebDAV malformed URL**: Port appended after WebDAV path (`host/path:80`) now correctly parsed: fixes `error sending request` with mangled URLs
+- **WebDAV DNS resolution log noise**: Hostname extraction in App.tsx strips path and port for WebDAV-style servers: eliminates spurious "DNS resolution failed" warnings on successful connections
+- **WebDAV root boundary enforcement**: `cd()` and `cd_up()` now respect `initial_path`: prevents navigation above the configured WebDAV root
+- **CloudPanel port handling**: Host and port saved separately: hostname stored without port, port goes into `connectionParams`
 
 #### Added
 
@@ -2618,13 +2674,13 @@ Full feature integration for Box, Google Drive, OneDrive, and Zoho WorkDrive. Bo
 
 #### Added
 
-- **Box Trash Manager**: Full trash lifecycle — list, soft-delete, restore, permanent delete with dedicated `BoxTrashManager` modal dialog
+- **Box Trash Manager**: Full trash lifecycle: list, soft-delete, restore, permanent delete with dedicated `BoxTrashManager` modal dialog
 - **Box file move**: Server-side move between folders via `box_move_file` command
 - **Box comments**: List, add, and delete comments on files (`box_list_comments`, `box_add_comment`, `box_delete_comment`)
 - **Box collaborations**: Add and remove file/folder collaborators with role selection (`box_add_collaboration`, `box_remove_collaboration`, `box_list_collaborations`)
 - **Box watermark** (Enterprise): Apply/remove watermark on files with live status detection via `watermark_info` API field. Watermark badge (Droplets icon) shown in PERM column. Add/Remove conditionally enabled based on current state
 - **Box folder locks** (Enterprise): Lock folders to prevent move/delete (`box_lock_folder`, `box_unlock_folder`, `box_list_folder_locks`)
-- **Box tags**: Full tag management — tags fetched during file listing, displayed as blue chips next to filenames (max 3 + overflow), `BoxTagsDialog` for adding/removing tags with instant save
+- **Box tags**: Full tag management: tags fetched during file listing, displayed as blue chips next to filenames (max 3 + overflow), `BoxTagsDialog` for adding/removing tags with instant save
 - **Google Drive starring**: Star/unstar files directly from context menu with golden star badge in file list
 - **Google Drive comments**: Add comments to files via dedicated `GoogleDriveCommentDialog` modal with Ctrl+Enter submit
 - **OneDrive move to trash**: Move files to recycle bin via context menu
@@ -2636,8 +2692,8 @@ Full feature integration for Box, Google Drive, OneDrive, and Zoho WorkDrive. Bo
 
 #### Changed
 
-- **Box API fields expanded**: File listing now requests `watermark_info` and `tags` fields — watermark status and tags are populated in file metadata without extra API calls
-- **Google Drive API fields expanded**: File listing now requests `starred`, `description`, and `properties` fields — star badge visible in file list
+- **Box API fields expanded**: File listing now requests `watermark_info` and `tags` fields: watermark status and tags are populated in file metadata without extra API calls
+- **Google Drive API fields expanded**: File listing now requests `starred`, `description`, and `properties` fields: star badge visible in file list
 - **Providers & Integrations dialog**: Tabbed modal (OAuth/API, S3, WebDAV) accessible from Help menu showing feature matrix for all 31 providers with logos, base/advanced checkmarks, and PRO badges
 - **Feature matrix accuracy**: Removed unsupported features from ProvidersDialog (OneDrive trash listing, Dropbox tags, Zoho labels) to reflect actual API capabilities
 - **60+ new i18n keys**: Box (20) + Google Drive (7) + Zoho (4) + providers dialog (27) translated in all 47 languages
@@ -2645,9 +2701,9 @@ Full feature integration for Box, Google Drive, OneDrive, and Zoho WorkDrive. Bo
 #### Fixed
 
 - **Auto-update not firing**: Fixed `useAutoUpdate` hook where `updateCheckedRef` survived React 18 strict mode remounts, preventing startup and manual update checks from ever executing
-- **Google Drive comments API**: Added required `fields` parameter to comments.create endpoint — comments now save successfully
-- **Dropbox tags API disabled**: Removed from context menu — Dropbox Tags API returns errors and native UI uses Star instead
-- **OneDrive trash listing disabled**: Removed "View Trash" — Microsoft Graph v1.0 has no recycle bin list endpoint; move-to-trash still works
+- **Google Drive comments API**: Added required `fields` parameter to comments.create endpoint: comments now save successfully
+- **Dropbox tags API disabled**: Removed from context menu: Dropbox Tags API returns errors and native UI uses Star instead
+- **OneDrive trash listing disabled**: Removed "View Trash": Microsoft Graph v1.0 has no recycle bin list endpoint; move-to-trash still works
 - **Zoho labels API**: Fixed endpoint from `/teams/{id}/labels` to `/users/{team_user_id}/labels` for listing. Disabled UI pending full API support (labels not included in file list response)
 - **Missing i18n keys**: Added `common.name`, `common.size`, `common.modified`, `common.retry` across all 47 languages
 
@@ -2674,12 +2730,12 @@ Corrects incorrect free-tier data for FileLu across the codebase, fixes a quota 
 #### Fixed
 
 - **FileLu free tier corrected to 1 GB**: README and all provider descriptions now accurately reflect the 1 GB free tier (was incorrectly listed as 20 GB)
-- **FileLu quota display**: StatusBar and storage progress bar now correctly show GB values — the FileLu API returns storage in GB, which is now properly converted to bytes before being passed to the frontend formatter
+- **FileLu quota display**: StatusBar and storage progress bar now correctly show GB values: the FileLu API returns storage in GB, which is now properly converted to bytes before being passed to the frontend formatter
 - **FileLu connection name placeholder**: "Save to Saved Servers" input now shows `e.g. My FileLu Cloud` instead of the incorrect `e.g. My Filen Cloud`
 
 #### Changed
 
-- **Cloud provider order**: Providers in the connection screen are now sorted by free storage tier — Google Drive (15 GB) → OneDrive (5 GB) → Dropbox (2 GB) → MEGA (20 GB) → Box (10 GB) → Filen (10 GB) → Drime (20 GB) → 4shared (15 GB) → kDrive (15 GB) → Zoho WorkDrive (5 GB) → Jottacloud (5 GB) → FileLu (1 GB) → Internxt (1 GB) → pCloud (10 GB, dev-only)
+- **Cloud provider order**: Providers in the connection screen are now sorted by free storage tier: Google Drive (15 GB) → OneDrive (5 GB) → Dropbox (2 GB) → MEGA (20 GB) → Box (10 GB) → Filen (10 GB) → Drime (20 GB) → 4shared (15 GB) → kDrive (15 GB) → Zoho WorkDrive (5 GB) → Jottacloud (5 GB) → FileLu (1 GB) → Internxt (1 GB) → pCloud (10 GB, dev-only)
 - **Provider card descriptions**: All cloud provider cards now include free storage quota in the description (e.g. `Google Drive (15 GB free)`, `MEGA (20 GB free)`)
 
 ---
@@ -2714,25 +2770,25 @@ Comprehensive overhaul of S3 provider connection forms, ensuring all preset fiel
 
 ## [2.7.0] - 2026-02-26
 
-### FileLu Native API — 19th Protocol
+### FileLu Native API: 19th Protocol
 
 Full integration of FileLu cloud storage via its native REST API, adding privacy-focused features unavailable through generic WebDAV or S3 connections: per-file and per-folder password protection, public/private visibility toggle, server-side file cloning, trash management with restore and permanent delete, and remote URL upload (server-side fetch).
 
 #### Added
 
 - **FileLu provider (19th protocol)**: Native REST API integration (`filelu.rs`) authenticated via API key. Supports all standard `StorageProvider` operations: list, upload, download, delete, rename, mkdir, stat, search, share link, storage quota
-- **FileLu FTP/FTPS/WebDAV/S3 presets**: Four additional connection modes for users who prefer standard protocols — `filelu-ftp` (port 21), `filelu-ftps` (Implicit TLS, port 990), `filelu-webdav`, and `filelu-s3` (S3-compatible "FileLu S5") — registered in the provider registry
+- **FileLu FTP/FTPS/WebDAV/S3 presets**: Four additional connection modes for users who prefer standard protocols: `filelu-ftp` (port 21), `filelu-ftps` (Implicit TLS, port 990), `filelu-webdav`, and `filelu-s3` (S3-compatible "FileLu S5"): registered in the provider registry
 - **File password protection**: Set or remove password on any individual file via context menu (`filelu_set_file_password`)
 - **Privacy toggle**: Mark files as Private (only-me) or Public via context menu (`filelu_set_file_privacy`)
 - **Server-side file clone**: Duplicate a file on the server without re-uploading; URL of the clone is copied to clipboard (`filelu_clone_file`)
 - **Folder password protection**: Set or remove password on a folder, using the folder's `fld_token` retrieved from the API (`filelu_set_folder_password`)
 - **Folder settings dialog**: Toggle FileDrop (allow anonymous uploads) and Public Folder access per-folder (`filelu_set_folder_settings`)
-- **Trash manager UI**: `FileLuTrashManager.tsx` modal — lists deleted files with deletion timestamp, multi-select, bulk restore, bulk permanent delete, and per-row quick actions
+- **Trash manager UI**: `FileLuTrashManager.tsx` modal: lists deleted files with deletion timestamp, multi-select, bulk restore, bulk permanent delete, and per-row quick actions
 - **Remote URL upload**: Paste a direct download link; FileLu fetches the file server-side and stores it in the specified destination folder (`filelu_remote_url_upload`)
 - **Restore from trash**: Restore individual deleted files (`filelu_restore_file`) or folders (`filelu_restore_folder`)
 - **Permanent delete**: Bypass trash and permanently remove a file (`filelu_permanent_delete`)
 - **10 new Tauri commands**: `filelu_set_file_password`, `filelu_set_file_privacy`, `filelu_clone_file`, `filelu_set_folder_password`, `filelu_set_folder_settings`, `filelu_list_deleted`, `filelu_restore_file`, `filelu_restore_folder`, `filelu_permanent_delete`, `filelu_remote_url_upload`
-- **39 new i18n keys**: FileLu UI strings + `settings.protocolFilelu` + `toast.localPathNotFound` — translated across all 47 languages
+- **39 new i18n keys**: FileLu UI strings + `settings.protocolFilelu` + `toast.localPathNotFound`: translated across all 47 languages
 
 #### Fixed
 
@@ -2796,19 +2852,19 @@ Fixed the long-standing issue where "Install and Restart" would close the app bu
 #### Fixed
 
 - **Update restart on all platforms**: .deb, .rpm, and AppImage restart after update now works reliably. Root cause: child process stayed in parent's process group and received SIGHUP on exit. New `spawn_detached_relaunch()` uses `libc::setsid()` via `pre_exec` to create an independent session
-- **Connection save persistence**: Race condition between vault write and SavedServers refresh — `secureStoreAndClean` was fire-and-forget, causing vault to return stale data before write completed. All 6 call sites now properly awaited
+- **Connection save persistence**: Race condition between vault write and SavedServers refresh: `secureStoreAndClean` was fire-and-forget, causing vault to return stale data before write completed. All 6 call sites now properly awaited
 - **SFTP symlink directory detection**: Symlinks on NAS devices (WD MyCloud, Synology) now correctly show as directories. `list()` follows symlinks via `sftp.metadata()` to determine real entry type and size
 - **Dark theme modal consistency**: AeroVault and Settings modals now use `dark:bg-gray-900` matching all other modals (Support, About, Dependencies, AI Settings)
-- **FTP TLS badge dynamic**: Protocol badge now hides when FTP encryption is set to "none" — reflects actual security state
-- **CloudConfig validation**: Protocol-aware validation — only server protocols require `server_profile`, only FTP/SFTP/WebDAV require absolute remote paths, OAuth providers require `client_id`
+- **FTP TLS badge dynamic**: Protocol badge now hides when FTP encryption is set to "none": reflects actual security state
+- **CloudConfig validation**: Protocol-aware validation: only server protocols require `server_profile`, only FTP/SFTP/WebDAV require absolute remote paths, OAuth providers require `client_id`
 
 #### Added
 
 - **AeroCloud multi-protocol support**: Background sync now works with all 18 providers, not just FTP. New `cloud_provider_factory.rs` dispatches to direct-auth, OAuth2, and OAuth1 providers
-- **CloudConfig protocol fields**: `protocol_type` and `connection_params` fields with `serde(default)` backward compatibility — existing FTP configs continue to work unchanged
+- **CloudConfig protocol fields**: `protocol_type` and `connection_params` fields with `serde(default)` backward compatibility: existing FTP configs continue to work unchanged
 - **CloudPanel 4-step wizard**: Protocol selection step with categorized grid (Servers, Cloud Storage, OAuth Cloud), dynamic connection fields per protocol, OAuth authorize flow
 - **S3/WebDAV info cards**: Informational card in ProviderSelector showing access requirements and ideal use cases for each protocol category
-- **14 new i18n keys**: Cloud wizard (10) + S3/WebDAV info cards (4) — translated in all 47 languages
+- **14 new i18n keys**: Cloud wizard (10) + S3/WebDAV info cards (4): translated in all 47 languages
 
 #### Changed
 
@@ -2825,15 +2881,15 @@ Fixed the long-standing issue where "Install and Restart" would close the app bu
 
 ### Dual-Engine Security Audit Remediation
 
-Comprehensive security hardening based on the most thorough audit in project history — 8 specialist auditors + independent counter-audit, identifying 148 unique findings. Post-remediation grade: **A-**.
+Comprehensive security hardening based on the most thorough audit in project history: 8 specialist auditors + independent counter-audit, identifying 148 unique findings. Post-remediation grade: **A-**.
 
 #### Fixed
 
 - **AeroVault constant-time HMAC**: `subtle::ConstantTimeEq` replaces `!=` in 11 HMAC comparisons, preventing timing side-channel attacks
 - **AeroVault manifest bounds**: `MAX_MANIFEST_SIZE=64MB` with `read_manifest_bounded()` in 7+ vault functions, preventing OOM allocation
 - **AeroVault atomic writes**: Crash-safe temp+bak+rename pattern in all 6 vault mutation functions
-- **Archive path traversal**: `is_safe_archive_entry()` centralized guard for TAR/7z/RAR extraction — rejects `..`, absolute paths, drive letters, null bytes
-- **2FA enforcement at unlock**: `unlock_credential_store` now gates on TOTP verification when enabled — returns `2FA_REQUIRED`/`2FA_INVALID`
+- **Archive path traversal**: `is_safe_archive_entry()` centralized guard for TAR/7z/RAR extraction: rejects `..`, absolute paths, drive letters, null bytes
+- **2FA enforcement at unlock**: `unlock_credential_store` now gates on TOTP verification when enabled: returns `2FA_REQUIRED`/`2FA_INVALID`
 - **Shell meta-character blocking**: `|;&$(){}` blocked before regex denylist + 5 new patterns (python -c, curl|, wget|, eval, base64 -d)
 - **Azure HeaderValue panic**: 17 `unwrap()` calls replaced with `map_err()?` in `azure.rs`
 - **Box bearer_header panic**: Return type changed to `Result<HeaderValue, ProviderError>`, 29 call sites updated
@@ -2842,7 +2898,7 @@ Comprehensive security hardening based on the most thorough audit in project his
 - **Download size caps**: `MAX_DOWNLOAD_TO_BYTES=500MB` with `response_bytes_with_limit()` across 13 providers
 - **FTP streaming download**: `resume_download` rewritten with 64KB streaming chunks instead of `read_to_end()`
 - **PTY session isolation**: `session_id` mandatory in write/resize/close (no fallback), `MAX_PTY_SESSIONS=20`
-- **Shell double execution**: `terminal-execute` event includes `displayOnly: true` flag — SSHTerminal shows dim comment instead of re-executing
+- **Shell double execution**: `terminal-execute` event includes `displayOnly: true` flag: SSHTerminal shows dim comment instead of re-executing
 - **SVG XSS prevention**: `sanitizeSvg()` removes script, foreignObject, and event handlers before preview
 - **Image resize bounds**: `MAX_DIMENSION=16384`, `MAX_PIXELS=256M` in `image_edit.rs`
 - **Binary preview cap**: `MAX_PREVIEW_SIZE_BYTES=25MB` prevents excessive memory usage
@@ -2881,11 +2937,11 @@ Custom icon picker for servers without dedicated provider logos, plus automatic 
 
 #### Added
 
-- **Custom server icon picker**: Choose any image file as server icon — displayed in Saved Servers, session tabs, and connection forms. Available for FTP, SFTP, WebDAV, and S3 servers without a dedicated provider logo
-- **Favicon auto-detection**: Automatically detects project favicons from connected FTP/FTPS/SFTP servers — searches `favicon.ico` first, then `manifest.json`/`site.webmanifest` as fallback
+- **Custom server icon picker**: Choose any image file as server icon: displayed in Saved Servers, session tabs, and connection forms. Available for FTP, SFTP, WebDAV, and S3 servers without a dedicated provider logo
+- **Favicon auto-detection**: Automatically detects project favicons from connected FTP/FTPS/SFTP servers: searches `favicon.ico` first, then `manifest.json`/`site.webmanifest` as fallback
 - **Icon rendering hierarchy**: Custom icon (highest priority) > auto-detected favicon > provider logo > initial letter gradient
 - **Icon picker in both forms**: Unified icon picker with 40x40 preview in Quick Connect and Settings server edit forms
-- **8 new i18n keys**: `settings.serverIcon`, `settings.chooseIcon`, `settings.removeIcon` plus 5 previously untranslated keys — all 47 languages
+- **8 new i18n keys**: `settings.serverIcon`, `settings.chooseIcon`, `settings.removeIcon` plus 5 previously untranslated keys: all 47 languages
 
 #### Fixed
 
@@ -2905,7 +2961,7 @@ Critical fix for AeroCloud tab switching and session protocol routing, plus rest
 
 - **AeroCloud tab switch**: Switching from provider tabs (kDrive, Drime, etc.) back to AeroCloud now correctly disconnects the active provider before reconnecting, ensuring the remote panel updates properly
 - **Session protocol routing**: `switchSession` and `connectToFtp` now use `isNonFtpProvider()` instead of a hardcoded list, fixing routing for kDrive, Drime, Jottacloud, Internxt, and Azure Blob sessions
-- **Check for Updates menu**: Restored "Check for Updates" in Help menu — was lost during VS Code-style titlebar migration
+- **Check for Updates menu**: Restored "Check for Updates" in Help menu: was lost during VS Code-style titlebar migration
 
 ---
 
@@ -2922,7 +2978,7 @@ Dedicated Amazon S3 provider with 28 AWS region presets, official AWS logo, and 
 
 #### Fixed
 
-- **S3 bucket name trimming**: Trailing whitespace in bucket/region fields caused "invalid international domain name" IDNA errors — now trimmed in `S3Config::from_provider_config`
+- **S3 bucket name trimming**: Trailing whitespace in bucket/region fields caused "invalid international domain name" IDNA errors: now trimmed in `S3Config::from_provider_config`
 - **S3 endpoint field visibility**: Amazon S3 provider hides unnecessary Endpoint and Path-Style fields since they are auto-configured
 
 #### Changed
@@ -2942,7 +2998,7 @@ Native desktop feel with a unified VS Code-style titlebar, consistent modal anim
 
 - **VS Code-style unified titlebar**: 4 custom dropdown menus (File, Edit, View, Help) replace the native GTK menu bar. Hover-to-switch between open menus, Escape/click-outside to close, keyboard shortcut labels on every item
 - **Cut/Copy/Paste in Edit menu**: File clipboard operations with disabled states based on selection and clipboard content. `menu.cut`, `menu.copy`, `menu.paste` i18n keys translated in all 47 languages
-- **Theme-aware menu hover**: Menu items highlight with the theme accent color on hover (blue in dark/light, purple in Tokyo, green in Cyber) — VS Code-style
+- **Theme-aware menu hover**: Menu items highlight with the theme accent color on hover (blue in dark/light, purple in Tokyo, green in Cyber): VS Code-style
 - **Settings button in titlebar**: Quick access gear icon between Support heart and Theme Toggle
 - **Consistent modal animations**: `animate-scale-in` (scale 0.95→1 + fade) applied to all 42 modal dialogs across the app, controlled from a single CSS rule
 - **Click-outside-to-close**: Added to AeroVault and Master Password dialogs for consistency with Settings and other modals
@@ -2950,18 +3006,18 @@ Native desktop feel with a unified VS Code-style titlebar, consistent modal anim
 
 #### Changed
 
-- **Header eliminated**: Entire React `<header>` block (~110 lines) removed — all toolbar buttons migrated into the titlebar
-- **Menu labels simplified**: View menu items shortened from "Toggle Editor" / "Mostra/Nascondi Editor" to just "Editor" in all 47 languages — context is already clear from being inside the View menu
+- **Header eliminated**: Entire React `<header>` block (~110 lines) removed: all toolbar buttons migrated into the titlebar
+- **Menu labels simplified**: View menu items shortened from "Toggle Editor" / "Mostra/Nascondi Editor" to just "Editor" in all 47 languages: context is already clear from being inside the View menu
 - **Default app background**: Changed from Hexagon to Waves for new installations
 - **Default lock screen pattern**: Changed from Hexagon to Isometric for new installations
 - **Modal alignment**: AeroVault and Master Password dialogs now align to top with `pt-[5vh]` margin, consistent with Settings, About, and Support
-- **Menu dropdown background**: Uses `--color-bg-secondary` instead of `--color-bg-primary` — fixes dark theme showing pure black menu background
+- **Menu dropdown background**: Uses `--color-bg-secondary` instead of `--color-bg-primary`: fixes dark theme showing pure black menu background
 - **Modal animation duration**: Increased from 0.2s to 0.25s ease-out for smoother feel
-- **Menu item interaction**: No transition animation or button press effect on click — instant response like VS Code
+- **Menu item interaction**: No transition animation or button press effect on click: instant response like VS Code
 
 #### Fixed
 
-- **147 provider audit findings remediated**: Full security and quality audit across 8 cloud providers — S3 (22 fixes), pCloud (19 fixes), kDrive (18 fixes), Azure Blob (20 fixes), 4shared (17 fixes), Filen (19 fixes), Internxt (18 fixes), MEGA (14 fixes)
+- **147 provider audit findings remediated**: Full security and quality audit across 8 cloud providers: S3 (22 fixes), pCloud (19 fixes), kDrive (18 fixes), Azure Blob (20 fixes), 4shared (17 fixes), Filen (19 fixes), Internxt (18 fixes), MEGA (14 fixes)
 - **Azure Blob form labels**: Proper Azure-specific labels (Account Name, Access Key, Endpoint) in QuickConnect and Settings
 - **Azure Blob connection flow**: Fixed "relative URL without a base" and "empty host" errors
 - **Azure Blob rename**: Fixed HTTP 411 by adding `Content-Length: 0` on PUT Copy Blob
@@ -2973,7 +3029,7 @@ Native desktop feel with a unified VS Code-style titlebar, consistent modal anim
 #### Removed
 
 - **Native GTK menu bar**: Replaced by custom React menus in titlebar
-- **Menu bar toggle**: `showMenuBar` state and F10 shortcut removed — menus always visible
+- **Menu bar toggle**: `showMenuBar` state and F10 shortcut removed: menus always visible
 - **`systemMenuVisible` state**: No longer needed with custom menus
 
 ---
@@ -2988,16 +3044,16 @@ AeroFTP evolves from "app with AI" to "AI-powered platform with open ecosystem".
 
 - **Internxt Drive (17th protocol)**: Zero-knowledge encrypted cloud storage with E2E AES-256-CTR. Email + password auth with BIP39 mnemonic recovery. Optional 2FA. Full StorageProvider: list, upload, download, mkdir, delete, rename, move, share links, storage quota, trash management
 - **Infomaniak kDrive (18th protocol)**: Swiss-hosted cloud storage via REST API. Bearer token auth, cursor-based pagination, 15GB free. Full StorageProvider: list, upload (raw body), download, mkdir, delete, rename (via move endpoint), server-side copy, storage quota
-- **4 new AI providers (Tier 3)**: AI21 Labs (Jamba), Cerebras (fastest inference), SambaNova (1000+ tok/s), Fireworks AI — all OpenAI-compatible, zero backend changes. Total: 15 → 19 providers
+- **4 new AI providers (Tier 3)**: AI21 Labs (Jamba), Cerebras (fastest inference), SambaNova (1000+ tok/s), Fireworks AI: all OpenAI-compatible, zero backend changes. Total: 15 → 19 providers
 - **Command Palette (Ctrl+Shift+P)**: VS Code-style global command palette with ~25 commands across 5 categories (File, AI, Navigation, Tools, Sync). Fuzzy search, keyboard navigation, category headers
 - **Plugin Registry (GitHub-based)**: `plugin_registry.rs` with `fetch_plugin_registry` and `install_plugin_from_registry` Tauri commands. Downloads plugins from GitHub with SHA-256 integrity verification
 - **Plugin Browser UI**: Searchable modal with Installed/Browse/Updates tabs, category badges, star counts, install/remove buttons. Integrated into AI Settings Plugins tab
-- **Plugin Hooks system**: Event-driven plugin execution — plugins react to `file:created`, `file:deleted`, `transfer:complete`, `sync:complete` events with optional glob filters
+- **Plugin Hooks system**: Event-driven plugin execution: plugins react to `file:created`, `file:deleted`, `transfer:complete`, `sync:complete` events with optional glob filters
 - **Context Menu AI Actions**: "Ask AeroAgent" option in local and remote file context menus. Dispatches `aeroagent-ask` event and opens agent panel with pre-filled prompt
 - **AI Status Widget**: Compact indicator in StatusBar showing AI state (Ready/Thinking/Running tool/Error). Pulse animation during streaming. Click to open AeroAgent
 - **Drag & Drop to AeroAgent**: Drag files from file manager into chat area to analyze. Drop overlay with dashed border and upload icon
-- **10 new i18n keys per provider**: Connection form keys (token, placeholder, help) + protocol description/tooltip for Internxt, kDrive — translated in all 47 languages
-- **19 new i18n keys**: Command palette (7), plugin browser (9), context menu (1), drag-to-analyze (1), browse plugins button (1) — translated in all 47 languages
+- **10 new i18n keys per provider**: Connection form keys (token, placeholder, help) + protocol description/tooltip for Internxt, kDrive: translated in all 47 languages
+- **19 new i18n keys**: Command palette (7), plugin browser (9), context menu (1), drag-to-analyze (1), browse plugins button (1): translated in all 47 languages
 
 #### Changed
 
@@ -3024,7 +3080,7 @@ AeroFTP evolves from "app with AI" to "AI-powered platform with open ecosystem".
 
 ## [2.5.2] - 2026-02-21
 
-### AeroImage — Built-in Image Editor
+### AeroImage: Built-in Image Editor
 
 The Universal Preview gains a lightweight image editor powered by the Rust `image` crate. Edit local images directly within the preview modal with real-time CSS filter previews and pixel-perfect Rust-processed output.
 
@@ -3074,13 +3130,13 @@ AeroFile mode gets a major upgrade with modular architecture, tabbed local brows
 
 #### Added
 
-- **LocalFilePanel component extraction**: Extracted ~730 lines of local panel rendering from App.tsx into `src/components/LocalFilePanel.tsx`. Pure rendering extraction — all state and business logic remain in App.tsx for maintainability
+- **LocalFilePanel component extraction**: Extracted ~730 lines of local panel rendering from App.tsx into `src/components/LocalFilePanel.tsx`. Pure rendering extraction: all state and business logic remain in App.tsx for maintainability
 - **Multiple local path tabs**: Tabbed directory browsing in AeroFile mode with up to 12 concurrent tabs. Drag-to-reorder, context menu (Close/Close Others/Close All), middle-click close, new tab (+) button. Tab state persisted in localStorage across sessions
 - **File tags backend**: SQLite-backed file tagging system (`file_tags.rs`) with WAL mode, 7 preset Finder-style color labels (Red, Orange, Yellow, Green, Blue, Purple, Gray), and 9 Tauri commands for label CRUD, batch tag operations, and label count queries
 - **File tag badges**: Colored dot badges next to filenames in list and grid views via `FileTagBadge` component. Shows up to 3 dots with "+N" overflow indicator. React.memo optimized for large file lists
 - **Tags context menu submenu**: Right-click any file(s) to access Tags submenu with all 7 color labels. Toggle semantics: if all selected files have a tag it removes it, otherwise adds it. "Clear All Tags" option included
 - **Tags sidebar section**: PlacesSidebar shows tag labels with colored dots, names, and file counts. Click to filter file listing by tag, click again to clear filter
-- **Tag filter in file listing**: Active tag filter integrates with search filter — files must match both the search query and the selected tag
+- **Tag filter in file listing**: Active tag filter integrates with search filter: files must match both the search query and the selected tag
 - **useFileTags hook**: React hook for tag management with debounced batch queries (150ms), Map cache for quick lookups, label CRUD operations, and sidebar filter state
 - **Keyboard navigation**: Arrow Up/Down to select files in both local and remote panels. Shift+Arrow for range selection. Works across list, grid, and large icon views
 - **ARIA accessibility baseline**: `role="grid"`, `role="row"`, `aria-selected` on file tables (local and remote). `role="region"` on file panels, `role="toolbar"` on main toolbar, `role="status"` on status bar. `role="navigation"` on PlacesSidebar
@@ -3121,13 +3177,13 @@ AeroFTP expands to 16 protocols with Zoho WorkDrive, undergoes a 12-auditor prov
 #### Added
 
 - **Zoho WorkDrive provider** (16th protocol): Full OAuth2 integration with 8 regional endpoints (US, EU, IN, AU, JP, UK, CA, SA). Automatic team ID detection on connect. File upload/download with streaming, rename, move, search, trash management (list/restore/permanent delete), share link creation, and storage quota display. Region selector in ConnectionScreen with default "us"
-- **StorageProvider trait expansion**: 11 new trait methods — `stat()` (file metadata), `search()` (name search), `move_file()` (cross-folder move), `list_trash()`, `restore_from_trash()`, `permanent_delete()`, `create_share_link()`, `get_storage_quota()`, `list_versions()`, `download_version()`, `restore_version()`. Implemented across Google Drive, Dropbox, OneDrive, Box, S3, Zoho WorkDrive
+- **StorageProvider trait expansion**: 11 new trait methods: `stat()` (file metadata), `search()` (name search), `move_file()` (cross-folder move), `list_trash()`, `restore_from_trash()`, `permanent_delete()`, `create_share_link()`, `get_storage_quota()`, `list_versions()`, `download_version()`, `restore_version()`. Implemented across Google Drive, Dropbox, OneDrive, Box, S3, Zoho WorkDrive
 - **FTP TLS downgrade detection**: New `tls_downgraded` flag on FTP connections. When `ExplicitIfAvailable` mode fails TLS upgrade, the flag is set and security warnings are logged: "SECURITY: TLS upgrade failed" and "Credentials will be sent unencrypted"
 - **OneDrive resumable auto-threshold**: Files >4MB automatically delegate to resumable upload session instead of simple PUT, matching Microsoft Graph API limits
 - **ZohoTrashManager component**: Dedicated trash management UI for Zoho WorkDrive with restore and permanent delete actions
 - **Zoho i18n keys**: Protocol name, description, and region selector labels translated in all 47 languages
 - **Dry-run export** (#149): Export comparison results as JSON or CSV after compare phase. Uses native save dialog via `@tauri-apps/plugin-dialog`. Includes path, status, sync_reason, sizes, and timestamps
-- **Safety Score indicator** (#146): Pre-sync risk assessment badge in footer — counts conflicts, sensitive file extensions (.exe/.sh/.env/.pem/.key), and total transfer size. Green (low), yellow (medium), red (high) with tooltip details
+- **Safety Score indicator** (#146): Pre-sync risk assessment badge in footer: counts conflicts, sensitive file extensions (.exe/.sh/.env/.pem/.key), and total transfer size. Green (low), yellow (medium), red (high) with tooltip details
 - **10 i18n keys**: Export and safety score labels translated in all 47 languages
 - **SFTP TOFU visual dialog** (SEC-P1-06): PuTTY-style host key verification on first SFTP/SSH connection. Shows SHA-256 fingerprint and algorithm in a modal dialog with "Trust This Host" / "Cancel" buttons. Key-changed scenario shows red MITM warning with "Accept New Key" option. Pre-check probe via `host_key_check.rs` avoids silent key acceptance. Covers 3 SFTP connect paths + SSH Terminal
 - **11 i18n keys**: TOFU dialog labels translated in all 47 languages
@@ -3150,7 +3206,7 @@ AeroFTP expands to 16 protocols with Zoho WorkDrive, undergoes a 12-auditor prov
 - **SFTP read_range allocation cap** (GAP-A03): `Vec::with_capacity(size)` capped at 100MB to prevent attacker-controlled allocation via malicious server response
 - **S3 presigned URL encoding** (GAP-A04): Object key now properly URI-encoded in presigned URL path, separate from SigV4 canonical encoding
 - **pCloud OAuth2 region** (GAP-A06): Region parameter added to OAuth2 connect flow instead of hardcoded "us"
-- **Provider error sanitization** (GAP-A10): `sanitize_api_error()` applied to 95 error occurrences across 8 cloud providers — truncates to 200 chars, redacts Bearer/JWT tokens
+- **Provider error sanitization** (GAP-A10): `sanitize_api_error()` applied to 95 error occurrences across 8 cloud providers: truncates to 200 chars, redacts Bearer/JWT tokens
 - **WebDAV verify_cert option** (GAP-A11): Added `verify_cert` field to `WebDavConfig` matching FTP's existing TLS verification toggle
 - **Share link expiry passthrough** (GAP-A12/A14): Zoho, Google Drive, Dropbox, and OneDrive share link creation now passes `expires_in_secs` parameter to API
 - **Cross-platform trash** (GAP-C01): Trash operations use `trash::os_limited` API on Linux and Windows instead of hardcoded `~/.local/share/Trash` path. macOS retains manual `~/.Trash` scanning
@@ -3163,7 +3219,7 @@ AeroFTP expands to 16 protocols with Zoho WorkDrive, undergoes a 12-auditor prov
 - **Local file scan 1M cap** (P2-1): `get_local_files_recursive` and parallel variant capped at 1,000,000 entries with clear error message to prevent OOM on massive project trees
 - **SyncPanel conflict map reset** (P2-4): `conflictResolutions` Map now cleared at sync start, preventing stale conflict resolutions from previous syncs from affecting new operations
 - **Transfer pool config validation** (P2-5): `validate_config()` now called before parallel sync execution, ensuring max_streams clamped to 1-8 and acquire_timeout_ms defaults to 30s
-- **Google Drive LRU cache** (P2-6): Folder cache eviction upgraded from non-deterministic FIFO to proper LRU tracking via monotonic access counter — evicts least-recently-used entries first
+- **Google Drive LRU cache** (P2-6): Folder cache eviction upgraded from non-deterministic FIFO to proper LRU tracking via monotonic access counter: evicts least-recently-used entries first
 - **Zoho sync path mismatch false positive**: Sync navigation warning incorrectly triggered in every Zoho folder because root-base `/` slicing produced inconsistent leading slashes (`"General"` vs `"/General"`). Fixed by stripping leading `/` from relative path comparison
 - **Zoho session switch reconnection**: Switching to a Zoho WorkDrive session tab failed with "Riconnessione fallita" because `oauth2_connect` was called without the `region` parameter. Now retrieves region from session profile or credential store, falling back to Rust default `"us"`
 - **DNS resolution for API providers**: Filen, Zoho WorkDrive, and Azure Blob connections showed spurious DNS resolution errors because they weren't excluded from hostname resolution (cloud API providers don't need it). WebDAV connections showed errors because full URLs (`https://host/path/`) were passed to the DNS resolver instead of extracting the hostname
@@ -3182,10 +3238,10 @@ AeroFTP expands to 16 protocols with Zoho WorkDrive, undergoes a 12-auditor prov
 
 #### Changed
 
-- **All provider credentials**: Access tokens, refresh tokens, and API keys now wrapped in `secrecy::SecretString` across all 16 providers — automatic memory zeroization on drop
+- **All provider credentials**: Access tokens, refresh tokens, and API keys now wrapped in `secrecy::SecretString` across all 16 providers: automatic memory zeroization on drop
 - **XML parsing**: All regex-based XML parsing (WebDAV PROPFIND, S3 ListBucketResult, Azure ListBlobs) replaced with proper `quick-xml 0.39` event-based parsing
 - **Google Drive upload**: Resumable path (>5MB) reads 10MB chunks from file handle instead of loading entire file. Simple multipart path (<=5MB) unchanged
-- **Box chunked upload**: Session signature changed from `data: &[u8]` to `local_path: &str` — reads chunks from file handle with per-chunk SHA-1
+- **Box chunked upload**: Session signature changed from `data: &[u8]` to `local_path: &str`: reads chunks from file handle with per-chunk SHA-1
 - **Dropbox upload session**: Large files (>150MB) read chunks from file handle with Tokio `AsyncReadExt`
 - **Provider count**: 15 → 16 protocols (+ Zoho WorkDrive)
 - **Security audit**: 12-auditor 4-phase provider integration audit (capabilities, security, integration, counter-audit). Final grade: A-. All findings resolved
@@ -3196,38 +3252,38 @@ AeroFTP expands to 16 protocols with Zoho WorkDrive, undergoes a 12-auditor prov
 
 ### Chat History SQLite Redesign
 
-AeroFTP replaces the JSON flat-file chat history with a professional SQLite + FTS5 backend, matching the architecture of VS Code, Cursor, and OpenCode. Full-text search across all conversations, configurable retention with auto-cleanup at startup, dedicated bulk management, export/import sessions, and conversation branching — all validated by a 55-finding security audit from 5 independent reviewers.
+AeroFTP replaces the JSON flat-file chat history with a professional SQLite + FTS5 backend, matching the architecture of VS Code, Cursor, and OpenCode. Full-text search across all conversations, configurable retention with auto-cleanup at startup, dedicated bulk management, export/import sessions, and conversation branching: all validated by a 55-finding security audit from 5 independent reviewers.
 
 #### Added
 
 - **SQLite chat history backend**: Complete rewrite of chat persistence using SQLite WAL mode with FTS5 full-text search. 3 tables (sessions, messages, branches) + FTS5 virtual table with automatic content sync via triggers. Replaces `ai_history.json` flat file
 - **Auto-migration from JSON**: Existing `ai_history.json` conversations automatically migrated to SQLite on first launch, with `.migrated` backup file. Transaction-wrapped for atomicity with automatic rollback on error
 - **Full-text search (FTS5)**: Cross-session search across all conversation history with `<mark>` highlighted snippets, integrated in ChatHistoryManager with real-time results
-- **Configurable retention with auto-apply**: Auto-cleanup at app startup — conversations older than the configured retention period (30/60/90/180 days or unlimited) are automatically deleted. One-time guard prevents redundant cleanup. Setting in AI Settings Advanced tab
+- **Configurable retention with auto-apply**: Auto-cleanup at app startup: conversations older than the configured retention period (30/60/90/180 days or unlimited) are automatically deleted. One-time guard prevents redundant cleanup. Setting in AI Settings Advanced tab
 - **Dedicated clear-all command**: `chat_history_clear_all` Rust command with explicit DELETE across all 4 tables, replacing the semantically overloaded `deleteSessionsBulk(undefined, 0)` approach
 - **Chat History Manager UI**: Full management interface with search, stats dashboard (sessions, messages, tokens, cost, DB size), date-range cleanup, and confirm-delete dialog
 - **Session export/import**: Export individual sessions as JSON or Markdown format. Import sessions from JSON export files with transaction-wrapped insert
 - **Branch management**: Create, switch, and delete conversation branches with per-branch message persistence via SQLite
 - **Chat stats API**: `chat_history_stats` command returning total sessions, messages, tokens, cost, and database file size in bytes
-- **In-memory fallback**: If SQLite file initialization fails (permissions, disk full), app falls back to in-memory database — prevents crashes while maintaining full functionality
-- **24 new i18n keys in 47 languages**: Chat history manager labels (cancel, cleanup, clearAll, confirmClearAll, days, dbSize, manager, retention, searching, sessions, totalCost, totalTokens, etc.) — 1,104 translations across 46 non-English locales
+- **In-memory fallback**: If SQLite file initialization fails (permissions, disk full), app falls back to in-memory database: prevents crashes while maintaining full functionality
+- **24 new i18n keys in 47 languages**: Chat history manager labels (cancel, cleanup, clearAll, confirmClearAll, days, dbSize, manager, retention, searching, sessions, totalCost, totalTokens, etc.): 1,104 translations across 46 non-English locales
 
 #### Fixed
 
-- **FTS5 snippet XSS prevention**: `sanitize_fts_snippet()` escapes all HTML entities in search result snippets, then restores only safe `<mark>` tags — prevents script injection via malicious chat content stored in history
-- **FTS5 query injection prevention**: `sanitize_fts_query()` wraps user search input in double quotes as a phrase literal — prevents FTS5 syntax injection and query manipulation
-- **INSERT OR REPLACE FTS desync**: Changed to `ON CONFLICT DO UPDATE` — the previous `REPLACE` approach performs DELETE+INSERT which breaks FTS5 external content sync by changing rowid
-- **Streaming message truncation**: `savedMessageContentRef` tracks content hash instead of just message ID presence — prevents saving truncated/partial content when streaming messages are persisted before completion
-- **Auto-save race condition**: Debounce timer now captures `convId` at creation time — prevents saving to the wrong conversation when user switches sessions during the 2-second debounce window
-- **Force reload after manager ops**: `loadChatHistory(true)` force parameter bypasses the `historyLoadedRef` one-shot guard — UI always reflects current state after delete/cleanup/clear operations
-- **Transaction wrapping**: JSON migration and session import now wrapped in explicit SQLite transactions — atomic commit on success, automatic rollback on error. JSON backup renamed only after successful commit
-- **Mutex poison recovery**: All DB lock acquisitions use `unwrap_or_else(|e| e.into_inner())` — prevents app crash if a previous operation panicked while holding the database lock
-- **FTS error handling**: FTS5 table/trigger initialization errors logged explicitly instead of silently swallowed with `let _ =` — search disabled gracefully if FTS5 extension is unavailable
+- **FTS5 snippet XSS prevention**: `sanitize_fts_snippet()` escapes all HTML entities in search result snippets, then restores only safe `<mark>` tags: prevents script injection via malicious chat content stored in history
+- **FTS5 query injection prevention**: `sanitize_fts_query()` wraps user search input in double quotes as a phrase literal: prevents FTS5 syntax injection and query manipulation
+- **INSERT OR REPLACE FTS desync**: Changed to `ON CONFLICT DO UPDATE`: the previous `REPLACE` approach performs DELETE+INSERT which breaks FTS5 external content sync by changing rowid
+- **Streaming message truncation**: `savedMessageContentRef` tracks content hash instead of just message ID presence: prevents saving truncated/partial content when streaming messages are persisted before completion
+- **Auto-save race condition**: Debounce timer now captures `convId` at creation time: prevents saving to the wrong conversation when user switches sessions during the 2-second debounce window
+- **Force reload after manager ops**: `loadChatHistory(true)` force parameter bypasses the `historyLoadedRef` one-shot guard: UI always reflects current state after delete/cleanup/clear operations
+- **Transaction wrapping**: JSON migration and session import now wrapped in explicit SQLite transactions: atomic commit on success, automatic rollback on error. JSON backup renamed only after successful commit
+- **Mutex poison recovery**: All DB lock acquisitions use `unwrap_or_else(|e| e.into_inner())`: prevents app crash if a previous operation panicked while holding the database lock
+- **FTS error handling**: FTS5 table/trigger initialization errors logged explicitly instead of silently swallowed with `let _ =`: search disabled gracefully if FTS5 extension is unavailable
 
 #### Changed
 
 - **Chat persistence format**: `ai_history.json` flat file → `ai_chat.db` SQLite database with WAL journal mode, 4096-byte page size, and optimized pragmas (synchronous=NORMAL, journal_size_limit=6MB, mmap_size=128MB)
-- **Chat history privacy**: AppConfig directory created with Unix 0700 permissions, SQLite database file with 0600 — matching industry standard (Claude Code uses 0600 per-session JSONL files)
+- **Chat history privacy**: AppConfig directory created with Unix 0700 permissions, SQLite database file with 0600: matching industry standard (Claude Code uses 0600 per-session JSONL files)
 - **Security audit scope**: 55+ findings resolved from 5 independent auditors covering security, correctness, performance, frontend UX, and severe-grade categories
 
 ## [2.2.5] - 2026-02-19
@@ -3238,7 +3294,7 @@ AeroFTP replaces the JSON flat-file chat history with a professional SQLite + FT
 
 - **macOS CI build**: Renamed `providerMarketplace.ts` to `providerMarketplaceData.ts` to avoid case-insensitive filesystem conflict with `ProviderMarketplace.tsx` on macOS HFS+/APFS
 - **Qwen base URL**: Changed from `dashscope.aliyuncs.com` to `dashscope-intl.aliyuncs.com` (international endpoint for users outside China)
-- **System prompt readability**: Protocol lists now use commas and full names (`FTP, FTPS, SFTP, WebDAV, S3, Google Drive, ...`) instead of slash-concatenated abbreviations — improves response quality from smaller LLMs (Qwen Turbo, Groq, etc.)
+- **System prompt readability**: Protocol lists now use commas and full names (`FTP, FTPS, SFTP, WebDAV, S3, Google Drive, ...`) instead of slash-concatenated abbreviations: improves response quality from smaller LLMs (Qwen Turbo, Groq, etc.)
 
 ## [2.2.4] - 2026-02-18
 
@@ -3249,9 +3305,9 @@ AeroFTP expands from 10 to 15 AI providers with a searchable Provider Marketplac
 #### Added
 
 - **Provider Marketplace**: Searchable modal grid replacing the old "Add:" buttons row in AI Settings. 15 providers across 6 categories (Flagship, Fast Inference, Specialized, Local, Chinese, Gateway) with feature badges, pricing tier labels, and one-click setup
-- **5 new AI providers**: Mistral, Groq, Perplexity, Cohere, Together AI — all OpenAI-compatible with official SVG icons, model registry entries, and provider profiles. Total AI providers: 10 → 15
+- **5 new AI providers**: Mistral, Groq, Perplexity, Cohere, Together AI: all OpenAI-compatible with official SVG icons, model registry entries, and provider profiles. Total AI providers: 10 → 15
 - **TOTP 2FA for vault unlock**: Optional RFC 6238 TOTP second factor for master password vaults. QR code setup, 6-digit verification, enable/disable in Settings > Security tab. Rate limiting with exponential backoff (5 attempts → 30s-15min lockout)
-- **Remote Vault**: Open `.aerovault` files on connected remote servers — download to temp, operate locally, upload changes back with "Save & Close" flow. Accessible from VaultPanel when connected
+- **Remote Vault**: Open `.aerovault` files on connected remote servers: download to temp, operate locally, upload changes back with "Save & Close" flow. Accessible from VaultPanel when connected
 - **CLI foundation**: `aeroftp-cli` binary with `connect`, `ls`, `get`, `put`, `sync` commands via Clap. URL-based connection (`sftp://user@host/path`), progress bars via indicatif, all 14 providers supported
 - **CSP violation reporter**: Client-side `securitypolicyviolation` event listener with debug-gated logging, idempotency guard, and truncated blocked URI
 
@@ -3264,13 +3320,13 @@ AeroFTP expands from 10 to 15 AI providers with a searchable Provider Marketplac
 - **Remote vault security**: Null byte validation, path traversal rejection, symlink detection via `symlink_metadata()`, `canonicalize()` before `starts_with()`, `sync_all()` after zero-fill, Unix permissions 0o600, error propagation on all writes
 - **Modal accessibility**: ARIA attributes (`role="dialog"`, `aria-modal`, `aria-labelledby`), Escape key handlers, state cleanup on close, focus management for TotpSetup and ProviderMarketplace
 - **Cohere API compatibility**: Base URL changed from `/v2` to `/compatibility` endpoint for OpenAI-compatible routing
-- **Perplexity tool format**: Changed from `native` to `text` — Sonar models do not support function calling
+- **Perplexity tool format**: Changed from `native` to `text`: Sonar models do not support function calling
 - **SVG gradient ID collisions**: QwenIcon and CohereIcon now use `React.useId()` for unique gradient IDs, preventing rendering conflicts when multiple instances are mounted
 - **AISettingsPanel performance**: Provider type Set memoized with `useMemo` to prevent reconstruction on every render
-- **Provider Marketplace theme support**: Modal now supports all 4 themes (Light, Dark, Tokyo Night, Cyber) using Tailwind `dark:` prefix pattern — previously used undefined CSS variables causing transparent backgrounds
+- **Provider Marketplace theme support**: Modal now supports all 4 themes (Light, Dark, Tokyo Night, Cyber) using Tailwind `dark:` prefix pattern: previously used undefined CSS variables causing transparent backgrounds
 - **TotpSetup theme support**: TOTP setup dialog now supports all 4 themes with proper `dark:` prefix classes
-- **ChatSearchOverlay render loop**: Fixed "Maximum update depth exceeded" caused by `messages.map()` creating new array references every render — replaced with `useMemo` on search messages
-- **Chat history persistence**: Complete rewrite using `BaseDirectory.AppConfig` with Rust-side directory creation in `setup()` — fixes Tauri FS scope errors on `mkdir`, `exists`, and `writeTextFile` with absolute paths
+- **ChatSearchOverlay render loop**: Fixed "Maximum update depth exceeded" caused by `messages.map()` creating new array references every render: replaced with `useMemo` on search messages
+- **Chat history persistence**: Complete rewrite using `BaseDirectory.AppConfig` with Rust-side directory creation in `setup()`: fixes Tauri FS scope errors on `mkdir`, `exists`, and `writeTextFile` with absolute paths
 - **Chat history privacy**: AppConfig directory created with Unix 0700 permissions (`rwx------`) preventing other users from reading conversation data
 - **Cargo binary ambiguity**: Added `default-run = "aeroftp"` to resolve `cargo run` failure when multiple `[[bin]]` targets exist (aeroftp + aeroftp-cli)
 
@@ -3290,14 +3346,14 @@ AeroAgent gets a professional welcome screen with Lucide icons, 3x3 capability g
 #### Added
 
 - **AeroAgent welcome screen redesign**: New empty state with Lucide icons replacing emoji, 3x3 capability grid (Files, Code, Search, Archives, Shell, Vault, Sync, Context, Vision), context-aware quick prompt suggestions (connected vs local mode), and API key setup banner when no providers are configured
-- **`shell_execute` backend tool**: Replaces fire-and-forget `terminal_execute` with real shell command execution via `tokio::process::Command` — captures stdout, stderr, and exit code. Environment isolation (`env_clear` + safe var restore), 512KB output cap, configurable timeout (default 30s, max 120s), denied command patterns (rm -rf /, shutdown, reboot, etc.). Visual terminal dispatch preserved for user awareness
+- **`shell_execute` backend tool**: Replaces fire-and-forget `terminal_execute` with real shell command execution via `tokio::process::Command`: captures stdout, stderr, and exit code. Environment isolation (`env_clear` + safe var restore), 512KB output cap, configurable timeout (default 30s, max 120s), denied command patterns (rm -rf /, shutdown, reboot, etc.). Visual terminal dispatch preserved for user awareness
 - **29 new i18n keys in 47 languages**: Welcome screen labels, capability descriptions, and context-aware quick prompts (`ai.welcome*`)
 
 #### Fixed
 
-- **i18n error message display**: All 9 error hint paths in `formatProviderError` used wrong prefix `t('ai.error.errorRateLimit')` — corrected to `t('ai.errorRateLimit')`. AI provider error messages (401, 403, 404, 429, 500, 502, 503, 504, timeout) now display translated text instead of raw key paths
+- **i18n error message display**: All 9 error hint paths in `formatProviderError` used wrong prefix `t('ai.error.errorRateLimit')`: corrected to `t('ai.errorRateLimit')`. AI provider error messages (401, 403, 404, 429, 500, 502, 503, 504, timeout) now display translated text instead of raw key paths
 - **i18n structural integrity**: Comprehensive audit found 1188 keys leaked at JSON root level across 45 locales (from previous batch merge operations). All moved to correct `translations.*` path. 264 remaining `[NEEDS TRANSLATION]` placeholders translated
-- **i18n validation script**: Rewritten `scripts/i18n-validate.ts` with 8 comprehensive checks — JSON validity, root structure, meta section, missing keys, extra/orphan keys, placeholder detection, type consistency, empty strings
+- **i18n validation script**: Rewritten `scripts/i18n-validate.ts` with 8 comprehensive checks: JSON validity, root structure, meta section, missing keys, extra/orphan keys, placeholder detection, type consistency, empty strings
 
 #### Changed
 
@@ -3314,25 +3370,25 @@ AeroAgent gains 9 new file management tools for batch operations, disk analysis,
 
 - **AeroAgent 9 new tools**: `local_move_files` (batch move), `local_batch_rename` (regex/prefix/suffix/sequential), `local_copy_files` (batch copy), `local_trash` (recycle bin), `local_file_info` (metadata), `local_disk_usage` (recursive size), `local_find_duplicates` (hash-based), `archive_compress` (ZIP/7z/TAR), `archive_decompress` (extract archives)
 - **AeroAgent 8 new power tools**: `local_grep` (regex search in file contents, recursive, with context lines), `local_head` (read first N lines), `local_tail` (read last N lines), `local_stat_batch` (batch file metadata for up to 100 paths), `local_diff` (unified diff between two files via `similar` crate), `local_tree` (recursive directory tree with depth/glob filters), `clipboard_read` (read system clipboard), `clipboard_write` (write to system clipboard). AeroAgent total: 44 tools
-- **Extreme Mode**: Cyber-theme-only feature — auto-approves all AI tool calls (including high-danger), raises step limit from 10 to 50, enables fully autonomous multi-step execution. Toggle in AI Settings → Advanced tab
+- **Extreme Mode**: Cyber-theme-only feature: auto-approves all AI tool calls (including high-danger), raises step limit from 10 to 50, enables fully autonomous multi-step execution. Toggle in AI Settings → Advanced tab
 - **AeroAgent connection context awareness**: System prompt now clearly distinguishes AeroCloud (background sync), manual server connections, and AeroFile (local-only) mode. Active panel (local vs remote) communicated to AI for accurate file operations
 - **21 new i18n keys in 47 languages**: 18 tool labels (toolLabels.local_move_files through clipboard_write) + 3 Extreme Mode keys (extremeMode, extremeModeDesc, extremeModeWarning)
 
 #### Fixed
 
-- **AeroAgent relative path resolution**: All local tools now resolve relative filenames against the user's current local directory via `resolve_local_path()` — fixes "os error 2" when AI models pass bare filenames instead of absolute paths
+- **AeroAgent relative path resolution**: All local tools now resolve relative filenames against the user's current local directory via `resolve_local_path()`: fixes "os error 2" when AI models pass bare filenames instead of absolute paths
 - **AeroAgent duplicate tool call prevention**: New `executedToolSignaturesRef` dedup mechanism prevents AI models (especially Llama 3.3 70b) from calling the same tool with identical arguments multiple times in multi-step execution. Tracked across approval restarts, cleared on new user message
-- **AeroAgent context confusion in AeroFile mode**: Agent no longer lists AeroCloud remote files when user is in local-only AeroFile mode — connection mode and active panel are now explicit in the system prompt
+- **AeroAgent context confusion in AeroFile mode**: Agent no longer lists AeroCloud remote files when user is in local-only AeroFile mode: connection mode and active panel are now explicit in the system prompt
 - **AeroSync theme support**: SyncPanel modal now follows all 4 themes (Dark, Light, Tokyo Night, Cyber) via 20 CSS custom properties replacing 87+ hardcoded hex values. Tokyo Night uses purple accents, Cyber uses cyan/green neon accents
-- **Extreme Mode not visible**: Theme detection used `getAttribute('data-theme')` which always returned null — fixed to `classList.contains('cyber')` in both AISettingsPanel and AIChat
-- **AI Settings theme support**: AISettingsPanel modal now follows all 4 themes via scoped CSS overrides — Light mode gets white backgrounds with dark text, Tokyo Night maps purple accents to `--tokyo-purple`, Cyber maps accents to `--cyber-cyan/green`
+- **Extreme Mode not visible**: Theme detection used `getAttribute('data-theme')` which always returned null: fixed to `classList.contains('cyber')` in both AISettingsPanel and AIChat
+- **AI Settings theme support**: AISettingsPanel modal now follows all 4 themes via scoped CSS overrides: Light mode gets white backgrounds with dark text, Tokyo Night maps purple accents to `--tokyo-purple`, Cyber maps accents to `--cyber-cyan/green`
 
 ## [2.2.1] - 2026-02-16
 
 ### Splash Screen & Icon Polish
 
 #### Fixed
-- **Splash screen menu bar flash eliminated**: Root cause identified — `APP_READY_DONE` flag was set before `splash.close()`, allowing `rebuild_menu` to call `app.set_menu()` while the GTK splash window was still alive. Flag now set at the very end of `app_ready()` after 800ms destruction wait, with defense-in-depth `splash.remove_menu()` in `rebuild_menu`
+- **Splash screen menu bar flash eliminated**: Root cause identified: `APP_READY_DONE` flag was set before `splash.close()`, allowing `rebuild_menu` to call `app.set_menu()` while the GTK splash window was still alive. Flag now set at the very end of `app_ready()` after 800ms destruction wait, with defense-in-depth `splash.remove_menu()` in `rebuild_menu`
 - **AeroCloud default sync interval**: Changed from 5 minutes to 24 hours when inotify realtime detection is active
 
 #### Changed
@@ -3341,16 +3397,16 @@ AeroAgent gains 9 new file management tools for batch operations, disk analysis,
 
 ## [2.2.0] - 2026-02-15
 
-### AeroSync Phase 3A+ — Complete Frontend Integration & UX Maturity
+### AeroSync Phase 3A+: Complete Frontend Integration & UX Maturity
 
 Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based UX with Quick Sync for beginners and Advanced mode for power users. Speed Mode presets, parallel transfer controls, filesystem watcher, sync scheduler, multi-path editor, template import/export, rollback snapshots, and Maniac Mode easter egg. Splash screen restored with professional simulated loading sequence. Accordion UX for Advanced tab. Password Forge extended to 24-word passphrases with BIP-39 disclaimer. Cyber theme icon refresh.
 
 #### Added
 
-- **Tab-based Sync UX**: Two-tab architecture — "Quick Sync" (default, beginner-friendly) and "Advanced" (all granular controls). SyncPanel refactored from 1867 to ~1100 lines with 9 extracted sub-components
+- **Tab-based Sync UX**: Two-tab architecture: "Quick Sync" (default, beginner-friendly) and "Advanced" (all granular controls). SyncPanel refactored from 1867 to ~1100 lines with 9 extracted sub-components
 - **Quick Sync preset cards**: 3 visual cards (Mirror, Two-way, Backup) with one-click selection, matching the 3 built-in sync profiles
-- **Speed Mode presets**: 5 speed levels — Normal (1 stream), Fast (3 streams + auto compression), Turbo (6 streams + compression + delta), Extreme (8 streams + compression + delta), Maniac (8 streams + all safety disabled). Each auto-configures parallel streams, compression, and delta sync
-- **Maniac Mode**: Cyber-theme-only easter egg — disables journal, verification, retry, and bandwidth limits for maximum raw speed. Red/neon pulsing animation. Warning card with "I understand, proceed" confirmation. Mandatory full verification scan runs automatically after sync completes with mismatch report
+- **Speed Mode presets**: 5 speed levels: Normal (1 stream), Fast (3 streams + auto compression), Turbo (6 streams + compression + delta), Extreme (8 streams + compression + delta), Maniac (8 streams + all safety disabled). Each auto-configures parallel streams, compression, and delta sync
+- **Maniac Mode**: Cyber-theme-only easter egg: disables journal, verification, retry, and bandwidth limits for maximum raw speed. Red/neon pulsing animation. Warning card with "I understand, proceed" confirmation. Mandatory full verification scan runs automatically after sync completes with mismatch report
 - **Sync Scheduler UI**: Interval selector (1min to 24h), pause/resume, countdown to next sync, time window with day picker. Integrated in Advanced tab with `SyncScheduler.tsx`
 - **Filesystem Watcher status**: Real-time watcher health indicator showing active/inactive state, native backend type, and inotify capacity warnings. Integrated in Advanced tab with `WatcherStatus.tsx`
 - **Multi-Path Editor dialog**: CRUD interface for managing multiple local↔remote path pairs with independent enable/disable per pair. Tauri backend wired via `get/save_multi_path_config`
@@ -3363,8 +3419,8 @@ Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based
 - **25 new i18n keys in 47 languages**: Speed mode labels, tooltips, Maniac Mode warning, rollback, compression, delta sync, multi-path, templates. Translated via GLM batch method (3 grouped files + merge script). Armenian translated separately
 - **Splash screen with loading sequence**: Professional startup splash with simulated 21-step module loading sequence (Tauri runtime, protocol handlers, encryption modules, AeroAgent AI, Monaco editor, i18n, IPC bridge). Variable timing with random jitter for realistic appearance. 10-second safety timeout prevents stuck state
 - **Advanced tab accordion**: All 4 sections (Direction, Compare & Verify, Transfer Control, Automation) are collapsible accordion-style with smooth CSS transitions. Only one section open at a time, reducing vertical scroll
-- **Password Forge 24-word passphrases**: Maximum passphrase length increased from 12 to 24 words. Amber BIP-39 disclaimer shown at 12+ words — generated passphrases use EFF Diceware wordlist, not valid as cryptocurrency wallet seeds
-- **Cyber shield icon**: Replaced Anonymous mask with cybersecurity shield+lock icon in theme selector and Settings panel — better alignment with the security toolkit identity
+- **Password Forge 24-word passphrases**: Maximum passphrase length increased from 12 to 24 words. Amber BIP-39 disclaimer shown at 12+ words: generated passphrases use EFF Diceware wordlist, not valid as cryptocurrency wallet seeds
+- **Cyber shield icon**: Replaced Anonymous mask with cybersecurity shield+lock icon in theme selector and Settings panel: better alignment with the security toolkit identity
 
 #### Changed
 
@@ -3373,24 +3429,24 @@ Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based
 
 #### Fixed
 
-- **Maniac Mode silent failure (CF-001)**: `max_retries: 0` caused the retry loop to never execute — all transfers silently skipped. Fixed constant to `1` and added `Math.max(1, ...)` safety net in SyncPanel
+- **Maniac Mode silent failure (CF-001)**: `max_retries: 0` caused the retry loop to never execute: all transfers silently skipped. Fixed constant to `1` and added `Math.max(1, ...)` safety net in SyncPanel
 - **Template export/import non-functional (CF-002)**: Frontend API was completely mismatched with backend. Rewritten to use `@tauri-apps/plugin-fs` for file I/O and correct Tauri command parameters
 - **Path traversal in 8 sync commands (CF-003)**: Added `validate_path()` to `compare_directories`, `delta_sync_analyze`, `get_parallel_scan_files`, and 5 journal/index commands in `lib.rs`
-- **Remote path traversal (CF-004)**: Added `validate_relative_path()` in `cloud_service.rs` — rejects null bytes, absolute paths, drive letters, and `..` components from remote-supplied paths
+- **Remote path traversal (CF-004)**: Added `validate_relative_path()` in `cloud_service.rs`: rejects null bytes, absolute paths, drive letters, and `..` components from remote-supplied paths
 - **Scheduler crash on empty days (CF-005)**: Changed `days: null` to `days: []` with `#[serde(default)]` in Rust struct. Frontend consistently uses empty array instead of null
 - **Provider optimization invoke mismatch (CF-006)**: Fixed `{ protocol }` → `{ providerType: protocol }` matching Tauri's snake_case auto-conversion
 - **Symlink following in local scan (CF-007)**: Changed `metadata()` to `symlink_metadata()` in `scan_local_folder`, symlinks now skipped instead of followed
-- **Non-atomic journal writes (CF-008)**: Added `atomic_write()` helper (temp file + rename) for `save_sync_journal` and `save_sync_index` — crash-safe I/O
+- **Non-atomic journal writes (CF-008)**: Added `atomic_write()` helper (temp file + rename) for `save_sync_journal` and `save_sync_index`: crash-safe I/O
 - **JoinSet error silencing (CF-009)**: Parallel scan now collects and logs JoinSet task errors instead of silently dropping them
 - **Maniac Mode bandwidth not reset (CF-011)**: Added `handleSpeedLimitChange(0, 0)` in Maniac confirm handler to remove bandwidth limits
-- **Overnight scheduler window (H-004)**: Added `Weekday::prev()` and `contains_time_and_day()` — correctly checks yesterday's day filter for after-midnight portion of overnight windows. 5 new unit tests
+- **Overnight scheduler window (H-004)**: Added `Weekday::prev()` and `contains_time_and_day()`: correctly checks yesterday's day filter for after-midnight portion of overnight windows. 5 new unit tests
 - **Journal index-based lookup (SP-004)**: Replaced O(n) index scan with `Map<string, number>` keyed by `relative_path` for O(1) journal progress lookup
 - **Timer leak on unmount (SP-009)**: Added `clearTimeout` for `flushTimerRef` and `progressFlushTimerRef` in SyncPanel cleanup
 - **Cancelled state not preserved on reset (SP-010)**: Removed erroneous `cancelledRef.current = false` from `handleReset`
 - **Non-deterministic path hashing (RB-001)**: Replaced `DefaultHasher` (SipHash, seed-randomized) with stable DJB2 algorithm for journal/index filenames
-- **NaN/Infinity in retry delay (RB-003)**: Added `is_finite()` guard in `delay_for_attempt()` — falls back to `max_delay_ms` on overflow
+- **NaN/Infinity in retry delay (RB-003)**: Added `is_finite()` guard in `delay_for_attempt()`: falls back to `max_delay_ms` on overflow
 - **Path substitution over-replacement (RB-007)**: Changed `.replace()` to `.replacen(..., 1)` for `$HOME`/`$DOCUMENTS`/`$DESKTOP` in portable paths
-- **Hidden file blanket exclusion (RB-020)**: Replaced blanket dotfile skip with specific `EXCLUDED_HIDDEN` blacklist (17 non-content dirs) — `.env`, `.htaccess`, `.dockerignore` now sync correctly
+- **Hidden file blanket exclusion (RB-020)**: Replaced blanket dotfile skip with specific `EXCLUDED_HIDDEN` blacklist (17 non-content dirs): `.env`, `.htaccess`, `.dockerignore` now sync correctly
 - **rename() error silenced (RB-028)**: Changed `.ok()` to `.map_err()?` on `std::fs::rename` in KeepBoth conflict resolution
 - **create_dir_all() errors silenced (RB-031)**: Changed `.ok()` to `if let Err(e) { tracing::warn!(...) }` in 6 locations in cloud_service.rs
 - **Rolling hash readability (RB-033)**: Decomposed `roll()` method with explicit intermediate variables for clarity
@@ -3406,29 +3462,29 @@ Full frontend integration for all AeroSync Phase 3A+ backend features. Tab-based
 #### Security
 
 - **6-auditor cross-reference**: 6 independent auditors reviewed the entire AeroSync codebase. 31 findings confirmed and fixed, grade improved from B to A-
-- **Defense-in-depth pattern**: Critical fixes (CF-001, CF-003, CF-004) apply dual-layer protection — both the source constant and runtime safety nets
+- **Defense-in-depth pattern**: Critical fixes (CF-001, CF-003, CF-004) apply dual-layer protection: both the source constant and runtime safety nets
 
 ---
 
 ## [2.1.2] - 2026-02-15
 
-### AeroSync Phase 3A — Professional Sync Engine
+### AeroSync Phase 3A: Professional Sync Engine
 
 Sync profiles, conflict resolution center, bandwidth control, performance optimizations, and security hardening. AeroSync moves from reliable to professional-grade.
 
 #### Added
 
 - **Sync Profiles with 3 built-in presets**: Named sync configurations combining direction, compare options, retry/verify policies, and delete behavior. Built-in presets: Mirror (local→remote, delete orphans, verify size), Two-way (bidirectional, keep newer, no deletes), Backup (local→remote, checksum verify, no deletes). Save/load custom profiles for reuse
-- **Conflict Resolution Center**: Per-file conflict resolution with interactive UI — keep local, keep remote, skip per file. Batch actions: Keep Newer for All, Keep Local for All, Keep Remote for All, Skip All. Integrated into sync flow with journal tracking
+- **Conflict Resolution Center**: Per-file conflict resolution with interactive UI: keep local, keep remote, skip per file. Batch actions: Keep Newer for All, Keep Local for All, Keep Remote for All, Skip All. Integrated into sync flow with journal tracking
 - **Bandwidth control UI**: Upload and download speed limit selectors in SyncPanel header (128 KB/s to 10 MB/s, or unlimited). Wires existing `set_speed_limit`/`get_speed_limit` backend commands with provider auto-detection
 - **Journal auto-cleanup**: Completed sync journals older than 30 days are automatically deleted on panel open. Manual "Clear History" button with confirmation dialog. `list_sync_journals` command for journal inventory
 - **Plugin integrity verification (SEC-P2-02)**: SHA-256 hash computed at plugin install, verified before every execution. Counter-audit by 3 Opus agents resolved 6 findings: hash format validation, safe prefix comparison, symlink canonicalization, `.env_clear()` credential isolation
 - **Tauri FS scope hardening (SEC-P2-03)**: Explicit `fs:scope` with `allow: ["**"]`, added `fs:deny-webview-data-linux/windows` for webview data protection, replaced `shell:allow-open` with `shell:default`, removed 5 redundant dialog permissions
-- **39 new i18n keys**: Sync profiles, conflict resolution, bandwidth control, icon themes, and session context menu — translated in all 47 languages
+- **39 new i18n keys**: Sync profiles, conflict resolution, bandwidth control, icon themes, and session context menu: translated in all 47 languages
 
 #### Changed
 
-- **Backend progress throttle**: Transfer progress events now throttled at Rust level — emit every 150ms or 2% delta (whichever comes first), always emit on completion. Reduces IPC overhead by ~90% on large file transfers
+- **Backend progress throttle**: Transfer progress events now throttled at Rust level: emit every 150ms or 2% delta (whichever comes first), always emit on completion. Reduces IPC overhead by ~90% on large file transfers
 - **Parallel local+remote scan**: `compare_directories` now runs local filesystem scan and remote server scan concurrently via `tokio::join!`, reducing wall-clock scan time to max(local, remote) instead of local+remote
 - **Compact JSON for sync artifacts**: Journal and index files now use compact JSON serialization (`to_string` instead of `to_string_pretty`), reducing I/O and parse overhead for large sync histories
 
@@ -3444,20 +3500,20 @@ Post-release improvements focusing on transfer UX, visual consistency across all
 
 - **Unified TransferProgressBar component**: Consolidated 7 separate transfer progress bars into a single reusable component with 4 feature levels (base, details, batch, graph), theme-aware shimmer animation, and optional SpeedGraph canvas chart
 - **SpeedGraph canvas component**: Real-time transfer speed visualization with quadratic bezier smoothing, auto-scale Y axis, and stats overlay (current/avg/peak speed)
-- **TransferToastContainer**: Isolated state management for transfer toast — progress events update only the toast component via DOM events, eliminating full App re-renders
+- **TransferToastContainer**: Isolated state management for transfer toast: progress events update only the toast component via DOM events, eliminating full App re-renders
 - **prefers-reduced-motion support**: TransferProgressBar respects user accessibility preference, disabling all shimmer and slide animations when reduced motion is requested
 - **Cyber Anonymous mask icon**: Replaced shield icon with detailed Anonymous mask SVG for theme toggle button and Settings appearance selector
 - **Security toolbar visual grouping**: AeroVault and CyberTools buttons now share emerald background styling, visually identifying security-related tools as a cohesive group
-- **Icon theme system**: 3 selectable icon styles in Settings > Appearance > Icons — Outline (stroke), Filled (colored document shapes with type badges), and Minimal (monochrome accent). Defaults: light/dark use Filled, tokyo/cyber use Minimal (neon accent effect). Auto-syncs when changing app theme, user can customize after
+- **Icon theme system**: 3 selectable icon styles in Settings > Appearance > Icons: Outline (stroke), Filled (colored document shapes with type badges), and Minimal (monochrome accent). Defaults: light/dark use Filled, tokyo/cyber use Minimal (neon accent effect). Auto-syncs when changing app theme, user can customize after
 - **Icon theme Settings panel**: Visual preview grid showing 6 sample file icons per theme, with one-click selection and save animation feedback
 
 #### Fixed
 
 - **Transfer toast theme consistency**: Toast now correctly resolves the effective theme for all 4 themes (light, dark, tokyo, cyber) including `auto` mode. Previously used `dark:` Tailwind prefix only, causing wrong colors in Cyber and Tokyo themes
-- **Transfer toast flicker between files**: Added 500ms debounce on toast dismiss during batch transfers — new file progress cancels the dismiss timer, keeping the toast visible without flicker
+- **Transfer toast flicker between files**: Added 500ms debounce on toast dismiss during batch transfers: new file progress cancels the dismiss timer, keeping the toast visible without flicker
 - **File list theme flash during transfers**: Isolated `activeTransfer` state from App.tsx (5000+ line component) using ref + boolean + custom DOM event pattern. Progress events no longer trigger expensive full-app re-renders that caused WebKitGTK to briefly flash unstyled content
 - **Theme initialization race**: `isDark` now initializes synchronously from saved theme + `prefers-color-scheme` media query, eliminating a startup frame where dark mode class was temporarily absent
-- **TransferProgressBar theme independence**: Removed `useTheme()` hook dependency — component reads theme passively from DOM classes via `resolveThemeFromDom()`, preventing mount/unmount from triggering global theme mutations
+- **TransferProgressBar theme independence**: Removed `useTheme()` hook dependency: component reads theme passively from DOM classes via `resolveThemeFromDom()`, preventing mount/unmount from triggering global theme mutations
 - **SyncPanel progress bar dancing**: Progress bar moved to persistent bottom position in modal (no longer appears/disappears per file), with slide-down animation on sync start
 - **Update toast auto-dismiss**: Toast now flashes twice with a fast pulse (0.6s) and long pause (3.4s), then auto-closes after 8 seconds. Reappears on next app launch if not yet updated. StatusBar badge remains visible for manual access
 - **Sync navigation boundary warning**: Debounced 500ms mismatch detection prevents false warning flash during panel sync transition. Compares only relative paths (ignores base folder name differences between FTP home and local folder)
@@ -3474,13 +3530,13 @@ Post-release improvements focusing on transfer UX, visual consistency across all
 
 #### Removed
 
-- **Splash screen**: Removed `public/splash.html` and all related code (app_ready command, splash WebviewWindow, readiness tracking). Production builds start instantly — splash was a dev-mode-only benefit
+- **Splash screen**: Removed `public/splash.html` and all related code (app_ready command, splash WebviewWindow, readiness tracking). Production builds start instantly: splash was a dev-mode-only benefit
 
 ---
 
 ## [2.1.0] - 2026-02-14
 
-### AeroSync Phase 2 — Operational Reliability
+### AeroSync Phase 2: Operational Reliability
 
 Enterprise-grade sync hardening with transfer journal for checkpoint/resume, SHA-256 checksum verification during scan, structured error taxonomy with 10 error categories, post-transfer verification policies, and configurable retry with exponential backoff. Plus session tab context menu, improved certificate warning UX, and Filen 2FA compatibility fix.
 
@@ -3557,7 +3613,7 @@ Enhanced the in-app update system with platform-aware install capabilities, smar
 
 #### Added
 
-- **Platform-native update installation**: One-click Install & Restart for `.deb` (via `pkexec dpkg -i`), `.rpm` (via `pkexec rpm -U`), and `.msi`/`.exe` (Windows launcher) — no more manual file manager step
+- **Platform-native update installation**: One-click Install & Restart for `.deb` (via `pkexec dpkg -i`), `.rpm` (via `pkexec rpm -U`), and `.msi`/`.exe` (Windows launcher): no more manual file manager step
 - **Asset availability detection**: When a new GitHub release exists but the CI-built artifact for the installed format is not yet available, the update check silently retries every hour instead of showing a premature notification
 - **StatusBar update re-trigger**: Clicking the purple "Update Available" badge in the status bar re-opens the download toast if previously dismissed
 - **Skip for now button**: Explicit "Later, not now" dismiss option in both pre-download and post-download states
@@ -3615,15 +3671,15 @@ Comprehensive quality audit across all 47 languages, eliminating 605 silent intr
 
 - **605 silent intruder keys eliminated**: Systematic audit discovered 605 translation keys across 46 non-English locales that contained English text without `[NEEDS TRANSLATION]` markers. All replaced with proper native translations across 30+ namespaces (common, connection, migration, masterPassword, overwrite, settings, toast, transfer, ai, statusbar, and more)
 - **Armenian (hy) script restoration**: 63 keys contained Latin romanizations instead of Armenian Unicode script (e.g., "Chegharkel" instead of the proper Armenian form). Reverse-transliterated using phonetic mapping with manual overrides for aspirated consonants and loanwords. Additional 53 English-identical keys translated to proper Armenian
-- **Chinese (zh) native review corrections**: 16 corrections applied from native speaker review — 12 previously untranslated keys translated, 3 placeholder format fixes, 1 improved translation
+- **Chinese (zh) native review corrections**: 16 corrections applied from native speaker review: 12 previously untranslated keys translated, 3 placeholder format fixes, 1 improved translation
 - **Placeholder format standardized**: 173 instances of `{{param}}` (double-brace) corrected to `{param}` (single-brace) across all 46 locale files in 4 keys. The custom i18n system uses single-brace interpolation
-- **5 connection keys translated in 45 languages**: `accessKeyId`, `secretAccessKey`, `selectSshKey`, `sshKeys`, and `megaPasswordPlaceholder` were systematically left in English across nearly all locales — now properly translated
+- **5 connection keys translated in 45 languages**: `accessKeyId`, `secretAccessKey`, `selectSshKey`, `sshKeys`, and `megaPasswordPlaceholder` were systematically left in English across nearly all locales: now properly translated
 - **11 orphaned keys removed**: Extra keys in ja/ko/zh (masterPassword and migration duplicates) that had no corresponding entries in en.json cleaned up
 
 #### Changed
 
 - **metainfo.xml languages list**: Updated to reflect actual 47 supported languages (removed phantom entries for languages never shipped, added missing ones)
-- **metainfo.xml description**: Corrected language count from "51 languages with RTL" to "47 languages (all LTR)" — RTL locales were removed in v2.0.6
+- **metainfo.xml description**: Corrected language count from "51 languages with RTL" to "47 languages (all LTR)": RTL locales were removed in v2.0.6
 - **TRANSLATIONS.md**: Added comprehensive batch translation workflow documentation with language group splitting strategy, non-Latin script handling guidelines, and scripts reference table documenting ~6,350 translations applied
 
 ---
@@ -3637,18 +3693,18 @@ Four built-in themes (Light, Dark, Tokyo Night, Cyber), Security Toolkit with Ha
 #### Added
 
 - **4-Theme System**: Light, Dark, Tokyo Night, and Cyber themes with CSS custom properties and `data-theme` attribute. Theme toggle cycles through all four. Auto mode follows OS preference (light/dark). Themed PNG icons for connection screen logo
-- **Security Toolkit** (Cyber theme): 3-tab modal with Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3 — text and file hashing with timing-safe compare), CryptoLab (AES-256-GCM and ChaCha20-Poly1305 text encryption with Argon2id key derivation), and Password Forge (CSPRNG random passwords + BIP39 passphrases with entropy calculation). 8 new Rust backend commands
+- **Security Toolkit** (Cyber theme): 3-tab modal with Hash Forge (MD5, SHA-1, SHA-256, SHA-512, BLAKE3: text and file hashing with timing-safe compare), CryptoLab (AES-256-GCM and ChaCha20-Poly1305 text encryption with Argon2id key derivation), and Password Forge (CSPRNG random passwords + BIP39 passphrases with entropy calculation). 8 new Rust backend commands
 - **Terminal theme auto-sync**: Terminal theme now follows the app theme automatically (Light→Solarized Light, Dark→GitHub Dark, Tokyo Night→Tokyo Night, Cyber→Cyber). New `cyber` terminal theme with neon green palette. Manual theme override preserved via `userOverrideRef` pattern
 - **Monaco Cyber theme**: Neon green syntax highlighting on deep black background, matching the Cyber app theme. Registered alongside existing light/dark/tokyo-night themes
-- **360 new i18n keys** across 16 sections: `preview.*` (104 keys — audio player, video player, image viewer, PDF viewer, text viewer, mixer, WebGL), `activityPanel.*` (20 keys — log filters, badges, controls), `transfer.*` (9 keys — queue actions, status labels), `ai.toolLabels.*` (31 keys — all 31 AI tool display names), `ai.toolApproval.*` (10 keys — approval dialog actions), `ai.thinking.*` (16 keys — animated thinking status variants), `ai.error.*` (4 keys), `protocol.*Tooltip` (14 keys — protocol selector tooltips for all 14 protocols), `connection.oauth.*` (16 keys — OAuth connect flow), `connection.fourshared.*` (16 keys — 4shared connect flow), `ui.language.*` (14 keys — language selector), `ui.session.*` (8 keys — session tab labels), `permissions.*` (8 keys — chmod dialog), `error.*` (4 keys — error boundary), `devtools.*` (7 keys — DevTools panel), `savedServers.*` (8 keys — server display templates), `vault.*` (7 keys — vault panel), `cryptomator.*` (4 keys), `cloud.*` (5 keys — cloud panel), `settings.*` (22 keys — placeholders and alerts), `toast.*` (15 keys — notification messages)
+- **360 new i18n keys** across 16 sections: `preview.*` (104 keys: audio player, video player, image viewer, PDF viewer, text viewer, mixer, WebGL), `activityPanel.*` (20 keys: log filters, badges, controls), `transfer.*` (9 keys: queue actions, status labels), `ai.toolLabels.*` (31 keys: all 31 AI tool display names), `ai.toolApproval.*` (10 keys: approval dialog actions), `ai.thinking.*` (16 keys: animated thinking status variants), `ai.error.*` (4 keys), `protocol.*Tooltip` (14 keys: protocol selector tooltips for all 14 protocols), `connection.oauth.*` (16 keys: OAuth connect flow), `connection.fourshared.*` (16 keys: 4shared connect flow), `ui.language.*` (14 keys: language selector), `ui.session.*` (8 keys: session tab labels), `permissions.*` (8 keys: chmod dialog), `error.*` (4 keys: error boundary), `devtools.*` (7 keys: DevTools panel), `savedServers.*` (8 keys: server display templates), `vault.*` (7 keys: vault panel), `cryptomator.*` (4 keys), `cloud.*` (5 keys: cloud panel), `settings.*` (22 keys: placeholders and alerts), `toast.*` (15 keys: notification messages)
 - **Full translations for all 47 languages**: Bulgarian, Bengali, Catalan, Czech, Welsh, Danish, German, Greek, Spanish, Estonian, Basque, Finnish, French, Galician, Hindi, Croatian, Hungarian, Armenian, Indonesian, Icelandic, Italian (manual), Japanese, Georgian, Khmer, Korean, Lithuanian, Latvian, Macedonian, Malay, Dutch, Norwegian, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Serbian, Swedish, Swahili, Thai, Filipino, Turkish, Ukrainian, Vietnamese, Chinese Simplified
-- **`ai.thinking` converted from string to object**: 16 animated thinking status variants — each translated into all 47 languages
+- **`ai.thinking` converted from string to object**: 16 animated thinking status variants: each translated into all 47 languages
 - **BLAKE3 hashing**: New `blake3 = "1"` Cargo dependency for Security Toolkit file hashing
 
 #### Changed
 
 - **About dialog credits**: Replaced AI model attribution with technology stack display ("Rust + React 18 + TypeScript")
-- **Preview components i18n** (8 files): `AudioPlayer.tsx`, `VideoPlayer.tsx`, `ImageViewer.tsx`, `PDFViewer.tsx`, `TextViewer.tsx`, `AudioMixer.tsx`, `WebGLVisualizer.tsx`, `UniversalPreview.tsx` — all hardcoded labels replaced with `t()` calls
+- **Preview components i18n** (8 files): `AudioPlayer.tsx`, `VideoPlayer.tsx`, `ImageViewer.tsx`, `PDFViewer.tsx`, `TextViewer.tsx`, `AudioMixer.tsx`, `WebGLVisualizer.tsx`, `UniversalPreview.tsx`: all hardcoded labels replaced with `t()` calls
 - **App.tsx i18n**: ~40 hardcoded toast notifications, SortableHeader labels, and `|| 'Fallback'` patterns replaced with proper `t()` calls
 - **DevToolsV2 + AIChat i18n**: Panel tooltips, empty states, thinking status, tool errors, image analysis text
 - **ToolApproval + BatchToolApproval i18n**: All approval dialog buttons, status labels, and tooltips
@@ -3669,8 +3725,8 @@ Four built-in themes (Light, Dark, Tokyo Night, Cyber), Security Toolkit with Ha
 
 #### Removed
 
-- **RTL locale files**: Removed `ar.json` (Arabic), `fa.json` (Persian), `he.json` (Hebrew), `ur.json` (Urdu) — RTL layout support not yet implemented. Will be re-added with proper RTL CSS support
-- **`|| 'Fallback'` patterns**: ~40 instances removed from `App.tsx` — all keys now exist in `en.json`
+- **RTL locale files**: Removed `ar.json` (Arabic), `fa.json` (Persian), `he.json` (Hebrew), `ur.json` (Urdu): RTL layout support not yet implemented. Will be re-added with proper RTL CSS support
+- **`|| 'Fallback'` patterns**: ~40 instances removed from `App.tsx`: all keys now exist in `en.json`
 
 ---
 
@@ -3684,7 +3740,7 @@ Four built-in themes (Light, Dark, Tokyo Night, Cyber), Security Toolkit with Ha
 
 - **4shared native REST API provider**: Full cloud storage integration via 4shared REST API v1.2 with OAuth 1.0 (HMAC-SHA1) authentication. 15 GB free storage. ID-based file system with folder/file caching, per-entry JSON parsing with `string_or_i64` deserializer for robust API response handling, status filtering (deleted/trashed/incomplete), and `resolve_path()` for relative path navigation across all StorageProvider trait methods
 - **OAuth 1.0 signing module**: Reusable `oauth1.rs` with RFC 5849 compliant HMAC-SHA1 signature generation, percent encoding, nonce/timestamp generation, and 3-step token flow (request token → authorize → access token). Zero new Cargo dependencies (reuses existing hmac, sha1, base64, rand, urlencoding)
-- **WebDAV HTTP Digest Authentication (RFC 2617)**: Auto-detection of Digest auth for WebDAV servers that require it (e.g., CloudMe). When server responds 401 with `WWW-Authenticate: Digest`, AeroFTP transparently switches from Basic to Digest auth with HMAC-MD5 challenge-response. Password never transmitted, nonce-based replay protection, request integrity via method+URI hashing. Zero new dependencies (reuses existing `md-5` and `rand` crates). CloudMe is the only cloud service requiring exclusively Digest auth — most competing clients (rclone, Joplin, Zotero) do not support it
+- **WebDAV HTTP Digest Authentication (RFC 2617)**: Auto-detection of Digest auth for WebDAV servers that require it (e.g., CloudMe). When server responds 401 with `WWW-Authenticate: Digest`, AeroFTP transparently switches from Basic to Digest auth with HMAC-MD5 challenge-response. Password never transmitted, nonce-based replay protection, request integrity via method+URI hashing. Zero new dependencies (reuses existing `md-5` and `rand` crates). CloudMe is the only cloud service requiring exclusively Digest auth: most competing clients (rclone, Joplin, Zotero) do not support it
 - **CloudMe WebDAV preset**: Swedish cloud storage with 3 GB free. Pre-configured WebDAV endpoint (`webdav.cloudme.com:443`), Digest authentication auto-detected
 - **Places Sidebar: GVFS network share detection**: Network mounts via Nautilus/GIO (SMB, SFTP, FTP, WebDAV, NFS, AFP) now appear in Other Locations with Globe icon, size info, and Eject button. GVFS directory names parsed into friendly display names (e.g. "ale su mycloudex2ultra.local")
 - **Places Sidebar: Unmounted partition detection**: Block device partitions not currently mounted (e.g. Windows NTFS) shown in Other Locations with Play button to mount via `udisksctl`. EFI, swap, recovery, and MSR partitions automatically hidden
@@ -3692,25 +3748,25 @@ Four built-in themes (Light, Dark, Tokyo Night, Cyber), Security Toolkit with Ha
 - **Recent locations: individual delete**: Each recent location entry now has an X button on hover to remove it individually (previously only "Clear All" was available)
 - **Autostart on system startup**: New `tauri-plugin-autostart` integration with toggle in Settings > General > Startup. Cross-platform: LaunchAgent (macOS), `.desktop` (Linux), Registry (Windows). OS state synced on panel open, idempotent enable/disable with UI rollback on failure. Recommended hint for AeroCloud Sync users
 - **Windows Named Pipe IPC server (#102)**: Badge daemon now serves the Nextcloud-compatible protocol over `\\.\pipe\aerocloud-sync` on Windows. Same security measures as Unix: `first_pipe_instance(true)` anti-squatting, `reject_remote_clients(true)` local-only IPC, Semaphore(10) connection limit, sliding window rate limiter (100 query/s), bounded reads (8192 bytes), 60-second idle timeout
-- **Windows Cloud Filter API badges (#101)**: Native Explorer sync status icons via `CfSetInSyncState` / `CfRegisterSyncRoot`. Synced files show green checkmark, pending files show sync arrows — no COM DLL required, works on Windows 10 1709+
+- **Windows Cloud Filter API badges (#101)**: Native Explorer sync status icons via `CfSetInSyncState` / `CfRegisterSyncRoot`. Synced files show green checkmark, pending files show sync arrows: no COM DLL required, works on Windows 10 1709+
 - **NSIS installer hooks stub (#104)**: `installer/hooks.nsh` prepared for future Shell Icon Overlay COM DLL registration
-- **Cross-platform protocol engine**: IPC protocol refactored into generic async functions (`read_line_limited_generic`, `handle_protocol_line_generic`, `handle_client_generic`) using `AsyncBufRead + AsyncWrite` traits — Unix socket and Named Pipe share identical protocol logic
+- **Cross-platform protocol engine**: IPC protocol refactored into generic async functions (`read_line_limited_generic`, `handle_protocol_line_generic`, `handle_client_generic`) using `AsyncBufRead + AsyncWrite` traits: Unix socket and Named Pipe share identical protocol logic
 - **Platform-aware badge UI**: SettingsPanel detects Windows and shows "managed automatically via Cloud Filter API" instead of Install/Uninstall/Restart buttons
 - **New Windows dependency**: `windows 0.58` crate (conditional `#[cfg(windows)]`) with Cloud Filter, Shell, Foundation, FileSystem, Security features
-- **3 new i18n keys**: `settings.startupOptions`, `settings.launchOnStartup`, `settings.launchOnStartupDesc` — translated for Italian, 50 other languages with placeholders
+- **3 new i18n keys**: `settings.startupOptions`, `settings.launchOnStartup`, `settings.launchOnStartupDesc`: translated for Italian, 50 other languages with placeholders
 
 #### Fixed
 
 - **Protocol Selector Edit button**: Clicking "Edit" on a saved server while the protocol dropdown was open now correctly closes the dropdown and shows the connection form
 - **Protocol Selector reset on re-open**: Re-clicking the "Select protocol" dropdown while a protocol is already selected now clears the previous selection, preventing desync between internal ProtocolSelector state and parent ConnectionScreen state
-- **StatusBar path/quota overlap**: Long remote paths no longer overlap with storage quota display — left section now uses `min-w-0 flex-1` with flexible truncation instead of fixed `max-w-md`
+- **StatusBar path/quota overlap**: Long remote paths no longer overlap with storage quota display: left section now uses `min-w-0 flex-1` with flexible truncation instead of fixed `max-w-md`
 - **GVFS eject support**: Network shares mounted via Nautilus/GIO now correctly unmount with `gio mount -u` instead of `udisksctl`/`umount` (audit fix INT-001)
 - **Recent delete scrollbar overlap**: Clear All and per-item delete buttons repositioned with `pr-4`/`right-4` padding to avoid scrollbar overlap when Other Locations is expanded
 - **Invisible delete button hit area**: Recent location delete buttons now use `pointer-events-none` when hidden (opacity-0), preventing ghost clicks on the invisible element (audit fix PS-006)
 - **lsblk size string fallback**: Unmounted partition size parsing now handles string-type size values from older lsblk versions (audit fix FS-002)
 - **EFI mount point `/efi`**: Added systemd-boot EFI path to mount point filter (audit fix FS-008)
-- **Security audit (7 findings, all fixed)**: 3-auditor Opus security review — SBA-001 (High: bounded line reader rewritten with `fill_buf()` + `to_vec()` to enforce limits before buffer growth), SBA-002 (Medium: `reject_remote_clients(true)` on all Named Pipe instances), SBA-004 (Medium: 60s idle timeout for connected clients), SBA-005 (Medium: UNC path blocking `\\` in `validate_path()`), GB2-001 (Medium: simplified `CfRegisterSyncRoot` unsafe block), GB2-002 (Medium: `#[cfg(unix)]` on GIO emblem functions), GB2-012/013 (Low: RwLock poison recovery via `unwrap_or_else`)
-- **Places Sidebar audit (30 findings, 6 fixed)**: 3-auditor Opus review of GVFS/unmounted/recent code — INT-001 (High: GVFS eject via gio), FS-002 (Medium: lsblk size fallback), FS-004 (Medium: PSEUDO_FS_TYPES/GVFS comment), FS-008 (Low: /efi filter), PS-006 (Low: pointer-events-none), PS-007 (Low: scrollbar alignment)
+- **Security audit (7 findings, all fixed)**: 3-auditor Opus security review: SBA-001 (High: bounded line reader rewritten with `fill_buf()` + `to_vec()` to enforce limits before buffer growth), SBA-002 (Medium: `reject_remote_clients(true)` on all Named Pipe instances), SBA-004 (Medium: 60s idle timeout for connected clients), SBA-005 (Medium: UNC path blocking `\\` in `validate_path()`), GB2-001 (Medium: simplified `CfRegisterSyncRoot` unsafe block), GB2-002 (Medium: `#[cfg(unix)]` on GIO emblem functions), GB2-012/013 (Low: RwLock poison recovery via `unwrap_or_else`)
+- **Places Sidebar audit (30 findings, 6 fixed)**: 3-auditor Opus review of GVFS/unmounted/recent code: INT-001 (High: GVFS eject via gio), FS-002 (Medium: lsblk size fallback), FS-004 (Medium: PSEUDO_FS_TYPES/GVFS comment), FS-008 (Low: /efi filter), PS-006 (Low: pointer-events-none), PS-007 (Low: scrollbar alignment)
 
 #### Changed
 
@@ -3719,7 +3775,7 @@ Four built-in themes (Light, Dark, Tokyo Night, Cyber), Security Toolkit with Ha
 
 #### Removed
 
-- **OwnCloud WebDAV preset**: Removed after Kiteworks acquisition — OwnCloud now offers only paid plans with no developer access. Removed from provider registry, ProtocolSelector, ProviderLogos, SavedServers hostname auto-detect, AI system prompt, 51 locale files, README, and snapcraft description. Historical CHANGELOG references preserved
+- **OwnCloud WebDAV preset**: Removed after Kiteworks acquisition: OwnCloud now offers only paid plans with no developer access. Removed from provider registry, ProtocolSelector, ProviderLogos, SavedServers hostname auto-detect, AI system prompt, 51 locale files, README, and snapcraft description. Historical CHANGELOG references preserved
 
 ---
 
@@ -3727,18 +3783,18 @@ Four built-in themes (Light, Dark, Tokyo Night, Cyber), Security Toolkit with Ha
 
 ### Mission Green Badge, Folder Transfer UX and Transfer Reliability
 
-Native overlay badges in Nautilus/Nemo file managers showing AeroCloud sync status — competing directly with Dropbox, OneDrive, and Google Drive. Tray icon with dynamic badge dots including overlay icons (checkmark, sync arrows, X). Major folder transfer UX improvements with cancel support, file-count progress, and path-aware logging. Transfer event system rewritten for zero event loss.
+Native overlay badges in Nautilus/Nemo file managers showing AeroCloud sync status: competing directly with Dropbox, OneDrive, and Google Drive. Tray icon with dynamic badge dots including overlay icons (checkmark, sync arrows, X). Major folder transfer UX improvements with cancel support, file-count progress, and path-aware logging. Transfer event system rewritten for zero event loss.
 
 #### Added
 
 - **Badge daemon (`sync_badge.rs`)**: Unix socket server with Nextcloud-compatible IPC protocol, 6 sync states (Synced/Syncing/Error/Ignored/Conflict/New), LRU state tracker (100K entries), Semaphore-based connection limiting (max 10 concurrent), sliding window rate limiter, `read_line_limited()` DoS protection, RwLock poisoning recovery
-- **Nautilus Python extension**: `aerocloud_nautilus.py` — `Nautilus.InfoProvider` with custom emblem overlay, thread-safe 5s TTL cache, persistent socket connection, 100ms query timeout, 30s reconnect interval. Supports Nautilus 4.0 (GNOME 43+) with 3.0 fallback
-- **Nemo Python extension**: `aerocloud_nemo.py` — fork for Cinnamon/Linux Mint desktop environments
+- **Nautilus Python extension**: `aerocloud_nautilus.py`: `Nautilus.InfoProvider` with custom emblem overlay, thread-safe 5s TTL cache, persistent socket connection, 100ms query timeout, 30s reconnect interval. Supports Nautilus 4.0 (GNOME 43+) with 3.0 fallback
+- **Nemo Python extension**: `aerocloud_nemo.py`: fork for Cinnamon/Linux Mint desktop environments
 - **GIO emblem fallback**: `gio set metadata::emblems` support for Thunar (XFCE), PCManFM, and all GIO-based file managers
-- **6 custom SVG emblem icons**: `emblem-aerocloud-synced/syncing/error/ignored/conflict/new` — installed to `~/.icons/hicolor/scalable/emblems/`
+- **6 custom SVG emblem icons**: `emblem-aerocloud-synced/syncing/error/ignored/conflict/new`: installed to `~/.icons/hicolor/scalable/emblems/`
 - **Shell extension installer**: One-click Install/Uninstall buttons in Settings panel with inline feedback banner (replaces native alert dialogs), copies Python extensions + SVG emblems with proper 0644 permissions
 - **Restart File Manager button**: After installing shell extensions, one-click graceful restart of Nautilus/Nemo via `nautilus -q` / `nemo -q`
-- **Tray icon overlay icons**: White checkmark inside green badge (synced, like Ubuntu Livepatch), sync arrows inside blue badge (syncing), X mark inside red badge (error) — pixel-level rendering with distance-based line rasterization, proportional to any icon size
+- **Tray icon overlay icons**: White checkmark inside green badge (synced, like Ubuntu Livepatch), sync arrows inside blue badge (syncing), X mark inside red badge (error): pixel-level rendering with distance-based line rasterization, proportional to any icon size
 - **Sync pipeline integration**: `start_background_sync()` auto-starts badge server + registers sync root; `stop_background_sync()` stops server + clears states; `background_sync_worker()` updates directory states (Syncing before sync, Synced/Error after)
 - **Folder transfer cancel**: Cancel button now aborts in-progress folder downloads via `cancel_flag` in provider state, with proper cleanup of all file-level log entries and queue items
 - **Folder transfer progress**: File-count mode (X/Y files) with folder icon, amber gradient progress bar, and smart path truncation in progress toast
@@ -3750,10 +3806,10 @@ Native overlay badges in Nautilus/Nemo file managers showing AeroCloud sync stat
 
 #### Fixed
 
-- **Transfer event re-subscription race**: `useTransferEvents` rewritten with subscribe-once pattern and ref-based callback access — eliminates micro-gaps where events could be lost during React re-renders
+- **Transfer event re-subscription race**: `useTransferEvents` rewritten with subscribe-once pattern and ref-based callback access: eliminates micro-gaps where events could be lost during React re-renders
 - **Folder transfer cancel cleanup**: Cancelled folder transfers now properly clean up all file-level log entries and queue items (previously left orphaned entries)
 - **Duplicate sync completion logs**: `useCloudSync` now updates the existing "Syncing..." log entry on completion instead of creating a duplicate
-- **CloudPanel empty server list**: Was reading from `localStorage` directly instead of vault after v1.9.0 migration — fixed with `secureGetWithFallback`
+- **CloudPanel empty server list**: Was reading from `localStorage` directly instead of vault after v1.9.0 migration: fixed with `secureGetWithFallback`
 - **Transfer queue file tracking**: Path-based composite keys (`transferId:path`) prevent confusion with duplicate filenames across subdirectories during folder transfers
 - **Stop All button**: Now cancels active backend transfers (invokes `cancel_transfer`) in addition to stopping the queue
 - **Security audit (43 findings, all fixed)**: 2 critical (unbounded read_line DoS, connection counter never decremented), 6 high (PID instead of UID, missing absolute path validation, RwLock panic on poisoning, newline injection in protocol, bare `except:` in Python, emblem name divergence), 12 medium (double PNG encode/decode, TOCTOU in socket cleanup, pub visibility too broad, rate limiter bypass), 14 low + 10 info
@@ -3774,22 +3830,22 @@ Critical fix for production builds (.deb, .AppImage, .rpm): all rendering was br
 
 #### Fixed
 
-- **Critical: CSP nonce injection breaking all rendering** — Tauri 2 injects nonces into Content-Security-Policy which per CSP spec overrides `unsafe-inline`, silently blocking ALL dynamically created `<style>` elements (Monaco editor, xterm.js, Tailwind), Web Workers, WebGL shader compilation, and blob URLs. Resolved by removing CSP and setting `dangerousDisableAssetCspModification: true`
-- **Monaco Editor workers SyntaxError** — ESM blob proxy approach failed because `importScripts()` cannot parse ES module `import` syntax. Switched to AMD approach: Vite plugin copies `monaco-editor/min/vs/` (IIFE format) to `dist/vs/` at build time, eliminating all worker errors
-- **Terminal (xterm.js) no colors/cursor in production** — CSP blocked all dynamic style injection. Additionally set `allowTransparency: false` and `drawBoldTextInBrightColors: true` for WebKitGTK compatibility
-- **HTML Preview CSS not rendering** — CSP blocked inline styles and CDN stylesheets. Removed iframe `sandbox` attribute that restricted CSS loading
-- **AeroPlayer WebGL visualizer not rendering** — CSP blocked shader compilation and canvas operations. Now fully functional with all 14 visualizer modes
-- **WebKitGTK canvas rendering artifacts** — Added `WEBKIT_DISABLE_DMABUF_RENDERER=1` environment variable before WebKit initialization on Linux
+- **Critical: CSP nonce injection breaking all rendering**: Tauri 2 injects nonces into Content-Security-Policy which per CSP spec overrides `unsafe-inline`, silently blocking ALL dynamically created `<style>` elements (Monaco editor, xterm.js, Tailwind), Web Workers, WebGL shader compilation, and blob URLs. Resolved by removing CSP and setting `dangerousDisableAssetCspModification: true`
+- **Monaco Editor workers SyntaxError**: ESM blob proxy approach failed because `importScripts()` cannot parse ES module `import` syntax. Switched to AMD approach: Vite plugin copies `monaco-editor/min/vs/` (IIFE format) to `dist/vs/` at build time, eliminating all worker errors
+- **Terminal (xterm.js) no colors/cursor in production**: CSP blocked all dynamic style injection. Additionally set `allowTransparency: false` and `drawBoldTextInBrightColors: true` for WebKitGTK compatibility
+- **HTML Preview CSS not rendering**: CSP blocked inline styles and CDN stylesheets. Removed iframe `sandbox` attribute that restricted CSS loading
+- **AeroPlayer WebGL visualizer not rendering**: CSP blocked shader compilation and canvas operations. Now fully functional with all 14 visualizer modes
+- **WebKitGTK canvas rendering artifacts**: Added `WEBKIT_DISABLE_DMABUF_RENDERER=1` environment variable before WebKit initialization on Linux
 
 #### Changed
 
-- **Monaco loading: ESM to AMD** — Replaced ESM worker blob proxy (`monacoSetup.ts`) with AMD asset copy approach. Workers now use IIFE format files from `min/vs/` directory, compatible with all WebKitGTK versions
-- **Vite config simplified** — Removed `worker.format` and `manualChunks` config, replaced with `copyMonacoAssets()` plugin that copies Monaco AMD files to `dist/vs/` at build time
+- **Monaco loading: ESM to AMD**: Replaced ESM worker blob proxy (`monacoSetup.ts`) with AMD asset copy approach. Workers now use IIFE format files from `min/vs/` directory, compatible with all WebKitGTK versions
+- **Vite config simplified**: Removed `worker.format` and `manualChunks` config, replaced with `copyMonacoAssets()` plugin that copies Monaco AMD files to `dist/vs/` at build time
 
 #### Removed
 
-- **Dead code: `monacoSetup.ts`** — ESM worker proxy module no longer imported after AMD switch
-- **Devtools in production** — Removed `window.open_devtools()` auto-open and `devtools` feature flag from Cargo.toml
+- **Dead code: `monacoSetup.ts`**: ESM worker proxy module no longer imported after AMD switch
+- **Devtools in production**: Removed `window.open_devtools()` auto-open and `devtools` feature flag from Cargo.toml
 
 ---
 
@@ -3801,9 +3857,9 @@ AeroFTP v2.0.2 brings the AeroFile local file manager to professional-grade with
 
 #### Added
 
-- **Spacebar Quick Look**: Finder-style instant preview overlay for images, video, audio, code, and markdown — activated with Space, navigate with arrow keys, close with Escape
+- **Spacebar Quick Look**: Finder-style instant preview overlay for images, video, audio, code, and markdown: activated with Space, navigate with arrow keys, close with Escape
 - **Recent Locations**: Sidebar section showing last 10 visited folders with one-click navigation, clear button, and localStorage persistence
-- **Trash Browser**: Full trash management with table view showing original path, deletion date, and restore/empty actions — soft delete replaces permanent delete by default
+- **Trash Browser**: Full trash management with table view showing original path, deletion date, and restore/empty actions: soft delete replaces permanent delete by default
 - **Enhanced Properties Dialog**: 3-tab interface (General, Permissions, Checksum) with extended metadata including timestamps (created/modified/accessed), owner:group, symlink target, inode, hard links, and permission matrix
 - **Folder Size Calculation**: Recursive size calculation via context menu "Calculate Size" with in-session caching for instant re-display
 - **4-Algorithm Checksum**: MD5, SHA-1, SHA-256, and SHA-512 on-demand calculation with copy buttons in Properties dialog
@@ -3851,7 +3907,7 @@ AeroFTP v2.0.2 brings the AeroFile local file manager to professional-grade with
 
 #### Fixed
 
-- **Saved servers empty after vault unlock**: Fixed race condition where saved servers list appeared empty after entering master password — servers were loaded before the vault was fully unlocked; now the list refreshes automatically after unlock
+- **Saved servers empty after vault unlock**: Fixed race condition where saved servers list appeared empty after entering master password: servers were loaded before the vault was fully unlocked; now the list refreshes automatically after unlock
 
 #### Added
 
@@ -3863,7 +3919,7 @@ AeroFTP v2.0.2 brings the AeroFile local file manager to professional-grade with
 
 ## [2.0.0] - 2026-02-07
 
-### AeroAgent Pro — Professional AI Experience
+### AeroAgent Pro: Professional AI Experience
 
 AeroAgent evolves from a capable assistant into a professional-grade AI development companion with 5 enhancement phases: Provider Intelligence, Advanced Tool Execution, Context Intelligence, Professional UX, and Provider-Specific Features.
 
@@ -3872,33 +3928,33 @@ AeroAgent evolves from a capable assistant into a professional-grade AI developm
 - **Streaming markdown renderer**: Incremental rendering with finalized segments (React.memo, never re-rendered) and in-progress tail. Eliminates flashing during AI responses
 - **Code block actions**: "Copy", "Apply", "Diff", and "Run" buttons on every code block in AI responses. "Apply" writes code to the active editor file, "Diff" shows side-by-side comparison before applying
 - **Agent thought visualization**: ThinkingBlock component shows Claude/OpenAI/Gemini reasoning process with duration timer, token count badge, and collapsible content
-- **Prompt template library**: 15 built-in templates activated with `/` prefix — /review, /refactor, /explain, /debug, /tests, /docs, /security, /optimize, /fix, /convert, /commit, /summarize, /types, /analyze-ui, /performance. Custom templates storable in vault
+- **Prompt template library**: 15 built-in templates activated with `/` prefix: /review, /refactor, /explain, /debug, /tests, /docs, /security, /optimize, /fix, /convert, /commit, /summarize, /types, /analyze-ui, /performance. Custom templates storable in vault
 - **Multi-file diff preview**: PR-style diff panel for reviewing changes across multiple files with per-file checkboxes and unified apply action
 - **Cost budget tracking**: Per-provider monthly spending limits with warning thresholds, conversation cost display, and vault-persisted spending records
 - **Chat search**: Ctrl+F search overlay with role filtering (all/user/assistant), match highlighting, and keyboard navigation between results
 - **Keyboard shortcuts**: Ctrl+L (clear), Ctrl+Shift+N (new chat), Ctrl+Shift+E (export), Ctrl+F (search), Ctrl+/ (focus input)
-- **Anthropic prompt caching**: System messages sent with `cache_control: {"type": "ephemeral"}` — cache reads are 90% cheaper, with savings displayed per message in cyan
-- **OpenAI structured outputs**: `strict: true` on function definitions with `additionalProperties: false` for OpenAI, xAI, and OpenRouter providers — ensures reliable tool call JSON schemas
+- **Anthropic prompt caching**: System messages sent with `cache_control: {"type": "ephemeral"}`: cache reads are 90% cheaper, with savings displayed per message in cyan
+- **OpenAI structured outputs**: `strict: true` on function definitions with `additionalProperties: false` for OpenAI, xAI, and OpenRouter providers: ensures reliable tool call JSON schemas
 - **Ollama model-specific templates**: 8 model family profiles (llama3, codellama, deepseek-coder, qwen, mistral, phi, gemma, starcoder) with tailored prompt styles and optimal temperatures
 - **Ollama pull model from UI**: Text input + progress bar in AI Settings to download models directly via `POST /api/pull` with real-time NDJSON streaming progress
 - **Ollama GPU memory monitoring**: GPU Monitor panel in AI Settings shows running models, VRAM usage with color-coded bars, and auto-refresh every 15 seconds
 - **Gemini code execution**: Parse and render `executableCode` and `codeExecutionResult` response parts with syntax-highlighted code blocks and collapsible output sections
 - **Gemini `system_instruction`**: System prompt now passed as top-level `systemInstruction` field instead of in-message, following Google API best practices
-- **Gemini context caching**: New `gemini_create_cache` command for caching large contexts (32K+ tokens) with configurable TTL — reduces latency and cost by up to 75% on subsequent requests
+- **Gemini context caching**: New `gemini_create_cache` command for caching large contexts (32K+ tokens) with configurable TTL: reduces latency and cost by up to 75% on subsequent requests
 - **Thinking budget presets**: 5 presets (Off/Light/Balanced/Deep/Maximum) plus range slider (0-100K tokens) for fine-grained control of AI reasoning depth
 - **Provider Intelligence Layer**: Per-provider system prompt profiles with optimized identity, style, and behavior rules for all 7 AI providers
-- **DAG-based tool pipeline**: Topological sort of tool calls by path dependencies — independent tools execute in parallel, dependent tools run sequentially
+- **DAG-based tool pipeline**: Topological sort of tool calls by path dependencies: independent tools execute in parallel, dependent tools run sequentially
 - **Diff preview for edits**: Read-only diff preview in tool approval UI for `local_edit` and `remote_edit` tools (100KB cap)
 - **Intelligent tool retry**: `analyzeToolError()` with 8+ error detection strategies and automatic retry suggestions
-- **Tool argument validation**: Pre-execution validation via `validate_tool_args` Rust command — checks file existence, permissions, dangerous paths, and size limits
+- **Tool argument validation**: Pre-execution validation via `validate_tool_args` Rust command: checks file existence, permissions, dangerous paths, and size limits
 - **Composite tool macros**: Reusable multi-tool workflows with `{{var}}` template variables, max depth 5, new "Macros" tab in AI Settings
 - **Tool progress indicators**: Real-time progress bars for long-running tools (upload, download, RAG indexing) via `ai-tool-progress` Tauri events
-- **Project-aware context**: Auto-detect project type from 10 markers (Node.js, Rust, Python, PHP, Go, Java, Maven, Gradle, CMake, Make) — injects metadata into AI system prompt
+- **Project-aware context**: Auto-detect project type from 10 markers (Node.js, Rust, Python, PHP, Go, Java, Maven, Gradle, CMake, Make): injects metadata into AI system prompt
 - **File dependency graph**: `scan_file_imports` parses import/require/use statements in 6 languages (JS/TS, Rust, Python, PHP, Go, Java) for context-aware suggestions
-- **Persistent agent memory**: `.aeroagent` file per project — AI reads at session start, can write learnings via `agent_memory_write` tool for cross-session knowledge retention
+- **Persistent agent memory**: `.aeroagent` file per project: AI reads at session start, can write learnings via `agent_memory_write` tool for cross-session knowledge retention
 - **Conversation branching**: Fork conversations at any message to explore alternative approaches. Branch selector dropdown with create, switch, and delete operations
 - **Smart context injection**: `analyzePromptIntent()` detects task type from user prompt and auto-selects relevant context (git diff, file imports, project info, agent memory) with priority allocation
-- **Token budget optimizer**: Dynamic allocation based on model capacity — full/compact/minimal modes with visual segmented bar showing system/context/history/current/available token breakdown
+- **Token budget optimizer**: Dynamic allocation based on model capacity: full/compact/minimal modes with visual segmented bar showing system/context/history/current/available token breakdown
 - **Universal Preview syntax highlighting**: Prism.js-powered source code coloring for 25+ file types in the preview modal, with language badge and full text selection support
 - **HTML/Markdown render toggle**: Preview modal now offers live rendering for HTML files (iframe with inlined local CSS) and Markdown files (via MarkdownRenderer), plus responsive viewport controls (mobile/tablet/desktop), zoom slider, and browser-open action
 - **Image color picker**: Canvas-based pixel color sampling in ImageViewer (cross-platform), with hex value display and clipboard copy
@@ -3919,7 +3975,7 @@ AeroAgent evolves from a capable assistant into a professional-grade AI developm
 - **Template detection**: `/` prefix in chat input triggers template selector popup without false positives on regular text
 - **Streaming token capture**: Cache creation and cache read tokens now correctly captured from streaming chunks
 - **Gemini system prompt**: Previously sent as first user message, now correctly uses `systemInstruction` top-level field
-- **Auto-lock timeout persistence**: Timeout was only stored in RAM — now persisted to config file and restored on app restart
+- **Auto-lock timeout persistence**: Timeout was only stored in RAM: now persisted to config file and restored on app restart
 - **Auto-lock slider default**: Fixed slider showing 5 minutes when disabled (now correctly shows 0)
 - **Auto-lock save flow**: Removed broken "Save Timeout" button, timeout now auto-saves on slider change
 - **EyeDropper color picker on Linux**: Hidden when EyeDropper API is unavailable (WebKitGTK), preventing runtime errors
@@ -3940,20 +3996,20 @@ AeroAgent evolves from a capable assistant into a professional-grade AI developm
 - **Conversation export**: Download icon in chat header toolbar exports full conversation history as Markdown (.md) or JSON (.json) files, including tool call results and timestamps (fixes #21)
 - **Full system prompt editor**: New 5th tab "System Prompt" in AI Settings with toggle switch and textarea for custom system prompts. Custom prompts are prepended to the built-in AeroAgent personality (fixes #22)
 - **Agent terminal command execution**: New `terminal_execute` tool dispatches shell commands to the integrated PTY terminal with user confirmation before execution. Danger level: high (fixes #25, #27)
-- **Agent-Monaco live sync**: `file-changed` and `editor-reload` custom events automatically reload Monaco editor content after AeroAgent executes `local_edit` or `local_write` tools — no manual refresh needed (fixes #26)
+- **Agent-Monaco live sync**: `file-changed` and `editor-reload` custom events automatically reload Monaco editor content after AeroAgent executes `local_edit` or `local_write` tools: no manual refresh needed (fixes #26)
 - **Monaco "Ask AeroAgent" action**: New context menu action (Ctrl+Shift+A) sends selected code from Monaco editor to AI chat as prompt context for analysis, explanation, or refactoring (fixes #28)
 - **Unified Keystore Consolidation**: Server profiles, AI configuration, and OAuth credentials migrated from localStorage to encrypted vault.db (AES-256-GCM + Argon2id). New `secureStorage.ts` utility provides vault-first reads with automatic localStorage fallback for backwards compatibility (fixes #31)
 - **Keystore Backup/Restore**: New `keystore_export.rs` module exports and imports the entire vault as `.aeroftp-keystore` files protected with Argon2id + AES-256-GCM. Security tab UI displays metadata preview and merge strategy selection (overwrite, skip existing, merge) before import (fixes #34)
 - **Migration Wizard**: 4-step guided migration (Detect → Preview → Migrate → Cleanup) auto-triggered on first launch when legacy localStorage data is detected. Shows itemized preview of all data to be migrated with per-item toggle, then securely wipes legacy storage after confirmation (fixes #36)
-- **RAG integration**: Two new AI tools — `rag_index` scans directories and returns file listing with type/size/preview summaries (33 text extensions, max 200 files); `rag_search` performs full-text case-insensitive search across workspace files. Auto-indexing on path change injects workspace summary into AI context (fixes #47)
+- **RAG integration**: Two new AI tools: `rag_index` scans directories and returns file listing with type/size/preview summaries (33 text extensions, max 200 files); `rag_search` performs full-text case-insensitive search across workspace files. Auto-indexing on path change injects workspace summary into AI context (fixes #47)
 - **Plugin system**: Extend AeroAgent with custom tools via JSON manifest (`plugin.json`) + shell scripts. Plugins stored in `~/.config/aeroftp/plugins/`, executed as sandboxed subprocesses with 30s timeout and 1MB output limit. New `plugins.rs` backend module with 4 Tauri commands. 6th tab "Plugins" in AI Settings shows installed plugins with tool badges and danger indicators (fixes #48)
 - **AeroVault directory support**: Create nested directories inside encrypted vaults with automatic intermediate directory creation. New `vault_v2_create_directory` command adds `is_dir` manifest entries with encrypted names. VaultPanel now features hierarchical navigation with breadcrumb, "New Folder" button, and directory-aware file listing (fixes #53)
 - **AeroVault recursive delete**: Delete files and directories from vaults with full recursive support. New `vault_v2_delete_entries` command removes directories and all their contents in a single operation. Files added to subdirectories via new `vault_v2_add_files_to_dir` command (fixes #54)
-- **AeroPlayer media engine rewrite**: Removed Howler.js dependency entirely. Audio playback now uses native HTML5 `<audio>` element with Web Audio API graph — eliminates the play/pause bug on first click, fixes buffer overload for large MP3 files (no more full-file decode into RAM), and enables real EQ processing
+- **AeroPlayer media engine rewrite**: Removed Howler.js dependency entirely. Audio playback now uses native HTML5 `<audio>` element with Web Audio API graph: eliminates the play/pause bug on first click, fixes buffer overload for large MP3 files (no more full-file decode into RAM), and enables real EQ processing
 - **10-band graphic equalizer**: AeroMixer now controls real Web Audio BiquadFilterNode per frequency band (32Hz-16kHz). Presets (Rock, Jazz, Electronic, etc.) and manual slider adjustments produce audible real-time changes. StereoPannerNode for L/R balance control
 - **Beat detection engine**: Onset energy algorithm with circular buffer (43-sample rolling window), adaptive threshold (1.5x average), 100ms cooldown, and exponential decay (0.92 factor). Drives visual effects across all visualizer modes
 - **14 visualizer modes**: 8 Canvas 2D modes (bars, waveform, radial, spectrum, fractal, vortex, plasma, kaleidoscope) enhanced with beat-reactive effects, plus 6 new WebGL 2 GPU-accelerated shader modes ported from CyberPulse engine
-- **WebGL shader visualizers**: 6 GLSL fragment shaders running on GPU — Wave Glitch (chromatic aberration, data moshing), VHS (tape wobble, RGB split), Fractal Mandelbrot (200-iteration zoom), Raymarch Tunnel (3D ray marching with volumetric fog), Metaball Pulse (smooth distance blending), Particles Explosion (3-layer system with shockwave rings)
+- **WebGL shader visualizers**: 6 GLSL fragment shaders running on GPU: Wave Glitch (chromatic aberration, data moshing), VHS (tape wobble, RGB split), Fractal Mandelbrot (200-iteration zoom), Raymarch Tunnel (3D ray marching with volumetric fog), Metaball Pulse (smooth distance blending), Particles Explosion (3-layer system with shockwave rings)
 - **Post-processing effects**: Vignette overlay with bass-modulated edge darkening, chromatic aberration (RGB channel split) on beat in Cyber Mode, CRT scanlines, glitch effects with forced trigger on beat detection
 
 #### Changed
@@ -3964,25 +4020,25 @@ AeroAgent evolves from a capable assistant into a professional-grade AI developm
 - **Security tab**: Extended with Keystore Backup/Restore section showing vault metadata, last backup date, and export/import buttons
 - **AeroPlayer visualizer menu**: Dropdown now shows 8 Canvas 2D modes plus 6 WebGL shader modes separated by divider, with emerald "GL" badge for GPU-accelerated effects
 - **AeroPlayer keyboard shortcut**: 'V' key now cycles through all 14 visualizer modes (8 Canvas + 6 WebGL) with wrap-around
-- **Audio dependency removed**: `howler` (v2.2.4) and `@types/howler` removed from package.json — one fewer dependency
+- **Audio dependency removed**: `howler` (v2.2.4) and `@types/howler` removed from package.json: one fewer dependency
 - **AnalyserNode fftSize**: Increased from 256 to 512 (128 → 256 frequency bins) for higher resolution visualizations
-- **Tool approval UI redesign**: Replaced large approval card with compact inline bar — border-left color accent by danger level, tool label + filename inline, small Allow/Reject buttons, expandable args via chevron
-- **Collapsible long messages**: Assistant messages exceeding 500 characters are collapsed to 200px max-height with gradient overlay and "Show more" / "Show less" toggle — prevents file content dumps from flooding the chat
+- **Tool approval UI redesign**: Replaced large approval card with compact inline bar: border-left color accent by danger level, tool label + filename inline, small Allow/Reject buttons, expandable args via chevron
+- **Collapsible long messages**: Assistant messages exceeding 500 characters are collapsed to 200px max-height with gradient overlay and "Show more" / "Show less" toggle: prevents file content dumps from flooding the chat
 - **Multi-step auto-resume**: After user approves a medium/high-risk tool, the agent loop now automatically continues to the next step instead of stopping. Context (aiRequest, messageHistory, modelInfo) is preserved across the approval pause
 - **Tool descriptions clarified**: `local_edit` and `remote_edit` descriptions now explicitly state "literal match, not regex" to prevent AI models from sending regex syntax in find parameters
 
 #### Refactored
 
-- **AIChat.tsx modularization**: Monolithic 2215-line component split into 8 focused modules — `aiChatTypes.ts` (types/constants), `aiChatUtils.ts` (pure functions: rate limiter, retry, token window, task routing, tool parsing), `aiChatTokenInfo.ts` (DRY token cost calculation), `aiChatSystemPrompt.ts` (system prompt builder with 13-protocol expertise), `useAIChatImages.ts` (vision image hook), `useAIChatConversations.ts` (conversation persistence hook), `AIChatHeader.tsx` (header component). Main file reduced to ~1436 lines (-35%)
+- **AIChat.tsx modularization**: Monolithic 2215-line component split into 8 focused modules: `aiChatTypes.ts` (types/constants), `aiChatUtils.ts` (pure functions: rate limiter, retry, token window, task routing, tool parsing), `aiChatTokenInfo.ts` (DRY token cost calculation), `aiChatSystemPrompt.ts` (system prompt builder with 13-protocol expertise), `useAIChatImages.ts` (vision image hook), `useAIChatConversations.ts` (conversation persistence hook), `AIChatHeader.tsx` (header component). Main file reduced to ~1436 lines (-35%)
 - **Plugin tool approval resolution**: `ToolApproval` and `BatchToolApproval` components now accept `allTools` prop to resolve danger levels for both built-in and plugin tools via `getToolByNameFromAll()`. Previously plugin tools always defaulted to 'medium' danger level regardless of their actual configuration
 - **requiresApproval extended**: `requiresApproval()` in `tools.ts` now accepts optional `allTools` parameter for consistent plugin tool resolution, matching `isSafeTool()` signature
 
 #### Fixed
 
-- **AeroPlayer play/pause first-click bug**: AudioContext `"suspended"` state (browser autoplay policy) now properly resumed before play — first click always works
+- **AeroPlayer play/pause first-click bug**: AudioContext `"suspended"` state (browser autoplay policy) now properly resumed before play: first click always works
 - **AeroPlayer large file buffer overflow**: Removed Howler's full-file `decodeAudioData()` path that loaded 100MB MP3s entirely into RAM as PCM. HTML5 `<audio>` streams natively
-- **local_edit BOM handling**: UTF-8 BOM (`\u{FEFF}`) stripped before text matching in both `local_edit` and `remote_edit` — prevents "string not found" on Windows-created files
-- **Double confirmation eliminated**: System prompt now instructs AI to call tools directly without asking for permission in natural language — the UI approval prompt handles user confirmation
+- **local_edit BOM handling**: UTF-8 BOM (`\u{FEFF}`) stripped before text matching in both `local_edit` and `remote_edit`: prevents "string not found" on Windows-created files
+- **Double confirmation eliminated**: System prompt now instructs AI to call tools directly without asking for permission in natural language: the UI approval prompt handles user confirmation
 - **Hardcoded English messages removed**: Tool approval messages ("I want to execute...") replaced with model's own localized response content
 - **WebGL context loss recovery**: Auto-fallback from WebGL shader to Canvas 2D visualizer when GPU context is lost, with user notification
 - **Chat persist effect blocked on new conversation**: Debounced save effect skipped persistence when `activeConversationId` was null (start of new conversation), causing messages to be lost until component unmount. Removed guard since `persistConversation` already handles null ID by creating a new conversation internally
@@ -3993,7 +4049,7 @@ AeroAgent evolves from a capable assistant into a professional-grade AI developm
 - **Credential storage hardened**: All sensitive data (server passwords, API keys, OAuth tokens) now encrypted at rest in vault.db instead of plaintext localStorage
 - **Keystore export encryption**: Backup files use independent Argon2id derivation (not the vault master key) so backups remain secure even if vault password is compromised
 - **Legacy data cleanup**: Migration wizard securely erases localStorage entries after successful vault migration, leaving no plaintext credential residue
-- **Dual security audit remediation**: Primary audit (B+ grade, 11 findings) + independent counter-audit (7 findings) — all resolved:
+- **Dual security audit remediation**: Primary audit (B+ grade, 11 findings) + independent counter-audit (7 findings): all resolved:
   - AI settings migrated from localStorage to encrypted vault (AA-002)
   - OpenAI API header unwrap replaced with safe error propagation (no panic on invalid keys)
   - HTTP status check before JSON parse for all AI provider responses (clear error messages)
@@ -4008,7 +4064,7 @@ AeroAgent evolves from a capable assistant into a professional-grade AI developm
 
 - **Circular buffer beat detection**: Replaced Array.shift() O(n) with Float32Array circular buffer O(1) for energy history
 - **Particle system cap**: Maximum 200 concurrent particles prevents memory growth during long playback sessions
-- **WebGL shader rendering**: GPU-offloaded visualization with pre-allocated Float32Array spectrum buffers — zero per-frame allocations
+- **WebGL shader rendering**: GPU-offloaded visualization with pre-allocated Float32Array spectrum buffers: zero per-frame allocations
 
 ---
 
@@ -4020,15 +4076,15 @@ About dialog now displays all version information dynamically. Fixed critical cr
 
 #### Fixed
 
-- **Credential save race condition**: OAuth cloud provider credentials (Google Drive, Dropbox, OneDrive, Box, pCloud) were overwriting each other when saved from Settings. All 10 `store_credential` calls fired simultaneously without `await`, causing concurrent read-modify-write on `vault.db` — only the last writer survived. Now saves sequentially with `await`, matching the pattern used by ConnectionScreen
+- **Credential save race condition**: OAuth cloud provider credentials (Google Drive, Dropbox, OneDrive, Box, pCloud) were overwriting each other when saved from Settings. All 10 `store_credential` calls fired simultaneously without `await`, causing concurrent read-modify-write on `vault.db`: only the last writer survived. Now saves sequentially with `await`, matching the pattern used by ConnectionScreen
 - **Vault write serialization**: Added `VAULT_WRITE_LOCK` Mutex to Rust credential store backend, serializing all `store()` and `delete()` operations to prevent concurrent write races from any call site
 
 #### Changed
 
 - **Dynamic Rust version**: `rust_version` in About dialog now detected at compile time via `rustc --version` in build.rs instead of hardcoded `"1.77.2+"`
-- **Dynamic frontend versions**: React, TypeScript, Tailwind CSS, Monaco Editor, and Vite versions extracted from `package.json` at build time via Vite `define` — no hardcoded values in AboutDialog
+- **Dynamic frontend versions**: React, TypeScript, Tailwind CSS, Monaco Editor, and Vite versions extracted from `package.json` at build time via Vite `define`: no hardcoded values in AboutDialog
 - **Crypto deps tracked**: Added 6 security crates to build.rs tracked dependencies and About dialog: `aes-gcm-siv`, `chacha20poly1305`, `hkdf`, `aes-kw`, `aes-siv`, `scrypt`
-- **Build Info consolidated**: Merged Frontend Dependencies section into Build Info section in About Technical tab — single clean list for all build stack versions
+- **Build Info consolidated**: Merged Frontend Dependencies section into Build Info section in About Technical tab: single clean list for all build stack versions
 - **Clipboard text dynamic**: Copy Technical Info now uses the same dynamic version sources as the UI
 
 #### Updated
@@ -4049,10 +4105,10 @@ Full security audit remediation (6 findings, all fixed), vision/multimodal AI, a
 
 #### Security
 
-- **XSS prevention**: AI chat content is now HTML-escaped before markdown rendering — pipeline is `escapeHtml -> renderMarkdown -> formatToolCallDisplay(escapeChipHtml)`. No raw AI HTML reaches the DOM
+- **XSS prevention**: AI chat content is now HTML-escaped before markdown rendering: pipeline is `escapeHtml -> renderMarkdown -> formatToolCallDisplay(escapeChipHtml)`. No raw AI HTML reaches the DOM
 - **CSP hardened**: Removed `unsafe-inline` and `unsafe-eval` from `script-src` in Content Security Policy
 - **ZIP Slip fixed**: ZIP extraction now rejects entries containing `..` path traversal, absolute paths, and Windows drive prefixes
-- **AI tool auto-execution restricted**: `local_read`, `local_list`, `local_search` changed from `safe` to `medium` — now require user confirmation before reading local files
+- **AI tool auto-execution restricted**: `local_read`, `local_list`, `local_search` changed from `safe` to `medium`: now require user confirmation before reading local files
 - **Asset protocol scope narrowed**: Reduced from `/**` (entire filesystem) to `$HOME/**`, `$APPDATA/**`, `$TEMP/**`
 - **OAuth token fallback secured**: When vault is locked, tokens stored in memory only (never written to disk unencrypted). Vault auto-initializes on first OAuth login. `delete_tokens()` clears vault, memory cache, and all legacy files
 - **Predictable temp file fixed**: `remote_edit` temp files now use UUID v4 names instead of PID-based patterns
@@ -4068,15 +4124,15 @@ Full security audit remediation (6 findings, all fixed), vision/multimodal AI, a
   - **Validation**: Maximum 5 images per message, 20 MB per image, supported types enforced
   - **Provider-specific formats**: OpenAI image_url, Anthropic base64 source, Gemini inlineData, Ollama images array
   - **Backwards-compatible**: Text-only messages work identically; images field is optional (serde skip_serializing_if)
-  - **No persistence bloat**: Images are not saved in chat history — only displayed during the current session
-- **Agent panel refresh**: File panels automatically refresh after AeroAgent executes mutation tools (create, delete, rename, upload, download, edit, archive) — no more manual Ctrl+R needed
+  - **No persistence bloat**: Images are not saved in chat history: only displayed during the current session
+- **Agent panel refresh**: File panels automatically refresh after AeroAgent executes mutation tools (create, delete, rename, upload, download, edit, archive): no more manual Ctrl+R needed
   - **15 mutation tools mapped**: remote_delete, remote_rename, remote_mkdir, remote_upload, remote_edit, upload_files, download_files, remote_download, local_write, local_delete, local_rename, local_mkdir, local_edit, archive_create, archive_extract
   - **Target-aware**: Remote mutations refresh remote panel, local mutations refresh local panel, archive operations refresh both
   - **300ms debounce**: Small delay ensures filesystem operations complete before refresh
 
 #### Changed
 
-- **Console.log gating**: 131 console.log statements across 11 files replaced with debug-gated `logger` utility — debug/info are no-ops in production builds, warn/error always active
+- **Console.log gating**: 131 console.log statements across 11 files replaced with debug-gated `logger` utility: debug/info are no-ops in production builds, warn/error always active
 - **Duplicate consolidation**: Unified `formatBytes` (12 implementations → 1), `formatSize` (6 → 1), `getMimeType` (2 → 1), `UpdateInfo` (3 → 1), `getFileExtension` (2 → 1) into shared utility modules
 - **ChatMessage struct**: Extended with optional `images: Vec<ImageAttachment>` field for vision support (Rust backend)
 - **AI streaming**: All 4 streaming functions (OpenAI, Anthropic, Gemini, Ollama) use shared helper methods for vision-aware message serialization
@@ -4091,8 +4147,8 @@ Build verification, compatibility audits, and UX improvements. All 13 protocols,
 
 #### Added
 
-- **Ubuntu Compatibility Audit**: Full static analysis across 4 domains (paths, security, desktop, build) — certified compatible with Ubuntu 22.04 LTS and 24.04 LTS
-- **macOS Compatibility Audit**: Comprehensive 4-domain static analysis (paths/filesystem, UI/clipboard, build/CI, protocols/TLS) — certified compatible with macOS 10.13+ (Intel + Apple Silicon)
+- **Ubuntu Compatibility Audit**: Full static analysis across 4 domains (paths, security, desktop, build): certified compatible with Ubuntu 22.04 LTS and 24.04 LTS
+- **macOS Compatibility Audit**: Comprehensive 4-domain static analysis (paths/filesystem, UI/clipboard, build/CI, protocols/TLS): certified compatible with macOS 10.13+ (Intel + Apple Silicon)
 - **macOS bundle configuration**: Added `minimumSystemVersion: "10.13"` and entitlements reference in Tauri bundle config
 - **macOS hardened runtime**: Entitlements updated with `cs.allow-unsigned-executable-memory: false`, `cs.allow-dyld-environment-variables: false`, Downloads and Documents folder access
 - **macOS Edit menu**: Standard menu items (Undo, Redo, Cut, Copy, Paste) as native `PredefinedMenuItem` entries alongside Rename and Delete
@@ -4101,11 +4157,11 @@ Build verification, compatibility audits, and UX improvements. All 13 protocols,
 
 #### Fixed
 
-- **macOS keyboard shortcuts**: Normalized `Meta` (Cmd) to `Ctrl` in keyboard handler — both Cmd+C (macOS) and Ctrl+C (Linux/Windows) now trigger the same shortcuts across all 10+ keybindings
+- **macOS keyboard shortcuts**: Normalized `Meta` (Cmd) to `Ctrl` in keyboard handler: both Cmd+C (macOS) and Ctrl+C (Linux/Windows) now trigger the same shortcuts across all 10+ keybindings
 - **macOS Finder reveal**: `open_in_file_manager` now uses `open -R` for files to select them in Finder, matching Windows `explorer /select,` behavior
-- **Context menu missing on empty space**: File panel context menu only appeared on file rows — added `onContextMenu` handlers to container divs with `data-file-row`/`data-file-card` attributes for proper target detection
-- **Cross-panel paste path lookup**: `clipboardPaste` was passing file names to `downloadMultipleFiles`/`uploadMultipleFiles` which looked up in current directory listing — now uses `downloadFile`/`uploadFile` directly with clipboard paths
-- **Tab navigation stuck on password toggles**: Added `tabIndex={-1}` to all 3 eye-icon toggle buttons in Settings Security tab (Current Password, New Password, Confirm Password) — Tab now skips toggles and moves to next input field
+- **Context menu missing on empty space**: File panel context menu only appeared on file rows: added `onContextMenu` handlers to container divs with `data-file-row`/`data-file-card` attributes for proper target detection
+- **Cross-panel paste path lookup**: `clipboardPaste` was passing file names to `downloadMultipleFiles`/`uploadMultipleFiles` which looked up in current directory listing: now uses `downloadFile`/`uploadFile` directly with clipboard paths
+- **Tab navigation stuck on password toggles**: Added `tabIndex={-1}` to all 3 eye-icon toggle buttons in Settings Security tab (Current Password, New Password, Confirm Password): Tab now skips toggles and moves to next input field
 - **WebDAV self-reference filter**: Removed redundant boolean condition in directory listing that triggered clippy deny-level lint
 - **Unused imports cleanup**: Removed 11 unused imports across 6 Rust source files (oauth2, box, pcloud, azure, filen, ai_stream)
 - **Dead code removal**: Removed unused `get_remote_files_recursive` function and unused `VaultLocked` error variant
@@ -4126,15 +4182,15 @@ Build verification, compatibility audits, and UX improvements. All 13 protocols,
 
 **Important**: This release contains critical security improvements and Windows-specific fixes. All users are strongly encouraged to update.
 
-Complete rewrite of the credential storage system. Replaces the dual-mode OS Keyring + Encrypted Vault approach with a single Universal Vault that works identically on all platforms. Master password is now fully optional — credentials are saved and loaded automatically without any user interaction by default.
+Complete rewrite of the credential storage system. Replaces the dual-mode OS Keyring + Encrypted Vault approach with a single Universal Vault that works identically on all platforms. Master password is now fully optional: credentials are saved and loaded automatically without any user interaction by default.
 
 #### Added
 
-- **Universal Vault**: Single credential backend using `vault.key` + `vault.db` (AES-256-GCM) — no OS keyring dependency
+- **Universal Vault**: Single credential backend using `vault.key` + `vault.db` (AES-256-GCM): no OS keyring dependency
 - **Auto mode** (default): 64-byte CSPRNG passphrase stored in `vault.key` with OS file permissions (Unix 0o600, Windows ACL). Credentials available immediately on startup with zero user interaction
 - **Master mode** (optional): Passphrase encrypted with Argon2id (128 MiB, t=4, p=4) + AES-256-GCM. User enters master password on app start
 - **HKDF-SHA256 key derivation**: High-entropy passphrase (512 bits) derived to 256-bit vault key via HKDF (RFC 5869)
-- **Standalone lock button**: Header lock icon works independently — locks app immediately when master password is set, opens setup dialog when not set
+- **Standalone lock button**: Header lock icon works independently: locks app immediately when master password is set, opens setup dialog when not set
 - **MasterPasswordSetupDialog**: New standalone modal for enabling master password with password confirmation and auto-lock timeout slider
 - **vault.key binary format**: Compact binary format (76 bytes auto / 136 bytes master) with magic bytes, version, and mode detection
 
@@ -4144,11 +4200,11 @@ Complete rewrite of the credential storage system. Replaces the dual-mode OS Key
 - **Tauri commands simplified**: `store_credential`, `get_credential`, `delete_credential` use vault-only backend via `from_cache()`
 - **OAuth token storage**: All OAuth providers (Google Drive, Dropbox, OneDrive, Box, pCloud) use Universal Vault instead of OS keyring
 - **Settings Security tab**: Shows "Universal Vault (AES-256-GCM)" status, master password management without keyring references
-- **ConnectionScreen**: Removed credential error alert dialogs and keyring failure handling — store operations are transparent
+- **ConnectionScreen**: Removed credential error alert dialogs and keyring failure handling: store operations are transparent
 
 #### Removed
 
-- **OS Keyring dependency**: Removed `keyring` crate entirely — no platform-specific credential backend
+- **OS Keyring dependency**: Removed `keyring` crate entirely: no platform-specific credential backend
 - **Keyring health monitoring**: Removed `KEYRING_HEALTH`, `mark_keyring_broken()`, `is_keyring_available()`, write-verify pattern
 - **Dual backend fallback**: Removed `Backend` enum (OsKeyring/EncryptedVault), migration functions, manifest tracking
 - **Credential error dialogs**: Removed `KEYRING_BROKEN_NEED_VAULT_SETUP`, `VAULT_LOCKED` error codes and AlertDialog prompts in ConnectionScreen
@@ -4158,7 +4214,7 @@ Complete rewrite of the credential storage system. Replaces the dual-mode OS Key
 - **Windows credential persistence**: Credentials now persist reliably across app restarts on all platforms (was silently failing on Windows Credential Manager)
 - **PowerShell terminal prompt leak**: Terminal no longer shows raw `function prompt` command on startup
 - **Flag emojis invisible on Windows**: SVG flag icons (`country-flag-icons`) for consistent cross-platform rendering
-- **Transfer toast stuck at 100%**: Race condition fix — late progress events no longer re-show the toast after transfer completion. Added 3-second auto-dismiss safety timer
+- **Transfer toast stuck at 100%**: Race condition fix: late progress events no longer re-show the toast after transfer completion. Added 3-second auto-dismiss safety timer
 - **Folder transfers bypass conflict settings**: Folders now respect the "When file exists" setting instead of silently overwriting all files
 - **Windows drag & drop broken**: Disabled Tauri 2 WebView2 native drag interception (`dragDropEnabled: false`) that was preventing HTML5 drag & drop on Windows
 - **Folder download missing queue counter**: Download folder now emits folder-level progress events matching upload behavior
@@ -4167,12 +4223,12 @@ Complete rewrite of the credential storage system. Replaces the dual-mode OS Key
 #### Added
 
 - **Folder conflict resolution**: Backend `file_exists_action` parameter enables per-file comparison during folder transfers (size + timestamp with 2s tolerance). Supports skip, overwrite_if_newer, overwrite_if_different, skip_if_identical
-- **FolderOverwriteDialog**: New merge strategy dialog for folder transfers in "Ask" mode — Merge & Overwrite, Merge & Skip identical, Merge & Overwrite if newer, Skip folder
+- **FolderOverwriteDialog**: New merge strategy dialog for folder transfers in "Ask" mode: Merge & Overwrite, Merge & Skip identical, Merge & Overwrite if newer, Skip folder
 - **Transfer Queue improvements**: Context menu (right-click) with Retry, Copy error, Remove actions. Error tooltip on failed items. Header actions (Clear completed, Stop all, Clear all) with animated stop button. Wider popup with RTL filename truncation (always shows file extension)
 - **Individual file tracking in queue**: Folder transfers now show every file as a separate queue item with live progress, across all 13 protocols (FTP/FTPS/SFTP/S3/WebDAV/GDrive/Dropbox/OneDrive/Box/pCloud/Azure/MEGA/Filen)
 - **Folder progress counter**: Live file counter badge on folder queue row (e.g. 3/9 cyan while transferring, 9/9 green on completion). Works for both upload and download
 - **Upload folder smart comparison**: Phase 2.5 pre-indexes remote files before upload, enabling instant skip of unchanged files in large folders
-- **Cut, Copy, Paste**: Context menu and keyboard shortcuts (Ctrl+X/C/V) for file operations — cross-panel paste triggers upload/download, same-panel cut moves files, same-panel copy duplicates locally. Backend `copy_local_file` command with recursive directory copy
+- **Cut, Copy, Paste**: Context menu and keyboard shortcuts (Ctrl+X/C/V) for file operations: cross-panel paste triggers upload/download, same-panel cut moves files, same-panel copy duplicates locally. Backend `copy_local_file` command with recursive directory copy
 - **Queue copy to clipboard**: Button to copy full queue contents as formatted text for debugging and sharing
 
 ---
@@ -4294,22 +4350,22 @@ Intelligent file conflict resolution, batch rename with live preview, and a comp
   - Add Suffix (before extension)
   - Sequential numbering (customizable base name, start number, padding)
   - Live preview with conflict detection
-- **Inline Rename**: Click directly on filename (when selected) or press F2 to rename in place — works on both local and remote panels
-- **AeroVault v2 change password**: Re-wraps master key and MAC key with new KEK derived from new password — generates new salt for fresh cryptographic state
-- **AeroVault v2 delete file**: Remove individual files from v2 vaults via manifest update — data section remains until future compaction
+- **Inline Rename**: Click directly on filename (when selected) or press F2 to rename in place: works on both local and remote panels
+- **AeroVault v2 change password**: Re-wraps master key and MAC key with new KEK derived from new password: generates new salt for fresh cryptographic state
+- **AeroVault v2 delete file**: Remove individual files from v2 vaults via manifest update: data section remains until future compaction
 
 #### Changed
-- **Unified date format**: Both panels now use `Intl.DateTimeFormat` for locale-aware dates — automatically adapts to user's browser language (IT: "03 feb 2026, 14:30", US: "Feb 03, 2026, 2:30 PM")
+- **Unified date format**: Both panels now use `Intl.DateTimeFormat` for locale-aware dates: automatically adapts to user's browser language (IT: "03 feb 2026, 14:30", US: "Feb 03, 2026, 2:30 PM")
 - **Responsive PERMS column**: Hidden below 1280px viewport width, no text wrapping
-- **Toolbar reorganization**: Cleaner layout with visual separators — Donate | AeroVault | Menu toggle, Theme, Settings (Cryptomator moved to context menu)
+- **Toolbar reorganization**: Cleaner layout with visual separators: Donate | AeroVault | Menu toggle, Theme, Settings (Cryptomator moved to context menu)
 - **Disconnect button icon**: Changed from X to LogOut for better UX clarity
 - **AeroVault v2 security badges**: VaultPanel now displays cryptographic primitives (AES-256-GCM-SIV, Argon2id, AES-KW, HMAC-SHA512)
 
 #### Fixed
 - **Date column wrapping**: Added `whitespace-nowrap` to prevent date text breaking across lines
-- **Inconsistent date display**: Remote panel showed raw FTP format while local showed localized dates — now unified
+- **Inconsistent date display**: Remote panel showed raw FTP format while local showed localized dates: now unified
 - **AeroVault v2 creation failure**: Fixed `WRAPPED_KEY_SIZE` constant (48 → 40 bytes) that caused "Key wrap failed: InvalidOutputSize { expected: 40 }" error when creating Advanced/Paranoid vaults
-- **Security level detection**: New `vault_v2_peek` command reads header without password — UI now correctly shows "Paranoid" vs "Advanced" before unlocking
+- **Security level detection**: New `vault_v2_peek` command reads header without password: UI now correctly shows "Paranoid" vs "Advanced" before unlocking
 - **VaultPanel security display**: Dialog now shows correct security level badge with icon and color (blue/emerald/purple) matching vault type
 
 ---
@@ -4322,14 +4378,14 @@ Hotfix release addressing missing Italian translations and invisible terminal cu
 
 #### Fixed
 - **Italian translations**: Translated 200+ keys with `[NEEDS TRANSLATION]` placeholders across vault, cryptomator, archive, AeroAgent, settings, toast, UI, and context menu sections
-- **Terminal cursor invisible**: Removed legacy CSS injection that interfered with xterm v5 canvas-based cursor rendering — cursor now uses native theme `cursor` color property correctly
+- **Terminal cursor invisible**: Removed legacy CSS injection that interfered with xterm v5 canvas-based cursor rendering: cursor now uses native theme `cursor` color property correctly
 - **Dead code cleanup**: Removed unused `cursorCss` property from all 8 terminal themes
 
 ---
 
 ## [1.7.0] - 2026-02-03
 
-### Encryption Block — AeroVault, Archive Browser, Cryptomator, AeroFile
+### Encryption Block: AeroVault, Archive Browser, Cryptomator, AeroFile
 
 Client-side encryption features, in-app archive browsing, encrypted vault containers, Cryptomator vault compatibility, and a new local-only file manager mode.
 
@@ -4341,7 +4397,7 @@ Client-side encryption features, in-app archive browsing, encrypted vault contai
 - **Cryptomator vault support**: Unlock, browse, decrypt, and encrypt files in Cryptomator format 8 vaults
 - **Cryptomator crypto**: scrypt KDF, AES Key Wrap, AES-SIV filename encryption, AES-GCM content chunks
 - **CompressDialog**: Unified compression dialog with format selection (ZIP/7z/TAR/GZ/XZ/BZ2), compression levels (Store/Fast/Normal/Maximum), password protection (ZIP/7z), editable archive name, and file info display
-- **AeroFile mode**: Local-only file manager mode — remote panel hides when not connected, toolbar toggle to switch between dual-panel and local-only even when connected
+- **AeroFile mode**: Local-only file manager mode: remote panel hides when not connected, toolbar toggle to switch between dual-panel and local-only even when connected
 - **Preview panel**: Resizable sidebar preview in AeroFile mode with image thumbnail, file info (size, type, resolution, modified, extension, path), and quick actions (Open Preview, View Source, Copy Path)
 - **Image resolution display**: Automatic width × height detection for image files in preview panel
 - **Type column**: Sortable file type column in both local and remote file lists, responsive (hidden below xl breakpoint)
@@ -4356,7 +4412,7 @@ Client-side encryption features, in-app archive browsing, encrypted vault contai
 - **AeroAgent tool count**: Expanded from 14 to 24 provider-agnostic tools
 
 #### Fixed
-- **7z password detection**: Fixed encrypted 7z archives opening without password prompt — now probes content decryption via `for_each_entries` since 7z metadata is unencrypted even when content is encrypted
+- **7z password detection**: Fixed encrypted 7z archives opening without password prompt: now probes content decryption via `for_each_entries` since 7z metadata is unencrypted even when content is encrypted
 - **Compression levels**: ZIP, 7z, TAR.GZ, TAR.XZ, TAR.BZ2 now accept `compression_level` parameter from frontend
 
 #### Changed
@@ -4372,21 +4428,21 @@ Client-side encryption features, in-app archive browsing, encrypted vault contai
 
 ## [1.6.0] - 2026-02-02
 
-### AeroAgent Pro — AI Evolution
+### AeroAgent Pro: AI Evolution
 
 Complete overhaul of AeroAgent with native function calling, streaming responses, provider-agnostic tool execution, persistent chat history, cost tracking, and context awareness across all 13 protocols.
 
 #### Added
 - **Native function calling**: OpenAI `tools[]`, Anthropic `tool_use`, and Gemini `functionDeclarations` replace fragile regex-based tool parsing (SEC-002). Text-based fallback retained for Ollama and custom endpoints
-- **Streaming responses**: Real-time incremental rendering for all 7 provider types — OpenAI SSE, Anthropic `content_block_delta`, Gemini `streamGenerateContent`, Ollama NDJSON. New `ai_stream.rs` backend module with Tauri event emission
-- **Provider-agnostic tools**: 14 tools via unified `execute_ai_tool` command routing through `StorageProvider` trait — works identically across FTP, SFTP, WebDAV, S3, and all 8 cloud providers. New `ai_tools.rs` module
-- **Remote tools**: `remote_list`, `remote_read`, `remote_upload`, `remote_download`, `remote_delete`, `remote_rename`, `remote_mkdir`, `remote_search`, `remote_info` — all protocol-agnostic
+- **Streaming responses**: Real-time incremental rendering for all 7 provider types: OpenAI SSE, Anthropic `content_block_delta`, Gemini `streamGenerateContent`, Ollama NDJSON. New `ai_stream.rs` backend module with Tauri event emission
+- **Provider-agnostic tools**: 14 tools via unified `execute_ai_tool` command routing through `StorageProvider` trait: works identically across FTP, SFTP, WebDAV, S3, and all 8 cloud providers. New `ai_tools.rs` module
+- **Remote tools**: `remote_list`, `remote_read`, `remote_upload`, `remote_download`, `remote_delete`, `remote_rename`, `remote_mkdir`, `remote_search`, `remote_info`: all protocol-agnostic
 - **Local tools**: `local_list`, `local_read` for filesystem operations within AI context
 - **Advanced tools**: `sync_preview`, `archive_create`, `archive_extract` integrated into AI tool system
 - **Chat history persistence**: Conversations saved to `appConfigDir()/ai_history.json` via Tauri plugin-fs with 50-conversation, 200-message-per-conversation limits. Sidebar with conversation switching, deletion, and new chat creation
 - **Cost tracking**: Per-message token count and cost display (input/output tokens, calculated from model pricing). Parsed from OpenAI `usage`, Anthropic `usage`, and Gemini `usageMetadata`
 - **Context awareness**: Dynamic system prompt injection with active provider type, connection status, current remote/local paths, and selected files
-- **AI i18n**: 122 new translation keys in `ai.*` namespace covering AIChat, ToolApproval, and AISettingsPanel — synced to all 51 languages
+- **AI i18n**: 122 new translation keys in `ai.*` namespace covering AIChat, ToolApproval, and AISettingsPanel: synced to all 51 languages
 - **Tool JSON Schema**: `toJSONSchema()` and `toNativeDefinitions()` helpers convert tool definitions to provider-native format
 
 #### Changed
@@ -4413,8 +4469,8 @@ Full in-app update download experience with progress bar, AppImage auto-install,
 #### Added
 - **Auto-updater periodic check**: Background update check every 24 hours in addition to startup check, plus tray menu "Check for Updates" handler
 - **In-app update download**: Download updates directly from the notification toast with real-time progress bar showing percentage, speed (MB/s), and ETA. Completed downloads show file path with "Open in File Manager" button
-- **AppImage auto-install**: AppImage format receives an "Install & Restart" button that replaces the current executable, sets permissions, and relaunches the app automatically — no manual file management required
-- **Terminal empty-start pattern**: Terminal opens with no tabs, user clicks "+" to create first tab — avoids xterm.js FitAddon race condition with container layout timing
+- **AppImage auto-install**: AppImage format receives an "Install & Restart" button that replaces the current executable, sets permissions, and relaunches the app automatically: no manual file management required
+- **Terminal empty-start pattern**: Terminal opens with no tabs, user clicks "+" to create first tab: avoids xterm.js FitAddon race condition with container layout timing
 
 #### Fixed
 - **Terminal first-tab rendering**: Fixed broken box art on initial terminal tab caused by xterm FitAddon running before container had dimensions; resolved with empty-start pattern and ResizeObserver fallback
@@ -4422,7 +4478,7 @@ Full in-app update download experience with progress bar, AppImage auto-install,
 - **Tray menu update check**: "Check for Updates" tray menu item was not wired to any handler; now triggers manual update check
 
 #### Changed
-- **Update toast redesign**: Replaced external download link with inline download flow — 4-state toast (notify → progress → complete → error) with Lucide icons replacing emoji
+- **Update toast redesign**: Replaced external download link with inline download flow: 4-state toast (notify → progress → complete → error) with Lucide icons replacing emoji
 - **New dependency**: `futures-util` 0.3 for reqwest stream consumption in update download
 
 ---
@@ -4441,9 +4497,9 @@ Enhanced sync with persistent index cache for conflict detection, storage quota 
 - **Empty directory sync**: Standalone empty directories are now created during sync operations, with directory count shown in completion report
 - **Sync index UI indicator**: "Index cached" badge with Zap icon appears next to scan button when a sync index exists for the current path pair
 - **Native clipboard command**: `copy_to_clipboard` Rust command using `arboard` crate, bypassing WebView clipboard restrictions for all copy operations after async calls
-- **i18n coverage expansion**: 108 new translation keys added — context menus, notifications, tooltips, settings labels, and server dialog fields now fully internationalized across all 51 languages
+- **i18n coverage expansion**: 108 new translation keys added: context menus, notifications, tooltips, settings labels, and server dialog fields now fully internationalized across all 51 languages
 - **Cross-panel drag & drop**: Drag files from the local panel to the remote panel to upload, or from remote to local to download. Visual feedback with blue ring highlight on the target panel, `copy` cursor to distinguish from intra-panel moves, and support for multi-file drag transfers via the existing transfer queue
-- **Terminal themes**: 8 built-in themes — Tokyo Night, Dracula, Monokai, Nord, Catppuccin Mocha, GitHub Dark, Solarized Dark, and Solarized Light — with theme selector dropdown and persistent preference
+- **Terminal themes**: 8 built-in themes: Tokyo Night, Dracula, Monokai, Nord, Catppuccin Mocha, GitHub Dark, Solarized Dark, and Solarized Light: with theme selector dropdown and persistent preference
 - **Terminal font size control**: Configurable font size (8-28px) via Ctrl+/- zoom, Ctrl+0 reset, and toolbar buttons with persisted preference
 - **Multiple terminal tabs**: Support for multiple concurrent terminal sessions with tab bar, individual start/stop controls, and per-tab PTY session management
 - **SSH remote shell**: Interactive SSH shell sessions to active SFTP servers directly from the terminal panel, using russh for independent SSH connections with password and key-based authentication
@@ -4456,10 +4512,10 @@ Enhanced sync with persistent index cache for conflict detection, storage quota 
 - **Storage quota not updating on tab switch**: Fixed quota display showing stale data or disappearing when switching sessions, by fetching quota directly after reconnection instead of relying on React effect timing
 - **Google Drive keyring key mismatch**: Fixed credential lookup using wrong keyring key format (`google_drive` vs `googledrive`) during session reconnection
 - **Azure listed in quota support**: Removed Azure Blob from `supportsStorageQuota()` list since it has no backend implementation
-- **Dropbox `download_to_bytes` HTTP check**: Added missing HTTP status check — error responses were previously returned as file content
+- **Dropbox `download_to_bytes` HTTP check**: Added missing HTTP status check: error responses were previously returned as file content
 - **Dropbox `remove_share_link`**: Implemented missing backend method using `sharing/revoke_shared_link` API
 - **FTP inter-transfer delay**: Increased from 150ms to 350ms to reduce "Data connection already open" errors on rapid sequential transfers
-- **Hardcoded English in CJK/Arabic UI**: Replaced ~113 hardcoded English strings in App.tsx and SettingsPanel.tsx with i18n `t()` calls — context menu labels, notification messages, settings fields, and tooltips now respect the selected language
+- **Hardcoded English in CJK/Arabic UI**: Replaced ~113 hardcoded English strings in App.tsx and SettingsPanel.tsx with i18n `t()` calls: context menu labels, notification messages, settings fields, and tooltips now respect the selected language
 
 #### Changed
 - **Status bar quota format**: Changed from "X free" to "used / total" format with color-coded progress bar (purple < 70%, amber < 90%, red > 90%)
@@ -4478,7 +4534,7 @@ Enhanced sync with persistent index cache for conflict detection, storage quota 
 - **Sync completion report**: Summary panel after sync showing uploaded/downloaded/skipped/error counts, total bytes transferred, and duration
 - **Shared crypto module**: Consolidated duplicate Argon2id + AES-256-GCM cryptographic primitives into `crypto.rs`, consumed by credential store and profile export
 - **Credential keyring fallback**: Direct keyring access bypasses conservative probe when OS keyring appears unavailable on first launch
-- **Windows terminal support**: Removed Unix-only restriction from PTY module — terminal now works on Windows via conpty (PowerShell) in addition to Linux/macOS
+- **Windows terminal support**: Removed Unix-only restriction from PTY module: terminal now works on Windows via conpty (PowerShell) in addition to Linux/macOS
 
 #### Fixed
 - **Credential loading on first launch**: Saved server passwords failed to load when OS keyring probe returned false on startup (common with gnome-keyring on Linux). Now falls back to direct keyring access and shows explanatory message with auto-redirect to edit form if still unavailable
@@ -4517,7 +4573,7 @@ Enhanced sync with persistent index cache for conflict detection, storage quota 
 ### WebDAV Compatibility + Provider Keep-Alive + UI Polish
 
 #### Added
-- **4 new S3/WebDAV presets**: Jianguoyun (WebDAV), InfiniCLOUD (WebDAV), Alibaba Cloud OSS (S3), Tencent Cloud COS (S3) — total 30 connection options
+- **4 new S3/WebDAV presets**: Jianguoyun (WebDAV), InfiniCLOUD (WebDAV), Alibaba Cloud OSS (S3), Tencent Cloud COS (S3): total 30 connection options
 - **Provider logos in saved servers**: Saved servers sidebar and Settings panel now display official provider SVG logos instead of generic letter/cloud icons
 - **Provider logos in session tabs**: S3/WebDAV connections show the specific provider logo (Cloudflare R2, Backblaze, etc.) instead of generic database/cloud icons
 - **Provider identity tracking**: `providerId` field added to ServerProfile and session data, preserving which preset was used across save/connect/tab lifecycle
@@ -4549,11 +4605,11 @@ Enhanced sync with persistent index cache for conflict detection, storage quota 
 - **Cloudflare R2**: Promoted from Beta to Stable after successful testing
 - **Provider logos in connection form**: S3/WebDAV preset header now shows the official SVG logo (Cloudflare, Backblaze, etc.) instead of a generic cloud icon
 - **Saved server subtitles**: Unified display schema across sidebar and Settings panel
-  - S3: `bucket — Cloudflare R2` (auto-detected from endpoint)
+  - S3: `bucket: Cloudflare R2` (auto-detected from endpoint)
   - WebDAV: `user@host` (without `https://` prefix and port)
-  - OAuth: `OAuth2 — user@email.com` (or provider name as fallback)
-  - MEGA: `E2E AES-128 — user@email.com`
-  - Filen: `E2E AES-256 — user@email.com`
+  - OAuth: `OAuth2: user@email.com` (or provider name as fallback)
+  - MEGA: `E2E AES-128: user@email.com`
+  - Filen: `E2E AES-256: user@email.com`
 
 ---
 
@@ -4583,7 +4639,7 @@ Major release adding four new native cloud storage providers (Box, pCloud, Azure
 
 #### Changed - FTP Security Defaults
 - **Default encryption**: FTP now defaults to "Use explicit FTP over TLS if available" instead of plain FTP
-- **Badge**: FTP badge changed from red "Insecure" to orange "TLS" — communicates encryption without alarming users
+- **Badge**: FTP badge changed from red "Insecure" to orange "TLS": communicates encryption without alarming users
 - **Warning banner**: Changed from red to amber, only shown when user explicitly selects plain FTP (no TLS)
 - **Dropdown order**: "TLS if available" is now first option, "plain FTP (none)" moved to last
 

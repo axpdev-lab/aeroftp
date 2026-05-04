@@ -6,17 +6,17 @@
 //! delegano qui via `ai_core::tools::dispatch_tool`.
 //!
 //! Semantica scelta (vedi handoff doc):
-//! - path resolution via `ctx.context_local_path()` — CLI torna `None` e il
+//! - path resolution via `ctx.context_local_path()`: CLI torna `None` e il
 //!   comportamento resta equivalente al `resolve_path` pre-T3.
 //! - async con `spawn_blocking` per disk_usage/find_duplicates/grep (erano
 //!   sync nel CLI; la conversione è una win di non-bloccante).
 //! - output shape GUI = canonica. CLI cambia forma ma in senso additivo
 //!   (campi extra, non rimossi). Vedi CHANGELOG per il riepilogo.
-//! - progress events via `ctx.event_sink().emit_tool_progress()` — CLI
+//! - progress events via `ctx.event_sink().emit_tool_progress()`: CLI
 //!   li scrive su stderr, GUI li emette via Tauri.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde_json::{json, Value};
 

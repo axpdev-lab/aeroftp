@@ -1,7 +1,7 @@
 //! Drime Cloud Storage Provider (Bedrive/BeDrive platform)
 //!
 //! Implements StorageProvider for Drime Cloud using the Bedrive REST API.
-//! Uses API Token (Bearer) for authentication — no OAuth2 flow needed.
+//! Uses API Token (Bearer) for authentication: no OAuth2 flow needed.
 //!
 //! API Base: https://app.drime.cloud/api/v1
 //! Auth: Authorization: Bearer {token}
@@ -10,7 +10,7 @@
 //! File entries use hash-based download URLs
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
@@ -289,7 +289,7 @@ impl DrimeCloudProvider {
         if trimmed.is_empty() || trimmed == "." {
             return self.current_path.clone();
         }
-        // Check leading slash on the raw input before normalizing —
+        // Check leading slash on the raw input before normalizing -
         // normalize_path unconditionally prepends "/", which would otherwise
         // make every relative input appear absolute and skip the current_path join.
         if trimmed.starts_with('/') {
@@ -1175,7 +1175,7 @@ impl StorageProvider for DrimeCloudProvider {
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
-        // M9: Full file read into memory — no streaming upload API available for Drime Cloud.
+        // M9: Full file read into memory: no streaming upload API available for Drime Cloud.
         // This limits practical upload size to available RAM. For files >500MB, users should
         // consider alternative providers with chunked upload support (S3, OneDrive, Dropbox).
         let data = tokio::fs::read(local_path)
@@ -1541,7 +1541,7 @@ impl StorageProvider for DrimeCloudProvider {
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
-        Ok("Drime Cloud — 20GB Secure Cloud Storage".to_string())
+        Ok("Drime Cloud: 20GB Secure Cloud Storage".to_string())
     }
 
     fn supports_server_copy(&self) -> bool {

@@ -4,7 +4,7 @@
 //! for GitHub Pages deployments.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use super::client::GitHubHttpClient;
 use super::errors::GitHubError;
@@ -89,7 +89,7 @@ pub struct PagesDomain {
 // ── API Functions ────────────────────────────────────────────────
 
 /// Get GitHub Pages site configuration and status.
-/// Returns 404 if Pages is not enabled — caller should handle as "not enabled".
+/// Returns 404 if Pages is not enabled: caller should handle as "not enabled".
 pub async fn get_pages_site(
     client: &mut GitHubHttpClient,
     owner: &str,

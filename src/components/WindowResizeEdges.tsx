@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 //
 // Invisible resize handles for undecorated windows (decorations: false).
 // Uses pointer capture + movementX/movementY deltas because WebKitGTK on
@@ -18,7 +18,7 @@ const cursors: Record<Dir, string> = {
   ne: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', sw: 'nesw-resize',
 };
 
-// Only needed on Linux — Windows (DWM) and macOS (AppKit) provide native
+// Only needed on Linux: Windows (DWM) and macOS (AppKit) provide native
 // resize zones even with decorations: false.
 const isLinux = navigator.userAgent.includes('Linux');
 

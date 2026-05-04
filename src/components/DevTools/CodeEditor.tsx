@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useRef, useState, useEffect } from 'react';
 import { useTranslation } from '../../i18n';
@@ -59,7 +59,7 @@ const tokyoNightTheme = {
     },
 };
 
-// Cyber theme — neon green on deep black, matrix-style
+// Cyber theme: neon green on deep black, matrix-style
 const cyberTheme = {
     base: 'vs-dark' as const,
     inherit: true,
@@ -121,7 +121,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const onAskAgentRef = useRef(onAskAgent);
     const fileRef = useRef(file);
-    // Monaco IDisposable handles — every `addAction`, `defineTheme`, and
+    // Monaco IDisposable handles: every `addAction`, `defineTheme`, and
     // `onDidChangeX` returns one. Previously these were discarded and the
     // theme registry plus action closures leaked on every remount; on
     // unmount we call `.dispose()` on each.
@@ -150,7 +150,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             setOriginalContent(file.content);
         }
 
-        // "Ask AeroAgent" context menu action — capture the IDisposable so
+        // "Ask AeroAgent" context menu action: capture the IDisposable so
         // we can clean it up on unmount, preventing duplicate actions from
         // accumulating across remounts.
         const askAction = editor.addAction({
@@ -244,7 +244,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         if (!container) return;
 
         const resizeObserver = new ResizeObserver(() => {
-            // Read ref inside callback — not the stale closure value
+            // Read ref inside callback: not the stale closure value
             const ed = editorRef.current;
             if (ed) {
                 requestAnimationFrame(() => {

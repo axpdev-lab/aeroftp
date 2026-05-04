@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * useCloudSync Hook
@@ -25,7 +25,7 @@ interface UseCloudSyncOptions {
   t: (key: string, params?: Record<string, string | number>) => string;
   checkForUpdate: (manual?: boolean) => void;
   isAppLocked: boolean;
-  /** Called after sync completes — use to refresh file panels */
+  /** Called after sync completes: use to refresh file panels */
   onSyncComplete?: () => void;
 }
 
@@ -94,7 +94,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     let lastCloudLogTime = 0;
     let cloudSyncLogId: string | null = null;
 
-    // Listen for cloud sync status events — createTauriListener protects
+    // Listen for cloud sync status events: createTauriListener protects
     // against the orphan-listener race when cleanup fires before `listen()` resolves.
     const unlistenStatus = createTauriListener<{ status: string; message: string }>('cloud-sync-status', (event) => {
       const { status, message } = event.payload;
@@ -111,7 +111,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         setIsCloudActive(true);
         setIsCloudPaused(false);
         setCloudLastSync(new Date().toISOString());
-        // Don't update log here — cloud_sync_complete handles the summary log
+        // Don't update log here: cloud_sync_complete handles the summary log
         // to avoid duplicate entries. Just clear syncing state.
       } else if (status === 'idle') {
         setCloudSyncing(false);
@@ -191,7 +191,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       }
     });
 
-    // Listen for cloud sync completion — update the existing "Syncing..." log entry
+    // Listen for cloud sync completion: update the existing "Syncing..." log entry
     // instead of creating a duplicate. Clear cloudSyncLogId so the later 'active' status
     // event doesn't create yet another update.
     const unlistenSyncComplete = createTauriListener<{

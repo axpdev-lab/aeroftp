@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Code, Terminal, MessageSquare, X, Maximize2, Minimize2, Columns2, Columns3, LayoutList } from 'lucide-react';
@@ -521,7 +521,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             </div>
                         )}
 
-                        {/* Chat panel — always mounted to preserve AIChat state */}
+                        {/* Chat panel: always mounted to preserve AIChat state */}
                         <div
                             className={`flex flex-col overflow-hidden ${visiblePanels.includes('chat') ? '' : 'hidden'}`}
                             style={{ width: visiblePanels.includes('chat') ? getPanelWidth('chat') : undefined }}

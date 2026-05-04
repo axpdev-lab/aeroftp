@@ -8,7 +8,7 @@
 //! - Periodic cleanup in the server main loop
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::credential_store::CredentialStore;
 use crate::profile_loader::{apply_profile_options, apply_s3_profile_defaults};
@@ -23,7 +23,7 @@ use tokio::sync::Mutex;
 /// A pooled connection with last-used timestamp (millis since pool creation)
 /// and usage counters.
 ///
-/// `last_used` was previously a `Mutex<Instant>` — meaning every pool read
+/// `last_used` was previously a `Mutex<Instant>`: meaning every pool read
 /// serialized against every pool write across ALL pooled profiles. Replaced
 /// with `AtomicU64` so hot-path reads are lock-free.
 struct PooledConnection {
@@ -111,7 +111,7 @@ impl ConnectionPool {
         };
 
         // Evict oldest if at capacity. Candidates are selected inside the map
-        // lock but the actual `disconnect().await` is done outside — otherwise
+        // lock but the actual `disconnect().await` is done outside: otherwise
         // one hung SFTP provider freezes every pool read.
         let victim = {
             let mut conns = self.connections.lock().await;
@@ -138,7 +138,7 @@ impl ConnectionPool {
     /// is already open", "broken pipe", `NotConnected`, etc. The pool entry
     /// is removed synchronously so the next `get_provider()` call opens a
     /// fresh connection, and the old provider's `disconnect()` is best-effort
-    /// in a detached task — we do not want a hung FTP socket to stall the
+    /// in a detached task: we do not want a hung FTP socket to stall the
     /// retry.
     ///
     /// Returns the profile name that was evicted, or `None` if nothing matched.
@@ -203,7 +203,7 @@ impl ConnectionPool {
     }
 
     /// Remove idle connections older than the timeout. Entries currently in
-    /// use (strong_count > 1 on the provider Arc) are spared — otherwise a
+    /// use (strong_count > 1 on the provider Arc) are spared: otherwise a
     /// long-running upload could be disconnected mid-transfer. This is the
     /// same invariant used by `r2d2`/`bb8`.
     pub async fn evict_idle(&self) {
@@ -278,7 +278,7 @@ fn pick_lru_victim(conns: &HashMap<String, PooledConnection>) -> Option<String> 
 }
 
 /// Drop a removed pool entry with an awaited disconnect. Must be called
-/// OUTSIDE `self.connections.lock()` — the provider's `.disconnect().await`
+/// OUTSIDE `self.connections.lock()`: the provider's `.disconnect().await`
 /// can take seconds on stalled networks.
 async fn disconnect_outside_lock(entry: PooledConnection) {
     // Arc::try_unwrap lets us get sole ownership of the provider when no
@@ -437,7 +437,7 @@ fn create_provider_from_vault(
     let username: &str = &resolved_username;
 
     // Build extra options from the profile (bucket, region, endpoint, etc.).
-    // This mirrors how the CLI resolves S3 profile defaults — the vault copy
+    // This mirrors how the CLI resolves S3 profile defaults: the vault copy
     // alone does not carry bucket/region because they live in `profile.options`.
     let mut extra: HashMap<String, String> = HashMap::new();
     apply_profile_options(&mut extra, matched);
@@ -462,7 +462,7 @@ fn create_provider_from_vault(
         "OPENDRIVE" => ProviderType::OpenDrive,
         "YANDEXDISK" | "YANDEX" => ProviderType::YandexDisk,
         "SWIFT" => ProviderType::Swift,
-        // OAuth2 providers — only if token is present
+        // OAuth2 providers: only if token is present
         "GOOGLEDRIVE" | "GOOGLE_DRIVE" => ProviderType::GoogleDrive,
         "DROPBOX" => ProviderType::Dropbox,
         "ONEDRIVE" => ProviderType::OneDrive,

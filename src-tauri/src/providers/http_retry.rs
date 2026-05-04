@@ -7,7 +7,7 @@
 //! - Transparent passthrough for non-retryable status codes (4xx except 429)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use reqwest::{Client, Request, Response};
 use std::time::Duration;
@@ -67,7 +67,7 @@ fn calculate_delay(attempt: u32, config: &HttpRetryConfig) -> Duration {
 /// Send an HTTP request with automatic retry on 429/5xx.
 ///
 /// This clones the request for each retry attempt. The original request builder
-/// pattern is preserved — callers build a `Request` via `client.get(url)...build()`.
+/// pattern is preserved: callers build a `Request` via `client.get(url)...build()`.
 ///
 /// # Example
 /// ```ignore

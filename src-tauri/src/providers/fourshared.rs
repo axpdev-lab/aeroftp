@@ -4,7 +4,7 @@
 //! Uses OAuth 1.0a (HMAC-SHA1) for authentication.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
@@ -18,10 +18,10 @@ use super::types::FourSharedConfig;
 use super::{ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider};
 
 /// 4shared API base URL.
-/// FS-002: HTTPS is enforced — all API calls use this constant. Do not change to HTTP.
+/// FS-002: HTTPS is enforced: all API calls use this constant. Do not change to HTTP.
 const API_BASE: &str = "https://api.4shared.com/v1_2";
 /// 4shared upload URL.
-/// FS-002: HTTPS is enforced — all upload calls use this constant. Do not change to HTTP.
+/// FS-002: HTTPS is enforced: all upload calls use this constant. Do not change to HTTP.
 const UPLOAD_BASE: &str = "https://upload.4shared.com/v1_2";
 
 /// Maximum items per page for 4shared API list operations
@@ -35,7 +35,7 @@ const PAGE_SIZE: u32 = 100;
 /// Deserialize a value that may be either a number or a string containing a number.
 /// 4shared API sometimes returns Long fields as JSON strings.
 ///
-/// FS-003: Handles edge cases — empty strings, null, booleans, very large u64,
+/// FS-003: Handles edge cases: empty strings, null, booleans, very large u64,
 /// negative numbers, and unparseable strings (returns None instead of error).
 fn string_or_i64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<i64>, D::Error> {
     use serde::de;
@@ -58,7 +58,7 @@ fn string_or_i64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<i6
         }
 
         fn visit_bool<E: de::Error>(self, _v: bool) -> Result<Self::Value, E> {
-            // FS-003: Unexpected type — treat as absent rather than failing
+            // FS-003: Unexpected type: treat as absent rather than failing
             Ok(None)
         }
 
@@ -259,10 +259,10 @@ impl FourSharedProvider {
 
     /// Check for 401 Unauthorized responses and return a clear error message
     /// that the frontend can use to prompt re-authorization.
-    /// OAuth 1.0a tokens cannot be refreshed — user must re-authorize manually.
+    /// OAuth 1.0a tokens cannot be refreshed: user must re-authorize manually.
     fn check_auth_status(&self, resp: &reqwest::Response) -> Result<(), ProviderError> {
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-            tracing::warn!("[4shared] OAuth token rejected (401) — user must re-authorize");
+            tracing::warn!("[4shared] OAuth token rejected (401): user must re-authorize");
             return Err(ProviderError::AuthenticationFailed(
                 "4shared_token_revoked: OAuth access token has been revoked or is invalid. Please re-authorize.".into(),
             ));
@@ -386,7 +386,7 @@ impl FourSharedProvider {
         if trimmed.starts_with('/') {
             return Self::normalize_path(trimmed);
         }
-        // Relative path — join with current_path
+        // Relative path: join with current_path
         let base = if self.current_path == "/" {
             String::new()
         } else {
@@ -410,7 +410,7 @@ impl FourSharedProvider {
     /// Evict cache if it grows beyond the limit to prevent unbounded memory growth
     fn enforce_cache_limit(cache: &mut HashMap<String, String>) {
         if cache.len() > 10_000 {
-            // Trim half instead of clearing all — preserves hot entries
+            // Trim half instead of clearing all: preserves hot entries
             let keys: Vec<String> = cache.keys().take(cache.len() / 2).cloned().collect();
             for k in keys {
                 cache.remove(&k);
@@ -582,7 +582,7 @@ impl FourSharedProvider {
         Ok(())
     }
 
-    /// Download file bytes from 4shared (uses retry via signed_get — FS-009)
+    /// Download file bytes from 4shared (uses retry via signed_get: FS-009)
     async fn download_bytes(&self, file_id: &str) -> Result<Vec<u8>, ProviderError> {
         let url = format!("{}/files/{}/download", API_BASE, file_id);
         let resp = self.signed_get(&url).await?;
@@ -674,7 +674,7 @@ impl FourSharedProvider {
     }
 
     /// Parse folder list response with per-entry fallback.
-    /// Never fails — returns empty vec on completely unparseable body.
+    /// Never fails: returns empty vec on completely unparseable body.
     /// FS-004: Logs skipped entries at debug level with raw JSON for diagnostics.
     fn parse_folder_list(body: &str) -> Vec<FourSharedFolder> {
         // Try direct array parse first (fast path)
@@ -693,7 +693,7 @@ impl FourSharedProvider {
                     Err(e) => {
                         let raw = item.to_string();
                         debug!(
-                            "4shared: skipping folder entry {}: {} — raw: {}",
+                            "4shared: skipping folder entry {}: {}: raw: {}",
                             i,
                             e,
                             &raw[..raw.len().min(200)]
@@ -712,7 +712,7 @@ impl FourSharedProvider {
     }
 
     /// Parse file list response with per-entry fallback.
-    /// Never fails — returns empty vec on completely unparseable body.
+    /// Never fails: returns empty vec on completely unparseable body.
     /// FS-004: Logs skipped entries at debug level with raw JSON for diagnostics.
     fn parse_file_list(body: &str) -> Vec<FourSharedFile> {
         // Try direct array parse first (fast path)
@@ -730,7 +730,7 @@ impl FourSharedProvider {
                     Err(e) => {
                         let raw = item.to_string();
                         debug!(
-                            "4shared: skipping file entry {}: {} — raw: {}",
+                            "4shared: skipping file entry {}: {}: raw: {}",
                             i,
                             e,
                             &raw[..raw.len().min(200)]
@@ -782,7 +782,7 @@ impl StorageProvider for FourSharedProvider {
             )));
         }
 
-        // Read raw body for robust parsing — 4shared may return unexpected field types
+        // Read raw body for robust parsing: 4shared may return unexpected field types
         let body_text = resp
             .text()
             .await
@@ -1607,14 +1607,14 @@ impl StorageProvider for FourSharedProvider {
         Ok(entries)
     }
 
-    // FS-012: TODO — 4shared supports file share links via GET /v1_2/files/{id}/download
+    // FS-012: TODO: 4shared supports file share links via GET /v1_2/files/{id}/download
     //         (returns downloadPage URL). Implement create_share_link() in future.
 
-    // FS-013: TODO — 4shared trash API: POST /v1_2/files/{id}/trash and
+    // FS-013: TODO: 4shared trash API: POST /v1_2/files/{id}/trash and
     //         POST /v1_2/folders/{id}/trash for soft-delete. Implement list_trash(),
     //         restore_from_trash(), permanent_delete() in future.
 
-    // FS-014: TODO — 4shared does not support file versioning. No version API available.
+    // FS-014: TODO: 4shared does not support file versioning. No version API available.
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {

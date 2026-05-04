@@ -13,7 +13,7 @@ import { logger } from '../utils/logger';
 /**
  * Within each catalog category, surface a curated set of "popular" providers
  * before the rest (which fall back to alphabetical). The list reflects the
- * Discover panel's existing priority signals — major cloud / S3 providers,
+ * Discover panel's existing priority signals: major cloud / S3 providers,
  * generic protocols, the ones a typical user reaches for first.
  *
  * Lower number = higher position. Anything not in the map sorts after, by name.
@@ -75,7 +75,7 @@ interface IconPickerDialogProps {
      *  for the "On server" card when the live re-scan is unavailable or fails. */
     detectedFavicon?: string;
     /** Optional live re-scan callback. When provided, the dialog fires it on
-     *  open and surfaces the result as "On server" — so a favicon that changed
+     *  open and surfaces the result as "On server": so a favicon that changed
      *  server-side after the original auto-detection is reflected immediately
      *  without forcing the user to reconnect. Returns the data URL (or null if
      *  the server has no detectable favicon). */
@@ -231,12 +231,12 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
     const onServerLabel = liveScanRan ? t('iconPicker.onServer') : t('iconPicker.autoDetected');
     const onServerDescription = liveScanRan ? t('iconPicker.onServerDescription') : t('iconPicker.autoDetectedDescription');
     // True when the live scan confirmed the in-use icon matches what's on the
-    // server right now — drives a small confirmation badge on the "In use" card.
+    // server right now: drives a small confirmation badge on the "In use" card.
     const inUseMatchesServer = liveScanRan && liveDetected !== null && liveDetected === currentIcon;
 
     // Reuse the Discover catalog so display names and categories stay in sync
     // with the rest of the app. Only items that resolve to a real logo
-    // component are kept — the picker is a visual gallery, not a feature list.
+    // component are kept: the picker is a visual gallery, not a feature list.
     const shippedByCategory = useMemo(() => {
         const categories = buildDiscoverCategories();
         const result: Array<{
@@ -342,7 +342,7 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
     const handleDeleteCustom = useCallback((id: string) => {
         setCustomIcons(prev => {
             const target = prev.find(i => i.id === id);
-            // Confirm before removing — the library is small and easy to lose
+            // Confirm before removing: the library is small and easy to lose
             // an upload by accident. window.confirm is intentional here: same
             // surface as the existing profile delete dialog and zero new i18n.
             const label = target?.name || t('iconPicker.removeIcon');
@@ -683,7 +683,7 @@ export function IconPickerDialog({ onSelect, onClose, currentIcon, detectedFavic
                             {customIcons.length === 0 ? (
                                 // Suppress the "No custom icons yet" placeholder
                                 // when the Current/On-server section above is
-                                // already showing something — otherwise users
+                                // already showing something: otherwise users
                                 // who upgraded from an older release see both
                                 // their existing icon AND a contradictory
                                 // "library is empty" message at the same time.

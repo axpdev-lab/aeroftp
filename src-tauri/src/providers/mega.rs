@@ -5,7 +5,7 @@
 //! On Ubuntu/Debian: sudo apt install megacmd
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
@@ -229,7 +229,7 @@ impl MegaCmdProvider {
         }
     }
 
-    /// Internal login logic — used by connect() and re-auth.
+    /// Internal login logic: used by connect() and re-auth.
     ///
     /// MEGAcmd's `mega-login` one-shot wrapper runs against the background
     /// `mega-cmd-server` and is NON-interactive. In that mode it does not
@@ -319,13 +319,13 @@ impl MegaCmdProvider {
         match self.run_mega_cmd("mega-version", &[]).await {
             Ok(_) => Ok(()),
             Err(ProviderError::ServerError(ref e)) if e.contains("Failed to execute") => {
-                // Binary not found — daemon can't be started
+                // Binary not found: daemon can't be started
                 Err(ProviderError::ConnectionFailed(
                     "MEGAcmd is not installed. Install it from https://mega.nz/cmd".to_string(),
                 ))
             }
             Err(_) => {
-                // Daemon might not be running — try to start it
+                // Daemon might not be running: try to start it
                 tracing::info!(target: "mega", "[DAEMON] Attempting to start MEGAcmd daemon...");
                 let server_cmd = Self::resolve_mega_cmd("mega-cmd-server");
                 let mut daemon_cmd = Command::new(&server_cmd);
@@ -904,7 +904,7 @@ impl StorageProvider for MegaCmdProvider {
                         } else if label.contains("cloud drive") {
                             used = u;
                             total = t;
-                            // Don't break — a "Total" line may follow
+                            // Don't break: a "Total" line may follow
                         }
                     }
                 }
@@ -971,7 +971,7 @@ impl StorageProvider for MegaCmdProvider {
             }
 
             // mega-find outputs full paths, one per line
-            // CQ-03: Metadata not available from mega-find — size/modified left as defaults
+            // CQ-03: Metadata not available from mega-find: size/modified left as defaults
             let name = Path::new(line)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
@@ -1055,7 +1055,7 @@ impl MegaCmdProvider {
             .await
             .map_err(|e| match e {
                 ProviderError::NotFound(_) => {
-                    // Empty rubbish or path doesn't exist — return empty list
+                    // Empty rubbish or path doesn't exist: return empty list
                     ProviderError::NotFound("Rubbish bin empty".to_string())
                 }
                 other => other,
@@ -1176,7 +1176,7 @@ mod tests {
 
     #[test]
     fn parse_ls_line_joins_name_with_spaces() {
-        // files with spaces — parts[5..] joined with space
+        // files with spaces: parts[5..] joined with space
         let line = "----  1  42  15Jan2026  14:30  file with spaces.txt";
         let entry = MegaCmdProvider::parse_ls_line(line, "/").unwrap();
         assert_eq!(entry.name, "file with spaces.txt");

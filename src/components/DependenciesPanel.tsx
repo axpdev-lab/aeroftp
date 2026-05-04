@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, RefreshCw, Package, CheckCircle, AlertTriangle, ArrowUpCircle, Loader2, Copy } from 'lucide-react';
@@ -67,7 +67,7 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
             if (catDeps.length === 0) return [];
             return [
                 `\n## ${cat}`,
-                ...catDeps.map(d => `${d.name.padEnd(30)} ${d.version.padEnd(10)} ${(d.latestVersion || '—').padEnd(10)} ${statusLabel(d.status)}`)
+                ...catDeps.map(d => `${d.name.padEnd(30)} ${d.version.padEnd(10)} ${(d.latestVersion || '-').padEnd(10)} ${statusLabel(d.status)}`)
             ];
         });
         const text = `${t('dependencies.copyTitle')}\n${'='.repeat(65)}` + lines.join('\n');
@@ -236,7 +236,7 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                                                             dep.status === 'major_update' ? 'text-red-600 dark:text-red-400 font-semibold' :
                                                             'text-gray-500'
                                                         }`}>
-                                                            {dep.latestVersion || '—'}
+                                                            {dep.latestVersion || '-'}
                                                         </td>
                                                         <td className="py-1.5 px-3 text-center">
                                                             <StatusBadge status={dep.status} />

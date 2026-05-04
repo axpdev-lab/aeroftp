@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -220,7 +220,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     const [error, setError] = useState<string | null>(null);
     const [phase, setPhase] = useState<'setup' | 'plan' | 'executing' | 'done'>('setup');
 
-    // Live transfer progress — populated while phase === 'executing'.
+    // Live transfer progress: populated while phase === 'executing'.
     // Values come from `transfer_event` Tauri events filtered by plan.plan_id.
     interface LiveProgress {
         currentFile: string;
@@ -235,7 +235,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     const executeStartRef = useRef<number | null>(null);
     const speedHistoryRef = useRef<number[]>([]);
 
-    // Skip the auto-reset of source/dest path on the first render after seeding —
+    // Skip the auto-reset of source/dest path on the first render after seeding -
     // otherwise the second useEffect would overwrite the seeded path with the
     // profile's default.
     const seededSourceRef = useRef(false);
@@ -404,7 +404,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                 }
             });
             // If cleanup already ran while `listen()` was in-flight, drop the
-            // freshly-registered listener instead of leaving it orphaned —
+            // freshly-registered listener instead of leaving it orphaned -
             // otherwise a second execute() would stack another subscription.
             if (cancelled) {
                 fn();
@@ -489,7 +489,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
         <div
             className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[5vh] bg-black/60 backdrop-blur-sm animate-scale-in"
             onClick={(e) => {
-                // Only close when clicking the overlay itself — not during transfer.
+                // Only close when clicking the overlay itself: not during transfer.
                 if (e.target === e.currentTarget && phase !== 'executing') onClose();
             }}
         >
@@ -778,7 +778,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     );
 };
 
-// Protocol gradient colors — same as SavedServers
+// Protocol gradient colors: same as SavedServers
 const PROTOCOL_COLORS: Record<string, string> = {
     ftp: 'from-blue-500 to-cyan-400',
     ftps: 'from-green-500 to-emerald-400',

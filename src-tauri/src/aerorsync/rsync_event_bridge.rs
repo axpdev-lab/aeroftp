@@ -17,9 +17,9 @@
 //! # Scope of the bridge
 //!
 //! This module ONLY handles out-of-band (`AerorsyncEvent`) traffic.
-//! App-stream signals — `Progress` (byte-level transfer counter),
+//! App-stream signals: `Progress` (byte-level transfer counter),
 //! `FileStart` (emerges from FileListEntry parsing), and `Summary` (emitted
-//! from the `SummaryFrame` decoded by `real_wire`) — are produced by the
+//! from the `SummaryFrame` decoded by `real_wire`): are produced by the
 //! native driver directly, NOT routed through the bridge. Keeping those
 //! separate avoids a synthetic coupling between OOB classification and
 //! app-stream accounting.
@@ -28,17 +28,17 @@
 //!
 //! Several `AerorsyncEvent` variants map to `None`:
 //!
-//! - Internal state markers (`Redo`, `Success`, `NoSend`) — pipe-internal
+//! - Internal state markers (`Redo`, `Success`, `NoSend`): pipe-internal
 //!   signals between generator/receiver that would be noise in the UI.
 //! - Keep-alive (`Noop`).
-//! - Soft-exit propagation (`ErrorExit` with `None` or `Some(0)`) — mirrors
+//! - Soft-exit propagation (`ErrorExit` with `None` or `Some(0)`): mirrors
 //!   `io.c:1668-1672` cleanup signaling, non-terminal by design.
-//! - `Unknown` — a future protocol bump we do not recognise. We preserve
+//! - `Unknown`: a future protocol bump we do not recognise. We preserve
 //!   the raw tag in `first_terminal` debug but do not surface to `RsyncEvent`
 //!   which has no equivalent.
-//! - Pipe-only `Stats` — surfaced on the app-stream side by the driver
+//! - Pipe-only `Stats`: surfaced on the app-stream side by the driver
 //!   when it decodes the authoritative `SummaryFrame`.
-//! - `Log`/`Client`/`Info` — rsync-internal chatter with no UI value in
+//! - `Log`/`Client`/`Info`: rsync-internal chatter with no UI value in
 //!   the production wrapper either (the stdout parser ignores these too).
 //!
 //! Mapped events:
@@ -59,7 +59,7 @@
 //!
 //! The bridge captures the FIRST terminal event for post-mortem access via
 //! `first_terminal()`. Subsequent terminal events are mapped and forwarded
-//! normally — we do not silently swallow trailing errors.
+//! normally: we do not silently swallow trailing errors.
 
 use crate::aerorsync::events::{AerorsyncEvent, EventSink};
 use crate::rsync_output::RsyncEvent;
@@ -68,7 +68,7 @@ use crate::rsync_output::RsyncEvent;
 /// existing `RsyncEvent` stream consumed by the production UI layer.
 ///
 /// Parameterised on a sink callback `F: FnMut(RsyncEvent)` so the caller
-/// decides where the mapped events go — a channel, a logger, a direct
+/// decides where the mapped events go: a channel, a logger, a direct
 /// progress bus. The bridge itself is transport-agnostic.
 pub struct RsyncEventBridge<F: FnMut(RsyncEvent)> {
     sink: F,
@@ -126,7 +126,7 @@ impl<F: FnMut(RsyncEvent) + Send> EventSink for RsyncEventBridge<F> {
     }
 }
 
-/// Pure mapping. `None` means "drop this event silently" (not an error —
+/// Pure mapping. `None` means "drop this event silently" (not an error -
 /// the native protocol carries many signals that have no UI analog).
 ///
 /// Single source of truth for the mapping. Pinned exhaustively by tests
@@ -171,7 +171,7 @@ pub fn map_native_to_rsync_event(event: &AerorsyncEvent) -> Option<RsyncEvent> {
             message: format!("deleted: {}", path),
         }),
 
-        // Pipe-internal + state markers — no UI value, mirror the
+        // Pipe-internal + state markers: no UI value, mirror the
         // production wrapper's stdout parser which also ignores these.
         AerorsyncEvent::Info { .. }
         | AerorsyncEvent::Log { .. }
@@ -439,7 +439,7 @@ mod tests {
         for e in cases {
             assert!(!e.is_terminal(), "{e:?} must NOT be terminal per events.rs");
             if let Some(RsyncEvent::Error { .. }) = map_native_to_rsync_event(&e) {
-                panic!("non-terminal {e:?} mapped to Error — severity drift");
+                panic!("non-terminal {e:?} mapped to Error: severity drift");
             }
         }
     }
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn bridge_forwards_mapped_events_via_sink_callback() {
         // `EventSink: Send` means the sink closure must capture `Send`
-        // state — a `Mutex` rather than a `RefCell`. Same semantics,
+        // state: a `Mutex` rather than a `RefCell`. Same semantics,
         // compile-time guarantee that the bridge works in `Send` futures.
         let collected = std::sync::Arc::new(std::sync::Mutex::new(Vec::<RsyncEvent>::new()));
         let collected_for_closure = collected.clone();
@@ -486,7 +486,7 @@ mod tests {
             message: "second".into(),
         });
         // First terminal pinned, but subsequent Errors still flow to the
-        // sink — callers may need the trailing context (often an ExitCode).
+        // sink: callers may need the trailing context (often an ExitCode).
         assert!(bridge.bailed());
         match bridge.first_terminal() {
             Some(AerorsyncEvent::Error { message }) => assert_eq!(message, "first"),

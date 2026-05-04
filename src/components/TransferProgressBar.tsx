@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Unified Transfer Progress Bar
@@ -119,7 +119,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const [mounted, setMounted] = useState(!slideAnimation);
 
-    // Slide animation on mount — cancel on unmount to avoid setState-after-unmount
+    // Slide animation on mount: cancel on unmount to avoid setState-after-unmount
     useEffect(() => {
         if (!slideAnimation) return;
         const handle = requestAnimationFrame(() => setMounted(true));

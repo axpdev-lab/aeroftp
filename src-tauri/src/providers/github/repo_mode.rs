@@ -6,7 +6,7 @@
 //! StorageProvider trait implementation.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -31,7 +31,7 @@ const MAX_GITHUB_FILE_SIZE: u64 = 100 * 1024 * 1024;
 /// Warning threshold for large files (50 MiB)
 const WARN_GITHUB_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
-/// Contents API truncation threshold — switch to Trees API above this
+/// Contents API truncation threshold: switch to Trees API above this
 const CONTENTS_API_MAX_ENTRIES: usize = 1000;
 
 use super::client::API_BASE;
@@ -100,7 +100,7 @@ fn gh_log(_msg: &str) {}
 
 // ─── Path utilities ───
 
-/// Normalize a repository path — delegates to the canonical `normalise_path()`
+/// Normalize a repository path: delegates to the canonical `normalise_path()`
 /// which resolves `..` segments, strips leading/trailing `/`, and collapses `//`.
 fn normalize_path(path: &str) -> String {
     super::GitHubProvider::normalise_path(path)
@@ -111,7 +111,7 @@ fn filename_from_path(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-/// Minimal Commits API response — only the date fields we need
+/// Minimal Commits API response: only the date fields we need
 #[derive(Debug, Deserialize)]
 struct CommitListItem {
     commit: CommitInfo,
@@ -151,7 +151,7 @@ impl GitHubProvider {
         let token = format!("Bearer {}", self.client.token.expose_secret());
         let branch = self.branch.clone();
 
-        // Collect (index, repo_path) pairs — strip leading "/" from entry paths
+        // Collect (index, repo_path) pairs: strip leading "/" from entry paths
         let tasks: Vec<(usize, String)> = entries
             .iter()
             .enumerate()
@@ -528,7 +528,7 @@ impl GitHubProvider {
         }
 
         let encoded = BASE64.encode(&data);
-        drop(data); // QA-GH-003: free raw buffer — only base64 remains in memory
+        drop(data); // QA-GH-003: free raw buffer: only base64 remains in memory
 
         let existing_sha = match self.resolve_sha(remote_path).await {
             Ok(sha) => Some(sha),

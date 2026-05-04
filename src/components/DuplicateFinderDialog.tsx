@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * DuplicateFinderDialog Component
@@ -150,7 +150,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   // Inline confirmation dialog state (replaces window.confirm for styled UX)
   const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
 
-  // Delete selected files — shows styled confirmation first
+  // Delete selected files: shows styled confirmation first
   const handleDelete = useCallback(() => {
     const paths = Array.from(selectedPaths);
     if (paths.length === 0) return;
@@ -326,7 +326,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                                 : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
                           }`}
                         >
-                          {/* Checkbox — disabled for the first (kept) file */}
+                          {/* Checkbox: disabled for the first (kept) file */}
                           <div className="mt-1 shrink-0">
                             <Checkbox
                               checked={isChecked}

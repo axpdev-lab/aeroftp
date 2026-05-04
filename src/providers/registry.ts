@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Provider Registry - Known cloud storage providers and generic connections
@@ -275,7 +275,7 @@ export const PROVIDERS: ProviderConfig[] = [
                 type: 'text',
                 required: true,
                 placeholder: '003d90ca9d33900000000001',
-                helpText: 'B2 Application Key ID (starts with 003...) — App Keys page',
+                helpText: 'B2 Application Key ID (starts with 003...): App Keys page',
             },
             {
                 key: 'password',
@@ -583,9 +583,9 @@ export const PROVIDERS: ProviderConfig[] = [
                 type: 'select',
                 required: true,
                 options: [
-                    { value: 'https://gateway.storjshare.io', label: 'US1 — North America' },
-                    { value: 'https://gateway.eu1.storjshare.io', label: 'EU1 — Europe' },
-                    { value: 'https://gateway.ap1.storjshare.io', label: 'AP1 — Asia-Pacific' },
+                    { value: 'https://gateway.storjshare.io', label: 'US1: North America' },
+                    { value: 'https://gateway.eu1.storjshare.io', label: 'EU1: Europe' },
+                    { value: 'https://gateway.ap1.storjshare.io', label: 'AP1: Asia-Pacific' },
                 ],
                 group: 'server',
             },
@@ -1539,7 +1539,7 @@ export const PROVIDERS: ProviderConfig[] = [
         category: 'swift',
         icon: 'Cloud',
         color: '#7C3AED',
-        stable: false, // Waiting for Blomp support — storage proxy returns 403
+        stable: false, // Waiting for Blomp support: storage proxy returns 403
         fields: [
             {
                 key: 'username',
@@ -1621,7 +1621,7 @@ export const PROVIDERS: ProviderConfig[] = [
     },
 
     // =========================================================================
-    // FILELU — Native REST API + FTP/FTPS/WebDAV/S3 presets
+    // FILELU: Native REST API + FTP/FTPS/WebDAV/S3 presets
     // =========================================================================
     {
         id: 'filelu',

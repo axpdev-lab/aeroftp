@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Audio Visualizer Component (Canvas-based) - CYBER ENHANCED
@@ -196,7 +196,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         ctx.putImageData(imageData, 0, 0);
     }, []);
 
-    // Beat detection — returns true on onset
+    // Beat detection: returns true on onset
     const detectBeat = useCallback((dataArray: Uint8Array): boolean => {
         const bassEnd = Math.min(16, dataArray.length);
         let bassSum = 0;
@@ -390,7 +390,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         ctx.lineTo(width, height);
         ctx.closePath();
 
-        // Gradient fill — shifts warmer on beat
+        // Gradient fill: shifts warmer on beat
         const gradient = ctx.createLinearGradient(0, 0, 0, height);
         if (beatDecay > 0.3) {
             gradient.addColorStop(0, `${COLORS.hot}90`);
@@ -436,7 +436,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         const sliceWidth = width / dataArray.length;
         let x = 0;
 
-        // Glow effect — intensified on beat
+        // Glow effect: intensified on beat
         ctx.shadowBlur = 15 + bassIntensity * 25 + beatDecay * 15;
         ctx.shadowColor = beatDecay > 0.5 ? COLORS.hot : COLORS.accent;
 
@@ -571,7 +571,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             ctx.stroke();
         }
 
-        // Center pulse — bigger on beat
+        // Center pulse: bigger on beat
         const pulseRadius = 20 + bassIntensity * 40 + beatDecay * 25;
         const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, pulseRadius);
         gradient.addColorStop(0, beatDecay > 0.5 ? COLORS.accent : COLORS.hot);

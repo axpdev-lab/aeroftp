@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
@@ -264,7 +264,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
                       {item.is_dir ? '-' : formatSize(item.size || 0)}
                     </td>
                     <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                      {item.modified ? formatDate(item.modified) : '—'}
+                      {item.modified ? formatDate(item.modified) : '-'}
                     </td>
                   </tr>
                 ))}

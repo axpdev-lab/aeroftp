@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { Lock, FolderPlus, Download, Loader2, Clock, X as XIcon, Trash2 } from 'lucide-react';
@@ -101,7 +101,7 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
                                         try {
                                             const sec = await state.detectVaultVersion(vault.vault_path);
                                             state.setVaultSecurity(sec);
-                                        } catch { /* ignore — VaultOpen will re-detect */ }
+                                        } catch { /* ignore: VaultOpen will re-detect */ }
                                         state.setMode('open');
                                     }}
                                 >
@@ -149,7 +149,7 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
                 </p>
             )}
 
-            {/* Remote Vault — only when connected to a server */}
+            {/* Remote Vault: only when connected to a server */}
             {isConnected && (
                 <div className="w-full max-w-md mt-2 space-y-2">
                     {!state.showRemoteInput ? (

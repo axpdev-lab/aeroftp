@@ -4,7 +4,7 @@
 //! Uses OAuth2 for authentication.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -172,7 +172,7 @@ impl OneDriveProvider {
         Ok(())
     }
 
-    /// Build path for Graph API — encode each path segment individually
+    /// Build path for Graph API: encode each path segment individually
     /// (encoding the full path would corrupt '/' separators)
     fn api_path(&self, path: &str) -> String {
         let clean = path.trim_matches('/');
@@ -1612,7 +1612,7 @@ impl StorageProvider for OneDriveProvider {
     ) -> Result<(), ProviderError> {
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-        // OneDrive resumable upload via upload session — read chunks from file, not all in memory
+        // OneDrive resumable upload via upload session: read chunks from file, not all in memory
         let total_size = tokio::fs::metadata(local_path)
             .await
             .map_err(ProviderError::IoError)?
@@ -1663,7 +1663,7 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-        // Upload in 10MB chunks — read each chunk from file
+        // Upload in 10MB chunks: read each chunk from file
         let chunk_size = 10 * 1024 * 1024u64;
         let mut offset = start_offset;
 

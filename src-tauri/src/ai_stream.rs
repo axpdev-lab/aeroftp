@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AI Streaming Module for AeroFTP
 // SSE/chunked streaming for OpenAI, Anthropic, Gemini, Ollama
@@ -75,7 +75,7 @@ pub async fn ai_chat_stream(
     ai_chat_stream_with_sink(&sink, request, &stream_id).await
 }
 
-/// Backend-agnostic streaming — works with any EventSink (GUI or CLI).
+/// Backend-agnostic streaming: works with any EventSink (GUI or CLI).
 pub async fn ai_chat_stream_with_sink(
     sink: &dyn EventSink,
     request: AIRequest,
@@ -328,7 +328,7 @@ async fn stream_openai(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("HTTP {} — {}", status, truncate_safe(&body, 500)).into());
+        return Err(format!("HTTP {}: {}", status, truncate_safe(&body, 500)).into());
     }
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
@@ -615,7 +615,7 @@ async fn stream_anthropic(
                     "description": d.description,
                     "input_schema": d.parameters,
                 });
-                // Cache breakpoint on last tool — caches the entire tools array (~4-5K tokens)
+                // Cache breakpoint on last tool: caches the entire tools array (~4-5K tokens)
                 if i == len - 1 {
                     tool["cache_control"] = serde_json::json!({ "type": "ephemeral" });
                 }
@@ -631,7 +631,7 @@ async fn stream_anthropic(
         .find(|m| m.role == "system")
         .map(|m| m.content.clone());
 
-    // Build base body — filter system messages from the messages array
+    // Build base body: filter system messages from the messages array
     let mut body = serde_json::json!({
         "model": request.model,
         "messages": request.messages.iter()
@@ -714,7 +714,7 @@ async fn stream_anthropic(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("HTTP {} — {}", status, truncate_safe(&body, 500)).into());
+        return Err(format!("HTTP {}: {}", status, truncate_safe(&body, 500)).into());
     }
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
@@ -1044,7 +1044,7 @@ async fn stream_gemini(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
     // SECURITY NOTE: Google Gemini API requires the API key as a URL query parameter (`key=`).
-    // This is Google's mandated authentication method — header-based auth is not supported.
+    // This is Google's mandated authentication method: header-based auth is not supported.
     // The key is sanitized from error messages via `sanitize_error_message()` in ai.rs.
     let url = format!(
         "{}/models/{}:streamGenerateContent?alt=sse&key={}",
@@ -1119,7 +1119,7 @@ async fn stream_gemini(
         let err_body = response.text().await.unwrap_or_default();
         // Sanitize error to strip API key from any reflected URL in the error body
         return Err(sanitize_error_message(&format!(
-            "HTTP {} — {}",
+            "HTTP {}: {}",
             status,
             truncate_safe(&err_body, 500)
         ))
@@ -1482,7 +1482,7 @@ async fn stream_ollama(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("HTTP {} — {}", status, truncate_safe(&body, 500)).into());
+        return Err(format!("HTTP {}: {}", status, truncate_safe(&body, 500)).into());
     }
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();

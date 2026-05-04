@@ -4,7 +4,7 @@
 //! the StorageProvider abstraction, enabling support for FTP, WebDAV, S3, etc.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,7 +59,7 @@ pub struct ProviderState {
     pub cancel_flag: Arc<AtomicBool>,
     /// Cancellation token cloned into async retry waits so user cancel wakes them immediately.
     cancel_token: Mutex<CancellationToken>,
-    /// Held GitHub App installation token — never crosses IPC.
+    /// Held GitHub App installation token: never crosses IPC.
     /// Set by `github_app_token_from_pem`/`_from_vault`, consumed by `provider_connect`.
     pub held_github_app_token: Mutex<Option<String>>,
 }
@@ -316,7 +316,7 @@ impl ProviderConnectionParams {
         }
 
         if provider_type == ProviderType::GitHub || provider_type == ProviderType::GitLab {
-            // Branch override — shared by both GitHub and GitLab
+            // Branch override: shared by both GitHub and GitLab
             if let Some(ref branch) = self.github_branch {
                 if !branch.is_empty() {
                     extra.insert("branch".to_string(), branch.clone());
@@ -492,7 +492,7 @@ pub async fn provider_connect(
     // SEC-GH-001: For GitHub App mode, inject the held installation token
     // so the token never crosses the IPC boundary.
     // Only inject when password is empty/missing (App mode sends empty password).
-    // PAT and Device Flow provide their own password — never overwrite.
+    // PAT and Device Flow provide their own password: never overwrite.
     // Uses clone() instead of take() so the token survives connection retries.
     if config.provider_type == ProviderType::GitHub {
         let password_empty = config.password.as_ref().is_none_or(|p| p.is_empty());
@@ -802,11 +802,11 @@ pub async fn provider_download_file(
     };
 
     // Delta path (SFTP + key-auth + rsync on remote): tried before the
-    // classic download. Self-gated inside `try_delta_transfer` — returns
+    // classic download. Self-gated inside `try_delta_transfer`: returns
     // `None` for non-SFTP providers, password-only auth, or when the SSH
     // handle is not available. A `hard_error` (host-key mismatch, permission
     // denied) surfaces as a transfer error without the silent classic
-    // fallback — security failures must not be masked. Same contract as
+    // fallback: security failures must not be masked. Same contract as
     // `sync::perform_download` in the sync_tree path.
     let mut delta_fallback_reason: Option<String> = None;
     #[cfg(unix)]
@@ -1314,7 +1314,7 @@ async fn provider_download_folder_inner(
                     });
                 }
             }
-        } // ← provider lock released — ready to transfer this batch
+        } // ← provider lock released: ready to transfer this batch
 
         dirs_scanned += 1;
         total_files_discovered += dir_files.len() as u32;
@@ -2587,7 +2587,7 @@ pub async fn oauth2_connect(
             Box::new(p)
         }
         "pcloud" => {
-            // pCloud tokens are region-locked — always prefer vault-stored region
+            // pCloud tokens are region-locked: always prefer vault-stored region
             // (detected during token exchange) over serde default "us"
             let region = crate::credential_store::CredentialStore::from_cache()
                 .and_then(|store| store.get("oauth_pcloud_region").ok())
@@ -2716,7 +2716,7 @@ pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, S
         .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
 
     // Start waiting for callback in background. AbortOnDrop ensures the task
-    // (and the bound TCP listener) is aborted on ANY early-return path below —
+    // (and the bound TCP listener) is aborted on ANY early-return path below -
     // raw tokio::spawn would detach the handle and leak the port until process
     // restart if `open::that` fails or the 5-minute timeout fires.
     let mut callback_task = AbortOnDrop::spawn(async move { wait_for_callback(listener).await });
@@ -2845,7 +2845,7 @@ async fn pcloud_exchange_code(
             }
         };
 
-        // Check for pCloud error response — error 2012 means wrong region, try next
+        // Check for pCloud error response: error 2012 means wrong region, try next
         if let Some(result) = body["result"].as_i64() {
             if result != 0 {
                 let error_msg = body["error"].as_str().unwrap_or("Unknown error");
@@ -3419,7 +3419,7 @@ pub async fn provider_compare_directories(
         local_path, remote_path
     );
 
-    // Reset the provider cancel flag — takes ownership for this compare run.
+    // Reset the provider cancel flag: takes ownership for this compare run.
     // The user's next Cancel click flips it back to true and the scan stops.
     state
         .cancel_flag
@@ -3433,7 +3433,7 @@ pub async fn provider_compare_directories(
     );
 
     // Get local files (reuse the same logic from lib.rs).
-    // Pass the AppHandle so the scan emits throttled progress events —
+    // Pass the AppHandle so the scan emits throttled progress events -
     // otherwise large trees (e.g. a home directory) look like a stall.
     let local_files = crate::get_local_files_recursive_with_progress(
         &local_path,
@@ -3636,7 +3636,7 @@ fn load_fourshared_tokens() -> Result<(String, String), String> {
     Err("No 4shared tokens found. Please authenticate first.".to_string())
 }
 
-/// Start 4shared OAuth 1.0 flow — obtain request token, return auth URL
+/// Start 4shared OAuth 1.0 flow: obtain request token, return auth URL
 #[tauri::command]
 pub async fn fourshared_start_auth(
     params: FourSharedAuthParams,
@@ -3681,7 +3681,7 @@ pub async fn fourshared_start_auth(
     })
 }
 
-/// Complete 4shared OAuth 1.0 flow — exchange request token + verifier for access token
+/// Complete 4shared OAuth 1.0 flow: exchange request token + verifier for access token
 #[tauri::command]
 pub async fn fourshared_complete_auth(
     params: FourSharedAuthParams,
@@ -3709,7 +3709,7 @@ pub async fn fourshared_complete_auth(
     Ok("Authentication successful".to_string())
 }
 
-/// Full 4shared OAuth 1.0 flow — start server, open browser, wait for callback, exchange tokens
+/// Full 4shared OAuth 1.0 flow: start server, open browser, wait for callback, exchange tokens
 #[tauri::command]
 pub async fn fourshared_full_auth(params: FourSharedAuthParams) -> Result<String, String> {
     use crate::providers::oauth1;
@@ -3763,7 +3763,7 @@ pub async fn fourshared_full_auth(params: FourSharedAuthParams) -> Result<String
     .map_err(|e| format!("Callback error: {}", e))?;
 
     if token != request_token {
-        return Err("OAuth token mismatch — possible CSRF attack".to_string());
+        return Err("OAuth token mismatch: possible CSRF attack".to_string());
     }
 
     // Step 4: Exchange for access token
@@ -3784,14 +3784,14 @@ pub async fn fourshared_full_auth(params: FourSharedAuthParams) -> Result<String
 }
 
 /// Wait for OAuth 1.0 callback (returns oauth_token, oauth_verifier).
-/// oauth_verifier is optional — 4shared uses OAuth 1.0 (not 1.0a) and does NOT send a verifier.
+/// oauth_verifier is optional: 4shared uses OAuth 1.0 (not 1.0a) and does NOT send a verifier.
 /// Accepts connections in a loop to handle browser prefetch/favicon requests.
 async fn wait_for_oauth1_callback(
     listener: tokio::net::TcpListener,
 ) -> Result<(String, String), String> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    // Accept connections in a loop — browsers may send favicon or prefetch requests first
+    // Accept connections in a loop: browsers may send favicon or prefetch requests first
     loop {
         let (mut stream, _) = listener
             .accept()
@@ -3835,7 +3835,7 @@ async fn wait_for_oauth1_callback(
             .get("oauth_token")
             .ok_or("Missing oauth_token in callback")?
             .to_string();
-        // oauth_verifier is optional — 4shared (OAuth 1.0, not 1.0a) doesn't send it
+        // oauth_verifier is optional: 4shared (OAuth 1.0, not 1.0a) doesn't send it
         let oauth_verifier = params
             .get("oauth_verifier")
             .map(|v| v.to_string())
@@ -5943,7 +5943,7 @@ pub struct FolderSizeProgress {
     scanning: bool,
 }
 
-/// Recursively calculate folder size via provider list() — BFS with progress events.
+/// Recursively calculate folder size via provider list(): BFS with progress events.
 /// Safety: max 50,000 entries, max depth 50.
 #[tauri::command]
 pub async fn provider_calculate_folder_size(
@@ -5966,7 +5966,7 @@ pub async fn provider_calculate_folder_size(
 
     while let Some((current_path, depth)) = queue.pop() {
         if FOLDER_SIZE_CANCEL.load(Ordering::Relaxed) {
-            // Cancelled — return partial results
+            // Cancelled: return partial results
             let result = FolderSizeProgress {
                 total_bytes,
                 file_count,
@@ -6631,7 +6631,7 @@ pub async fn github_create_pr(
     Ok(pr.html_url)
 }
 
-/// GitHub Device Flow — Step 1: Request device code
+/// GitHub Device Flow: Step 1: Request device code
 /// Returns user_code and verification_uri for the user to authorize in browser
 #[tauri::command]
 pub async fn github_device_flow_start() -> Result<serde_json::Value, String> {
@@ -6649,7 +6649,7 @@ pub async fn github_device_flow_start() -> Result<serde_json::Value, String> {
     }))
 }
 
-/// GitHub Device Flow — Step 2: Poll for token.
+/// GitHub Device Flow: Step 2: Poll for token.
 /// SEC-GH-001: Token held backend-side, never returned to frontend.
 #[tauri::command]
 pub async fn github_device_flow_complete(
@@ -6690,7 +6690,7 @@ fn validate_pem_contents(pem_contents: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// GitHub App Bot Mode — Read .pem from disk, store in vault, and get installation token.
+/// GitHub App Bot Mode: Read .pem from disk, store in vault, and get installation token.
 /// SEC-GH-001: The installation token is held backend-side and never crosses IPC.
 /// The frontend receives only success status and expiry metadata.
 #[tauri::command]
@@ -6702,7 +6702,7 @@ pub async fn github_app_token_from_pem(
 ) -> Result<serde_json::Value, String> {
     log::info!("GitHub App token: reading PEM from {}", pem_path);
 
-    // Check file exists before reading — provide actionable error
+    // Check file exists before reading: provide actionable error
     let path = std::path::Path::new(&pem_path);
     if !path.exists() {
         return Err(format!(
@@ -6711,7 +6711,7 @@ pub async fn github_app_token_from_pem(
         ));
     }
 
-    // Read PEM securely in backend — key never crosses IPC
+    // Read PEM securely in backend: key never crosses IPC
     let pem_contents = std::fs::read_to_string(&pem_path)
         .map_err(|e| format!("Cannot read .pem file '{}': {}", pem_path, e))?;
 
@@ -6748,7 +6748,7 @@ pub async fn github_app_token_from_pem(
     )
     .await?;
 
-    // SEC-GH-001: Hold the token backend-side — never return it to the frontend
+    // SEC-GH-001: Hold the token backend-side: never return it to the frontend
     {
         let mut held = state.held_github_app_token.lock().await;
         *held = Some(token_resp.token);
@@ -6760,7 +6760,7 @@ pub async fn github_app_token_from_pem(
     }))
 }
 
-/// GitHub App Bot Mode — Read PEM from vault (previously imported) and refresh installation token.
+/// GitHub App Bot Mode: Read PEM from vault (previously imported) and refresh installation token.
 /// SEC-GH-001: The installation token is held backend-side and never crosses IPC.
 #[tauri::command]
 pub async fn github_app_token_from_vault(
@@ -6775,7 +6775,7 @@ pub async fn github_app_token_from_vault(
     );
 
     let store = crate::credential_store::CredentialStore::from_cache()
-        .ok_or_else(|| "Vault not ready — cannot retrieve stored PEM".to_string())?;
+        .ok_or_else(|| "Vault not ready: cannot retrieve stored PEM".to_string())?;
 
     let pem_contents = store
         .get(&vault_key)
@@ -6800,7 +6800,7 @@ pub async fn github_app_token_from_vault(
     )
     .await?;
 
-    // SEC-GH-001: Hold the token backend-side — never return it to the frontend
+    // SEC-GH-001: Hold the token backend-side: never return it to the frontend
     {
         let mut held = state.held_github_app_token.lock().await;
         *held = Some(token_resp.token);

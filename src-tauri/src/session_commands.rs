@@ -6,7 +6,7 @@
 //! If session_id is not provided, the active session is used (backwards compatibility).
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
 use tauri::State;

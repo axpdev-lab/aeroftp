@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PromptTemplate, matchTemplates } from './aiChatPromptTemplates';
@@ -100,7 +100,7 @@ const PromptTemplateSelector: React.FC<PromptTemplateSelectorProps> = React.memo
         }
     }, [selectedIndex]);
 
-    // Keyboard handler — attached to document so parent can delegate
+    // Keyboard handler: attached to document so parent can delegate
     const handleKeyDown = useCallback(
         (e: KeyboardEvent) => {
             if (!visible || flatList.length === 0) return;

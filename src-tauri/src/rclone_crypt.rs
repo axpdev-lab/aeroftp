@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Rclone crypt compatibility layer.
 //!
@@ -258,7 +258,7 @@ pub fn encrypt_file_content(plaintext: &[u8], data_key: &[u8; 32]) -> Result<Vec
 }
 
 /// Compute the nonce for a specific chunk by adding chunk_num to the file nonce.
-/// Matches rclone's nonce.add() — treats first 8 bytes as LE u64 counter.
+/// Matches rclone's nonce.add(): treats first 8 bytes as LE u64 counter.
 fn chunk_nonce(file_nonce: &[u8; FILE_NONCE_SIZE], chunk_num: u64) -> [u8; FILE_NONCE_SIZE] {
     let mut nonce = *file_nonce;
     let base = u64::from_le_bytes(nonce[..8].try_into().unwrap());
@@ -374,7 +374,7 @@ fn eme_transform(
         xor_mut(&mut mp, &c[j * AES_BLOCK..(j + 1) * AES_BLOCK]);
     }
 
-    // Step 4: MC = AES(K, MP) — same direction as overall transform
+    // Step 4: MC = AES(K, MP): same direction as overall transform
     let mut mc = mp;
     if encrypt {
         bc.encrypt_block((&mut mc).into());
@@ -489,7 +489,7 @@ fn pkcs7_unpad(data: &[u8]) -> Result<Vec<u8>, String> {
 
 // ── Base32hex encoding (rclone-compatible) ─────────────────────────────────
 
-/// Base32hex encode (uppercase, no padding) — matches rclone's filename encoding.
+/// Base32hex encode (uppercase, no padding): matches rclone's filename encoding.
 fn base32hex_encode(data: &[u8]) -> String {
     data_encoding::BASE32HEX_NOPAD.encode(data)
 }

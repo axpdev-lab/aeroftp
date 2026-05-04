@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroSync Scheduler Module
 // Interval-based sync scheduling with time window and day-of-week filtering
@@ -170,7 +170,7 @@ impl TimeWindow {
 /// Persisted to `~/.config/aeroftp/sync_schedule.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncSchedule {
-    /// Master toggle — when `false` the scheduler never fires.
+    /// Master toggle: when `false` the scheduler never fires.
     pub enabled: bool,
     /// Interval between sync runs in seconds.
     /// `0` disables interval-based sync; minimum effective value is 60.
@@ -187,7 +187,7 @@ impl Default for SyncSchedule {
     fn default() -> Self {
         Self {
             enabled: false,
-            interval_secs: 86400, // 24h — watcher handles real-time, scheduler is safety net
+            interval_secs: 86400, // 24h: watcher handles real-time, scheduler is safety net
             time_window: None,
             paused: false,
             last_sync: None,
@@ -248,7 +248,7 @@ impl SyncSchedule {
             let elapsed = now_utc.signed_duration_since(last).num_seconds().max(0) as u64;
             self.interval_secs.saturating_sub(elapsed)
         } else {
-            // Never synced — ready immediately (interval-wise)
+            // Never synced: ready immediately (interval-wise)
             0u64
         };
 
@@ -268,7 +268,7 @@ impl SyncSchedule {
             return Some(interval_remaining);
         }
 
-        // Outside the window — compute seconds until window opens
+        // Outside the window: compute seconds until window opens
         let secs_until_window = seconds_until_window_opens(window, &now_local);
         Some(secs_until_window + interval_remaining)
     }
@@ -310,7 +310,7 @@ fn seconds_until_window_opens(window: &TimeWindow, now: &DateTime<Local>) -> u64
         }
 
         if day_offset == 0 {
-            // Same day — only valid if the window start is still ahead
+            // Same day: only valid if the window start is still ahead
             if now_minutes < start_minutes {
                 return ((start_minutes - now_minutes) * 60 - now.second()) as u64;
             }
@@ -320,7 +320,7 @@ fn seconds_until_window_opens(window: &TimeWindow, now: &DateTime<Local>) -> u64
             continue;
         }
 
-        // Future day — seconds until midnight + seconds from midnight to start
+        // Future day: seconds until midnight + seconds from midnight to start
         let secs_until_midnight =
             ((23 - now.hour()) * 3600 + (59 - now.minute()) * 60 + (60 - now.second())) as u64;
         let secs_from_midnight = start_minutes as u64 * 60;
@@ -571,7 +571,7 @@ mod tests {
 
     #[test]
     fn test_next_sync_in() {
-        // Never synced, no window, enabled — should be 0 (ready now)
+        // Never synced, no window, enabled: should be 0 (ready now)
         let s = SyncSchedule {
             enabled: true,
             interval_secs: 300,
@@ -581,7 +581,7 @@ mod tests {
         };
         assert_eq!(s.next_sync_in(), Some(0));
 
-        // Recently synced — should return remaining interval seconds
+        // Recently synced: should return remaining interval seconds
         let s2 = SyncSchedule {
             enabled: true,
             interval_secs: 300,
@@ -593,7 +593,7 @@ mod tests {
         // Should be approximately 200 seconds (allow 2s tolerance for test execution time)
         assert!((198..=202).contains(&remaining), "remaining={}", remaining);
 
-        // Fully elapsed interval — 0 seconds remaining
+        // Fully elapsed interval: 0 seconds remaining
         let s3 = SyncSchedule {
             enabled: true,
             interval_secs: 60,
@@ -603,7 +603,7 @@ mod tests {
         };
         assert_eq!(s3.next_sync_in(), Some(0));
 
-        // Disabled — None
+        // Disabled: None
         let s4 = SyncSchedule {
             enabled: false,
             interval_secs: 300,
@@ -613,7 +613,7 @@ mod tests {
         };
         assert_eq!(s4.next_sync_in(), None);
 
-        // Paused — None
+        // Paused: None
         let s5 = SyncSchedule {
             enabled: true,
             interval_secs: 300,
@@ -750,20 +750,20 @@ mod tests {
             days: vec![Weekday::Mon],
         };
 
-        // Tuesday 02:00 — after-midnight portion of Monday's overnight window
+        // Tuesday 02:00: after-midnight portion of Monday's overnight window
         // The relevant day is Monday (yesterday), which IS in the days filter
         assert!(w.contains_time_and_day(2, 0, &Weekday::Tue));
 
-        // Monday 23:00 — start portion of Monday's overnight window
+        // Monday 23:00: start portion of Monday's overnight window
         assert!(w.contains_time_and_day(23, 0, &Weekday::Mon));
 
-        // Tuesday 23:00 — start portion, but Tuesday is NOT in the days filter
+        // Tuesday 23:00: start portion, but Tuesday is NOT in the days filter
         assert!(!w.contains_time_and_day(23, 0, &Weekday::Tue));
 
-        // Wednesday 02:00 — after-midnight portion, yesterday is Tuesday, NOT in filter
+        // Wednesday 02:00: after-midnight portion, yesterday is Tuesday, NOT in filter
         assert!(!w.contains_time_and_day(2, 0, &Weekday::Wed));
 
-        // Monday 12:00 — outside the time window entirely
+        // Monday 12:00: outside the time window entirely
         assert!(!w.contains_time_and_day(12, 0, &Weekday::Mon));
     }
 
@@ -778,22 +778,22 @@ mod tests {
             days: vec![Weekday::Fri, Weekday::Sat],
         };
 
-        // Friday 22:00 — start portion, Friday IS in filter
+        // Friday 22:00: start portion, Friday IS in filter
         assert!(w.contains_time_and_day(22, 0, &Weekday::Fri));
 
-        // Saturday 01:00 — after-midnight portion, yesterday=Friday IS in filter
+        // Saturday 01:00: after-midnight portion, yesterday=Friday IS in filter
         assert!(w.contains_time_and_day(1, 0, &Weekday::Sat));
 
-        // Saturday 22:00 — start portion, Saturday IS in filter
+        // Saturday 22:00: start portion, Saturday IS in filter
         assert!(w.contains_time_and_day(22, 0, &Weekday::Sat));
 
-        // Sunday 01:00 — after-midnight portion, yesterday=Saturday IS in filter
+        // Sunday 01:00: after-midnight portion, yesterday=Saturday IS in filter
         assert!(w.contains_time_and_day(1, 0, &Weekday::Sun));
 
-        // Monday 01:00 — after-midnight portion, yesterday=Sunday NOT in filter
+        // Monday 01:00: after-midnight portion, yesterday=Sunday NOT in filter
         assert!(!w.contains_time_and_day(1, 0, &Weekday::Mon));
 
-        // Thursday 22:00 — start portion, Thursday NOT in filter
+        // Thursday 22:00: start portion, Thursday NOT in filter
         assert!(!w.contains_time_and_day(22, 0, &Weekday::Thu));
     }
 
@@ -808,22 +808,22 @@ mod tests {
             days: vec![Weekday::Mon, Weekday::Wed],
         };
 
-        // Monday 12:00 — inside window, Monday allowed
+        // Monday 12:00: inside window, Monday allowed
         assert!(w.contains_time_and_day(12, 0, &Weekday::Mon));
 
-        // Wednesday 10:00 — inside window, Wednesday allowed
+        // Wednesday 10:00: inside window, Wednesday allowed
         assert!(w.contains_time_and_day(10, 0, &Weekday::Wed));
 
-        // Tuesday 12:00 — inside window time, but Tuesday not allowed
+        // Tuesday 12:00: inside window time, but Tuesday not allowed
         assert!(!w.contains_time_and_day(12, 0, &Weekday::Tue));
 
-        // Monday 20:00 — outside window time
+        // Monday 20:00: outside window time
         assert!(!w.contains_time_and_day(20, 0, &Weekday::Mon));
     }
 
     #[test]
     fn test_contains_time_and_day_empty_days() {
-        // Empty days means all days allowed — overnight carry-over irrelevant
+        // Empty days means all days allowed: overnight carry-over irrelevant
         let w = TimeWindow {
             start_hour: 22,
             start_minute: 0,

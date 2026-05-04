@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { ServerProfile, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
 import { maskCredential } from './maskCredential';
@@ -61,7 +61,7 @@ export const getServerSubtitle = (
         return hostPort;
     }
 
-    // OAuth / OAuth1 — never show username, the protocol badge tells the story
+    // OAuth / OAuth1: never show username, the protocol badge tells the story
     if (isOAuthProvider(proto) || isFourSharedProvider(proto)) {
         if (server.username && !looksLikeOpaqueToken(server.username) && server.username.includes('@')) {
             return masked ? maskCredential(server.username) : server.username;

@@ -193,7 +193,7 @@ impl AerorsyncError {
     /// # Contract
     ///
     /// - The caller MUST ensure `event.is_terminal()` is `true`. Passing a
-    ///   non-terminal event is a programming bug — we do not panic
+    ///   non-terminal event is a programming bug: we do not panic
     ///   (matches the "never crash prod" policy of `events.rs`) but we
     ///   fold the event into `Internal` with an explicit diagnostic so
     ///   the mistake surfaces in tests or logs.
@@ -227,7 +227,7 @@ impl AerorsyncError {
                     AerorsyncErrorKind::Internal,
                     format!(
                         "from_oob_event called on non-terminal ErrorExit({code:?}) \
-                         — caller should have filtered this via is_terminal()"
+                        : caller should have filtered this via is_terminal()"
                     ),
                 ),
             },
@@ -235,7 +235,7 @@ impl AerorsyncError {
                 AerorsyncErrorKind::Internal,
                 format!(
                     "from_oob_event called on non-terminal event {other:?} \
-                     — caller should have filtered this via is_terminal()"
+                    : caller should have filtered this via is_terminal()"
                 ),
             ),
         }
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn from_oob_event_error_socket_maps_to_transport_failure() {
         // Socket-level failures are transport failures, not semantic
-        // remote errors — the remote rsync never got to say anything.
+        // remote errors: the remote rsync never got to say anything.
         let ev = AerorsyncEvent::ErrorSocket {
             message: "conn reset".into(),
         };
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn from_oob_event_unknown_is_caller_bug_falls_to_internal() {
         // A future opcode we do not recognise is NOT terminal per events.rs
-        // policy — calling from_oob_event on it is a bug. Pin the fallback.
+        // policy: calling from_oob_event on it is a bug. Pin the fallback.
         let ev = AerorsyncEvent::Unknown {
             tag: 77,
             payload: vec![1, 2, 3],

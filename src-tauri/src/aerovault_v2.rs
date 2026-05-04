@@ -1,17 +1,17 @@
-//! AeroVault v2 — Tauri command wrappers for the `aerovault` crate.
+//! AeroVault v2: Tauri command wrappers for the `aerovault` crate.
 //!
 //! All cryptographic operations are delegated to the standalone `aerovault` crate
 //! published on crates.io. This module provides async Tauri command bindings
 //! with JSON serialization for the frontend.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use aerovault::{CreateOptions, EncryptionMode, Vault};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
-// Tauri Commands — Core Operations
+// Tauri Commands: Core Operations
 // ============================================================================
 
 /// Create a new AeroVault v2
@@ -109,7 +109,7 @@ pub async fn vault_v2_security_info() -> serde_json::Value {
 }
 
 // ============================================================================
-// Tauri Commands — File Operations
+// Tauri Commands: File Operations
 // ============================================================================
 
 /// Add files to an existing AeroVault v2
@@ -346,7 +346,7 @@ pub async fn vault_v2_change_password(
 }
 
 // ============================================================================
-// Tauri Commands — Maintenance
+// Tauri Commands: Maintenance
 // ============================================================================
 
 /// Compact result for JSON serialization
@@ -706,7 +706,7 @@ pub async fn vault_v2_sync_apply(
 }
 
 // ============================================================================
-// Helpers — Path Validation
+// Helpers: Path Validation
 // ============================================================================
 
 /// Validate a relative path for vault entry safety.
@@ -728,14 +728,14 @@ fn validate_vault_relative_path(path: &str) -> Result<(), String> {
 }
 
 // ============================================================================
-// Tauri Commands — Recursive Directory Encryption
+// Tauri Commands: Recursive Directory Encryption
 // ============================================================================
 
 const MAX_SCAN_DEPTH: usize = 100;
 const MAX_SCAN_ENTRIES: usize = 500_000;
 
 /// Scan a local directory and return file/directory counts and total size.
-/// This is a preview command — no vault operations are performed.
+/// This is a preview command: no vault operations are performed.
 #[tauri::command]
 pub async fn vault_v2_scan_directory(source_dir: String) -> Result<serde_json::Value, String> {
     let source = std::path::Path::new(&source_dir)

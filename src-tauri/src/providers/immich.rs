@@ -5,7 +5,7 @@
 //! Albums are shown as directories, media assets as files.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -870,7 +870,7 @@ impl StorageProvider for ImmichProvider {
         let filename = if let Some(f) = parsed_filename {
             f.to_string()
         } else {
-            // No filename in remote path — derive from local path
+            // No filename in remote path: derive from local path
             std::path::Path::new(local_path)
                 .file_name()
                 .map(|f| f.to_string_lossy().to_string())

@@ -5,7 +5,7 @@
 //! connected, falls back to `AppState.ftp_manager` for FTP/FTPS sessions.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::provider_commands::ProviderState;
 use crate::AppState;
@@ -160,7 +160,7 @@ fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
     )
 }
 
-/// Validate a remote path argument — reject null bytes and leading dash (argument injection)
+/// Validate a remote path argument: reject null bytes and leading dash (argument injection)
 pub(crate) fn validate_remote_path(path: &str, param: &str) -> Result<(), String> {
     if path.contains('\0') {
         return Err(format!("{}: path contains null bytes", param));
@@ -177,7 +177,7 @@ pub(crate) fn validate_remote_path(path: &str, param: &str) -> Result<(), String
     Ok(())
 }
 
-/// Validate a path argument — reject null bytes, traversal, excessive length
+/// Validate a path argument: reject null bytes, traversal, excessive length
 fn validate_path(path: &str, param: &str) -> Result<(), String> {
     if path.len() > 4096 {
         return Err(format!("{}: path exceeds 4096 characters", param));
@@ -246,7 +246,7 @@ fn validate_path(path: &str, param: &str) -> Result<(), String> {
 }
 
 // `get_str` / `get_str_opt` live in `ai_core::local_tools` after the
-// T3 Gate 3 cleanup — every tool body that used them now sits in the
+// T3 Gate 3 cleanup: every tool body that used them now sits in the
 // unified dispatcher.
 
 /// Check if the StorageProvider is connected
@@ -735,7 +735,7 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
         "local_read" | "local_edit" | "local_search" | "local_list" => {
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
                 let p = std::path::Path::new(path);
-                // Skip existence checks for relative paths — they will be resolved
+                // Skip existence checks for relative paths: they will be resolved
                 // against context_local_path at execution time
                 if p.is_absolute() {
                     if tool_name == "local_list" || tool_name == "local_search" {
@@ -773,7 +773,7 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
         "local_write" | "local_mkdir" => {
             if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
                 let p = std::path::Path::new(path);
-                // Check parent exists (only for absolute paths — relative paths
+                // Check parent exists (only for absolute paths: relative paths
                 // will be resolved against context_local_path at execution time)
                 if p.is_absolute() {
                     if let Some(parent) = p.parent() {
@@ -1029,7 +1029,7 @@ pub async fn validate_tool_args(tool_name: String, args: Value) -> Result<Value,
 /// Maximum output size from shell commands (512 KB)
 const SHELL_MAX_OUTPUT_BYTES: usize = 512 * 1024;
 
-/// Denied command patterns — defense-in-depth (also checked on frontend)
+/// Denied command patterns: defense-in-depth (also checked on frontend)
 static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> =
     std::sync::LazyLock::new(|| {
         [
@@ -1045,7 +1045,7 @@ static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> =
             r"^\s*>\s*/dev/sd[a-z]",                   // overwrite disk
             r"^\s*chmod\s+(-[a-zA-Z]*\s+)?777\s+/",    // chmod 777 /
             r"^\s*chown\s+.*\s+/\s*$",                 // chown /
-            // L19 — belt+suspenders: also caught by meta-char filter, but explicit is better
+            // L19: belt+suspenders: also caught by meta-char filter, but explicit is better
             r"^\s*python3?\s+-c\b",          // python -c (arbitrary code exec)
             r"\bcurl\b.*\|",                 // curl piped to shell
             r"\bwget\b.*\|",                 // wget piped to shell
@@ -1053,7 +1053,7 @@ static DENIED_COMMAND_PATTERNS: std::sync::LazyLock<Vec<regex::Regex>> =
             r"^\s*base64\s+(-d|--decode)\b", // base64 decode (obfuscation bypass)
             r"^\s*truncate\b",               // truncate (destroy file contents)
             r"^\s*shred\b",                  // shred (secure delete)
-            // A1-07: Additional patterns — system administration and persistence
+            // A1-07: Additional patterns: system administration and persistence
             r"^\s*crontab\b",    // crontab (schedule persistent commands)
             r"^\s*nohup\b",      // nohup (persist after logout)
             r"^\s*systemctl\b",  // systemctl (service management)
@@ -1221,7 +1221,7 @@ pub async fn shell_execute(
 
 // ── Server Exec helpers ──────────────────────────────────────────────
 
-/// Saved server info (credentials excluded — never exposed to AI)
+/// Saved server info (credentials excluded: never exposed to AI)
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub(crate) struct SavedServerInfo {
     pub(crate) id: String,
@@ -1381,7 +1381,7 @@ fn load_provider_extra_options(
 }
 
 /// Create a temporary StorageProvider from a saved server profile.
-/// Credentials resolved internally from vault — never exposed to caller.
+/// Credentials resolved internally from vault: never exposed to caller.
 pub(crate) async fn create_temp_provider(
     server: &SavedServerInfo,
 ) -> Result<Box<dyn crate::providers::StorageProvider>, String> {
@@ -1419,7 +1419,7 @@ pub(crate) async fn create_temp_provider(
     }
 
     // Password is stored separately in credential store with key "server_{id}"
-    // (migrated from inline password in profile — see ServerProfile.password DEPRECATED)
+    // (migrated from inline password in profile: see ServerProfile.password DEPRECATED)
     let password = store
         .get(&format!("server_{}", server.id))
         .unwrap_or_else(|_| {
@@ -1478,7 +1478,7 @@ pub(crate) async fn create_temp_provider(
 
     let extra = load_provider_extra_options(&server.id)?;
 
-    // SFTP: rely on the saved server's trust configuration — do not override
+    // SFTP: rely on the saved server's trust configuration: do not override
     // (auto-trusting host keys would bypass TOFU verification and enable MITM)
 
     let host = if parsed_host.is_empty() {

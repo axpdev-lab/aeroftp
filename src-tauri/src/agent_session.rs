@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Agent-facing single-shot connect surface.
 //!
@@ -21,7 +21,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::Instant;
 
-/// Minimal profile metadata exposed to agents — all fields safe to log
+/// Minimal profile metadata exposed to agents: all fields safe to log
 /// (no secrets). Everything else stays in the vault.
 #[derive(Debug, Clone)]
 pub struct ProfileSummary {
@@ -45,7 +45,7 @@ pub struct ProfileSummary {
 
 /// Convert camelCase JSON keys (the desktop frontend's `ProviderOptions`
 /// shape) into the snake_case keys the Rust `ProviderConfig.extra`
-/// builders expect. Pure ASCII — non-alpha chars are preserved as-is.
+/// builders expect. Pure ASCII: non-alpha chars are preserved as-is.
 fn camel_to_snake(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 4);
     for (i, ch) in s.chars().enumerate() {
@@ -77,7 +77,7 @@ fn flatten_options(options: Option<&Value>) -> HashMap<String, String> {
             Value::String(s) => s.clone(),
             Value::Bool(b) => b.to_string(),
             Value::Number(n) => n.to_string(),
-            // Skip nulls / arrays / nested objects — the legacy
+            // Skip nulls / arrays / nested objects: the legacy
             // builders never accepted those shapes either.
             _ => continue,
         };
@@ -211,7 +211,7 @@ pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
 }
 
 /// Collapse `//`, drop trailing `/`, normalise empty → `/`.
-/// Pure string op — no provider call.
+/// Pure string op: no provider call.
 pub fn canonicalize_path(path: &str) -> String {
     if path.is_empty() {
         return "/".to_string();
@@ -241,7 +241,7 @@ pub fn canonicalize_path(path: &str) -> String {
 /// Conservative per-protocol capability set. Static heuristic so CLI
 /// and MCP agree without requiring the connection pool to surface
 /// per-instance flags. Names mirror the `StorageProvider` trait
-/// `supports_*` methods — agents that already know those flags can
+/// `supports_*` methods: agents that already know those flags can
 /// reuse the same vocabulary.
 ///
 /// When in doubt, a feature is OMITTED. Agents should treat this list
@@ -297,7 +297,7 @@ pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
     }
 }
 
-/// Profile block — always present, summarises which profile the agent
+/// Profile block: always present, summarises which profile the agent
 /// is talking about. Never carries `status` (it's metadata, not a step
 /// that can fail).
 pub fn profile_block(profile: &ProfileSummary) -> Value {
@@ -338,7 +338,7 @@ pub fn capabilities_block(protocol: &str) -> Value {
 /// when their backend doesn't expose quota (e.g. Koofr's WebDAV, some
 /// InfiniCloud configs); that shape is indistinguishable from "account
 /// genuinely empty". Downgrade those to `unsupported` so agents don't
-/// branch on misleading zeros — discovered via the 4-Sonnet
+/// branch on misleading zeros: discovered via the 4-Sonnet
 /// agent-friendliness audit (2026-04-26, Battery B).
 pub fn quota_block_ok(used: u64, total: u64, available: u64) -> Value {
     if total == 0 {
@@ -386,7 +386,7 @@ pub fn connect_block_error(message: &str) -> Value {
 
 /// Protocol is outside agent-connect's live-connect allowlist (e.g.
 /// pCloud, Filen, Koofr native, MEGA, Yandex) but the rest of the
-/// payload — capabilities, path, profile metadata — is still useful.
+/// payload: capabilities, path, profile metadata: is still useful.
 /// Distinct status from `error` so agents can distinguish "we never
 /// tried because protocol unsupported" from "we tried and it failed".
 /// Maps to exit code 0 in the CLI (capabilities are still actionable).
@@ -518,7 +518,7 @@ async fn connect_provider(profile: &ProfileSummary) -> ConnectOutcome {
 
 /// Build the full agent-connect payload for the CLI surface. Opens the
 /// vault, locates the profile, attempts to connect, then collects
-/// per-block status. Always returns a payload — failures surface as
+/// per-block status. Always returns a payload: failures surface as
 /// `status: error` / `unavailable` on the offending block.
 pub async fn build_agent_connect_payload(query: &str) -> Value {
     let profile = match lookup_profile(query) {
@@ -544,7 +544,7 @@ pub async fn build_agent_connect_payload(query: &str) -> Value {
             (connect, quota)
         }
         ConnectOutcome::Unsupported => {
-            // Capabilities/path are still actionable for the agent —
+            // Capabilities/path are still actionable for the agent -
             // they can choose protocol-specific commands. Quota is
             // marked unsupported (matches what FTP/S3 produce when the
             // protocol legitimately has no quota API).
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn block_helpers_carry_status() {
-        // Status is the agent's primary read — make sure each helper
+        // Status is the agent's primary read: make sure each helper
         // sets it to the documented value.
         assert_eq!(connect_block_ok("srv_x", 100)["status"], "ok");
         assert_eq!(connect_block_error("boom")["status"], "error");
@@ -629,7 +629,7 @@ mod tests {
     #[test]
     fn quota_block_ok_zero_total_downgrades_to_unsupported() {
         // Some WebDAV servers (Koofr, InfiniCloud variants) return 0/0
-        // when their backend has no quota — surface as `unsupported`
+        // when their backend has no quota: surface as `unsupported`
         // so agents don't branch on misleading zeros. Caught by the
         // 4-Sonnet agent audit (Battery B, 2026-04-26).
         let v = quota_block_ok(0, 0, 0);

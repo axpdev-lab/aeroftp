@@ -1,17 +1,17 @@
-//! MCP progress notifier — emits `notifications/progress` during long-running
+//! MCP progress notifier: emits `notifications/progress` during long-running
 //! operations so the client can render transfer progress and detect stalls.
 //!
 //! The MCP spec (2024-11-05) lets callers attach a `progressToken` to any
 //! request via `params._meta.progressToken`. The server replies with
 //! `notifications/progress` messages referencing that token. Without progress
 //! notifications, agents block for minutes on multi-MB transfers with no
-//! feedback — this module closes that gap.
+//! feedback: this module closes that gap.
 //!
 //! Rate-limiting: the notifier throttles outbound messages to roughly
 //! 10 Hz (one every 100 ms) to avoid flooding the client on fast transfers.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::mcp::transport::StdoutWriter;
 use serde_json::{json, Value};
@@ -140,7 +140,7 @@ pub fn extract_progress_token(req: &Value) -> Option<Value> {
 }
 
 /// Format a human-readable progress message without em-dashes.
-/// Example: `"42% — 12.3 MB / 29.1 MB — 3.2 MB/s"` is NOT produced;
+/// Example: `"42%: 12.3 MB / 29.1 MB: 3.2 MB/s"` is NOT produced;
 /// we use regular hyphens per project style guide.
 pub fn format_transfer_message(pct: u64, sent: u64, total: u64, bps: u64) -> String {
     let sent_fmt = format_bytes(sent);

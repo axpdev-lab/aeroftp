@@ -1,4 +1,4 @@
-//! MCP Server module — Model Context Protocol for AeroFTP
+//! MCP Server module: Model Context Protocol for AeroFTP
 //!
 //! Exposes AeroFTP's 27 storage providers via JSON-RPC 2.0 over stdio,
 //! compatible with Claude Desktop, Cursor, VS Code, and any MCP client.
@@ -10,17 +10,17 @@
 //!       v
 //!   McpServer::run()
 //!       |
-//!   server.rs  — request routing, capability negotiation
-//!   tools.rs   — 16 curated tools (12 core + 4 extended)
-//!   resources.rs — profiles, status, capabilities, connections
-//!   prompts.rs — 4 prompt templates
-//!   pool.rs    — connection pooling (HashMap<String, Mutex<Box<dyn StorageProvider>>>)
-//!   security.rs — path validation, rate limiting, audit logging
-//!   transport.rs — async stdio framing
+//!   server.rs : request routing, capability negotiation
+//!   tools.rs  : 16 curated tools (12 core + 4 extended)
+//!   resources.rs: profiles, status, capabilities, connections
+//!   prompts.rs: 4 prompt templates
+//!   pool.rs   : connection pooling (HashMap<String, Mutex<Box<dyn StorageProvider>>>)
+//!   security.rs: path validation, rate limiting, audit logging
+//!   transport.rs: async stdio framing
 //! ```
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 pub mod notifier;
 pub mod pool;
@@ -68,7 +68,7 @@ impl McpServer {
     pub async fn run(self) -> i32 {
         // Prime the credential-store cache. Without this step the cache is
         // empty for a freshly-spawned MCP subprocess and every tool call that
-        // needs vault credentials returns "Vault not open" — even when the
+        // needs vault credentials returns "Vault not open": even when the
         // user is in auto-unlock keyring mode. If a master password is
         // required and no AEROFTP_MASTER_PASSWORD is set, we fall through
         // with a descriptive vault_error so tools can still report the right

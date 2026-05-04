@@ -1,9 +1,9 @@
-//! Sync core — helpers shared between the `aeroftp-cli` binary and the MCP
+//! Sync core: helpers shared between the `aeroftp-cli` binary and the MCP
 //! server.
 //!
 //! Scope: pure orchestration of local/remote directory scans, tree
 //! comparison, and simple sync execution. Exposes no Tauri types, no Clap
-//! types, and no MCP types — so both front-ends can drive it without
+//! types, and no MCP types: so both front-ends can drive it without
 //! cross-dependencies.
 //!
 //! The module is feature-flag friendly: it only depends on `StorageProvider`
@@ -11,7 +11,7 @@
 //! --lib` footprint (no extra build time).
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 pub mod compare;
 pub mod scan;

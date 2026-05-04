@@ -1,4 +1,4 @@
-//! P3-T01 W3.2(b1) — russh-based SSH session transport for the native rsync
+//! P3-T01 W3.2(b1): russh-based SSH session transport for the native rsync
 //! batch path.
 //!
 //! See [`RusshSessionTransport`] for the entry point.
@@ -82,7 +82,7 @@ impl Handler for RusshHandler {
                     Some(hex) => hex,
                     None => {
                         tracing::error!(
-                            "russh: rejecting host key — failed to compute SHA-256 fingerprint"
+                            "russh: rejecting host key: failed to compute SHA-256 fingerprint"
                         );
                         return Ok(false);
                     }
@@ -92,7 +92,7 @@ impl Handler for RusshHandler {
                     Ok(true)
                 } else {
                     tracing::error!(
-                        "russh: REJECTING host key — fingerprint mismatch (expected {expected}, got {actual})"
+                        "russh: REJECTING host key: fingerprint mismatch (expected {expected}, got {actual})"
                     );
                     Ok(false)
                 }
@@ -263,7 +263,7 @@ impl RusshSessionTransport {
                     if ext == 1 {
                         stderr.extend_from_slice(&data);
                     } else {
-                        // Unknown extended data channel — append to stderr
+                        // Unknown extended data channel: append to stderr
                         // for visibility instead of dropping.
                         stderr.extend_from_slice(&data);
                     }
@@ -402,7 +402,7 @@ impl RawByteStream for RusshRawStream {
                     return Ok(bytes);
                 }
                 Some(ChannelMsg::ExtendedData { .. }) => {
-                    // Stderr — discarded at the raw-byte layer; the
+                    // Stderr: discarded at the raw-byte layer; the
                     // driver-level event bridge surfaces stderr through
                     // its own path. Continue draining.
                     continue;
@@ -549,14 +549,14 @@ pub struct RusshUnusedStream;
 impl crate::aerorsync::transport::BidirectionalByteStream for RusshUnusedStream {
     async fn write_frame(&mut self, _frame: &[u8]) -> Result<(), AerorsyncError> {
         Err(AerorsyncError::transport(
-            "RusshUnusedStream cannot be driven — RusshSessionTransport \
+            "RusshUnusedStream cannot be driven: RusshSessionTransport \
              only supports the raw byte path",
         ))
     }
 
     async fn read_frame(&mut self) -> Result<Vec<u8>, AerorsyncError> {
         Err(AerorsyncError::transport(
-            "RusshUnusedStream cannot be driven — RusshSessionTransport \
+            "RusshUnusedStream cannot be driven: RusshSessionTransport \
              only supports the raw byte path",
         ))
     }
@@ -596,7 +596,7 @@ mod tests {
         match RusshSessionTransport::connect(cfg).await {
             Err(_) => {}
             Ok(_) => panic!(
-                "connect to port 1 should not succeed in CI — fixture must have an SSH \
+                "connect to port 1 should not succeed in CI: fixture must have an SSH \
                  server bound there which would be a security red flag"
             ),
         }

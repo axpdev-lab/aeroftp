@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Cross-profile transfer Tauri commands.
 //!
@@ -40,7 +40,7 @@ pub struct CrossProfileState {
     approved_plans: Arc<Mutex<HashMap<String, StoredCrossProfilePlan>>>,
     cancel_tokens: Mutex<HashMap<String, CancellationToken>>,
     // Background sweeper task. Spawned lazily by `ensure_sweeper_started`
-    // from inside an async Tauri command — `new()` runs during
+    // from inside an async Tauri command: `new()` runs during
     // `builder.manage(...)` which is before the Tokio runtime is alive,
     // and even the sync `setup` hook isn't inside a runtime context.
     sweeper: std::sync::Mutex<Option<AbortOnDrop<()>>>,

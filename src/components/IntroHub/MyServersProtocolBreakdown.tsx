@@ -104,15 +104,15 @@ export function MyServersProtocolBreakdown({
                                     {row.unique}
                                 </td>
                                 <td className="px-3 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-400">
-                                    {row.total > 0 ? formatBytes(row.used) : '—'}
+                                    {row.total > 0 ? formatBytes(row.used) : '-'}
                                 </td>
                                 <td className="px-3 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-400">
-                                    {row.total > 0 ? formatBytes(row.total) : '—'}
+                                    {row.total > 0 ? formatBytes(row.total) : '-'}
                                 </td>
                                 <td
                                     className={`px-3 py-1.5 text-right tabular-nums ${TONE_TEXT_CLASS[tone.tone]}`}
                                 >
-                                    {pct !== null ? `${pct.toFixed(1)}%` : '—'}
+                                    {pct !== null ? `${pct.toFixed(1)}%` : '-'}
                                 </td>
                             </tr>
                         );
@@ -124,15 +124,15 @@ export function MyServersProtocolBreakdown({
                         <td className="px-3 py-1.5 text-right tabular-nums">{aggregate.profiles}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{aggregate.uniqueCount}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums">
-                            {aggregate.totalTotal > 0 ? formatBytes(aggregate.totalUsed) : '—'}
+                            {aggregate.totalTotal > 0 ? formatBytes(aggregate.totalUsed) : '-'}
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums">
-                            {aggregate.totalTotal > 0 ? formatBytes(aggregate.totalTotal) : '—'}
+                            {aggregate.totalTotal > 0 ? formatBytes(aggregate.totalTotal) : '-'}
                         </td>
                         <td
                             className={`px-3 py-1.5 text-right tabular-nums ${TONE_TEXT_CLASS[totalTone.tone]}`}
                         >
-                            {meanPct !== null ? `${meanPct.toFixed(1)}%` : '—'}
+                            {meanPct !== null ? `${meanPct.toFixed(1)}%` : '-'}
                         </td>
                     </tr>
                 </tfoot>

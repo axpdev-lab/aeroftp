@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download, Square } from 'lucide-react';
@@ -47,7 +47,7 @@ import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcut
 import { initBudgetManager, checkBudget, recordSpending, getConversationCost, type BudgetCheckResult, type ConversationCost } from './CostBudgetManager';
 import { CostBudgetIndicator } from './CostBudgetIndicator';
 
-/** Maximum autonomous steps — now driven by AGENT_MODE_MAX_STEPS */
+/** Maximum autonomous steps: now driven by AGENT_MODE_MAX_STEPS */
 
 /** 3×3 grid-dots animated spinner */
 const GridSpinner: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -182,7 +182,7 @@ const normalizeSpeechLanguage = (language: string | undefined): string | undefin
     return normalized || undefined;
 };
 
-/** Hook: cycle through thinking messages while loading — typewriter effect */
+/** Hook: cycle through thinking messages while loading: typewriter effect */
 function useThinkingMessage(isActive: boolean, t: (key: string) => string, intervalMs = 3000): { text: string; isTyping: boolean } {
     const [index, setIndex] = useState(0);
     const [displayText, setDisplayText] = useState('');
@@ -547,13 +547,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     // Unmount cleanup: abort any stream in flight. Previously closing DevTools
     // mid-stream left the Tauri listener registered and the backend SSE task
-    // writing into a dead tree — tokens continued to be billed and the
+    // writing into a dead tree: tokens continued to be billed and the
     // `ai-stream-*` channel stayed subscribed until the next reload.
     useEffect(() => () => {
         cancelActiveStream();
     }, [cancelActiveStream]);
 
-    // BUG-008: Wrap switchConversation — await async base, clear pending tools first
+    // BUG-008: Wrap switchConversation: await async base, clear pending tools first
     // A6-06: Abort any ongoing streaming before switching conversation
     const switchConversation = useCallback(async (conv: Conversation) => {
         cancelActiveStream();
@@ -905,11 +905,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             let contextText: string;
             if (context === 'file') {
-                // From file context menu — ask about the file
+                // From file context menu: ask about the file
                 const filePath = detail.filePath || fileName;
                 contextText = `Analyze file: \`${filePath}\`\n\n`;
             } else {
-                // From Monaco editor — include code snippet
+                // From Monaco editor: include code snippet
                 const language = fileName.split('.').pop() || 'text';
                 const trimmedCode = code.length > 2000 ? code.slice(0, 2000) + '\n// ...(truncated)' : code;
                 contextText = `Regarding this code from \`${fileName}\`:\n\`\`\`${language}\n${trimmedCode}\n\`\`\`\n\n`;
@@ -1269,7 +1269,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 throw new Error('Secure backend approval request could not be created.');
             }
 
-            // In expert mode, the user already confirmed via the approval panel —
+            // In expert mode, the user already confirmed via the approval panel -
             // skip the native OS dialog to avoid double-confirmation.
             // In safe/normal mode, always show both (defense in depth).
             // In extreme mode, tools are auto-approved so panelApproved is never true here.
@@ -1363,7 +1363,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     setPendingToolCalls([]);
                     return null;
                 }
-                // SECURITY: Check if step tool has high danger level — require explicit approval
+                // SECURITY: Check if step tool has high danger level: require explicit approval
                 const stepTool = getToolByName(step.toolName) || getToolByNameFromAll(step.toolName, allTools);
                 if (stepTool && stepTool.dangerLevel === 'high') {
                     const pendingStep: AgentToolCall = {
@@ -1724,7 +1724,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     break; // Stop auto-loop, user must approve
                 }
 
-                // All safe tools — execute in parallel
+                // All safe tools: execute in parallel
                 stepCount++;
                 setAutoStepCount(stepCount);
 
@@ -1736,7 +1736,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 const combinedResult = results.filter(Boolean).join('\n---\n');
                 if (!combinedResult) break;
 
-                // A1-05: Circuit breaker — pause after consecutive errors to prevent runaway destruction
+                // A1-05: Circuit breaker: pause after consecutive errors to prevent runaway destruction
                 const hasError = combinedResult.toLowerCase().includes('error') || combinedResult.toLowerCase().includes('failed');
                 if (hasError) {
                     consecutiveErrors++;
@@ -1860,7 +1860,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
             }
             // When user has explicitly selected a model (activeModel is set),
-            // do NOT apply auto-routing — respect the user's choice.
+            // do NOT apply auto-routing: respect the user's choice.
 
             if (!activeModel) {
                 throw new Error('No model selected. Click ⚙️ to configure a provider.');
@@ -1994,7 +1994,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
             // Warn user if tools are disabled on current model
             if (!useNativeTools) {
-                console.warn('[AeroAgent] Tools disabled for model:', activeModel.modelName, '— file operations will not work. Enable "Tools" in AI Settings > Models.');
+                console.warn('[AeroAgent] Tools disabled for model:', activeModel.modelName, '- file operations will not work. Enable "Tools" in AI Settings > Models.');
             }
 
             // Prepare model info for message signature
@@ -2067,7 +2067,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                 // Listen for stream chunks (with thinking + tool calls support).
                 // createTauriListener returns a synchronous disposer and internally
-                // guards the late-resolution race — if the component unmounts or
+                // guards the late-resolution race: if the component unmounts or
                 // cancelActiveStream runs before the underlying `listen()` resolves,
                 // the eventual UnlistenFn is called immediately on arrival instead
                 // of being orphaned.
@@ -2131,7 +2131,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                 // Wait for the done event with timeout, then unlisten.
                 // The timeout handle is tracked so a successful stream clears it
-                // — previously the setTimeout kept the runtime alive until its
+                //: previously the setTimeout kept the runtime alive until its
                 // full duration even when the stream had finished seconds earlier.
                 const streamTimeoutMs = (settings.advancedSettings?.streamingTimeoutSecs ?? 120) * 1000;
                 let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -2167,7 +2167,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         .then(result => setBudgetCheck(result));
                 }
 
-                // Check for tool calls from streaming — process ALL (parallel support)
+                // Check for tool calls from streaming: process ALL (parallel support)
                 let allToolsParsed: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
                 if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
                     allToolsParsed = streamResult.toolCalls.map(tc => ({
@@ -2265,7 +2265,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         .then(result => setBudgetCheck(result));
                 }
 
-                // Check if AI wants to use tools — process ALL (parallel support)
+                // Check if AI wants to use tools: process ALL (parallel support)
                 let allToolsParsedNS: Array<{ tool: string; args: Record<string, unknown>; id: string }> = [];
                 if (response.tool_calls && response.tool_calls.length > 0) {
                     allToolsParsedNS = response.tool_calls.map((tc: { id: string; name: string; arguments: unknown }) => ({
@@ -2484,7 +2484,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 onSearchResults={handleSearchResults}
             />
 
-            {/* Chat History Manager — full-text search + bulk management */}
+            {/* Chat History Manager: full-text search + bulk management */}
             <ChatHistoryManager
                 visible={showHistoryManager}
                 onClose={() => setShowHistoryManager(false)}
@@ -2562,7 +2562,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             </p>
                         </div>
 
-                        {/* API Key Banner — only when no providers configured */}
+                        {/* API Key Banner: only when no providers configured */}
                         {availableModels.length === 0 && (
                             <button
                                 onClick={() => setShowSettings(true)}
@@ -2649,7 +2649,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                             ))}
                                         </div>
                                     )}
-                                    {/* Thinking block (Claude extended thinking) — Phase 4: token display (#74) */}
+                                    {/* Thinking block (Claude extended thinking): Phase 4: token display (#74) */}
                                     {message.thinking && (
                                         <ThinkingBlock
                                             content={message.thinking}
@@ -2786,7 +2786,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                             )}
                                         </span>
                                     )}
-                                    {/* Stop button — visible during any streaming or loading */}
+                                    {/* Stop button: visible during any streaming or loading */}
                                     {!isAutoExecuting && (
                                         <button
                                             onClick={() => { cancelActiveStream(); setIsLoading(false); }}

@@ -1,7 +1,7 @@
-//! Area D — agent_memory_*, rag_* unified handlers (T3 Gate 2).
+//! Area D: agent_memory_*, rag_* unified handlers (T3 Gate 2).
 //!
 //! `agent_memory_write` usa l'API non-Tauri `store_memory_entry_cli`
-//! (single SQLite DB, lazy lock condiviso) — funziona identicamente
+//! (single SQLite DB, lazy lock condiviso): funziona identicamente
 //! da GUI, CLI e MCP.
 //!
 //! `rag_index` / `rag_search` sono filesystem-only e non hanno
@@ -9,7 +9,7 @@
 //! evitare di bloccare il runtime su tree grandi.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde_json::{json, Value};
 
@@ -278,7 +278,7 @@ pub async fn agent_memory_write(_ctx: &dyn ToolCtx, args: &Value) -> Result<Valu
     validate_path(&project_path, "project_path").map_err(map_str_err)?;
 
     // Single source of truth: the CLI-style helper uses a per-process
-    // memoized SQLite DB (see agent_memory_db.rs) — same DB on disk
+    // memoized SQLite DB (see agent_memory_db.rs): same DB on disk
     // regardless of surface (GUI/CLI/MCP).
     let project_path_clone = project_path.clone();
     let category_clone = sanitized_category.clone();

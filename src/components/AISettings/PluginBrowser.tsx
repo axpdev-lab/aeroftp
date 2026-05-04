@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -89,7 +89,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
         } catch (err) {
             const msg = String(err);
             // Backend returns this exact phrase when the registry is intentionally disabled.
-            // Don't surface a duplicate red banner — the amber notice above already explains it.
+            // Don't surface a duplicate red banner: the amber notice above already explains it.
             if (msg.includes('registry is temporarily disabled')) {
                 setRegistryDisabled(true);
                 setError(null);
@@ -312,7 +312,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
                             </div>
                         )
                     ) : (
-                        /* Installed tab — shows a message to manage from Plugins tab */
+                        /* Installed tab: shows a message to manage from Plugins tab */
                         <div className="text-center py-12">
                             <Puzzle size={48} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
                             <p className="text-sm text-gray-500">{t('plugins.browser.manageInSettings')}</p>

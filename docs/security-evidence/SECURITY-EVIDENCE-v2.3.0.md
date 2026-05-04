@@ -1,4 +1,4 @@
-# Security Evidence — v2.3.0
+# Security Evidence: v2.3.0
 
 > Public release security evidence pack for AeroFTP.
 > Tracks security claims, applied fixes, verification status, and acceptance gates.
@@ -29,34 +29,34 @@ Minimum completion criteria:
 
 ## 2) Security-Relevant Changes
 
-### 2.1 — Chat History SQLite Backend (New)
+### 2.1: Chat History SQLite Backend (New)
 
 **Change**: Complete rewrite of chat history persistence from JSON flat-file to SQLite WAL mode with FTS5 full-text search. New `chat_history.rs` module with 18 Tauri commands operating on 4 tables (sessions, messages, branches, stats).
 
 **Security controls applied**:
-- **SQL injection prevention**: All queries use parameterized `?` placeholders — zero string interpolation in SQL
+- **SQL injection prevention**: All queries use parameterized `?` placeholders: zero string interpolation in SQL
 - **FTS5 query injection**: `sanitize_fts_query()` wraps user input in double quotes, preventing FTS5 operator injection (`AND`, `OR`, `NOT`, `NEAR`)
 - **FTS5 XSS prevention**: `sanitize_fts_snippet()` applies HTML entity escaping first, then restores only `<mark>`/`</mark>` tags for highlight rendering
 - **WAL mode**: `PRAGMA journal_mode=WAL` for concurrent read safety; single-writer model prevents corruption
 - **File permissions**: Database created at `~/.config/aeroftp/chat_history.db` with directory permissions `0700`
-- **In-memory fallback**: If SQLite file cannot be opened, falls back to `":memory:"` database — zero crash, zero data loss for current session
+- **In-memory fallback**: If SQLite file cannot be opened, falls back to `":memory:"` database: zero crash, zero data loss for current session
 - **Clear-all command**: Dedicated `chat_history_clear_all` with explicit `DELETE FROM` across all 4 tables (not iterative delete)
 - **Retention auto-apply**: `retentionAppliedRef` guard prevents double-cleanup per session; `cleanupHistory(days)` removes old data on mount
 
-**Risk assessment**: Low — SQLite is a well-audited embedded database. All user inputs are parameterized. FTS5 outputs are XSS-sanitized before rendering.
+**Risk assessment**: Low: SQLite is a well-audited embedded database. All user inputs are parameterized. FTS5 outputs are XSS-sanitized before rendering.
 
-### 2.2 — Chat History Manager UI (New)
+### 2.2: Chat History Manager UI (New)
 
 **Change**: New `ChatHistoryManager.tsx` component with retention policies (7/30/90/180/365 days or unlimited), full-text search with highlighted snippets, session browser, and statistics dashboard.
 
 **Security controls applied**:
 - FTS5 search results rendered via `dangerouslySetInnerHTML` only after `sanitize_fts_snippet()` processing on the Rust side
 - Retention enforcement runs on component mount, not on a timer (no race conditions)
-- Statistics display (DB size, total tokens, total cost) read from aggregated queries — no raw data exposure
+- Statistics display (DB size, total tokens, total cost) read from aggregated queries: no raw data exposure
 
-**Risk assessment**: Low — UI component with server-side sanitization of all dynamic content.
+**Risk assessment**: Low: UI component with server-side sanitization of all dynamic content.
 
-### 2.3 — Export/Import (Modified)
+### 2.3: Export/Import (Modified)
 
 **Change**: Chat history export now exports from SQLite via `chat_history_export` command (JSON format). Import via `chat_history_import` validates structure before insertion.
 
@@ -65,7 +65,7 @@ Minimum completion criteria:
 - Import validates expected fields before SQL insertion
 - File I/O uses Tauri plugin-fs with existing scope restrictions
 
-**Risk assessment**: Low — structured data exchange with validation.
+**Risk assessment**: Low: structured data exchange with validation.
 
 ---
 
@@ -76,14 +76,14 @@ Minimum completion criteria:
 | ID | Severity | Area | Description | Status | Linked Fix |
 |----|----------|------|-------------|--------|------------|
 | A1-SQL-01 | High | SQL | String interpolation in SQL queries | Fixed | All queries converted to parameterized `?` placeholders |
-| A1-XSS-01 | High | XSS | FTS5 snippet output contains unsanitized HTML | Fixed | `sanitize_fts_snippet()` — escape HTML then restore `<mark>` |
+| A1-XSS-01 | High | XSS | FTS5 snippet output contains unsanitized HTML | Fixed | `sanitize_fts_snippet()`: escape HTML then restore `<mark>` |
 | A1-FTS-01 | Medium | FTS5 | User input can inject FTS5 operators | Fixed | `sanitize_fts_query()` wraps input in double quotes |
-| A2-WAL-01 | Medium | DB | Journal mode not set — default rollback journal | Fixed | `PRAGMA journal_mode=WAL` on connection open |
+| A2-WAL-01 | Medium | DB | Journal mode not set: default rollback journal | Fixed | `PRAGMA journal_mode=WAL` on connection open |
 | A2-FALL-01 | Medium | DB | SQLite open failure causes panic | Fixed | In-memory fallback with `":memory:"` URI |
 | A3-RET-01 | Medium | Logic | Retention policy not auto-applied on startup | Fixed | `retentionAppliedRef` + `useEffect` cleanup on mount |
 | A3-CLR-01 | Medium | Logic | Clear-all iterates sessions (slow, partial failure) | Fixed | Dedicated `chat_history_clear_all` with direct `DELETE FROM` |
 | A4-PERM-01 | Low | FS | DB file created without explicit permissions | Fixed | Directory `0700` via existing config dir creation |
-| GPT-F2 | Medium | Logic | Retention auto-apply missing — stale data persists | Fixed | `retentionAppliedRef` guard + `cleanupHistory()` call |
+| GPT-F2 | Medium | Logic | Retention auto-apply missing: stale data persists | Fixed | `retentionAppliedRef` guard + `cleanupHistory()` call |
 | GPT-F4 | Medium | Logic | No dedicated clear-all command | Fixed | New `chat_history_clear_all` Rust command |
 
 ---
@@ -92,14 +92,14 @@ Minimum completion criteria:
 
 | Fix ID | Priority | Description | Files | Verification |
 |--------|----------|-------------|-------|--------------|
-| SQL-PARAM | P1 | Parameterized all SQL queries | `chat_history.rs` | Code review — zero string interpolation in SQL |
-| FTS-XSS | P1 | XSS-safe FTS5 snippet rendering | `chat_history.rs` | Manual — `<script>` tags escaped, `<mark>` preserved |
-| FTS-INJECT | P2 | FTS5 query injection prevention | `chat_history.rs` | Manual — operators in quotes rendered literal |
+| SQL-PARAM | P1 | Parameterized all SQL queries | `chat_history.rs` | Code review: zero string interpolation in SQL |
+| FTS-XSS | P1 | XSS-safe FTS5 snippet rendering | `chat_history.rs` | Manual: `<script>` tags escaped, `<mark>` preserved |
+| FTS-INJECT | P2 | FTS5 query injection prevention | `chat_history.rs` | Manual: operators in quotes rendered literal |
 | WAL-MODE | P2 | WAL journal mode on connect | `chat_history.rs` | `PRAGMA journal_mode` returns "wal" |
-| MEM-FALLBACK | P2 | In-memory fallback on open failure | `chat_history.rs` | Simulated permission denial — app continues |
-| RET-APPLY | P2 | Retention auto-apply on mount | `AIChat.tsx` | Set 7-day retention, reload — old sessions removed |
-| CLR-ALL | P2 | Dedicated clear-all command | `chat_history.rs` | Clear all — 4 tables emptied, DB size reduced |
-| I18N-KEYS | P3 | 24 new keys in 47 languages | 47 locale files | `npm run i18n:validate` — 47/47 at 100% |
+| MEM-FALLBACK | P2 | In-memory fallback on open failure | `chat_history.rs` | Simulated permission denial: app continues |
+| RET-APPLY | P2 | Retention auto-apply on mount | `AIChat.tsx` | Set 7-day retention, reload: old sessions removed |
+| CLR-ALL | P2 | Dedicated clear-all command | `chat_history.rs` | Clear all: 4 tables emptied, DB size reduced |
+| I18N-KEYS | P3 | 24 new keys in 47 languages | 47 locale files | `npm run i18n:validate`: 47/47 at 100% |
 
 ---
 
@@ -129,22 +129,22 @@ Minimum completion criteria:
 
 Known limitations:
 - SQLite database is not encrypted at rest (covered by config directory 0700 permissions and optional master password vault)
-- FTS5 index may contain sensitive chat content — same protection as the main database
+- FTS5 index may contain sensitive chat content: same protection as the main database
 
 ---
 
 ## 6) Regression Watchlist
 
-- [x] AI tool whitelist — unchanged (45 tools + clipboard_read_image)
-- [x] Plugin execution model — unchanged
-- [x] Credential storage and migration — unchanged
-- [x] OAuth token handling — unchanged
-- [x] Shell execute security controls — unchanged
-- [x] CSP configuration — unchanged
-- [x] Tauri capabilities scope — unchanged
-- [x] TOTP 2FA for vault — unchanged
-- [x] Remote vault security — unchanged
-- [x] Path validation in AI tools — unchanged
+- [x] AI tool whitelist: unchanged (45 tools + clipboard_read_image)
+- [x] Plugin execution model: unchanged
+- [x] Credential storage and migration: unchanged
+- [x] OAuth token handling: unchanged
+- [x] Shell execute security controls: unchanged
+- [x] CSP configuration: unchanged
+- [x] Tauri capabilities scope: unchanged
+- [x] TOTP 2FA for vault: unchanged
+- [x] Remote vault security: unchanged
+- [x] Path validation in AI tools: unchanged
 
 ---
 
@@ -152,32 +152,32 @@ Known limitations:
 
 | Risk ID | Severity | Reason accepted | Expiry date | Owner |
 |---------|----------|-----------------|------------|-------|
-| RISK-230-01 | Low | Chat history SQLite not encrypted at rest — acceptable given 0700 dir permissions and optional master password vault | v2.5.0 | Dev Team |
-| RISK-230-02 | Info | FTS5 index stores tokenized chat content — same protection level as main DB, covered by RISK-230-01 | v2.5.0 | Dev Team |
+| RISK-230-01 | Low | Chat history SQLite not encrypted at rest: acceptable given 0700 dir permissions and optional master password vault | v2.5.0 | Dev Team |
+| RISK-230-02 | Info | FTS5 index stores tokenized chat content: same protection level as main DB, covered by RISK-230-01 | v2.5.0 | Dev Team |
 
 ---
 
 ## 8) Evidence Index
 
 - Diffs:
-  - `chat_history.rs` — Full SQLite backend with 18 commands, FTS5, WAL, in-memory fallback
-  - `AIChat.tsx` — Integration hooks, retention auto-apply, ChatHistoryManager modal trigger
-  - `ChatHistoryManager.tsx` — Manager UI with search, retention, stats
-  - `lib.rs` — 18 new Tauri command registrations
-  - 47 locale files — 24 new i18n keys (chatHistory.*)
+  - `chat_history.rs`: Full SQLite backend with 18 commands, FTS5, WAL, in-memory fallback
+  - `AIChat.tsx`: Integration hooks, retention auto-apply, ChatHistoryManager modal trigger
+  - `ChatHistoryManager.tsx`: Manager UI with search, retention, stats
+  - `lib.rs`: 18 new Tauri command registrations
+  - 47 locale files: 24 new i18n keys (chatHistory.*)
 - Audit reports:
-  - Security audit (Claude Opus 4.6 agent #1) — SQL injection, XSS, path validation
-  - Correctness audit (Claude Opus 4.6 agent #2) — Logic errors, edge cases, data integrity
-  - Performance audit (Claude Opus 4.6 agent #3) — WAL mode, index optimization, connection pooling
-  - Frontend/UX audit (Claude Opus 4.6 agent #4) — i18n, accessibility, theme compatibility
-  - Counter-audit (GPT-5.3 Codex) — F2 retention auto-apply, F4 clear-all command
+  - Security audit (Claude Opus 4.6 agent #1): SQL injection, XSS, path validation
+  - Correctness audit (Claude Opus 4.6 agent #2): Logic errors, edge cases, data integrity
+  - Performance audit (Claude Opus 4.6 agent #3): WAL mode, index optimization, connection pooling
+  - Frontend/UX audit (Claude Opus 4.6 agent #4): i18n, accessibility, theme compatibility
+  - Counter-audit (GPT-5.3 Codex): F2 retention auto-apply, F4 clear-all command
 - CI runs:
   - GitHub Actions triggered on tag push (builds Linux/Windows/macOS)
 - Test reports:
-  - `npm run build` — zero errors
-  - `npm run i18n:validate` — 47/47 at 100%
-  - `cargo check` — zero errors
-  - `npm run security:regression` — all checks pass
+  - `npm run build`: zero errors
+  - `npm run i18n:validate`: 47/47 at 100%
+  - `cargo check`: zero errors
+  - `npm run security:regression`: all checks pass
 
 ---
 
@@ -201,5 +201,5 @@ Decision:
 - [ ] New findings triaged into roadmap
 
 Follow-up issues:
-- Optional SQLite encryption at rest (v2.5.0) — evaluate SQLCipher or application-level encryption
-- CSP Phase 2 tightening (v2.4.0) — replace wildcard sources with specific origins
+- Optional SQLite encryption at rest (v2.5.0): evaluate SQLCipher or application-level encryption
+- CSP Phase 2 tightening (v2.4.0): replace wildcard sources with specific origins

@@ -4,7 +4,7 @@
 //! Returns fingerprint + algorithm to frontend for user approval dialog.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use russh::client::{self, Config, Handler};
 use russh::keys::{self, known_hosts, HashAlg, PublicKey};
@@ -74,7 +74,7 @@ impl Handler for ProbeHandler {
                 Ok(true)
             }
             Ok(false) => {
-                // Unknown key — TOFU needed
+                // Unknown key: TOFU needed
                 tracing::info!(
                     "Host key probe: unknown key for {}:{} ({})",
                     self.host,
@@ -96,7 +96,7 @@ impl Handler for ProbeHandler {
                 Ok(false)
             }
             Err(keys::Error::KeyChanged { line }) => {
-                // Key changed — possible MITM
+                // Key changed: possible MITM
                 tracing::warn!(
                     "Host key probe: key CHANGED for {}:{} at line {} ({})",
                     self.host,
@@ -154,7 +154,7 @@ pub async fn sftp_check_host_key(host: String, port: u16) -> Result<HostKeyInfo,
 
     let addr = format!("{}:{}", host, port);
 
-    // Probe connection — may fail for unknown/changed keys (handler returns false)
+    // Probe connection: may fail for unknown/changed keys (handler returns false)
     // or succeed for known keys (we drop the handle immediately)
     let probe = tokio::time::timeout(
         Duration::from_secs(10),
@@ -162,11 +162,11 @@ pub async fn sftp_check_host_key(host: String, port: u16) -> Result<HostKeyInfo,
     )
     .await;
 
-    // For known keys, probe succeeds — drop the handle
+    // For known keys, probe succeeds: drop the handle
     if let Ok(Ok(_handle)) = probe {
         drop(_handle);
     }
-    // For unknown/changed keys, probe fails — that's expected
+    // For unknown/changed keys, probe fails: that's expected
 
     // Retrieve captured result
     let info = result
@@ -175,7 +175,7 @@ pub async fn sftp_check_host_key(host: String, port: u16) -> Result<HostKeyInfo,
         .take()
         .ok_or_else(|| {
             format!(
-                "Failed to retrieve host key from {}:{} — connection may have timed out",
+                "Failed to retrieve host key from {}:{}: connection may have timed out",
                 host, port
             )
         })?;
@@ -234,7 +234,7 @@ fn parse_known_hosts_line(line: &str) -> Option<(&str, &str)> {
 /// attempts (see the `sftp_remove_host_key` bug from before this fix).
 ///
 /// - `russh_line` is the **1-based** line number from
-///   [`russh::keys::Error::KeyChanged`] — russh's parser initialises
+///   [`russh::keys::Error::KeyChanged`]: russh's parser initialises
 ///   `let mut line = 1;` and increments per newline, so the returned
 ///   index is 1-based and blank/comment lines still count.
 /// - `pending_alg` is the algorithm of the key the caller is about to
@@ -243,7 +243,7 @@ fn parse_known_hosts_line(line: &str) -> Option<(&str, &str)> {
 ///   the russh-pointed line is removed.
 ///
 /// Returns `(new_content, removed_count)`. Fails only when `russh_line`
-/// is zero (invalid — russh never emits line 0) or out of range, or
+/// is zero (invalid: russh never emits line 0) or out of range, or
 /// when the pointed line's host pattern mismatches `host`/`port`
 /// (corruption guard: the file changed under our feet).
 fn rewrite_known_hosts_removing(
@@ -278,7 +278,7 @@ fn rewrite_known_hosts_removing(
             Some((line_host, _)) if line_host == host_pattern => {}
             _ => {
                 return Err(format!(
-                    "Line {} does not match host {} — file may have been modified",
+                    "Line {} does not match host {}: file may have been modified",
                     russh_line, host_pattern
                 ));
             }
@@ -288,7 +288,7 @@ fn rewrite_known_hosts_removing(
     // Filter pass: drop the russh-pointed line unconditionally, plus any
     // other plaintext entry for (host, alg) when `pending_alg` is known.
     // Hashed entries are preserved (we can't check them by host name
-    // without the salt — russh's internal check still owns them).
+    // without the salt: russh's internal check still owns them).
     let mut out = Vec::with_capacity(lines.len());
     let mut removed = 0usize;
     for (i, &l) in lines.iter().enumerate() {
@@ -339,7 +339,7 @@ pub async fn sftp_remove_host_key(host: String, port: u16, line: usize) -> Resul
     // Peek at the pending key (captured earlier by `sftp_check_host_key`)
     // so we can also prune other stale entries for the same algorithm.
     // If the pending key is gone (TTL expired, caller skipped check) we
-    // still remove the russh-pointed line — partial-fix beats nothing.
+    // still remove the russh-pointed line: partial-fix beats nothing.
     let pending_alg: Option<String> = {
         let map = PENDING_KEYS.lock().unwrap_or_else(|e| e.into_inner());
         map.get(&pending_key(&host, port))
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn rewrite_rejects_line_zero() {
-        // russh uses 1-based line numbers — line 0 is never legal and
+        // russh uses 1-based line numbers: line 0 is never legal and
         // would have indexed the first line under the old off-by-one.
         let content = format!("[localhost]:2222 ssh-ed25519 {KEY_OLD}\n");
         let err = rewrite_known_hosts_removing(&content, "localhost", 2222, 0, None);
@@ -443,7 +443,7 @@ mod tests {
             !out.contains("[localhost]:2222 ssh-ed25519"),
             "all same-alg entries for that host:port must be gone; got:\n{out}"
         );
-        // But [127.0.0.1]:2222 survives — different host pattern:
+        // But [127.0.0.1]:2222 survives: different host pattern:
         assert!(
             out.contains("[127.0.0.1]:2222"),
             "different-host entries must survive; got:\n{out}"
@@ -454,7 +454,7 @@ mod tests {
     fn rewrite_preserves_entries_with_different_algorithm() {
         // If the server offers ssh-ed25519 but the file has a stale
         // ssh-rsa entry for the same host:port, `pending_alg` targets
-        // only ssh-ed25519 — the ssh-rsa entry must survive (it may
+        // only ssh-ed25519: the ssh-rsa entry must survive (it may
         // still be valid, and russh picks the alg from the negotiation).
         let content = format!(
             "[localhost]:2222 ssh-ed25519 {KEY_OLD}\n\
@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn rewrite_rejects_line_pointing_to_wrong_host() {
         // Corruption guard: if the russh-pointed line is NOT for our
-        // host:port, the file has been modified under our feet — bail
+        // host:port, the file has been modified under our feet: bail
         // loudly rather than deleting an unrelated entry.
         let content = format!(
             "[other.com]:22 ssh-ed25519 {KEY_OLD}\n[localhost]:2222 ssh-ed25519 {KEY_NEW}\n"
@@ -483,7 +483,7 @@ mod tests {
     #[test]
     fn rewrite_tolerates_hashed_target_line() {
         // Hashed entries (|1|...) can't be verified by plain host name.
-        // When russh points at one, we remove it on faith — russh
+        // When russh points at one, we remove it on faith: russh
         // resolved the salt internally and already confirmed the match.
         let content =
             "|1|salt=|hash= ssh-ed25519 AAAAC3Nz\n[other.com] ssh-rsa AAAAB\n".to_string();

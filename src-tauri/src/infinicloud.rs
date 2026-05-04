@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! InfiniCloud REST API v2 ("Muramasa") client.
 //!
 //! Provides auto-discovery of the user's node server and quota queries.
-//! All file operations go through the standard WebDAV provider — this module
+//! All file operations go through the standard WebDAV provider: this module
 //! only handles the two BASIC-auth REST endpoints:
-//!   - `GET /v2/api/ba/user`           (API server — node discovery)
-//!   - `GET /v2/api/ba/dataset/(capacity)` (Node server — quota)
+//!   - `GET /v2/api/ba/user`           (API server: node discovery)
+//!   - `GET /v2/api/ba/dataset/(capacity)` (Node server: quota)
 
 use base64::Engine;
 use log::info;

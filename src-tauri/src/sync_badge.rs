@@ -7,7 +7,7 @@
 //! - GIO emblem fallback support
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -176,7 +176,7 @@ fn validate_path(path: &str) -> Result<PathBuf, String> {
         return Err("Path too long".to_string());
     }
 
-    // Block UNC paths on Windows (network traversal prevention — audit fix SBA-005)
+    // Block UNC paths on Windows (network traversal prevention: audit fix SBA-005)
     #[cfg(windows)]
     if path.starts_with(r"\\") {
         return Err("UNC network paths not allowed".to_string());
@@ -233,7 +233,7 @@ async fn read_line_limited_generic<R: tokio::io::AsyncBufRead + Unpin>(
                 available.to_vec()
             }
         };
-        // `available` dropped here — reader borrow released
+        // `available` dropped here: reader borrow released
 
         let chunk_len = chunk.len();
         let found_newline = chunk.last() == Some(&b'\n');
@@ -444,7 +444,7 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
     // Concurrent connection limiter (audit fix GB-002: Semaphore instead of counter)
     let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
 
-    // Daemon spawn — shutdown via `SHUTDOWN_TX` broadcast channel, not
+    // Daemon spawn: shutdown via `SHUTDOWN_TX` broadcast channel, not
     // `AbortOnDrop`. This server is started from a Tauri setup hook that
     // does not own a cancel scope, so there is no parent handle to bind to.
     // Exempt from the "no spawn-without-handle" rule per AUDIT-POST-FIX CL-1.
@@ -525,7 +525,7 @@ pub async fn start_badge_server(_app_handle: tauri::AppHandle) -> Result<(), Str
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(10));
 
-    // Daemon spawn (Windows named pipe accept loop) — shutdown via
+    // Daemon spawn (Windows named pipe accept loop): shutdown via
     // `SHUTDOWN_TX` broadcast channel. Same rationale as the Unix path
     // above. See AUDIT-POST-FIX CL-1.
     tokio::spawn(async move {
@@ -642,7 +642,7 @@ pub async fn stop_badge_server() {
         let _ = tx.send(());
     }
 
-    // Named pipes are kernel objects — no file cleanup needed
+    // Named pipes are kernel objects: no file cleanup needed
     BADGE_SERVER_RUNNING.store(false, Ordering::Release);
     info!("Named Pipe badge server stopped");
 }
@@ -733,7 +733,7 @@ fn get_socket_path() -> Result<PathBuf, String> {
     }
 }
 
-/// Unix socket client handler — delegates to generic handler
+/// Unix socket client handler: delegates to generic handler
 #[cfg(unix)]
 async fn handle_client(
     stream: tokio::net::UnixStream,
@@ -773,7 +773,7 @@ async fn notify_update(_path: &Path) {
 // GIO Emblem Support
 // ============================================================================
 
-/// Set GIO emblem for a file (pub(crate) — callers must pre-validate path)
+/// Set GIO emblem for a file (pub(crate): callers must pre-validate path)
 #[cfg(target_os = "linux")]
 pub(crate) fn set_gio_emblem(path: &Path, state: SyncBadgeState) -> Result<(), String> {
     let emblem_name = state.to_emblem_name();
@@ -993,7 +993,7 @@ fn uninstall_emblems(home_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// Emblem SVG content (minimal 16x16 icons) — Linux GIO only
+// Emblem SVG content (minimal 16x16 icons): Linux GIO only
 #[cfg(target_os = "linux")]
 const EMBLEM_SYNCED_SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 <svg width="16" height="16" version="1.1" xmlns="http://www.w3.org/2000/svg">
@@ -1068,7 +1068,7 @@ pub async fn set_file_badge(path: String, state: String) -> Result<(), String> {
 
     update_file_state(&path_buf, badge_state).await;
 
-    // Also set GIO emblem as fallback (Linux only — gio command doesn't exist on macOS/Windows)
+    // Also set GIO emblem as fallback (Linux only: gio command doesn't exist on macOS/Windows)
     #[cfg(target_os = "linux")]
     {
         let _ = set_gio_emblem(&path_buf, badge_state);

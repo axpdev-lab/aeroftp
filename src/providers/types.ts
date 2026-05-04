@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Provider Types - Extensible architecture for cloud storage providers
@@ -154,7 +154,7 @@ export interface ProviderConfig {
 
     /** Direct deep-link to the provider's app/API password generation page.
      *  When set, the connection form surfaces a small "Generate password"
-     *  button next to the password field — saves the user from hunting
+     *  button next to the password field: saves the user from hunting
      *  through provider preferences for the right screen. (#129) */
     passwordGenUrl?: string;
 

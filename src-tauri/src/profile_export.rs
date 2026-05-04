@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroFTP Server Profile Export/Import
 // Encrypted backup/restore using AES-256-GCM + Argon2id
@@ -79,7 +79,7 @@ pub fn export_profiles(
     password: &str,
     file_path: &Path,
 ) -> Result<ExportMetadata, ExportError> {
-    // A2-06: Use strong KDF (128 MiB) — same strength as vault
+    // A2-06: Use strong KDF (128 MiB): same strength as vault
     let salt = crate::crypto::random_bytes(32);
     let key = crate::crypto::derive_key_strong(password, &salt).map_err(ExportError::Encryption)?;
 

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroFTP Shared Cryptographic Primitives
 // Argon2id key derivation + AES-256-GCM authenticated encryption
 // Shared by credential_store and profile_export modules
 //
-// Reviewed: 2026-02-02 — Claude Opus 4.5 audit — no issues found
+// Reviewed: 2026-02-02: Claude Opus 4.5 audit: no issues found
 
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit};
@@ -55,7 +55,7 @@ pub fn decrypt_aes_gcm(key: &[u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Resul
 }
 
 /// Derive vault key from high-entropy passphrase (64 bytes) using HKDF-SHA256
-/// Used by Universal Vault — passphrase has 512 bits of entropy so HKDF is sufficient
+/// Used by Universal Vault: passphrase has 512 bits of entropy so HKDF is sufficient
 pub fn derive_from_passphrase(passphrase: &[u8]) -> [u8; 32] {
     use hkdf::Hkdf;
     use sha2::Sha256;

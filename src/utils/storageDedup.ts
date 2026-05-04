@@ -14,7 +14,7 @@
 //
 // The Rust twin lives at `src-tauri/src/storage_dedup.rs`. The two
 // implementations need not produce byte-identical dedup keys (TS uses a fast
-// non-crypto hash, Rust uses SHA-256/12) — only the aggregation result must
+// non-crypto hash, Rust uses SHA-256/12): only the aggregation result must
 // agree on the same input data, which `cargo test` cross-checks against this
 // module's logical contract.
 
@@ -151,7 +151,7 @@ const dedupFamily = (
 
 /** Fast non-crypto hash (FNV-1a 64-bit) → 16 hex chars. Used to avoid leaking
  * S3 access keys into the dedup string while keeping it stable. The Rust port
- * uses SHA-256/12 — different output, but each side dedups consistently
+ * uses SHA-256/12: different output, but each side dedups consistently
  * within itself.
  */
 const fastHashHex = (input: string): string => {
@@ -280,7 +280,7 @@ export interface DedupAggregate {
 /**
  * Aggregate a list of profiles. Quotes sum once per dedup key; when two
  * profiles in the same group disagree on `used`/`total`, the maximum is taken
- * (conservative — never undercounts).
+ * (conservative: never undercounts).
  */
 export const aggregateByDedupKey = (servers: ServerProfile[]): DedupAggregate => {
     interface Bucket {

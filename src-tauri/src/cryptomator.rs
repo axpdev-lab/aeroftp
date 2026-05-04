@@ -5,7 +5,7 @@
 //! and AES-GCM for file content encryption.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit};
@@ -328,7 +328,7 @@ fn list_dir_inner(vault: &UnlockedVault, dir_id: &str) -> Result<Vec<Cryptomator
 
             // For directories, the .c9r is a folder containing dir.c9r
             if is_dir {
-                // It's a directory — read dir.c9r to get the child dir_id
+                // It's a directory: read dir.c9r to get the child dir_id
                 let dir_c9r_path = entry_path.join("dir.c9r");
                 let child_dir_id = if dir_c9r_path.exists() {
                     fs::read_to_string(&dir_c9r_path)
@@ -447,7 +447,7 @@ fn decrypt_file_inner(
     let header_nonce = GenericArray::from_slice(header_nonce);
     let decrypted_header = cipher
         .decrypt(header_nonce, header_payload)
-        .map_err(|_| "Failed to decrypt file header — wrong key?".to_string())?;
+        .map_err(|_| "Failed to decrypt file header: wrong key?".to_string())?;
 
     if decrypted_header.len() < 40 {
         return Err("Invalid decrypted header size".to_string());

@@ -6,7 +6,7 @@
 //! - GitHub App Installation Token (bot mode with .pem)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use log::{debug, info};
 use serde::Deserialize;
@@ -126,7 +126,7 @@ pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<String, 
             Some("access_denied") => return Err("Authorization denied by user.".to_string()),
             Some(error) => {
                 let desc = token_resp.error_description.unwrap_or_default();
-                return Err(format!("Authorization failed: {} — {}", error, desc));
+                return Err(format!("Authorization failed: {}: {}", error, desc));
             }
             None => {
                 return Err("Unexpected response from GitHub (no token and no error)".to_string())
@@ -211,9 +211,9 @@ pub async fn get_installation_token(
         .await
         .map_err(|e| {
             if e.is_timeout() {
-                "GitHub API timeout after 30s — check your network connection".to_string()
+                "GitHub API timeout after 30s: check your network connection".to_string()
             } else if e.is_connect() {
-                format!("Cannot reach GitHub API — check your network: {}", e)
+                format!("Cannot reach GitHub API: check your network: {}", e)
             } else {
                 format!("Installation token request failed: {}", e)
             }

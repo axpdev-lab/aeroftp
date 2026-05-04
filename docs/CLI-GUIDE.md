@@ -1,7 +1,7 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v3.7.0 (May 2026) - last reviewed 2 May 2026
+> **Version reference**: v3.7.1 (May 2026) - last reviewed 4 May 2026
 > **License**: GPL-3.0
 
 ---
@@ -934,7 +934,7 @@ cat filter.txt | aeroftp-cli import rclone-filter -
 aeroftp-cli import rclone-filter filter.txt --json
 ```
 
-Converts an rclone `--filter-from` file (`+ pattern` / `- pattern` / `# comments` / `! ` reset) into an `.aeroignore` (gitignore syntax). Because rclone uses **first-match-wins** and gitignore uses **last-match-wins**, the generated rules are emitted in **reversed order** to preserve precedence — the highest-priority rclone rule ends up last in the output. Includes (`+ pattern`) become re-include rules (`!pattern`), excludes pass through unchanged.
+Converts an rclone `--filter-from` file (`+ pattern` / `- pattern` / `# comments` / `! ` reset) into an `.aeroignore` (gitignore syntax). Because rclone uses **first-match-wins** and gitignore uses **last-match-wins**, the generated rules are emitted in **reversed order** to preserve precedence: the highest-priority rclone rule ends up last in the output. Includes (`+ pattern`) become re-include rules (`!pattern`), excludes pass through unchanged.
 
 Two non-fatal warnings are surfaced (text on stderr, JSON in the `warnings` array):
 
@@ -1501,6 +1501,7 @@ The following providers have been tested live via CLI with `--profile`:
 
 ## Recent Highlights
 
+- **v3.7.1 - Mount Manager + community polish**: GUI Mount Manager dialog wraps `aeroftp-cli mount` with persistent configs, sidecar JSON or vault-backed storage, cross-platform autostart (systemd-user / Task Scheduler ONLOGON), and an "Open mount in file manager" shortcut. CLI `profiles -i` interactive prompt loop with compact `1l` / `2t` / `3d` tokens. Filen Desktop local WebDAV / S3 bridges connect on the first try thanks to the layered WebDAV scheme detection rewrite.
 - **v3.7.0 - AeroRsync session-cached batch + crypto overlay**: new `AerorsyncBatch` trait amortizes one SSH session across many delta transfers; `SyncReport` exposes `delta_files[]` and `bytes_on_wire`. Cross-profile transfer (`aeroftp_transfer`, `aeroftp_transfer_tree`) and six new ops tools (`aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile`) bring MCP to 39 tools. rclone crypt becomes full read/write through transparent overlay session; AeroVault gets matching overlay-session model.
 - **v3.6.1 - Windows first-class delta sync**: native rsync protocol 31 in pure Rust (`aerorsync`), no `rsync.exe` bundle, no WSL requirement. The Windows binary now performs delta uploads byte-identical to stock rsync 3.4.1 in CI.
 - **v3.5.4 - MCP hardening**: `aeroftp-cli mcp` top-level alias, vault auto-init in MCP, per-profile serialization, schema validation, S3 bucket fix, FTP/SFTP/WebDAV/Filen/FileLu/Drime/Immich error message hardening.

@@ -1,4 +1,4 @@
-//! MCP server core — async event loop, JSON-RPC routing, capability negotiation
+//! MCP server core: async event loop, JSON-RPC routing, capability negotiation
 //!
 //! Handles initialize handshake, tools/list, tools/call, resources/list,
 //! resources/read, prompts/list, prompts/get, and notifications.
@@ -6,7 +6,7 @@
 //! Uses `tokio::select!` for cancellation support and periodic pool eviction.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::collections::HashMap;
 use std::sync::Arc;

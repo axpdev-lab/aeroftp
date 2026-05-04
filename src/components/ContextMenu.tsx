@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -37,7 +37,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
     const [submenuPos, setSubmenuPos] = useState({ left: 0, top: 0 });
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Smooth entrance animation — cancel on unmount to avoid setState-after-unmount
+    // Smooth entrance animation: cancel on unmount to avoid setState-after-unmount
     useEffect(() => {
         const handle = requestAnimationFrame(() => setIsVisible(true));
         return () => cancelAnimationFrame(handle);

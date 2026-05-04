@@ -1,14 +1,14 @@
 //! MCP tool definitions and dispatch
 //!
-//! Curated tool catalog that provides unique value — remote file and sync
-//! operations that MCP clients don't have natively — plus pool introspection
+//! Curated tool catalog that provides unique value: remote file and sync
+//! operations that MCP clients don't have natively: plus pool introspection
 //! tools (`aeroftp_close_connection`) and composite tree operations
 //! (`aeroftp_sync_tree`, `aeroftp_check_tree`).
 //!
 //! Excludes local tools (local_list, shell_execute, etc.) that clients already have.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::mcp::notifier::McpNotifier;
 use crate::mcp::pool::ConnectionPool;
@@ -24,7 +24,7 @@ use tokio::sync::mpsc;
 type ProgressSample = (u64, Option<u64>, String);
 
 /// Drain progress samples from a bounded channel and forward them to the
-/// notifier. Runs until every sender drops — at which point the channel
+/// notifier. Runs until every sender drops: at which point the channel
 /// closes and the task exits naturally.
 fn spawn_progress_consumer(notifier: McpNotifier, mut rx: mpsc::Receiver<ProgressSample>) {
     tokio::spawn(async move {
@@ -46,7 +46,7 @@ fn push_progress(tx: &mpsc::Sender<ProgressSample>, sample: ProgressSample) {
 /// Timestamp when the MCP process first touched this module. Used by
 /// `aeroftp_mcp_info` to report a stable `started_at` + `uptime_secs`.
 /// Captured lazily on first access rather than at server-handshake time so
-/// we do not require a boot hook — the gap between process start and first
+/// we do not require a boot hook: the gap between process start and first
 /// tool call is sub-millisecond in practice.
 static MCP_START: std::sync::LazyLock<chrono::DateTime<chrono::Utc>> =
     std::sync::LazyLock::new(chrono::Utc::now);
@@ -165,7 +165,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         // descriptions / nested item-schema (no_clobber inside items[],
         // first-only flag) that downstream agents and the parity tests
         // depend on. The unified core registry has lighter shapes for
-        // these tools — the dynamic injection below skips them via the
+        // these tools: the dynamic injection below skips them via the
         // already-registered name (vec push order wins on `find`).
         McpToolDef {
             name: "aeroftp_upload_many",
@@ -200,7 +200,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
                 "path": { "type": "string", "description": "Remote file path (UTF-8 text)" },
                 "find": { "type": "string", "description": "Literal string to search for (not a regex)" },
                 "replace": { "type": "string", "description": "Replacement string" },
-                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false — replace all)" }
+                "first": { "type": "boolean", "description": "Replace only the first occurrence (default: false: replace all)" }
             }, "required": ["server", "path", "find", "replace"] }),
             category: RateCategory::Mutative,
         },
@@ -209,7 +209,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
     // Inject dynamic tools from the unified core registry (T3 Gate 3).
     // Skip names that the legacy MCP_TOOL_DEFS already provides (richer
     // descriptions and nested schemas the unified registry intentionally
-    // simplifies — see aeroftp_upload_many / aeroftp_edit / aeroftp_sync_tree).
+    // simplifies: see aeroftp_upload_many / aeroftp_edit / aeroftp_sync_tree).
     use crate::ai_core::tools::{DangerLevel, Surfaces, TOOL_DEFINITIONS};
     let already_defined: std::collections::HashSet<&'static str> =
         defs.iter().map(|d| d.name).collect();
@@ -257,7 +257,7 @@ fn get_bool_opt(args: &Value, key: &str) -> Option<bool> {
 
 /// Parse the optional `files` array into the `ScanOptions.files_from` set.
 /// Empty or missing → `None` (no filter). Any non-string entry is skipped
-/// silently — the agent will see the ones that actually matched reflected
+/// silently: the agent will see the ones that actually matched reflected
 /// in `scan_stats` / `summary`, and a typo on one entry does not kill the
 /// whole tool call.
 fn parse_files_from(args: &Value) -> Option<std::collections::HashSet<String>> {
@@ -290,7 +290,7 @@ fn parse_files_from(args: &Value) -> Option<std::collections::HashSet<String>> {
 ///
 /// Kept for the existing unit test coverage on the read-preview cap.
 /// The production read path lives in `ai_core::remote_tools::read_file`
-/// after T3 Gate 3 — this helper is no longer wired into a tool dispatch.
+/// after T3 Gate 3: this helper is no longer wired into a tool dispatch.
 #[cfg(test)]
 fn validate_read_preview_target(
     is_dir: bool,
@@ -325,7 +325,7 @@ fn validate_read_preview_target(
 /// inspecting one type of op gets every candidate of that type, not just
 /// the early-alphabet sample that flat truncation used to return.
 ///
-/// Returns `(by_op, truncated_flags, totals)` — three JSON objects keyed by
+/// Returns `(by_op, truncated_flags, totals)`: three JSON objects keyed by
 /// the same bucket names. `totals` reports the uncapped count per bucket so
 /// the agent can tell a 300-upload plan from a 3-upload one even when both
 /// come back with 250 visible entries.
@@ -397,7 +397,7 @@ fn build_plan_by_op(
 
 /// Group the rel_path of a `DiffEntry` into a bucket key based on the first
 /// `depth` path segments. `_root` is reserved for entries that have no
-/// component before the last segment (e.g. `README.md`) — falling through
+/// component before the last segment (e.g. `README.md`): falling through
 /// to the root prevents them from colliding with a directory literally
 /// named empty-string.
 fn top_level_bucket(rel_path: &str, depth: usize) -> String {
@@ -406,7 +406,7 @@ fn top_level_bucket(rel_path: &str, depth: usize) -> String {
     }
     let trimmed = rel_path.trim_start_matches('/');
     let parts: Vec<&str> = trimmed.split('/').filter(|p| !p.is_empty()).collect();
-    // The final segment is the file name — ignore it. Anything with no
+    // The final segment is the file name: ignore it. Anything with no
     // parent directory is `_root`.
     if parts.len() <= 1 {
         return "_root".to_string();
@@ -436,7 +436,7 @@ fn aggregate_by_top_level(
         missing_local: u32,
         missing_remote: u32,
     }
-    // BTreeMap for deterministic output order (alphabetical) — agents do
+    // BTreeMap for deterministic output order (alphabetical): agents do
     // structural diffs against this response and non-stable keys would
     // break caching.
     let mut buckets: BTreeMap<String, Bucket> = BTreeMap::new();
@@ -476,7 +476,7 @@ fn aggregate_by_top_level(
 
 /// Linux-only probe for the "executable file has been deleted since this
 /// process started" condition. The kernel appends " (deleted)" to the
-/// target of `/proc/self/exe` when the on-disk file no longer exists —
+/// target of `/proc/self/exe` when the on-disk file no longer exists -
 /// typically because the agent rebuilt the binary while an older MCP
 /// process was still running. Agents that see `binary_deleted=true` know
 /// the MCP they are talking to is stale and should be restarted.
@@ -569,7 +569,7 @@ fn validate_sp(server: &str, path: Option<&str>) -> Result<(), String> {
 ///
 /// Emits BOTH the legacy scalar `error` field (for back-compat with existing
 /// consumers that read `result.error`) AND a uniform `errors` array so
-/// generic reporting code can treat every tool identically — one-element
+/// generic reporting code can treat every tool identically: one-element
 /// array on single failure, longer on aggregate failures. The element shape
 /// is `{message, code?, path?}` as agreed for the uniform envelope.
 fn err(msg: String) -> (Value, bool) {
@@ -599,7 +599,7 @@ fn finish(
 // ─── Execute ─────────────────────────────────────────────────────────
 
 // `build_progress_callback` powered the legacy upload/download arms.
-// Removed in T3 Gate 3 — `ai_core::remote_tools` now emits progress via
+// Removed in T3 Gate 3: `ai_core::remote_tools` now emits progress via
 // `EventSink::emit_tool_progress` directly.
 
 /// Execute a tool call. Returns `(result_json, is_error)`.
@@ -660,7 +660,7 @@ pub async fn execute_tool(
             //   - was_active=false, closed=false → noop: nothing matched the
             //     query. This is NOT a failure, just "nothing to do"
             //   - (reserved) was_active=true,  closed=false → we matched an
-            //     entry but failed to release it — currently unreachable with
+            //     entry but failed to release it: currently unreachable with
             //     the fire-and-forget disconnect path, but the shape is in
             //     place for future expansion
             // `released: true` is a uniform success flag so generic reporting
@@ -727,7 +727,7 @@ pub async fn execute_tool(
                 .get("max_entries_reported")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(200) as usize;
-            // Gap 4 — per-group caps. Each falls back to `cap` so existing
+            // Gap 4: per-group caps. Each falls back to `cap` so existing
             // callers see no behavior change. Pass any of these to ask for a
             // tight cap on `match` (noise) while keeping `missing_remote`
             // wide for action.
@@ -771,7 +771,7 @@ pub async fn execute_tool(
 
             // When `checksum=true`, request hashes on BOTH sides. The scan
             // silently falls back to size-only if the provider lacks server-
-            // side checksum support — handled inside `scan_remote_tree`.
+            // side checksum support: handled inside `scan_remote_tree`.
             let opts = ScanOptions {
                 max_depth,
                 exclude_patterns: exclude,
@@ -854,7 +854,7 @@ pub async fn execute_tool(
                                 );
                             }
                         }
-                        // Gap 4 — per-group caps. `match` is the high-volume,
+                        // Gap 4: per-group caps. `match` is the high-volume,
                         // low-action bucket (3590/4190 entries on the Aruba
                         // CMS). `omit_match` drops it entirely; otherwise the
                         // 4 bucket caps apply independently so the agent can
@@ -1055,7 +1055,7 @@ pub async fn execute_tool(
                     // Uniform error envelope: `errors: [{message, path?, operation?}]`.
                     // Also expose a lightweight `error` scalar for back-compat with
                     // consumers that treat the old single-string shape.
-                    // When summary_only=true, drop the array entirely — the
+                    // When summary_only=true, drop the array entirely: the
                     // `summary.errors` counter is preserved so drift counts
                     // stay visible.
                     let errors: Vec<Value> = if summary_only {
@@ -1227,7 +1227,7 @@ pub async fn execute_tool(
                                 .insert("total_bytes_sent".into(), savings.total_bytes_sent.into());
                             block.insert("total_size".into(), savings.total_size.into());
                             block.insert("bytes_saved".into(), bytes_saved.into());
-                            // Omit `average_speedup` entirely when None — same
+                            // Omit `average_speedup` entirely when None: same
                             // absence-vs-null contract as the parent block.
                             if let Some(avg) = savings.average_speedup {
                                 block.insert("average_speedup".into(), avg.into());
@@ -1237,7 +1237,7 @@ pub async fn execute_tool(
                         // PR-T03: per-file breakdown, capped at
                         // DELTA_FILES_CAP (500) so large syncs don't
                         // explode the response. Presence mirrors
-                        // `delta_savings` — both driven by the same
+                        // `delta_savings`: both driven by the same
                         // accumulator. Emit nothing when the classic
                         // path served every file, keeping the
                         // absence-vs-null contract consistent.
@@ -1280,7 +1280,7 @@ pub async fn execute_tool(
                     // Preventive invalidate after every sync_tree run. Reason:
                     // a sync_tree (even a dry_run) issues a long chain of LIST
                     // and STOR/RETR commands that can leave the suppaftp data
-                    // channel in an ambiguous state — the NEXT tool call on
+                    // channel in an ambiguous state: the NEXT tool call on
                     // that pooled connection fails with "Data connection is
                     // already open" even though every intra-sync op succeeded.
                     // Cost: one reconnect per sync_tree. Acceptable given the
@@ -1307,7 +1307,7 @@ pub async fn execute_tool(
 ///
 /// Distinct from `SyncError` in that it is informational: it describes the
 /// action `sync_tree_core` would have taken. The `reason` field comes from
-/// the `FileOutcome::Skipped { reason }` variant — for dry-run entries this
+/// the `FileOutcome::Skipped { reason }` variant: for dry-run entries this
 /// is the literal `"dry-run"`, for non-dry-run skips it is the decision
 /// rationale (`"identical size"`, `"remote is larger"`, etc.).
 #[derive(Debug, Clone)]
@@ -1336,7 +1336,7 @@ struct NotifierSyncSink<'a> {
     failures: u32,
     /// Single-consumer progress drain. Constructed lazily on first use so
     /// sinks built without an active notifier pay no allocation cost.
-    /// Replaces per-event `tokio::spawn` — each spawned no-op future was a
+    /// Replaces per-event `tokio::spawn`: each spawned no-op future was a
     /// task-level allocation plus scheduler entry; under a 500k-file sync
     /// those dominated the runtime.
     progress_tx: Option<mpsc::Sender<ProgressSample>>,
@@ -1444,7 +1444,7 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
             if let crate::sync_core::FileOutcome::Skipped { reason } = outcome {
                 // Prefer the op announced via on_file_start (set for every
                 // Copy decision, including dry-run upload/download/delete).
-                // Without a paired start, the entry is a pre-decision skip —
+                // Without a paired start, the entry is a pre-decision skip -
                 // still worth recording so the agent sees the full scan.
                 let (op, bytes, decision_policy) = match self.current_op.take() {
                     Some((op, path, total, decision_policy)) if path == rel => {
@@ -1526,7 +1526,7 @@ mod tests {
 
     #[test]
     fn read_preview_accepts_file_over_window_but_under_hard_cap() {
-        // 32 KB file with a 16 KB caller window is now accepted — callers
+        // 32 KB file with a 16 KB caller window is now accepted: callers
         // get a truncated preview instead of a hard error.
         assert!(validate_read_preview_target(false, 32 * 1024, 16 * 1024).is_ok());
     }

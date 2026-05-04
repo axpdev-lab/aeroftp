@@ -8,7 +8,7 @@
 //! Authentication uses a GitHub Personal Access Token (classic or fine-grained).
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 pub(crate) mod actions;
 pub mod auth;
@@ -51,9 +51,9 @@ enum GitHubVirtualPath {
 pub enum GitHubWriteMode {
     /// Not yet determined (pre-connect).
     Unknown,
-    /// User has push access and branch is not protected — direct commits allowed.
+    /// User has push access and branch is not protected: direct commits allowed.
     DirectWrite,
-    /// Branch is protected but user/app has bypass — direct commits allowed.
+    /// Branch is protected but user/app has bypass: direct commits allowed.
     /// Falls back to BranchWorkflow if the first write is rejected.
     DirectWriteProtected {
         /// SHA of the protected branch tip (for fallback branch creation).
@@ -141,7 +141,7 @@ pub struct GitHubProvider {
     current_path: String,
     connected: bool,
     write_mode: GitHubWriteMode,
-    /// `(branch, path) -> SHA` — used to supply the required `sha` on updates/deletes.
+    /// `(branch, path) -> SHA`: used to supply the required `sha` on updates/deletes.
     sha_cache: HashMap<(String, String), String>,
     account_email: Option<String>,
     account_name: Option<String>,
@@ -167,7 +167,7 @@ impl std::fmt::Debug for GitHubProvider {
 
 impl GitHubProvider {
     /// Create a new provider from a parsed config.
-    /// QA-GH-004: Returns Result — HTTP client construction can fail.
+    /// QA-GH-004: Returns Result: HTTP client construction can fail.
     pub fn new(config: GitHubConfig) -> Result<Self, ProviderError> {
         let token = SecretString::from(config.token);
         let current_path = Self::normalise_path(config.initial_path.as_deref().unwrap_or(""));
@@ -472,7 +472,7 @@ impl GitHubProvider {
                 self.encoded_content_branch_for_query(),
             )
         } else {
-            // Encode each path segment individually — do NOT encode the slashes
+            // Encode each path segment individually: do NOT encode the slashes
             let encoded_path = resolved
                 .split('/')
                 .map(|seg| urlencoding::encode(seg).into_owned())
@@ -899,7 +899,7 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // 1. Validate token — try GET /user first (PAT/Device Flow),
+        // 1. Validate token: try GET /user first (PAT/Device Flow),
         //    fallback to GET /app for installation tokens
         let user_login: String;
         match self
@@ -920,10 +920,10 @@ impl StorageProvider for GitHubProvider {
                     GitHubError::Unauthorized | GitHubError::InsufficientPermissions(_)
                 );
                 if !is_auth_error {
-                    // Network error, rate limit, etc. — not a token type issue
+                    // Network error, rate limit, etc.: not a token type issue
                     return Err(ProviderError::from(e));
                 }
-                // Installation token — GET /user returns 401, but repo access works
+                // Installation token: GET /user returns 401, but repo access works
                 log::info!("GitHub: user endpoint returned 401, treating as installation token");
                 user_login = "aeroftp[bot]".to_string();
                 self.account_name = Some("AeroFTP App".to_string());
@@ -948,7 +948,7 @@ impl StorageProvider for GitHubProvider {
         }
 
         // 3. Detect write mode
-        // Installation tokens report push:false even with contents:write — override for bot tokens
+        // Installation tokens report push:false even with contents:write: override for bot tokens
         let is_installation_token = user_login.ends_with("[bot]");
         self.is_bot_token = is_installation_token;
         let can_push = if is_installation_token {
@@ -975,7 +975,7 @@ impl StorageProvider for GitHubProvider {
                         // Use DirectWriteProtected: attempts direct push first,
                         // falls back to BranchWorkflow if the write is rejected.
                         log::info!(
-                            "GitHub: branch '{}' is protected — will attempt direct write (bypass), fallback to working branch if rejected",
+                            "GitHub: branch '{}' is protected: will attempt direct write (bypass), fallback to working branch if rejected",
                             self.active_branch()
                         );
                         self.write_mode = GitHubWriteMode::DirectWriteProtected {
@@ -986,7 +986,7 @@ impl StorageProvider for GitHubProvider {
                     }
                 }
                 Err(GitHubError::PathNotFound(_) | GitHubError::RepoNotFound) => {
-                    // Branch doesn't exist yet — we'll create it on first write.
+                    // Branch doesn't exist yet: we'll create it on first write.
                     self.write_mode = GitHubWriteMode::DirectWrite;
                 }
                 Err(e) => {
@@ -1318,7 +1318,7 @@ impl StorageProvider for GitHubProvider {
         }
 
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
-        drop(data); // QA-GH-003: free raw buffer immediately — only base64 remains in memory
+        drop(data); // QA-GH-003: free raw buffer immediately: only base64 remains in memory
 
         // Check if the file already exists (need its SHA for update).
         let sha = self.get_cached_sha(&resolved).cloned();
@@ -1378,7 +1378,7 @@ impl StorageProvider for GitHubProvider {
                         }
                 );
                 if is_protected_rejection {
-                    log::info!("GitHub: direct push rejected on protected branch — falling back to working branch");
+                    log::info!("GitHub: direct push rejected on protected branch: falling back to working branch");
                     let base_sha = if let GitHubWriteMode::DirectWriteProtected { ref base_sha } =
                         self.write_mode
                     {
@@ -1403,7 +1403,7 @@ impl StorageProvider for GitHubProvider {
                         branch: workflow_branch,
                     };
 
-                    // QA-GH-019: Mutate the existing body in-place — no clone of the
+                    // QA-GH-019: Mutate the existing body in-place: no clone of the
                     // large base64 content. `body` is already a serde_json::Value on the stack.
                     if let Some(obj) = body.as_object_mut() {
                         obj.insert(
@@ -1453,7 +1453,7 @@ impl StorageProvider for GitHubProvider {
             return Err(ProviderError::PermissionDenied(reason.clone()));
         }
 
-        // GitHub has no directory concept — create a `.gitkeep` placeholder.
+        // GitHub has no directory concept: create a `.gitkeep` placeholder.
         let gitkeep_path = format!("{}/.gitkeep", resolved);
 
         let update = GitHubContentUpdate {
@@ -1598,7 +1598,7 @@ impl StorageProvider for GitHubProvider {
             ));
         }
 
-        // GitHub Contents API has no rename — download + upload + delete.
+        // GitHub Contents API has no rename: download + upload + delete.
         let data = self.download_to_bytes(from).await?;
         let resolved_to = self.resolve_path(to);
 
@@ -1815,7 +1815,7 @@ impl StorageProvider for GitHubProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        // Use Git Trees API with recursive flag — lists all files in repo
+        // Use Git Trees API with recursive flag: lists all files in repo
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
             self.owner,

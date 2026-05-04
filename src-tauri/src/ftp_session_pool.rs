@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! FTP session pool for future GUI transfer executors.
 
@@ -88,7 +88,7 @@ pub struct FtpSessionPool {
 pub struct FtpSessionLease {
     inner: Arc<FtpSessionPoolInner>,
     session: Option<PooledSession>,
-    /// `true` once `release()` has completed — signals that the session was
+    /// `true` once `release()` has completed: signals that the session was
     /// returned through the async reset path. If `Drop` runs with this still
     /// `false`, the pool must not trust the session state and must run an
     /// async reset (or disconnect) before anyone else can acquire it.
@@ -371,8 +371,8 @@ impl FtpSessionLease {
 }
 
 impl Drop for FtpSessionLease {
-    /// If the lease was dropped without an explicit `release()` — panic,
-    /// `?` propagation, early return — run the async reset on a detached
+    /// If the lease was dropped without an explicit `release()`: panic,
+    /// `?` propagation, early return: run the async reset on a detached
     /// task. If reset succeeds, return the session; otherwise disconnect.
     /// This is the only way to avoid handing a dirty session to the next
     /// caller without requiring every call site to be panic-safe.
@@ -420,7 +420,7 @@ impl Drop for FtpSessionLease {
                 }
             });
         } else {
-            // No runtime available — the process is tearing down. The
+            // No runtime available: the process is tearing down. The
             // PooledSession drops naturally; the FTP connection will be
             // reset by the server on socket close.
             tracing::warn!(

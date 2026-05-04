@@ -1,4 +1,4 @@
-# Security Evidence — v2.8.7
+# Security Evidence: v2.8.7
 
 > Dual-auditor security evidence pack for AeroFTP v2.8.7.
 > Tracks all findings from v2.8.6 audit, applied fixes, verification status, and acceptance gates.
@@ -30,7 +30,7 @@ Minimum completion criteria:
 ## 2) Audit Summary
 
 ### Audit methodology
-- **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` — 8 area-based parallel auditors + 1 consolidation
+- **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md`: 8 area-based parallel auditors + 1 consolidation
 - **Independence**: Claude audit conducted without reading GPT-5.4 results; comparison performed post-audit
 - **Areas**: A1 (Trust Boundaries), A2 (Vault/Keystore), A3 (Providers/Network), A4 (Filesystem), A5 (Sync), A6 (Frontend), A7 (Media/Archives), A8 (Runtime/Packaging)
 
@@ -112,7 +112,7 @@ Minimum completion criteria:
 | A8-09 | Low | CI | Checksum appimagetool does not block build | Fixed | SEC-P4-11 |
 | A8-04 | Low | Runtime | spawn_detached_relaunch shell injection | Fixed | SEC-P2-09 |
 
-### Remaining (Not Fixed — Backlog)
+### Remaining (Not Fixed: Backlog)
 
 | ID | Severity | Description | Reason |
 |----|----------|-------------|--------|
@@ -130,7 +130,7 @@ Minimum completion criteria:
 
 ## 4) Applied Fixes Summary
 
-### Phase 1 — Critical/High (Release Blocking)
+### Phase 1: Critical/High (Release Blocking)
 
 | Fix ID | Priority | Description | Files | Verification |
 |--------|----------|-------------|-------|--------------|
@@ -138,7 +138,7 @@ Minimum completion criteria:
 | SEC-P1-02 | P1 | Atomic writes for vault.db/vault.key (temp+rename) | `credential_store.rs` | cargo clippy pass |
 | SEC-P2-06 | P1 | Pin winget-releaser to SHA commit | `.github/workflows/build.yml` | visual inspection |
 
-### Phase 2 — Medium Priority (High Impact)
+### Phase 2: Medium Priority (High Impact)
 
 | Fix ID | Priority | Description | Files | Verification |
 |--------|----------|-------------|-------|--------------|
@@ -155,7 +155,7 @@ Minimum completion criteria:
 | SEC-P2-12 | P2 | Add validate_path to cryptomator_* commands | `cryptomator.rs` | cargo clippy pass |
 | SEC-P2-13 | P2 | validate_remote_path for server_exec | `ai_tools.rs` | cargo clippy pass |
 
-### Phase 3 — Medium Standard
+### Phase 3: Medium Standard
 
 | Fix ID | Priority | Description | Files | Verification |
 |--------|----------|-------------|-------|--------------|
@@ -172,7 +172,7 @@ Minimum completion criteria:
 | SEC-P3-11 | P2 | useRef for stale closure prevention in App.tsx | `App.tsx` | npm build pass |
 | SEC-P3-12 | P2 | Abort AI streaming on conversation switch | `AIChat.tsx` | npm build pass |
 
-### Phase 4 — Low Priority
+### Phase 4: Low Priority
 
 | Fix ID | Priority | Description | Files | Verification |
 |--------|----------|-------------|-------|--------------|
@@ -188,7 +188,7 @@ Minimum completion criteria:
 | SEC-P4-10 | P3 | ProviderConfig.zeroize_password() method | `providers/types.rs` | cargo clippy pass |
 | SEC-P4-11 | P3 | appimagetool checksum: exit 1 on mismatch | `.github/workflows/build.yml` | visual inspection |
 
-### Phase 5 — Additional Hardening (A- Sprint)
+### Phase 5: Additional Hardening (A- Sprint)
 
 | Fix ID | Priority | Description | Files | Verification |
 |--------|----------|-------------|-------|--------------|
@@ -240,13 +240,13 @@ Validation quality gate:
 
 ## 6) Regression Watchlist
 
-- [x] Plugin execution model — SHA-256 integrity added
-- [x] Host key verification paths — unchanged (TOFU dialog from v2.4.0)
-- [x] Credential storage and migration — atomic writes added
-- [x] OAuth token/client secret handling — 120s callback timeout added
-- [x] Terminal destructive command filtering — 4 new patterns added
-- [x] Tauri capabilities scope — `**` wildcard removed
-- [ ] CSP/runtime compatibility (Monaco, xterm, WebGL, workers) — deferred
+- [x] Plugin execution model: SHA-256 integrity added
+- [x] Host key verification paths: unchanged (TOFU dialog from v2.4.0)
+- [x] Credential storage and migration: atomic writes added
+- [x] OAuth token/client secret handling: 120s callback timeout added
+- [x] Terminal destructive command filtering: 4 new patterns added
+- [x] Tauri capabilities scope: `**` wildcard removed
+- [ ] CSP/runtime compatibility (Monaco, xterm, WebGL, workers): deferred
 
 ---
 
@@ -258,7 +258,7 @@ Validation quality gate:
 | RISK-002 | High | A8-02: CSP `script-src 'unsafe-inline'` required for Monaco Editor, xterm.js terminal, WebGL shaders, and Web Audio API. `connect-src` hardened to `'self' ipc: blob:` only (SEC-P5-02). Remaining risk mitigated by: (1) fs:scope restriction, (2) Tauri IPC isolation, (3) no user-provided script execution in webview, (4) no direct frontend HTTP connections. | 2026-09-07 | Engineering |
 
 Notes:
-- RISK-001: **RESOLVED** — URL whitelist + path validation in v2.8.7
+- RISK-001: **RESOLVED**: URL whitelist + path validation in v2.8.7
 - RISK-002 expiry: re-evaluate when Monaco/xterm support CSP nonces natively
 
 ---
@@ -293,8 +293,8 @@ Decision:
 - [ ] Blocked
 
 Accepted risks:
-- ~~RISK-001 (Critical): Resolved — URL whitelist + path validation~~
-- RISK-002 (High): CSP `script-src 'unsafe-inline'` — mitigated by IPC-only connect-src + Tauri isolation + fs:scope fix
+- ~~RISK-001 (Critical): Resolved: URL whitelist + path validation~~
+- RISK-002 (High): CSP `script-src 'unsafe-inline'`: mitigated by IPC-only connect-src + Tauri isolation + fs:scope fix
 
 Release rule compliance:
 - Critical finding A8-03 is Open but has explicit mitigation, owner, and expiry → eligible for "Approved with accepted risks"
@@ -309,11 +309,11 @@ Release rule compliance:
 - [ ] New findings triaged into roadmap
 
 Follow-up issues:
-- CSP Phase 2 tightening (v2.9.0) — replace wildcard sources with specific origins
-- Updater signed bundles — track Tauri v2 roadmap
-- OAuth1Credentials zeroization (A3-06) — v2.9.0
-- Archive/Cryptomator atomic writes (7 findings) — v2.9.0
-- CloudService engine deduplication (A5-07) — architecture sprint
+- CSP Phase 2 tightening (v2.9.0): replace wildcard sources with specific origins
+- Updater signed bundles: track Tauri v2 roadmap
+- OAuth1Credentials zeroization (A3-06): v2.9.0
+- Archive/Cryptomator atomic writes (7 findings): v2.9.0
+- CloudService engine deduplication (A5-07): architecture sprint
 
 Closure criteria:
 - [ ] Follow-up issues created and linked

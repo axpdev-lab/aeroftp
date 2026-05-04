@@ -1,4 +1,4 @@
-# Security Evidence — v2.9.5
+# Security Evidence: v2.9.5
 
 > Dual-auditor security evidence pack for AeroFTP v2.9.5.
 > Tracks all findings from v2.9.4 audit, applied fixes, verification status, and acceptance gates.
@@ -28,10 +28,10 @@ Minimum completion criteria:
 ## 2) Audit Summary
 
 ### Audit methodology
-- **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md` — 8 area-based parallel auditors + consolidation
+- **Schema**: `docs/dev/archive/audit/PARALLEL-AUDIT-SCHEMA.md`: 8 area-based parallel auditors + consolidation
 - **Round**: 2 (second full-codebase audit following v2.8.7 PIA Round 1)
 - **Independence**: Claude audit (8 parallel agents) conducted without reading GPT-5.4 results; comparison performed post-audit
-- **Counter-review**: GPT-5.4 reviewed all applied fixes and identified 3 incomplete remediations — all subsequently resolved
+- **Counter-review**: GPT-5.4 reviewed all applied fixes and identified 3 incomplete remediations: all subsequently resolved
 - **Areas**: A1 (Trust Boundaries), A2 (Vault/Keystore), A3 (Providers/Network), A4 (Filesystem), A5 (Sync), A6 (Frontend), A7 (Media/Archives), A8 (Runtime/Packaging)
 
 ### Finding counts
@@ -40,20 +40,20 @@ Minimum completion criteria:
 | ------ | - | - | - | - | - | ----- |
 | Claude Opus 4.6 | 2 | 8 | 29 | 40 | 24 | 103 |
 | GPT-5.4 | 0 | 5 | 7 | 1 | 1 | 14 |
-| **Convergent** | — | — | — | — | — | **9** |
+| **Convergent** |: |: |: |: |: | **9** |
 
-### Pre-fix grade: **B** — Post-fix grade: **A-**
+### Pre-fix grade: **B**: Post-fix grade: **A-**
 
 ---
 
-## 3) Findings Ledger — P0 Fixes (Immediate)
+## 3) Findings Ledger: P0 Fixes (Immediate)
 
 | ID | Severity | Description | Status |
 | -- | -------- | ----------- | ------ |
 | A1-01 | High | `server_exec`, `vault_manage` not in NEVER_AUTO_APPROVE | Fixed |
 | A6-08 | High | `dangerouslySetInnerHTML` without DOMPurify sanitization | Fixed |
 
-## 4) Findings Ledger — P1 Fixes (High Priority)
+## 4) Findings Ledger: P1 Fixes (High Priority)
 
 | ID | Severity | Description | Status |
 | -- | -------- | ----------- | ------ |
@@ -63,7 +63,7 @@ Minimum completion criteria:
 | A6-02 | Critical | SSH password as React prop | Documented (session handle planned) |
 | A8-01 | High | install_windows_update dead code without validate | Fixed (removed) |
 
-## 5) Findings Ledger — P2 Fixes (Medium Priority)
+## 5) Findings Ledger: P2 Fixes (Medium Priority)
 
 | ID | Severity | Description | Status |
 | -- | -------- | ----------- | ------ |
@@ -100,7 +100,7 @@ GPT-5.4 reviewed all applied fixes and found 3 incomplete:
 
 ---
 
-## 8) Applied Fixes — File Change Matrix
+## 8) Applied Fixes: File Change Matrix
 
 | File | Fix IDs | Change |
 | ---- | ------- | ------ |
@@ -119,8 +119,8 @@ GPT-5.4 reviewed all applied fixes and found 3 incomplete:
 | `src-tauri/src/vault_remote.rs` | A7-05 | canonicalize + starts_with temp dir |
 | `src-tauri/src/image_edit.rs` | A7-01 | Atomic write (temp+rename) |
 | `src-tauri/src/lib.rs` | A7-02, A8-01 | follow_links(false), removed dead code |
-| `src/providers/registry.ts` | — | +Yandex, -FileLu S3, reorder |
-| `src/components/ProviderLogos.tsx` | — | +YandexLogo SVG |
+| `src/providers/registry.ts` |: | +Yandex, -FileLu S3, reorder |
+| `src/components/ProviderLogos.tsx` |: | +YandexLogo SVG |
 
 ---
 
@@ -144,8 +144,8 @@ Decision:
 - [x] Approved for release
 
 Accepted risks:
-- RISK-002 (High): CSP `script-src 'unsafe-inline'` — mitigated by IPC-only connect-src + Tauri isolation + fs:scope
-- A3-01 (Critical): OAuth2 client_secret — permissions hardened, vault migration planned
+- RISK-002 (High): CSP `script-src 'unsafe-inline'`: mitigated by IPC-only connect-src + Tauri isolation + fs:scope
+- A3-01 (Critical): OAuth2 client_secret: permissions hardened, vault migration planned
 
 ---
 

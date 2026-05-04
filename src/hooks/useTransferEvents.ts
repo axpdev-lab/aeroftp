@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -46,11 +46,11 @@ interface UseTransferEventsOptions {
   loadLocalFiles: (path: string) => void;
   currentLocalPath: string;
   currentRemotePath: string;
-  /** Called when a transfer starts — used to auto-open Activity Log */
+  /** Called when a transfer starts: used to auto-open Activity Log */
   onTransferStart?: () => void;
   /** Called when scanning state changes (folder scan for delete/download/upload) */
   onScanningUpdate?: (update: ScanningUpdate) => void;
-  /** Max concurrent transfers (from speed preset: 1/3/5) — controls visible channel slots */
+  /** Max concurrent transfers (from speed preset: 1/3/5): controls visible channel slots */
   maxChannels?: number;
 }
 
@@ -72,7 +72,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const completedTransferIds = useRef<Set<string>>(new Set());
   // Track last known file-level speed for display in folder transfer toast
   const lastFileSpeedRef = useRef<number>(0);
-  // Debounce timer for clearing activeTransfer — prevents flicker between consecutive files
+  // Debounce timer for clearing activeTransfer: prevents flicker between consecutive files
   const clearToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks whether a streaming scan is still discovering directories (don't dismiss toast on file_start)
   const streamingScanActive = useRef(false);
@@ -268,7 +268,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
       // Cross-profile transfers render progress *inside* CrossProfilePanel.
       // Log to Activity Log (the user wants traceability), but skip the floating
-      // toast and the auto-opened queue — those compete with the panel's own UI.
+      // toast and the auto-opened queue: those compete with the panel's own UI.
       if (data.direction === 'cross-profile') {
         if (data.event_type === 'start') {
           const src = data.message?.split(' -> ')[0] || '';
@@ -534,7 +534,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
                 transferQueue.setProgress(fileQueueId, data.progress.percentage);
               }
             }
-            // Signal App that a transfer is active (boolean only — no frequent re-renders)
+            // Signal App that a transfer is active (boolean only: no frequent re-renders)
             setActiveTransfer(data.progress);
           // Dispatch progress to isolated TransferToastContainer (no App re-render)
           if (data.progress.total_files) {
@@ -764,7 +764,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           });
         }
       } else if (data.event_type === 'delete_file_start') {
-        // Dismiss scanning toast — actual deletion has started
+        // Dismiss scanning toast: actual deletion has started
         optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'delete' });
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = resolveDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);

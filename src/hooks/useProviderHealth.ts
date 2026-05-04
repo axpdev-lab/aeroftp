@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * useProviderHealth — Per-tab progressive provider health scan.
+ * useProviderHealth: Per-tab progressive provider health scan.
  *
  * - Scans only the providers visible in the current tab
  * - Results arrive progressively via Tauri events (wave scan effect)
@@ -25,7 +25,7 @@ export interface ProviderHealthState {
 export interface HealthTarget {
     id: string;
     url: string;
-    /** Optional — when provided the backend probes via TCP for ftp/ftps/sftp. */
+    /** Optional: when provided the backend probes via TCP for ftp/ftps/sftp. */
     protocol?: string;
     host?: string;
     port?: number;
@@ -44,7 +44,7 @@ const SCAN_SAFETY_TIMEOUT_MS = 90_000;
 /** Module-level cache (survives re-renders and re-mounts) */
 const healthCache: Map<string, { state: ProviderHealthState; timestamp: number }> = new Map();
 
-/** Generation counter — increments each scan, used to make stable scan IDs */
+/** Generation counter: increments each scan, used to make stable scan IDs */
 let scanGeneration = 0;
 
 /**
@@ -68,9 +68,9 @@ export function markProfileHealthy(id: string, latencyMs = 0): void {
 export function useProviderHealth() {
     const [results, setResults] = useState<Map<string, ProviderHealthState>>(new Map());
     const [scanning, setScanning] = useState(false);
-    // Per-hook-instance listener disposers — prevents cross-mount pollution.
+    // Per-hook-instance listener disposers: prevents cross-mount pollution.
     const unlistenRef = useRef<Array<() => void>>([]);
-    // Per-instance safety timer — previously module-level, which meant two
+    // Per-instance safety timer: previously module-level, which meant two
     // concurrent mounts would clobber each other's timer reference.
     const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const scanInProgressRef = useRef(false);

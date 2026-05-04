@@ -12,12 +12,12 @@ interface MyServersTableFooterProps {
 }
 
 /**
- * Standalone footer bar — rendered outside the scrollable table container
+ * Standalone footer bar: rendered outside the scrollable table container
  * (in MyServersPanel) so it stays pinned to the bottom of the card even when
  * the protocol-breakdown drawer is open above it. The HTML used to be a
  * `<tfoot>` inside the `<table>`, but `position: sticky` on `<tfoot>` does
  * not behave consistently across browsers when sibling content scrolls
- * around it — moving the bar outside the table fixes that and lets the
+ * around it: moving the bar outside the table fixes that and lets the
  * breakdown drawer expand over the scroll area without pushing the bar.
  */
 export function MyServersTableFooter({

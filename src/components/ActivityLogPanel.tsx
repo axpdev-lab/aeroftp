@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Activity Log Panel Component
@@ -487,7 +487,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     const scrollRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [autoScroll, setAutoScroll] = useState(true);
-    // Multi-select filter — empty Set means "show all". Persisted as a JSON
+    // Multi-select filter: empty Set means "show all". Persisted as a JSON
     // array so future ops can be added without bumping the storage schema.
     // Falls back to the legacy single-value key on first load so users who
     // had an active filter before the upgrade keep their selection.
@@ -561,7 +561,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
         setAutoScroll(isAtBottom);
     }, []);
 
-    // Resize — pointer capture so unmount mid-drag cannot leave globals behind.
+    // Resize: pointer capture so unmount mid-drag cannot leave globals behind.
     const resizeRef = useRef<{ y: number; startHeight: number } | null>(null);
     const { onPointerDown: onResizePointerDown } = usePointerDrag({
         onPointerMove: (e) => {
@@ -579,7 +579,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
         onResizePointerDown(e);
     }, [height, onResizePointerDown]);
 
-    // Filter entries — empty filterTypes = show all operation types.
+    // Filter entries: empty filterTypes = show all operation types.
     const filteredEntries = useMemo(() => {
         let result = entries;
 
@@ -678,7 +678,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                         <Cloud size={12} className={showCloudSync ? 'text-[#7dcfff]' : ''} />
                     </button>
 
-                    {/* Multi-select filter dropdown — Q8 from #133.
+                    {/* Multi-select filter dropdown: Q8 from #133.
                         Replaces the old single-pick <select> so users can
                         combine "Errors + Uploads" without losing one when
                         they pick the other. Empty selection = show all. */}

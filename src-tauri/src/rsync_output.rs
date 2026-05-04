@@ -1,7 +1,7 @@
 //! Parser for rsync stdout/stderr output.
 //!
 //! Decodes rsync progress, summary, warnings and errors into typed events.
-//! Pure functional module — no I/O, no async. Used by `rsync_over_ssh` to
+//! Pure functional module: no I/O, no async. Used by `rsync_over_ssh` to
 //! translate the remote rsync process output into UI events and final stats.
 //!
 //! Reference output format (rsync 3.x with `--info=progress2` or default verbose):
@@ -17,7 +17,7 @@
 //! ```
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // Foundations module for Fase 1 delta sync. Consumed by `rsync_over_ssh` to
 // turn remote rsync output into typed events. Remove this allow once the
@@ -145,7 +145,7 @@ pub fn parse_line(line: &str) -> Option<RsyncEvent> {
         let sent = parse_u64_loose(caps.get(1)?.as_str())?;
         let received = parse_u64_loose(caps.get(2)?.as_str())?;
         let bytes_per_sec = parse_f64_loose(caps.get(3)?.as_str())?;
-        // Summary is emitted in two lines — this is partial. Caller may pair with total line.
+        // Summary is emitted in two lines: this is partial. Caller may pair with total line.
         return Some(RsyncEvent::Summary {
             sent,
             received,

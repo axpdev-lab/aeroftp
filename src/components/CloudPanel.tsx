@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroCloud Panel - Personal Multi-Protocol Cloud Sync
 // Setup wizard, cloud dashboard, and sync controls
@@ -169,9 +169,9 @@ const PROTOCOL_SYNC_CAVEAT: Record<string, string> = {
     zohoworkdrive: 'Team ID resolution adds setup complexity',
     yandexdisk: 'Service may be blocked in some regions',
     mega: 'Requires external MEGAcmd daemon running',
-    filen: 'E2E encryption overhead — sync is slower',
-    internxt: 'E2E encryption overhead — sync is slower',
-    filelu: 'US-based servers — latency may vary by region. Uses hash comparison for sync',
+    filen: 'E2E encryption overhead: sync is slower',
+    internxt: 'E2E encryption overhead: sync is slower',
+    filelu: 'US-based servers: latency may vary by region. Uses hash comparison for sync',
     fourshared: 'Manual re-authorization required if token revoked',
 };
 
@@ -305,7 +305,7 @@ const SetupWizard: React.FC<{
                 if (isServerProtocol) return !!serverProfile || (!!connHost && !!connUsername);
                 if (isOpenDrive) return !!connUsername && !!connPassword;
                 if (isEmailAuth) return !!connUsername && !!connPassword;
-                // S3, Azure, kDrive, Jottacloud — need at least some params
+                // S3, Azure, kDrive, Jottacloud: need at least some params
                 return true;
             default: return true;
         }
@@ -373,7 +373,7 @@ const SetupWizard: React.FC<{
                             password = selectedServer.password || '';
                         }
                         if (password) {
-                            // Save hostname only — port goes in connectionParams
+                            // Save hostname only: port goes in connectionParams
                             await invoke('save_server_credentials', {
                                 profileName: profile, server: selectedServer.host,
                                 username: selectedServer.username, password,
@@ -386,7 +386,7 @@ const SetupWizard: React.FC<{
                     }
                 } else if (connHost || connUsername) {
                     // Manual entry or email/password provider
-                    // Save hostname only — port is already in connectionParams via buildConnectionParams()
+                    // Save hostname only: port is already in connectionParams via buildConnectionParams()
                     await invoke('save_server_credentials', {
                         profileName: profile,
                         server: connHost || selectedProtocol,
@@ -1220,7 +1220,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         loadConfig();
     }, []);
 
-    // Listen for status changes — useTauriListener handles late-resolution cleanup
+    // Listen for status changes: useTauriListener handles late-resolution cleanup
     useTauriListener<CloudSyncStatus>('cloud_status_change', (event) => {
         setStatus(event.payload);
     });
@@ -1385,7 +1385,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 overflow-y-auto">
-                        {/* LEFT COLUMN — Connection & Location */}
+                        {/* LEFT COLUMN: Connection & Location */}
                         <section className="space-y-4">
                             <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('cloud.sectionConnection')}</h3>
 
@@ -1453,7 +1453,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                             </div>
                         </section>
 
-                        {/* RIGHT COLUMN — Sync & Versioning */}
+                        {/* RIGHT COLUMN: Sync & Versioning */}
                         <section className="space-y-4">
                             <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('cloud.sectionSync')}</h3>
 
@@ -1546,7 +1546,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
                         </section>
                     </div>
 
-                    {/* Footer — full width */}
+                    {/* Footer: full width */}
                     <div className="flex gap-3 p-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <button
                             onClick={async () => {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -27,7 +27,7 @@ export const WatcherStatus: React.FC<WatcherStatusProps> = ({ watchPath }) => {
             .then(s => { if (mounted) setStatus(s); })
             .catch(() => {});
 
-        // Listen for watcher status events from backend — guardedUnlisten
+        // Listen for watcher status events from backend: guardedUnlisten
         // owns the unmount-before-resolve race.
         const disposeListener = guardedUnlisten(
             listen<{ active: boolean; mode?: string; path?: string }>(

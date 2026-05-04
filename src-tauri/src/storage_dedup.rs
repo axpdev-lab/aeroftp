@@ -13,7 +13,7 @@
 //! class breakdown.
 //!
 //! The TypeScript twin lives at `src/utils/storageDedup.ts` and must produce
-//! the same output for the same input — `cargo test` cross-checks the six
+//! the same output for the same input: `cargo test` cross-checks the six
 //! canonical scenarios documented in the Phase 4 handoff.
 
 use serde::{Deserialize, Serialize};
@@ -35,7 +35,7 @@ pub struct ProfileView<'a> {
     pub total: Option<u64>,
 }
 
-/// Canonical protocol class — mirrors `getProtocolClass` from `src/types.ts`.
+/// Canonical protocol class: mirrors `getProtocolClass` from `src/types.ts`.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ProtocolClass {
     OAuth,
@@ -259,7 +259,7 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
     };
 
     // Family-based dedup wins over per-protocol prefixes when both the family
-    // and a usable username are available — that's the path that collapses
+    // and a usable username are available: that's the path that collapses
     // Koofr WebDAV + REST (or OpenDrive WebDAV + REST) to a single drive.
     if let (Some(family), Some(user)) = (dedup_family(profile.provider_id, proto), &user_norm) {
         return format!("family:{}:{}", family, user);
@@ -348,7 +348,7 @@ pub struct AggregateSummary {
 
 /// Aggregate a list of profiles. Quotes are summed once per `dedup_key`; when
 /// two profiles in the same group disagree on `used` or `total`, the maximum
-/// is taken (conservative — never undercounts).
+/// is taken (conservative: never undercounts).
 pub fn aggregate(profiles: &[ProfileView<'_>]) -> AggregateSummary {
     use std::collections::HashMap;
 
@@ -398,7 +398,7 @@ pub fn aggregate(profiles: &[ProfileView<'_>]) -> AggregateSummary {
     // Per-protocol breakdown. Each profile contributes to the class derived
     // from its own protocol; quotas in each class come from the deduped
     // buckets that include that class. A bucket spanning multiple classes
-    // (rare — only happens for cross-class dedup like Koofr) contributes its
+    // (rare: only happens for cross-class dedup like Koofr) contributes its
     // single (used, total) pair to **each** class it touches, mirroring how
     // the TS aggregator surfaces the same drive in every protocol it served.
     let mut breakdown: Vec<ProtocolBreakdownRow> = Vec::new();
@@ -645,7 +645,7 @@ mod tests {
         let summary = aggregate(&profiles);
         assert_eq!(summary.profiles, 3);
         assert_eq!(summary.unique_count, 1);
-        // 1 GB, NOT 3 GB — the whole point of Phase 4.
+        // 1 GB, NOT 3 GB: the whole point of Phase 4.
         assert_eq!(summary.total_used, 1_000_000_000);
         assert_eq!(summary.total_total, 10_000_000_000);
     }
@@ -685,7 +685,7 @@ mod tests {
     fn divergent_quotas_use_max_not_sum() {
         // Two duplicate profiles whose quota readings disagree (one was
         // refreshed before the user uploaded a big file). Conservative `max`
-        // wins — never sum.
+        // wins: never sum.
         let profiles = [
             p(
                 "p1",

@@ -79,4 +79,4 @@ aur/
 - The `-bin` suffix means prebuilt binary (AppImage). No compilation needed.
 - `WEBKIT_DISABLE_DMABUF_RENDERER=1` is set in the launcher for WebKitGTK compatibility.
 - Users install with: `yay -S aeroftp-bin` or `paru -S aeroftp-bin`
-- SHA256 sums are set to SKIP — consider computing them after each release for extra security.
+- SHA256 sums are set to SKIP: consider computing them after each release for extra security.

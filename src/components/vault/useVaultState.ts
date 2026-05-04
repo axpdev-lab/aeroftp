@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -102,7 +102,7 @@ export interface FolderProgress {
     current_file: string;
 }
 
-// Security level configuration — hardcoded labels (no i18n, technical terms)
+// Security level configuration: hardcoded labels (no i18n, technical terms)
 export const securityLevels = {
     standard: {
         icon: Shield,
@@ -350,7 +350,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             const list = await invoke<RecentVault[]>('vault_history_list');
             setRecentVaults(list);
         } catch {
-            // vault_history commands may not exist yet — graceful fallback
+            // vault_history commands may not exist yet: graceful fallback
             setRecentVaults([]);
         }
     };
@@ -474,7 +474,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                         modified: f.modified
                     }));
                     setEntries(fileEntries);
-                    setSuccess(t('vault.created') + ` — ${info.file_count} files`);
+                    setSuccess(t('vault.created') + `: ${info.file_count} files`);
                     setMeta({
                         version: info.version,
                         description: description || null,
@@ -496,7 +496,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                         modified: f.modified
                     }));
                     setEntries(fileEntries);
-                    setSuccess(t('vault.created') + ` — ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
+                    setSuccess(t('vault.created') + `: ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
                     setMeta({
                         version: info.version,
                         description: description || null,
@@ -517,7 +517,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 }
                 setMode('browse');
 
-                // Save to history — use meta.fileCount (not stale entries.length)
+                // Save to history: use meta.fileCount (not stale entries.length)
                 const vName = savePath.split(/[\\/]/).pop() || 'Vault';
                 const actualCount = initialFolderPath ? (folderScanResult?.file_count || 0) : (initialFiles?.length || 0);
                 await saveToHistory(savePath, vName, securityLevel, 2, levelConfig.cascade, actualCount);

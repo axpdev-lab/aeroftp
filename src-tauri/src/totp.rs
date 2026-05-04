@@ -10,7 +10,7 @@
 //! - M17: TOTP secrets wrapped in SecretString for automatic zeroization on drop
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use secrecy::{ExposeSecret, SecretString};
 use std::sync::Mutex;
@@ -23,7 +23,7 @@ const MAX_FAILED_ATTEMPTS: u32 = 5;
 /// Base lockout duration in seconds after exceeding MAX_FAILED_ATTEMPTS.
 const BASE_LOCKOUT_SECS: u64 = 30;
 
-/// Internal TOTP state — all fields protected by a single Mutex
+/// Internal TOTP state: all fields protected by a single Mutex
 /// to guarantee atomic state transitions.
 struct TotpInner {
     /// M17: Pending secret during setup (base32 encoded), wrapped in SecretString
@@ -135,7 +135,7 @@ fn build_totp(secret_base32: &str) -> Result<TOTP, String> {
 /// NOTE on Authy: Twilio's app does NOT read this field. It looks up issuer
 /// names against an internal Twilio database, so adding our logo there would
 /// require a submission to Twilio support. Until then, Authy will show a
-/// generic icon — this is a vendor limitation, not something the URI can
+/// generic icon: this is a vendor limitation, not something the URI can
 /// override.
 const AEROFTP_LOGO_URL: &str = "https://docs.aeroftp.app/web-app-manifest-512x512.png";
 
@@ -272,14 +272,14 @@ pub fn totp_enable(state: State<'_, TotpState>) -> Result<String, String> {
         .ok_or("No pending secret to enable")?;
     let secret_plain = secret.expose_secret().to_string();
 
-    // A2-05: Store TOTP secret in vault BEFORE enabling — atomic operation.
+    // A2-05: Store TOTP secret in vault BEFORE enabling: atomic operation.
     // If vault write fails, TOTP is not enabled (fail-closed).
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
         store
             .store_internal("totp_secret", &secret_plain)
             .map_err(|e| format!("Failed to store TOTP secret in vault: {}", e))?;
     } else {
-        return Err("Credential vault not available — cannot enable TOTP".into());
+        return Err("Credential vault not available: cannot enable TOTP".into());
     }
 
     // Only enable after successful vault store
@@ -411,7 +411,7 @@ mod tests {
     #[test]
     fn check_rate_limit_passes_after_lockout_expires() {
         let mut inner = fresh_inner();
-        // Lockout set in the past — should no longer block
+        // Lockout set in the past: should no longer block
         inner.lockout_until = Some(Instant::now() - std::time::Duration::from_secs(1));
         assert!(check_rate_limit(&inner).is_ok());
     }
@@ -444,7 +444,7 @@ mod tests {
     #[test]
     fn record_failure_caps_lockout_at_15_minutes() {
         let mut inner = fresh_inner();
-        // Push far beyond threshold — lockout should saturate at 900s
+        // Push far beyond threshold: lockout should saturate at 900s
         inner.failed_attempts = MAX_FAILED_ATTEMPTS + 50;
         record_failure(&mut inner);
         let lockout = inner.lockout_until.expect("lockout should be set");

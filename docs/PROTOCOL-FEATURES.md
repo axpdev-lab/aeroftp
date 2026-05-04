@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
 > Last Updated: 2 May 2026
-> Version: v3.7.0
+> Version: v3.7.1
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
@@ -639,7 +639,8 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 | v3.6.1 | **Windows first-class delta sync** - native rsync protocol 31 in pure Rust, no rsync.exe bundle, no WSL requirement (`aerorsync` cross-OS, `#![cfg(unix)]` removed surgically) | Done |
 | v3.6.6 | Community wishlist quick wins, Server Speed Test dialog (`speed-compare`), `aeroftp_agent_connect`, AeroRsync wired into Cross-Profile Transfer + AeroTools Code Editor save | Done |
 | v3.6.7 / v3.6.8 / v3.6.10 | Share-link reliability + `link --verify`, suppaftp 8.0.3 with 14 upstream FTP fixes, MEGA Native canonical key layout interop fix, MEGA/Filen 2FA modal hookup, TOTP QR | Done |
-| v3.7.0 | **AeroRsync session-cached batch transport** (`AerorsyncBatch` trait, `delta_files[]`, `bytes_on_wire`), **AeroVault overlay session model** (transparent encrypted browse), **rclone crypt full read/write** (provider session + filename obfuscation), **Server Health Check** engine (DNS/TCP/TLS/HTTP probes, IntroHub Pro), **MCP wave-5 cross-profile transfer** + **wave-6 ops tools** (`touch` / `cleanup` / `speed` / `sync_doctor` / `dedupe` / `reconcile`), MCP tool count 27 → 39, `aerovault` crate 0.3.4 with `rename_entry` / `move_entry` / `copy_entry` | Done |
+| v3.7.0 | **AeroRsync session-cached batch transport** (`AerorsyncBatch` trait, `delta_files[]`, `bytes_on_wire`), **AeroVault overlay session model** (transparent encrypted browse), **rclone crypt full read/write** (provider session + filename obfuscation), **Server Health Check** engine (DNS/TCP/TLS/HTTP probes, IntroHub Pro), **MCP wave-5 cross-profile transfer** + **wave-6 ops tools** (`touch` / `cleanup` / `speed` / `sync_doctor` / `dedupe` / `reconcile`), MCP tool count 27 to 39, `aerovault` crate 0.3.4 with `rename_entry` / `move_entry` / `copy_entry` | Done |
+| v3.7.1 | **Persistent Mount Manager** (FUSE / WebDAV) with cross-platform autostart (systemd-user / Task Scheduler ONLOGON), sidecar JSON or vault-backed storage, "Open mount in file manager" auto-creates default mount, Windows free-drive-letter helper. **Filen Desktop local bridges** (WebDAV port 1900 + S3 port 1700) on top of layered WebDAV scheme detection (explicit / `tls_mode` / auto for localhost / RFC 1918 / `*.local`). **AeroFile community polish**: aggregate multi-file Properties dialog, recursive `*` flatten search, smart Open with default app, PathBar empty-area edit + trailing chevron, configurable provider-icon size, drag-reorder custom icons, Server Health overlay dot on Discover. **AeroSync wrapper script export** round-trips `.sh` / `.ps1` with embedded `# AEROFTP-META`. **My Servers unified table** (Used / Total / %, semantic table with sticky thead/tfoot, click-to-sort, dedup-aware footer + per-protocol breakdown, drag-to-reorder + resize on three surfaces). **Filen v3 Argon2id auth**, MEGAcmd anonymous WebDAV, Backblaze B2 native Quick Connect form, S3Drive icon + setup-with-rclone banner, Filen Desktop S3 / WebDAV logos. CLI `profiles -i` interactive prompt loop. | Done |
 
 ### Planned
 

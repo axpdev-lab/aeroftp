@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
@@ -44,7 +44,7 @@ export function InternxtTrashManager({ onClose }: InternxtTrashManagerProps) {
     loadTrash();
   }, [loadTrash]);
 
-  // Internxt API only supports listing trash — restore and permanent delete
+  // Internxt API only supports listing trash: restore and permanent delete
   // are not available via the current API. This component is read-only.
 
   useEffect(() => {

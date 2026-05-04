@@ -5,7 +5,7 @@
 //! Each shell session has its own SSH connection.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use russh::client::AuthResult;
 use russh::client::{self, Config, Handle, Handler, Msg};
@@ -41,10 +41,10 @@ impl Handler for ShellSshHandler {
         match known_hosts::check_known_hosts(&self.host, self.port, server_public_key) {
             Ok(true) => Ok(true),
             Ok(false) => {
-                // SEC-P1-06: Host not in known_hosts — reject here.
+                // SEC-P1-06: Host not in known_hosts: reject here.
                 // Frontend must call sftp_check_host_key + sftp_accept_host_key first.
                 tracing::warn!(
-                    "SSH Shell: Host key for {} not pre-approved via TOFU dialog — rejecting",
+                    "SSH Shell: Host key for {} not pre-approved via TOFU dialog: rejecting",
                     self.host
                 );
                 Ok(false)
@@ -58,7 +58,7 @@ impl Handler for ShellSshHandler {
                 Ok(false)
             }
             Err(e) => {
-                // SEC: Reject on unknown errors — do not silently accept.
+                // SEC: Reject on unknown errors: do not silently accept.
                 tracing::error!(
                     "SSH Shell: REJECTING {} - known_hosts verification error: {}",
                     self.host,
@@ -76,7 +76,7 @@ struct SshShellSession {
     channel_id: ChannelId,
     /// Reader task that pumps `ChannelMsg` into the `ssh-shell-data-*` event
     /// stream. Wrapping in `AbortOnDrop` guarantees the task is cancelled
-    /// when the session is removed from the map — previously the JoinHandle
+    /// when the session is removed from the map: previously the JoinHandle
     /// was discarded and the reader kept decoding bytes into emits for dead
     /// sessions until the remote SSH side finally sent EOF.
     _reader: crate::util::AbortOnDrop<()>,
@@ -289,7 +289,7 @@ pub async fn ssh_shell_resize(
     _rows: u32,
 ) -> Result<(), String> {
     // window_change is only available on Channel/ChannelWriteHalf which is consumed by the read task.
-    // This is a known limitation — the terminal will use the initial 80x24 size.
+    // This is a known limitation: the terminal will use the initial 80x24 size.
     // A future refactor could use Channel::split() if russh exposes ChannelWriteHalf publicly.
     Ok(())
 }

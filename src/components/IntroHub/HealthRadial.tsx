@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * HealthRadial — small SVG donut indicator for the per-server reachability
+ * HealthRadial: small SVG donut indicator for the per-server reachability
  * probe. Sits on the My Servers and Discover cards in detailed layout.
  *
  * Status mapping:

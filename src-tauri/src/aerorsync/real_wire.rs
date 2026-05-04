@@ -1,4 +1,4 @@
-//! Real rsync wire format (protocol 31/32) — read-only layer.
+//! Real rsync wire format (protocol 31/32): read-only layer.
 //!
 //! Sinergie 8b + 8c + 8d.
 //!
@@ -16,7 +16,7 @@
 //! 55 bytes for the matching profile. Early S8b drafts treated
 //! `compat_flags` as a fixed 2-byte opaque block; `compat.c::read_varint`
 //! in rsync 3.2.7 shows it is a proper rsync varint whose length depends
-//! on which bits are set — fixed in S8d.
+//! on which bits are set: fixed in S8d.
 //!
 //! Layer three is multiplex framing activated after the preamble on
 //! **both** channels in remote-shell mode with protocol 31/32. Each
@@ -34,7 +34,7 @@
 //! Layer four (S8d) is the rsync varint / varlong primitive, used
 //! everywhere in the application-level protocol above `MSG_DATA`. Layer
 //! five (S8d) is the file-list entry decoder that sits on top of the
-//! reassembled app stream — it is the first byte-level consumer of the
+//! reassembled app stream: it is the first byte-level consumer of the
 //! rsync app protocol. Every subsequent feature (signature blocks,
 //! delta instructions, summary frame) piggybacks on these primitives.
 //!
@@ -159,7 +159,7 @@ pub enum RealWireError {
     },
     /// A `DeltaOp::Literal`'s compressed payload could not be decoded
     /// by the zstd library. `reason` carries the underlying error
-    /// message — malformed frame, truncated stream, unsupported
+    /// message: malformed frame, truncated stream, unsupported
     /// dictionary, etc.
     ZstdDecompressionFailed {
         reason: String,
@@ -391,7 +391,7 @@ impl MuxHeader {
     }
 
     /// Decode a 4-byte LE header. Returns `InvalidMuxHeader` if the high
-    /// byte is below `MPLEX_BASE` — an early sign that the demuxer was
+    /// byte is below `MPLEX_BASE`: an early sign that the demuxer was
     /// started before the capability preamble finished.
     pub fn decode(bytes: [u8; MUX_HEADER_LEN]) -> Result<Self, RealWireError> {
         let raw = u32::from_le_bytes(bytes);
@@ -410,7 +410,7 @@ impl MuxHeader {
     }
 }
 
-/// Decode the 4-byte protocol version prefix. Accepts 30..=40 — this is
+/// Decode the 4-byte protocol version prefix. Accepts 30..=40: this is
 /// intentionally permissive, covering the current 31/32 range plus a
 /// small forward-compat envelope. Anything else is flagged, because an
 /// unexpected protocol version at offset 0 usually means we are reading
@@ -461,7 +461,7 @@ fn read_u8_len_prefixed_ascii(
     let mut out = String::with_capacity(len);
     for (i, &b) in buf[start..end].iter().enumerate() {
         // rsync uses plain ASCII for algorithm names. Reject anything
-        // outside 0x20..=0x7E — a non-ASCII byte at this offset is
+        // outside 0x20..=0x7E: a non-ASCII byte at this offset is
         // almost always a framing mistake, not a real algo name.
         if !(0x20..=0x7E).contains(&b) {
             return Err(RealWireError::NonAsciiAlgoList {
@@ -481,7 +481,7 @@ pub fn decode_server_preamble(buf: &[u8]) -> Result<ServerPreamble, RealWireErro
     let (version, mut cursor) = decode_protocol_version(buf)?;
 
     // compat_flags is a rsync varint written by `compat.c`. Width depends
-    // on which CF_* bits are set — values up to 0x7F take one byte,
+    // on which CF_* bits are set: values up to 0x7F take one byte,
     // larger ones take two or more.
     let (compat_raw, consumed_cf) = decode_varint(&buf[cursor..])?;
     let compat_flags = compat_raw as i32;
@@ -538,7 +538,7 @@ pub fn decode_client_preamble(buf: &[u8]) -> Result<ClientPreamble, RealWireErro
 }
 
 // ----------------------------------------------------------------------------
-// Sinergia 8i-encode — preamble + file checksum + sum block writers.
+// Sinergia 8i-encode: preamble + file checksum + sum block writers.
 //
 // Symmetric encoders for the read paths above. Each encoder is the
 // byte-identical inverse of the matching decoder, validated by
@@ -548,7 +548,7 @@ pub fn decode_client_preamble(buf: &[u8]) -> Result<ClientPreamble, RealWireErro
 
 /// Encode `len` (must fit in u8) as a 1-byte length prefix followed by
 /// the ASCII bytes of `algos`. Mirrors `read_u8_len_prefixed_ascii`.
-/// Panics on non-ASCII or len > 255 — both are programming errors here.
+/// Panics on non-ASCII or len > 255: both are programming errors here.
 fn write_u8_len_prefixed_ascii(out: &mut Vec<u8>, algos: &str, section: &'static str) {
     let bytes = algos.as_bytes();
     assert!(
@@ -674,7 +674,7 @@ impl<'a> Iterator for MuxDemuxer<'a> {
 /// without having to re-decode the demuxer themselves.
 ///
 /// `out_of_band` (kept for backward compatibility with all S8c-era
-/// tests) records `(tag, length)` only — the OOB payload is dropped.
+/// tests) records `(tag, length)` only: the OOB payload is dropped.
 /// `oob_frames` was added in Sinergia 8h to retain the full payload
 /// so the event classifier in `events::classify_oob_frame` can produce
 /// typed `AerorsyncEvent`s without re-walking the demuxer.
@@ -697,7 +697,7 @@ pub struct ReassemblyReport {
 /// into one contiguous byte vector, and keep a log of out-of-band tags.
 ///
 /// Any demux error (truncated header, truncated payload, invalid high
-/// byte) aborts and is returned verbatim — partial reassembly is a
+/// byte) aborts and is returned verbatim: partial reassembly is a
 /// design mistake when the output is meant to feed a strict parser.
 pub fn reassemble_msg_data(buf: &[u8]) -> Result<ReassemblyReport, RealWireError> {
     let mut app_stream = Vec::new();
@@ -724,14 +724,14 @@ pub fn reassemble_msg_data(buf: &[u8]) -> Result<ReassemblyReport, RealWireError
 }
 
 // =============================================================================
-// Sinergia 8h — Classified reassembly with OOB events.
+// Sinergia 8h: Classified reassembly with OOB events.
 //
 // Two entry points sit on top of `reassemble_msg_data`:
 //
 // - `reassemble_with_events`     : full pass, classify every OOB frame.
 // - `reassemble_until_terminal`  : same, but stop the moment a terminal
 //                                  event (per `events::is_terminal`)
-//                                  shows up — `app_stream` then ends at
+//                                  shows up: `app_stream` then ends at
 //                                  the last byte BEFORE the terminal
 //                                  header, never inside it.
 //
@@ -751,7 +751,7 @@ pub fn reassemble_msg_data(buf: &[u8]) -> Result<ReassemblyReport, RealWireError
 /// `terminal` is `Some(event)` only when `reassemble_until_terminal`
 /// stops early on a terminal OOB frame (e.g. `MSG_ERROR`). In that
 /// case `consumed_bytes` points to the byte immediately AFTER the
-/// terminating frame's header + payload — so a caller that wants to
+/// terminating frame's header + payload: so a caller that wants to
 /// inspect or re-drive the trailing bytes can resume from
 /// `&buf[report.consumed_bytes..]` if it ever becomes useful.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -766,7 +766,7 @@ pub struct ClassifiedReassemblyReport {
 /// Walk every mux frame, classify every OOB frame into a typed
 /// `AerorsyncEvent`, never bail. `terminal` is always `None`.
 ///
-/// Equivalent in app_stream contents to `reassemble_msg_data` —
+/// Equivalent in app_stream contents to `reassemble_msg_data` -
 /// pinned by the `reassemble_with_events_app_stream_matches_legacy`
 /// regression test.
 pub fn reassemble_with_events(buf: &[u8]) -> Result<ClassifiedReassemblyReport, RealWireError> {
@@ -837,9 +837,9 @@ pub fn reassemble_until_terminal(buf: &[u8]) -> Result<ClassifiedReassemblyRepor
 }
 
 // =============================================================================
-// Sinergia 8i — Streaming mux reader + progress counter.
+// Sinergia 8i: Streaming mux reader + progress counter.
 //
-// `reassemble_*` above operate on a fully buffered post-preamble stream —
+// `reassemble_*` above operate on a fully buffered post-preamble stream -
 // fine for unit tests with frozen oracle slices, wrong shape for a live
 // driver that reads chunks from an SSH channel and needs to emit progress
 // ticks while bytes are in flight.
@@ -849,7 +849,7 @@ pub fn reassemble_until_terminal(buf: &[u8]) -> Result<ClassifiedReassemblyRepor
 // at a time. An internal `data_bytes_consumed` counter tracks only
 // `MSG_DATA` payload bytes, which is the correct denominator for
 // per-file progress (OOB traffic does not count against the transfer
-// total). Terminal OOB frames lock the reader — subsequent polls return
+// total). Terminal OOB frames lock the reader: subsequent polls return
 // `None` so the driver cannot accidentally process app-stream bytes that
 // arrived after the remote bailed.
 //
@@ -899,7 +899,7 @@ impl MuxStreamReader {
 
     /// Total `MSG_DATA` payload bytes drained so far. Monotone, excludes
     /// mux header bytes and OOB payloads. Use this as the progress
-    /// numerator — the denominator comes from the FileListEntry size.
+    /// numerator: the denominator comes from the FileListEntry size.
     pub fn data_bytes_consumed(&self) -> u64 {
         self.data_bytes_consumed
     }
@@ -923,7 +923,7 @@ impl MuxStreamReader {
     /// - the header is present but the payload is still in flight, OR
     /// - a terminal event has already been observed (reader is locked).
     ///
-    /// Returns `Some(Err(...))` on a malformed header — this is a hard
+    /// Returns `Some(Err(...))` on a malformed header: this is a hard
     /// protocol error that must abort the session. The reader is NOT
     /// auto-locked in this case (the driver decides whether to retry or
     /// bail); callers that want the locked behaviour should flip
@@ -972,7 +972,7 @@ impl MuxStreamReader {
 }
 
 // =============================================================================
-// Section 4 — rsync varint / varlong primitives (S8d)
+// Section 4: rsync varint / varlong primitives (S8d)
 //
 // These are rsync-specific encodings, NOT Google protobuf varints. The
 // first byte carries a leading-1-bit run whose length equals the number
@@ -1138,12 +1138,12 @@ pub fn encode_varlong(x: i64, min_bytes: u8) -> Vec<u8> {
 }
 
 // =============================================================================
-// Section 5 — File-list entry decoder (S8d)
+// Section 5: File-list entry decoder (S8d)
 //
 // The rsync file-list is a sequence of `send_file_entry` records, each
 // carrying flags + path + size + times + mode + uid/gid (optionally
 // with stringified names) + optional checksum. The list ends with a
-// terminator — a bare zero byte in the classic encoding, or a varint(0)
+// terminator: a bare zero byte in the classic encoding, or a varint(0)
 // when `CF_VARINT_FLIST_FLAGS` is negotiated.
 //
 // Field order mirrors `flist.c::send_file_entry` / `recv_file_entry` in
@@ -1182,7 +1182,7 @@ pub const XMIT_SAME_ATIME: u32 = 1 << 14;
 pub struct FileListDecodeOptions<'a> {
     /// Negotiated protocol version (31 or 32 in current transcripts).
     pub protocol: u32,
-    /// `CF_VARINT_FLIST_FLAGS` was negotiated — flags are encoded as a
+    /// `CF_VARINT_FLIST_FLAGS` was negotiated: flags are encoded as a
     /// varint instead of a 1-or-2 byte `XMIT_EXTENDED_FLAGS`-gated
     /// sequence.
     pub xfer_flags_as_varint: bool,
@@ -1192,10 +1192,10 @@ pub struct FileListDecodeOptions<'a> {
     /// Length of the negotiated checksum (xxh128 = 16, md5 = 16, md4 =
     /// 16, sha1 = 20, …).
     pub csum_len: usize,
-    /// `-o` / `--owner` equivalent — uid field is present when
+    /// `-o` / `--owner` equivalent: uid field is present when
     /// `XMIT_SAME_UID` is not set.
     pub preserve_uid: bool,
-    /// `-g` / `--group` equivalent — gid field is present when
+    /// `-g` / `--group` equivalent: gid field is present when
     /// `XMIT_SAME_GID` is not set.
     pub preserve_gid: bool,
     /// Last file's name, used when `XMIT_SAME_NAME` with `l1 > 0` asks
@@ -1233,7 +1233,7 @@ pub enum FileListDecodeOutcome {
 }
 
 /// Decoded file-list entry (regular file, protocol ≥ 31 path). Device /
-/// symlink / hardlink extensions are deferred — they land in a later
+/// symlink / hardlink extensions are deferred: they land in a later
 /// sinergia when we encounter them in a transcript.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileListEntry {
@@ -1415,7 +1415,7 @@ pub fn decode_file_list_entry(
         cursor += consumed;
         m
     } else {
-        // Pre-30 fallback — not expected in this sinergia.
+        // Pre-30 fallback: not expected in this sinergia.
         if cursor + 4 > buf.len() {
             return Err(RealWireError::TruncatedBuffer {
                 at: "flist_mtime_legacy",
@@ -1540,7 +1540,7 @@ pub fn decode_file_list_entry(
 }
 
 // ----------------------------------------------------------------------------
-// Sinergia 8i-encode — file_list_entry writer.
+// Sinergia 8i-encode: file_list_entry writer.
 //
 // Mirror of `decode_file_list_entry`. Field order, gating semantics, and
 // every length-prefix shape MUST match `flist.c::send_file_entry` in
@@ -1585,7 +1585,7 @@ fn compute_flist_name_split<'a>(
 ///
 /// **Caller contract**: `entry.flags` carries the XMIT_* gating
 /// decisions (SAME_NAME, LONG_NAME, MOD_NSEC, USER_NAME_FOLLOWS, …).
-/// The encoder honours those flags exactly — it does NOT recompute
+/// The encoder honours those flags exactly: it does NOT recompute
 /// SAME_TIME/SAME_MODE/SAME_UID/SAME_GID from entry deltas, because
 /// the decision matrix lives one layer up (the planner /
 /// flist-builder, which knows the full file list and previous-entry
@@ -1712,7 +1712,7 @@ pub fn encode_file_list_terminator(options: &FileListDecodeOptions) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// Sinergia 8e — file-index (ndx), item flags, and signature block decoder.
+// Sinergia 8e: file-index (ndx), item flags, and signature block decoder.
 //
 // After the file-list terminator, rsync's generator and sender interleave
 // a per-file header (`write_ndx` + `write_shortint(iflags)`) with a
@@ -1749,7 +1749,7 @@ pub const SUM_HEAD_MAX_DIGEST_LEN: i32 = 20;
 
 /// State carried between successive `decode_ndx` calls on the **same**
 /// direction. The rsync ndx stream is diff-encoded against two rolling
-/// baselines (positive and negative indices) — a fresh state starts at
+/// baselines (positive and negative indices): a fresh state starts at
 /// `(prev_positive = -1, prev_negative = 1)` per `io.c::read_ndx`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NdxState {
@@ -1785,7 +1785,7 @@ impl Default for NdxState {
     }
 }
 
-/// Decoded `sum_head` — four int32 LE values, validated against
+/// Decoded `sum_head`: four int32 LE values, validated against
 /// `read_sum_head`'s bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SumHead {
@@ -1800,7 +1800,7 @@ pub struct SumHead {
     pub remainder_length: i32,
 }
 
-/// Decoded signature block — 4-byte LE rolling checksum + `strong_len`
+/// Decoded signature block: 4-byte LE rolling checksum + `strong_len`
 /// bytes of strong checksum.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SumBlock {
@@ -1960,7 +1960,7 @@ pub fn encode_ndx(ndx: i32, state: &mut NdxState) -> Vec<u8> {
     out
 }
 
-/// Decode a `write_shortint(iflags)` — 2 bytes little-endian u16.
+/// Decode a `write_shortint(iflags)`: 2 bytes little-endian u16.
 pub fn decode_item_flags(buf: &[u8]) -> Result<(u16, usize), RealWireError> {
     if buf.len() < 2 {
         return Err(RealWireError::TruncatedBuffer {
@@ -1979,7 +1979,7 @@ pub fn encode_item_flags(flags: u16) -> [u8; 2] {
     flags.to_le_bytes()
 }
 
-/// Decode a `write_sum_head` — four int32 LE fields with bounds
+/// Decode a `write_sum_head`: four int32 LE fields with bounds
 /// validation matching `io.c::read_sum_head` (count >= 0, 0 <= blength
 /// <= MAX_BLOCK_SIZE, 0 <= s2length <= MAX_DIGEST_LEN, 0 <= remainder
 /// <= blength).
@@ -2071,7 +2071,7 @@ pub fn decode_sum_block(buf: &[u8], strong_len: usize) -> Result<(SumBlock, usiz
 
 /// Encode a single signature block (Sinergia 8i-encode). Inverse of
 /// `decode_sum_block`. The strong-checksum slice MUST already be the
-/// per-`SumHead.checksum_length` length the receiver agreed to —
+/// per-`SumHead.checksum_length` length the receiver agreed to -
 /// truncation is a caller responsibility (see `checksum.c::sum_init`
 /// in rsync 3.2.7).
 pub fn encode_sum_block(block: &SumBlock) -> Vec<u8> {
@@ -2091,16 +2091,16 @@ pub fn encode_file_checksum(bytes: &[u8]) -> Vec<u8> {
 }
 
 // =============================================================================
-// Sezione 7 — delta instruction stream (match_sums → send_*_token output)
+// Sezione 7: delta instruction stream (match_sums → send_*_token output)
 // =============================================================================
 //
 // Rsync 3.2.7 emits the delta stream through one of three sibling functions:
 //   - `token.c::simple_send_token`     (no compression negotiated)
 //   - `token.c::send_deflated_token`   (zlib, CPRES_ZLIB/CPRES_ZLIBX)
-//   - `token.c::send_zstd_token`       (zstd, CPRES_ZSTD — proto 31+ when
+//   - `token.c::send_zstd_token`       (zstd, CPRES_ZSTD: proto 31+ when
 //                                       negotiation elects it)
 //
-// The **uncompressed** path uses a simple 4-byte-integer framing — every
+// The **uncompressed** path uses a simple 4-byte-integer framing: every
 // record is a single `write_int` and the data follows raw. The **compressed**
 // paths (zlib + zstd) share an IDENTICAL **outer** byte framing, documented
 // in `token.c` lines 321-327 as the `END_FLAG / TOKEN_* / DEFLATED_DATA /
@@ -2109,14 +2109,14 @@ pub fn encode_file_checksum(bytes: &[u8]) -> Vec<u8> {
 // record (a self-contained zlib stream or a self-contained zstd frame).
 // The outer tag parsing is bit-identical.
 //
-// The decoder below deals with the **compressed outer framing** only —
+// The decoder below deals with the **compressed outer framing** only -
 // appropriate for the Strada C frozen oracle (proto 31 + zstd negotiated via
 // `CF_VARINT_FLIST_FLAGS + negotiate_the_strings`). The payload inside each
 // `Literal` is returned as opaque `compressed_payload: Vec<u8>`; real zstd
 // decoding is performed downstream in the driver (`delta_transport_impl`)
 // where the decompressor owns window state across frames. The
 // `simple_send_token` (uncompressed) shape is intentionally not implemented
-// here — it is unreachable via the frozen oracle and would require a
+// here: it is unreachable via the frozen oracle and would require a
 // separate capture lane before we can wire it.
 //
 // After the tag stream a single `END_FLAG=0x00` marks end-of-tokens for the
@@ -2124,7 +2124,7 @@ pub fn encode_file_checksum(bytes: &[u8]) -> Vec<u8> {
 // `xfer_sum_len`-byte file-level strong checksum RAW, with no length prefix
 // (`match.c::match_sums` line 423). The length is negotiated upfront (see
 // `checksum.c::csum_len_for_type`) and defaults to 16 for MD5 / xxh128 /
-// xxh3 derivatives — in the frozen oracle profile the negotiated algo is
+// xxh3 derivatives: in the frozen oracle profile the negotiated algo is
 // xxh128 (host + server both xxh3-linked), so `checksum_length = 16`.
 //
 // Wire tags (matches `token.c:321-327`):
@@ -2137,7 +2137,7 @@ pub fn encode_file_checksum(bytes: &[u8]) -> Vec<u8> {
 //   TOKENRUN_REL   0xC0 | rel6     relative offset + 16-bit run_count little-endian
 //
 // State carried across successive records on the SAME file is the
-// `last_token_end` value — rsync's `last_run_end + run_len` — used to
+// `last_token_end` value: rsync's `last_run_end + run_len`: used to
 // resolve relative tokens. A fresh `DeltaStreamState` starts at 0.
 
 /// Outer token framing tags from `token.c:321-327`. Copied as runtime
@@ -2149,12 +2149,12 @@ pub const TOKEN_DEFLATED_DATA: u8 = 0x40;
 pub const TOKEN_REL: u8 = 0x80;
 pub const TOKENRUN_REL: u8 = 0xC0;
 
-/// Maximum literal payload size in a single DEFLATED_DATA record — 14 bits
+/// Maximum literal payload size in a single DEFLATED_DATA record: 14 bits
 /// spread as `hi6 << 8 | lo8`.
 pub const MAX_DELTA_LITERAL_LEN: usize = 16_383;
 
 /// One decoded delta instruction. The compressed path's three distinct
-/// encodings are normalised into two op variants here — `CopyRun` with
+/// encodings are normalised into two op variants here: `CopyRun` with
 /// `run_length == 1` is equivalent to a single `Copy` and the caller gets
 /// to decide whether to coalesce at their layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2166,7 +2166,7 @@ pub enum DeltaOp {
         run_length: u16,
     },
     /// An opaque compressed literal payload. The bytes are the raw
-    /// contents of a self-contained zlib stream or zstd frame — the
+    /// contents of a self-contained zlib stream or zstd frame: the
     /// outer framing does NOT tell us which compressor produced them;
     /// the caller is expected to know from the negotiated algo.
     Literal { compressed_payload: Vec<u8> },
@@ -2199,7 +2199,7 @@ impl DeltaStreamState {
 pub enum DeltaOpOutcome {
     /// A regular delta op (CopyRun or Literal).
     Op(DeltaOp),
-    /// The `END_FLAG=0x00` sentinel — no more delta ops follow for this
+    /// The `END_FLAG=0x00` sentinel: no more delta ops follow for this
     /// file. The caller should then read the file-level strong checksum
     /// via `decode_file_checksum`.
     EndFlag,
@@ -2211,14 +2211,14 @@ pub enum DeltaOpOutcome {
 pub struct DeltaStreamReport {
     pub ops: Vec<DeltaOp>,
     /// Raw bytes of the file-level strong checksum (xxh128 / MD5 / SHA1 /
-    /// xxh3-derived — negotiated upfront, not tagged on the wire).
+    /// xxh3-derived: negotiated upfront, not tagged on the wire).
     pub file_checksum: Vec<u8>,
 }
 
 /// Decode one delta-stream record. Mutates `state.last_run_end` for
 /// TOKEN_REL / TOKENRUN_REL / TOKEN_LONG / TOKENRUN_LONG variants.
 /// Returns either an `Op` or the `EndFlag` sentinel plus the byte count
-/// consumed. The END_FLAG case returns `1` — the caller should then call
+/// consumed. The END_FLAG case returns `1`: the caller should then call
 /// `decode_file_checksum` against the following bytes.
 pub fn decode_delta_op(
     buf: &[u8],
@@ -2233,7 +2233,7 @@ pub fn decode_delta_op(
     }
     let tag = buf[0];
 
-    // END_FLAG — single byte, no state mutation.
+    // END_FLAG: single byte, no state mutation.
     if tag == TOKEN_END_FLAG {
         return Ok((DeltaOpOutcome::EndFlag, 1));
     }
@@ -2357,7 +2357,7 @@ pub fn decode_delta_op(
         ));
     }
 
-    // Any other tag byte is unknown — rsync itself exits on unknown tags.
+    // Any other tag byte is unknown: rsync itself exits on unknown tags.
     Err(RealWireError::DeltaTokenTruncated {
         at: "unknown_tag",
         needed: 1,
@@ -2366,7 +2366,7 @@ pub fn decode_delta_op(
 }
 
 /// Decode the file-level strong checksum that follows `END_FLAG`.
-/// The length is not encoded on the wire — it comes from the earlier
+/// The length is not encoded on the wire: it comes from the earlier
 /// algorithm negotiation (commonly 16 bytes for MD5 / xxh128, 20 for
 /// SHA1). Returns the checksum bytes and the consumed byte count.
 pub fn decode_file_checksum(buf: &[u8], len: usize) -> Result<(Vec<u8>, usize), RealWireError> {
@@ -2381,7 +2381,7 @@ pub fn decode_file_checksum(buf: &[u8], len: usize) -> Result<(Vec<u8>, usize), 
 }
 
 // ----------------------------------------------------------------------------
-// Sinergia 8i-encode — delta op + delta stream writers.
+// Sinergia 8i-encode: delta op + delta stream writers.
 //
 // Mirror of `decode_delta_op` / `decode_delta_stream`. For each
 // `CopyRun`, the encoder picks between the REL and LONG forms based
@@ -2397,7 +2397,7 @@ pub fn decode_file_checksum(buf: &[u8], len: usize) -> Result<(Vec<u8>, usize), 
 /// is updated for every `CopyRun` variant, mirroring the decoder.
 ///
 /// Panics on a `Literal` whose payload is empty or larger than
-/// `MAX_DELTA_LITERAL_LEN` — both are caller programming errors
+/// `MAX_DELTA_LITERAL_LEN`: both are caller programming errors
 /// (rsync never emits them; the decoder rejects them).
 pub fn encode_delta_op(op: &DeltaOp, state: &mut DeltaStreamState) -> Vec<u8> {
     match op {
@@ -2531,7 +2531,7 @@ pub fn decode_delta_stream(
 ///
 /// Implication for this decoder: calling a single-frame API like
 /// `zstd::stream::decode_all` on ONE literal fails with
-/// "incomplete frame" — the frame epilogue never ships. Callers MUST
+/// "incomplete frame": the frame epilogue never ships. Callers MUST
 /// feed the payloads in emission order through one streaming
 /// decoder; this helper does that by concatenating the compressed
 /// chunks and handing the result to `zstd::stream::Decoder`, which
@@ -2541,10 +2541,10 @@ pub fn decode_delta_stream(
 /// (the `zstd` crate is an optional dependency gated behind it).
 pub fn decompress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<u8>, RealWireError> {
     // A session-wide zstd context mirrors `recv_zstd_token`'s
-    // `zstd_dctx` (token.c:778+ — a single static DCtx across all
+    // `zstd_dctx` (token.c:778+: a single static DCtx across all
     // DEFLATED_DATA records of the session). Feeding one payload at a
     // time through `decompress_stream` matches the receiver's own
-    // ZSTD_decompressStream loop — and crucially does NOT require the
+    // ZSTD_decompressStream loop: and crucially does NOT require the
     // frame to be terminated, since the sender's encoder never emits
     // the frame epilogue (`send_zstd_token` uses ZSTD_e_continue or
     // ZSTD_e_flush, never ZSTD_e_end).
@@ -2568,7 +2568,7 @@ pub fn decompress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<u8>, Rea
             continue;
         }
         let mut input = InBuffer::around(payload);
-        // Loop until the current payload is fully consumed — each
+        // Loop until the current payload is fully consumed: each
         // `decompress_stream` call may produce 0 to `staging_capacity`
         // output bytes depending on how much of the frame is ready.
         while input.pos < payload.len() {
@@ -2630,7 +2630,7 @@ pub fn decompress_zstd_literal_stream_boundaries(
 }
 
 // ----------------------------------------------------------------------------
-// Sinergia 8i-encode — Fase 4: zstd literal stream compressor (mirror of
+// Sinergia 8i-encode: Fase 4: zstd literal stream compressor (mirror of
 // `decompress_zstd_literal_stream`).
 //
 // Produces one compressed `Vec<u8>` per input payload, suitable for
@@ -2643,7 +2643,7 @@ pub fn decompress_zstd_literal_stream_boundaries(
 //   - one final `compress_stream2` call with `EndDirective::Flush` per
 //     payload boundary (the `flush = ZSTD_e_flush` branch in
 //     token.c:741),
-//   - **NEVER** `EndDirective::End` — the frame epilogue is never
+//   - **NEVER** `EndDirective::End`: the frame epilogue is never
 //     written, the receiver's `recv_zstd_token` does not expect it.
 //
 // Round-trip pinned: feeding the output of this function into
@@ -2655,7 +2655,7 @@ pub fn decompress_zstd_literal_stream_boundaries(
 /// session-wide `ZSTD_CCtx`. Returns one compressed `Vec<u8>` per
 /// non-empty input payload, in encounter order.
 ///
-/// Empty input payloads are skipped silently — they yield no
+/// Empty input payloads are skipped silently: they yield no
 /// DEFLATED_DATA record (consistent with `send_zstd_token` not
 /// emitting an empty token, see token.c:691 `if (nb)` guard).
 ///
@@ -2669,7 +2669,7 @@ pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, 
     // `--compress-level` via `ZSTD_c_compressionLevel` set in `setup_zstd`
     // (token.c:608+). Default 3 is the rsync default for `--zstd` without
     // an explicit level. Round-trip semantics are insensitive to the
-    // exact level — any level decodes via the same DCtx loop.
+    // exact level: any level decodes via the same DCtx loop.
     ctx.set_parameter(CParameter::CompressionLevel(3))
         .map_err(|code| RealWireError::ZstdDecompressionFailed {
             reason: format!(
@@ -2707,7 +2707,7 @@ pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, 
         // Flush mode: drain the encoder so this payload's bytes land in
         // a DEFLATED_DATA-shippable block. Loop until `compress_stream2`
         // returns 0 (no more buffered bytes pending). MUST NOT use
-        // `EndDirective::End` — the receiver's `recv_zstd_token` does
+        // `EndDirective::End`: the receiver's `recv_zstd_token` does
         // not expect a frame epilogue.
         let empty: &[u8] = &[];
         loop {
@@ -2734,13 +2734,13 @@ pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, 
 }
 
 // =============================================================================
-// Sezione 8 — End-of-session summary frame (S8g)
+// Sezione 8: End-of-session summary frame (S8g)
 // =============================================================================
 //
 // Rsync 3.2.7 `main.c::handle_stats` (lines 323-386) is the centralised
 // point where per-session totals are written to / read from the wire. Of
 // the 5 call sites in `main.c` the one that reaches the wire in a
-// client<->server transfer is `handle_stats(f_out)` at line 960 — invoked
+// client<->server transfer is `handle_stats(f_out)` at line 960: invoked
 // by `do_server_sender` right after the final `io_flush(FULL_FLUSH)` of
 // `send_files`. Lookups on the other side: `handle_stats(f_in)` at line
 // 1056 in `do_recv` reads the same frame on the client receiver.
@@ -2762,7 +2762,7 @@ pub fn compress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<Vec<u8>>, 
 // total_size, flist_buildtime, flist_xfertime. The reader side in
 // `main.c::handle_stats` (line 364-370) swaps the first two in memory
 // because "read/write meaning swaps when switching from sender to
-// receiver" — this is an in-memory semantic swap by the CLIENT, not a
+// receiver": this is an in-memory semantic swap by the CLIENT, not a
 // wire reordering. On the wire the sender-side order is canonical.
 //
 // Session-level framing around the summary (proto >= 31, per
@@ -2804,7 +2804,7 @@ pub const PROTOCOL_SUMMARY_ADDS_FLIST_TIMES: u32 = 29;
 pub const PROTOCOL_SUMMARY_SWITCHES_TO_VARLONG: u32 = 30;
 
 /// Decoded end-of-session statistics. Missing optional fields are
-/// `None` only when `protocol_version < 29` — for proto >= 29 both
+/// `None` only when `protocol_version < 29`: for proto >= 29 both
 /// `flist_*` fields are always written on the wire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryFrame {
@@ -2832,7 +2832,7 @@ pub struct SummaryFrame {
 /// Protocol 30+ uses 5 × `write_varlong(_, _, 3)`. Protocol 29 uses 5
 /// × `write_longint`. Protocol 28 and older use 3 × `write_longint`.
 ///
-/// This function only parses the summary itself — the surrounding
+/// This function only parses the summary itself: the surrounding
 /// NDX_DONE markers (`main.c::read_final_goodbye`) belong to the caller.
 pub fn decode_summary_frame(
     buf: &[u8],
@@ -2893,7 +2893,7 @@ pub fn decode_summary_frame(
 
 /// Encode a `SummaryFrame` for the given protocol version. Mirrors
 /// `main.c::handle_stats` write path. Used only for round-trip unit
-/// tests — `real_wire.rs` is decode-oriented.
+/// tests: `real_wire.rs` is decode-oriented.
 pub fn encode_summary_frame(frame: &SummaryFrame, protocol_version: u32) -> Vec<u8> {
     let with_flist_times = protocol_version >= PROTOCOL_SUMMARY_ADDS_FLIST_TIMES;
     let use_varlong = protocol_version >= PROTOCOL_SUMMARY_SWITCHES_TO_VARLONG;
@@ -3121,7 +3121,7 @@ mod tests {
 
     #[test]
     fn server_preamble_rejects_non_ascii_algo_byte() {
-        // Length 3 with a NUL in the middle — should be surfaced with
+        // Length 3 with a NUL in the middle: should be surfaced with
         // offset so the caller can point at the offending byte. The
         // compat_flags varint is the single byte 0x00.
         let mut buf = Vec::new();
@@ -3129,7 +3129,7 @@ mod tests {
         buf.push(0x00); // varint(0)
         buf.push(3);
         buf.extend_from_slice(&[b'a', 0x00, b'b']);
-        // compression_algos section (len 0) + 4-byte seed — even though the
+        // compression_algos section (len 0) + 4-byte seed: even though the
         // checksum_algos section will already error out, finish the frame
         // so decode_server_preamble doesn't trip on a truncation first.
         buf.push(0);
@@ -3143,7 +3143,7 @@ mod tests {
 
     #[test]
     fn server_preamble_reads_one_byte_varint_compat_flags() {
-        // A simpler handshake where only CF_INC_RECURSE is set — varint
+        // A simpler handshake where only CF_INC_RECURSE is set: varint
         // fits in a single byte (0x01), so the preamble is 70 bytes
         // instead of 71. Locks the S8d fix: S8b would have read the
         // first byte of the checksum_algos length as compat_flags' high
@@ -3220,7 +3220,7 @@ mod tests {
                 ..
             })
         ));
-        // Subsequent next() returns None — iterator is exhausted once
+        // Subsequent next() returns None: iterator is exhausted once
         // an error is surfaced.
         assert!(demuxer.next().is_none());
     }
@@ -3324,7 +3324,7 @@ mod tests {
             }
             .encode(),
         );
-        buf.extend_from_slice(&[0xAA, 0xBB]); // short — only 2 of 5 bytes
+        buf.extend_from_slice(&[0xAA, 0xBB]); // short: only 2 of 5 bytes
         let err = reassemble_msg_data(&buf).unwrap_err();
         assert!(matches!(
             err,
@@ -3346,7 +3346,7 @@ mod tests {
 
     #[test]
     fn reassembly_oob_frames_carry_full_payload_alongside_legacy_lengths() {
-        // S8h regression — `oob_frames` MUST carry the same (tag, payload)
+        // S8h regression: `oob_frames` MUST carry the same (tag, payload)
         // sequence that `out_of_band` describes by length only. A drift
         // between the two would silently break event classification.
         let mut buf = Vec::new();
@@ -3393,7 +3393,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Sinergia 8h — Classified reassembly with OOB events.
+    // Sinergia 8h: Classified reassembly with OOB events.
     // -------------------------------------------------------------------------
 
     #[test]
@@ -3481,7 +3481,7 @@ mod tests {
 
     #[test]
     fn reassemble_until_terminal_does_not_consume_data_after_error() {
-        // HARDENING — pin S8h's stop semantics. A `MSG_DATA` frame that
+        // HARDENING: pin S8h's stop semantics. A `MSG_DATA` frame that
         // sits AFTER a terminal `MSG_ERROR` MUST NOT be appended to
         // `app_stream`. consumed_bytes stops at the end of the Error
         // frame's header + payload, not at end-of-buffer.
@@ -3903,7 +3903,7 @@ mod tests {
         let mut buf: Vec<u8> = Vec::new();
         let flags_lo = XMIT_EXTENDED_FLAGS as u8 | XMIT_TOP_DIR as u8;
         buf.push(flags_lo);
-        buf.push(0x20); // high byte — only XMIT_MOD_NSEC (0x2000 >> 8 = 0x20)
+        buf.push(0x20); // high byte: only XMIT_MOD_NSEC (0x2000 >> 8 = 0x20)
         buf.push(1);
         buf.extend_from_slice(b"x");
         buf.extend_from_slice(&encode_varlong(1, 3));
@@ -3937,7 +3937,7 @@ mod tests {
     #[test]
     fn decode_file_list_entry_same_name_without_previous_errors() {
         let mut buf: Vec<u8> = Vec::new();
-        // varint flags with XMIT_SAME_NAME set, l1 = 3 — and no
+        // varint flags with XMIT_SAME_NAME set, l1 = 3: and no
         // previous_name in the options.
         let flags = XMIT_SAME_NAME;
         buf.extend_from_slice(&encode_varint(flags as i32));
@@ -3954,8 +3954,8 @@ mod tests {
         let flags =
             XMIT_SAME_NAME | XMIT_SAME_UID | XMIT_SAME_GID | XMIT_SAME_TIME | XMIT_SAME_MODE;
         buf.extend_from_slice(&encode_varint(flags as i32));
-        buf.push(4); // l1 — reuse "/tmp" prefix
-        buf.push(3); // l2 — " .a"
+        buf.push(4); // l1: reuse "/tmp" prefix
+        buf.push(3); // l2: " .a"
         buf.extend_from_slice(b"/.a");
         buf.extend_from_slice(&encode_varlong(0, 3)); // size 0
 
@@ -3978,7 +3978,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Sinergia 8e — ndx / item_flags / sum_head / sum_block
+    // Sinergia 8e: ndx / item_flags / sum_head / sum_block
     // -------------------------------------------------------------------------
 
     #[test]
@@ -4069,7 +4069,7 @@ mod tests {
 
     #[test]
     fn decode_item_flags_round_trips_known_bits() {
-        // ITEM_TRANSFER | ITEM_REPORT_CHANGE = 0x8002 — the flag profile
+        // ITEM_TRANSFER | ITEM_REPORT_CHANGE = 0x8002: the flag profile
         // observed at the start of every per-file header in the frozen
         // oracle (both upload and download directions).
         let iflags = 0x8002u16;
@@ -4158,7 +4158,7 @@ mod tests {
         let buf: &[u8] = &[
             0xAB, 0xCD, 0xEF, 0x01, // rolling LE = 0x01EFCDAB
             0x42, 0x99, // strong (2 bytes)
-            0xFF, // extra byte past the block — must not be consumed
+            0xFF, // extra byte past the block: must not be consumed
         ];
         let (block, consumed) = decode_sum_block(buf, 2).unwrap();
         assert_eq!(consumed, 6);
@@ -4180,7 +4180,7 @@ mod tests {
         assert_eq!(available, 5);
     }
 
-    // S8e hardening — edge cases surfaced while reading `io.c::write_ndx`
+    // S8e hardening: edge cases surfaced while reading `io.c::write_ndx`
     // against `io.c::read_ndx`. Not on the frozen oracle's happy path but
     // they pin the decoder's contract so future changes can't drift.
 
@@ -4226,7 +4226,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Sezione 7 — delta instruction stream
+    // Sezione 7: delta instruction stream
     // -------------------------------------------------------------------------
 
     #[test]
@@ -4278,11 +4278,11 @@ mod tests {
 
     #[test]
     fn decode_delta_op_deflated_data_parses_len_and_payload() {
-        // `41 1D 28 B5 2F FD ... (285 bytes total payload)` — frozen oracle
+        // `41 1D 28 B5 2F FD ... (285 bytes total payload)`: frozen oracle
         // shape for the first LITERAL. hi6=1, lo8=0x1D → len=285.
         let mut payload_bytes: Vec<u8> = vec![0x41, 0x1D];
         // Fabricate a deterministic 285-byte payload (content doesn't matter
-        // here — the decoder returns it opaque).
+        // here: the decoder returns it opaque).
         payload_bytes.extend((0..285u16).map(|i| (i & 0xFF) as u8));
 
         let mut state = DeltaStreamState::new();
@@ -4472,7 +4472,7 @@ mod tests {
     #[test]
     fn decode_delta_stream_empty_deltas_still_reads_file_checksum() {
         // Stream with only END_FLAG + 16-byte checksum. rsync may emit
-        // this when every block matches AND nothing is literal — a
+        // this when every block matches AND nothing is literal: a
         // pathological case that pins the "zero ops" code path.
         let mut wire = vec![TOKEN_END_FLAG];
         wire.extend_from_slice(&[0xAB; 16]);
@@ -4524,12 +4524,12 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Section 8 — Summary frame (S8g)
+    // Section 8: Summary frame (S8g)
     // -------------------------------------------------------------------------
 
     #[test]
     fn summary_frame_proto31_round_trip_small_values() {
-        // Canonical proto 31 frame with small positive values — every
+        // Canonical proto 31 frame with small positive values: every
         // varlong fits in the 3-byte floor.
         let frame = SummaryFrame {
             total_read: 42,
@@ -4649,7 +4649,7 @@ mod tests {
         };
         let wire = encode_summary_frame(&frame, 31);
         let (_, consumed) = decode_summary_frame(&wire, 31).unwrap();
-        // Hardening: consumed must exactly match the buffer length —
+        // Hardening: consumed must exactly match the buffer length -
         // a reader that over- or under-consumes would desync the next
         // frame.
         assert_eq!(consumed, wire.len());
@@ -4657,7 +4657,7 @@ mod tests {
 
     #[test]
     fn summary_frame_proto32_behaves_like_proto31() {
-        // Proto 32 doesn't change `handle_stats` — wire format must be
+        // Proto 32 doesn't change `handle_stats`: wire format must be
         // bit-identical to proto 31.
         let frame = SummaryFrame {
             total_read: 100,
@@ -4785,7 +4785,7 @@ mod tests {
     fn decompress_zstd_literal_stream_round_trip_single_complete_frame_ascii() {
         // A caller-supplied single-element slice with a complete zstd
         // frame (`encode_all` terminates with `ZSTD_e_end`) must
-        // round-trip. This is the synthetic-test path — NOT what
+        // round-trip. This is the synthetic-test path: NOT what
         // rsync emits on the wire (see token.c:741 / ZSTD_e_flush
         // without ZSTD_e_end).
         let original: Vec<u8> = b"real-live-upload sample payload".to_vec();
@@ -4847,7 +4847,7 @@ mod tests {
     fn decompress_zstd_literal_stream_accepts_unfinished_frame() {
         // Hardening: rsync's `send_zstd_token` (token.c:741) calls
         // `ZSTD_compressStream2` with `ZSTD_e_flush` but NEVER
-        // `ZSTD_e_end` — the frame epilogue is never shipped. The
+        // `ZSTD_e_end`: the frame epilogue is never shipped. The
         // stream-aware decoder MUST tolerate a prefix of a frame
         // that has only seen flushes; a pedantic "frame not
         // terminated" error here would break every real capture.
@@ -4904,7 +4904,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Sinergia 8i-encode — Fase 1: preamble + sum_block + file_csum encoders.
+    // Sinergia 8i-encode: Fase 1: preamble + sum_block + file_csum encoders.
     // -------------------------------------------------------------------------
 
     #[test]
@@ -4929,7 +4929,7 @@ mod tests {
 
     #[test]
     fn server_preamble_round_trip_minimal_compat_flags() {
-        // Single-byte compat_flags varint (0x00) — pin the boundary
+        // Single-byte compat_flags varint (0x00): pin the boundary
         // where varint encoder emits exactly one byte.
         let original = ServerPreamble {
             protocol_version: 30,
@@ -4996,7 +4996,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "is not printable ASCII")]
     fn write_u8_len_prefixed_ascii_rejects_non_ascii_at_caller_boundary() {
-        // HARDENING — a non-ASCII byte in the algo list is a programmer
+        // HARDENING: a non-ASCII byte in the algo list is a programmer
         // error caught at encode time, never silently smuggled.
         let mut out = Vec::new();
         write_u8_len_prefixed_ascii(&mut out, "zstd\u{00FF}", "test");
@@ -5011,7 +5011,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Sinergia 8i-encode — Fase 2: file_list_entry round-trip.
+    // Sinergia 8i-encode: Fase 2: file_list_entry round-trip.
     // -------------------------------------------------------------------------
 
     fn frozen_oracle_options_for_test<'a>(prev: Option<&'a str>) -> FileListDecodeOptions<'a> {
@@ -5243,7 +5243,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // B.2 Step 3 — Byte-level pin against the frozen oracle's first
+    // B.2 Step 3: Byte-level pin against the frozen oracle's first
     // MSG_DATA payload (file list entry + checksum + end-of-flist +
     // NDX_FLIST_EOF marker, 67 bytes total). The expected bytes are taken
     // verbatim from
@@ -5258,7 +5258,7 @@ mod tests {
     fn oracle_upload_bin_entry() -> FileListEntry {
         FileListEntry {
             // xflags varint = 0x2c00 = USER_NAME_FOLLOWS | GROUP_NAME_FOLLOWS | MOD_NSEC.
-            // No SAME_* and no LONG_NAME — first entry, name <= 255.
+            // No SAME_* and no LONG_NAME: first entry, name <= 255.
             flags: XMIT_USER_NAME_FOLLOWS | XMIT_GROUP_NAME_FOLLOWS | XMIT_MOD_NSEC,
             path: "upload.bin".to_string(),
             size: 262_144,
@@ -5291,7 +5291,7 @@ mod tests {
         }
     }
 
-    /// Bytes [0..63] of the oracle file-list MSG_DATA payload — the
+    /// Bytes [0..63] of the oracle file-list MSG_DATA payload: the
     /// FileListEntry (47 B) + the 16-byte xxh128 file checksum.
     const ORACLE_FLIST_ENTRY_BYTES: &[u8] = &[
         // xflags varint (0x2c00 → "ac 00")
@@ -5325,7 +5325,7 @@ mod tests {
 
     #[test]
     fn encode_file_list_terminator_emits_two_zero_bytes_in_varint_mode() {
-        // After the entry, the oracle emits `00 00` — write_varint(0) for
+        // After the entry, the oracle emits `00 00`: write_varint(0) for
         // the flags terminator AND write_varint(0) for the io_error
         // count (write_end_of_flist with `xfer_flags_as_varint`).
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
@@ -5352,7 +5352,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Sinergia 8i-encode — Fase 3: delta op + delta stream round-trip.
+    // Sinergia 8i-encode: Fase 3: delta op + delta stream round-trip.
     // -------------------------------------------------------------------------
 
     fn round_trip_delta_op(op: DeltaOp, expected_form: &'static str) {
@@ -5546,7 +5546,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Sinergia 8i-encode — Fase 4: zstd literal stream compress round-trip.
+    // Sinergia 8i-encode: Fase 4: zstd literal stream compress round-trip.
     // -------------------------------------------------------------------------
 
     #[test]
@@ -5557,7 +5557,7 @@ mod tests {
 
     #[test]
     fn compress_zstd_literal_stream_skips_empty_payloads_silently() {
-        // Mirrors token.c:691 `if (nb)` guard — empty payloads do not
+        // Mirrors token.c:691 `if (nb)` guard: empty payloads do not
         // produce DEFLATED_DATA records.
         let blobs = compress_zstd_literal_stream(&[&[][..], &[][..]]).unwrap();
         assert!(blobs.is_empty());
@@ -5607,7 +5607,7 @@ mod tests {
 
     #[test]
     fn compress_zstd_literal_stream_each_payload_is_independently_decodable_in_session() {
-        // HARDENING — pin the per-payload boundary semantics: feeding
+        // HARDENING: pin the per-payload boundary semantics: feeding
         // ONLY the first compressed blob to the session decoder must
         // yield exactly the first payload's bytes (because we flushed
         // at the boundary). A drift to ZSTD_e_continue (no flush)
@@ -5623,7 +5623,7 @@ mod tests {
     }
 
     // ==========================================================================
-    // Sinergia 8i — MuxStreamReader (streaming demuxer + progress counter)
+    // Sinergia 8i: MuxStreamReader (streaming demuxer + progress counter)
     // ==========================================================================
 
     use crate::aerorsync::events::AerorsyncEvent;
@@ -5699,7 +5699,7 @@ mod tests {
 
     #[test]
     fn mux_stream_reader_feeds_chunks_across_frame_boundary() {
-        // Split one frame across two feeds — must still pop correctly.
+        // Split one frame across two feeds: must still pop correctly.
         let mut r = MuxStreamReader::new();
         let frm = frame(MuxTag::Data, b"chunked_payload");
         let mid = MUX_HEADER_LEN + 3; // header + first 3 bytes of payload
@@ -5745,7 +5745,7 @@ mod tests {
 
     #[test]
     fn mux_stream_reader_terminal_locks_further_polls_hardening() {
-        // HARDENING — after a terminal event, even if the buffer holds a
+        // HARDENING: after a terminal event, even if the buffer holds a
         // complete subsequent Data frame, `poll_frame` MUST return None.
         // The driver cannot be allowed to process app-stream bytes that
         // arrived after the remote bailed. Mirrors the bail semantics of
@@ -5781,7 +5781,7 @@ mod tests {
     #[test]
     fn mux_stream_reader_malformed_header_returns_error() {
         let mut r = MuxStreamReader::new();
-        // High byte below MPLEX_BASE (7) — invalid per `MuxHeader::decode`.
+        // High byte below MPLEX_BASE (7): invalid per `MuxHeader::decode`.
         r.feed(&[0x00, 0x00, 0x00, 0x00]);
         match r.poll_frame().unwrap() {
             Err(RealWireError::InvalidMuxHeader { .. }) => {}
@@ -5791,7 +5791,7 @@ mod tests {
 
     #[test]
     fn mux_stream_reader_counter_monotone_under_interleaved_feed_poll() {
-        // HARDENING — stress: interleave small feeds and polls. Counter
+        // HARDENING: stress: interleave small feeds and polls. Counter
         // must be monotone and match the sum of MSG_DATA payload lengths.
         let mut r = MuxStreamReader::new();
         let mut big = Vec::new();
@@ -5822,7 +5822,7 @@ mod tests {
     #[test]
     fn mux_stream_reader_error_exit_zero_is_oob_not_terminal() {
         // Regression: ErrorExit with code 0 is non-terminal per events.rs
-        // policy. MuxStreamReader MUST classify it as Oob, not Terminal —
+        // policy. MuxStreamReader MUST classify it as Oob, not Terminal -
         // otherwise a cleanup signal would wrongly lock the reader.
         let mut r = MuxStreamReader::new();
         r.feed(&frame(MuxTag::ErrorExit, &[0u8, 0, 0, 0]));

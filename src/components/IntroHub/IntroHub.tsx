@@ -4,7 +4,7 @@ import { ConnectionParams, ServerProfile } from '../../types';
 import { IntroHubHeader, FormTab } from './IntroHubHeader';
 import { MyServersPanel } from './MyServersPanel';
 import { DiscoverPanel } from './DiscoverPanel';
-// CommandPalette removed — search is redundant with filter chips
+// CommandPalette removed: search is redundant with filter chips
 import { ConnectionScreen } from '../ConnectionScreen';
 import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
@@ -25,9 +25,9 @@ interface FormTabState extends FormTab {
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
     originTab?: string;
-    /** Original label set at tab creation — used as fallback when server field is empty */
+    /** Original label set at tab creation: used as fallback when server field is empty */
     defaultLabel: string;
-    /** User-typed connection name — takes priority over server-derived label */
+    /** User-typed connection name: takes priority over server-derived label */
     userLabel?: string;
 }
 
@@ -92,7 +92,7 @@ export function IntroHub(props: IntroHubProps) {
     const [formTabs, setFormTabs] = useState<FormTabState[]>([]);
 
     // Command Palette
-    // showPalette removed — CommandPalette was redundant with filter chips
+    // showPalette removed: CommandPalette was redundant with filter chips
 
     // Saved servers for Command Palette
     const [paletteServers, setPaletteServers] = useState<ServerProfile[]>([]);
@@ -126,7 +126,7 @@ export function IntroHub(props: IntroHubProps) {
 
     // Jump to Discover preselected on a specific category (used by empty-state shortcuts).
     // DiscoverPanel reads `aeroftp-discover-category` from localStorage on mount, and it
-    // remounts on tab switch — so writing the key BEFORE switching tabs is enough.
+    // remounts on tab switch: so writing the key BEFORE switching tabs is enough.
     const handleJumpToCategory = useCallback((categoryId: CatalogCategoryId) => {
         try { localStorage.setItem('aeroftp-discover-category', categoryId); } catch { /* ignore */ }
         setActiveTab('discover');
@@ -204,7 +204,7 @@ export function IntroHub(props: IntroHubProps) {
         setActiveTab(id);
     }, [formTabs, activeTab]);
 
-    // Close a form tab — return to the tab that opened it
+    // Close a form tab: return to the tab that opened it
     const handleCloseFormTab = useCallback((tabId: string) => {
         setFormTabs(prev => {
             const closing = prev.find(ft => ft.id === tabId);
@@ -245,12 +245,12 @@ export function IntroHub(props: IntroHubProps) {
     }, []);
 
     // Update form tab label when user types a connection name (highest priority).
-    // Empty name clears the override — label falls back to server hostname or default.
+    // Empty name clears the override: label falls back to server hostname or default.
     const updateFormTabLabel = useCallback((tabId: string, name: string) => {
         setFormTabs(prev => prev.map(ft => {
             if (ft.id !== tabId) return ft;
             if (!name) {
-                // Clear user override — derive from current server or default
+                // Clear user override: derive from current server or default
                 const raw = ft.connectionParams.server?.trim() || '';
                 const cleaned = raw.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
                 const provider = ft.providerId ? getProviderById(ft.providerId) : undefined;
@@ -269,7 +269,7 @@ export function IntroHub(props: IntroHubProps) {
 
     // Command Palette
     const handleCommandPalette = useCallback(() => {
-        // no-op — CommandPalette removed
+        // no-op: CommandPalette removed
     }, []);
 
     // Connect from Command Palette (saved server)

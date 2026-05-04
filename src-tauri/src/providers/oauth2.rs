@@ -5,7 +5,7 @@
 //! for secure token storage.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use oauth2::{
     basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
@@ -358,7 +358,7 @@ impl OAuthConfig {
     }
 }
 
-/// Stored OAuth2 tokens — zeroized on drop (VER-007)
+/// Stored OAuth2 tokens: zeroized on drop (VER-007)
 #[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct StoredTokens {
     pub access_token: String,
@@ -585,7 +585,7 @@ impl OAuth2Manager {
             return Ok(());
         }
 
-        // Vault not open — try auto-initializing vault first
+        // Vault not open: try auto-initializing vault first
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                 store
@@ -596,7 +596,7 @@ impl OAuth2Manager {
             }
         }
 
-        // Vault requires master password — store in memory only (never on disk unencrypted)
+        // Vault requires master password: store in memory only (never on disk unencrypted)
         if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
             let map = cache.get_or_insert_with(HashMap::new);
             map.insert(account, json);
@@ -629,14 +629,14 @@ impl OAuth2Manager {
             }
         }
 
-        // Legacy: try plaintext file — migrate to vault immediately, then delete the file
+        // Legacy: try plaintext file: migrate to vault immediately, then delete the file
         let legacy_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         let json = std::fs::read_to_string(&legacy_path)
             .map_err(|e| ProviderError::AuthenticationFailed(format!("No stored tokens: {}", e)))?;
 
         warn!(
-            "Found legacy plaintext OAuth token file for {:?} — migrating to vault",
+            "Found legacy plaintext OAuth token file for {:?}: migrating to vault",
             provider
         );
 
@@ -683,7 +683,7 @@ impl OAuth2Manager {
             }
         } else {
             warn!(
-                "Could not migrate legacy tokens to vault for {:?} — vault unavailable. \
+                "Could not migrate legacy tokens to vault for {:?}: vault unavailable. \
                  Plaintext file remains until vault is unlocked.",
                 provider
             );

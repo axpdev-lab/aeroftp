@@ -32,7 +32,7 @@ export interface TwoFactorPromptDialogProps {
     /** Submit handler. Receives the 6-digit code. Caller drives the retry
      *  and is expected to flip `loading` while the connect runs. */
     onSubmit: (code: string) => void | Promise<void>;
-    /** Cancel handler — Esc, click outside, or the explicit Cancel button. */
+    /** Cancel handler: Esc, click outside, or the explicit Cancel button. */
     onCancel: () => void;
     /** Whether a connect attempt is currently in flight. Disables the form. */
     loading?: boolean;

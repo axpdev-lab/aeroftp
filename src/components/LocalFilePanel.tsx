@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * LocalFilePanel — extracted from App.tsx
+ * LocalFilePanel: extracted from App.tsx
  *
  * Renders the complete local file panel: header (breadcrumb/address bar),
  * search bar, sidebar, and file views (list/grid/large-icons/trash).
@@ -506,7 +506,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
           <div className="flex-1 overflow-auto">
             <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t('trash.title')} — {t('trash.itemCount', { count: trashItems.length })}
+                {t('trash.title')}: {t('trash.itemCount', { count: trashItems.length })}
               </span>
               <div className="flex-1" />
               {trashItems.length > 0 && (
@@ -577,14 +577,14 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             };
             const renderEmptyExtra = (id: AeroFileLocalColId) => {
               const cls = id === 'type' ? 'hidden xl:table-cell px-3 py-2 text-sm text-gray-400' : 'px-4 py-2 text-sm text-gray-400';
-              return <td key={id} className={cls}>—</td>;
+              return <td key={id} className={cls}>-</td>;
             };
             const renderFileExtra = (id: AeroFileLocalColId, file: LocalFile) => {
               switch (id) {
                 case 'size':
                   return <td key="size" className="px-4 py-2 text-sm text-gray-500">{file.size !== null ? (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : formatBytes(file.size)) : '-'}</td>;
                 case 'type':
-                  return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>;
+                  return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '-')}</td>;
                 case 'modified':
                   return <td key="modified" className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">{formatDate(file.modified)}</td>;
                 default:

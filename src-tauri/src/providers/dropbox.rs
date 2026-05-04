@@ -4,7 +4,7 @@
 //! Uses OAuth2 for authentication.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -825,7 +825,7 @@ impl StorageProvider for DropboxProvider {
         const UPLOAD_SESSION_THRESHOLD: u64 = 150 * 1024 * 1024; // 150MB
 
         if file_size > UPLOAD_SESSION_THRESHOLD {
-            // Upload session for large files — read chunks from file, not all in memory
+            // Upload session for large files: read chunks from file, not all in memory
             const CHUNK_SIZE: u64 = 128 * 1024 * 1024; // 128MB
             let mut file = tokio::fs::File::open(local_path)
                 .await
@@ -953,7 +953,7 @@ impl StorageProvider for DropboxProvider {
                 )));
             }
         } else {
-            // Simple upload — stream file content without loading into memory
+            // Simple upload: stream file content without loading into memory
             let file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;

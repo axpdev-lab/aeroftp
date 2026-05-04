@@ -4,7 +4,7 @@
 // Cross-checks the TS dedup logic against the same six scenarios the Rust
 // twin (src-tauri/src/storage_dedup.rs) covers under cargo test. The two
 // implementations need not produce byte-identical dedup keys (TS uses a fast
-// non-crypto hash, Rust uses SHA-256/12) — only the aggregation result must
+// non-crypto hash, Rust uses SHA-256/12): only the aggregation result must
 // agree on the same input data.
 
 import { describe, expect, it } from 'vitest';

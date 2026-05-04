@@ -8,7 +8,7 @@
 //!
 //! Previously the rsync wrapper forced `LC_NUMERIC=C LC_ALL=C` on the child
 //! process so our parsers only ever saw the en_US shape. That was a workaround
-//! — the correct fix is a parser that understands both conventions. These
+//!: the correct fix is a parser that understands both conventions. These
 //! helpers do exactly that, without depending on any crate.
 //!
 //! ## Rules
@@ -29,7 +29,7 @@
 //! the decimal field is always 2 digits, which the rules disambiguate.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /// Parse an integer from a human-formatted string where thousands may be
 /// separated by `.`, `,`, or whitespace. Trailing non-numeric characters are

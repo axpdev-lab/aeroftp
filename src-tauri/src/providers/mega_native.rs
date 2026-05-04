@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-//! MEGA Native API Provider — full JSON-RPC implementation.
+//! MEGA Native API Provider: full JSON-RPC implementation.
 //! Connects directly to MEGA servers without MEGAcmd dependency.
 
 use async_trait::async_trait;
@@ -331,12 +331,12 @@ fn map_mega_error_code(code: i64) -> ProviderError {
         -15 => ProviderError::AuthenticationFailed("MEGA session ID invalid".to_string()),
         -16 => ProviderError::ServerError("MEGA over quota".to_string()),
         // MEGA two-factor authentication error codes:
-        //   -26 EMFAREQUIRED — account has 2FA enabled and the request was
+        //   -26 EMFAREQUIRED: account has 2FA enabled and the request was
         //                       missing the `mfa` field
-        //   -27 EMASTERONLY  — operation needs master account access
+        //   -27 EMASTERONLY : operation needs master account access
         //   -28 EBUSINESSPASTDUE
         //   -29 EPAYWALL
-        //   -22 ENOTOKEN     — the supplied 2FA token was not accepted
+        //   -22 ENOTOKEN    : the supplied 2FA token was not accepted
         // The user-facing message must be specific so the UI can prompt
         // the user to enter or re-enter their TOTP.
         -22 => ProviderError::AuthenticationFailed(
@@ -1158,7 +1158,7 @@ impl StorageProvider for MegaNativeProvider {
         // Without this guard, try_resume_session() would short-circuit on a
         // persisted session_id from a previous (pre-2FA) connect, and the
         // server-side `mfa` validation in login_v1 / login_v2 would never run
-        // (issue #128 — reported during v3.6.8 dev testing). The TOTP is
+        // (issue #128: reported during v3.6.8 dev testing). The TOTP is
         // single-use and only kept in memory for one connect attempt, so its
         // presence is a clear "I want a fresh authentication" signal.
         if self.config.two_factor_code.is_some() {
@@ -1822,7 +1822,7 @@ impl MegaNativeProvider {
             Ok(_) => {}
             Err(ProviderError::ParseError(_)) => {
                 tracing::warn!(
-                    "[MEGA Native] Delete response parse error for '{}' — node likely deleted",
+                    "[MEGA Native] Delete response parse error for '{}': node likely deleted",
                     filename
                 );
             }

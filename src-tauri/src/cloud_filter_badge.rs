@@ -4,10 +4,10 @@
 //! (green checkmark for synced, sync arrows for pending) without requiring
 //! a COM Shell Icon Overlay DLL.
 //!
-//! All functions are `#[cfg(windows)]` — this module is only compiled on Windows.
+//! All functions are `#[cfg(windows)]`: this module is only compiled on Windows.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, RwLock};
@@ -48,7 +48,7 @@ pub fn register_cloud_sync_root(path: &Path, display_name: &str) -> Result<(), S
     let policies = CF_SYNC_POLICIES {
         StructSize: std::mem::size_of::<CF_SYNC_POLICIES>() as u32,
         Hydration: CF_HYDRATION_POLICY {
-            Primary: CF_HYDRATION_POLICY_PRIMARY(0x0002), // FULL — all data available locally
+            Primary: CF_HYDRATION_POLICY_PRIMARY(0x0002), // FULL: all data available locally
             Modifier: CF_HYDRATION_POLICY_MODIFIER(0),
         },
         Population: CF_POPULATION_POLICY {
@@ -64,7 +64,7 @@ pub fn register_cloud_sync_root(path: &Path, display_name: &str) -> Result<(), S
             .map_err(|e| format!("CfRegisterSyncRoot failed: {}", e))?;
     }
 
-    // Track this root (recover from poisoned lock — audit fix GB2-012)
+    // Track this root (recover from poisoned lock: audit fix GB2-012)
     {
         let mut roots = REGISTERED_ROOTS.write().unwrap_or_else(|p| p.into_inner());
         if !roots.contains(&path.to_path_buf()) {

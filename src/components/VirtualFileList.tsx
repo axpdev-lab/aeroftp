@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * VirtualFileList — virtualized file list using react-window v2
+ * VirtualFileList: virtualized file list using react-window v2
  *
  * Drop-in replacement for the table-based file list in both local and remote panels.
- * Uses List for O(visible) DOM nodes instead of O(total) — critical for
+ * Uses List for O(visible) DOM nodes instead of O(total): critical for
  * directories with 10,000+ files.
  *
  * Layout: div-based flex rows matching the original table column alignment.

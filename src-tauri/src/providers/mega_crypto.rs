@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-//! MEGA protocol cryptography — AES-128, RSA, KDF v1/v2, node key management.
+//! MEGA protocol cryptography: AES-128, RSA, KDF v1/v2, node key management.
 //! Implements the MEGA file encryption protocol as specified in APPENDIX-N/N2.
 
 use aes::cipher::{generic_array::GenericArray, BlockDecrypt, BlockEncrypt, KeyInit};
@@ -172,7 +172,7 @@ pub fn aes_ecb_encrypt_multi(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Ve
 type Aes128CbcDec = cbc::Decryptor<Aes128>;
 type Aes128CbcEnc = cbc::Encryptor<Aes128>;
 
-/// AES-128-CBC decrypt (zero IV, no padding — MEGA node attributes).
+/// AES-128-CBC decrypt (zero IV, no padding: MEGA node attributes).
 pub fn aes_cbc_decrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
     if data.len() % 16 != 0 {
         return Err(ProviderError::ParseError(format!(
@@ -188,7 +188,7 @@ pub fn aes_cbc_decrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>>
     Ok(buf)
 }
 
-/// AES-128-CBC encrypt (zero IV, no padding — MEGA node attributes).
+/// AES-128-CBC encrypt (zero IV, no padding: MEGA node attributes).
 pub fn aes_cbc_encrypt(data: &[u8], key: &[u8; 16]) -> MegaCryptoResult<Vec<u8>> {
     if data.len() % 16 != 0 {
         return Err(ProviderError::ParseError(format!(
@@ -217,7 +217,7 @@ fn build_ctr_iv(nonce: &[u8; 8], offset: u64) -> [u8; 16] {
     iv
 }
 
-/// AES-128-CTR decrypt (symmetric — also used for encrypt).
+/// AES-128-CTR decrypt (symmetric: also used for encrypt).
 pub fn aes_ctr_decrypt(
     data: &[u8],
     key: &[u8; 16],
@@ -231,7 +231,7 @@ pub fn aes_ctr_decrypt(
     Ok(buf)
 }
 
-/// AES-128-CTR encrypt (same as decrypt — CTR is symmetric).
+/// AES-128-CTR encrypt (same as decrypt: CTR is symmetric).
 pub fn aes_ctr_encrypt(
     data: &[u8],
     key: &[u8; 16],
@@ -241,7 +241,7 @@ pub fn aes_ctr_encrypt(
     aes_ctr_decrypt(data, key, nonce, offset) // CTR mode is symmetric
 }
 
-/// AES-128-CTR decrypt/encrypt **in-place** — zero extra allocation.
+/// AES-128-CTR decrypt/encrypt **in-place**: zero extra allocation.
 /// Used by streaming download/upload to avoid 2x-3x memory overhead.
 pub fn aes_ctr_apply_inplace(buf: &mut [u8], key: &[u8; 16], nonce: &[u8; 8], offset: u64) {
     let iv = build_ctr_iv(nonce, offset);
@@ -348,7 +348,7 @@ pub fn decrypt_node_attrs(encrypted: &[u8], key: &[u8]) -> MegaCryptoResult<Stri
         ));
     }
 
-    // Find the JSON object — strip "MEGA" prefix and any trailing null bytes
+    // Find the JSON object: strip "MEGA" prefix and any trailing null bytes
     let json_bytes = &decrypted[4..];
     let json_str = std::str::from_utf8(json_bytes)
         .unwrap_or_else(|_| {

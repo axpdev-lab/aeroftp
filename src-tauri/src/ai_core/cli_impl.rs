@@ -1,10 +1,10 @@
 //! CLI implementations of AI Core traits
 //!
 //! Used by the aeroftp-cli binary when running in agent mode.
-//! No Tauri dependency — pure Rust.
+//! No Tauri dependency: pure Rust.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -20,7 +20,7 @@ use crate::providers::{RemoteEntry, StorageProvider};
 
 // ─── CliEventSink ─────────────────────────────────────────────────────
 
-/// CLI event sink — writes streaming output to stdout/stderr.
+/// CLI event sink: writes streaming output to stdout/stderr.
 pub struct CliEventSink {
     pub json_mode: bool,
 }
@@ -69,7 +69,7 @@ impl EventSink for CliEventSink {
 
 // ─── StdioEventSink ───────────────────────────────────────────────────
 
-/// JSON-RPC event sink for orchestration mode — line-delimited JSON on stdout.
+/// JSON-RPC event sink for orchestration mode: line-delimited JSON on stdout.
 pub struct StdioEventSink;
 
 impl EventSink for StdioEventSink {
@@ -114,7 +114,7 @@ impl EventSink for StdioEventSink {
 
 // ─── CliCredentialProvider ─────────────────────────────────────────────
 
-/// CLI credential provider — vault cache (if open) → env vars (AEROFTP_HOST/USER/PASS).
+/// CLI credential provider: vault cache (if open) → env vars (AEROFTP_HOST/USER/PASS).
 pub struct CliCredentialProvider;
 
 impl CredentialProvider for CliCredentialProvider {
@@ -163,7 +163,7 @@ impl CredentialProvider for CliCredentialProvider {
                 }
             }
         }
-        // No vault — return empty
+        // No vault: return empty
         Ok(Vec::new())
     }
 
@@ -240,7 +240,7 @@ impl CredentialProvider for CliCredentialProvider {
 
 // ─── NullRemoteBackend ────────────────────────────────────────────────
 
-/// No-op remote backend — used when no server is connected in CLI mode.
+/// No-op remote backend: used when no server is connected in CLI mode.
 pub struct NullRemoteBackend;
 
 #[async_trait]

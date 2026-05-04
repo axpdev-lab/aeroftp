@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -101,7 +101,7 @@ export function useFaviconDetection(
           logger.debug('favicon-detection: miss', { sessionId: session.id, command, searchPaths });
         }
       } catch (e) {
-        // Detection failed silently — log to dev console so first-run failures
+        // Detection failed silently: log to dev console so first-run failures
         // surface to the user instead of being swallowed.
         logger.warn('favicon-detection: error', e);
         if (!cancelled) {

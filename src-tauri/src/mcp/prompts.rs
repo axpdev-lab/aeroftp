@@ -1,13 +1,13 @@
 //! MCP prompt templates
 //!
 //! 4 reusable prompt templates for common file transfer workflows:
-//! - deploy_files — upload build artifacts to server
-//! - backup_remote — download remote directory as backup
-//! - sync_directories — synchronize local and remote directories
-//! - find_and_clean — find and remove old/large files
+//! - deploy_files: upload build artifacts to server
+//! - backup_remote: download remote directory as backup
+//! - sync_directories: synchronize local and remote directories
+//! - find_and_clean: find and remove old/large files
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde_json::{json, Value};
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -344,7 +344,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
         // Check if this is an OAuth provider
         if (server.protocol && isOAuthProvider(server.protocol)) {
-            // SEC: Load credentials from vault only — no localStorage fallback.
+            // SEC: Load credentials from vault only: no localStorage fallback.
             let credentials: { clientId: string; clientSecret: string } | null = null;
             credentials = await loadOAuthCredentials(server.protocol);
 
@@ -441,7 +441,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             return;
         }
 
-        // 4shared OAuth 1.0 — separate flow from OAuth2
+        // 4shared OAuth 1.0: separate flow from OAuth2
         if (server.protocol && isFourSharedProvider(server.protocol)) {
             // Load consumer credentials from vault
             let consumerKey = '';
@@ -470,7 +470,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 try {
                     result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
                 } catch (connectErr) {
-                    // Token expired — re-authenticate
+                    // Token expired: re-authenticate
                     await invoke('fourshared_full_auth', { params });
                     result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
                 }
@@ -522,7 +522,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             try {
                 password = await getCredentialWithRetry(`server_${server.id}`);
             } catch {
-                // Credential not found — password empty (never saved or server without password)
+                // Credential not found: password empty (never saved or server without password)
             }
 
             // Build connection params - for providers, don't append port to host
@@ -561,7 +561,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 }
             }
         } catch {
-            // Connection error handled by parent — reset loading state
+            // Connection error handled by parent: reset loading state
         } finally {
             setConnectingId(null);
         }
@@ -638,7 +638,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             )}
 
             <div ref={listRef} className="space-y-2 max-h-[calc(100vh-80px)] overflow-y-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-                {/* Search bar inside scrollable container — sticky at top, same width as servers */}
+                {/* Search bar inside scrollable container: sticky at top, same width as servers */}
                 {showSearch && (
                     <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 pb-1">
                         <div className="relative">
@@ -687,7 +687,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                              title={t('savedServers.dragToReorder')}>
                             <GripVertical size={16} />
                         </div>
-                            {/* Server icon — click to connect */}
+                            {/* Server icon: click to connect */}
                         {(() => {
                             const logoKey = server.providerId || server.protocol || '';
                             const LogoComponent = PROVIDER_LOGOS[logoKey];
@@ -712,7 +712,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                 </button>
                             );
                         })()}
-                        {/* Server info — not clickable for connection */}
+                        {/* Server info: not clickable for connection */}
                         <div className="flex-1 min-w-0">
                                 <div className="font-medium flex items-center gap-2">
                                     {server.name || server.host}

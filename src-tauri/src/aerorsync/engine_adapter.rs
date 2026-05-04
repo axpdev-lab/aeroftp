@@ -14,7 +14,7 @@
 //! Separation of concerns: this module DOES translate between prototype
 //! types and the production engine, but DOES NOT replicate any algorithm.
 //! If `delta_sync.rs` changes, only the small conversion block here needs
-//! maintenance — the rest of the prototype stays stable.
+//! maintenance: the rest of the prototype stays stable.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -120,7 +120,7 @@ impl From<EngineDeltaOp> for ProtocolDeltaInstruction {
 }
 
 /// Wrap a complete engine delta stream into a wire-ready sequence of
-/// `DeltaInstruction`s terminated by `EndOfFile` — which is required by the
+/// `DeltaInstruction`s terminated by `EndOfFile`: which is required by the
 /// driver's pre-flight validation on `UploadPlan.delta_instructions`.
 pub fn engine_ops_to_wire(ops: Vec<EngineDeltaOp>) -> Vec<ProtocolDeltaInstruction> {
     let mut out: Vec<ProtocolDeltaInstruction> = ops
@@ -205,7 +205,7 @@ pub trait DeltaEngineAdapter: Send + Sync {
     /// stream. Used by the download-with-engine driver path. `block_size` is
     /// the block size the signatures were computed with.
     ///
-    /// Returns the raw underlying engine error as a string — the driver wraps
+    /// Returns the raw underlying engine error as a string: the driver wraps
     /// it into a typed `AerorsyncError::InvalidFrame` before returning to
     /// callers.
     fn apply_delta(
@@ -247,7 +247,7 @@ impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
         block_size: usize,
     ) -> EngineDeltaPlan {
         // Reconstruct the engine's SignatureTable from the engine-form input.
-        // `file_size` is recovered as the sum of per-block lengths — which is
+        // `file_size` is recovered as the sum of per-block lengths: which is
         // exact because `delta_sync::compute_signatures` always produces full
         // `block_size` blocks except for a possibly shorter tail.
         let signatures: Vec<delta_sync::BlockSignature> = destination_signatures
@@ -324,7 +324,7 @@ pub struct EngineDeltaStats {
 /// `finalize` are a no-op (idempotent).
 pub trait DeltaPlanProducer: Send {
     /// Drive one source chunk through the planner. Emits zero or more ops
-    /// into `out`. Calls MUST receive logically contiguous bytes — i.e.
+    /// into `out`. Calls MUST receive logically contiguous bytes: i.e.
     /// the concatenation of all chunks across `drive_chunk` invocations
     /// must equal the original source slice.
     fn drive_chunk(&mut self, chunk: &[u8], out: &mut Vec<EngineDeltaOp>);
@@ -355,7 +355,7 @@ pub trait DeltaPlanProducer: Send {
 ///   and again at `finalize`.
 ///
 /// Memory footprint: `O(block_size + literal_run_length)`. The literal run
-/// is unbounded for sources that never match — same as the bulk planner;
+/// is unbounded for sources that never match: same as the bulk planner;
 /// callers that need a hard ceiling enforce it externally (see
 /// `PLAN_WINDOW_MAX_BYTES` in `delta_transport_impl`).
 pub struct RollingDeltaPlanProducer {
@@ -431,7 +431,7 @@ impl DeltaPlanProducer for RollingDeltaPlanProducer {
         loop {
             // Lazily initialise the rolling window after a match (or at
             // the very start). Bail out if there are not enough bytes
-            // for a full block_size window — wait for the next chunk.
+            // for a full block_size window: wait for the next chunk.
             if self.rolling.is_none() {
                 if self.source_buf.len() - self.pos >= self.block_size {
                     let window = &self.source_buf[self.pos..self.pos + self.block_size];
@@ -458,7 +458,7 @@ impl DeltaPlanProducer for RollingDeltaPlanProducer {
                 continue;
             }
 
-            // No match — to roll forward by 1 we need both `pos`
+            // No match: to roll forward by 1 we need both `pos`
             // (byte to drop) and `pos + block_size` (byte to add) in the
             // buffer. If the +block_size byte is missing, wait for more.
             if self.source_buf.len() - self.pos < self.block_size + 1 {
@@ -485,7 +485,7 @@ impl DeltaPlanProducer for RollingDeltaPlanProducer {
             return;
         }
         // Tail bytes that never reached a full block_size window survive
-        // in `source_buf` — bulk semantics emit them as the trailing
+        // in `source_buf`: bulk semantics emit them as the trailing
         // literal.
         if self.source_buf.len() > self.pos {
             self.literal_buf
@@ -520,8 +520,8 @@ impl DeltaPlanProducer for RollingDeltaPlanProducer {
 // the destination as a single `Vec<u8>`.
 //
 // Why a trait: in-memory tests (`MemoryBaseline`) and live downloads
-// (`FileBaseline` over `tokio::fs::File`) share the same caller — the
-// streaming `apply_delta` — but differ in storage. The trait is the seam
+// (`FileBaseline` over `tokio::fs::File`) share the same caller: the
+// streaming `apply_delta`: but differ in storage. The trait is the seam
 // that lets unit tests pin parity with the bulk `apply_delta` byte-for-byte
 // while production code reads from a file handle without buffering.
 //
@@ -535,7 +535,7 @@ impl DeltaPlanProducer for RollingDeltaPlanProducer {
 // dest_data.len())]`. `BaselineSource::read_block(idx, block_size)` returns
 // the same range. The tail block (when `len % block_size != 0`) returns a
 // `Vec<u8>` shorter than `block_size`. Out-of-range reads (`idx*block_size
-// > len()`) error out — the caller is expected to skip them, mirroring the
+// > len()`) error out: the caller is expected to skip them, mirroring the
 // bulk path's `if offset >= dest_data.len() { return Err(...) }`.
 
 /// Random-access read interface over the download-side baseline. Used by
@@ -623,7 +623,7 @@ pub struct FileBaseline {
 
 impl FileBaseline {
     /// Open `path` for read and snapshot its length via `metadata`. The
-    /// returned source is positioned arbitrarily — every `read_block` does
+    /// returned source is positioned arbitrarily: every `read_block` does
     /// its own `seek` so concurrent or out-of-order reads are safe.
     pub async fn open(path: &Path) -> std::io::Result<Self> {
         let file = tokio::fs::File::open(path).await?;
@@ -635,7 +635,7 @@ impl FileBaseline {
         })
     }
 
-    /// Path the source was opened from. Diagnostic only — the source does
+    /// Path the source was opened from. Diagnostic only: the source does
     /// not re-open this path on retry.
     pub fn path(&self) -> &Path {
         &self.path
@@ -717,9 +717,9 @@ impl BaselineSource for MemoryBaseline {
 // `delta_sync::apply_delta(baseline_as_slice, ops, block_size)`. Holds
 // because:
 //
-// - `Literal(bytes)` writes `bytes` verbatim — same as the bulk path.
+// - `Literal(bytes)` writes `bytes` verbatim: same as the bulk path.
 // - `CopyBlock(idx)` writes `baseline.read_block(idx, block_size)`,
-//   pinned in W2.1 to equal `dest_data[offset..end]` — same slice the
+//   pinned in W2.1 to equal `dest_data[offset..end]`: same slice the
 //   bulk path produces.
 //
 // Memory bound: `O(max literal size) + O(block_size)` for the
@@ -735,7 +735,7 @@ impl BaselineSource for MemoryBaseline {
 /// baseline (`InvalidInput` for out-of-range `CopyBlock(idx)`, I/O for
 /// read failures) and from the writer (`io::Error` for write failures).
 ///
-/// `block_size` is the stride the signatures were built with — must
+/// `block_size` is the stride the signatures were built with: must
 /// match the `block_size` recorded on the wire. Bulk-parity-pinned by
 /// the W2.2 tests.
 pub async fn apply_delta_streaming<I, W>(
@@ -960,7 +960,7 @@ mod apply_delta_streaming_tests {
     /// `CopyBlock(idx)` whose offset exceeds the baseline length must
     /// surface as an error from `read_block`. The stream must abort and
     /// the bytes written before the failure must remain in the sink (no
-    /// rollback — the writer is the caller's atomic strategy, W2.3).
+    /// rollback: the writer is the caller's atomic strategy, W2.3).
     #[tokio::test]
     async fn streaming_apply_oob_copyblock_errors() {
         let block_size = 512;
@@ -1036,7 +1036,7 @@ mod apply_delta_streaming_tests {
         assert!(out.is_empty());
         assert_eq!(written, 0);
 
-        // Single Literal(empty) — same shape the bulk planner emits for
+        // Single Literal(empty): same shape the bulk planner emits for
         // an empty source.
         let (out, written) =
             run_streaming(&dest, vec![EngineDeltaOp::Literal(Vec::new())], block_size).await;

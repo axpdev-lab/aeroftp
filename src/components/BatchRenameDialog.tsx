@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * BatchRenameDialog Component
@@ -15,7 +15,7 @@ import { Replace, Plus, Hash, AlertTriangle, X, Check, Loader2 } from 'lucide-re
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 
-/** A4-10: Validate filename — reject path separators, null bytes, and dot-only names */
+/** A4-10: Validate filename: reject path separators, null bytes, and dot-only names */
 function isValidFilename(name: string): boolean {
   return !/[/\\\0]/.test(name) && name !== '.' && name !== '..' && name.trim().length > 0;
 }

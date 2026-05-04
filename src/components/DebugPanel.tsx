@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -30,7 +30,7 @@ const globalLogListeners = new Set<() => void>();
 
 /// Ref-counted patch of `console.{log,warn,error,debug}` that survives as long
 /// as at least one DebugPanel is mounted. When the last panel unmounts, the
-/// originals are restored — preventing a permanent interceptor for users who
+/// originals are restored: preventing a permanent interceptor for users who
 /// opened debug once and moved on.
 function activateGlobalCapture() {
     globalCaptureRefCount += 1;
@@ -131,7 +131,7 @@ function activateNetworkCapture() {
             type: 'TRANSFER',
             status,
             command: `${d.direction} ${d.event_type}`,
-            detail: `${d.filename}${d.message ? ` — ${d.message}` : ''}`,
+            detail: `${d.filename}${d.message ? `: ${d.message}` : ''}`,
         });
     };
     window.addEventListener(TRANSFER_EVENT_BRIDGE, transferListener);
@@ -170,7 +170,7 @@ function activateNetworkCapture() {
                         type: 'INVOKE',
                         status: 'error',
                         command: cmd,
-                        detail: `${dur}ms — ${String(err).slice(0, 120)}`,
+                        detail: `${dur}ms: ${String(err).slice(0, 120)}`,
                         duration: dur,
                     });
                     throw err;
@@ -215,7 +215,7 @@ interface SystemInfo {
 
 type LogEntry = CapturedLog;
 
-// TransferEvent type removed — handled by global network capture
+// TransferEvent type removed: handled by global network capture
 
 type TabId = 'connection' | 'network' | 'system' | 'logs' | 'frontend';
 
@@ -328,7 +328,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
         }
     }, [logs, networkEvents, logPaused, activeTab]);
 
-    // Resize handle — usePointerDrag holds the capture on the handle itself
+    // Resize handle: usePointerDrag holds the capture on the handle itself
     // so unmount mid-drag can release it without touching document globals.
     const resizeStartRef = useRef<{ y: number; startHeight: number } | null>(null);
     const { onPointerDown: onResizePointerDown } = usePointerDrag({
@@ -364,7 +364,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     const uptime = connectTime ? Math.floor((Date.now() - connectTime.getTime()) / 1000) : 0;
     const uptimeStr = connectTime
         ? `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${uptime % 60}s`
-        : '—';
+        : '-';
 
     // Frontend tab stats
     const localStorageSize = (() => {
@@ -422,9 +422,9 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                     {isConnected ? t('debug.connection.connected') : t('debug.connection.disconnected')}
                                 </span>
                             } />
-                            <InfoRow label={t('debug.connection.protocol')} value={connectionParams.protocol?.toUpperCase() || '—'} mono />
-                            <InfoRow label={t('debug.connection.server')} value={connectionParams.server || '—'} mono />
-                            <InfoRow label={t('debug.connection.username')} value={connectionParams.username || '—'} mono />
+                            <InfoRow label={t('debug.connection.protocol')} value={connectionParams.protocol?.toUpperCase() || '-'} mono />
+                            <InfoRow label={t('debug.connection.server')} value={connectionParams.server || '-'} mono />
+                            <InfoRow label={t('debug.connection.username')} value={connectionParams.username || '-'} mono />
                             <InfoRow label={t('debug.connection.remotePath')} value={currentRemotePath || '/'} mono />
                             <InfoRow label={t('debug.connection.uptime')} value={uptimeStr} mono />
                             <InfoRow label={t('debug.connection.credentialStorage')} value={systemInfo?.keyring_backend || t('common.loading')} />

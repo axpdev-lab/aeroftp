@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-//! Provider health check — progressive scan with Tauri events.
+//! Provider health check: progressive scan with Tauri events.
 //!
 //! Checks provider endpoints in parallel waves (5 concurrent),
 //! emitting a Tauri event per result so the UI updates progressively.
@@ -14,7 +14,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Semaphore;
 
 /// Input: list of providers to check.
-/// `protocol` and `port` are optional — when provided, FTP/FTPS/SFTP probes
+/// `protocol` and `port` are optional: when provided, FTP/FTPS/SFTP probes
 /// switch to a TCP-connect strategy instead of broken HTTPS HEAD.
 #[derive(Debug, Deserialize)]
 pub struct HealthCheckTarget {
@@ -38,7 +38,7 @@ struct HealthScanEvent {
 }
 
 /// Maximum concurrent checks. Bumped from 5 to 10 to keep up with users
-/// who have 50+ saved servers — the previous cap meant the safety timeout
+/// who have 50+ saved servers: the previous cap meant the safety timeout
 /// would cancel half the wave as stale before they ever ran.
 const MAX_CONCURRENT: usize = 10;
 /// Delay between waves to spread the load (kept for the lazy-load wave effect).
@@ -60,7 +60,7 @@ fn default_port(proto: &str) -> u16 {
     }
 }
 
-/// TCP-connect probe — used for FTP/FTPS/SFTP where HEAD over HTTPS is
+/// TCP-connect probe: used for FTP/FTPS/SFTP where HEAD over HTTPS is
 /// nonsense (port 21/22 doesn't speak HTTP and times out as "slow"/"down").
 async fn check_tcp(host: &str, port: u16) -> (&'static str, u64) {
     let start = Instant::now();
@@ -127,7 +127,7 @@ fn host_port_from_input(input: &str) -> Option<(String, Option<u16>)> {
     }
 }
 
-/// Dispatch the right probe. We unified on TCP connect for every protocol —
+/// Dispatch the right probe. We unified on TCP connect for every protocol -
 /// HEAD over HTTPS was unreliable for WebDAV roots (401/405/redirects) and
 /// for S3 endpoints (some flavors return 403 only after path-style routing),
 /// and pointless for FTP/SFTP. TCP reachability is the common signal we

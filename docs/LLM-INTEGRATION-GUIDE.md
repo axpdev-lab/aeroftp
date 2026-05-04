@@ -264,7 +264,7 @@ The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a ma
 | `aeroftp_check_tree` | ReadOnly | Compare local vs remote tree with two-sided checksum, per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`), `omit_match`, `compare_method` flag per entry |
 | `aeroftp_sync_doctor` | ReadOnly | Preflight risk summary with `suggested_next_command` (lighter than `sync_tree dry_run`) |
 | `aeroftp_reconcile` | ReadOnly | Categorized size-only diff variant of `check_tree` with `elapsed_secs` + `suggested_next_command` |
-| `aeroftp_dedupe` | ReadOnly | SHA-256 duplicate detection grouped per size — modes `newest` / `oldest` / `largest` / `smallest` / `list`, dry-run by default |
+| `aeroftp_dedupe` | ReadOnly | SHA-256 duplicate detection grouped per size: modes `newest` / `oldest` / `largest` / `smallest` / `list`, dry-run by default |
 | `aeroftp_upload_file` | Mutative | Upload one local file (`create_parents`, `no_clobber`) |
 | `aeroftp_upload_many` | Mutative | Batch upload from a `files: []` array |
 | `aeroftp_download_file` | Mutative | Download one remote file with progress stream |

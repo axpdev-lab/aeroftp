@@ -9,7 +9,7 @@
 #   - `tee | cmd | tee` deadlocks on error: if `cmd` exits after partial
 #     output, the upstream `tee` has no way to learn that its downstream
 #     reader is gone, and it keeps blocking on `read(stdin)` until the
-#     SSH client closes — which the client will not do until it gets a
+#     SSH client closes: which the client will not do until it gets a
 #     reply, which it never will. Deadlock for up to io_timeout_ms.
 #   - A FIFO-based bash variant exists but still has a fd-sharing race
 #     between the main shell and the forked `bash -c`, which in practice

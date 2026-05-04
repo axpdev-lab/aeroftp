@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Utility formatting functions
@@ -17,7 +17,7 @@ export const formatBytes = (bytes: number | null): string => {
 };
 
 /**
- * Format bytes for display — returns em-dash for zero (vault/archive/crypto panels)
+ * Format bytes for display: returns em-dash for zero (vault/archive/crypto panels)
  */
 export const formatSize = (bytes: number): string => {
     if (bytes === 0) return '\u2014';
@@ -65,7 +65,7 @@ export const formatDate = (dateStr: string | Date | null): string => {
         // 1. Try ISO format: "YYYY-MM-DD HH:MM:SS", "YYYY-MM-DDTHH:MM:SS",
         //    with optional fractional seconds and timezone suffix.
         //    Timestamps with 'Z' or '+00:00' are UTC (remote: MLSD/SFTP/cloud APIs)
-        //    — use Date.UTC() so Intl.DateTimeFormat converts to local timezone.
+        //   : use Date.UTC() so Intl.DateTimeFormat converts to local timezone.
         //    Without timezone suffix = already local time (from get_local_files).
         const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:\d{2})?$/);
         if (isoMatch) {

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Cross-platform graceful shutdown signal.
 //!
 //! Prior to this helper each CLI subcommand hand-rolled its own
 //! `tokio::signal::ctrl_c()` await, which covered only SIGINT. systemd,
 //! Docker, and any well-behaved supervisor default to SIGTERM, and those
-//! deliveries were silently dropped — the process only died on SIGKILL,
+//! deliveries were silently dropped: the process only died on SIGKILL,
 //! skipping provider disconnects, SQLite WAL checkpoints, FUSE unmount,
 //! and axum graceful drain.
 //!

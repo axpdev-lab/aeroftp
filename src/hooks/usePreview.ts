@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * usePreview Hook
@@ -21,7 +21,7 @@ import { PreviewFile } from '../components/DevTools';
 import { PreviewFileData, getPreviewCategory } from '../components/Preview';
 import { logger } from '../utils/logger';
 
-/** Max file size (in bytes) for base64 media preview — 25 MB */
+/** Max file size (in bytes) for base64 media preview: 25 MB */
 const MAX_PREVIEW_SIZE_BYTES = 25 * 1024 * 1024;
 
 /**

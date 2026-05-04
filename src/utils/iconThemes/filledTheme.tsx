@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * Filled Icon Theme — Colored document shapes with type badges
+ * Filled Icon Theme: Colored document shapes with type badges
  *
  * Each file type gets a filled document SVG with a colored background
  * and a text badge (e.g. "JS", "PDF", "W" for Word).
@@ -67,7 +67,7 @@ const FilledFolderUpIcon: React.FC<{ size: number }> = ({ size }) => (
 // --- Extension → { bgColor, badge } map ---
 
 const filledIconMap: Record<string, { bgColor: string; badge: string }> = {
-    // Code — language colors
+    // Code: language colors
     'js':     { bgColor: '#eab308', badge: 'JS' },
     'jsx':    { bgColor: '#eab308', badge: 'JSX' },
     'ts':     { bgColor: '#3b82f6', badge: 'TS' },
@@ -102,7 +102,7 @@ const filledIconMap: Record<string, { bgColor: string; badge: string }> = {
     'ini':    { bgColor: '#9ca3af', badge: 'INI' },
     'env':    { bgColor: '#ca8a04', badge: 'ENV' },
     'sql':    { bgColor: '#06b6d4', badge: 'SQL' },
-    // Documents — Office colors
+    // Documents: Office colors
     'pdf':    { bgColor: '#dc2626', badge: 'PDF' },
     'doc':    { bgColor: '#2563eb', badge: 'W' },
     'docx':   { bgColor: '#2563eb', badge: 'W' },

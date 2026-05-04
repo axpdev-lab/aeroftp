@@ -1,5 +1,5 @@
 // Test helper: seeds docker harness profiles into the encrypted vault.
-// Additive-only — does not touch runtime code paths.
+// Additive-only: does not touch runtime code paths.
 // Run: cargo run --bin seed_test_profiles
 //
 // Optional: set `AEROFTP_SEED_AERORSYNC_E2E=1` to also seed two SFTP profiles
@@ -123,7 +123,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
     ];
 
-    // AeroRsync E2E pair — opt-in via env flag. See header comment for the
+    // AeroRsync E2E pair: opt-in via env flag. See header comment for the
     // container setup required for the native delta path to actually trigger.
     if std::env::var("AEROFTP_SEED_AERORSYNC_E2E").is_ok() {
         let key_path = std::env::var("HOME")

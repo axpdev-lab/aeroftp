@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -353,7 +353,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         });
                         provider.apiKey = key;
                     } catch {
-                        // Key not in keyring yet — leave empty
+                        // Key not in keyring yet: leave empty
                     }
                 }
             }
@@ -386,7 +386,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 }
             }
 
-            // 2. Async vault read — overrides localStorage if vault has data
+            // 2. Async vault read: overrides localStorage if vault has data
             try {
                 const vaultData = await secureGetWithFallback<AISettings>('ai_settings', AI_SETTINGS_KEY);
                 if (vaultData && vaultData.providers && vaultData.providers.length > 0) {
@@ -795,7 +795,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === 'providers' && (
                         <div className="space-y-4">
-                            {/* Add Provider — Marketplace Button */}
+                            {/* Add Provider: Marketplace Button */}
                             {unusedPresets.length > 0 && (
                                 <div className="flex items-center gap-3 mb-4">
                                     <button onClick={() => setShowMarketplace(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium text-white transition-colors">
@@ -1652,7 +1652,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                             {t('ai.settings.pluginBy', {
                                                                 author: plugin.author,
                                                             })}{' '}
-                                                            —{' '}
+                                                            -{' '}
                                                             {t('ai.settings.pluginTools', {
                                                                 count: plugin.tools.length,
                                                             })}

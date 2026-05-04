@@ -4,7 +4,7 @@
 //! Uses the suppaftp crate for FTP operations.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use globset::GlobBuilder;
@@ -67,7 +67,7 @@ impl FtpProvider {
         let config = if !self.config.verify_cert {
             // M6: Log a warning when TLS certificate verification is disabled.
             tracing::warn!(
-                "[FTP] TLS certificate verification DISABLED for {}:{} — connection is vulnerable to MITM attacks",
+                "[FTP] TLS certificate verification DISABLED for {}:{}: connection is vulnerable to MITM attacks",
                 self.config.host, self.config.port
             );
             rustls::ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS12])
@@ -714,7 +714,7 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
-        // Download using retr_as_stream — stream directly to disk (no full-file RAM buffer)
+        // Download using retr_as_stream: stream directly to disk (no full-file RAM buffer)
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
@@ -889,7 +889,7 @@ impl StorageProvider for FtpProvider {
         // socket to drain in proportion to the upload size before letting
         // suppaftp issue close_notify and read the 226 reply. Plain FTP
         // has no close_notify and the underlying TCP FIN ordering is fine
-        // — the sleep there is pure dead time and was the dominant cost
+        //: the sleep there is pure dead time and was the dominant cost
         // on small/medium uploads (50-100ms per file × 500 files = 25-50s
         // wasted on the bulk-of-small-files benchmark).
         if tls_active {
@@ -914,7 +914,7 @@ impl StorageProvider for FtpProvider {
                         if let Some(dt) = dt {
                             let mfmt_time = dt.format("%Y%m%d%H%M%S").to_string();
                             if let Some(stream) = self.stream.as_mut() {
-                                // MFMT <time-val> <pathname> — expects 213 response
+                                // MFMT <time-val> <pathname>: expects 213 response
                                 let cmd = format!("MFMT {} {}", mfmt_time, remote_path);
                                 if let Err(e) =
                                     stream.custom_command(&cmd, &[suppaftp::Status::File]).await
@@ -1128,7 +1128,7 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(ProviderError::IoError)?;
 
-        // Seek to the resume offset (no set_len — preserve existing bytes before offset)
+        // Seek to the resume offset (no set_len: preserve existing bytes before offset)
         file.seek(std::io::SeekFrom::Start(offset))
             .await
             .map_err(ProviderError::IoError)?;

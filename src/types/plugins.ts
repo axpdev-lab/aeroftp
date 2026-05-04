@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroAgent Plugin System Types
 
@@ -23,7 +23,7 @@ export interface PluginManifest {
 }
 
 /** Convert a PluginManifest's tools to AITool[] for merging with AGENT_TOOLS.
- *  SECURITY: Plugin tools always require user approval — if a plugin declares
+ *  SECURITY: Plugin tools always require user approval: if a plugin declares
  *  dangerLevel 'safe', it is overridden to 'medium' to prevent untrusted
  *  plugin code from executing without user confirmation. */
 export function pluginToolsToAITools(manifest: PluginManifest): AITool[] {
@@ -32,7 +32,7 @@ export function pluginToolsToAITools(manifest: PluginManifest): AITool[] {
         name: t.name,
         description: `[Plugin: ${manifest.name}] ${t.description}`,
         parameters: t.parameters,
-        // Plugin tools must never be 'safe' — force minimum 'medium' to require approval
+        // Plugin tools must never be 'safe': force minimum 'medium' to require approval
         dangerLevel: t.dangerLevel === 'safe' ? 'medium' : t.dangerLevel,
     }));
 }

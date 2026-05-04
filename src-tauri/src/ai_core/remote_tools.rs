@@ -5,7 +5,7 @@
 //! per-surface remote backends are fully wired.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde_json::{json, Value};
 
@@ -167,7 +167,7 @@ fn apply_entry_filter(
             }
             // ISO 8601 strings are lexicographically sortable for the same
             // timezone offset (e.g. all 'Z'). When the entry has no mtime,
-            // we keep it (best-effort) — agent can sort=mtime to push them
+            // we keep it (best-effort): agent can sort=mtime to push them
             // to the end if it cares.
             if let (Some(ref min), Some(ref m)) = (&opts.min_mtime, &e.modified) {
                 if m.as_str() < min.as_str() {
@@ -778,7 +778,7 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     }))
 }
 
-/// Hard cap per `aeroftp_hashsum` — sopra questo size il tool ritorna errore
+/// Hard cap per `aeroftp_hashsum`: sopra questo size il tool ritorna errore
 /// `file_too_large` invece di tentare il download. Coerente con il fatto che
 /// il backend.download_to_bytes carica tutto il payload in RAM (stessa
 /// pipeline della CLI `aeroftp hashsum`).
@@ -972,7 +972,7 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     // BFS bounded by both max_depth and max_entries. We use BFS over a
     // queue rather than recursion so the cap is enforced uniformly across
     // wide trees (deep narrow vs shallow wide). Each queue item is
-    // (path, depth). The output is flat — agent reconstructs hierarchy
+    // (path, depth). The output is flat: agent reconstructs hierarchy
     // from `path` if needed (cheaper than nested JSON for large trees).
     let mut queue: std::collections::VecDeque<(String, u64)> = std::collections::VecDeque::new();
     queue.push_back((root.clone(), 0));
@@ -1056,7 +1056,7 @@ async fn agent_connect(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     let path = agent_session::path_block(&profile);
     let capabilities = agent_session::capabilities_block(&profile.protocol);
 
-    // `remote_backend()` opens (or reuses) the pooled connection — its
+    // `remote_backend()` opens (or reuses) the pooled connection: its
     // outcome IS the "connect" block. No separate connect() call needed.
     let started = std::time::Instant::now();
     let backend_result = ctx.remote_backend(&server).await;
@@ -1157,7 +1157,7 @@ async fn server_exec(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
 // existing CLI/GUI cross-profile engine into the agent surface. Plumbing is
 // "Option A" from the Gap 10 handoff: we go straight through `create_temp_provider`
 // instead of the MCP pool so the agent gets the same code path as the GUI's
-// cross-profile panel — including the SFTP key-based delta upload that
+// cross-profile panel: including the SFTP key-based delta upload that
 // `copy_one_file` decides on automatically.
 //
 // Scope guarantees:
@@ -1168,7 +1168,7 @@ async fn server_exec(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
 // - secrets never leave Rust: agent passes server names/IDs, vault resolution
 //   happens inside `create_temp_provider`
 // - audit log via `tracing::info!` per transfer (server IDs, paths, duration,
-//   bytes — never credentials)
+//   bytes: never credentials)
 
 /// Soft cap on planned files for `aeroftp_transfer_tree` when the agent does
 /// not specify `max_files`. Hard cap is `MAX_TRANSFER_TREE_FILES`.
@@ -1406,7 +1406,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
 
     let started = std::time::Instant::now();
 
-    // Open BOTH connections once and reuse them across the whole batch — the
+    // Open BOTH connections once and reuse them across the whole batch: the
     // cap on `max_files` keeps temp-file fan-out bounded while sticking to
     // 2 underlying TCP/SSH sessions (Option A in the Gap 10 handoff).
     let mut src_provider = crate::ai_tools::create_temp_provider(&src_server)
@@ -1617,7 +1617,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
 // `&mut Box<dyn StorageProvider>`); instead they do BFS over `backend.list()`,
 // keeping the abstraction clean. The reconcile tool surfaces a "light"
 // list-based diff (size + mtime) and delegates checksum-aware compares to
-// `aeroftp_check_tree` (mcp/tools.rs match arm) — the schema documents this
+// `aeroftp_check_tree` (mcp/tools.rs match arm): the schema documents this
 // trade-off.
 
 /// Hard caps shared by cleanup / dedupe / sync_doctor / reconcile.
@@ -1639,7 +1639,7 @@ async fn touch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let path = get_str(args, "path")?;
     validate_remote_path(&path, "path")?;
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
-    // First check if the file exists. If yes, this is a no-op — providers
+    // First check if the file exists. If yes, this is a no-op: providers
     // generally lack a portable utime API and a re-upload would surprise the
     // agent (mtime change without explicit intent).
     if backend.stat(&path).await.is_ok() {
@@ -1857,7 +1857,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         });
     }
 
-    // Compile glob matchers (best-effort — invalid patterns are skipped silently
+    // Compile glob matchers (best-effort: invalid patterns are skipped silently
     // so a single typo doesn't kill the whole call).
     let exclude_matchers: Vec<globset::GlobMatcher> = exclude
         .iter()
@@ -2057,7 +2057,7 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
 
     for (size, candidates) in candidate_groups {
         if size > MAX_DEDUPE_FILE_BYTES {
-            // Skip oversize files — would blow the agent memory budget.
+            // Skip oversize files: would blow the agent memory budget.
             hash_errors += candidates.len() as u32;
             continue;
         }

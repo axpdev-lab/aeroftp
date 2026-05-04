@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Circuit Breaker Hook for Batch Transfers
@@ -52,7 +52,7 @@ export function useCircuitBreaker(config: CircuitBreakerConfig = DEFAULT_CONFIG)
   const pauseReasonRef = useRef<PauseReason | null>(null);
   const tripErrorKindRef = useRef<SyncErrorKind | null>(null);
 
-  /** Record a successful transfer — resets consecutive error counter */
+  /** Record a successful transfer: resets consecutive error counter */
   const recordSuccess = useCallback(() => {
     consecutiveErrorsRef.current = 0;
     stateRef.current = 'closed';
@@ -60,7 +60,7 @@ export function useCircuitBreaker(config: CircuitBreakerConfig = DEFAULT_CONFIG)
     tripErrorKindRef.current = null;
   }, []);
 
-  /** Record a failed transfer — classifies error and decides whether to trip */
+  /** Record a failed transfer: classifies error and decides whether to trip */
   const recordFailure = useCallback((errorMessage: string): RecordFailureResult => {
     const { kind, retryable } = classifyErrorFast(errorMessage);
 
@@ -119,7 +119,7 @@ export function useCircuitBreaker(config: CircuitBreakerConfig = DEFAULT_CONFIG)
     pauseReasonRef.current = 'reconnecting';
   }, []);
 
-  /** Reconnection succeeded — close circuit and reset counters */
+  /** Reconnection succeeded: close circuit and reset counters */
   const markReconnected = useCallback(() => {
     stateRef.current = 'closed';
     consecutiveErrorsRef.current = 0;
@@ -127,7 +127,7 @@ export function useCircuitBreaker(config: CircuitBreakerConfig = DEFAULT_CONFIG)
     tripErrorKindRef.current = null;
   }, []);
 
-  /** Reconnection failed — open circuit as fatal */
+  /** Reconnection failed: open circuit as fatal */
   const markReconnectFailed = useCallback(() => {
     stateRef.current = 'open';
     pauseReasonRef.current = 'fatal_error';

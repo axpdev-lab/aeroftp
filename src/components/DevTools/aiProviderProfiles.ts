@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { AIProviderType, TaskType } from '../../types/ai';
 
@@ -58,7 +58,7 @@ export const MODEL_FAMILY_TEMPLATES: OllamaModelTemplate[] = [
     {
         family: 'phi',
         namePatterns: ['phi', 'phi3', 'phi-3', 'phi-4'],
-        promptStyle: 'Compact model — keep instructions concise. Best for focused tasks, not long-form.',
+        promptStyle: 'Compact model: keep instructions concise. Best for focused tasks, not long-form.',
         defaultTemp: 0.4,
         bestFor: ['code', 'quick'],
     },
@@ -129,13 +129,13 @@ export interface ParameterPreset {
 
 const ANTHROPIC_BEHAVIOR_RULES = [
     '1. Always explain your plan before executing tool calls.',
-    '2. Execute operations using the appropriate tools — never simulate results.',
+    '2. Execute operations using the appropriate tools: never simulate results.',
     '3. Summarize what was done after each operation completes.',
     '4. Never delete files or directories without explicit user confirmation.',
     '5. Handle errors gracefully: report the issue and suggest alternatives.',
     '6. After completing a task, suggest logical next steps when relevant.',
     '7. Stay within the scope of file management and server operations.',
-    '8. Be honest about limitations — if you cannot do something, say so.',
+    '8. Be honest about limitations: if you cannot do something, say so.',
     '9. Help users with configuration and connection issues.',
     '10. Respond in the same language the user writes in.',
 ].join('\n');
@@ -143,7 +143,7 @@ const ANTHROPIC_BEHAVIOR_RULES = [
 const OPENAI_BEHAVIOR_RULES = [
     '1. For multi-step or risky tasks, briefly explain your plan before acting. For simple tasks, act directly.',
     '2. Execute, then summarize what was done.',
-    '3. Use tools for all file operations — never simulate.',
+    '3. Use tools for all file operations: never simulate.',
     '4. No deletions without user confirmation.',
     '5. Report errors clearly and suggest fixes.',
     '6. Suggest next steps after completing tasks.',
@@ -197,7 +197,7 @@ export const PROVIDER_PROFILES: Record<AIProviderType, ProviderPromptProfile> = 
     },
     openai: {
         identity: 'You are AeroAgent, an efficient and direct AI file management assistant for AeroFTP. You support 19 storage protocols and prioritize getting things done.',
-        style: 'Be direct and action-oriented. Use function calls for all file operations — never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations: never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
         toolFormat: 'native',
         behaviorRules: OPENAI_BEHAVIOR_RULES,
     },
@@ -215,13 +215,13 @@ export const PROVIDER_PROFILES: Record<AIProviderType, ProviderPromptProfile> = 
     },
     openrouter: {
         identity: 'You are AeroAgent, an efficient and direct AI file management assistant for AeroFTP. You support 19 storage protocols and prioritize getting things done.',
-        style: 'Be direct and action-oriented. Use function calls for all file operations — never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations: never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
         toolFormat: 'native',
         behaviorRules: OPENAI_BEHAVIOR_RULES,
     },
     ollama: {
         identity: 'You are AeroAgent, an AI file management assistant for AeroFTP.',
-        style: 'Be concise — shorter responses are better. Focus on the task at hand. When you need to use a tool, output the tool format exactly as specified.',
+        style: 'Be concise: shorter responses are better. Focus on the task at hand. When you need to use a tool, output the tool format exactly as specified.',
         toolFormat: 'text',
         behaviorRules: OLLAMA_BEHAVIOR_RULES,
     },
@@ -329,7 +329,7 @@ export const PROVIDER_PROFILES: Record<AIProviderType, ProviderPromptProfile> = 
     },
     custom: {
         identity: 'You are AeroAgent, an efficient and direct AI file management assistant for AeroFTP. You support 19 storage protocols and prioritize getting things done.',
-        style: 'Be direct and action-oriented. Use function calls for all file operations — never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
+        style: 'Be direct and action-oriented. Use function calls for all file operations: never describe what you would do, just do it. Respond with structured data when possible. Keep explanations concise.',
         toolFormat: 'native',
         behaviorRules: OPENAI_BEHAVIOR_RULES,
     },

@@ -8,7 +8,7 @@
 //! - Non-2xx responses are classified into [`GitHubError`] variants.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
@@ -131,14 +131,14 @@ impl GitHubHttpClient {
         builder: RequestBuilder,
         path_hint: Option<&str>,
     ) -> Result<Response, GitHubError> {
-        // First attempt — try_clone() the builder so we can retry
+        // First attempt: try_clone() the builder so we can retry
         let retry_builder = builder.try_clone();
         match self.execute(builder, path_hint).await {
             Ok(resp) => Ok(resp),
             Err(GitHubError::SecondaryRateLimit { retry_after }) => {
                 let wait = retry_after.min(120); // cap at 2 minutes
                 log::info!(
-                    "GitHub: secondary rate limit — waiting {}s before retry",
+                    "GitHub: secondary rate limit: waiting {}s before retry",
                     wait
                 );
                 tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
@@ -150,7 +150,7 @@ impl GitHubHttpClient {
             }
             Err(GitHubError::ServerError(ref msg)) => {
                 let msg_owned = msg.clone();
-                log::info!("GitHub: server error — retrying after 1s: {}", msg_owned);
+                log::info!("GitHub: server error: retrying after 1s: {}", msg_owned);
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 if let Some(rb) = retry_builder {
                     self.execute(rb, path_hint).await

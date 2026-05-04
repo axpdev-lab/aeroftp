@@ -147,12 +147,12 @@ mod tests {
     // B.5 pin: production dispatch (`AerorsyncDeltaTransport::upload` and
     // `::download` in `delta_transport_impl.rs`) calls `RemoteCommandSpec::
     // upload` / `RemoteCommandSpec::download`. These MUST stay locked on
-    // `WrapperParity` forever — the `AerorsyncServe` flavor is a dev-only
+    // `WrapperParity` forever: the `AerorsyncServe` flavor is a dev-only
     // helper kept alive exclusively for the in-process mock tests
     // (`driver_finish_session_aerorsync_serve_upload_*`) and the gated
     // `live_tests.rs` lane. If these constructors ever regress to
     // `AerorsyncServe`, production will try to exec
-    // `/opt/aerorsync/bin/aerorsync_serve` against stock rsync servers —
+    // `/opt/aerorsync/bin/aerorsync_serve` against stock rsync servers -
     // the exact failure mode that Blocco B.1 ended.
     #[test]
     fn upload_spec_is_always_wrapper_parity_for_production() {

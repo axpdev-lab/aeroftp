@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -347,7 +347,7 @@ const App: React.FC = () => {
       appReadySignaled.current = true;
       void (async () => {
         // When launched by the OS autostart entry AND the user opted in,
-        // keep the main window hidden — the app lives in the tray on boot.
+        // keep the main window hidden: the app lives in the tray on boot.
         let startMinimized = false;
         try {
           const stored = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
@@ -590,7 +590,7 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // AeroFile toggle handler ref — populated after loadLocalFiles is defined
+  // AeroFile toggle handler ref: populated after loadLocalFiles is defined
   const handleToggleAeroFileRef = useRef<() => void>(() => {});
   // Recent locations
   const [recentPaths, setRecentPaths] = useState<string[]>(() => {
@@ -651,7 +651,7 @@ const App: React.FC = () => {
 
   const localSearchRef = React.useRef<HTMLInputElement>(null);
 
-  // Race condition guard for loadLocalFiles — increments on each call,
+  // Race condition guard for loadLocalFiles: increments on each call,
   // stale responses are discarded when callId !== current counter value.
   const loadLocalCallIdRef = React.useRef(0);
 
@@ -775,13 +775,13 @@ const App: React.FC = () => {
 
   // Sync navigation path mismatch: detect when local/remote paths diverge
   // Debounced: during sync navigation one panel moves first, the other follows
-  // shortly after — we delay the warning to avoid a flash during the transition.
+  // shortly after: we delay the warning to avoid a flash during the transition.
   const [isSyncPathMismatch, setIsSyncPathMismatch] = useState(false);
   useEffect(() => {
     if (!isSyncNavigation || !syncBasePaths) { setIsSyncPathMismatch(false); return; }
     const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
 
-    // Compare only relative paths under sync base — base folder names may differ
+    // Compare only relative paths under sync base: base folder names may differ
     // legitimately (e.g., FTP home "/home/user" vs local "/var/www/html/site.com")
     // Strip leading "/" from relative portions to handle root-base providers (Zoho "/")
     // where slicing by "/" (len 1) drops the leading slash but slicing by a longer
@@ -872,7 +872,7 @@ const App: React.FC = () => {
   }, []);
 
   // Auto-lock timer: check every 30 seconds if timeout has expired.
-  // Interval identity is stable on `masterPasswordSet` only — `isAppLocked`
+  // Interval identity is stable on `masterPasswordSet` only: `isAppLocked`
   // is read through a ref so a lock/unlock tick does NOT reset the interval.
   const isAppLockedRef = useRef(isAppLocked);
   useEffect(() => { isAppLockedRef.current = isAppLocked; }, [isAppLocked]);
@@ -880,7 +880,7 @@ const App: React.FC = () => {
     if (!masterPasswordSet) return;
 
     const checkAutoLock = async () => {
-      if (isAppLockedRef.current) return; // already locked — skip probe
+      if (isAppLockedRef.current) return; // already locked: skip probe
       try {
         const shouldLock = await invoke<boolean>('app_master_password_check_timeout');
         if (shouldLock) {
@@ -1030,7 +1030,7 @@ interface UpdateVerificationInfo {
     verification?: UpdateVerificationInfo;
   } | null>(null);
 
-  // Auto-dismiss update toast after 2 animation cycles (8s) — only when not downloading
+  // Auto-dismiss update toast after 2 animation cycles (8s): only when not downloading
   useEffect(() => {
     const shouldShow = updateAvailable?.has_update && !updateToastDismissed && !updateDownload;
     if (shouldShow) {
@@ -1666,7 +1666,7 @@ interface UpdateVerificationInfo {
     return lastDot > 0 ? name.substring(0, lastDot) : name;
   };
 
-  // Sorting — memoized to avoid recreation on every render (M26)
+  // Sorting: memoized to avoid recreation on every render (M26)
   const sortFiles = useCallback(<T extends { name: string; size: number | null; modified: string | null; is_dir: boolean }>(files: T[], field: SortField, order: SortOrder): T[] => {
     return [...files].sort((a, b) => {
       if (sortFoldersFirst) {
@@ -1795,7 +1795,7 @@ interface UpdateVerificationInfo {
     { id: 'sync-panel', label: t('syncPanel.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowSyncPanel(true), keywords: ['synchronize', 'aerosync'] },
   ], [t, activePanel, currentLocalPath]);
 
-  // Sync active tab path when navigating — only in AeroFile mode
+  // Sync active tab path when navigating: only in AeroFile mode
   useEffect(() => {
     if (isAeroFileVisible && activeLocalTabId && currentLocalPath) {
       setLocalTabs(prev => prev.map(tab =>
@@ -1829,13 +1829,13 @@ interface UpdateVerificationInfo {
 
     // Case: returning from server/connection screen
     if (!wasVisible) {
-      // If active tab still exists, reuse it — the sync effect (line 1203)
+      // If active tab still exists, reuse it: the sync effect (line 1203)
       // will update its path to currentLocalPath. Creating a new tab here
       // would race with sync and produce duplicates.
       if (activeLocalTabId && localTabs.some(t => t.id === activeLocalTabId)) {
         return;
       }
-      // No valid active tab — find matching path or activate first available
+      // No valid active tab: find matching path or activate first available
       const normalize = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
       const match = localTabs.find(t => normalize(t.path) === normalize(currentLocalPath));
       setActiveLocalTabId(match ? match.id : localTabs[0].id);
@@ -2020,7 +2020,7 @@ interface UpdateVerificationInfo {
         const markerJson = await invoke<string | null>('read_update_marker');
         if (markerJson) {
            const data = JSON.parse(markerJson);
-           // Show green success toast (5s) — current version IS the updated version after restart
+           // Show green success toast (5s): current version IS the updated version after restart
            const currentVersion = await getVersion().catch(() => '');
            toast.addToast('success',
              t('ui.updateSuccess'),
@@ -2065,7 +2065,7 @@ interface UpdateVerificationInfo {
   useEffect(() => { themeRef.current = theme; }, [theme]);
   useEffect(() => { debugModeRef.current = debugMode; }, [debugMode]);
 
-  // Menu events from native menu — registered once, reads from refs to avoid stale closures.
+  // Menu events from native menu: registered once, reads from refs to avoid stale closures.
   // Keeps `listen()` directly (not the hook) because the handler mutates refs the hook
   // doesn't know about; the import of guardedUnlisten covers the late-resolution race.
   useEffect(() => {
@@ -2122,7 +2122,7 @@ interface UpdateVerificationInfo {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // AeroAgent app tool events — theme switching + sync control
+  // AeroAgent app tool events: theme switching + sync control
   useTauriListener<{ theme: string }>('ai-set-theme', (event) => {
     const th = event.payload.theme;
     if (['light', 'dark', 'tokyo', 'cyber'].includes(th)) {
@@ -2196,7 +2196,7 @@ interface UpdateVerificationInfo {
         });
         if (cancelled) fn();
         else unlistenFn = fn;
-      } catch { /* ignore — watcher is best-effort */ }
+      } catch { /* ignore: watcher is best-effort */ }
     })();
     return () => {
       cancelled = true;
@@ -2316,7 +2316,7 @@ interface UpdateVerificationInfo {
       : 1,
   });
 
-  // AeroFile toggle — shared between StatusBar, IntroHub header, and View > AeroFile menu
+  // AeroFile toggle: shared between StatusBar, IntroHub header, and View > AeroFile menu
   const handleToggleAeroFile = useCallback(async () => {
     if (showConnectionScreen) {
       setShowConnectionScreen(false);
@@ -2383,7 +2383,7 @@ interface UpdateVerificationInfo {
   };
 
   useEffect(() => {
-    // Guard: only run once — loadLocalFiles deps (notify, t) may change after
+    // Guard: only run once: loadLocalFiles deps (notify, t) may change after
     // initial render (e.g. translations loading), which would re-trigger this
     // effect and overwrite currentLocalPath after the user has already navigated.
     if (localFilesInitStarted.current) return;
@@ -2631,14 +2631,14 @@ interface UpdateVerificationInfo {
         const hasVaultPem = await invoke<boolean>('github_has_vault_pem', { appId, installationId }).catch(() => false);
 
         if (pemStored || hasVaultPem) {
-          // PEM in vault — preferred path, no file on disk needed
+          // PEM in vault: preferred path, no file on disk needed
           const resp = await invoke<{ success: boolean; expires_at: string }>('github_app_token_from_vault', {
             appId,
             installationId,
           });
           tokenExpiresAt = resp.expires_at;
         } else if (pemPath) {
-          // PEM not in vault — try reading from disk (first import or vault lost)
+          // PEM not in vault: try reading from disk (first import or vault lost)
           const resp = await invoke<{ success: boolean; expires_at: string }>('github_app_token_from_pem', {
             pemPath,
             appId,
@@ -2649,7 +2649,7 @@ interface UpdateVerificationInfo {
           throw new Error('No PEM key found. Import a .pem file first or check your App ID and Installation ID.');
         }
 
-        // Password left empty — backend will inject the held token during connect
+        // Password left empty: backend will inject the held token during connect
         effectiveParams = {
           ...effectiveParams,
           password: '',
@@ -2664,7 +2664,7 @@ interface UpdateVerificationInfo {
     }
 
     // InfiniCloud: auto-discover node server via REST API when API key is provided
-    // Always run discovery when API key is present — populates node, capacity, introduce_code
+    // Always run discovery when API key is present: populates node, capacity, introduce_code
     // needed for quota display and future REST API features
     if (effectiveParams.providerId === 'infinicloud' && effectiveParams.options?.apiKey) {
       try {
@@ -2910,7 +2910,7 @@ interface UpdateVerificationInfo {
     // Path-style: "axpnas.ddns.net/axpdev/dav" → "axpnas.ddns.net"
     let hostname = server;
     try { hostname = new URL(server).hostname; } catch {
-      // Not a full URL — strip path and port for DNS lookup
+      // Not a full URL: strip path and port for DNS lookup
       const slashIdx = hostname.indexOf('/');
       if (slashIdx > 0) hostname = hostname.substring(0, slashIdx);
       const colonIdx = hostname.indexOf(':');
@@ -2953,7 +2953,7 @@ interface UpdateVerificationInfo {
     humanLog.logRaw('activity.listing_complete', 'INFO', { path, count: String(count) }, 'success');
   };
 
-  // SEC-P1-06: TOFU host key check — returns true if key is accepted or already known
+  // SEC-P1-06: TOFU host key check: returns true if key is accepted or already known
   const checkSftpHostKey = async (host: string, port: number): Promise<boolean> => {
     try {
       const info = await invoke<HostKeyInfo>('sftp_check_host_key', { host, port });
@@ -3092,7 +3092,7 @@ interface UpdateVerificationInfo {
       if (quickConnectDirs.localDir) {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
-      // Create session with provider name — pass fresh files to avoid stale closure
+      // Create session with provider name: pass fresh files to avoid stale closure
       createSession(
         providerName,
         effectiveParams,
@@ -3253,7 +3253,7 @@ interface UpdateVerificationInfo {
         fetchStorageQuota(protocol, sessionParams);
       } catch (error) {
         humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
-        // Issue #128 — if the server is asking for a 2FA TOTP, surface the
+        // Issue #128: if the server is asking for a 2FA TOTP, surface the
         // dedicated prompt instead of a generic "connection failed" toast.
         if (tryShowTwoFactorPrompt(error, effectiveParams, maskedProviderName)) {
           setLoading(false);
@@ -3307,7 +3307,7 @@ interface UpdateVerificationInfo {
       if (quickConnectDirs.localDir) {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
-      // Create session tab for FTP/FTPS/SFTP connections — pass fresh files to avoid stale closure
+      // Create session tab for FTP/FTPS/SFTP connections: pass fresh files to avoid stale closure
       createSession(
         effectiveParams.displayName || effectiveParams.server,
         effectiveParams,
@@ -3358,7 +3358,7 @@ interface UpdateVerificationInfo {
   };
 
   // Session Management for Multi-Tab
-  // Accept optional file lists to avoid stale closure captures — callers that
+  // Accept optional file lists to avoid stale closure captures: callers that
   // just did setRemoteFiles/setLocalFiles should pass the fresh arrays here.
   const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[]) => {
     // Deep copy params to prevent reference mutation when switching tabs
@@ -3557,7 +3557,7 @@ interface UpdateVerificationInfo {
         }
 
         if (isFourSharedProvider(protocol)) {
-          // 4shared uses OAuth 1.0 — needs fourshared_connect, not oauth2_connect
+          // 4shared uses OAuth 1.0: needs fourshared_connect, not oauth2_connect
           await invoke('fourshared_connect', {
             params: { consumer_key: clientId, consumer_secret: clientSecret }
           });
@@ -3586,7 +3586,7 @@ interface UpdateVerificationInfo {
           } catch (connectErr) {
             const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
             const lower = errMsg.toLowerCase();
-            // Token invalid/expired — re-authenticate and retry
+            // Token invalid/expired: re-authenticate and retry
             if (lower.includes('authentication failed') ||
                 (lower.includes('invalid') && lower.includes('access_token')) ||
                 lower.includes('token expired') ||
@@ -3710,7 +3710,7 @@ interface UpdateVerificationInfo {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
       // Even on error, ensure local path is set correctly from session cache
       setCurrentLocalPath(targetSession.localPath);
-      // Issue #128 — when reconnect fails because the saved session is stale
+      // Issue #128: when reconnect fails because the saved session is stale
       // and the provider now wants a fresh TOTP, surface the 2FA prompt so
       // the user can supply the code without re-opening Edit on the profile.
       tryShowTwoFactorPrompt(e, targetSession.connectionParams, targetSession.serverName);
@@ -4079,7 +4079,7 @@ interface UpdateVerificationInfo {
       const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
       if (norm(currentRemotePath) === norm(syncBasePaths.remote)) return;
     }
-    // Increment navigation counter — used to discard stale async responses
+    // Increment navigation counter: used to discard stale async responses
     const navId = ++remoteNavCounter.current;
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
@@ -4239,7 +4239,7 @@ interface UpdateVerificationInfo {
       addRecentPath(path);
       return path;
     }
-    // Path doesn't exist — fallback to home directory
+    // Path doesn't exist: fallback to home directory
     const fallback = await homeDir().catch(() => '/');
     const fallbackSuccess = await loadLocalFiles(fallback);
     if (fallbackSuccess) {
@@ -4296,7 +4296,7 @@ interface UpdateVerificationInfo {
   // Toggle navigation sync and set base paths
   const toggleSyncNavigation = () => {
     if (!isSyncNavigation) {
-      // Use current paths as sync base — folder name alignment is NOT forced
+      // Use current paths as sync base: folder name alignment is NOT forced
       // because remote FTP home dir name often differs from local folder name.
       // The mismatch indicator on address bars will warn if paths diverge during navigation.
       setSyncBasePaths({ remote: currentRemotePath, local: currentLocalPath });
@@ -4313,7 +4313,7 @@ interface UpdateVerificationInfo {
 
   // checkOverwrite and resetOverwriteSettings provided by useOverwriteCheck hook
 
-  // Helper: check folder overwrite in 'ask' mode — shows FolderOverwriteDialog
+  // Helper: check folder overwrite in 'ask' mode: shows FolderOverwriteDialog
   const checkFolderOverwrite = useCallback(async (
     folderName: string,
     direction: 'upload' | 'download',
@@ -4476,7 +4476,7 @@ interface UpdateVerificationInfo {
         }
       }
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
-      // Don't spam toasts when batch was cancelled — one summary toast is enough
+      // Don't spam toasts when batch was cancelled: one summary toast is enough
       if (!batchCancelledRef.current) {
         notify.error(t('toast.downloadFailed'), String(error));
       }
@@ -4668,13 +4668,13 @@ interface UpdateVerificationInfo {
       batchResumeResolverRef.current('cancel');
     }
     if (cancelLevelRef.current === 0) {
-      // Level 1 — Soft cancel: finish current file, stop queue
+      // Level 1: Soft cancel: finish current file, stop queue
       cancelLevelRef.current = 1;
       batchCancelledRef.current = true;
       transferQueue.stopPending(); // Only stop pending items, let current finish
       dispatchTransferToast(null);
     } else {
-      // Level 2 — Hard cancel: interrupt current transfer immediately
+      // Level 2: Hard cancel: interrupt current transfer immediately
       cancelLevelRef.current = 2;
       setActiveTransfer(null);
       dispatchTransferToast(null);
@@ -4741,13 +4741,13 @@ interface UpdateVerificationInfo {
     });
   };
 
-  // Resume batch after pause — attempt connection verify first
+  // Resume batch after pause: attempt connection verify first
   const resumeBatch = async () => {
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     const isProvider = usesProviderApi(protocol);
 
-    // Lightweight connection verify — warn on failure but still resume (CB will catch next error)
+    // Lightweight connection verify: warn on failure but still resume (CB will catch next error)
     try {
       if (isProvider) {
         await invoke('provider_keep_alive');
@@ -5022,7 +5022,7 @@ interface UpdateVerificationInfo {
                 }
               }
             }
-          } catch { /* git not available or not a repo — continue normally */ }
+          } catch { /* git not available or not a repo: continue normally */ }
         }
 
         if (isGitHubRepoMode) {
@@ -5292,7 +5292,7 @@ interface UpdateVerificationInfo {
                 continue;
               }
             } else {
-              // Non-network consecutive errors (rate_limit, unknown) — pause and wait
+              // Non-network consecutive errors (rate_limit, unknown): pause and wait
               const decision = await waitForBatchResume(i);
               if (decision === 'cancel') {
                 for (let j = i; j < queueItems.length; j++) {
@@ -5331,7 +5331,7 @@ interface UpdateVerificationInfo {
         // Reset apply-to-all and cleanup after batch completes
         resetOverwriteSettings();
         folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
-        // Don't clear retry callbacks here — failed items need their callbacks for "Retry All Failed"
+        // Don't clear retry callbacks here: failed items need their callbacks for "Retry All Failed"
 
         // Queue shows completion - no toast needed
         if (skippedCount > 0) {
@@ -5443,7 +5443,7 @@ interface UpdateVerificationInfo {
               continue;
             }
           } else {
-            // Non-network consecutive errors (rate_limit, unknown) — pause and wait
+            // Non-network consecutive errors (rate_limit, unknown): pause and wait
             const decision = await waitForBatchResume(i);
             if (decision === 'cancel') {
               for (let j = i; j < queueItems.length; j++) {
@@ -5480,7 +5480,7 @@ interface UpdateVerificationInfo {
       }
 
       resetOverwriteSettings();
-      // Don't clear retry callbacks — failed items need their callbacks for "Retry All Failed"
+      // Don't clear retry callbacks: failed items need their callbacks for "Retry All Failed"
       if (skippedCount > 0) {
         notify.info(t('toast.fileSkipped', { count: skippedCount }));
       }
@@ -5704,7 +5704,7 @@ interface UpdateVerificationInfo {
               continue;
             }
           } else {
-            // Non-network consecutive errors (rate_limit, unknown) — pause and wait
+            // Non-network consecutive errors (rate_limit, unknown): pause and wait
             const decision = await waitForBatchResume(i);
             if (decision === 'cancel') {
               for (let j = i; j < queueItems.length; j++) {
@@ -5742,7 +5742,7 @@ interface UpdateVerificationInfo {
 
       // Reset apply-to-all and cleanup after batch completes
       resetOverwriteSettings();
-      // Don't clear retry callbacks — failed items need their callbacks for "Retry All Failed"
+      // Don't clear retry callbacks: failed items need their callbacks for "Retry All Failed"
 
       // Queue shows completion - no toast needed
       if (skippedCount > 0) {
@@ -5794,7 +5794,7 @@ interface UpdateVerificationInfo {
         batchCommitMessage = commitMessage;
       }
 
-      // Only create frontend log for provider deletes — FTP/SFTP backend emits
+      // Only create frontend log for provider deletes: FTP/SFTP backend emits
       // transfer events (delete_start/delete_complete) that are logged by useTransferEvents
       const logId = isProvider ? humanLog.logStart('DELETE_MULTIPLE', { count: names.length, isRemote: true }) : null;
 
@@ -5858,7 +5858,7 @@ interface UpdateVerificationInfo {
           }
         }
       } else {
-        // Show scanning toast for batch delete (provider path — FTP/SFTP uses backend events)
+        // Show scanning toast for batch delete (provider path: FTP/SFTP uses backend events)
         if (isProvider && names.length > 1) {
           setScanningState({ active: true, folderName: `${names.length} items`, message: t('activity.delete_scanning') || `Deleting ${names.length} items...`, operation: 'delete' });
         }
@@ -6438,7 +6438,7 @@ interface UpdateVerificationInfo {
         }
       },
       { label: ['zohoworkdrive', 'opendrive'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
-      // Jottacloud: Move to Trash (soft delete — recoverable, separate from hard delete above)
+      // Jottacloud: Move to Trash (soft delete: recoverable, separate from hard delete above)
       ...(currentProtocol === 'jottacloud' ? [{
         label: t('contextMenu.moveToTrash'),
         icon: <Trash2 size={14} className="text-orange-500" />,
@@ -6459,10 +6459,10 @@ interface UpdateVerificationInfo {
         },
         divider: true,
       }] : []),
-      // MEGA: Move to Trash (soft delete — recoverable via Rubbish Bin)
-      // MEGA: Delete now does soft-delete (move to //bin/) via the trait — no separate menu item needed
-      // Google Drive: Delete now does soft-delete (trash) via the trait — no separate menu item needed
-      // Box: Move to Trash (soft delete — recoverable)
+      // MEGA: Move to Trash (soft delete: recoverable via Rubbish Bin)
+      // MEGA: Delete now does soft-delete (move to //bin/) via the trait: no separate menu item needed
+      // Google Drive: Delete now does soft-delete (trash) via the trait: no separate menu item needed
+      // Box: Move to Trash (soft delete: recoverable)
       ...(currentProtocol === 'box' ? [{
         label: t('contextMenu.moveToTrash'),
         icon: <Trash2 size={14} className="text-blue-500" />,
@@ -6806,7 +6806,7 @@ interface UpdateVerificationInfo {
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { navigator.clipboard.writeText(file.name); notify.success(t('contextMenu.nameCopied')); } },
     ];
 
-    // Copy FTP/SFTP URL — only for traditional protocols
+    // Copy FTP/SFTP URL: only for traditional protocols
     if (currentProtocol && (currentProtocol === 'ftp' || currentProtocol === 'ftps' || currentProtocol === 'sftp')) {
       const scheme = currentProtocol === 'sftp' ? 'sftp' : 'ftp';
       items.push({
@@ -7110,7 +7110,7 @@ interface UpdateVerificationInfo {
         });
       }
     }
-    // Note: Dropbox tags API exists but returns errors — disabled for now
+    // Note: Dropbox tags API exists but returns errors: disabled for now
     // OneDrive: Delete already does soft-delete (Graph API DELETE = move to recycle bin).
     // Trash button added to toolbar for viewing/restoring trash items.
     // Koofr, OpenDrive, Yandex: View Trash moved to toolbar button
@@ -7438,13 +7438,13 @@ interface UpdateVerificationInfo {
         action: () => handleOpenWithDefaultApp(file),
         disabled: count > 1,
       },
-      // .aerovault — Open with AeroVault (right after Upload)
+      // .aerovault: Open with AeroVault (right after Upload)
       ...(isAeroVaultFile ? [{
         label: t('contextMenu.openWithAeroVault') || 'Open with AeroVault',
         icon: <VaultIcon size={14} />,
         action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
       }] : []),
-      // .aerovault — Extract Here / Extract to Folder
+      // .aerovault: Extract Here / Extract to Folder
       ...(isAeroVaultFile ? [{
         label: t('contextMenu.extractSubmenu'),
         icon: <FolderOpen size={14} />,
@@ -7630,7 +7630,7 @@ interface UpdateVerificationInfo {
     });
     const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
 
-    // Compress — opens CompressDialog with all format options
+    // Compress: opens CompressDialog with all format options
     items.push({
       label: t('contextMenu.compressSubmenu'),
       icon: <Archive size={14} />,
@@ -7778,7 +7778,7 @@ interface UpdateVerificationInfo {
       /^(vault\.cryptomator|masterkey\.cryptomator)$/i.test(file.name);
 
     // vault.cryptomator / masterkey.cryptomator → Open as Cryptomator Vault
-    // Note: Rclone-crypt overlay does NOT belong here — it's a different format
+    // Note: Rclone-crypt overlay does NOT belong here: it's a different format
     // (XSalsa20-Poly1305 + EME, no marker file) and applies to remote directories.
     // It now lives in the remote panel context menu.
     if (isCryptomatorMarker) {
@@ -7833,7 +7833,7 @@ interface UpdateVerificationInfo {
       });
     }
 
-    // Tags submenu — Finder-style color labels
+    // Tags submenu: Finder-style color labels
     if (fileTags.labels.length > 0) {
       const selectedPaths = Array.from(selection).map(name => {
         const f = localFiles.find(lf => lf.name === name);
@@ -8120,7 +8120,7 @@ interface UpdateVerificationInfo {
         />
       )}
 
-      {/* Keystore Migration Wizard — one-time migration from localStorage to vault */}
+      {/* Keystore Migration Wizard: one-time migration from localStorage to vault */}
       <KeystoreMigrationWizard
         isOpen={showMigrationWizard}
         onComplete={() => setShowMigrationWizard(false)}
@@ -8135,7 +8135,7 @@ interface UpdateVerificationInfo {
           '--app-font-family': fontFamily,
         } as React.CSSProperties}
       >
-        {/* App Background Pattern Overlay — behind content (-z-10) but above gradient bg */}
+        {/* App Background Pattern Overlay: behind content (-z-10) but above gradient bg */}
         {appBackgroundPattern?.svg && (
           <div className="absolute inset-0 pointer-events-none -z-10">
             <div className="absolute inset-0 invert dark:invert-0 dark:opacity-50" style={{ backgroundImage: appBackgroundPattern.svg }} />
@@ -8144,7 +8144,7 @@ interface UpdateVerificationInfo {
         {/* Resize edges for undecorated window (Wayland needs client-side resize zones) */}
         <WindowResizeEdges />
 
-        {/* Custom Titlebar — data-tauri-drag-region for Wayland compatibility */}
+        {/* Custom Titlebar: data-tauri-drag-region for Wayland compatibility */}
         <CustomTitlebar
           appTheme={getEffectiveTheme(theme, isDark)}
           theme={theme}
@@ -8297,7 +8297,7 @@ interface UpdateVerificationInfo {
               </div>
             )}
 
-            {/* State: Download complete — Install & Restart */}
+            {/* State: Download complete: Install & Restart */}
             {updateDownload?.completedPath && !updateDownload?.installing && (
               <div className="flex flex-col gap-2">
                 <span className="text-xs text-green-200 flex items-center gap-1">
@@ -8326,7 +8326,7 @@ interface UpdateVerificationInfo {
                   </div>
                 )}
 
-                {/* Install & Restart — platform-aware, block if VerificationFailed */}
+                {/* Install & Restart: platform-aware, block if VerificationFailed */}
                 {updateDownload.verification?.mode !== 'VerificationFailed' && (
                   ['appimage', 'deb', 'rpm'].includes(updateAvailable.install_format) ? (
                     <button
@@ -8367,7 +8367,7 @@ interface UpdateVerificationInfo {
               </div>
             )}
 
-            {/* State: Installing — shown in overlay below */}
+            {/* State: Installing: shown in overlay below */}
             {updateDownload?.installing && (
               <div className="flex items-center gap-2 py-1">
                 <svg className="w-4 h-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
@@ -8420,7 +8420,7 @@ interface UpdateVerificationInfo {
                 <p className="text-white/40 text-xs mt-2">AeroFTP v{updateAvailable.latest_version}</p>
               )}
             </div>
-            {/* Verification hash — shown plainly in overlay, badge is in download toast */}
+            {/* Verification hash: shown plainly in overlay, badge is in download toast */}
             {updateDownload.verification && (
               <p className={`text-xs mt-2 ${updateDownload.verification.mode === 'VerificationFailed' ? 'text-red-400' : 'text-white/40'}`}>
                 {updateDownload.verification.mode === 'VerificationFailed'
@@ -8492,7 +8492,7 @@ interface UpdateVerificationInfo {
                         const logId = humanLog.logRaw('activity.zoho_delete_share_link', 'INFO', { provider: 'Zoho WorkDrive', filename: link.id }, 'running');
                         try {
                           await invoke('zoho_delete_share_link', { linkId: link.id });
-                        } catch { /* Ghost link — already deleted on server, remove from UI */ }
+                        } catch { /* Ghost link: already deleted on server, remove from UI */ }
                         // Track deleted IDs so Zoho GET cache won't re-show them
                         zohoDeletedLinkIds.add(link.id);
                         notify.success(t('contextMenu.shareLinkDeleted'), link.id);
@@ -9124,10 +9124,10 @@ interface UpdateVerificationInfo {
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {
                 if (isCloudActive) {
-                  // Already connected — switch to cloud tab
+                  // Already connected: switch to cloud tab
                   setShowConnectionScreen(false);
                 } else {
-                  // Not connected — open config
+                  // Not connected: open config
                   setShowCloudPanel(true);
                 }
               }}
@@ -9163,7 +9163,7 @@ interface UpdateVerificationInfo {
                   if (localInitialPath) {
                     resolvedLocalPath = await safeChangeLocalDirectory(localInitialPath);
                   }
-                  // Create session with provider name — pass fresh files to avoid stale closure
+                  // Create session with provider name: pass fresh files to avoid stale closure
                   createSession(
                     providerName,
                     normalizedParams,
@@ -9298,7 +9298,7 @@ interface UpdateVerificationInfo {
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
                   } catch (error) {
                     humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
-                    // Issue #128 — surface dedicated 2FA prompt for MEGA / Filen / Internxt
+                    // Issue #128: surface dedicated 2FA prompt for MEGA / Filen / Internxt
                     if (tryShowTwoFactorPrompt(error, normalizedParams, maskedProviderName)) {
                       setLoading(false);
                       return;
@@ -9524,7 +9524,7 @@ interface UpdateVerificationInfo {
                           : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                           }`}
                         title={aeroVaultOverlaySession
-                          ? t('toolbar.aerovaultOverlayActive') || 'AeroVault container overlay active — click to detach'
+                          ? t('toolbar.aerovaultOverlayActive') || 'AeroVault container overlay active: click to detach'
                           : t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel. For rclone-crypt overlay use right-click on a remote folder.'}
                       >
                         <VaultIcon size={16} className={aeroVaultOverlaySession ? 'text-white' : 'text-emerald-400'} />
@@ -9622,7 +9622,7 @@ interface UpdateVerificationInfo {
 
               {/* Dual Panel (or single panel when not connected) */}
               <div className="flex flex-1 min-h-0">
-                {/* Remote — hidden when not connected or local-only mode */}
+                {/* Remote: hidden when not connected or local-only mode */}
                 {isConnected && showRemotePanel && <div
                   role="region"
                   aria-label="Remote files"
@@ -9775,7 +9775,7 @@ interface UpdateVerificationInfo {
                         dropbox: () => setShowDropboxTrash(true),
                         filelu: () => setShowFileLuTrash(true),
                         koofr: () => setShowKoofrTrash(true),
-                        // internxt: disabled — API endpoint returns 400, needs investigation
+                        // internxt: disabled: API endpoint returns 400, needs investigation
                         opendrive: () => setShowOpenDriveTrash(true),
                         yandexdisk: () => setShowYandexTrash(true),
                         kdrive: () => setShowKDriveTrash(true),
@@ -9923,7 +9923,7 @@ interface UpdateVerificationInfo {
                           const cls = id === 'type' || id === 'permissions'
                             ? 'hidden xl:table-cell px-3 py-2 text-xs text-gray-400'
                             : 'px-4 py-2 text-xs text-gray-400';
-                          return <td key={id} className={cls}>—</td>;
+                          return <td key={id} className={cls}>-</td>;
                         };
                         return (
                       <table className="w-full text-sm" role="grid" aria-label="Remote files" style={{ tableLayout: 'fixed' }}>
@@ -10069,7 +10069,7 @@ interface UpdateVerificationInfo {
                                   case 'size':
                                     return <td key="size" className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{file.size ? formatBytes(file.size) : (!file.is_dir && file.size === 0 ? <span title={t('toast.zeroByteWarning')}>&#9888; 0 B</span> : '-')}</td>;
                                   case 'type':
-                                    return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '—')}</td>;
+                                    return <td key="type" className="hidden xl:table-cell px-3 py-2 text-xs text-gray-500 uppercase">{file.is_dir ? t('browser.folderType') : (file.name.includes('.') ? file.name.split('.').pop() : '-')}</td>;
                                   case 'permissions':
                                     return <td key="permissions" className="hidden xl:table-cell px-3 py-2"><FeatureBadge value={file.permissions} locked={isPasswordProtectedFile(file)} watermarked={file.metadata?.watermarked === 'true'} /></td>;
                                   case 'modified':
@@ -10254,7 +10254,7 @@ interface UpdateVerificationInfo {
                 </div>}
 
 
-                {/* Local — full width when remote panel is hidden */}
+                {/* Local: full width when remote panel is hidden */}
                 <LocalFilePanel
                   isAeroFileMode={!isConnected || !showRemotePanel}
                   isConnected={isConnected}
@@ -10438,7 +10438,7 @@ interface UpdateVerificationInfo {
                               <span className="text-gray-500 flex items-center gap-1.5">
                                 <Clock size={12} /> {t('preview.modifiedLabel')}
                               </span>
-                              <span className="font-medium text-right">{previewFile.modified || '—'}</span>
+                              <span className="font-medium text-right">{previewFile.modified || '-'}</span>
                             </div>
 
                             {/* Extension */}
@@ -10448,7 +10448,7 @@ interface UpdateVerificationInfo {
                                   <Database size={12} /> {t('preview.extensionLabel')}
                                 </span>
                                 <span className="font-mono text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-gray-600 rounded">
-                                  .{previewFile.name.split('.').pop()?.toLowerCase() || '—'}
+                                  .{previewFile.name.split('.').pop()?.toLowerCase() || '-'}
                                 </span>
                               </div>
                             )}
@@ -10601,13 +10601,13 @@ interface UpdateVerificationInfo {
                 const tlsMode = opts?.tlsMode ?? 'explicit';
                 if (tlsMode === 'none') return 'insecure' as const;
                 if (tlsMode === 'explicit_if_available') return 'warning' as const;
-                // explicit or implicit — TLS is enforced
+                // explicit or implicit: TLS is enforced
                 return verifyCert ? 'secure' as const : 'warning' as const;
               }
               if (protocol === 'ftps') {
                 return verifyCert ? 'secure' as const : 'warning' as const;
               }
-              // A3-03: WebDAV over HTTP is insecure — credentials sent in plaintext
+              // A3-03: WebDAV over HTTP is insecure: credentials sent in plaintext
               if (protocol === 'webdav') {
                 const server = connectionParams.server || activeSession?.connectionParams?.server || '';
                 if (server.startsWith('http://')) return 'insecure' as const;
@@ -10681,7 +10681,7 @@ interface UpdateVerificationInfo {
                 // Ensure agent panel is visible after DevTools opens
                 setTimeout(() => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' })), 50);
               } else {
-                // DevTools already open — toggle agent panel
+                // DevTools already open: toggle agent panel
                 window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: 'agent' }));
               }
             }}

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Import server profiles from WinSCP configuration files.
 //!
 //! Parses `WinSCP.ini` or exported session files (INI format), maps WinSCP
 //! `FSProtocol` + `Ftps` fields to AeroFTP ProviderType, and de-obfuscates
-//! WinSCP passwords (XOR-based with well-known algorithm — NOT real encryption).
+//! WinSCP passwords (XOR-based with well-known algorithm: NOT real encryption).
 //!
 //! Imported credentials are stored in our AES-256-GCM vault, upgrading security
 //! from WinSCP's reversible obfuscation to proper authenticated encryption.
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 // ============ WinSCP password de-obfuscation ============
 // Source: WinSCP source code (Security.cpp / ScpPassword)
-// This is NOT encryption — the algorithm is public and fully reversible.
+// This is NOT encryption: the algorithm is public and fully reversible.
 
 const PWALG_SIMPLE_MAGIC: u8 = 0xA3;
 const PWALG_SIMPLE_FLAG: u8 = 0xFF;
@@ -99,7 +99,7 @@ pub fn decode_winscp_password(hex_str: &str, key: &str) -> Result<String, String
     let decoded = String::from_utf8(result)
         .map_err(|_| "password contains invalid UTF-8 after de-obfuscation".to_string())?;
 
-    // In extended format, the key is prepended to the plaintext — strip it
+    // In extended format, the key is prepended to the plaintext: strip it
     if flag == PWALG_SIMPLE_FLAG {
         if decoded.len() >= key.len() && decoded.starts_with(key) {
             Ok(decoded[key.len()..].to_string())
@@ -107,7 +107,7 @@ pub fn decode_winscp_password(hex_str: &str, key: &str) -> Result<String, String
             // Key might not match exactly (e.g. different encoding), try stripping by length
             Ok(decoded[key.len()..].to_string())
         } else {
-            // Decoded string is shorter than key — return empty or the raw decoded
+            // Decoded string is shorter than key: return empty or the raw decoded
             Ok(decoded)
         }
     } else {
@@ -260,7 +260,7 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         (6, 1) => ("webdav", 443),
         // S3
         (7, _) => ("s3", 443),
-        // Unknown protocol — skip
+        // Unknown protocol: skip
         _ => {
             log::info!(
                 "WinSCP session '{}': unsupported FSProtocol={} Ftps={}",
@@ -352,7 +352,7 @@ pub fn default_winscp_config_path() -> Option<PathBuf> {
         // We can't reliably detect this without user input
     }
 
-    // On non-Windows, there's no default location — user must browse
+    // On non-Windows, there's no default location: user must browse
     None
 }
 

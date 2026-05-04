@@ -205,7 +205,7 @@ export function IntroHubHeader({
                     removed to avoid two parallel paths to the same modal. */}
             </div>
 
-            {/* Form tab context menu — portal to body to escape overflow:hidden */}
+            {/* Form tab context menu: portal to body to escape overflow:hidden */}
             {ctxMenu && createPortal(
                 <div
                     ref={ctxMenuRef}

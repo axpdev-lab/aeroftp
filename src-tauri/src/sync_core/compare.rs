@@ -7,7 +7,7 @@
 //! progress counters, etc.).
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::sync_core::scan::{LocalEntry, RemoteEntry};
 
@@ -76,7 +76,7 @@ pub fn compare_trees(local: &[LocalEntry], remote: &[RemoteEntry], one_way: bool
                 // Checksum comparison only fires when both sides produced a
                 // hash using the SAME algorithm. Any mismatched algorithm
                 // (e.g. local SHA-256, remote MD5) is downgraded to size-only
-                // — comparing different hashes is a category error.
+                //: comparing different hashes is a category error.
                 let checksum_method = match (
                     local_entry.sha256.as_ref(),
                     remote_entry.checksum_alg.as_deref(),
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn compare_trees_detects_checksum_mismatch_with_identical_size() {
-        // Same-size file with swapped content — the scenario Legacy CMS
+        // Same-size file with swapped content: the scenario Legacy CMS
         // raised: one-byte change inside a config, size stays constant.
         let locals = vec![local_sha256("conf.json", 100, "aa")];
         let remotes = vec![remote_sha256("conf.json", 100, "bb")];

@@ -1,11 +1,11 @@
-//! Server Health Check — real-time network diagnostics for saved servers.
+//! Server Health Check: real-time network diagnostics for saved servers.
 //!
 //! Provides DNS resolution timing, TCP connect latency, TLS certificate inspection,
 //! and HTTP endpoint probing. All measurements are taken from the user's position
 //! to deliver genuine, actionable performance data.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::Serialize;
 use std::net::SocketAddr;
@@ -315,7 +315,7 @@ async fn check_tls(host: &str, port: u16) -> CheckDetail {
 }
 
 /// Check if an HTTP status indicates the server is reachable.
-/// For cloud APIs, 400/404/429 mean "server is up, auth required" — count as pass.
+/// For cloud APIs, 400/404/429 mean "server is up, auth required": count as pass.
 fn is_reachable_status(status: reqwest::StatusCode, is_cloud: bool) -> bool {
     status.is_success()
         || status.is_redirection()
@@ -361,7 +361,7 @@ async fn check_http(url: &str, is_cloud: bool) -> CheckDetail {
                     details: Some(format!("HTTP {}", status.as_u16())),
                 };
             }
-            // HEAD returned unexpected status — still reachable, just report it
+            // HEAD returned unexpected status: still reachable, just report it
             return CheckDetail {
                 name: "http_response".into(),
                 status: if is_cloud { "pass" } else { "fail" }.into(),
@@ -370,7 +370,7 @@ async fn check_http(url: &str, is_cloud: bool) -> CheckDetail {
             };
         }
         Err(_head_err) => {
-            // HEAD failed (timeout, connection error, etc.) — try GET as fallback
+            // HEAD failed (timeout, connection error, etc.): try GET as fallback
             // Some APIs (MEGA, Jottacloud) only respond to POST/GET
         }
     }
@@ -540,7 +540,7 @@ async fn run_health_check(req: &HealthCheckRequest) -> HealthCheckResult {
                         name: "tls_handshake".into(),
                         status: "skip".into(),
                         latency_ms: tls.latency_ms,
-                        details: Some("Timeout — non-standard TLS (HEAD not supported)".into()),
+                        details: Some("Timeout: non-standard TLS (HEAD not supported)".into()),
                     }
                 } else {
                     tls

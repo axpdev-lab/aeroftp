@@ -12,7 +12,7 @@
 //! - 5 GB free storage
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use futures_util::future::BoxFuture;
@@ -341,7 +341,7 @@ impl YandexDiskProvider {
         Ok(resolved)
     }
 
-    /// Resolve a relative path (infallible — for backward compat in cd/pwd).
+    /// Resolve a relative path (infallible: for backward compat in cd/pwd).
     fn resolve_path(&self, path: &str) -> String {
         self.resolve_path_safe(path)
             .unwrap_or_else(|_| "/".to_string())
@@ -588,7 +588,7 @@ impl StorageProvider for YandexDiskProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        yd_log("Connecting — verifying token via GET /v1/disk/");
+        yd_log("Connecting: verifying token via GET /v1/disk/");
 
         let resp = self
             .client

@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * i18n Validation Script — Comprehensive Audit
+ * i18n Validation Script: Comprehensive Audit
  *
  * Checks:
  * 1. JSON validity
@@ -107,7 +107,7 @@ function getNestedValue(obj: Record<string, unknown>, keyPath: string): unknown 
  * Main validation function
  */
 async function validate(): Promise<void> {
-    console.log('AeroFTP i18n Validation — Comprehensive Audit\n');
+    console.log('AeroFTP i18n Validation: Comprehensive Audit\n');
     console.log('='.repeat(60));
 
     // Load reference file (English)
@@ -121,7 +121,7 @@ async function validate(): Promise<void> {
     }
 
     const referenceKeys = getAllKeys(reference.translations || {});
-    console.log(`Reference: ${REFERENCE_LANG}.json — ${referenceKeys.length} keys\n`);
+    console.log(`Reference: ${REFERENCE_LANG}.json: ${referenceKeys.length} keys\n`);
 
     // Validate reference structure
     const enIssues: Issue[] = [];
@@ -166,7 +166,7 @@ async function validate(): Promise<void> {
         try {
             data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         } catch (e) {
-            console.log(`ERR ${langCode.padEnd(5)} — Invalid JSON: ${e}`);
+            console.log(`ERR ${langCode.padEnd(5)}: Invalid JSON: ${e}`);
             totalErrors++;
             continue;
         }
@@ -199,7 +199,7 @@ async function validate(): Promise<void> {
             issues.push({ severity: 'error', message: 'Missing translations wrapper' });
             const errCount = issues.filter(i => i.severity === 'error').length;
             totalErrors += errCount;
-            console.log(`ERR ${langCode.padEnd(5)} — ${errCount} errors`);
+            console.log(`ERR ${langCode.padEnd(5)}: ${errCount} errors`);
             continue;
         }
 
@@ -284,11 +284,11 @@ async function validate(): Promise<void> {
         if (errors === 0 && warnings === 0) {
             languagesClean++;
             const pct = ((translationKeys.length / referenceKeys.length) * 100).toFixed(1);
-            console.log(` OK ${langCode.padEnd(5)} — ${pct}% (${translationKeys.length}/${referenceKeys.length} keys)`);
+            console.log(` OK ${langCode.padEnd(5)}: ${pct}% (${translationKeys.length}/${referenceKeys.length} keys)`);
         } else {
             const pct = (((translationKeys.length - extraCount) / referenceKeys.length) * 100).toFixed(1);
             const statusIcon = errors > 0 ? 'ERR' : 'WRN';
-            console.log(`${statusIcon} ${langCode.padEnd(5)} — ${pct}% | ${errors} errors, ${warnings} warnings`);
+            console.log(`${statusIcon} ${langCode.padEnd(5)}: ${pct}% | ${errors} errors, ${warnings} warnings`);
             detailedIssues.push({ lang: langCode, issues, missing: missingCount, extra: extraCount, placeholders: placeholderCount });
         }
     }
@@ -323,12 +323,12 @@ async function validate(): Promise<void> {
 
     // Exit code
     if (totalErrors > 0) {
-        console.log(`\nFAILED — ${totalErrors} error(s) found. Fix before release.`);
+        console.log(`\nFAILED: ${totalErrors} error(s) found. Fix before release.`);
         process.exit(1);
     } else if (totalWarnings > 0) {
         console.log(`\nPASSED with ${totalWarnings} warning(s).`);
     } else {
-        console.log('\nPASSED — All translations are complete and structurally valid!');
+        console.log('\nPASSED: All translations are complete and structurally valid!');
     }
 }
 

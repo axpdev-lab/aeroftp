@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
@@ -104,7 +104,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
     useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
     const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Cryptographic unlock steps — real terms matching the actual vault unlock flow
+    // Cryptographic unlock steps: real terms matching the actual vault unlock flow
     const unlockSteps = [
         t('lockScreen.stepDeriving'),      // "Deriving key (Argon2id)..."
         t('lockScreen.stepDecrypting'),    // "Decrypting passphrase..."
@@ -164,7 +164,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
         } catch (err) {
             const errStr = String(err);
             if (errStr.includes('2FA_REQUIRED')) {
-                // Password was correct but 2FA is enabled — show TOTP input
+                // Password was correct but 2FA is enabled: show TOTP input
                 setNeeds2FA(true);
                 setError('');
                 // Focus the TOTP input after state update
@@ -179,7 +179,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
                     document.getElementById('lock-totp-input')?.focus();
                 }, 100);
             } else {
-                // Password was wrong — reset everything
+                // Password was wrong: reset everything
                 setError(t('lockScreen.invalidPassword'));
                 setPassword('');
                 setTotpCode('');
@@ -199,10 +199,10 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
                 </div>
             )}
 
-            {/* Card — AeroVault modal style */}
+            {/* Card: AeroVault modal style */}
             <div className="relative w-full max-w-md mx-4">
                 <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700 overflow-hidden">
-                    {/* Header — icon + title (matches AeroVault) */}
+                    {/* Header: icon + title (matches AeroVault) */}
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-700">
                         <Shield size={18} className="text-emerald-400" />
                         <span className="font-medium text-gray-100">AeroFTP</span>
@@ -257,7 +257,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
                                 </div>
                             </div>
 
-                            {/* TOTP 2FA input — shown when backend requires it */}
+                            {/* TOTP 2FA input: shown when backend requires it */}
                             {needs2FA && (
                                 <div>
                                     <label htmlFor="lock-totp-input" className="flex items-center gap-2 text-sm font-medium text-gray-300 mb-2">

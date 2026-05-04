@@ -21,12 +21,12 @@
 //!   EOF and, if it respects it, terminates.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // Foundations module for Fase 1 delta sync. Public API is consumed by
 // `rsync_over_ssh::probe_rsync` and future AI agent tools (server_exec).
 // Items appear "never used" until T1.5 Part B wires the delta-sync branch
-// in `sync.rs` — remove this allow when that integration lands.
+// in `sync.rs`: remove this allow when that integration lands.
 #![allow(dead_code)]
 
 use russh::client::{Handle, Handler};
@@ -65,7 +65,7 @@ pub const EXIT_ABNORMAL: u32 = 255;
 ///
 /// Returns immediately after the exec request has been acknowledged; caller pumps I/O
 /// by reading `stdout_rx` / `stderr_rx` and writing to `stdin`. Remote exit status is
-/// delivered on `exit_rx` (lossy if the process exits abnormally — `EXIT_ABNORMAL`).
+/// delivered on `exit_rx` (lossy if the process exits abnormally: `EXIT_ABNORMAL`).
 ///
 /// The handle mutex is held only for the duration of `channel_open_session()` + `exec()`
 /// (typically microseconds); concurrent SFTP operations on the same handle are not
@@ -119,7 +119,7 @@ where
                     }
                 }
                 ChannelMsg::ExitSignal { .. } => {
-                    // Signaled termination — treat as abnormal if no status was sent.
+                    // Signaled termination: treat as abnormal if no status was sent.
                     if let Some(tx) = exit_sent.take() {
                         let _ = tx.send(EXIT_ABNORMAL);
                     }
@@ -130,7 +130,7 @@ where
                 _ => {}
             }
         }
-        // Channel closed without an ExitStatus — synthesize abnormal exit.
+        // Channel closed without an ExitStatus: synthesize abnormal exit.
         if let Some(tx) = exit_sent.take() {
             let _ = tx.send(EXIT_ABNORMAL);
         }

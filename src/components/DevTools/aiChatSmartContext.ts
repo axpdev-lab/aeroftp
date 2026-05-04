@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { TaskType } from '../../types/ai';
 import { ProjectContext, ContextSection, SmartContext, BudgetMode } from '../../types/contextIntelligence';
@@ -13,7 +13,7 @@ const DEPS_KEYWORDS = /\b(install|dependency|dependencies|package|npm|cargo|pip|
 const FILE_KEYWORDS = /\b(file|read|write|edit|create|delete|rename|move|path)\b/i;
 const PROJECT_KEYWORDS = /\b(project|config|setup|init|scaffold|structure|architecture)\b/i;
 
-// App-knowledge question indicators — language-agnostic patterns for the top 12 UI languages.
+// App-knowledge question indicators: language-agnostic patterns for the top 12 UI languages.
 // Brand names (AeroSync, AeroVault etc.) and technical terms (FTP, ZIP etc.) are universal
 // and handled by per-section keywords. This regex only detects "is this a question?" intent.
 const APP_QUESTION_KEYWORDS = /\b(how\s+(?:do|can|to)|what\s+is|where\s+is|how\s+does|explain|help\s+me|tutorial|guide|show\s+me|come\s+(?:faccio|posso|si\s+fa)|cos['']?[eè]|dove\s+(?:si\s+trova|trovo)|perch[eé]|aiutami|spiegami|comment\s+(?:faire|configurer)|qu['']?est.ce\s+que|wo\s+(?:ist|finde)|wie\s+(?:kann|mache)|was\s+ist|c[oó]mo\s+(?:hago|puedo|configuro)|qu[eé]\s+es|como\s+(?:fa[cç]o|posso|configuro)|o\s+que\s+[eé]|como\s+(?:fazer|usar)|hoe\s+(?:kan|doe)|wat\s+is|hur\s+(?:g[oö]r|kan)|vad\s+[aä]r|jak\s+(?:mog[eę]|zrobi[cć])|co\s+to\s+jest)\b/i;
@@ -179,7 +179,7 @@ export function buildSmartContext(
         });
     }
 
-    // App knowledge sections — inject on-demand based on user intent
+    // App knowledge sections: inject on-demand based on user intent
     // Budget-mode-aware: minimal=0 sections, compact=max 1, full=max 3
     const kbIntent = detectAppKnowledgeIntent(userPrompt, budgetMode);
     if (kbIntent.confidence > 0.1 && kbIntent.sections.length > 0) {

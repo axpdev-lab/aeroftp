@@ -1,14 +1,14 @@
 //! MCP resource definitions and handlers
 //!
 //! 5 resources:
-//! - `aeroftp://profiles` — catalog of saved profiles (no credentials)
-//! - `aeroftp://profiles/status` — vault availability status
-//! - `aeroftp://profiles/{id}` — individual profile detail
-//! - `aeroftp://capabilities` — supported protocols and their capabilities
-//! - `aeroftp://connections` — active pooled connections and their state
+//! - `aeroftp://profiles`: catalog of saved profiles (no credentials)
+//! - `aeroftp://profiles/status`: vault availability status
+//! - `aeroftp://profiles/{id}`: individual profile detail
+//! - `aeroftp://capabilities`: supported protocols and their capabilities
+//! - `aeroftp://connections`: active pooled connections and their state
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::mcp::pool::ConnectionPool;
 use crate::providers::ProviderType;

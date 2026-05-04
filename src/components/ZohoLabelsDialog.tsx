@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -240,7 +240,7 @@ export function ZohoLabelsDialog({ filePath, onClose, onRefresh }: ZohoLabelsDia
           )}
         </div>
 
-        {/* Footer — Create Label button */}
+        {/* Footer: Create Label button */}
         {!loading && !showCreate && (
           <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700">
             <button

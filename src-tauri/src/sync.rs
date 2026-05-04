@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroFTP Sync Module
 // File comparison and synchronization logic
@@ -255,13 +255,13 @@ pub struct DeltaTransferStats {
     pub bytes_sent: u64,
     pub total_size: u64,
     /// Per-file ratio from rsync (`total_size / bytes_sent`). Zero when rsync
-    /// didn't compute one (tiny or empty transfer) — the directory-wide
+    /// didn't compute one (tiny or empty transfer): the directory-wide
     /// average in [`DeltaSavingsSummary`] is recomputed independently.
     pub speedup: f64,
 }
 
 /// Aggregate savings across a single sync run. `None` (never initialised)
-/// means no file used the delta path in this run — distinguishable from a
+/// means no file used the delta path in this run: distinguishable from a
 /// fully-cached run that did use the path but saved zero bytes.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DeltaSavingsSummary {
@@ -277,7 +277,7 @@ pub struct DeltaSavingsSummary {
 /// Maximum number of per-file delta entries carried in a single
 /// `SyncReport`. Large syncs (thousands of files) would otherwise bloat
 /// MCP responses into the megabyte range. Once the cap is hit the
-/// aggregate `DeltaSavingsSummary` keeps accumulating across all files —
+/// aggregate `DeltaSavingsSummary` keeps accumulating across all files -
 /// only the per-file breakdown is truncated, and `delta_files_truncated`
 /// surfaces the fact to the consumer.
 pub const DELTA_FILES_CAP: usize = 500;
@@ -349,7 +349,7 @@ pub struct SyncReport {
     pub delta_savings: Option<DeltaSavingsSummary>,
     /// Per-file breakdown capped at [`DELTA_FILES_CAP`]. Empty when no
     /// file used the delta path. Contract: semantically equivalent to
-    /// `delta_savings.is_none()` — both driven by the same hook so they
+    /// `delta_savings.is_none()`: both driven by the same hook so they
     /// can't drift. Consumers that need the full list on >500-file runs
     /// should aggregate client-side from the per-file `delta_stats` on
     /// `FileOutcome::{Uploaded,Downloaded}` (UI already does this in
@@ -360,18 +360,18 @@ pub struct SyncReport {
     /// `delta_files`. `delta_savings` aggregates keep counting past the
     /// cap, so `files_using_delta > delta_files.len()` iff truncated.
     pub delta_files_truncated: bool,
-    /// P3-T01 W4 — `Some(N)` when a delta-sync batch was opened and
+    /// P3-T01 W4: `Some(N)` when a delta-sync batch was opened and
     /// finalized successfully. `1` means the batch reused a single SSH
     /// session for all eligible files; `> 1` means the session was
     /// rebuilt mid-batch on a transient failure. `None` when no batch
     /// was opened (delta policy off, provider not delta-eligible, or
     /// batch open returned NoopBatch).
     pub delta_session_count: Option<u32>,
-    /// P3-T01 W4 — cumulative bytes-on-wire across files that went
+    /// P3-T01 W4: cumulative bytes-on-wire across files that went
     /// through the batch. `None` when no batch was opened. Sums
     /// `bytes_sent + bytes_received` from each per-file `RsyncStats`.
     pub delta_bytes_on_wire: Option<u64>,
-    /// P3-T01 W4 — count of files that successfully transferred through
+    /// P3-T01 W4: count of files that successfully transferred through
     /// the batch path. May be less than `uploaded + downloaded` if some
     /// files fell back to the single-shot or classic path.
     pub delta_batch_files: Option<u64>,
@@ -590,14 +590,14 @@ fn should_filter(info: Option<&FileInfo>, options: &CompareOptions) -> bool {
 }
 
 /// Compare two timestamps with tolerance.
-/// When both timestamps are absent, returns true (cannot distinguish — treat as equal).
+/// When both timestamps are absent, returns true (cannot distinguish: treat as equal).
 pub fn timestamps_equal(local: Option<DateTime<Utc>>, remote: Option<DateTime<Utc>>) -> bool {
     match (local, remote) {
         (Some(l), Some(r)) => {
             (l.signed_duration_since(r)).num_seconds().abs() <= TIMESTAMP_TOLERANCE_SECS
         }
-        (None, None) => true, // Both absent — cannot distinguish, treat as equal
-        _ => false,           // One present, one absent — not equal
+        (None, None) => true, // Both absent: cannot distinguish, treat as equal
+        _ => false,           // One present, one absent: not equal
     }
 }
 
@@ -690,7 +690,7 @@ pub fn compare_file_pair(
             // Size is same (or not comparing size), check timestamp
             if options.compare_timestamp {
                 if !both_timestamps_present {
-                    // One or both timestamps absent — size already matched (or not compared),
+                    // One or both timestamps absent: size already matched (or not compared),
                     // treat as identical to avoid spurious re-syncs
                     SyncStatus::Identical
                 } else if timestamps_equal(l.modified, r.modified) {
@@ -962,12 +962,12 @@ pub async fn sync_tree_core(
 
     sink.on_phase(SyncPhase::Executing);
 
-    // P3-T01 W4.2 — open a delta-sync batch for the whole sync. The
+    // P3-T01 W4.2: open a delta-sync batch for the whole sync. The
     // batch keeps a single SSH session alive across N files, so the
     // per-file cost drops from full SSH handshake to channel-exec
     // open. None when the provider is not delta-eligible, when the
     // transport's begin_batch returns NoopBatch (no session-reuse
-    // support), or when delta policy is off — in those cases the
+    // support), or when delta policy is off: in those cases the
     // perform_upload/download functions fall through to the existing
     // single-shot try_delta_transfer / classic provider path.
     #[cfg(unix)]
@@ -1150,13 +1150,13 @@ pub async fn sync_tree_core(
         }
     }
 
-    // P3-T01 W4.2 — finalize the delta batch (if opened) and populate
+    // P3-T01 W4.2: finalize the delta batch (if opened) and populate
     // SyncReport with the headline session-reuse metrics.
     if let Some(batch) = delta_batch.take() {
         match batch.finalize().await {
             Ok(stats) => {
                 tracing::info!(
-                    "sync.delta: batch finalize ok — files_transferred={}, session_count={}, bytes_on_wire={}, partial={}",
+                    "sync.delta: batch finalize ok: files_transferred={}, session_count={}, bytes_on_wire={}, partial={}",
                     stats.files_transferred,
                     stats.session_count,
                     stats.bytes_on_wire,
@@ -1982,7 +1982,7 @@ fn sync_index_dir() -> Result<std::path::PathBuf, String> {
     Ok(dir)
 }
 
-/// Stable SHA-256 hash — collision-resistant filename generation (replaces DJB2)
+/// Stable SHA-256 hash: collision-resistant filename generation (replaces DJB2)
 /// Returns first 16 hex characters (64 bits) of SHA-256 digest.
 fn stable_path_hash(s: &str) -> String {
     use sha2::{Digest, Sha256};
@@ -2352,7 +2352,7 @@ pub fn verify_local_file(
                     .map(|actual_hex| actual_hex.eq_ignore_ascii_case(expected_hex))
             }
             _ => {
-                // No expected hash available — cannot verify, treat as None (unknown)
+                // No expected hash available: cannot verify, treat as None (unknown)
                 None
             }
         }
@@ -2651,7 +2651,7 @@ pub fn clear_all_journals() -> Result<u32, String> {
 }
 
 // ============================================================================
-// Sync Profiles — Named presets for sync configuration
+// Sync Profiles: Named presets for sync configuration
 // ============================================================================
 
 /// A sync profile combines all sync settings into a named preset
@@ -3535,7 +3535,7 @@ pub fn load_sync_snapshot(id: &str) -> Result<SyncSnapshot, String> {
 }
 
 // ============================================================================
-// Canary Sync — Sample-based dry-run analysis
+// Canary Sync: Sample-based dry-run analysis
 // ============================================================================
 
 /// Configuration for canary (sample) sync
@@ -3616,7 +3616,7 @@ pub fn select_canary_sample(
 }
 
 // ============================================================================
-// Signed Audit Log — HMAC-SHA256 journal signing and verification
+// Signed Audit Log: HMAC-SHA256 journal signing and verification
 // ============================================================================
 
 /// Sign a sync journal with HMAC-SHA256
@@ -3725,7 +3725,7 @@ mod tests {
         let mut report = SyncReport::default();
         let mut sink = NoopProgressSink;
 
-        // file 1 — uploaded via delta, 100 KB out of 1000 KB (10x speedup)
+        // file 1: uploaded via delta, 100 KB out of 1000 KB (10x speedup)
         apply_sync_tree_outcome(
             &mut report,
             "one.bin",
@@ -3734,7 +3734,7 @@ mod tests {
             DeltaPolicy::default(),
             &mut sink,
         );
-        // classic upload interleaved — must NOT touch the summary.
+        // classic upload interleaved: must NOT touch the summary.
         apply_sync_tree_outcome(
             &mut report,
             "two.bin",
@@ -3743,7 +3743,7 @@ mod tests {
             DeltaPolicy::default(),
             &mut sink,
         );
-        // file 3 — downloaded via delta, 200 KB out of 400 KB (2x)
+        // file 3: downloaded via delta, 200 KB out of 400 KB (2x)
         apply_sync_tree_outcome(
             &mut report,
             "three.bin",
@@ -3752,7 +3752,7 @@ mod tests {
             DeltaPolicy::default(),
             &mut sink,
         );
-        // file 4 — failed — also must not touch the summary
+        // file 4: failed: also must not touch the summary
         apply_sync_tree_outcome(
             &mut report,
             "four.bin",

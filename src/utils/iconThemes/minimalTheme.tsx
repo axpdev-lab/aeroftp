@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * Minimal Icon Theme — Monochrome Lucide icons with theme-adaptive accent color
+ * Minimal Icon Theme: Monochrome Lucide icons with theme-adaptive accent color
  *
  * Uses the same Lucide icon shapes as Outline, but renders all icons
  * in a single accent color that adapts to the current app theme.

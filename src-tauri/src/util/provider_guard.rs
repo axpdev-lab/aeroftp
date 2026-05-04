@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! RAII guard that disconnects a `StorageProvider` on drop.
 //!
@@ -7,7 +7,7 @@
 //! runtime handle using `spawn`. This fire-and-forget is *deliberate* and
 //! strictly different from a raw spawn leak:
 //!
-//! 1. The spawned task owns the provider — nothing else can use it after
+//! 1. The spawned task owns the provider: nothing else can use it after
 //!    drop, so there is no external dependency on completion.
 //! 2. The task is bounded (one `disconnect().await`, not a loop).
 //! 3. Its lifetime is independent of the caller, so it cannot hold a guard
@@ -76,7 +76,7 @@ impl Drop for ProviderGuard {
             // `Drop` is sync; we schedule the disconnect on the current
             // runtime. If no runtime handle exists (e.g. drop during shutdown
             // after the runtime has stopped) we warn and leak the provider
-            // rather than panicking — better than taking down the process.
+            // rather than panicking: better than taking down the process.
             match tokio::runtime::Handle::try_current() {
                 Ok(handle) => {
                     handle.spawn(async move {

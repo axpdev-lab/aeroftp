@@ -4,7 +4,7 @@
 //! Used by the ArchiveBrowser frontend component and AeroVault module.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
@@ -196,7 +196,7 @@ pub async fn list_7z(
         .map(|p| Password::from(p.expose_secret()))
         .unwrap_or_else(Password::empty);
 
-    // First try opening — if metadata itself is encrypted, we need the password
+    // First try opening: if metadata itself is encrypted, we need the password
     let mut archive = match SevenZReader::new(reader, len, pwd) {
         Ok(a) => a,
         Err(e) => {

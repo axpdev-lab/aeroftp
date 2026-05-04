@@ -4,7 +4,7 @@
 //! Uses OAuth2 PKCE for authentication.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use chrono;
@@ -1526,7 +1526,7 @@ impl StorageProvider for BoxProvider {
         const CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
 
         if total_size > CHUNKED_THRESHOLD {
-            // Chunked upload session for large files — stream from file handle
+            // Chunked upload session for large files: stream from file handle
             let progress: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Fn(u64, u64) + Send>>>> =
                 on_progress.map(|cb| std::sync::Arc::new(std::sync::Mutex::new(cb)));
             let token = self.get_token().await?;

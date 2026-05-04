@@ -2,7 +2,7 @@
 // lives behind the `aerorsync` Cargo feature; when the feature is OFF
 // (every shipped build) this binary reduces to a stub so the Tauri bundler can
 // still copy the expected artifact out of `target/release/`. Running the stub
-// prints a message and exits non-zero — it is not a user-facing entry point.
+// prints a message and exits non-zero: it is not a user-facing entry point.
 
 #[cfg(not(feature = "aerorsync"))]
 fn main() {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Brain, ChevronDown, ChevronRight } from 'lucide-react';
@@ -41,7 +41,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isComplet
 
     return (
         <div className="my-2 rounded border border-gray-700/50 bg-gray-900/40 overflow-hidden">
-            {/* Header — clickable to expand/collapse */}
+            {/* Header: clickable to expand/collapse */}
             <button
                 onClick={() => { setExpanded(!expanded); setUserToggled(true); }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-300 transition-colors"
@@ -61,7 +61,7 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isComplet
                 </span>
             </button>
 
-            {/* Content — collapsible */}
+            {/* Content: collapsible */}
             {expanded && (
                 <div className="px-3 pb-2 border-t border-gray-700/30">
                     <div className="text-[11px] text-gray-500 italic font-mono leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto mt-1.5">

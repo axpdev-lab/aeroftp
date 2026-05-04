@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * LocalPathTabs — tabbed local directory browsing for AeroFile mode.
+ * LocalPathTabs: tabbed local directory browsing for AeroFile mode.
  *
  * Pattern follows SessionTabs.tsx: drag-to-reorder, context menu,
  * middle-click close, new tab (+) button, max 12 tabs.

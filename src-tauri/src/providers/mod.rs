@@ -20,7 +20,7 @@
 //! ```
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 pub mod atomic_write;
 pub mod azure;
@@ -64,7 +64,7 @@ pub mod zoho_workdrive;
 pub const AEROFTP_USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION"));
 
 pub use types::*;
-// GAP-A01: retry infrastructure ready — integration into providers deferred to v2.5.0
+// GAP-A01: retry infrastructure ready: integration into providers deferred to v2.5.0
 pub use azure::AzureProvider;
 pub use b2::B2Provider;
 pub use box_provider::BoxProvider;
@@ -111,7 +111,7 @@ pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
         if let Ok(glob) = globset::Glob::new(pattern) {
             glob.compile_matcher().is_match(name)
         } else {
-            // Invalid glob — fall back to substring
+            // Invalid glob: fall back to substring
             name.to_lowercase().contains(&pattern.to_lowercase())
         }
     } else {
@@ -179,7 +179,7 @@ pub fn sanitize_api_error(body: &str) -> String {
     crate::ai::sanitize_error_message(&truncated)
 }
 
-/// Transfer optimization hints — per-provider capability advertisement
+/// Transfer optimization hints: per-provider capability advertisement
 #[derive(Debug, Clone, Serialize)]
 pub struct TransferOptimizationHints {
     pub supports_multipart: bool,
@@ -692,7 +692,7 @@ impl ProviderFactory {
                 ))
             }
             ProviderType::FourShared => {
-                // OAuth1 provider — use fourshared_connect command
+                // OAuth1 provider: use fourshared_connect command
                 Err(ProviderError::NotSupported(
                     "4shared must be connected using fourshared_start_auth and fourshared_connect commands".to_string()
                 ))
@@ -888,7 +888,7 @@ where
 
     match response.status() {
         StatusCode::PARTIAL_CONTENT => {
-            // 206: server honored our Range — append to existing data
+            // 206: server honored our Range: append to existing data
             let content_len = response.content_length().unwrap_or(0);
             let total_size = offset + content_len;
             stream_response_to_resumable(response, &mut resumable, total_size, on_progress).await?;
@@ -898,9 +898,9 @@ where
             Ok(())
         }
         StatusCode::OK => {
-            // 200: server ignored Range or fresh download — restart from scratch
+            // 200: server ignored Range or fresh download: restart from scratch
             if offset > 0 {
-                // We had partial data but server sent full content — discard and restart
+                // We had partial data but server sent full content: discard and restart
                 let _ = resumable.discard().await;
                 let mut fresh = atomic_write::ResumableFile::open_fresh(local_path)
                     .await
@@ -921,11 +921,11 @@ where
             Ok(())
         }
         StatusCode::RANGE_NOT_SATISFIABLE => {
-            // 416: offset past end — file may already be complete
+            // 416: offset past end: file may already be complete
             // Discard partial and restart
             let _ = resumable.discard().await;
             Err(ProviderError::TransferFailed(
-                "Range not satisfiable — file may have changed on server".to_string(),
+                "Range not satisfiable: file may have changed on server".to_string(),
             ))
         }
         StatusCode::NOT_FOUND => {

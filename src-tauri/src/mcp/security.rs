@@ -1,4 +1,4 @@
-//! MCP security layer — path validation, rate limiting, input sanitization, audit logging
+//! MCP security layer: path validation, rate limiting, input sanitization, audit logging
 //!
 //! - Path validation: no null bytes, no `..` traversal, max 4096 chars
 //! - Rate limiting: token bucket per category (read/mutative/destructive)
@@ -6,7 +6,7 @@
 //! - Audit logging: JSON on stderr, never logs file contents or passwords
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::collections::HashMap;
 use std::sync::Mutex;

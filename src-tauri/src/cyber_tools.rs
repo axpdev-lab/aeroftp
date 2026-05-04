@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-// AeroFTP Security Toolkit — Hash Forge, CryptoLab, Password Forge
+// AeroFTP Security Toolkit: Hash Forge, CryptoLab, Password Forge
 // Production-grade cryptographic utilities for file integrity, encryption, and credential generation
 //
 // All crypto operations use audited crates (RustCrypto ecosystem).
@@ -10,7 +10,7 @@
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use rand::Rng;
 use sha2::Digest;
-// A2-02: Zeroize import removed — derive_key now returns Zeroizing<> wrapper
+// A2-02: Zeroize import removed: derive_key now returns Zeroizing<> wrapper
 
 use crate::filesystem::validate_path;
 
@@ -272,7 +272,7 @@ fn decrypt_chacha20(key: [u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Result<Ve
     let nonce = GenericArray::from_slice(nonce);
     cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|_| "Decryption failed — wrong password or corrupted data".into())
+        .map_err(|_| "Decryption failed: wrong password or corrupted data".into())
 }
 
 // ─── Password Forge ─────────────────────────────────────────────────────────

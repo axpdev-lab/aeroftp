@@ -218,7 +218,7 @@ total size is 8,388,608  speedup is 48.22
 }
 
 // =============================================================================
-// Sinergia 8a — real rsync byte-oracle lane
+// Sinergia 8a: real rsync byte-oracle lane
 // =============================================================================
 //
 // The harness `capture/run_real_rsync_capture.sh` produces a full byte-level
@@ -248,7 +248,7 @@ total size is 8,388,608  speedup is 48.22
 //
 // We deliberately do NOT `include_bytes!` these files: (a) the prototype is
 // gitignored so the bytes are not part of the tracked source, (b) the bytes
-// are not yet parsed — S8b is where the multiplex tag demux will consume them
+// are not yet parsed: S8b is where the multiplex tag demux will consume them
 // and at that point the load happens at test-time, not at compile-time.
 
 /// Frozen subdirectory of the real-rsync lane. Relative to the cargo
@@ -279,7 +279,7 @@ impl RealRsyncTranscriptPaths {
     /// Build an absolute-path view over the frozen transcript rooted at
     /// `manifest_dir`. The caller usually passes
     /// `env!("CARGO_MANIFEST_DIR")`. Paths are not checked for existence
-    /// here — the caller decides whether to skip a test if they are
+    /// here: the caller decides whether to skip a test if they are
     /// missing (see `try_load_frozen`).
     pub fn rooted_at(manifest_dir: impl AsRef<Path>) -> Self {
         let root = manifest_dir.as_ref().join(REAL_RSYNC_FROZEN_TRANSCRIPT_REL);
@@ -297,7 +297,7 @@ impl RealRsyncTranscriptPaths {
     }
 
     /// `true` iff every file in the layout exists and is non-empty on the
-    /// upload_capture_out side — cheap sanity check the frozen transcript
+    /// upload_capture_out side: cheap sanity check the frozen transcript
     /// was produced by a successful run, not a partial one.
     pub fn appears_complete(&self) -> bool {
         let meta_ok =

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 
@@ -10,7 +10,7 @@ interface GitHubPagesIconProps {
 }
 
 /**
- * GitHub Pages icon — official octicon-browser from GitHub's UI.
+ * GitHub Pages icon: official octicon-browser from GitHub's UI.
  * Browser window shape, used in Pages deployment displays.
  */
 export const GitHubPagesIcon: React.FC<GitHubPagesIconProps> = ({ size = 16, className = '', style }) => (

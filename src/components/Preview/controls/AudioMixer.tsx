@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Audio Mixer / Equalizer Component
@@ -82,7 +82,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
         }
     }, [pannerNode, state.balance, state.enabled]);
 
-    // Handle band change — update both state and real Web Audio node
+    // Handle band change: update both state and real Web Audio node
     const handleBandChange = useCallback((index: number, value: number) => {
         // Apply to real node immediately for zero-latency feedback
         if (eqNodes && eqNodes[index] && state.enabled) {
@@ -98,7 +98,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
         });
     }, [state, onStateChange, eqNodes]);
 
-    // Handle balance change — update both state and real StereoPannerNode
+    // Handle balance change: update both state and real StereoPannerNode
     const handleBalanceChange = useCallback((value: number) => {
         if (pannerNode && state.enabled) {
             pannerNode.pan.value = value;
@@ -109,7 +109,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
         });
     }, [state, onStateChange, pannerNode]);
 
-    // Apply preset — update all nodes + state
+    // Apply preset: update all nodes + state
     const applyPreset = useCallback((preset: EQPreset) => {
         if (eqNodes && state.enabled) {
             for (let i = 0; i < eqNodes.length && i < preset.bands.length; i++) {
@@ -131,7 +131,7 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
         applyPreset(flatPreset);
     }, [applyPreset]);
 
-    // Toggle EQ enabled — bypass (gain=0) or restore saved values
+    // Toggle EQ enabled: bypass (gain=0) or restore saved values
     const toggleEnabled = useCallback(() => {
         const willBeEnabled = !state.enabled;
         if (eqNodes) {

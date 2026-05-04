@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
@@ -157,7 +157,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     <button
                         onClick={onShowUpdateToast}
                         className="flex items-center gap-1.5 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md cursor-pointer"
-                        title={`${t('statusBar.updateAvailable')} — AeroFTP v${updateAvailable.latest_version}`}
+                        title={`${t('statusBar.updateAvailable')}: AeroFTP v${updateAvailable.latest_version}`}
                     >
                         <Download size={11} />
                         <span>{t('statusBar.update')}</span>
@@ -173,7 +173,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         <>
                             <Globe size={12} className="text-blue-500 shrink-0" />
                             <span className="truncate" title={remotePath}>
-                                {isConnected ? (remotePath || '/') : '—'}
+                                {isConnected ? (remotePath || '/') : '-'}
                             </span>
                         </>
                     ) : (

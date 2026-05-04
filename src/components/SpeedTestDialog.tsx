@@ -79,7 +79,7 @@ function recordResultToHistory(
         try {
             const hostHash = server?.host ? await hashHost(server.host) : '';
             // Privacy posture (audit P1-11): persist only stable identifiers
-            // (server_id, host_hash) — never the user-facing server_name, which
+            // (server_id, host_hash): never the user-facing server_name, which
             // can contain customer/environment/ticket details. The UI looks up
             // the display name from the live profile list at render time.
             await invoke('speedtest_history_record', {
@@ -279,7 +279,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
         return () => { cancelled = true; };
     }, [mode, selectedServer?.id]);
 
-    // Progress listener — routes by test_id
+    // Progress listener: routes by test_id
     useTauriListener<SpeedTestProgress>(
         'speedtest-progress',
         (event) => {
@@ -728,7 +728,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                         </div>
                         <div title={t('speedTest.ttfbHint')}>
                             <div className="text-[11px] text-gray-500">{t('speedTest.ttfb')}</div>
-                            <div className="font-medium tabular-nums">{result.download_ttfb_ms != null ? `${result.download_ttfb_ms} ms` : '—'}</div>
+                            <div className="font-medium tabular-nums">{result.download_ttfb_ms != null ? `${result.download_ttfb_ms} ms` : '-'}</div>
                         </div>
                         <div>
                             <div className="text-[11px] text-gray-500">{t('speedTest.integrity')}</div>
@@ -927,7 +927,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                                 if (!o.result) {
                                     return (
                                         <tr key={o.test_id} className="bg-red-50/40 dark:bg-red-900/10">
-                                            <td className="px-3 py-2 text-gray-400">—</td>
+                                            <td className="px-3 py-2 text-gray-400">-</td>
                                             <td className="px-3 py-2 truncate">{o.server_name || '?'}</td>
                                             <td className="px-3 py-2 text-gray-400" colSpan={7}>
                                                 {o.error || t('speedTest.errorLabel')}
@@ -946,7 +946,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                                         <td className="px-3 py-2 text-right tabular-nums">{formatDuration(r.upload_duration_ms + r.download_duration_ms)}</td>
                                         <td className="px-3 py-2 text-center">
                                             {!r.integrity_checked
-                                                ? <span className="text-gray-400" title={t('speedTest.integritySkipped')}>—</span>
+                                                ? <span className="text-gray-400" title={t('speedTest.integritySkipped')}>-</span>
                                                 : r.integrity_verified
                                                     ? <ShieldCheck size={13} className="inline text-emerald-500" />
                                                     : <AlertTriangle size={13} className="inline text-red-500" />}

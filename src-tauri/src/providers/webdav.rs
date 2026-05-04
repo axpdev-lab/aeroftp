@@ -7,7 +7,7 @@
 //! to provide full file system operations over HTTP/HTTPS.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -202,11 +202,11 @@ impl WebDavProvider {
     /// Create a new WebDAV provider with the given configuration
     pub fn new(config: WebDavConfig) -> Result<Self, ProviderError> {
         // M6: Log a warning when TLS certificate verification is disabled.
-        // This exposes the connection to MITM attacks — acceptable only for self-signed certs
+        // This exposes the connection to MITM attacks: acceptable only for self-signed certs
         // in trusted networks (e.g. home NAS).
         if !config.verify_cert {
             tracing::warn!(
-                "[WEBDAV] TLS certificate verification DISABLED for {} — connection is vulnerable to MITM attacks",
+                "[WEBDAV] TLS certificate verification DISABLED for {}: connection is vulnerable to MITM attacks",
                 config.url
             );
         }
@@ -747,7 +747,7 @@ impl WebDavProvider {
         {
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "Restore failed: HTTP {} — {}",
+                "Restore failed: HTTP {}: {}",
                 status,
                 &body[..body.len().min(200)]
             )));
@@ -1194,7 +1194,7 @@ impl StorageProvider for WebDavProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // A3-03: Warn when using unencrypted HTTP — credentials and data sent in plaintext
+        // A3-03: Warn when using unencrypted HTTP: credentials and data sent in plaintext
         if self.config.url.starts_with("http://") {
             tracing::warn!(
                 "[WEBDAV] Connection uses unencrypted HTTP ({}). Credentials and data will be sent in plaintext.",
@@ -1461,7 +1461,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        // Enforce initial_path boundary — reject paths above WebDAV root
+        // Enforce initial_path boundary: reject paths above WebDAV root
         if let Some(ref initial_path) = self.config.initial_path {
             if !initial_path.is_empty() {
                 let root_trimmed = initial_path.trim_end_matches('/');
@@ -1524,7 +1524,7 @@ impl StorageProvider for WebDavProvider {
     }
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
-        // Determine the root boundary — initial_path if set, otherwise "/"
+        // Determine the root boundary: initial_path if set, otherwise "/"
         let root = self
             .config
             .initial_path
@@ -1532,7 +1532,7 @@ impl StorageProvider for WebDavProvider {
             .filter(|p| !p.is_empty())
             .unwrap_or("/");
 
-        // Already at root — cannot go higher
+        // Already at root: cannot go higher
         let current_trimmed = self.current_path.trim_end_matches('/');
         let root_trimmed = root.trim_end_matches('/');
         if current_trimmed == root_trimmed || current_trimmed.is_empty() {
@@ -1694,7 +1694,7 @@ impl StorageProvider for WebDavProvider {
             // RFC 4918 §9.3.1: 201 Created on success, 405 Method Not Allowed
             // when the collection already exists. Some servers (notably
             // FileLu's WebDAV frontend) return 204 No Content on success, and
-            // others (Nextcloud variants) return 200 OK — treat all three as
+            // others (Nextcloud variants) return 200 OK: treat all three as
             // idempotent success.
             StatusCode::CREATED | StatusCode::OK | StatusCode::NO_CONTENT => Ok(()),
             StatusCode::METHOD_NOT_ALLOWED => Err(ProviderError::AlreadyExists(path.to_string())),
@@ -1945,7 +1945,7 @@ impl StorageProvider for WebDavProvider {
         }
 
         // Koofr WebDAV does not expose RFC 4331 quota properties via PROPFIND
-        // (returns 0 / 0). Use the native Koofr REST API instead — it accepts
+        // (returns 0 / 0). Use the native Koofr REST API instead: it accepts
         // basic auth with the same email + app password used for WebDAV.
         if self.config.url.contains("app.koofr.net") {
             if let Ok(info) = self.koofr_storage_via_api().await {
@@ -2178,7 +2178,7 @@ impl StorageProvider for WebDavProvider {
                 Ok(())
             }
             StatusCode::OK => {
-                // Server ignored Range — restart from scratch
+                // Server ignored Range: restart from scratch
                 let total_size = response.content_length().unwrap_or(0);
                 let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
                     .await
@@ -2194,7 +2194,7 @@ impl StorageProvider for WebDavProvider {
                 let tmp = format!("{}.aerotmp", local_path);
                 let _ = tokio::fs::remove_file(&tmp).await;
                 Err(ProviderError::TransferFailed(
-                    "Range not satisfiable — file may have changed on server".to_string(),
+                    "Range not satisfiable: file may have changed on server".to_string(),
                 ))
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),

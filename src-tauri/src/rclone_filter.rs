@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Rclone filter file → `.aeroignore` converter.
 //!
@@ -12,7 +12,7 @@
 //! | `+ pattern` (include) | `!pattern` (re-include) |
 //! | `- pattern` (exclude) | `pattern` (exclude) |
 //! | `# ...` / `; ...` (comment) | `# ...` (comment) |
-//! | `! ` (reset rules so far) | section break — see warning |
+//! | `! ` (reset rules so far) | section break: see warning |
 //! | first-match wins | **last-match wins** |
 //!
 //! Because match order semantics differ, the converter **reverses the rule
@@ -37,9 +37,9 @@ use std::fmt;
 /// Action of a single rclone filter rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RcloneFilterAction {
-    /// `+ pattern` — files matching this pattern are included.
+    /// `+ pattern`: files matching this pattern are included.
     Include,
-    /// `- pattern` — files matching this pattern are excluded.
+    /// `- pattern`: files matching this pattern are excluded.
     Exclude,
 }
 
@@ -80,7 +80,7 @@ impl fmt::Display for RcloneFilterWarning {
             RcloneFilterWarning::UnrecognizedLine { line, content } => {
                 write!(
                     f,
-                    "line {}: unrecognized rule '{}' — skipped",
+                    "line {}: unrecognized rule '{}': skipped",
                     line, content
                 )
             }
@@ -110,7 +110,7 @@ pub fn parse_rclone_filter(content: &str) -> (Vec<RcloneFilterRule>, Vec<RcloneF
             continue;
         }
 
-        // `+ pattern` or `- pattern` — exactly the prefix + space.
+        // `+ pattern` or `- pattern`: exactly the prefix + space.
         let (action, pattern) = if let Some(rest) = trimmed.strip_prefix("+ ") {
             (RcloneFilterAction::Include, rest.trim())
         } else if let Some(rest) = trimmed.strip_prefix("- ") {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -213,7 +213,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('common.settings'), shortcut: 'Ctrl+,', onClick: onOpenSettings },
         { label: t('menu.mountManager'), onClick: onShowMountManager },
         { separator: true },
-        // L53: Debug Mode only visible in dev builds — in production, Cyber theme auto-enables it
+        // L53: Debug Mode only visible in dev builds: in production, Cyber theme auto-enables it
         ...(import.meta.env.DEV ? [{ label: t('menu.debugMode'), shortcut: 'Ctrl+Shift+F12', onClick: onToggleDebugMode }] : []),
         { label: t('menu.dependencies'), onClick: onShowDependencies },
         { separator: true },
@@ -356,7 +356,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
 
             {/* Right: Toolbar buttons + Window controls */}
             <div className="flex items-center gap-0.5">
-                {/* Connect / Disconnect — kept at the leftmost position so its
+                {/* Connect / Disconnect: kept at the leftmost position so its
                     appearance doesn't push the fixed icons (Vault, Lock, Settings)
                     around. Without this, repeated toggling pushed those icons
                     enough that an aimed click on Disconnect could land on Lock or
@@ -387,7 +387,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     </>
                 ) : null}
 
-                {/* Cyber Toolkit — cyber theme only */}
+                {/* Cyber Toolkit: cyber theme only */}
                 {appTheme === 'cyber' && (
                     <button
                         onClick={onShowCyberTools}

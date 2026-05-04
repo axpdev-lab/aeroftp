@@ -17,7 +17,7 @@
 //! and safe to call repeatedly, though callers typically memoize.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // The trait and the abstract contract are cross-platform. Only the binary-rsync
 // implementation is Unix-only, and is gated surgically below.
@@ -44,7 +44,7 @@ pub trait DeltaTransport: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Probe the remote side for capability. Returns an opaque
-    /// [`RsyncCapability`] regardless of implementation — subprocess rsync and
+    /// [`RsyncCapability`] regardless of implementation: subprocess rsync and
     /// native rsync both report the same shape.
     async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError>;
 
@@ -73,7 +73,7 @@ pub trait DeltaTransport: Send + Sync {
     ///
     /// Transports that DO support session reuse (the native rsync prototype
     /// in P3-T01 W3.2) override this to return a concrete `DeltaBatch` impl
-    /// that keeps a single SSH session alive across N file transfers — the
+    /// that keeps a single SSH session alive across N file transfers: the
     /// session_count in [`BatchStats`] reflects how many handshakes the
     /// batch actually paid for.
     ///
@@ -97,7 +97,7 @@ pub trait DeltaTransport: Send + Sync {
 /// the post-sync UI line "Delta: 84 files in 1 session, 1.2 MB on wire".
 ///
 /// `partial` is set when [`DeltaBatch::cancel`] was observed before all
-/// queued files completed — N successful + 1 in-flight cancelled (with
+/// queued files completed: N successful + 1 in-flight cancelled (with
 /// `.aerotmp` rollback) + remaining never tried.
 ///
 /// [`finalize`]: DeltaBatch::finalize
@@ -115,7 +115,7 @@ pub struct BatchStats {
 /// single SSH exec channel for native rsync) and routes N file transfers
 /// through it without paying handshake cost on each one. The contract:
 ///
-/// - `upload`/`download` are sequential — no parallelism in P3-T01.
+/// - `upload`/`download` are sequential: no parallelism in P3-T01.
 /// - `cancel` is cooperative and idempotent: it sets a flag; in-flight
 ///   transfers observe it on chunk boundaries and unwind via the
 ///   `StreamingAtomicWriter` Drop invariant (the `<target>.aerotmp` is
@@ -161,7 +161,7 @@ pub trait DeltaBatch: Send + Sync {
 }
 
 /// Marker [`DeltaBatch`] returned by the default [`DeltaTransport::begin_batch`]
-/// impl. Signals that the transport does not support session reuse — the
+/// impl. Signals that the transport does not support session reuse: the
 /// sync loop must use the single-shot [`DeltaTransport::upload`] /
 /// [`DeltaTransport::download`] methods instead.
 ///
@@ -199,7 +199,7 @@ impl DeltaBatch for NoopBatch {
     ) -> Result<RsyncStats, RsyncError> {
         Err(RsyncError::TransferFailed {
             exit: -1,
-            stderr: "NoopBatch::upload called — transport does not support session reuse, \
+            stderr: "NoopBatch::upload called: transport does not support session reuse, \
                      use the single-shot DeltaTransport::upload instead"
                 .into(),
         })
@@ -212,7 +212,7 @@ impl DeltaBatch for NoopBatch {
     ) -> Result<RsyncStats, RsyncError> {
         Err(RsyncError::TransferFailed {
             exit: -1,
-            stderr: "NoopBatch::download called — transport does not support session reuse, \
+            stderr: "NoopBatch::download called: transport does not support session reuse, \
                      use the single-shot DeltaTransport::download instead"
                 .into(),
         })
@@ -321,7 +321,7 @@ mod tests {
         assert_eq!(t.name(), "rsync-binary-over-ssh");
     }
 
-    // P3-T01 W3.1 — DeltaBatch / NoopBatch / default begin_batch tests.
+    // P3-T01 W3.1: DeltaBatch / NoopBatch / default begin_batch tests.
     // The first two pin the compat contract: any transport that does NOT
     // override `begin_batch` (today: every transport, including
     // `RsyncBinaryTransport`) inherits the `NoopBatch` marker, which the
@@ -345,7 +345,7 @@ mod tests {
     async fn default_begin_batch_returns_noop_for_unimplemented_transports() {
         // Defines a minimal DeltaTransport that never overrides begin_batch.
         // Mirrors the "future transport that doesn't yet support session
-        // reuse" case — it must compile and report is_noop()=true.
+        // reuse" case: it must compile and report is_noop()=true.
         struct UnimplementedTransport;
 
         #[async_trait]
@@ -418,7 +418,7 @@ mod tests {
     #[tokio::test]
     async fn noop_batch_cancel_is_idempotent() {
         let batch = NoopBatch::new();
-        // Cancel before any operation — no panic, no state change.
+        // Cancel before any operation: no panic, no state change.
         batch.cancel();
         batch.cancel();
         batch.cancel();

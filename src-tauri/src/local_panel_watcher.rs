@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Lightweight non-recursive filesystem watcher for the AeroFile / local panel.
 //!
@@ -30,7 +30,7 @@ struct LocalFsChanged {
 }
 
 struct WatcherSlot {
-    /// Held for its `Drop` side effect — letting it fall out of scope tears
+    /// Held for its `Drop` side effect: letting it fall out of scope tears
     /// down the inotify/FSEvents/RDCW handle. Reads are intentional no-ops.
     #[allow(dead_code)]
     watcher: RecommendedWatcher,

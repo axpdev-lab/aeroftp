@@ -1,7 +1,7 @@
 //! Infomaniak kDrive Storage Provider
 //!
 //! Implements StorageProvider for Infomaniak kDrive using the REST API.
-//! Uses API Token (Bearer) for authentication — no OAuth2 flow needed.
+//! Uses API Token (Bearer) for authentication: no OAuth2 flow needed.
 //!
 //! API Base: https://api.infomaniak.com
 //! Rate limit: 60 requests/minute
@@ -9,7 +9,7 @@
 //! Pagination: cursor-based (has_more + cursor)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -121,7 +121,7 @@ struct KDriveVersion {
     version_number: Option<i64>,
 }
 
-// KD-010: Trash types — ready for use when StorageProvider trait adds trash methods.
+// KD-010: Trash types: ready for use when StorageProvider trait adds trash methods.
 // See docs/dev/guides/kDrive/14-trash.md for API details.
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
@@ -294,7 +294,7 @@ impl KDriveProvider {
         if trimmed.is_empty() || trimmed == "." {
             return self.current_path.clone();
         }
-        // Check leading slash on the raw input before normalizing —
+        // Check leading slash on the raw input before normalizing -
         // normalize_path unconditionally prepends "/", which would otherwise
         // make every relative input appear absolute and skip the current_path join.
         if trimmed.starts_with('/') {
@@ -384,7 +384,7 @@ impl KDriveProvider {
                     if file.file_type.as_deref() == Some("dir") {
                         if let Some(ref name) = file.name {
                             if name == *part {
-                                // Exact match — use immediately
+                                // Exact match: use immediately
                                 self.dir_cache_insert(
                                     current_path.clone(),
                                     DirInfo { id: file.id },
@@ -402,7 +402,7 @@ impl KDriveProvider {
                 }
 
                 if has_more != Some(true) || next_cursor.is_none() {
-                    // No more pages — use case-insensitive match if found
+                    // No more pages: use case-insensitive match if found
                     if let Some(id) = case_insensitive_match {
                         self.dir_cache_insert(current_path.clone(), DirInfo { id });
                         current_id = id;
@@ -470,7 +470,7 @@ impl KDriveProvider {
                 if let Some(ref name) = file.name {
                     let is_dir = file.file_type.as_deref() == Some("dir");
                     if name == filename {
-                        // Exact match — return immediately
+                        // Exact match: return immediately
                         return Ok(Some((file.id, is_dir)));
                     } else if case_insensitive_match.is_none()
                         && name.eq_ignore_ascii_case(filename)
@@ -755,7 +755,7 @@ impl StorageProvider for KDriveProvider {
             )));
         }
 
-        // KD-002: Streaming download — write chunks progressively instead of buffering in RAM
+        // KD-002: Streaming download: write chunks progressively instead of buffering in RAM
         // KD-005: Call progress callback with bytes_written/total_size
         use futures_util::StreamExt;
 
@@ -870,7 +870,7 @@ impl StorageProvider for KDriveProvider {
             filename, file_size, parent_id
         ));
 
-        // KD-008: Removed preemptive delete — use conflict=version to let the API
+        // KD-008: Removed preemptive delete: use conflict=version to let the API
         // create a new version atomically. This prevents data loss if the upload fails.
 
         if let Some(ref cb) = on_progress {
@@ -1019,7 +1019,7 @@ impl StorageProvider for KDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", from_name)))?;
 
-        // kDrive has no dedicated rename endpoint — use move to same/different parent with new name
+        // kDrive has no dedicated rename endpoint: use move to same/different parent with new name
         let to_parent_id = if from_parent == to_parent {
             from_parent_id
         } else {
@@ -1132,7 +1132,7 @@ impl StorageProvider for KDriveProvider {
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok(format!(
-            "Infomaniak kDrive — Drive ID: {}",
+            "Infomaniak kDrive: Drive ID: {}",
             self.config.drive_id
         ))
     }

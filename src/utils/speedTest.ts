@@ -309,7 +309,7 @@ export function downloadJsonReport(json: JsonReport, filename = 'aeroftp-speedte
 /**
  * CSV-safe cell encoding mirroring the CLI helper. Always quotes the cell,
  * doubles internal quotes, and prefixes a single quote when the cell starts
- * with a spreadsheet-formula trigger character (= + - @ tab cr) — protects
+ * with a spreadsheet-formula trigger character (= + - @ tab cr): protects
  * against CSV-injection attacks in Excel/Numbers.
  */
 function csvEscape(value: unknown): string {
@@ -397,14 +397,14 @@ export function buildMarkdownReport(
     ranked.forEach(o => {
         if (!o.result) {
             lines.push(
-                `| — | ${mdCellEscape(o.server_name || '?')} | — | — | — | — | — | — | error: ${mdCellEscape(o.error || 'unknown')} |`
+                `|: | ${mdCellEscape(o.server_name || '?')} |: |: |: |: |: |: | error: ${mdCellEscape(o.error || 'unknown')} |`
             );
             return;
         }
         const r = o.result;
-        const integ = !r.integrity_checked ? '—' : r.integrity_verified ? '✓' : '✗';
+        const integ = !r.integrity_checked ? '-' : r.integrity_verified ? '✓' : '✗';
         lines.push(
-            `| ${o.rank} | ${mdCellEscape(o.server_name || '?')} | ${mdCellEscape(r.protocol.toUpperCase())} | ${formatMbps(r.download_mbps)} | ${formatMbps(r.upload_mbps)} | ${r.download_ttfb_ms ?? '—'} | ${integ} | ${r.temp_file_cleaned ? '✓' : '✗'} | ${(o.score * 100).toFixed(0)} |`
+            `| ${o.rank} | ${mdCellEscape(o.server_name || '?')} | ${mdCellEscape(r.protocol.toUpperCase())} | ${formatMbps(r.download_mbps)} | ${formatMbps(r.upload_mbps)} | ${r.download_ttfb_ms ?? '-'} | ${integ} | ${r.temp_file_cleaned ? '✓' : '✗'} | ${(o.score * 100).toFixed(0)} |`
         );
     });
     lines.push('');

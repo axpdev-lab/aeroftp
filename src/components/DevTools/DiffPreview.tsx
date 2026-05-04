@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useMemo } from 'react';
 import { Check, X, FileText } from 'lucide-react';
@@ -64,7 +64,7 @@ function computeUnifiedDiff(original: string, modified: string): DiffLine[] {
                     i++;
                 }
             } else {
-                // Both different — show as remove + add
+                // Both different: show as remove + add
                 if (i < n) {
                     diff.push({ type: 'remove', content: origLines[i], lineOrig: i + 1 });
                     i++;

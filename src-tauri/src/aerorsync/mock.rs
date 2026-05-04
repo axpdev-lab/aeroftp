@@ -52,13 +52,13 @@ pub struct MockTransportConfig {
     pub exec_output: RemoteCommandOutput,
     pub stream_behavior: OpenStreamBehavior,
     pub read_exhausted: ReadExhaustedBehavior,
-    /// A2.1 — optional raw-stream behaviour. `None` means `open_raw_stream`
+    /// A2.1: optional raw-stream behaviour. `None` means `open_raw_stream`
     /// returns `AerorsyncError::transport("raw stream not configured")`.
     pub raw_stream_behavior: Option<OpenRawStreamBehavior>,
 }
 
 /// How the mock should behave when `open_raw_stream` is called. The
-/// inbound buffer is a flat `Vec<u8>` (no message framing — raw bytes)
+/// inbound buffer is a flat `Vec<u8>` (no message framing: raw bytes)
 /// and the outbound capture is likewise a flat `Vec<u8>`.
 #[derive(Debug, Clone)]
 pub enum OpenRawStreamBehavior {
@@ -169,7 +169,7 @@ pub struct MockRemoteShellTransport {
     pub cancel_called: ShutdownFlag,
     pub last_outbound: Arc<Mutex<Option<OutboundBuffer>>>,
     pub last_shutdown: Arc<Mutex<Option<ShutdownFlag>>>,
-    /// A2.1 — capture of the flat byte buffer written to the most recent
+    /// A2.1: capture of the flat byte buffer written to the most recent
     /// raw stream. None until `open_raw_stream` succeeds.
     pub last_raw_outbound: Arc<Mutex<Option<RawOutboundBuffer>>>,
     pub last_raw_shutdown: Arc<Mutex<Option<ShutdownFlag>>>,
@@ -257,7 +257,7 @@ impl RemoteShellTransport for MockRemoteShellTransport {
 }
 
 // =============================================================================
-// S8i / A2.1 — Raw byte-stream mock.
+// S8i / A2.1: Raw byte-stream mock.
 //
 // `MockRawStream` is the byte-raw counterpart to `MockStream`. It holds a
 // flat `Vec<u8>` inbound buffer with a cursor and a shared outbound

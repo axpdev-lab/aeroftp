@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 
@@ -9,7 +9,7 @@ interface VaultIconProps {
 }
 
 /**
- * AeroVault shield+lock icon — matches the OS MIME type icon (application-x-aerovault).
+ * AeroVault shield+lock icon: matches the OS MIME type icon (application-x-aerovault).
  * Emerald shield (#10b981) with white padlock, light green fill (#d4fbee).
  * Used in titlebar, VaultPanel, context menus, and file list.
  */

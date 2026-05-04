@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroSync Filesystem Watcher
 // Dropbox-style real-time change detection using notify v6 + notify-debouncer-full 0.6
@@ -40,7 +40,7 @@ fn record_watcher_drop(source: &'static str, err: impl std::fmt::Display) {
 // Configuration constants
 // ---------------------------------------------------------------------------
 
-/// Debounce quiet period — events are batched until no new events arrive for this duration
+/// Debounce quiet period: events are batched until no new events arrive for this duration
 const DEBOUNCE_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// Tick rate for the debouncer's internal polling loop
@@ -49,10 +49,10 @@ const DEBOUNCE_TICK_RATE: Duration = Duration::from_millis(250);
 /// Poll interval for PollWatcher fallback (used on network filesystems)
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
-/// inotify subdirectory threshold — warn and consider PollWatcher fallback
+/// inotify subdirectory threshold: warn and consider PollWatcher fallback
 const INOTIFY_SUBDIR_THRESHOLD: usize = 8000;
 
-/// Health heartbeat timeout — if no events or heartbeats for this duration, consider unhealthy
+/// Health heartbeat timeout: if no events or heartbeats for this duration, consider unhealthy
 #[allow(dead_code)] // Used by status() method
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -140,7 +140,7 @@ impl WatcherEventKind {
 }
 
 // ---------------------------------------------------------------------------
-// Exclude patterns — reusable filter for watcher events
+// Exclude patterns: reusable filter for watcher events
 // ---------------------------------------------------------------------------
 
 /// Suffix patterns to exclude from watcher events (temp files, editor saves)
@@ -248,7 +248,7 @@ fn count_subdirectories(path: &Path) -> usize {
     walkdir::WalkDir::new(path)
         .min_depth(1)
         .max_depth(20) // Safety limit
-        .follow_links(false) // Never follow symlinks — prevents escape from sync root
+        .follow_links(false) // Never follow symlinks: prevents escape from sync root
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_dir())
@@ -394,7 +394,7 @@ impl FileWatcher {
                             *guard = Some(Instant::now());
                         }
 
-                        // Non-blocking send — if channel is full, log and drop
+                        // Non-blocking send: if channel is full, log and drop
                         if let Err(e) = tx.try_send(event) {
                             record_watcher_drop("debounced", e);
                         }

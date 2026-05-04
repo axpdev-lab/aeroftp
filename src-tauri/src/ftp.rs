@@ -3,7 +3,7 @@
 //! This module provides an async wrapper around the suppaftp crate.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use anyhow::{Context, Result};
 use secrecy::{ExposeSecret, SecretString};
@@ -222,7 +222,7 @@ impl FtpManager {
             debug!("Pre-LIST NOOP failed (non-fatal): {}", e);
         }
 
-        // Use LIST without explicit path argument — relies on CWD already being set.
+        // Use LIST without explicit path argument: relies on CWD already being set.
         // Passing the path explicitly (LIST /path/with spaces/#chars) causes FTP servers
         // to misinterpret paths containing #, spaces, or other special characters.
         let files = tokio::time::timeout(self.timeouts.list_timeout, stream.list(None))
@@ -359,7 +359,7 @@ impl FtpManager {
     }
 
     /// Download a file to memory (returns bytes directly).
-    /// H2: Capped at 500 MB to prevent OOM — use download() for larger files.
+    /// H2: Capped at 500 MB to prevent OOM: use download() for larger files.
     pub async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>> {
         const LIMIT: u64 = 500 * 1024 * 1024; // 500 MB
 
@@ -490,7 +490,7 @@ impl FtpManager {
         local_file.flush().await?;
 
         // Finalize the stream (must always finalize to keep FTP connection clean)
-        // On cancel, FTP server sends 426 — ignore that error
+        // On cancel, FTP server sends 426: ignore that error
         let finalize_result = stream.finalize_retr_stream(data_stream).await;
         if cancelled {
             let _ = finalize_result; // Ignore 426 error on cancel

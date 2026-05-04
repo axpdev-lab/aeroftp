@@ -980,7 +980,7 @@ enum Commands {
         // The field is named `depth` (not `max_depth`) to avoid colliding
         // with the root-level `--max-depth` global flag, which clap's derive
         // otherwise reports as a runtime TypeId mismatch. This is an
-        // implementation note — keep it as `//` so it doesn't reach `--help`.
+        // implementation note: keep it as `//` so it doesn't reach `--help`.
         #[arg(short = 'd', long = "depth", default_value = "3")]
         depth: usize,
     },
@@ -992,7 +992,7 @@ enum Commands {
         /// Remote path to scan (default: /)
         #[arg(default_value = "/")]
         path: String,
-        /// Maximum scan depth (default: 50). See `Tree::depth` note — the
+        /// Maximum scan depth (default: 50). See `Tree::depth` note: the
         /// field name must differ from the global `--max-depth` flag.
         #[arg(short = 'd', long = "depth", default_value = "50")]
         depth: usize,
@@ -1176,7 +1176,7 @@ enum Commands {
 
         /// Append a per-protocol-class breakdown after the main listing.
         /// In JSON mode, wrap the output in `{ profiles, summary, breakdown }`
-        /// (the default JSON shape — a flat array — stays back-compatible).
+        /// (the default JSON shape: a flat array: stays back-compatible).
         #[arg(long)]
         breakdown: bool,
 
@@ -1231,7 +1231,7 @@ enum Commands {
     /// 4shared, Internxt, Swift, Azure, Google Drive, ZohoWorkDrive,
     /// Immich) the response still includes valid `capabilities`, `path`,
     /// and `profile` blocks; only the `connect` block reports
-    /// `status: "unsupported"` and the CLI returns exit code 0 — the
+    /// `status: "unsupported"` and the CLI returns exit code 0: the
     /// payload is still actionable, just use protocol-specific commands
     /// like `link`, `ls`, `put` directly.
     ///
@@ -1690,7 +1690,7 @@ struct CliSyncResult {
     elapsed_secs: f64,
     /// Per-file execution plan. Populated in `--dry-run` so agents can pilot
     /// sync without having to parse the text-verbose output. Empty on real
-    /// runs — skipped at serialization time so the shape of historical JSON
+    /// runs: skipped at serialization time so the shape of historical JSON
     /// output is unchanged for callers that never pass `--dry-run`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     plan: Vec<CliSyncPlanEntry>,
@@ -3951,7 +3951,7 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
 // Toggling columns or sort in either surface is reflected in the other.
 //
 // The CLI flags `--sort`, `--hide`, `--show` override the vault-persisted view
-// for one run only — they never write back. The JSON branch is left untouched
+// for one run only: they never write back. The JSON branch is left untouched
 // because external agents and CI scripts depend on its schema.
 
 #[derive(Clone, Debug, Default)]
@@ -4177,7 +4177,7 @@ fn badge_sort_label(profile: &serde_json::Value) -> String {
 }
 
 /// Short label for the rendered Type cell (no extra suffix; just the class
-/// plus optional E2E bits — keeps the column narrow).
+/// plus optional E2E bits: keeps the column narrow).
 fn badge_display_label(profile: &serde_json::Value) -> String {
     let proto = profile
         .get("protocol")
@@ -4401,7 +4401,7 @@ fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
                 }
                 Some(true) => {} // explicitly visible
                 None => {
-                    // Missing key — fall back to defaultVisibility().
+                    // Missing key: fall back to defaultVisibility().
                     if matches!(col, ProfileColId::Paths) {
                         out.hidden.insert(*col);
                     }
@@ -4691,7 +4691,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
 }
 
 /// Build `ProfileView` borrows from the in-memory profile JSON. The lifetime
-/// is tied to the input vector — the caller keeps it alive for as long as the
+/// is tied to the input vector: the caller keeps it alive for as long as the
 /// views are needed.
 fn build_profile_views(
     profiles: &[serde_json::Value],
@@ -4753,7 +4753,7 @@ fn render_profiles_text(
     if let Some(raw) = overrides.sort.as_deref() {
         match parse_sort_override(raw) {
             Ok(Some(opt)) => settings.sort = opt,
-            Ok(None) => {} // empty string — leave vault sort
+            Ok(None) => {} // empty string: leave vault sort
             Err(e) => {
                 eprintln!(
                     "Warning: invalid --sort value ({}). Falling back to vault sort.",
@@ -4904,7 +4904,7 @@ fn render_profiles_text(
                 ProfileColId::Subtitle => {
                     let host = host_subtitle(p);
                     let display = if host.is_empty() {
-                        "—".to_string()
+                        "-".to_string()
                     } else {
                         host
                     };
@@ -4915,7 +4915,7 @@ fn render_profiles_text(
                         .get("lastQuota")
                         .and_then(|q| q.get("used"))
                         .and_then(|v| v.as_u64());
-                    let s = used.map(format_size).unwrap_or_else(|| "—".to_string());
+                    let s = used.map(format_size).unwrap_or_else(|| "-".to_string());
                     format!("{:>w$}", s, w = w)
                 }
                 ProfileColId::Total => {
@@ -4923,7 +4923,7 @@ fn render_profiles_text(
                         .get("lastQuota")
                         .and_then(|q| q.get("total"))
                         .and_then(|v| v.as_u64());
-                    let s = total.map(format_size).unwrap_or_else(|| "—".to_string());
+                    let s = total.map(format_size).unwrap_or_else(|| "-".to_string());
                     format!("{:>w$}", s, w = w)
                 }
                 ProfileColId::Pct => {
@@ -4938,7 +4938,7 @@ fn render_profiles_text(
                     let (tone, pct) = storage_tone(used, total, settings.thresholds);
                     let raw = match pct {
                         Some(p) => format!("{:>5.1}%", p),
-                        None => format!("{:>6}", "—"),
+                        None => format!("{:>6}", "-"),
                     };
                     let padded = format!("{:>w$}", raw, w = w);
                     paint_tone(&padded, tone, color_on)
@@ -4953,7 +4953,7 @@ fn render_profiles_text(
                         .get("lastConnected")
                         .and_then(|v| v.as_str())
                         .and_then(format_time_ago)
-                        .unwrap_or_else(|| "—".to_string());
+                        .unwrap_or_else(|| "-".to_string());
                     format!("{:>w$}", raw, w = w)
                 }
                 ProfileColId::Favorite => {
@@ -5001,7 +5001,7 @@ fn render_profiles_text(
             mean_pct
         )
     } else {
-        "—".to_string()
+        "-".to_string()
     };
     let count = summary.profiles;
     let plural = if count == 1 { "profile" } else { "profiles" };
@@ -5079,17 +5079,17 @@ fn render_profiles_text(
             let used_cell = if row.total > 0 {
                 format_size(row.used.min(u64::MAX as u128) as u64)
             } else {
-                "—".to_string()
+                "-".to_string()
             };
             let total_cell = if row.total > 0 {
                 format_size(row.total.min(u64::MAX as u128) as u64)
             } else {
-                "—".to_string()
+                "-".to_string()
             };
             let (tone, pct) = ftp_client_gui_lib_storage_tone(row.used, row.total);
             let pct_str = match pct {
                 Some(p) => format!("{:>5.1}%", p),
-                None => format!("{:>6}", "—"),
+                None => format!("{:>6}", "-"),
             };
             let pct_padded = format!("{:>w$}", pct_str, w = pct_w);
             let pct_painted = paint_tone(&pct_padded, tone, color_on);
@@ -5909,7 +5909,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
             "pcloud", "zohoworkdrive", "fourshared", "drime", "swift"
         ],
-        // Per-protocol capability matrix — answers "which protocols
+        // Per-protocol capability matrix: answers "which protocols
         // support feature X" in one call instead of N agent-connect
         // round-trips. Tokens align with the StorageProvider trait
         // `supports_*` methods. Conservative lower bound: a feature
@@ -6003,7 +6003,7 @@ async fn cmd_agent_connect(cli: &Cli, query: &str) -> i32 {
     //                   capabilities/path/profile blocks are still
     //                   actionable, so a non-zero code would mislead
     //                   exit-gating agents into discarding usable
-    //                   data — flagged by the agent-friendliness
+    //                   data: flagged by the agent-friendliness
     //                   audit, Battery D)
     //   error       → 1 (real connection failure)
     //   lookup err  → 2 (profile not found / vault locked)
@@ -6034,7 +6034,7 @@ fn profile_or_placeholder(cli: &Cli) -> String {
 
 fn suggest_ls_followup(cli: &Cli, path: &str) -> String {
     // Generic glob instead of the old `*.ext` placeholder. `*.ext` looked
-    // like a real pattern to agents copy-pasting the hint — they would fire
+    // like a real pattern to agents copy-pasting the hint: they would fire
     // it literally and get zero results. `*` matches anything on every
     // backend and is the honest default.
     format!(
@@ -7724,7 +7724,7 @@ fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
     for component in user_path.split('/') {
         if component == ".." {
             eprintln!(
-                "Error: path '{}' contains '..' traversal component — rejected for safety. Use absolute paths instead.",
+                "Error: path '{}' contains '..' traversal component: rejected for safety. Use absolute paths instead.",
                 user_path
             );
             // Return the base path unchanged so the command operates on a safe location.
@@ -7738,7 +7738,7 @@ fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
         }
     }
     let base = initial_path.trim();
-    // No meaningful initial_path — pass user_path through with minimal
+    // No meaningful initial_path: pass user_path through with minimal
     // rewriting:
     //   - empty user_path -> "" so the provider applies its canonical
     //     default (FTP/SFTP home, bucket root, configured current_path),
@@ -9885,7 +9885,7 @@ mod serve_sftp {
 
         // Track per-connection tasks in a JoinSet so they are aborted when
         // the server loop exits. Previously bare `tokio::spawn` leaked
-        // handles — on SIGINT the loop broke but active SSH sessions kept
+        // handles: on SIGINT the loop broke but active SSH sessions kept
         // running until they happened to close, holding the provider Arc
         // and any open file descriptors.
         let mut sessions = tokio::task::JoinSet::new();
@@ -10336,7 +10336,7 @@ async fn cmd_get(
     // (or human) can decide rather than silently lose data. Suppressed
     // under --quiet, --immutable (which has its own skip path), and
     // when output is JSON (the json envelope already includes the
-    // destination — agents can diff against their own state).
+    // destination: agents can diff against their own state).
     // Caught by the agent-friendliness audit (P8, Battery C: a `get`
     // to a directory containing a same-named local file overwrote it
     // without warning).
@@ -11710,7 +11710,7 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
     // Track whether the leaf path was already a directory before this
     // call. Idempotent mkdir -p reports `already_existed: true` for an
     // audit-friendly distinction between "I created it" and "it was
-    // already there" — caught by the agent-friendliness audit
+    // already there": caught by the agent-friendliness audit
     // (Battery C, P14).
     let mut leaf_already_existed = false;
     if parents {
@@ -11747,7 +11747,7 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
                     }
                 }
                 Err(e) => {
-                    // Some providers don't return AlreadyExists — they may
+                    // Some providers don't return AlreadyExists: they may
                     // return ServerError or Other for existing directories.
                     // Probe with stat: if the path is a directory, it's fine.
                     match provider.stat(&current).await {
@@ -11835,7 +11835,7 @@ async fn cmd_rm(
     };
 
     let path = &resolve_cli_remote_path(&initial_path, path);
-    // Block recursive delete on root — prevents wiping entire bucket/account
+    // Block recursive delete on root: prevents wiping entire bucket/account
     let normalized = path.trim_matches('/');
     if recursive && normalized.is_empty() {
         print_error(
@@ -12517,7 +12517,7 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
     match rclone_import::import_rclone(&config_path) {
         Ok(result) => {
             if json {
-                // Redact credentials — never output plaintext passwords to stdout
+                // Redact credentials: never output plaintext passwords to stdout
                 let redacted: serde_json::Value = serde_json::json!({
                     "servers": result.servers.iter().map(|s| serde_json::json!({
                         "id": s.id,
@@ -12626,7 +12626,7 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
     match winscp_import::import_winscp(&config_path) {
         Ok(result) => {
             if json {
-                // Redact credentials — never output plaintext passwords to stdout
+                // Redact credentials: never output plaintext passwords to stdout
                 let redacted: serde_json::Value = serde_json::json!({
                     "servers": result.servers.iter().map(|s| serde_json::json!({
                         "id": s.id,
@@ -13414,7 +13414,7 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
 /// Uses `rand::thread_rng()` to generate high-entropy bytes (~8 bits/byte),
 /// preventing TLS or transport-level compression from skewing the benchmark.
 /// This is *high-entropy random* in the benchmarking sense, not a cryptographic
-/// secrecy guarantee — the bytes are read back over the wire and hashed.
+/// secrecy guarantee: the bytes are read back over the wire and hashed.
 fn write_speed_test_file_random(path: &Path, size: u64) -> Result<String, String> {
     use rand::RngCore;
     use sha2::{Digest, Sha256};
@@ -14037,7 +14037,7 @@ async fn cmd_speed_compare(
         for e in report.results.iter() {
             if let Some(r) = e.result.as_ref() {
                 let integ = if !r.integrity_checked {
-                    "—"
+                    "-"
                 } else if r.integrity_verified {
                     "✓"
                 } else {
@@ -14052,14 +14052,14 @@ async fn cmd_speed_compare(
                     r.upload_mbps,
                     r.download_ttfb_ms
                         .map(|v| v.to_string())
-                        .unwrap_or_else(|| "—".into()),
+                        .unwrap_or_else(|| "-".into()),
                     integ,
                     if r.cleanup_ok { "✓" } else { "✗" },
                     e.score * 100.0,
                 ));
             } else {
                 md.push_str(&format!(
-                    "| — | {} | — | — | — | — | — | — | error: {} |\n",
+                    "|: | {} |: |: |: |: |: |: | error: {} |\n",
                     md_cell_safe(&e.url),
                     md_cell_safe(e.error.as_deref().unwrap_or("")),
                 ));
@@ -14102,7 +14102,7 @@ async fn cmd_speed_compare(
                             r.upload_mbps,
                             r.download_ttfb_ms
                                 .map(|v| v.to_string())
-                                .unwrap_or_else(|| "—".into()),
+                                .unwrap_or_else(|| "-".into()),
                             e.score * 100.0,
                         );
                     } else {
@@ -14313,7 +14313,7 @@ async fn cmd_dedupe(
     };
     let path = &resolve_cli_remote_path(&initial_path, path);
 
-    // For interactive mode, check TTY availability — fallback to skip if not a terminal
+    // For interactive mode, check TTY availability: fallback to skip if not a terminal
     let effective_mode = if mode == "interactive" {
         if std::io::stdin().is_terminal() {
             "interactive"
@@ -14742,7 +14742,7 @@ fn save_bisync_snapshot(
         files,
     };
     // S1: the snapshot lives on the LOCAL side, not the remote.
-    // Ensure the local dir exists before writing — download-first runs
+    // Ensure the local dir exists before writing: download-first runs
     // may create the local dir on-the-fly and the snapshot save used
     // to fire before the enclosing mkdir chain completed, producing
     // "No such file or directory" warnings.
@@ -14788,7 +14788,7 @@ fn parse_mtime_secs(s: &str) -> Option<i64> {
     if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
         return Some(dt.and_utc().timestamp());
     }
-    // FTP MLSD timestamps: "2024-01-15 10:30:00Z" — strip trailing Z and parse
+    // FTP MLSD timestamps: "2024-01-15 10:30:00Z": strip trailing Z and parse
     let stripped = s.strip_suffix('Z').or_else(|| s.strip_suffix("UTC"));
     if let Some(bare) = stripped {
         if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(bare, "%Y-%m-%d %H:%M:%S") {
@@ -17792,7 +17792,7 @@ mod fuse_mount {
 
         // Use `spawn_mount2` so the FUSE session handle is owned by a
         // `BackgroundSession`; dropping it triggers `fuse_unmount`. Previously
-        // `mount2` blocked the spawn_blocking task forever — on panic or
+        // `mount2` blocked the spawn_blocking task forever: on panic or
         // process abort the kernel was left with a dangling mountpoint that
         // only `fusermount -u` could clear.
         let mountpoint_owned = mountpoint.to_string();
@@ -19607,7 +19607,7 @@ fn incremental_local_scan(
             result.remove(&relative);
             continue;
         }
-        // Read current metadata — if file was deleted, remove from snapshot
+        // Read current metadata: if file was deleted, remove from snapshot
         match std::fs::metadata(changed) {
             Ok(meta) if meta.is_file() => {
                 let size = meta.len();
@@ -19668,7 +19668,7 @@ fn start_watch_watcher(
             Ok(Box::new(w))
         }
         _ => {
-            // native or auto — use debounced watcher
+            // native or auto: use debounced watcher
             use notify_debouncer_full::new_debouncer;
 
             let (dtx, drx) = std::sync::mpsc::channel();
@@ -19809,8 +19809,8 @@ async fn cmd_sync_watch(
         .unwrap_or_else(std::time::Instant::now);
 
     // Helper macro to run one sync cycle.
-    // Usage: run_sync_cycle!("trigger")            — full walkdir scan (None)
-    //        run_sync_cycle!("trigger", entries)    — incremental (Some(entries))
+    // Usage: run_sync_cycle!("trigger")           : full walkdir scan (None)
+    //        run_sync_cycle!("trigger", entries)   : incremental (Some(entries))
     macro_rules! run_sync_cycle {
         ($trigger:expr) => {
             run_sync_cycle!($trigger, None)
@@ -25011,7 +25011,7 @@ async fn agent_tool_loop(
 
                 // Show assistant text if any.
                 // T4: when print_live is true the sink has already streamed
-                // response.content to stdout — printing it again here would
+                // response.content to stdout: printing it again here would
                 // duplicate the visible output, so we only fall back to the
                 // stderr echo when streaming to stdout is disabled.
                 if !response.content.is_empty() && is_tty && !print_live {
@@ -25509,7 +25509,7 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
             tool_call_id: None,
         });
 
-        // Show thinking indicator — cleared as soon as the first stream chunk
+        // Show thinking indicator: cleared as soon as the first stream chunk
         // lands on stdout, so the spinner never clashes with streamed tokens.
         if is_tty {
             eprint!("\n  \x1b[2m⠙ Thinking...\x1b[0m");
@@ -27009,7 +27009,7 @@ async fn main() {
 fn is_retryable_exit(code: i32) -> bool {
     // Non-retryable categories (stable across retries, burning attempts is pure noise):
     //   0  success
-    //   2  not found (missing path or missing parent — caught by the new 553
+    //   2  not found (missing path or missing parent: caught by the new 553
     //      preflight in `cmd_put`)
     //   5  invalid usage / config
     //   6  authentication failed

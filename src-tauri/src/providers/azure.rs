@@ -10,7 +10,7 @@
 //! - AZ-011: No storage quota API (Azure Blob has no native quota endpoint)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -613,7 +613,7 @@ impl AzureProvider {
     }
 
     /// AZ-016: Poll copy status until completion or timeout.
-    /// Azure Copy Blob can be async for large blobs — must confirm completion before deleting source.
+    /// Azure Copy Blob can be async for large blobs: must confirm completion before deleting source.
     async fn poll_copy_status(&self, dest_url: &str) -> Result<(), ProviderError> {
         let start = std::time::Instant::now();
         let timeout = std::time::Duration::from_secs(COPY_POLL_TIMEOUT_SECS);
@@ -904,7 +904,7 @@ impl StorageProvider for AzureProvider {
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
 
-        // H-01: Streaming download — chunked writes instead of buffering entire response
+        // H-01: Streaming download: chunked writes instead of buffering entire response
         let mut stream = resp.bytes_stream();
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -988,7 +988,7 @@ impl StorageProvider for AzureProvider {
                 Ok(())
             }
             reqwest::StatusCode::OK => {
-                // Server ignored Range — restart from scratch
+                // Server ignored Range: restart from scratch
                 let total_size = resp.content_length().unwrap_or(0);
                 let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
                     .await
@@ -1003,7 +1003,7 @@ impl StorageProvider for AzureProvider {
                 let tmp = format!("{}.aerotmp", local_path);
                 let _ = tokio::fs::remove_file(&tmp).await;
                 Err(ProviderError::TransferFailed(
-                    "Range not satisfiable — file may have changed on server".to_string(),
+                    "Range not satisfiable: file may have changed on server".to_string(),
                 ))
             }
             status => Err(ProviderError::TransferFailed(format!(
@@ -1212,7 +1212,7 @@ impl StorageProvider for AzureProvider {
             )));
         }
 
-        // AZ-016: Check copy status — may be async for large blobs
+        // AZ-016: Check copy status: may be async for large blobs
         let copy_status = resp
             .headers()
             .get("x-ms-copy-status")
@@ -1486,7 +1486,7 @@ impl AzureProvider {
         let auth = self.sign_request("PUT", url, &headers, file_len)?;
 
         // Cannot use send_with_auth_and_retry for streaming body (body is not cloneable).
-        // Streaming uploads are not retryable at this level — the caller can retry the entire upload.
+        // Streaming uploads are not retryable at this level: the caller can retry the entire upload.
         let resp = if self.config.sas_token.is_some() {
             self.client
                 .put(&auth)

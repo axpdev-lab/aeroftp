@@ -1,4 +1,4 @@
-//! AeroCloud file versioning — automatic backup of overwritten/deleted files.
+//! AeroCloud file versioning: automatic backup of overwritten/deleted files.
 //!
 //! When a sync operation would overwrite or delete a local file, the previous
 //! version is archived in `.aeroversions/` with a timestamp suffix.
@@ -8,7 +8,7 @@
 //! - **Staggered**: decreasing frequency (1/hour for 24h, 1/day for 30d, 1/week older)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -18,7 +18,7 @@ use tracing::info;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum VersioningStrategy {
-    /// No versioning — overwritten files are lost
+    /// No versioning: overwritten files are lost
     Disabled,
     /// Keep all versions, auto-delete after max_age_days
     TrashCan {
@@ -377,7 +377,7 @@ impl SyncVersioning {
         })?;
 
         for (_key, mut versions) in groups {
-            // Sort by filename (timestamp is in the name) — newest first
+            // Sort by filename (timestamp is in the name): newest first
             versions.sort_by(|a, b| b.0.cmp(&a.0));
             for (path, size) in versions.into_iter().skip(max_copies as usize) {
                 if std::fs::remove_file(&path).is_ok() {

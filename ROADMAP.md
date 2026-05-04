@@ -17,6 +17,16 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🟢 Just Shipped
 
+- **Persistent Mount Manager (GUI + CLI)**
+  File > Mount Manager dialog with cross-platform autostart (systemd-user units on Linux, Task Scheduler ONLOGON on Windows). Mount configs persist as plaintext sidecar JSON or encrypted vault entries, credentials always resolve through `aeroftp-cli --profile`. One-click "Open mount in file manager" auto-creates a default mount when none exists.
+- **Filen Desktop local bridges**
+  New presets for the local WebDAV (port 1900) and local S3 (port 1700) servers exposed by Filen Desktop, on top of a layered WebDAV scheme detection that unblocks every local HTTP-on-non-80 bridge.
+- **AeroFile community polish**
+  Multi-file Properties dialog (Windows-style aggregate view with mixed-state indicators), recursive `*` flatten search, smart Open with default app routing, PathBar empty-area edit and trailing chevron, configurable provider-icon size, drag-reorder custom icons, Server Health overlay dot on Discover cards.
+- **AeroSync wrapper script export**
+  Round-trip AeroSync configs as POSIX `.sh` or PowerShell `.ps1` scripts with an embedded `# AEROFTP-META` JSON line, defaulting to bash on Linux/macOS and pwsh on Windows.
+- **My Servers unified table**
+  Five-phase rework: storage Used / Total / % columns with configurable warning thresholds, semantic `<table>` with sticky thead/tfoot and click-to-sort, dedup-aware footer with per-protocol breakdown, CLI parity, drag-to-reorder + resize on three surfaces (My Servers, AeroFile remote, AeroFile local).
 - **AeroRsync session-cached batch transport**
   One SSH session amortizes many consecutive delta transfers (`AerorsyncBatch` trait, per-file `delta_files[]`, `bytes_on_wire` counter).
 - **AeroVault overlay session model**
@@ -48,8 +58,6 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Delta sync local-to-local, the same wire-protocol-compatible engine extended to local filesystem pairs.
 - **Activity Log per-provider coverage**
   Beyond generic CRUD, surface provider-specific events such as share link rotated, version restored, label applied.
-- **Persistent Mount Manager (GUI + CLI)**
-  Pick a free drive letter on Windows or a mount path on Linux, persist across reboots, with an Open Mount button in the dual panel. Also unlocks the "view the decrypted view of an encrypted sync" use case for Crypt and AeroVault overlays.
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
 
@@ -148,12 +156,10 @@ Recent contributors include **[@EhudKirsh](https://github.com/EhudKirsh)**, whos
 
 Open community items currently in our triage:
 
-- AeroSync ↔ aeroftp-cli script export/import (`.ps1` / `.sh`, OS-aware shebang)
-- Top-right overlays: keep titlebar drag-region active while modal is open
-- AeroFile right-click "Open with default app" (`.aerovault` / `.aeroftp` in-app, `.ps1` / `.sh` in AeroTools)
-- Persistent Mount Manager + Open Mount button
 - Mobile-friendly window dimensions for Linux phones
 - Per-protocol comparison page in docs
+- Drag and drop from AeroFile to Editor to Terminal (`.ps1` / `.sh` execute helper)
+- Topbar 3-cluster layout (page-nav / utility / window controls)
 
 If you spot a bug, want a small feature, or want to nominate a provider for native integration, [open an issue](https://github.com/axpdev-lab/aeroftp/issues). Tier 1 quick wins are typically picked up within one or two releases.
 
@@ -162,6 +168,27 @@ If you spot a bug, want a small feature, or want to nominate a provider for nati
 ## Detailed Release History
 
 The lane view above is what most users want. The tables below are kept for users who want to see exactly which feature landed in which release.
+
+### v3.7.1
+
+| Feature | Description |
+|---------|-------------|
+| **Mount Manager** | Persistent FUSE / WebDAV mount manager reachable from File > Mount Manager, the My Servers toolbar, and the connected remote address bar. Sidecar JSON or vault-backed storage, per-mount autostart (systemd-user / Task Scheduler ONLOGON), Pick free drive letter helper on Windows, "Open mount in file manager" auto-creates a default mount when none exists. Mount configs never carry secrets. |
+| **Filen Desktop local bridges** | Local WebDAV (port 1900) and local S3 (port 1700) presets connect AeroFTP to a logged-in Filen Desktop instance. Inline 5-step setup banner. WebDAV scheme detection rewritten so HTTP-on-non-80 bridges work universally (explicit scheme on host wins, then `tls_mode` extra, then auto maps localhost / RFC 1918 / `*.local` to HTTP on any port). |
+| **AeroFile multi-file Properties** | Right-click on two or more files now opens an aggregate Properties dialog with kind breakdown, total bytes, common parent path, modified-date range, and Mixed indicators on permissions / read-only / hidden. |
+| **AeroFile recursive search** | Typing `*` or `**` flattens the subtree under the current directory, BFS-bounded at 32 levels and 5,000 entries. Optional residual filter narrows by relative-path substring. |
+| **AeroFile right-click "Open with default app"** | `.aerovault` / `.aeroftp` open in AeroFTP, scripts (`.ps1` / `.sh`) drop into AeroTools Terminal with the right shell prefix and POSIX-quoted path, anything else goes through the OS default. |
+| **AeroSync wrapper script export** | Templates dialog now exports the active sync configuration as POSIX `.sh` or PowerShell `.ps1` with an embedded `# AEROFTP-META` JSON line for round-trip import. |
+| **Custom Icons Manager + drag-reorder + sort** | Settings > Appearance > Icons hosts a standalone gallery (upload, sort, drag-reorder, rename, delete). IconPickerDialog Custom tab gains drag-reorder, Shipped tab gets a Popular / A-Z sort toggle. |
+| **Configurable provider icon size** | Settings > Appearance > Interface exposes an 18-32 px slider, My Servers and Discover cards size from the shared preference. Default bumped to 24 px. |
+| **PathBar empty-area edit + trailing chevron** | Click the empty area to enter edit mode (Enter commits, Escape cancels), trailing `>` chevron lists first-generation subdirectories. |
+| **Settings keyboard navigation** | Settings is now a proper modal: Tab focus trap, Escape close, sidebar `tablist` with Arrow / Home / End, horizontal Appearance subtabs follow the same model. |
+| **My Servers unified table cluster** | 5 phases: storage Used / Total / % columns + warning thresholds, semantic `<table>` with sticky thead/tfoot, click-to-sort, dedup-aware footer with per-protocol breakdown, CLI parity, drag-to-reorder + resize on three surfaces (My Servers, AeroFile remote, AeroFile local). |
+| **Server Health overlay dot on Discover** | Each `ServiceCard` now renders the same overlay-dot pattern as the compact `ServerCard`, gated on `healthStatus !== 'unknown'`. |
+| **CLI `aeroftp-cli profiles -i`** | Interactive prompt loop with compact `1l` / `2t` / `3d` / `q` tokens, delete gated by typed-name confirmation. |
+| **Filen v3 Argon2id** | New Filen accounts using `authVersion >= 3` can now log in. v1 (SHA-512) and v2 (PBKDF2-SHA512) continue unchanged. New `v1` / `v2` / `v3` Auth version badge on saved cards. |
+| **Provider polish** | S3Drive icon + 5-step setup-with-rclone banner, Filen Desktop S3 / WebDAV presets pick up the official Filen logo, MEGAcmd anonymous WebDAV, Backblaze B2 native Quick Connect form. |
+| **Bug fixes** | Storage quota persistence on OAuth providers (Dropbox, Google Drive, pCloud), Koofr WebDAV quota fallback to native API, terminal black-on-tab-switch (Linux WebKitGTK + Windows WebView2), Ctrl+- / Ctrl+= / Ctrl+0 on focused terminal in real time, F2 inline rename in Large Icons view, Forward / Back mouse buttons (X1 / X2), choose-icon dialog regressions for PNG-backed logos. |
 
 ### v3.7.0
 

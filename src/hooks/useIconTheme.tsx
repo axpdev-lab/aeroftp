@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * useIconTheme — Context + hook for icon theme selection
+ * useIconTheme: Context + hook for icon theme selection
  *
  * Provides global state for the selected icon theme (outline/filled/minimal).
  * Persisted in localStorage. Used by App.tsx, SettingsPanel, and any
@@ -23,8 +23,8 @@ const VALID_ICON_THEMES: IconTheme[] = ['outline', 'filled', 'minimal'];
 export const getDefaultIconTheme = (effectiveTheme: EffectiveTheme): IconTheme => {
     switch (effectiveTheme) {
         case 'tokyo':
-        case 'cyber': return 'minimal';  // special themes — neon accent effect
-        default: return 'filled';        // light, dark — institutional themes
+        case 'cyber': return 'minimal';  // special themes: neon accent effect
+        default: return 'filled';        // light, dark: institutional themes
     }
 };
 

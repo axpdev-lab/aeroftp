@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
@@ -220,10 +220,10 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
                         </div>
                       </td>
                       <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400 tabular-nums">
-                        {item.is_dir ? '—' : formatSize(item.size)}
+                        {item.is_dir ? '-' : formatSize(item.size)}
                       </td>
                       <td className="px-2 py-1.5 text-gray-500 dark:text-gray-500">
-                        {item.modified ? formatDate(item.modified) : '—'}
+                        {item.modified ? formatDate(item.modified) : '-'}
                       </td>
                     </tr>
                   );
@@ -234,7 +234,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
         </div>
       </div>
 
-      {/* Note: Permanent delete removed — Dropbox API requires Team scope (files.permanent_delete)
+      {/* Note: Permanent delete removed: Dropbox API requires Team scope (files.permanent_delete)
            which is not available for personal accounts. Trash auto-empties after 30 days. */}
     </div>
   );

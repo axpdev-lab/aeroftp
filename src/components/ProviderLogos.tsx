@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Official provider logo SVG components.
@@ -12,7 +12,7 @@ interface LogoProps {
     size?: number;
 }
 
-// MEGA — red circle with white "M"
+// MEGA: red circle with white "M"
 export const MegaLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 512 512">
         <path d="M255.999 6C117.931 6 6 117.932 6 256c0 138.07 111.93 250 250 250s250-111.93 250-250C506 117.931 394.07 6 256 6z" fill="#db282e"/>
@@ -20,7 +20,7 @@ export const MegaLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Cloudflare — two-tone cloud
+// Cloudflare: two-tone cloud
 export const CloudflareLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 74.603 74.603">
         <path d="M51.027 53.772l.378-1.33c.459-1.573.288-3.038-.477-4.105-.702-.986-1.872-1.564-3.294-1.637L20.727 46.357c-.18-.009-.333-.09-.423-.226-.09-.136-.117-.317-.054-.488.09-.262.351-.47.621-.48l27.15-.343c3.222-.145 6.705-2.776 7.929-5.977l1.548-4.07c.045-.108.063-.225.063-.343 0-.063-.009-.127-.018-.19C55.797 26.292 48.732 20.35 40.3 20.35c-7.775 0-14.38 5.046-16.747 12.054-1.53-1.149-3.483-1.764-5.589-1.556-3.735.371-6.731 3.391-7.1 7.144-.1.977-.018 1.908.207 2.794C5.978 40.968 1.092 45.986 1.092 52.144c0 .56.045 1.103.117 1.646.036.262.261.452.522.452l49.666.009c.009 0 .009 0 .018 0 .279-.009.531-.2.612-.48z" fill="#f6821f"/>
@@ -28,42 +28,42 @@ export const CloudflareLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Backblaze — flame icon
+// Backblaze: flame icon
 export const BackblazeLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="#E21E29">
         <path d="M9.3108.0003c.6527 1.3502 1.5666 4.0812-1.3887 7.1738-1.8096 1.8796-3.078 3.8487-2.3496 6.0644.3642 1.1037 1.1864 2.5079 2.8867 2.7852.6107.1008 1.3425-.0006 1.7403-.1406 2.4538-.8544 2.098-3.4138 1.5546-5.0469-.07-.2129-.1915-.7333-.2363-.9238-.3726-1.6023.776-2.6562 1.129-3.8047.028-.0925.0534-.1819.0702-.2715.042-.21.067-.423.0781-.6387 0-1.8264-.9882-2.6303-1.7754-3.5996C10.1794.5643 9.3107.0003 9.3107.0003Zm6.2754 6.0175s-.709.3366-1.2188.8829c-.4454.4818-.8635.8789-1.2949 1.8593-.028.14-.0518.2863-.0742.4375-.2325 1.6416 1.1473 3.1446.7187 5.1895-.112.535-.3554.7123-.7812 1.6367-.5098 1.1065-.383 2.588.3594 3.5293.6723.8488 1.879 1.2321 3.0527.9492 2.1065-.5042 3.0646-2.2822 2.8965-4.2851-.1317-1.58-.8154-2.7536-2.754-4.961-.9607-1.0925-1.6072-2.409-1.5624-3.4062.1373-1.2074.6582-1.832.6582-1.832zM4.8928 15.1936c-.0222.0145-.0439.0614-.0586.1602a.0469.0469 0 0 1-.0059.0195v.01c-.1148.5406-.1649 1.823.1153 2.9687.353 1.4427 1.4175 3.902 4.412 5.129 2.5184 1.0336 5.718.5411 7.8497-1.627.5294-.5435.408-.4897-.4883-.2012v-.002c-1.1121.3558-3.5182.5463-4.7676-1-1.5239-1.8852-.4302-3.3633-1.3574-3.1504-3.6164.8348-5.2667-1.4657-5.5469-2.1016-.0023-.002-.0857-.2487-.1523-.205z"/>
     </svg>
 );
 
-// Wasabi — green globe pattern
+// Wasabi: green globe pattern
 export const WasabiLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="#01CD3E">
         <path d="M20.483 3.517A11.91 11.91 0 0 0 12 0a11.91 11.91 0 0 0-8.483 3.517A11.91 11.91 0 0 0 0 12a11.91 11.91 0 0 0 3.517 8.483A11.91 11.91 0 0 0 12 24a11.91 11.91 0 0 0 8.483-3.517A11.91 11.91 0 0 0 24 12a11.91 11.91 0 0 0-3.517-8.483Zm1.29 7.387-5.16-4.683-5.285 4.984-2.774 2.615V9.932l4.206-3.994 3.146-2.969c3.163 1.379 5.478 4.365 5.867 7.935zm-.088 2.828a10.632 10.632 0 0 1-1.025 2.951l-2.952-2.668v-3.87Zm-8.183-11.47-2.227 2.103-2.739 2.598v-4.17A9.798 9.798 0 0 1 12 2.155c.513 0 1.007.035 1.502.106zM6.398 13.891l-4.083-3.658a9.744 9.744 0 0 1 1.078-2.987L6.398 9.95zm0-9.968v3.129l-1.75-1.573a8.623 8.623 0 0 1 1.75-1.556Zm-4.189 9.102 5.284 4.736 5.302-4.983 2.74-2.598v3.817l-7.423 7.016a9.823 9.823 0 0 1-5.903-7.988Zm8.306 8.695 5.02-4.754v4.206a9.833 9.833 0 0 1-3.553.654c-.495 0-.99-.035-1.467-.106zm7.176-1.714v-3.11l1.714 1.555a9.604 9.604 0 0 1-1.714 1.555z"/>
     </svg>
 );
 
-// Storj — cloud/arc shape
+// Storj: cloud/arc shape
 export const StorjLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 45.504 45.504">
         <path d="m 22.752,8.298 c 12.566,0 22.752,10.186 22.752,22.752 0,2.134-0.294,4.198-0.843,6.157 h-4.34 c 0.676-1.927 1.043-3.999 1.043-6.157 0-10.279-8.333-18.612-18.612-18.612 -10.279,0-18.612,8.333-18.612,18.612 0,0.706 0.039,1.403 0.116,2.088 l 25.795,0 c 1.695,0 3.069-1.374 3.069-3.069 0-1.635-1.278-2.971-2.888-3.064 l-0.222-0.005 -1.791,0.001 -0.258-1.772 c-0.376-2.574-2.596-4.51-5.227-4.51 -2.361,0-4.417,1.563-5.07,3.794 l-0.436,1.488 h-2.025 c-1.577,0-2.855,1.278-2.855,2.855 l 0.004,0.143 H 8.21 l 0,-2.187 c 0-3.434 2.474-6.29 5.737-6.882 l 0.29-0.046 0.032-0.068 C 15.802,18.724 18.996,16.627 22.608,16.579 l 0.126,-0.001 c 4.036,0 7.529,2.552 8.855,6.194 l 0.094,0.273 0.1,0.024 c 3.108,0.767 5.422,3.549 5.476,6.88 l 0.001,0.12 c 0,3.636-2.692,6.644-6.192,7.138 H 0.843 C 0.294,35.248 0,33.183 0,31.05 0,18.484 10.186,8.298 22.752,8.298 Z" fill="#0051fe"/>
     </svg>
 );
 
-// DigitalOcean — water droplet
+// DigitalOcean: water droplet
 export const DigitalOceanLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="#0080FF">
         <path d="M12.04 0C5.408-.02.005 5.37.005 11.992h4.638c0-4.923 4.882-8.731 10.064-6.855a6.95 6.95 0 014.147 4.148c1.889 5.177-1.924 10.055-6.84 10.064v-4.61H7.391v4.623h4.61V24c7.86 0 13.967-7.588 11.397-15.83-1.115-3.59-3.985-6.446-7.575-7.575A12.8 12.8 0 0012.039 0zM7.39 19.362H3.828v3.564H7.39zm-3.563 0v-2.978H.85v2.978z"/>
     </svg>
 );
 
-// Oracle Cloud — pill/capsule shape
+// Oracle Cloud: pill/capsule shape
 export const OracleCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 31.4 31.4">
         <path fill="#C74634" d="M9.9 25.6c-5.5 0-9.9-4.4-9.9-9.9s4.4-9.9 9.9-9.9H21.5c5.5 0 9.9 4.4 9.9 9.9s-4.4 9.9-9.9 9.9H9.9m11.3-3.5c3.6 0 6.4-2.9 6.4-6.4s-2.9-6.4-6.4-6.4h-11c-3.6 0-6.4 2.9-6.4 6.4s2.9 6.4 6.4 6.4h11"/>
     </svg>
 );
 
-// IDrive e2 — blue "e2" text (official logo)
+// IDrive e2: blue "e2" text (official logo)
 export const IDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 50 50">
         <g transform="translate(-0.026,-7.955)">
@@ -75,14 +75,14 @@ export const IDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Nextcloud — three connected dots
+// Nextcloud: three connected dots
 export const NextcloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="#0082C9">
         <path d="M12.018 6.537c-2.5 0-4.6 1.712-5.241 4.015-.56-1.232-1.793-2.105-3.225-2.105A3.569 3.569 0 0 0 0 12a3.569 3.569 0 0 0 3.552 3.553c1.432 0 2.664-.874 3.224-2.106.641 2.304 2.742 4.016 5.242 4.016 2.487 0 4.576-1.693 5.231-3.977.569 1.21 1.783 2.067 3.198 2.067A3.568 3.568 0 0 0 24 12a3.569 3.569 0 0 0-3.553-3.553c-1.416 0-2.63.858-3.199 2.067-.654-2.284-2.743-3.978-5.23-3.977zm0 2.085c1.878 0 3.378 1.5 3.378 3.378 0 1.878-1.5 3.378-3.378 3.378A3.362 3.362 0 0 1 8.641 12c0-1.878 1.5-3.378 3.377-3.378zm-8.466 1.91c.822 0 1.467.645 1.467 1.468s-.644 1.467-1.467 1.468A1.452 1.452 0 0 1 2.085 12c0-.823.644-1.467 1.467-1.467zm16.895 0c.823 0 1.468.645 1.468 1.468s-.645 1.468-1.468 1.468A1.452 1.452 0 0 1 18.98 12c0-.823.644-1.467 1.467-1.467z"/>
     </svg>
 );
 
-// Koofr — PNG (no SVG available), rendered as img
+// Koofr: PNG (no SVG available), rendered as img
 export const KoofrLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/koofr.png"
@@ -93,7 +93,7 @@ export const KoofrLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// OpenDrive — PNG logo
+// OpenDrive: PNG logo
 export const OpenDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/opendrive.png"
@@ -104,7 +104,7 @@ export const OpenDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// Yandex Cloud — blue arrows logo (for S3 Object Storage preset)
+// Yandex Cloud: blue arrows logo (for S3 Object Storage preset)
 export const YandexCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
         <path d="M23.8577 27.4311C21.0452 29.3559 17.6544 29.2559 10.8484 29.2965L5.44495 29.2873L8.17863 21.9245L12.2291 21.9168C15.5236 21.9242 17.4894 21.6743 19.0884 20.5299C20.6443 19.4155 21.5921 17.7022 22.7307 14.6107L24.1462 10.8156L32.0001 10.8125L30.115 15.8605C27.7255 22.2493 26.6403 25.4633 23.8577 27.4311Z" fill="#2A9FFF"/>
@@ -112,7 +112,7 @@ export const YandexCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Yandex Disk — official blue UFO hat logo (PNG from yastatic.net)
+// Yandex Disk: official blue UFO hat logo (PNG from yastatic.net)
 export const YandexDiskLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/yandex-disk.png"
@@ -123,7 +123,7 @@ export const YandexDiskLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// GitLab — Tanuki fox mark
+// GitLab: Tanuki fox mark
 export const GitLabLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 25 24" fill="none">
         <path d="m24.507 9.5-.034-.09L21.082.562a.896.896 0 0 0-1.694.091l-2.29 7.01H7.825L5.535.653a.898.898 0 0 0-1.694-.09L.451 9.411.416 9.5a6.297 6.297 0 0 0 2.09 7.278l.012.01.03.022 5.16 3.867 2.56 1.935 1.554 1.176a1.051 1.051 0 0 0 1.268 0l1.555-1.176 2.56-1.935 5.197-3.89.014-.01A6.297 6.297 0 0 0 24.507 9.5Z" fill="#E24329"/>
@@ -133,14 +133,14 @@ export const GitLabLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// GitHub — Octocat mark
+// GitHub: Octocat mark
 export const GitHubLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
     </svg>
 );
 
-// Box — blue box logo (centered in square viewBox)
+// Box: blue box logo (centered in square viewBox)
 export const BoxLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 40 40">
         <g transform="translate(0, 9.2)">
@@ -149,7 +149,7 @@ export const BoxLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// pCloud — teal cloud with "P"
+// pCloud: teal cloud with "P"
 export const PCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 50 50" fill="none">
         <g transform="translate(0,9)">
@@ -160,7 +160,7 @@ export const PCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Azure — Microsoft Azure logo
+// Azure: Microsoft Azure logo
 export const AzureLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 18 18" fill="none">
         <path d="M5.33492 1.37491C5.44717 1.04229 5.75909 0.818359 6.11014 0.818359H11.25L5.91513 16.6255C5.80287 16.9581 5.49095 17.182 5.13991 17.182H1.13968C0.579936 17.182 0.185466 16.6325 0.364461 16.1022L5.33492 1.37491Z" fill="url(#azure_s0)"/>
@@ -175,7 +175,7 @@ export const AzureLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Filen — connected dots circuit pattern (official logo)
+// Filen: connected dots circuit pattern (official logo)
 export const FilenLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 2133.89 2133.89">
         <circle cx="1066.95" cy="1066.95" r="1066.95" fill="#1E88E5"/>
@@ -183,7 +183,7 @@ export const FilenLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Internxt — blue shield with X pattern (zero-knowledge cloud)
+// Internxt: blue shield with X pattern (zero-knowledge cloud)
 export const InternxtLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
         <rect width="32" height="32" rx="7" fill="#0066FF"/>
@@ -191,7 +191,7 @@ export const InternxtLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Jianguoyun / Nutstore — acorn icon (PNG, no SVG available)
+// Jianguoyun / Nutstore: acorn icon (PNG, no SVG available)
 export const JianguoyunLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/jianguoyun.png"
@@ -202,14 +202,14 @@ export const JianguoyunLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// InfiniCLOUD — orange infinity loop (official logo)
+// InfiniCLOUD: orange infinity loop (official logo)
 export const InfiniCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 45.197 45.197">
         <path fill="#EF8200" d="m10.8,16.166c-1.7,0-3.5,0.4-5,1.3-4.4,2.5-6.7,7.7-5.4,12.6 1.3,5,5.9,8.4,11.2,8.4h5.1l-4-6.2c-0.6-0.8-0.9-1-1.5-1v0c-2.1,0-3.9-1.8-3.9-4 0-1.5,0.9-2.9,2.2-3.6 0.4-0.2,0.8-0.3,1.3-0.3 1.3,0,1.9,0.3,3.6,3.1 0.4,0.6,0.7,1.2,1,1.8l0.1,0.1c2.2,4.2,5.3,10,13.9,10 4.4,0,8.5-1.8,11.5-4.9 3-3.2,4.6-7.3,4.3-11.7-0.4-7.9-6.6-14.3-14.4-14.9-5.9-0.5-11,1.9-14.2,6.7l5.3,3.1c0.6,0.3,1.3,0.2,1.7-0.2 1.5-1.6,3.2-2.3,5.8-2.3 2.4,0,4.7,1,6.4,2.8 1.6,1.8,2.4,4.2,2.1,6.6-0.3,2.4-1.5,4.5-3.5,5.9-2,1.5-4.5,2-6.9,1.5-2.7-0.6-3.8-2.4-5.6-5.9-0.4-0.7-0.8-1.5-1.2-2.2-2.1-3.5-4.7-6.7-9.9-6.7"/>
     </svg>
 );
 
-// Alibaba Cloud — orange brackets (official logo)
+// Alibaba Cloud: orange brackets (official logo)
 export const AlibabaOSSLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24">
         <path d="M14.752 4.64h5.274C22.242 4.64 24 6.475 24 8.691V15.8a3.947 3.947 0 01-3.974 3.975h-5.274l1.299-1.835 3.822-1.222c.688-.23 1.146-.918 1.146-1.605v-5.81c0-.687-.458-1.375-1.146-1.605L16.05 6.475l-1.3-1.835zM2.98 15.111c0 .688.46 1.376 1.147 1.606l3.822 1.146 1.3 1.835H3.974A3.947 3.947 0 010 15.723V8.69c0-2.216 1.758-4.05 3.975-4.05h5.273L7.95 6.474 4.127 7.697c-.688.23-1.146.918-1.146 1.606v5.808z" fill="#FF6A00"/>
@@ -217,7 +217,7 @@ export const AlibabaOSSLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Tencent Cloud — three-color cloud (official logo)
+// Tencent Cloud: three-color cloud (official logo)
 export const TencentCOSLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24">
         <path d="M20.048 17.142c-.354.35-1.061.875-2.3.875-.53 0-1.149 0-1.414 0-.354 0-3.007 0-6.191 0 2.3-2.186 4.245-4.023 4.422-4.198.177-.175.619-.612 1.061-1.037.885-.787 1.592-.875 2.211-.875.885 0 1.592.35 2.211.875 1.238 1.137 1.238 3.148 0 4.36zM21.552 11.457c-.885-.962-2.211-1.574-3.626-1.574-1.238 0-2.3.437-3.272 1.137-.354.35-.884.7-1.327 1.225-.354.35-7.96 7.696-7.96 7.696.443.087.973.087 1.415.087s8.843 0 9.197 0c.708 0 1.238 0 1.769-.087 1.15-.088 2.3-.525 3.272-1.4 2.034-1.924 2.034-5.16 0-7.084z" fill="#00A3FF"/>
@@ -226,7 +226,7 @@ export const TencentCOSLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Google Cloud Storage — multicolor cloud
+// Google Cloud Storage: multicolor cloud
 export const GoogleCloudStorageLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 97.75 78.62">
         <path d="M62.21 21.73l3.13.06 8.53-8.51.42-3.6a38.2 38.2 0 0 0-62.3 18.57c.88-.64 2.88-.16 2.88-.16l17-2.8s.88-1.44 1.31-1.35a21.19 21.19 0 0 1 29-2.21z" fill="#ea4335"/>
@@ -236,7 +236,7 @@ export const GoogleCloudStorageLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Google Drive — multicolor triangle
+// Google Drive: multicolor triangle
 export const GoogleDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 87.3 78">
         <path fill="#0066da" d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5l5.4 9.35z" />
@@ -248,7 +248,7 @@ export const GoogleDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// PixelUnion — PNG logo (scaled up 1.4x like other PNG logos)
+// PixelUnion: PNG logo (scaled up 1.4x like other PNG logos)
 export const PixelUnionLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/pixelunion.png"
@@ -259,7 +259,7 @@ export const PixelUnionLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// Immich — multi-color star/pinwheel
+// Immich: multi-color star/pinwheel
 export const ImmichLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 512 512">
         <path d="M238.8 155.5c33.5 29.7 60.5 61.5 77.9 91.5 29.9-53.4 49.8-116.9 50.1-157.3v-.8c0-59.8-59.7-83.1-111.1-83.1S144.6 29 144.6 88.8V92c28.7 12.8 62.6 35.6 94.2 63.5" fill="#fa2921" />
@@ -270,7 +270,7 @@ export const ImmichLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Google Photos — four-color pinwheel
+// Google Photos: four-color pinwheel
 export const GooglePhotosLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 48 48">
         <path fill="#ffc107" d="M24,22.5C24,16.701,19.299,12,13.5,12S3,16.701,3,22.5c0,0,0,0.339,0,0.5c0,0.552,0.448,1,1,1 s20,0,20,0s0-0.448,0-1C24,22.839,24,22.5,24,22.5z" />
@@ -280,14 +280,14 @@ export const GooglePhotosLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Dropbox — blue diamond shape
+// Dropbox: blue diamond shape
 export const DropboxLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 43 40" fill="#0061ff">
         <path d="M12.5 0L0 8.1l8.5 6.9 12.5-8.2L12.5 0zM0 22l12.5 8.1 8.5-6.8-12.5-8.2L0 22zm21 1.3l8.5 6.8L42 22l-8.5-6.9-12.5 8.2zm21-15.2L29.5 0 21 6.8l12.5 8.2L42 8.1zM21.1 24.4l-8.6 6.9-3.9-2.6v2.9l12.5 7.5 12.5-7.5v-2.9l-3.9 2.6-8.6-6.9z" />
     </svg>
 );
 
-// DriveHQ — PNG cloud drive icon (scaled up 1.4x to compensate for PNG padding)
+// DriveHQ: PNG cloud drive icon (scaled up 1.4x to compensate for PNG padding)
 export const DriveHQLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/drivehq.png"
@@ -298,7 +298,7 @@ export const DriveHQLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// OneDrive — Microsoft cloud (4-cloud composition)
+// OneDrive: Microsoft cloud (4-cloud composition)
 export const OneDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg">
         <path fill="#0364b8" d="M19.6 9.5c-.55-3-3.18-5.25-6.34-5.25-2.97 0-5.49 1.99-6.27 4.71.46-.1.94-.16 1.42-.16 1.97 0 3.74.78 5.05 2.05a4.99 4.99 0 0 1 4.55-1.6c.55.05 1.06.18 1.59.25z" />
@@ -308,7 +308,7 @@ export const OneDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// FileLu — PNG logo
+// FileLu: PNG logo
 export const FileLuLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/filelu.png"
@@ -319,7 +319,7 @@ export const FileLuLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// Felicloud — blue cloud outline (Nextcloud-based, EU)
+// Felicloud: blue cloud outline (Nextcloud-based, EU)
 export const FeliCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/felicloud.png"
@@ -341,7 +341,7 @@ export const S3DriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// Blomp — purple smiling cloud (OpenStack Swift, 40 GB free)
+// Blomp: purple smiling cloud (OpenStack Swift, 40 GB free)
 export const BlompLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/blomp.png"
@@ -352,14 +352,14 @@ export const BlompLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// 4shared — blue "4" logo
+// 4shared: blue "4" logo
 export const FourSharedLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 400 400">
         <path d="M 333.33333,233.33333 V 20 H 240 L 0,233.33333 V 300 h 253.33333 v 80 h 80 V 300 H 400 v -66.66667 z m -80,0 H 93.333333 L 253.33333,86.666667 Z" fill="#008bf6"/>
     </svg>
 );
 
-// Seafile — orange cloud logo (open-source file sync)
+// Seafile: orange cloud logo (open-source file sync)
 export const SeafileLogo: React.FC<LogoProps> = ({ size = 24 }) => {
     const gradId = useId();
     return (
@@ -374,21 +374,21 @@ export const SeafileLogo: React.FC<LogoProps> = ({ size = 24 }) => {
     );
 };
 
-// CloudMe — cloud icon (Swedish cloud storage)
+// CloudMe: cloud icon (Swedish cloud storage)
 export const CloudMeLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 105.834 105.833">
         <path fill="#00AEEF" d="M 150.626,95.663 C 155.735,85.266 143.218,80.154 143.218,80.154 131.588,73.455 123.48,84.207 123.48,84.207 119.428,63.237 83.477,72.398 83.477,72.398 54.749,81.561 69.201,105.181 69.201,105.181 63.302,100.321 57.271,98.749 52.12,98.622 v 5.266 C 65.121,102.724 76.604,113.992 76.604,113.992 63.387,91.96 80.13,82.799 80.13,82.799 c 7.579,-4.23 17.801,-4.937 17.801,-4.937 24.142,0.53 23.439,12.513 23.439,12.513 8.459,-10.75 18.149,-6.345 18.149,-6.345 11.984,5.642 7.23,17.098 7.23,17.098 4.243,-1.619 7.966,-1.804 11.205,-1.076 v -5.026 c -4.27,-0.163 -7.329,0.637 -7.329,0.637 z" transform="translate(-52.12,-39.283)"/>
     </svg>
 );
 
-// Zoho WorkDrive — blue folder with people (official logo)
+// Zoho WorkDrive: blue folder with people (official logo)
 export const ZohoWorkDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="#226DB4" fillRule="evenodd">
         <path d="M21.2062 22H16.6624L16.6547 22L16.6468 22H7.02891C6.98027 22 6.93281 21.9951 6.88699 21.9858C6.56624 21.9209 6.32578 21.6401 6.32578 21.3023L6.32581 21.2963V19.7232C6.32581 18.9953 6.54612 18.2953 6.96565 17.6976C7.38518 17.1 7.96877 16.6511 8.65784 16.4L9.26336 16.1773C8.95723 15.8139 8.77271 15.3464 8.77271 14.8372C8.77271 13.6837 9.71958 12.7442 10.8821 12.7442C12.0446 12.7442 12.9915 13.6837 12.9915 14.8372C12.9915 14.8499 12.9913 14.8626 12.9911 14.8753C13.1503 14.7878 13.3171 14.712 13.4906 14.6488L13.836 14.5219C13.4815 14.1305 13.2656 13.6131 13.2656 13.0465C13.2656 11.8279 14.2641 10.8372 15.4922 10.8372C16.7203 10.8372 17.7188 11.8279 17.7188 13.0465C17.7188 13.0782 17.7181 13.1098 17.7167 13.1412C17.8505 13.0704 17.9897 13.0085 18.1336 12.9558L18.626 12.7749C18.2367 12.3661 17.9977 11.8148 17.9977 11.2092C17.9977 9.95105 19.0289 8.9278 20.2969 8.9278C21.5297 8.9278 22.5387 9.89503 22.5938 11.105V7.09766C22.5938 6.3372 21.9703 5.72092 21.2062 5.72092H12.2719C11.6742 5.72092 11.0789 5.52557 10.6008 5.16976L8.57344 3.66744C8.33437 3.49069 8.04141 3.39302 7.74375 3.39302H2.79375C2.02969 3.39535 1.40625 4.01395 1.40625 4.77209V19.2279C1.40625 19.9883 2.02969 20.6046 2.79375 20.6046H4.19297C4.58203 20.6046 4.89609 20.9162 4.89609 21.3023C4.89609 21.6883 4.58203 22 4.19297 22H2.79375C1.25391 22 0 20.7558 0 19.2279V4.77209C0 3.24418 1.25391 2 2.79375 2H7.74375C8.34141 2 8.93672 2.19535 9.41484 2.55116L11.4422 4.05348C11.6813 4.23023 11.9742 4.3279 12.2719 4.3279H21.2062C22.7461 4.3279 24 5.57209 24 7.09999V19.2302C24 20.7558 22.7461 22 21.2062 22ZM22.5938 11.3132V19.2279C22.5938 19.986 21.9727 20.6046 21.2062 20.6046H17.3601V16.0651C17.3601 15.2651 17.8687 14.5419 18.6234 14.2651L21.0726 13.3651C21.1091 13.3516 21.1437 13.3354 21.1765 13.3168C21.9785 12.9856 22.5526 12.216 22.5938 11.3132ZM15.9515 16.0628V20.6046H12.5672V17.972C12.5672 17.079 13.1344 16.2697 13.9804 15.9581L16.068 15.1915C15.9909 15.4729 15.9515 15.7652 15.9515 16.0628ZM15.7757 13.8103C16.0887 13.6956 16.3125 13.3965 16.3125 13.0465C16.3125 12.5977 15.9445 12.2325 15.4922 12.2325C15.0398 12.2325 14.6719 12.5977 14.6719 13.0465C14.6719 13.4953 15.0398 13.8604 15.4922 13.8604C15.5808 13.8604 15.6662 13.8464 15.7462 13.8205C15.756 13.8169 15.7658 13.8135 15.7757 13.8103ZM9.14768 17.7093L11.3213 16.9099C11.2137 17.2508 11.1586 17.6079 11.1586 17.972V20.6046H7.7344V19.7232C7.7344 18.8302 8.30159 18.0209 9.14768 17.7093ZM10.179 14.8372C10.179 14.4535 10.4954 14.1395 10.8821 14.1395C11.2688 14.1395 11.5852 14.4535 11.5852 14.8372C11.5852 15.2209 11.2688 15.5349 10.8821 15.5349C10.4954 15.5349 10.179 15.2209 10.179 14.8372ZM19.4039 11.2069C19.4039 10.7185 19.8047 10.3208 20.2969 10.3208C20.7891 10.3208 21.1899 10.7185 21.1899 11.2069C21.1899 11.6952 20.7891 12.0929 20.2969 12.0929C19.8047 12.0929 19.4039 11.6952 19.4039 11.2069Z" />
     </svg>
 );
 
-// Infomaniak kDrive — blue mountain/cloud (Swiss cloud storage)
+// Infomaniak kDrive: blue mountain/cloud (Swiss cloud storage)
 export const KDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
         <path opacity="0.5" fillRule="evenodd" clipRule="evenodd" d="M15.41 4.09c0-1.2 1.2-2.02 2.28-1.56l2.84 1.21c.43.19.77.56.92 1.01l1.13 3.38c.18.54.62.95 1.17 1.09l11.8 2.95c.74.19 1.25.86 1.25 1.64v14.1c0 1.13-1.07 1.94-2.13 1.61L16.57 23.82c-.69-.22-1.16-.87-1.16-1.61V4.09Z" fill="#A2BFFF"/>
@@ -398,14 +398,14 @@ export const KDriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Jottacloud — official purple "J" mark (Norwegian GDPR cloud)
+// Jottacloud: official purple "J" mark (Norwegian GDPR cloud)
 export const JottacloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 26 33" fill="none">
         <path fill="#7D5FE6" d="M25.699 7v17.334a8.72 8.72 0 0 1-2.51 6.128A8.52 8.52 0 0 1 17.133 33h-3.427V15.667a8.72 8.72 0 0 1 2.51-6.129A8.52 8.52 0 0 1 22.271 7zM0 20.867h3.427c2.272 0 4.45.913 6.058 2.538a8.72 8.72 0 0 1 2.509 6.128V33H8.567a8.52 8.52 0 0 1-6.058-2.538A8.72 8.72 0 0 1 0 24.334z"/>
     </svg>
 );
 
-// Drime Cloud — official green "D" logo
+// Drime Cloud: official green "D" logo
 export const DrimeCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 512 512" fill="none">
         <path d="m 373,206 c 29.7,0 59.4,0 90,0 0,0.99 0,1.98 0,3 0.99,0 1.98,0 3,0 0,1.32 0,2.64 0,4 1.32,0 2.64,0 4,0 0.023,31.288 0.041,62.576 0.051,93.864 0,3.691 0.002,7.383 0.004,11.074 0,1.102 0,1.102 0.001,2.227 0.004,11.909 0.012,23.819 0.021,35.728 0.009,12.214 0.015,24.429 0.017,36.643 0.001,7.541 0.006,15.081 0.014,22.622 0.006,5.776 0.007,11.552 0.005,17.328 0,2.374 0.002,4.748 0.006,7.122 0.005,3.231 0.004,6.461 0.001,9.692 0.004,1.423 0.004,1.423 0.009,2.874-0.002,0.863-0.004,1.726-0.006,2.615 0,0.746 0.001,1.492 0.001,2.261C470,459 470,459 469,462c-0.99,0-1.98,0-3,0 0,1.32 0,2.64 0,4-2.31,0-4.62,0-7,0 0,1.32 0,2.64 0,4-27.06,0-54.12,0-82,0-0.33-1.32-0.66-2.64-1-4-1.98,0-3.96,0-6,0-0.33-2.31-0.66-4.62-1-7-0.99,0-1.98,0-3,0 0-20.13 0-40.26 0-61-0.99,0-1.98,0-3,0 0,1.32 0,2.64 0,4-0.99,0-1.98,0-3,0-0.33,1.32-0.66,2.64-1,4-0.99,0-1.98,0-3,0 0,0.99 0,1.98 0,3-1.32,0-2.64,0-4,0 0,1.32 0,2.64 0,4-0.99,0-1.98,0-3,0-0.33,2.31-0.66,4.62-1,7-0.99,0-1.98,0-3,0 0,1.32 0,2.64 0,4-0.99,0-1.98,0-3,0 0,0.99 0,1.98 0,3-1.32,0-2.64,0-4,0 0,1.32 0,2.64 0,4-0.99,0-1.98,0-3,0-0.33,2.31-0.66,4.62-1,7-0.99,0-1.98,0-3,0 0,0.99 0,1.98 0,3-0.99,0-1.98,0-3,0 0,1.32 0,2.64 0,4-1.32,0-2.64,0-4,0 0,0.99 0,1.98 0,3-1.32,0-2.64,0-4,0 0,2.31 0,4.62 0,7-0.99,0-1.98,0-3,0 0,1.32 0,2.64 0,4-1.32,0-2.64,0-4,0 0,1.32 0,2.64 0,4-0.99,0-1.98,0-3,0 0,0.99 0,1.98 0,3-1.32,0-2.64,0-4,0 0,0.99 0,1.98 0,3-2.776,0.925-4.411,1.124-7.273,1.123-0.877,0.002-1.754,0.004-2.657,0.006-1.446-0.004-1.446-0.004-2.921-0.009-1.024,0.001-2.047,0.002-3.101,0.003-3.446,0.002-6.891-0.004-10.337-0.009-2.463,0-4.927,0-7.39,0-5.312,0-10.624-0.003-15.936-0.008-7.68-0.008-15.361-0.011-23.041-0.012-12.46-0.002-24.921-0.009-37.381-0.018-12.105-0.009-24.21-0.016-36.315-0.021-0.746,0-1.492,0-2.261-0.001-3.742-0.001-7.484-0.003-11.227-0.004C115.106,470.041 84.053,470.023 53,470.001c0-1.32 0-2.64 0-4-1.32,0-2.64,0-4,0 0-0.99 0-1.98 0-3-0.99,0-1.98,0-3,0 0-30.69 0-61.38 0-93 2.31-0.33 4.62-0.66 7-1 0-0.99 0-1.98 0-3 102.3,0 204.6,0 310,0 0,0.99 0,1.98 0,3 0.99,0 1.98,0 3,0 0-50.49 0-100.98 0-153 0.99,0 1.98,0 3,0 0-2.31 0-4.62 0-7 1.32,0 2.64,0 4,0 0-0.991 0-1.981 0-3.001z" fill="#31EA87"/>
@@ -414,7 +414,7 @@ export const DrimeCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </svg>
 );
 
-// Amazon Web Services — official logo, theme-aware (white text for dark, dark text for light)
+// Amazon Web Services: official logo, theme-aware (white text for dark, dark text for light)
 export const AwsLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <>
         <img src="/icons/providers/aws-dark.svg" width={size} height={size} alt="AWS" className="hidden dark:block" style={{ objectFit: 'contain' }} />
@@ -422,7 +422,7 @@ export const AwsLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     </>
 );
 
-// MinIO — official logo
+// MinIO: official logo
 export const MinIOLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/minio.png" width={size} height={size} alt="MinIO" style={{ objectFit: 'contain' }} />
 );
@@ -435,7 +435,7 @@ const SourceForgeLogo: React.FC<LogoProps> = ({ size = 20 }) => (
     </svg>
 );
 
-// Quotaless — PNG cloud logo
+// Quotaless: PNG cloud logo
 export const QuotalessLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
         src="/icons/providers/quotaless.png"
@@ -446,12 +446,12 @@ export const QuotalessLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
-// Hetzner — PNG logo
+// Hetzner: PNG logo
 export const HetznerLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/hetzner.png" alt="Hetzner" width={size} height={size} style={{ objectFit: 'contain' }} />
 );
 
-// ASPnix — hosting provider with AeroFTP control panel integration
+// ASPnix: hosting provider with AeroFTP control panel integration
 export const ASPnixLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/aspnix.png" alt="ASPnix" width={size} height={size} style={{ objectFit: 'contain' }} />
 );

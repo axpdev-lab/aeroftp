@@ -19,7 +19,7 @@
 //! real `sync_tree_core` product path through `SftpProvider::connect()`.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 #![cfg(unix)]
 
@@ -84,7 +84,7 @@ fn fixture_ready_or_skip(test_name: &str) -> bool {
     }
 
     eprintln!(
-        "[{}] skipped: fixture container not running — run `docker compose up -d --build` in {}",
+        "[{}] skipped: fixture container not running: run `docker compose up -d --build` in {}",
         test_name,
         fixture_dir().display()
     );
@@ -98,7 +98,7 @@ fn password_fixture_ready_or_skip(test_name: &str) -> bool {
     }
 
     eprintln!(
-        "[{}] skipped: password fixture container not running — run `docker compose -f docker-compose.password.yml up -d --build` in {}",
+        "[{}] skipped: password fixture container not running: run `docker compose -f docker-compose.password.yml up -d --build` in {}",
         test_name,
         fixture_dir().display()
     );
@@ -269,7 +269,7 @@ async fn rsync_upload_round_trip_and_redundant_upload_is_cheap() {
     let total = extract_summary_u64(&second_stdout, "total size is ", "  speedup");
 
     println!(
-        "second upload — sent={:?} bytes, total={:?} bytes",
+        "second upload: sent={:?} bytes, total={:?} bytes",
         sent, total
     );
 
@@ -289,7 +289,7 @@ async fn rsync_upload_round_trip_and_redundant_upload_is_cheap() {
     }
 }
 
-/// Tiny helper that pulls an u64 out of "prefix<number>suffix" — accepts both
+/// Tiny helper that pulls an u64 out of "prefix<number>suffix": accepts both
 /// en_US ("1,048,576") and locale-native ("1.048.576") thousand separators by
 /// stripping every '.' ',' and whitespace from the digit run.
 fn extract_summary_u64(haystack: &str, prefix: &str, suffix: &str) -> Option<u64> {
@@ -554,7 +554,7 @@ fn hard_rejection_string_contract_is_pinned_offline() {
 /// through to `provider.upload(...)`/`provider.download(...)`.
 ///
 /// Covers the acceptance criterion of P1-T03 ("provider.upload() NOT called
-/// on hard rejection") at the structural level — a runtime FakeProvider test
+/// on hard rejection") at the structural level: a runtime FakeProvider test
 /// would require stubbing 40+ StorageProvider trait methods, which is
 /// disproportionate for pinning an ordering invariant that is preserved by
 /// source layout and enforced by the language's match-arm evaluation order.
@@ -831,7 +831,7 @@ mod mock_transport_coverage {
 }
 
 // ============================================================================
-// Blocco B.3 — Native rsync path against stock `rsync --server` Docker fixture.
+// Blocco B.3: Native rsync path against stock `rsync --server` Docker fixture.
 //
 // The existing `aeroftp-delta-sync-fixture` container ships Alpine
 // openssh-server + stock `rsync` (3.4.1, protocol 32 banner). After B.1 the
@@ -840,7 +840,7 @@ mod mock_transport_coverage {
 // 31 client against a real rsync server. Failures surface wire divergences
 // (the scope of Blocco B.2).
 //
-// Tests are `#[ignore]` — run explicitly with:
+// Tests are `#[ignore]`: run explicitly with:
 //   cargo test --test integration_delta_sync --features aerorsync \
 //     -- --ignored native_rsync_against_stock
 // ============================================================================
@@ -853,7 +853,7 @@ mod native_against_stock_rsync {
     use ftp_client_gui_lib::delta_transport::DeltaTransport;
 
     /// Build a native transport wired to the fixture container with
-    /// `AcceptAny` host-key policy (dev fixture only — production pins).
+    /// `AcceptAny` host-key policy (dev fixture only: production pins).
     fn native_transport() -> AerorsyncDeltaTransport {
         let config = SshTransportConfig {
             host: "127.0.0.1".to_string(),
@@ -924,7 +924,7 @@ mod native_against_stock_rsync {
             return;
         }
 
-        // 1 MiB pseudo-random payload — crosses the 16 KiB
+        // 1 MiB pseudo-random payload: crosses the 16 KiB
         // `MAX_DELTA_LITERAL_LEN` threshold well enough to force the
         // S8j multi-chunk DEFLATED_DATA path. Random bytes keep zstd
         // from deduping against the whole-file scenario (empty baseline)

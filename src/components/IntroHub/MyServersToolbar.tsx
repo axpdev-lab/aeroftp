@@ -22,13 +22,13 @@ interface MyServersToolbarProps {
     onOpenExportImport?: () => void;
     onHealthCheck?: () => void;
     onSpeedTest?: () => void;
-    /** Open Cross-Profile Transfer modal (always available — pre-selection optional). */
+    /** Open Cross-Profile Transfer modal (always available: pre-selection optional). */
     onOpenCrossProfile?: () => void;
     /** Open Mount Manager modal. */
     onOpenMountManager?: () => void;
-    /** 0/1/2 — drives the 3 brightness states of the cross-profile button. */
+    /** 0/1/2: drives the 3 brightness states of the cross-profile button. */
     crossProfileSelectionCount?: number;
-    /** Current card layout — drives the detailed-cards toggle visual state. */
+    /** Current card layout: drives the detailed-cards toggle visual state. */
     cardLayout?: 'compact' | 'detailed';
     /** Toggle compact ↔ detailed card layout (storage bar + health radial). */
     onToggleCardLayout?: () => void;
@@ -67,8 +67,8 @@ export function MyServersToolbar({
     // Cross-Profile button visual states:
     //  - 0 selected: same indigo background as the other toolbar action buttons
     //                (Health Check, Speed Test) so it sits on the same baseline
-    //  - 1 selected: brighter indigo accent — selection in progress
-    //  - 2 selected: saturated + ring — strongest signal; the pair is ready to transfer
+    //  - 1 selected: brighter indigo accent: selection in progress
+    //  - 2 selected: saturated + ring: strongest signal; the pair is ready to transfer
     const cpButtonClass = crossProfileSelectionCount >= 2
         ? 'bg-indigo-500 text-white ring-2 ring-indigo-400/60 shadow-md hover:bg-indigo-600'
         : crossProfileSelectionCount === 1

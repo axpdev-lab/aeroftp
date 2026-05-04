@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useState, useRef, useCallback } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -36,7 +36,7 @@ export function useAIChatConversations() {
     // Track whether title has been saved for current session
     const titleSavedRef = useRef(false);
 
-    // Save conversation after messages change — uses incremental per-message saves
+    // Save conversation after messages change: uses incremental per-message saves
     const persistConversation = useCallback(async (msgs: Message[]) => {
         if (msgs.length === 0) return;
 
@@ -127,7 +127,7 @@ export function useAIChatConversations() {
         });
     }, [activeBranchId]);
 
-    // New chat — resets messages and conversation ID.
+    // New chat: resets messages and conversation ID.
     // Note: AIChat.tsx should wrap this to also clear pendingToolCalls.
     const startNewChat = useCallback(() => {
         setMessages([]);
@@ -137,7 +137,7 @@ export function useAIChatConversations() {
         titleSavedRef.current = false;
     }, []);
 
-    // Switch conversation — loads full messages from SQLite
+    // Switch conversation: loads full messages from SQLite
     const switchConversation = useCallback(async (conv: Conversation) => {
         setActiveConversationId(conv.id);
         titleSavedRef.current = true; // Already has a title
@@ -344,7 +344,7 @@ export function useAIChatConversations() {
                 }
             }
         } catch {
-            // Dialog cancelled or write error — silent
+            // Dialog cancelled or write error: silent
         }
     }, [messages]);
 
@@ -421,7 +421,7 @@ export function useAIChatConversations() {
         setActiveBranchId(branchId);
 
         if (branchId === null) {
-            // Switch to main — reload session messages
+            // Switch to main: reload session messages
             const fullSession = await loadSession(activeConversationIdRef.current);
             if (fullSession) {
                 setMessages(fullSession.messages.map(m => ({

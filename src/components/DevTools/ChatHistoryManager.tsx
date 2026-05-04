@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Trash2, Database, Search, Calendar, X, AlertTriangle } from 'lucide-react';
@@ -87,7 +87,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
         setShowCleanup(false);
     }, [cleanupDays, onSessionDeleted]);
 
-    // F4: Clear all — dedicated command instead of semantic overload
+    // F4: Clear all: dedicated command instead of semantic overload
     const handleClearAll = useCallback(async () => {
         await clearAllHistory();
         setConfirmClearAll(false);
@@ -130,7 +130,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                 </button>
             </div>
 
-            {/* Stats bar — UX-005: flex-wrap for narrow panels */}
+            {/* Stats bar: UX-005: flex-wrap for narrow panels */}
             {stats && (
                 <div className="flex items-center gap-2 flex-wrap px-3 py-1.5 text-[10px] text-gray-600 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
                     <span>{t('ai.history.sessions')}: <strong>{stats.total_sessions}</strong></span>
@@ -185,7 +185,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                                         {new Date(result.created_at).toLocaleDateString()}
                                     </span>
                                 </div>
-                                {/* SEC-001/UX-001: Safe React rendering — no dangerouslySetInnerHTML */}
+                                {/* SEC-001/UX-001: Safe React rendering: no dangerouslySetInnerHTML */}
                                 <p className="text-[11px] text-gray-900 dark:text-gray-100 line-clamp-2">
                                     {renderFtsSnippet(result.snippet)}
                                 </p>

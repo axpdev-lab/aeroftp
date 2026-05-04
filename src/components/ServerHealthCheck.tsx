@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -86,7 +86,7 @@ const ScoreGauge: React.FC<{ score: number; size?: number; legendTooltip?: strin
 
 /** Animated latency bar */
 const LatencyBar: React.FC<{ ms: number | null; maxMs?: number }> = ({ ms, maxMs = 500 }) => {
-    if (ms === null) return <span className="text-gray-400 text-xs">—</span>;
+    if (ms === null) return <span className="text-gray-400 text-xs">-</span>;
     const pct = Math.min((ms / maxMs) * 100, 100);
     const color = ms < 100 ? 'bg-green-500' : ms < 300 ? 'bg-yellow-500' : 'bg-red-500';
     return (
@@ -306,7 +306,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
     const copyResults = useCallback(() => {
         const lines: string[] = [];
         const date = new Date().toLocaleString();
-        lines.push(`AeroFTP Server Health Check — ${date}`);
+        lines.push(`AeroFTP Server Health Check: ${date}`);
         lines.push('='.repeat(60));
         lines.push('');
 
@@ -318,7 +318,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
         for (const { server, result } of sorted) {
             if (!result) continue;
             const icon = result.status === 'healthy' ? '[OK]' : result.status === 'degraded' ? '[!!]' : '[XX]';
-            lines.push(`${icon} ${server.name || server.host}  —  Score: ${result.score}/100  (${result.status.toUpperCase()})`);
+            lines.push(`${icon} ${server.name || server.host} :  Score: ${result.score}/100  (${result.status.toUpperCase()})`);
             lines.push(`    Host: ${result.host}  |  Protocol: ${(server.protocol || 'ftp').toUpperCase()}`);
             for (const check of result.checks) {
                 const st = check.status === 'pass' ? 'PASS' : check.status === 'fail' ? 'FAIL' : 'SKIP';
@@ -507,7 +507,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
                                         {result && !isChecking ? (
                                             <ScoreGauge
                                                 score={result.score}
-                                                legendTooltip={`${t('healthCheck.scoreLegend')} — ${t('healthCheck.scoreLegendDetail')}`}
+                                                legendTooltip={`${t('healthCheck.scoreLegend')}: ${t('healthCheck.scoreLegendDetail')}`}
                                             />
                                         ) : isChecking ? (
                                             <div className="w-12 h-12 flex items-center justify-center">

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-// Unified Secure Storage — vault-backed with localStorage fallback
+// Unified Secure Storage: vault-backed with localStorage fallback
 // All sensitive config data is stored encrypted in the Universal Vault
 // localStorage is only used as read-only fallback during migration period
 

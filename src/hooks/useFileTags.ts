@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * useFileTags — hook for managing file tags via the Rust file_tags backend.
+ * useFileTags: hook for managing file tags via the Rust file_tags backend.
  *
  * Provides label management, batch tag queries, and tag operations.
  * Uses a Map cache for quick lookups by file path.
@@ -101,7 +101,7 @@ export function useFileTags(): UseFileTagsReturn {
     return tagsCache.get(path) || [];
   }, [tagsCache]);
 
-  // Set tags (batch) — assigns label_ids to all file_paths
+  // Set tags (batch): assigns label_ids to all file_paths
   const setTags = useCallback(async (filePaths: string[], labelIds: number[]) => {
     try {
       await invoke('file_tags_set_tags', { filePaths, labelIds });

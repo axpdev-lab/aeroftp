@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * ConnectionScreen Component
@@ -227,7 +227,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
         );
     }
 
-    // Active state — already authenticated
+    // Active state: already authenticated
     if (hasExistingTokens && !wantsNewAccount) {
         return (
             <div className="space-y-4">
@@ -521,7 +521,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const previousProtocolRef = React.useRef<ProviderType | undefined>(undefined);
 
     // When re-opening dropdown with a protocol already selected, clear the selection.
-    // In formOnly (IntroHub edit), keep everything — just open the dropdown overlay.
+    // In formOnly (IntroHub edit), keep everything: just open the dropdown overlay.
     const handleProtocolSelectorOpenChange = (open: boolean) => {
         setIsProtocolSelectorOpen(open);
         if (open && protocol) {
@@ -1002,7 +1002,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const handleSaveAndConnect = async () => {
         if (editingProfileId) {
             await saveToServers();
-            // Don't reset the form — onConnect drives the route change that
+            // Don't reset the form: onConnect drives the route change that
             // closes the panel; resetting here would race connectionParams
             // away before the connect call can read the TOTP.
         }
@@ -1553,7 +1553,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         </button>
                     </div>
                 </div>
-                {/* Connection name (always shown — connections are always saved) */}
+                {/* Connection name (always shown: connections are always saved) */}
                 <div className="pt-2 border-t border-gray-200 dark:border-gray-700/50">
                     <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
                         <Save size={14} />
@@ -1734,7 +1734,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             /* No protocol selected or selector is open - show selection prompt + security info */
                             <div className="py-6 space-y-6">
                                 <p className="text-sm text-center text-gray-500 dark:text-gray-400">{t('connection.selectProtocolPrompt')}</p>
-                                {/* Security Info Box — collapsible */}
+                                {/* Security Info Box: collapsible */}
                                 <div className="mx-auto max-w-sm bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg overflow-hidden">
                                     <button
                                         type="button"
@@ -1976,7 +1976,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                 {/* Connection Fields Area */}
                                 {protocol === 'filelu' ? (
-                                    /* FileLu Specific Form — API Key */
+                                    /* FileLu Specific Form: API Key */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         <div className="space-y-4">
                                             <div>
@@ -2031,7 +2031,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         )}
                                     </div>
                                 ) : protocol === 'jottacloud' ? (
-                                    /* Jottacloud Specific Form — Login Token only */
+                                    /* Jottacloud Specific Form: Login Token only */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         <div className="space-y-4">
                                             <div>
@@ -2078,7 +2078,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         })}
                                     </div>
                                 ) : protocol === 'drime' ? (
-                                    /* Drime Cloud Specific Form — API Token only */
+                                    /* Drime Cloud Specific Form: API Token only */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         <div className="space-y-4">
                                             <div>
@@ -2114,7 +2114,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         })}
                                     </div>
                                 ) : protocol === 'koofr' ? (
-                                    /* Koofr Specific Form — Email + App Password */
+                                    /* Koofr Specific Form: Email + App Password */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
@@ -2346,7 +2346,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         )}
                                     </div>
                                 ) : protocol === 'github' ? (
-                                    /* GitHub Specific Form — Owner/Repo + PAT */
+                                    /* GitHub Specific Form: Owner/Repo + PAT */
                                     <div className="space-y-4 pt-2">
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('github.ownerRepo')}</label>
@@ -2371,7 +2371,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="space-y-2 mt-1">
                                             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">Authentication</label>
 
-                                            {/* Mode buttons — locked when editing a saved connection */}
+                                            {/* Mode buttons: locked when editing a saved connection */}
                                             <div className="flex gap-1.5">
                                                 {(['authorize', 'pat', 'app'] as const).map((mode) => {
                                                     const isActive = connectionParams.options?.githubAuthMode === mode;
@@ -2529,7 +2529,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                                         return;
                                                                     }
                                                                     setGitHubPemLoading(true);
-                                                                    // PEM read securely in backend — only path crosses IPC
+                                                                    // PEM read securely in backend: only path crosses IPC
                                                                     // SEC-GH-001: Token held backend-side, never returned via IPC
                                                                     const result = await invoke('github_app_token_from_pem', {
                                                                         pemPath: selected as string,
@@ -2582,7 +2582,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {gitHubPemInVault && !connectionParams.password && (
                                                         <p className="text-xs text-green-500 text-center flex items-center justify-center gap-1">
                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                                            {t('github.pemVaultReady') || 'PEM key found in vault — ready to connect'}
+                                                            {t('github.pemVaultReady') || 'PEM key found in vault: ready to connect'}
                                                         </p>
                                                     )}
                                                     {connectionParams.password && (() => {
@@ -2694,7 +2694,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                     </div>
                                 ) : protocol === 'kdrive' ? (
-                                    /* kDrive Specific Form — API Token + Drive ID */
+                                    /* kDrive Specific Form: API Token + Drive ID */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
@@ -3207,7 +3207,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         })}
                                     </div>
                                 ) : protocol === 'immich' ? (
-                                    /* Immich Specific Form — Server URL + API Key */
+                                    /* Immich Specific Form: Server URL + API Key */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
@@ -3582,7 +3582,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                     </div>
                                 ) : protocol === 'gitlab' ? (
-                                    /* GitLab Form — single-column like GitHub */
+                                    /* GitLab Form: single-column like GitHub */
                                     <div className="space-y-4 pt-2">
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('gitlab.projectPath')}</label>
@@ -3666,7 +3666,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         <FolderOpen size={16} />
                                                     </button>
                                                 </div>
-                                                {/* Self-hosted TLS toggle — only show when host looks self-hosted */}
+                                                {/* Self-hosted TLS toggle: only show when host looks self-hosted */}
                                                 {connectionParams.server && !connectionParams.server.includes('gitlab.com') && connectionParams.server.includes('.') && (
                                                     <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
                                                         <input
@@ -3865,7 +3865,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         })}
                                     </div>
                                 ) : (
-                                    /* Traditional connection fields (FTP/S3/WebDAV) — 2-column layout in formOnly */
+                                    /* Traditional connection fields (FTP/S3/WebDAV): 2-column layout in formOnly */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : ''}>
                                     {/* LEFT COLUMN: Connection fields */}
                                     <div className="space-y-3">
@@ -4065,7 +4065,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             presetUnlocked={presetUnlocked}
                                             onPresetUnlock={(field) => setPresetUnlocked(prev => ({ ...prev, [field]: true }))}
                                         />
-                                        {/* Advanced Options — hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}
+                                        {/* Advanced Options: hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}
                                         {(() => {
                                             const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric && !editingProfileId;
                                             if (!hasPresetServer || protocol === 's3') return null;
@@ -4160,7 +4160,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </>
                         )}
                     </div>
-                    {/* Card footer — provider connectVia + links */}
+                    {/* Card footer: provider connectVia + links */}
                     {(() => {
                         if (!selectedProvider || selectedProvider.isGeneric) return null;
                         const proto = protocol === 's3' ? 'S3' : protocol === 'webdav' ? 'WebDAV' : null;
@@ -4191,7 +4191,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </div>
                 )}
 
-                {/* Skip to File Manager — accessible via status bar AeroFile button */}
+                {/* Skip to File Manager: accessible via status bar AeroFile button */}
             </div> {/* Close grid */}
 
             {/* Export/Import Dialog */}
@@ -4235,7 +4235,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         // the server after the first connection shows up here.
                         // Operates on the active FTP/provider state, so this only
                         // returns a meaningful result when the editing server
-                        // has a live connection — otherwise it returns null.
+                        // has a live connection: otherwise it returns null.
                         const proto = connectionParams.protocol || 'ftp';
                         const SERVER_PROTOCOLS = new Set(['ftp', 'ftps']);
                         const PROVIDER_PROTOCOLS = new Set(['sftp', 's3', 'webdav']);
@@ -4298,7 +4298,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             // Store token in vault for multi-repo reuse (backend already holds it)
                                             await invoke('github_store_pat_from_held').catch((e: unknown) => console.error('Failed to store token in vault:', e));
                                             setHasVaultToken(true);
-                                            // Password left empty — backend injects held token during connect
+                                            // Password left empty: backend injects held token during connect
                                             onConnectionParamsChange({ ...connectionParams, password: '' });
                                         }
                                         setGitHubDeviceFlow(null);
@@ -4341,7 +4341,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </p>
             </div>
         )}
-        {/* Provider independence disclaimer — outside formOnlyMaxW container */}
+        {/* Provider independence disclaimer: outside formOnlyMaxW container */}
         {(() => {
             const disclaimerProvider = selectedProvider ?? (protocol ? getProviderById(protocol) : null);
             const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime Cloud', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion' };

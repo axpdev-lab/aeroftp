@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * SyncAdvancedConfig — Advanced tab with all granular sync controls
+ * SyncAdvancedConfig: Advanced tab with all granular sync controls
  * Direction, compare options, verify/retry, bandwidth, parallel, compression, delta
  * Grouped into visual sections for professional appearance
  */
@@ -77,7 +77,7 @@ const getDirectionDescription = (direction: SyncDirection, t: (key: string) => s
     }
 };
 
-/** Section card wrapper — supports accordion (collapsible) mode */
+/** Section card wrapper: supports accordion (collapsible) mode */
 const Section: React.FC<{
     icon: React.ReactNode;
     title: string;
@@ -201,7 +201,7 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                     />
                 </div>
 
-                {/* Versioning strategy — visible when delete_orphans is enabled */}
+                {/* Versioning strategy: visible when delete_orphans is enabled */}
                 {options.delete_orphans && (
                     <div className="mt-2 ml-5 flex items-center gap-2">
                         <HardDrive size={12} className="text-gray-500" />

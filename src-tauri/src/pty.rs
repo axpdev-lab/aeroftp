@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // PTY (Pseudo-Terminal) module for real shell integration
 // Uses portable-pty for cross-platform support (Linux/macOS/Windows)
@@ -108,7 +108,7 @@ pub fn spawn_shell(
     // -Command parser can stall (issue #125): the call to spawn_command never
     // returns, the Tauri invoke awaits forever, the frontend never receives
     // the session id, and every keystroke gets silently dropped at the
-    // `connectedTabs.has(tabId)` gate in SSHTerminal.tsx — making the entire
+    // `connectedTabs.has(tabId)` gate in SSHTerminal.tsx: making the entire
     // terminal feel "frozen" with no way out except restarting the app.
     //
     // The default PowerShell prompt is uglier but reliable. A user-level
@@ -201,7 +201,7 @@ pub fn pty_write(
 ) -> Result<(), String> {
     let mut manager = pty_state.lock().map_err(|_| "Lock error")?;
 
-    // H31: session_id is required — no fallback to prevent multi-tab session confusion
+    // H31: session_id is required: no fallback to prevent multi-tab session confusion
     let session = manager
         .sessions
         .get_mut(&session_id)
@@ -228,7 +228,7 @@ pub fn pty_resize(
 ) -> Result<(), String> {
     let manager = pty_state.lock().map_err(|_| "Lock error")?;
 
-    // H31: session_id is required — no fallback to prevent multi-tab session confusion
+    // H31: session_id is required: no fallback to prevent multi-tab session confusion
     let session = manager
         .sessions
         .get(&session_id)
@@ -254,7 +254,7 @@ pub fn pty_resize(
 pub fn pty_close(pty_state: State<'_, PtyState>, session_id: String) -> Result<(), String> {
     let mut manager = pty_state.lock().map_err(|_| "Lock error")?;
 
-    // H31: session_id is required — no fallback to prevent multi-tab session confusion
+    // H31: session_id is required: no fallback to prevent multi-tab session confusion
     manager.sessions.remove(&session_id);
 
     Ok(())

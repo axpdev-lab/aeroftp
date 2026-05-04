@@ -1,4 +1,4 @@
-//! Remote Vault support — download .aerovault files from remote servers,
+//! Remote Vault support: download .aerovault files from remote servers,
 //! operate locally, and upload changes back.
 //!
 //! Security hardening (v2.2.4 audit remediation):
@@ -10,7 +10,7 @@
 //! - UTF-8 path handling without unwrap (RB-011)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::provider_commands::ProviderState;
 use std::path::PathBuf;
@@ -131,7 +131,7 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
 
     let path = PathBuf::from(&local_path);
 
-    // Validate filename pattern — only clean up files we created
+    // Validate filename pattern: only clean up files we created
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -147,7 +147,7 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
                 return Err("Cannot clean up symlinks".into());
             }
         }
-        Err(_) => return Ok(()), // File doesn't exist — already cleaned up
+        Err(_) => return Ok(()), // File doesn't exist: already cleaned up
     }
 
     // Canonicalize and verify temp directory confinement

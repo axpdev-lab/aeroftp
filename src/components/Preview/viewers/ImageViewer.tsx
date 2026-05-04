@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * Image Viewer Component — AeroImage
+ * Image Viewer Component: AeroImage
  *
  * Advanced image viewer with:
  * - Zoom in/out (scroll wheel or buttons)
@@ -244,7 +244,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         return parts.length > 0 ? parts.join(' ') : undefined;
     }, [editMode, editState.brightness, editState.contrast, editState.hue, editState.blur, editState.grayscale, editState.invert]);
 
-    // Edit transforms (rotation + flip) — not applied during crop mode
+    // Edit transforms (rotation + flip): not applied during crop mode
     const editTransform = useMemo(() => {
         if (!editMode || cropMode) return '';
         const parts: string[] = [];
@@ -314,7 +314,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
                     <div className="w-px h-6 bg-gray-700 mx-2" />
 
-                    {/* Rotate (view rotation — disabled in edit mode) */}
+                    {/* Rotate (view rotation: disabled in edit mode) */}
                     <button
                         onClick={rotate}
                         disabled={editMode}

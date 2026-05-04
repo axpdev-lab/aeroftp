@@ -5,7 +5,7 @@
 //! without an extra round-trip.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -32,7 +32,7 @@ impl RateLimitState {
 
     /// Update from GitHub response headers.
     ///
-    /// Silently ignores missing or malformed headers — the state simply
+    /// Silently ignores missing or malformed headers: the state simply
     /// stays at its previous values.
     pub fn update_from_headers(&mut self, headers: &reqwest::header::HeaderMap) {
         if let Some(v) = headers.get("x-ratelimit-remaining") {

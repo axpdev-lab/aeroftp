@@ -2,16 +2,16 @@
 //!
 //! Implements StorageProvider for FileLu using the REST API.
 //! Authentication: API key passed as query parameter `key=`.
-//! No OAuth flow required — user generates API key from account settings.
+//! No OAuth flow required: user generates API key from account settings.
 //!
 //! API Base: https://filelu.com/api
 //! Folders: identified by `fld_id` (u64), root = 0
 //! Files: identified by `file_code` (String)
-//! Upload: 2-step — get upload server URL, then multipart POST
+//! Upload: 2-step: get upload server URL, then multipart POST
 //! Download: get direct link, then stream
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::multipart;
@@ -93,11 +93,11 @@ struct FileEntry {
     #[serde(default, deserialize_with = "deserialize_size")]
     size: u64,
     uploaded: Option<String>,
-    /// Content hash returned by FileLu API — used for sync comparison
+    /// Content hash returned by FileLu API: used for sync comparison
     /// since FileLu does not preserve original file mtime on upload.
     hash: Option<String>,
     /// Folder ID this file belongs to (used to filter file/list which may return cross-folder results)
-    /// FileLu API returns this as string "0" or number 0 — use flexible deserializer
+    /// FileLu API returns this as string "0" or number 0: use flexible deserializer
     #[serde(default, deserialize_with = "deserialize_opt_u64")]
     fld_id: Option<u64>,
     direct_link: Option<String>,
@@ -266,7 +266,7 @@ struct CacheEntry {
     file_code: String,         // Valid when is_dir = false
     size: u64,
     modified: Option<String>,
-    /// Content hash returned by FileLu — enables hash-based sync comparison
+    /// Content hash returned by FileLu: enables hash-based sync comparison
     /// for files whose `modified` reflects upload time rather than original mtime.
     hash: Option<String>,
 }
@@ -629,7 +629,7 @@ impl FileLuProvider {
         })
     }
 
-    /// Legacy v1 list — kept for operations that still need fld_id (upload, mkdir)
+    /// Legacy v1 list: kept for operations that still need fld_id (upload, mkdir)
     #[allow(dead_code)]
     async fn list_folder_by_id(&self, fld_id: u64) -> Result<FolderListResult, ProviderError> {
         let fld_id_str = fld_id.to_string();
@@ -918,7 +918,7 @@ impl FileLuProvider {
             .retain(|k, _| !k.starts_with(&prefix_slash) && k != &prefix);
     }
 
-    /// Get direct download URL — v2 path-based (file_path), fallback to v1 (file_code)
+    /// Get direct download URL: v2 path-based (file_path), fallback to v1 (file_code)
     async fn get_direct_url_v2(&self, file_path: &str) -> Result<String, ProviderError> {
         let url = self.api_v2_url("file/direct_link", &[("file_path", file_path)]);
         let resp = self.get_with_retry(&url).await?;
@@ -928,7 +928,7 @@ impl FileLuProvider {
             .ok_or_else(|| ProviderError::TransferFailed("No download URL returned".to_string()))
     }
 
-    /// Legacy v1 get direct URL by file_code — kept for trash operations
+    /// Legacy v1 get direct URL by file_code: kept for trash operations
     #[allow(dead_code)]
     async fn get_direct_url(&mut self, file_code: &str) -> Result<String, ProviderError> {
         let body = format!("file_code={}&key={}", file_code, self.api_key());
@@ -1104,7 +1104,7 @@ impl FileLuProvider {
         }
         let token = entry.fld_token.ok_or_else(|| {
             ProviderError::ServerError(
-                "Folder token unavailable — enable folder sharing first".to_string(),
+                "Folder token unavailable: enable folder sharing first".to_string(),
             )
         })?;
         let url = self.api_url_with(
@@ -1321,7 +1321,7 @@ impl StorageProvider for FileLuProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        // v2: download by path — no file_code resolution needed
+        // v2: download by path: no file_code resolution needed
         let norm = self.resolve_path(remote_path);
         let direct_url = self.get_direct_url_v2(&norm).await?;
 
@@ -1388,7 +1388,7 @@ impl StorageProvider for FileLuProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        // v2: download by path — no file_code resolution needed
+        // v2: download by path: no file_code resolution needed
         let norm = self.resolve_path(remote_path);
         let direct_url = self.get_direct_url_v2(&norm).await?;
 
@@ -1476,7 +1476,7 @@ impl StorageProvider for FileLuProvider {
             ProviderError::TransferFailed("Upload server returned no URL".to_string())
         })?;
 
-        // Step 2: Stream file — avoid reading entire file into memory (OOM on large files)
+        // Step 2: Stream file: avoid reading entire file into memory (OOM on large files)
         let total_size = tokio::fs::metadata(local_path)
             .await
             .map_err(ProviderError::IoError)?
@@ -1584,7 +1584,7 @@ impl StorageProvider for FileLuProvider {
         }
         let norm = self.resolve_path(path);
 
-        // Check if folder already exists — FileLu creates duplicates on every mkdir call
+        // Check if folder already exists: FileLu creates duplicates on every mkdir call
         if self.resolve_fld_id(&norm).await.is_ok() {
             return Ok(()); // Already exists, skip creation
         }
@@ -1643,7 +1643,7 @@ impl StorageProvider for FileLuProvider {
             let resp = self.get_with_retry(&url).await?;
             Self::ensure_api_ok(resp).await?;
         } else {
-            // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint —
+            // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint -
             // file/remove without remove=1 returns "Invalid option". Permanent delete is
             // the only API-supported delete. Trash is web-UI only on FileLu.
             let url = self.api_url_with(
@@ -1717,7 +1717,7 @@ impl StorageProvider for FileLuProvider {
 
         // v2: path-based rename and move
         if from_parent == to_parent {
-            // Pure rename — same directory
+            // Pure rename: same directory
             if entry.is_dir {
                 let url = self.api_v2_url(
                     "folder/rename",
@@ -1734,9 +1734,9 @@ impl StorageProvider for FileLuProvider {
                 Self::ensure_api_ok(resp).await?;
             }
         } else {
-            // Cross-directory move — v2 path-based
+            // Cross-directory move: v2 path-based
             if entry.is_dir {
-                // Folder move: not yet available in v2 — fallback to v1
+                // Folder move: not yet available in v2: fallback to v1
                 let dest_fld_id = self.resolve_fld_id(&to_parent).await?;
                 let url = self.api_url_with(
                     "folder/move",

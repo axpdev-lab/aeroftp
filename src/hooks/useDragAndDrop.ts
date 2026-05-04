@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * useDragAndDrop Hook
@@ -163,7 +163,7 @@ export function useDragAndDrop({
             e.dataTransfer.dropEffect = 'move';
             setDropTargetPath(targetPath);
         }
-        // Cross-panel drag: upload/download — allow drop on folders
+        // Cross-panel drag: upload/download: allow drop on folders
         else {
             if (isFolder && targetPath.split('/').pop() !== '..') {
                 e.dataTransfer.dropEffect = 'copy';

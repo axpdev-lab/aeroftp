@@ -59,14 +59,14 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'backblaze-native', name: 'Backblaze B2 (native)', description: 'Native B2 v4 API: large-file workflow, server-side copy, version history (10 GB free)', protocol: 'backblaze', providerId: 'backblaze-native', badge: 'API', signupUrl: 'https://www.backblaze.com/sign-up/cloud-storage', healthCheckUrl: 'https://api.backblazeb2.com', helpUrl: 'https://www.backblaze.com/apidocs/', source: 'protocol' },
 ];
 
-/** Media Services — photo/video platforms with file management.
- *  Google Photos: STANDBY — photoslibrary.readonly scope removed by Google on 2025-03-31.
+/** Media Services: photo/video platforms with file management.
+ *  Google Photos: STANDBY: photoslibrary.readonly scope removed by Google on 2025-03-31.
  *  Browse/download no longer possible. Upload-only via appendonly scope still works.
  *  Re-enable when: Google provides a REST replacement or Picker API is integrated. */
 const MEDIA_SERVICES: DiscoverItem[] = [
     { id: 'immich', name: 'Immich', description: 'Self-hosted photo management (open source)', protocol: 'immich' as ProviderType, badge: 'API', isGeneric: true, signupUrl: 'https://immich.app', helpUrl: 'https://immich.app/docs/overview/introduction', source: 'protocol' },
     { id: 'pixelunion', name: 'PixelUnion', description: 'EU-hosted Immich photo cloud', protocol: 'immich' as ProviderType, providerId: 'pixelunion', badge: 'EU', signupUrl: 'https://pixelunion.eu', healthCheckUrl: 'https://pixelunion.eu', source: 'protocol' },
-    // Google Photos: STANDBY — photoslibrary.readonly scope removed by Google on 2025-03-31.
+    // Google Photos: STANDBY: photoslibrary.readonly scope removed by Google on 2025-03-31.
     // { id: 'googlephotos', name: 'Google Photos', ... },
 ];
 
@@ -235,7 +235,7 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
                 'oracle-cloud': 13, 's3drive': 14, 'filen-desktop-s3': 15,
                 // Asian providers
                 'alibaba-oss': 20, 'tencent-cos': 21, 'yandex-storage': 22,
-                // Trial-only / restricted signup — kept at the end
+                // Trial-only / restricted signup: kept at the end
                 'quotaless-s3': 99,
             };
             const pa = priority[a.id] ?? 15;

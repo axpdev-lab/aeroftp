@@ -25,7 +25,7 @@
 //! an optimization, never a requirement.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // PR-T11 cross-OS surgical removal: the shared types (`RsyncCapability`,
 // `RsyncConfig`, `RsyncError`, `RsyncStats`, `DEFAULT_MIN_FILE_SIZE`) are
@@ -287,7 +287,7 @@ fn extract_protocol(line: &str) -> Option<u32> {
     rest[..end].parse().ok()
 }
 
-/// Verify that `rsync` is on the local PATH. Cheap — synchronous which2 crate would
+/// Verify that `rsync` is on the local PATH. Cheap: synchronous which2 crate would
 /// be overkill; we just probe with `rsync --version` through tokio.
 #[cfg(unix)]
 pub async fn probe_local_rsync() -> Result<String, RsyncError> {
@@ -489,7 +489,7 @@ async fn run_rsync(mut cmd: Command) -> Result<RsyncStats, RsyncError> {
                         total_size,
                         speedup,
                     } => {
-                        // Two summary lines per run — merge partials.
+                        // Two summary lines per run: merge partials.
                         if total_size > 0 {
                             stats.total_size = total_size;
                             stats.speedup = speedup;

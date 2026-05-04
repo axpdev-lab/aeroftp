@@ -1,10 +1,10 @@
-//! A5 — Fallback policy matrix for the S8i production wiring.
+//! A5: Fallback policy matrix for the S8i production wiring.
 //!
 //! When the native rsync driver bails, the A4 adapter
 //! (`AerorsyncDeltaTransport`) needs to decide whether to:
 //!
-//! 1. Fall back to the classic-SFTP path (the user sees nothing unusual
-//!    — the transfer completes via the legacy wrapper),
+//! 1. Fall back to the classic-SFTP path (the user sees nothing unusual:
+//!    the transfer completes via the legacy wrapper),
 //! 2. Surface the error as a hard failure (the user sees a toast, no
 //!    transparent recovery),
 //! 3. Honour a user-initiated cancel (the user knows why it stopped).
@@ -14,7 +14,7 @@
 //! that enumerates every `AerorsyncErrorKind` under both committed
 //! values. If a future variant lands in `types.rs` without a row in the
 //! matrix, the exhaustive `match` inside `classify_fallback` forces
-//! compile-time attention — and the test ensures a deliberate choice
+//! compile-time attention: and the test ensures a deliberate choice
 //! rather than a default.
 //!
 //! # Q5 PreCommit / PostCommit boundary (recap)
@@ -22,7 +22,7 @@
 //! The driver flips `committed = true` immediately before writing the
 //! first outbound delta byte (`send_delta_phase_single_file`). Any
 //! failure AFTER that boundary means the server has potentially
-//! partially applied the transfer — silently reattempting via the
+//! partially applied the transfer: silently reattempting via the
 //! classic wrapper would double-apply or race. Hence the broad
 //! "committed → HardError" rule.
 
@@ -32,7 +32,7 @@ use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FallbackVerdict {
     /// Silently retry the transfer via the classic-SFTP wrapper. The
-    /// user experience is unchanged — they see the classic wrapper's
+    /// user experience is unchanged: they see the classic wrapper's
     /// progress UI, not the native attempt. Only legal pre-commit.
     AttemptClassicSftpFallback,
     /// Surface the error to the user. The transfer stops; no retry.
@@ -49,10 +49,10 @@ pub enum FallbackVerdict {
 ///
 /// `committed` MUST be sourced from `AerorsyncDriver::committed()`.
 /// The driver flips it `true` before the first outbound delta data
-/// frame — this function assumes that invariant.
+/// frame: this function assumes that invariant.
 pub fn classify_fallback(err: &AerorsyncError, committed: bool) -> FallbackVerdict {
     // Cancelled always wins: the user asked for stop. No fallback, no
-    // hard error — the caller renders nothing.
+    // hard error: the caller renders nothing.
     if err.kind == AerorsyncErrorKind::Cancelled {
         return FallbackVerdict::Cancel;
     }
@@ -70,7 +70,7 @@ pub fn classify_fallback(err: &AerorsyncError, committed: bool) -> FallbackVerdi
     // handle. For categories that signal a bug in our own code or in
     // the protocol contract itself (InvalidFrame, IllegalStateTransition,
     // Internal, PlannerRejected, UnexpectedMessage), we surface the
-    // error — retrying with the classic wrapper would either reproduce
+    // error: retrying with the classic wrapper would either reproduce
     // the bug in a different codepath or hide it.
     match err.kind {
         AerorsyncErrorKind::Cancelled => FallbackVerdict::Cancel,
@@ -82,14 +82,14 @@ pub fn classify_fallback(err: &AerorsyncError, committed: bool) -> FallbackVerdi
         | AerorsyncErrorKind::TransportFailure
         | AerorsyncErrorKind::RemoteError => FallbackVerdict::AttemptClassicSftpFallback,
 
-        // Security: never fall back after a host key mismatch — that's
+        // Security: never fall back after a host key mismatch: that's
         // exactly the condition where a silent retry would defeat the
         // pinning. Classic wrapper enforces its own policy; the user
         // has to see the native path refused.
         AerorsyncErrorKind::HostKeyRejected => FallbackVerdict::HardError,
 
         // Protocol / internal consistency: hard errors. These indicate
-        // a bug in the prototype (or a malformed remote) — silently
+        // a bug in the prototype (or a malformed remote): silently
         // retrying would mask the issue.
         AerorsyncErrorKind::InvalidFrame
         | AerorsyncErrorKind::IllegalStateTransition
@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn pre_commit_host_key_rejected_is_hard_error_never_fallback() {
         // Security pin: an UnpinnedFingerprintSha256 rejection must NOT
-        // silently try the classic wrapper — that would defeat the
+        // silently try the classic wrapper: that would defeat the
         // whole purpose of pinning. The classic wrapper enforces its
         // own host-key policy but the user must see the native refusal
         // first.

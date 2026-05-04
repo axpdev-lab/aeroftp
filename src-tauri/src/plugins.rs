@@ -10,7 +10,7 @@
 //! At execution time, hashes are verified to detect post-install tampering.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -220,7 +220,7 @@ pub async fn execute_plugin_tool(
     )
     .await?;
 
-    // SEC: Direct argv execution — no shell interpretation.
+    // SEC: Direct argv execution: no shell interpretation.
     // Reject shell metacharacters to prevent injection via crafted manifests.
     let command = &tool.command;
     const SHELL_METACHARACTERS: &[char] = &[
@@ -279,7 +279,7 @@ pub async fn execute_plugin_tool(
         let actual_hash = compute_file_sha256(&canonical_path)?;
         if actual_hash != *expected_hash {
             return Err(format!(
-                "SEC: Plugin '{}' tool '{}' integrity check failed — command file has been modified after installation (expected {}, got {})",
+                "SEC: Plugin '{}' tool '{}' integrity check failed: command file has been modified after installation (expected {}, got {})",
                 plugin_id, tool_name, hash_prefix(expected_hash), hash_prefix(&actual_hash)
             ));
         }
@@ -574,7 +574,7 @@ pub async fn trigger_plugin_hooks(
             .any(|c| SHELL_METACHARACTERS.contains(&c))
         {
             warn!(
-                "Hook {}:{} command contains forbidden shell metacharacters — skipping",
+                "Hook {}:{} command contains forbidden shell metacharacters: skipping",
                 plugin_id, event
             );
             results.push(HookResult {
@@ -616,7 +616,7 @@ pub async fn trigger_plugin_hooks(
         if let Some(ref expected_hash) = hook.integrity {
             if !is_valid_sha256_hex(expected_hash) {
                 warn!(
-                    "Hook {}:{} has malformed integrity hash — skipping",
+                    "Hook {}:{} has malformed integrity hash: skipping",
                     plugin_id, event
                 );
                 results.push(HookResult {
@@ -642,7 +642,7 @@ pub async fn trigger_plugin_hooks(
                             hook_event: event.clone(),
                             success: false,
                             output:
-                                "Hook script integrity check failed — file modified after install"
+                                "Hook script integrity check failed: file modified after install"
                                     .into(),
                         });
                         continue;
@@ -708,7 +708,7 @@ async fn execute_hook_script(
     script_path: &std::path::Path,
     stdin_data: &str,
 ) -> Result<String, String> {
-    // kill_on_drop(true) — if the enclosing `timeout()` cancels us, the child
+    // kill_on_drop(true): if the enclosing `timeout()` cancels us, the child
     // process receives SIGKILL on drop rather than leaking as a zombie. The
     // sister function execute_plugin_tool already uses this flag; the hook
     // path was an accidental copy-paste divergence that let plugin hooks

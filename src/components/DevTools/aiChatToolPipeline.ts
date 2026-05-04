@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { AgentToolCall } from '../../types/tools';
 
@@ -97,7 +97,7 @@ export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel
         }
 
         if (level.length === 0) {
-            // Circular dependency fallback — execute remaining sequentially
+            // Circular dependency fallback: execute remaining sequentially
             for (let i = 0; i < n; i++) {
                 if (!completed.has(i)) {
                     levels.push({ tools: [toolCalls[i]] });

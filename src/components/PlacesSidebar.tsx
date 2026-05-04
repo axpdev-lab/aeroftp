@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -218,7 +218,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
         const dirs = await invoke<UserDirectory[]>('get_user_directories');
         if (mountedRef.current) setUserDirs(dirs);
       } catch {
-        // Backend command not available yet — silently ignore
+        // Backend command not available yet: silently ignore
       }
     };
     load();
@@ -299,7 +299,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       // Refresh volumes after eject
       await fetchVolumes();
     } catch {
-      // Eject failed — volume may be busy
+      // Eject failed: volume may be busy
     } finally {
       if (mountedRef.current) setEjectingMount(null);
     }
@@ -317,7 +317,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       await fetchVolumes();
       if (mountPoint) onNavigate(mountPoint);
     } catch {
-      // Mount failed — permission denied or busy
+      // Mount failed: permission denied or busy
     } finally {
       if (mountedRef.current) setMountingDevice(null);
     }
@@ -371,7 +371,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   }, [removeMenu.visible, closeRemoveMenu]);
 
   // -----------------------------------------------------------------------
-  // Trash — uses the cross-platform trash view mechanism via onNavigateTrash
+  // Trash: uses the cross-platform trash view mechanism via onNavigateTrash
   // No hardcoded path; the backend handles platform-specific trash locations.
   // -----------------------------------------------------------------------
 

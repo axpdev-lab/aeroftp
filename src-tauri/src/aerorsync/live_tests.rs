@@ -198,7 +198,7 @@ async fn live_cancel_during_read_unblocks_quickly() {
     // Cancelling via `transport.cancel()` must unblock the read in well
     // under the configured `io_timeout_ms`.
     let mut config = base_config();
-    // 10s is the default; keep it — the whole point is that cancel wins.
+    // 10s is the default; keep it: the whole point is that cancel wins.
     config.io_timeout_ms = 10_000;
     let transport = SshRemoteShellTransport::new(config);
     let stream_request = RemoteExecRequest {
@@ -271,7 +271,7 @@ async fn live_real_rsync_lane_emits_protocol_31_greeting() {
     // Conditional skip: this test shares the `cargo test live_tests`
     // selector with the native-lane tests (which use RSNP_TEST_*
     // env vars). When only the native harness is running, the real-rsync
-    // env is not set — skip rather than fail so a `live_tests` sweep
+    // env is not set: skip rather than fail so a `live_tests` sweep
     // across lanes works without bespoke filters.
     if env::var("RSNP_TEST_REAL_SSH_KEY").is_err() {
         eprintln!("skipping: RSNP_TEST_REAL_SSH_KEY not set (real-rsync lane inactive)");
@@ -346,7 +346,7 @@ async fn live_real_rsync_lane_emits_protocol_31_greeting() {
     }
 
     // We deliberately close the channel without responding: the rsync server
-    // on the other side will EPIPE and tear down, which is fine — the tee
+    // on the other side will EPIPE and tear down, which is fine: the tee
     // wrapper has already persisted the greeting bytes under
     // /workspace/real_capture/<ts>/capture_out.bin for S8b.
     let _ = channel.close();
@@ -362,7 +362,7 @@ async fn live_real_rsync_lane_emits_protocol_31_greeting() {
     // builds), but the first byte should be the low byte of the version.
     assert!(
         greeting[0] == 0x1f || greeting[0] == 0x20,
-        "unexpected first greeting byte {:#04x} — expected 0x1f (protocol 31) or 0x20 (32)",
+        "unexpected first greeting byte {:#04x}: expected 0x1f (protocol 31) or 0x20 (32)",
         greeting[0]
     );
 }

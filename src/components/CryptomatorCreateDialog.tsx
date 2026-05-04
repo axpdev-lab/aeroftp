@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState } from 'react';
@@ -148,7 +148,7 @@ export default function CryptomatorCreateDialog({ outputDir, onClose, onCreated 
         <div className="mb-5 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
           <Shield size={16} className="text-emerald-500 flex-shrink-0" />
           <span className="text-xs text-emerald-600 dark:text-emerald-400">
-            Cryptomator Format 8 — AES-256-GCM + AES-SIV
+            Cryptomator Format 8: AES-256-GCM + AES-SIV
           </span>
         </div>
 

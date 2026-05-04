@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-//! Cross-profile transfer engine — MVP backend.
+//! Cross-profile transfer engine: MVP backend.
 //!
 //! Copies files between two remote profiles using a local temp-file bridge.
 //! No destructive operations (no delete, no move, no sync).
@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tempfile::NamedTempFile;
 
-/// Maximum BFS scan depth — consistent with CLI's MAX_SCAN_DEPTH.
+/// Maximum BFS scan depth: consistent with CLI's MAX_SCAN_DEPTH.
 const MAX_SCAN_DEPTH: usize = 100;
-/// Maximum entries to collect — consistent with CLI's MAX_SCAN_ENTRIES.
+/// Maximum entries to collect: consistent with CLI's MAX_SCAN_ENTRIES.
 const MAX_SCAN_ENTRIES: usize = 500_000;
 
 // ── Request / Plan / Result structs ────────────────────────────────────────
@@ -74,7 +74,7 @@ pub struct CrossProfileTransferResult {
 /// Parent directories on the destination are created if missing.
 ///
 /// When `dest` is an SFTP provider with key-based auth and a remote rsync
-/// helper, the upload step is replaced by AeroRsync delta transfer — only
+/// helper, the upload step is replaced by AeroRsync delta transfer: only
 /// the bytes that differ from any pre-existing file at `dest_path` go on the
 /// wire. Hard errors (host-key mismatch, protocol invariant violation) are
 /// propagated unchanged; soft fallbacks ("file too small", "no key on disk")
@@ -100,7 +100,7 @@ pub async fn copy_one_file(
     ensure_parent_dir(dest, dest_path).await;
 
     // Try delta transfer first (SFTP-only today). Returns None for non-SFTP
-    // destinations or when downcast/probe declines — in both cases we proceed
+    // destinations or when downcast/probe declines: in both cases we proceed
     // to the classic upload below.
     if let Some(result) =
         try_delta_transfer(dest, SyncDirection::Upload, tmp.path(), dest_path).await
@@ -110,7 +110,7 @@ pub async fn copy_one_file(
             return Ok(());
         }
         if let Some(err) = result.hard_error {
-            // Hard error must surface — never silently retry the classic path
+            // Hard error must surface: never silently retry the classic path
             // when the delta layer rejected for a security/protocol reason.
             return Err(ProviderError::TransferFailed(format!(
                 "delta transfer rejected: {err}"
@@ -157,7 +157,7 @@ pub async fn collect_source_entries(
         }]);
     }
 
-    // It's a directory — recursive must be true
+    // It's a directory: recursive must be true
     if !recursive {
         return Err(ProviderError::InvalidPath(format!(
             "'{}' is a directory; use --recursive to transfer directories",
@@ -179,7 +179,7 @@ pub async fn collect_source_entries(
         let listing = match source.list(&dir).await {
             Ok(l) => l,
             Err(e) => {
-                // Skip unlistable dirs (permission errors, etc.) — same as CLI pattern
+                // Skip unlistable dirs (permission errors, etc.): same as CLI pattern
                 tracing::warn!("cannot list {}: {}", dir, e);
                 continue;
             }
@@ -277,7 +277,7 @@ pub async fn should_skip_existing(
             let same_size = existing.size == source_entry.size;
             let same_mtime = match (&existing.modified, &source_entry.modified) {
                 (Some(a), Some(b)) => a == b,
-                // If either side lacks mtime, we can't compare — don't skip
+                // If either side lacks mtime, we can't compare: don't skip
                 _ => false,
             };
             Ok(same_size && same_mtime)
@@ -472,7 +472,7 @@ fn map_dest_path(source_roots: &[String], source_file: &str, dest_base: &str) ->
         .trim_start_matches('/');
 
     if relative.is_empty() {
-        // Single file case — source_file == source_root (without trailing /)
+        // Single file case: source_file == source_root (without trailing /)
         dest_base.to_string()
     } else {
         let dest_base = if dest_base.ends_with('/') {

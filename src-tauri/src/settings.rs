@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 #[cfg(feature = "aerorsync")]
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ fn native_rsync_config_path() -> Result<PathBuf, String> {
 ///
 /// The function name, the persisted TOML filename (`native_rsync.toml`) and
 /// the `native_rsync_enabled` TOML key all retain the legacy naming that
-/// predated the `aerorsync` rebrand — renaming them would break upgrade
+/// predated the `aerorsync` rebrand: renaming them would break upgrade
 /// paths for users who already toggled the flag on.
 pub fn load_native_rsync_enabled() -> bool {
     let path = match native_rsync_config_path() {
@@ -52,13 +52,13 @@ pub fn load_native_rsync_enabled() -> bool {
     if !path.exists() {
         // Fresh-install default: OFF. The previous attempt to flip this
         // to ON broke the Linux integration test lane because CI runs
-        // without the TOML present — the test expects the classic
+        // without the TOML present: the test expects the classic
         // binary-rsync delta path, but default-on made the native
         // prototype the preferred backend, and the native prototype's
         // host-key pinning then rejected the Docker SFTP fixture (the
         // fixture exposes multiple host-key algorithms and the two
-        // SSH libraries — `ssh2` for classic SFTP, `russh` for the
-        // native probe — negotiated different ones, producing a
+        // SSH libraries: `ssh2` for classic SFTP, `russh` for the
+        // native probe: negotiated different ones, producing a
         // fingerprint mismatch). Until the native prototype tolerates
         // that negotiation asymmetry, the default stays OFF and the
         // Windows first-run UX relies on the Settings page toggle to
@@ -220,7 +220,7 @@ mod tests {
         let _g = ScopedXdg::new();
         let path = native_rsync_config_path().expect("path");
         set_native_rsync_enabled(true).unwrap();
-        // After a successful set, the `.tmp` sibling must not exist —
+        // After a successful set, the `.tmp` sibling must not exist -
         // the rename is the atomic commit.
         let tmp = path.with_extension("tmp");
         assert!(!tmp.exists(), "temp file must be renamed away: {tmp:?}");

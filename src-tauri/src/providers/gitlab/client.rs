@@ -8,7 +8,7 @@
 //! - No API version header required
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
@@ -257,7 +257,7 @@ impl GitLabHttpClient {
         self.execute_with_retry(builder).await
     }
 
-    /// HEAD request — returns true if 2xx, false if 404, error otherwise.
+    /// HEAD request: returns true if 2xx, false if 404, error otherwise.
     pub async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         let url = self.resolve_url(path);
         let builder = self.request(Method::HEAD, &url);

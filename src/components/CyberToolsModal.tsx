@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -590,7 +590,7 @@ const PasswordForgeTab: React.FC = () => {
             <div>
                 <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
                     <span>{t('cyberTools.pwdEntropy')}</span>
-                    <span className="font-mono">{Math.round(entropy)} {t('cyberTools.pwdBits')} — {entropyLabel}</span>
+                    <span className="font-mono">{Math.round(entropy)} {t('cyberTools.pwdBits')}: {entropyLabel}</span>
                 </div>
                 <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
                     <div className={`h-full rounded-full transition-all duration-300 ${entropyColor}`} style={{ width: `${entropyPct}%` }} />

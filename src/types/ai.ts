@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AI Provider and Model Types for AeroFTP AI Agent
 
@@ -261,7 +261,7 @@ export const PROVIDER_PRESETS: Omit<AIProvider, 'id' | 'apiKey' | 'createdAt' | 
     },
 ];
 
-// Default models for each provider (empty — users add their own via Settings or "Models" button)
+// Default models for each provider (empty: users add their own via Settings or "Models" button)
 export const DEFAULT_MODELS: Record<AIProviderType, Omit<AIModel, 'id' | 'providerId'>[]> = {
     google: [],
     openai: [],

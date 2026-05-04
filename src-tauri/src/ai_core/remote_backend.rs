@@ -1,10 +1,10 @@
-//! RemoteBackend trait — abstracts the active remote connection
+//! RemoteBackend trait: abstracts the active remote connection
 //!
 //! Tauri implementation wraps ProviderState + AppState mutexes.
 //! CLI implementation owns a single StorageProvider directly.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::providers::RemoteEntry;
 use async_trait::async_trait;

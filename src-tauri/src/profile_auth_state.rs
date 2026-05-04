@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Per-profile auth-readiness derivation from local vault state.
 //!
@@ -40,13 +40,13 @@ pub fn oauth_vault_key_for_protocol(protocol: &str) -> Option<&'static str> {
     }
 }
 
-/// Derive a profile's auth readiness from local vault state only — never
+/// Derive a profile's auth readiness from local vault state only: never
 /// touches the network. Returns one of:
-///   - `valid`           — credential present and (for OAuth) not expired
-///   - `expired`         — OAuth token past `expires_at` and no refresh token
-///   - `needs_refresh`   — OAuth token past `expires_at` but refresh token present
-///   - `no_credentials`  — nothing stored; user has not signed in yet
-///   - `unknown`         — vault entry present but value couldn't be parsed
+///   - `valid`          : credential present and (for OAuth) not expired
+///   - `expired`        : OAuth token past `expires_at` and no refresh token
+///   - `needs_refresh`  : OAuth token past `expires_at` but refresh token present
+///   - `no_credentials` : nothing stored; user has not signed in yet
+///   - `unknown`        : vault entry present but value couldn't be parsed
 ///     (legacy/corrupt; treated as "agent should try anyway")
 ///
 /// `accounts` is a pre-fetched set of vault keys to keep this O(1) per

@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "3.7.0"
+version = "3.7.1"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0"
@@ -175,17 +175,17 @@ unftp-core = "0.1"                                                     # FTP ser
 ratatui = "0.30"                                                       # Terminal UI framework
 crossterm = "0.29"                                                     # Cross-platform terminal control
 
-# aerorsync — native rsync protocol 31/32 implementation in Rust.
+# aerorsync: native rsync protocol 31/32 implementation in Rust.
 # Optional dependencies gated by the `aerorsync` feature. Used by
 # `real_wire.rs` to decompress DEFLATED_DATA literals emitted by rsync's
 # sender when CPRES_ZSTD is negotiated. Off with `--no-default-features`.
 zstd = { version = "0.13", optional = true }
-# aerorsync — XXH3-128 file-level checksum trailer (S8j). Provides
+# aerorsync: XXH3-128 file-level checksum trailer (S8j). Provides
 # `xxhash_rust::xxh3::xxh3_128` used by the driver to compute the file
 # checksum rsync verifies at the end of a delta stream.
 xxhash-rust = { version = "0.8", features = ["xxh3"], optional = true }
 
-# Local speech-to-text — excluded on macOS (WKWebView has native Web Speech API)
+# Local speech-to-text: excluded on macOS (WKWebView has native Web Speech API)
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 hound = "3"
 whisper-rs = "0.16.0"
@@ -213,7 +213,7 @@ fuser = "0.16"
 default = ["aerorsync"]
 custom-protocol = ["tauri/custom-protocol"]
 
-# aerorsync — AeroFTP's native Rust implementation of the rsync wire
+# aerorsync: AeroFTP's native Rust implementation of the rsync wire
 # protocol 31 (in-tree since PR-T11, default-on). Turns on the
 # cross-platform Rust implementation under `src/aerorsync/`, enabling
 # byte-level delta sync on Windows (first-class) and as the preferred
@@ -224,7 +224,7 @@ custom-protocol = ["tauri/custom-protocol"]
 # debugging the classic binary-rsync path on Unix.
 aerorsync = ["dep:zstd", "dep:xxhash-rust"]
 
-# Strada C — Docker-harness lane cfg flags. Declared here so
+# Strada C: Docker-harness lane cfg flags. Declared here so
 # `#[cfg(ci_lane2)]` / `#[cfg(ci_lane3)]` do not surface
 # `unexpected_cfgs` warnings under `-D warnings`. Enable on CI with
 # `RUSTFLAGS='--cfg ci_lane3'` (or `ci_lane2`); left unset otherwise.

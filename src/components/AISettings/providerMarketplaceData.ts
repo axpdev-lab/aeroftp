@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { AIProviderType } from '../../types/ai';
 
@@ -149,7 +149,7 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'paid',
         highlight: 'Best value reasoning',
     },
-    // Fast Inference — Tier 3
+    // Fast Inference: Tier 3
     {
         type: 'cerebras',
         name: 'Cerebras',
@@ -168,7 +168,7 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'freemium',
         highlight: '1000+ tok/s',
     },
-    // Specialized — Tier 3
+    // Specialized: Tier 3
     {
         type: 'ai21',
         name: 'AI21 Labs',
@@ -178,7 +178,7 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'paid',
         highlight: '256K context (Jamba)',
     },
-    // Gateway — Tier 3
+    // Gateway: Tier 3
     {
         type: 'fireworks',
         name: 'Fireworks AI',
@@ -188,7 +188,7 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'freemium',
         highlight: 'Optimized open models',
     },
-    // Flagship — Tier 4 (NVIDIA NIM)
+    // Flagship: Tier 4 (NVIDIA NIM)
     {
         type: 'nvidia',
         name: 'NVIDIA NIM',
@@ -198,7 +198,7 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'freemium',
         highlight: '1000 free requests',
     },
-    // Chinese — Tier 4
+    // Chinese: Tier 4
     {
         type: 'zai',
         name: 'Z.AI (Zhipu GLM)',
@@ -217,7 +217,7 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'paid',
         highlight: '200K context window',
     },
-    // Fast Inference — Tier 4
+    // Fast Inference: Tier 4
     {
         type: 'hyperbolic',
         name: 'Hyperbolic',
@@ -227,7 +227,7 @@ export const MARKETPLACE_PROVIDERS: MarketplaceProvider[] = [
         pricingTier: 'freemium',
         highlight: 'Cheapest Llama 3.3 70B',
     },
-    // Gateway — Tier 4
+    // Gateway: Tier 4
     {
         type: 'novita',
         name: 'Novita AI',

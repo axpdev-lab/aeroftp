@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -458,7 +458,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     setEditingServer((prev) => (prev && prev.id === serverId ? { ...prev, password: storedPassword } : prev));
                 }
             } catch {
-                // No credential stored or vault locked — leave password field empty
+                // No credential stored or vault locked: leave password field empty
             }
         })();
     }, [editingServer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -599,7 +599,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                 });
                                 loaded[p] = { clientId: id || '', clientSecret: secret || '' };
                             } catch {
-                                // SEC: No localStorage fallback — credentials must be in vault.
+                                // SEC: No localStorage fallback: credentials must be in vault.
                                 // Migration wizard handles legacy data on first launch.
                             }
                         }
@@ -733,7 +733,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             localStorage.removeItem(OAUTH_SETTINGS_KEY);
             // Apply system menu setting immediately
             invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
-            // Apply autostart setting (idempotent — no pre-check needed)
+            // Apply autostart setting (idempotent: no pre-check needed)
             try {
                 if (settings.launchOnStartup) {
                     await enableAutostart();
@@ -1562,7 +1562,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 />
                                                             </div>
 
-                                                            {/* Custom Icon picker — only for servers without a dedicated provider logo */}
+                                                            {/* Custom Icon picker: only for servers without a dedicated provider logo */}
                                                             {!hasProviderLogo && (
                                                                 <div>
                                                                     <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.serverIcon')}</label>
@@ -2121,7 +2121,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 </>
                                                             )}
 
-                                                            {/* GitHub — Owner/Repo + 3 Auth Modes */}
+                                                            {/* GitHub: Owner/Repo + 3 Auth Modes */}
                                                             {isGitHub && (
                                                                 <>
                                                                     <div>
@@ -2179,7 +2179,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                                                                                         <polyline points="20 6 9 17 4 12" />
                                                                                     </svg>
-                                                                                    {t('github.alreadyAuthorized') || 'Already authorized — ready to connect'}
+                                                                                    {t('github.alreadyAuthorized') || 'Already authorized: ready to connect'}
                                                                                 </p>
                                                                             ) : (
                                                                                 <p className="text-xs text-amber-500">{t('github.notAuthorized') || 'Not yet authorized. Connect first to authorize.'}</p>
@@ -2524,7 +2524,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     <FolderOpen size={16} />
                                                                 </button>
                                                             </div>
-                                                            {/* Public URL Base for share links — only meaningful for protocols
+                                                            {/* Public URL Base for share links: only meaningful for protocols
                                                                 that serve a file tree mappable to plain HTTP URLs
                                                                 (FTP/FTPS/SFTP/WebDAV). Hidden for S3, Azure, MEGA, Filen,
                                                                 GitHub and OAuth-based providers, which build their own
@@ -2802,7 +2802,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </button>
                                     </div>
 
-                                    {/* AeroCloud moved to its own tab — see SettingsAeroCloudTab */}
+                                    {/* AeroCloud moved to its own tab: see SettingsAeroCloudTab */}
 
                                     {/* Google API (Drive + Photos) */}
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
@@ -3012,14 +3012,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                     </div>
 
-                                    {/* GitHub — Device Flow OAuth */}
+                                    {/* GitHub: Device Flow OAuth */}
                                     <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-8 h-8 bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg flex items-center justify-center">{PROVIDER_LOGOS.github ? <PROVIDER_LOGOS.github size={18} /> : <Cloud size={16} />}</div>
                                                 <div>
                                                     <h4 className="font-medium">GitHub</h4>
-                                                    <p className="text-xs text-gray-500">{t('settings.githubOauthDesc') || 'Device Flow OAuth — no Client ID needed'}</p>
+                                                    <p className="text-xs text-gray-500">{t('settings.githubOauthDesc') || 'Device Flow OAuth: no Client ID needed'}</p>
                                                 </div>
                                             </div>
                                             <span className="text-xs bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">{t('settings.noApiKeysNeeded') || 'No API keys needed'}</span>
@@ -3368,7 +3368,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                             <div className="border-t border-gray-200 dark:border-gray-700 my-4" />
 
-                                            {/* Storage usage thresholds — drive the colour of the
+                                            {/* Storage usage thresholds: drive the colour of the
                                                 used/total/% triplet on My Servers list view and the
                                                 quota bar on grid view. Persisted to vault under
                                                 ui_settings.storage_thresholds and shared with the CLI. */}

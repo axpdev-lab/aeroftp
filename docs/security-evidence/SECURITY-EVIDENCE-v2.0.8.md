@@ -1,4 +1,4 @@
-# Security Evidence — v2.0.8
+# Security Evidence: v2.0.8
 
 > Public release security evidence pack for AeroFTP.
 > Tracks security claims, applied fixes, verification status, and acceptance gates.

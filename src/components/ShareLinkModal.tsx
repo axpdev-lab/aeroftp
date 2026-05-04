@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
@@ -327,7 +327,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
               <X size={14} />
             </button>
           </div>
-          {/* Tab bar — only show if provider supports listing */}
+          {/* Tab bar: only show if provider supports listing */}
           {caps.supportsList && (
             <div className="flex px-4 gap-4">
               <button

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Import server profiles from FileZilla configuration files.
 //!
 //! Parses `sitemanager.xml` (XML format), maps FileZilla protocol values to
 //! AeroFTP ProviderType, and decodes base64-encoded passwords (FileZilla uses
-//! plain base64 — NOT encryption of any kind).
+//! plain base64: NOT encryption of any kind).
 //!
 //! Imported credentials are stored in our AES-256-GCM vault, upgrading security
 //! from FileZilla's base64 encoding to proper authenticated encryption.
@@ -199,7 +199,7 @@ fn xml_unescape(s: &str) -> String {
 // ============ Password Decoding ============
 
 /// Decode a FileZilla password.
-/// FileZilla uses plain base64 encoding — not encryption at all.
+/// FileZilla uses plain base64 encoding: not encryption at all.
 fn decode_filezilla_password(encoded: &str, encoding: &str) -> Option<String> {
     if encoded.is_empty() {
         return None;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -244,7 +244,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
         setContextMenu({ x: e.clientX, y: e.clientY, item });
     }, []);
 
-    // Single-pass counting instead of 6 separate .filter() calls — O(n) vs O(6n)
+    // Single-pass counting instead of 6 separate .filter() calls: O(n) vs O(6n)
     const { completedCount, errorCount, transferringCount, pendingCount, primaryType } = useMemo(() => {
         let completed = 0, error = 0, transferring = 0, pending = 0, uploads = 0;
         for (const item of items) {
@@ -373,7 +373,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     </div>
                 </div>
 
-                {/* Pause Banner — shown when circuit breaker trips */}
+                {/* Pause Banner: shown when circuit breaker trips */}
                 {isPaused && (
                     <div className="flex items-center justify-between px-3 py-2 bg-amber-900/30 border-b border-amber-700/50">
                         <div className="flex items-center gap-2 min-w-0">
@@ -410,7 +410,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     onScroll={handleScroll}
                     className="flex-1 overflow-y-auto p-2 space-y-0.5 max-h-[24rem] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent"
                 >
-                    {/* Render only last 200 items for performance — older completed items are hidden */}
+                    {/* Render only last 200 items for performance: older completed items are hidden */}
                     {items.length > 200 && (
                         <div className="text-center text-gray-400 dark:text-gray-600 text-[10px] py-1">
                             {items.length - 200} earlier items hidden
@@ -450,7 +450,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             {/* Status Icon */}
                             <StatusIcon status={item.status} />
 
-                            {/* Filename — truncate from start to always show extension */}
+                            {/* Filename: truncate from start to always show extension */}
                             <span className={`flex-1 overflow-hidden ${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}
                                 title={item.filename}
                             >
@@ -486,11 +486,11 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                         ? formatTime(item.endTime - item.startTime)
                                         : item.status === 'error'
                                             ? t('transfer.fail')
-                                            : '—'
+                                            : '-'
                                 }
                             </span>
 
-                            {/* Inline action buttons — hover only */}
+                            {/* Inline action buttons: hover only */}
                             <span className="hidden group-hover:flex items-center gap-1 shrink-0 ml-1">
                                 <button
                                     onClick={(e) => {
@@ -531,7 +531,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     })}
                 </div>
 
-                {/* Footer — always visible, glows during transfers */}
+                {/* Footer: always visible, glows during transfers */}
                 <div className={`h-1 transition-all duration-500 ${transferringCount > 0 ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500 opacity-100 shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'bg-gray-300 dark:bg-gray-700 opacity-40'}`}>
                     {transferringCount > 0 && (
                         <div
@@ -576,7 +576,7 @@ export const useTransferQueue = () => {
         for (const item of items) {
             if (item.status === 'pending' || item.status === 'transferring') {
                 active++;
-                if (active > 0) break; // Early exit — we only need to know if any are active
+                if (active > 0) break; // Early exit: we only need to know if any are active
             }
         }
         activeCountRef.current = active;
@@ -703,7 +703,7 @@ export const useTransferQueue = () => {
         ));
     };
 
-    // Re-queue all failed items (except user-cancelled) — returns IDs for retry callback execution
+    // Re-queue all failed items (except user-cancelled): returns IDs for retry callback execution
     const retryAllFailed = (): string[] => {
         const failedIds: string[] = [];
         setItems(prev => prev.map(item => {

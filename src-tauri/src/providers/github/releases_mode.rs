@@ -4,7 +4,7 @@
 //! providing a familiar file-manager experience over the Releases API.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::collections::HashMap;
 
@@ -240,7 +240,7 @@ pub async fn download_release_asset(
         asset.browser_download_url.clone()
     };
 
-    // Source archives use API URLs that redirect — download with a plain HTTP client
+    // Source archives use API URLs that redirect: download with a plain HTTP client
     // to avoid GitHub API header conflicts (Accept: application/octet-stream vs vnd.github+json)
     let resp = if asset_name.starts_with("Source code") {
         reqwest::Client::builder()
@@ -465,7 +465,7 @@ async fn get_release_by_tag(
     match client.get_json::<GitHubRelease>(&path).await {
         Ok(release) => Ok(release),
         Err(GitHubError::PathNotFound(_)) => {
-            // Tag endpoint doesn't find draft releases — fall back to listing all
+            // Tag endpoint doesn't find draft releases: fall back to listing all
             let all_path = format!("/repos/{owner}/{repo}/releases?per_page=100");
             let releases: Vec<GitHubRelease> = client
                 .get_json(&all_path)

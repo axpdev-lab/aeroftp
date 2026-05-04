@@ -145,7 +145,7 @@ fn frame_codec_rejects_oversized_frame_on_encode() {
 }
 
 // ---------------------------------------------------------------------------
-// remote_command.rs — golden fixture parity
+// remote_command.rs: golden fixture parity
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -173,7 +173,7 @@ fn sender_receiver_split_is_explicit_in_args() {
 }
 
 // ---------------------------------------------------------------------------
-// fixtures.rs — baseline invariants
+// fixtures.rs: baseline invariants
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -261,7 +261,7 @@ fn planner_skips_directory_candidates() {
 }
 
 // ---------------------------------------------------------------------------
-// session.rs — legal/illegal transitions
+// session.rs: legal/illegal transitions
 // ---------------------------------------------------------------------------
 
 fn fresh_session() -> AerorsyncSession<MockRemoteShellTransport> {
@@ -345,7 +345,7 @@ fn session_accumulates_stats_safely() {
 }
 
 // ---------------------------------------------------------------------------
-// mock.rs — upload / download / failure replays
+// mock.rs: upload / download / failure replays
 // ---------------------------------------------------------------------------
 
 fn encoded_hello(role: SessionRole) -> Vec<u8> {
@@ -487,7 +487,7 @@ async fn mock_cancel_propagates() {
 }
 
 // ---------------------------------------------------------------------------
-// engine_adapter.rs — From / TryFrom between protocol and engine shapes
+// engine_adapter.rs: From / TryFrom between protocol and engine shapes
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -545,7 +545,7 @@ fn delta_instruction_end_of_file_rejects_with_typed_error() {
 }
 
 // ---------------------------------------------------------------------------
-// driver.rs — end-to-end session orchestration against the mock transport
+// driver.rs: end-to-end session orchestration against the mock transport
 // ---------------------------------------------------------------------------
 
 fn driver_codec() -> AerorsyncFrameCodec {
@@ -651,8 +651,8 @@ async fn driver_upload_happy_path_reaches_finalized_and_matches_baseline() {
     // Summary counters flow into stats and match the real-wrapper baseline:
     assert_eq!(outcome.stats.literal_bytes, BASELINE_LITERAL_BYTES);
     assert_eq!(outcome.stats.matched_bytes, BASELINE_MATCHED_BYTES);
-    // Wire-level byte accounting is non-zero (not the rsync numbers — our
-    // envelope differs from rsync's — but both directions saw traffic).
+    // Wire-level byte accounting is non-zero (not the rsync numbers: our
+    // envelope differs from rsync's: but both directions saw traffic).
     assert!(outcome.stats.bytes_sent > 0);
     assert!(outcome.stats.bytes_received > 0);
     // Sinergia-2 conversions happened: remote signatures arrived as engine sigs,
@@ -783,7 +783,7 @@ async fn driver_surfaces_remote_error_frame_as_typed_error() {
 
 #[tokio::test]
 async fn driver_detects_unexpected_message_type() {
-    // Remote sends Summary before Hello — violates the phase contract.
+    // Remote sends Summary before Hello: violates the phase contract.
     let inbound = vec![encode(&baseline_summary_frame(true))];
     let mut cfg = MockTransportConfig::healthy_upload();
     cfg.stream_behavior = OpenStreamBehavior::Success { inbound };
@@ -907,9 +907,9 @@ async fn driver_stream_open_failure_marks_session_failed() {
 }
 
 // ---------------------------------------------------------------------------
-// engine_adapter.rs — Sinergia 4: CurrentDeltaSyncBridge delegates to
+// engine_adapter.rs: Sinergia 4: CurrentDeltaSyncBridge delegates to
 // crate::delta_sync (the production delta engine). These tests pin the
-// algorithmic invariants that the real engine provides — we are NOT asserting
+// algorithmic invariants that the real engine provides: we are NOT asserting
 // against hardcoded rsync numbers, since rsync's block size heuristic and
 // block-matching priority differ in detail. We assert the invariants every
 // correct delta engine must satisfy.
@@ -944,7 +944,7 @@ fn bridge_signatures_cover_whole_buffer() {
     let data = deterministic_buffer(100_000);
     let bs = bridge.compute_block_size(data.len() as u64);
     let sigs = bridge.build_signatures(&data, bs);
-    // Reconstructing file_size from block_len sum must equal actual size —
+    // Reconstructing file_size from block_len sum must equal actual size -
     // this is the invariant the bridge relies on in `compute_delta`.
     let recovered: u64 = sigs.iter().map(|s| s.block_len as u64).sum();
     assert_eq!(recovered, data.len() as u64);
@@ -976,7 +976,7 @@ fn bridge_fully_changed_file_produces_no_copy_blocks() {
     let plan = bridge.compute_delta(&modified, &sigs, bs);
     assert_eq!(plan.copy_blocks, 0);
     assert_eq!(plan.literal_bytes, modified.len() as u64);
-    // A 100%-literal delta is NOT worth using — engine says so.
+    // A 100%-literal delta is NOT worth using: engine says so.
     assert!(!plan.should_use_delta);
 }
 
@@ -1149,7 +1149,7 @@ async fn driver_upload_uses_bridge_produced_plan_and_reaches_finalized() {
     // Engine ops delivered to the wire round-tripped back through the
     // driver's TryFrom, and the EndOfFile terminator was drained.
     assert_eq!(outcome.engine_delta_ops.len(), plan_engine.ops.len());
-    // Plan claimed savings — assert the bridge's own recommendation.
+    // Plan claimed savings: assert the bridge's own recommendation.
     assert!(plan_engine.should_use_delta);
     assert!(plan_engine.literal_bytes < source.len() as u64);
     // Block size was propagated through the SignatureBatch wire frame.
@@ -1157,11 +1157,11 @@ async fn driver_upload_uses_bridge_produced_plan_and_reaches_finalized() {
 }
 
 // ---------------------------------------------------------------------------
-// driver.rs — Sinergia 5: engine-mode driver orchestration.
+// driver.rs: Sinergia 5: engine-mode driver orchestration.
 //
 // The driver computes the delta (upload) or applies the delta (download)
 // internally by calling the DeltaEngineAdapter. The caller only provides
-// the source or destination bytes — no manual signature/delta juggling.
+// the source or destination bytes: no manual signature/delta juggling.
 // ---------------------------------------------------------------------------
 
 fn build_scripted_signature_batch(
@@ -1352,7 +1352,7 @@ async fn driver_upload_with_engine_respects_pre_cancel() {
 
 #[tokio::test]
 async fn driver_download_with_engine_handles_remote_error_frame() {
-    // Mid-session Error frame from remote — engine mode must route it
+    // Mid-session Error frame from remote: engine mode must route it
     // through the same RemoteError surfacing path as caller-plan download.
     let bridge = CurrentDeltaSyncBridge::new();
     let destination = deterministic_buffer(4096);
@@ -1383,7 +1383,7 @@ async fn driver_download_with_engine_handles_remote_error_frame() {
 async fn driver_engine_mode_identical_files_produce_all_copy_delta() {
     // When source == destination, engine-mode upload should produce a
     // delta made entirely of CopyBlock ops (zero literal bytes at the
-    // engine level — Summary counters are still scripted for parity).
+    // engine level: Summary counters are still scripted for parity).
     let bridge = CurrentDeltaSyncBridge::new();
     let buf = deterministic_buffer(16 * 1024);
     let (_, sig_batch) = build_scripted_signature_batch(&bridge, &buf);
@@ -1423,7 +1423,7 @@ async fn driver_engine_mode_identical_files_produce_all_copy_delta() {
 }
 
 // ---------------------------------------------------------------------------
-// Sinergia 7 — CancelHandle semantics & transport default
+// Sinergia 7: CancelHandle semantics & transport default
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1455,7 +1455,7 @@ fn cancel_handle_waker_is_invoked_exactly_once_per_cancel_call() {
     assert_eq!(counter.load(Ordering::SeqCst), 1);
 
     // Second call still invokes the waker. `CancelHandle` is intentionally
-    // not idempotent on the waker side — the caller decides what "double
+    // not idempotent on the waker side: the caller decides what "double
     // cancel" means in their domain.
     handle.cancel();
     assert_eq!(counter.load(Ordering::SeqCst), 2);
@@ -1468,7 +1468,7 @@ fn cancel_handle_clone_shares_state_with_original() {
     assert!(!original.requested());
     assert!(!clone.requested());
     clone.cancel();
-    // Both handles reflect the cancel — the flag is `Arc<AtomicBool>`.
+    // Both handles reflect the cancel: the flag is `Arc<AtomicBool>`.
     assert!(original.requested());
     assert!(clone.requested());
 }
@@ -1499,7 +1499,7 @@ async fn mock_transport_cancel_handle_defaults_to_inert_and_is_independent() {
 fn real_rsync_frozen_transcript_path_layout_is_stable() {
     // The path constants are what `run_real_rsync_capture.sh` writes and
     // what future sinergie (S8b+) will parse. A rename on either side
-    // would break the oracle silently — catch it here at compile/test
+    // would break the oracle silently: catch it here at compile/test
     // time.
     assert!(REAL_RSYNC_FROZEN_TRANSCRIPT_REL.starts_with("src/aerorsync/capture/"));
     assert!(REAL_RSYNC_FROZEN_TRANSCRIPT_REL.ends_with("/frozen"));
@@ -1534,11 +1534,11 @@ fn real_rsync_frozen_transcript_loads_when_present() {
 
     assert!(
         !transcript.upload_server_to_client.is_empty(),
-        "upload capture_out.bin is empty — did the harness fail?"
+        "upload capture_out.bin is empty: did the harness fail?"
     );
     assert!(
         !transcript.download_server_to_client.is_empty(),
-        "download capture_out.bin is empty — did the harness fail?"
+        "download capture_out.bin is empty: did the harness fail?"
     );
 
     let version = transcript
@@ -1588,7 +1588,7 @@ fn real_wire_parses_frozen_server_preamble_upload() {
     // compat_flags on the wire is a rsync varint; S8d replaced the
     // stale S8b fixed-2-byte read. The frozen handshake negotiates all
     // nine CF_* bits (`0x01FF`), so the varint encodes as the 2-byte
-    // sequence 0x81 0xFF — consumed width 2, same as the S8b fiction,
+    // sequence 0x81 0xFF: consumed width 2, same as the S8b fiction,
     // but now the field is typed correctly.
     const CF_VARINT_FLIST_FLAGS: i32 = 1 << 7;
     assert_eq!(preamble.compat_flags, 0x01FF);
@@ -1605,7 +1605,7 @@ fn real_wire_parses_frozen_server_preamble_upload() {
         preamble.consumed, 71,
         "server preamble must consume exactly 71 bytes for this algo profile"
     );
-    // checksum_seed is non-zero and stable within one run — we assert
+    // checksum_seed is non-zero and stable within one run: we assert
     // only that it's not obviously garbage.
     assert_ne!(preamble.checksum_seed, 0);
     assert_ne!(preamble.checksum_seed, u32::MAX);
@@ -1766,7 +1766,7 @@ fn real_wire_client_to_server_upload_is_multiplexed_like_server_side() {
     // entry with `upload.bin` at path length 10, the uid/gid strings
     // `axpnet`, and the payload marker `real-live-upload` that
     // `run_real_rsync_capture.sh` injects into the mutated source file.
-    // That is all valid rsync application traffic — the stream really
+    // That is all valid rsync application traffic: the stream really
     // is multiplexed.
     //
     // Pin this property so the mux decoder is applied uniformly to
@@ -1837,7 +1837,7 @@ fn real_wire_app_stream_first_bytes_are_nonzero_nonmarker() {
 }
 
 // ---------------------------------------------------------------------------
-// real_wire — Sinergia 8d file-list entry decoder vs frozen oracle
+// real_wire: Sinergia 8d file-list entry decoder vs frozen oracle
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1893,7 +1893,7 @@ fn real_wire_decodes_first_file_list_entry_from_frozen_upload_client_stream() {
     );
     assert!(
         consumed <= report.app_stream.len(),
-        "consumed exceeds app stream — decoder ran off the end"
+        "consumed exceeds app stream: decoder ran off the end"
     );
     assert!(
         consumed >= 47,
@@ -1995,7 +1995,7 @@ fn real_wire_decodes_first_file_list_entry_from_frozen_download_server_stream() 
 }
 
 // ---------------------------------------------------------------------------
-// real_wire — Sinergia 8e: ndx / item_flags / sum_head / sum_block vs
+// real_wire: Sinergia 8e: ndx / item_flags / sum_head / sum_block vs
 // frozen oracle. The receiver side of the upload lane (server->client) is
 // the cleanest lane: it contains exactly one per-file header, one
 // sum_head, 375 signature blocks and a trailing run of NDX_DONE markers.
@@ -2015,7 +2015,7 @@ const FROZEN_SUM_HEAD_REMAINDER: i32 = 344;
 const FROZEN_SUM_BLOCK_BYTES: usize = 4 + FROZEN_SUM_HEAD_S2LENGTH as usize;
 
 /// Exact length of the NDX_DONE tail observed on the frozen upload
-/// server->client stream — matches `send_files`' two-phase loop plus the
+/// server->client stream: matches `send_files`' two-phase loop plus the
 /// final done marker.
 const FROZEN_UPLOAD_RECEIVER_NDX_DONE_TAIL: usize = 5;
 
@@ -2043,7 +2043,7 @@ fn real_wire_decodes_sum_head_from_frozen_upload_server_stream() {
     );
 
     let (iflags, iflags_bytes) = decode_item_flags(&app[ndx_bytes..]).expect("iflags");
-    // ITEM_TRANSFER (1<<15) must be set — this is the whole point of the
+    // ITEM_TRANSFER (1<<15) must be set: this is the whole point of the
     // message; without it the receiver would not generate sums at all.
     assert!(
         iflags & 0x8000 != 0,
@@ -2104,7 +2104,7 @@ fn real_wire_decodes_all_375_sum_blocks_from_frozen_upload_server_stream() {
     );
     assert_ne!(
         first_rolling, 0,
-        "first block rolling checksum is zero — likely misalignment"
+        "first block rolling checksum is zero: likely misalignment"
     );
 }
 
@@ -2112,7 +2112,7 @@ fn real_wire_decodes_all_375_sum_blocks_from_frozen_upload_server_stream() {
 fn real_wire_trailing_ndx_done_markers_close_byte_accounting_on_upload_receiver_stream() {
     // After the per-file header + sum_head + 375 blocks, the remaining
     // bytes of the receiver stream must be exactly 5 copies of
-    // write_ndx(NDX_DONE) — one per `send_files` phase transition plus the
+    // write_ndx(NDX_DONE): one per `send_files` phase transition plus the
     // final done marker. Decoding them as ndx values proves the tail is
     // well-formed protocol traffic, not trailing garbage.
     let Some(transcript) = RealRsyncBaselineByteTranscript::try_load_frozen() else {
@@ -2130,7 +2130,7 @@ fn real_wire_trailing_ndx_done_markers_close_byte_accounting_on_upload_receiver_
     assert_eq!(
         tail.len(),
         FROZEN_UPLOAD_RECEIVER_NDX_DONE_TAIL,
-        "tail length drifted from 5 NDX_DONE markers — check phase transitions"
+        "tail length drifted from 5 NDX_DONE markers: check phase transitions"
     );
 
     let mut state = NdxState::new();
@@ -2177,7 +2177,7 @@ fn real_wire_decodes_ndx_flist_eof_after_flist_terminator_on_client_upload_strea
 }
 
 // ---------------------------------------------------------------------------
-// S8e scouting — hex-dump post-flist bytes on both directions to identify
+// S8e scouting: hex-dump post-flist bytes on both directions to identify
 // the sum_head start and resolve the `00 FF 01` mystery left open by S8d.
 // Intentionally panics so stderr becomes visible under `cargo test -- --nocapture`.
 // Remove or downgrade to a non-panicking assertion once S8e decodes cleanly.
@@ -2280,13 +2280,13 @@ fn s8e_scout_hex_dump_post_flist_regions() {
         &dn_client_app[dn_client_app.len().saturating_sub(32)..],
     );
 
-    // Scouting aid — not a regression gate. Run with:
+    // Scouting aid: not a regression gate. Run with:
     //   cargo test --features aerorsync --lib \
     //     s8e_scout_hex_dump_post_flist_regions -- --ignored --nocapture
 }
 
 // ---------------------------------------------------------------------------
-// real_wire — Sinergia 8f delta instruction decoder vs frozen oracle.
+// real_wire: Sinergia 8f delta instruction decoder vs frozen oracle.
 // Target: the sender direction of the upload lane (client->server), where
 // rsync emits the full sequence `end_of_flist + io_error +
 // NDX_FLIST_EOF + ndx + iflags + sum_head + <delta stream> + END_FLAG +
@@ -2304,7 +2304,7 @@ const FROZEN_FILE_CHECKSUM_LEN: usize = 16;
 /// payload emitted on the upload sender stream.
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
-/// Helper — advance past `end_of_flist + io_error_varint + NDX_FLIST_EOF +
+/// Helper: advance past `end_of_flist + io_error_varint + NDX_FLIST_EOF +
 /// ndx + iflags + sum_head` on an app_stream that starts at the flist
 /// terminator. Returns (bytes_consumed, sum_head). Fails loudly if any
 /// field disagrees with the frozen profile so callers can trust the
@@ -2422,7 +2422,7 @@ fn real_wire_decodes_full_delta_stream_from_frozen_upload_client_stream() {
         tail.iter().all(|&b| b == 0),
         "trailing bytes after file_checksum must all be NDX_DONE (0x00); got {tail:?}"
     );
-    // Decode each trailing byte as a fresh NDX_DONE — proves they really
+    // Decode each trailing byte as a fresh NDX_DONE: proves they really
     // are well-formed ndx values, not random zeros.
     let mut state = NdxState::new();
     for (i, _) in tail.iter().enumerate() {
@@ -2559,24 +2559,24 @@ fn real_wire_delta_stream_byte_accounting_closes_on_upload_client_stream() {
     );
 
     // Sanity: the tail must be at least 1 NDX_DONE (the final
-    // end-of-transfer marker). Multiple zeros are fine — they correspond
+    // end-of-transfer marker). Multiple zeros are fine: they correspond
     // to phase transitions in send_files.
     assert!(
         tail_len >= 1,
         "expected at least 1 trailing NDX_DONE byte, got {tail_len}"
     );
-    // And the tail length stays small — rsync never emits hundreds of
+    // And the tail length stays small: rsync never emits hundreds of
     // trailing NDX_DONE bytes. Pin the upper bound loosely so an unrelated
     // regression (e.g. forgotten consume_some in reassembly) can't hide
     // by padding the tail.
     assert!(
         tail_len <= 8,
-        "trailing NDX_DONE run suspiciously long ({tail_len}) — check reassembly"
+        "trailing NDX_DONE run suspiciously long ({tail_len}): check reassembly"
     );
 }
 
 // ---------------------------------------------------------------------------
-// S8g scouting — locate the end-of-session summary frame.
+// S8g scouting: locate the end-of-session summary frame.
 //
 // After the last NDX_DONE of a real-rsync transfer the sender emits a
 // final stats block (`io.c::write_stats` called by `log.c::report`).
@@ -2591,7 +2591,7 @@ fn real_wire_delta_stream_byte_accounting_closes_on_upload_client_stream() {
 //   - the LAST ~200 bytes of app_stream (where summary + NDX_DONE tail
 //     live);
 //   - a greedy walk that parses trailing NDX frames with `decode_ndx`
-//     until it hits bytes that don't decode — the leftover tail is the
+//     until it hits bytes that don't decode: the leftover tail is the
 //     summary candidate.
 //
 // Intentionally `#[ignore]`: scouting aid, not a regression gate. Run
@@ -2632,7 +2632,7 @@ fn s8g_scout_hex_dump_stream_tails() {
 
     /// Walk trailing NDX frames greedily. Returns the offset at which
     /// NDX parsing stopped (i.e. the start of the leftover tail that is
-    /// NOT a valid NDX sequence — the summary candidate region).
+    /// NOT a valid NDX sequence: the summary candidate region).
     fn trailing_ndx_walk(app: &[u8], walk_start: usize) -> (usize, Vec<i32>) {
         let mut offset = walk_start;
         let mut ndxs: Vec<i32> = Vec::new();
@@ -2704,7 +2704,7 @@ fn s8g_scout_hex_dump_stream_tails() {
             tail_start,
         );
 
-        // Greedy NDX walk from the last 128 bytes — surfaces trailing
+        // Greedy NDX walk from the last 128 bytes: surfaces trailing
         // NDX_DONE / NDX_DEL_STATS runs and identifies the summary start.
         let walk_start = app.len().saturating_sub(128);
         let (stop_at, ndxs) = trailing_ndx_walk(app, walk_start);
@@ -2730,14 +2730,14 @@ fn s8g_scout_hex_dump_stream_tails() {
 }
 
 // ---------------------------------------------------------------------------
-// real_wire — Sinergia 8g summary frame decoder vs frozen oracle.
+// real_wire: Sinergia 8g summary frame decoder vs frozen oracle.
 //
 // Target: the download server->client direction, where the server is the
 // sender and therefore emits `handle_stats(f_out)` per main.c:960. The
 // full wire layout after the flist on this stream is:
 //   flist_entry + 0x00 (terminator) + 0x00 (io_error) + NDX_FLIST_EOF
 //   + ndx + iflags + sum_head + delta_stream + file_csum
-//   + N × NDX_DONE (send_files phase transitions — sender.c:246/254/460 —
+//   + N × NDX_DONE (send_files phase transitions: sender.c:246/254/460 -
 //     count depends on inc_recurse and max_phase, typically 2-4)
 //   + summary (5 × varlong(3) for proto 31)
 //   + [trailing NDX_DONE from read_final_goodbye, may or may not be
@@ -2776,7 +2776,7 @@ fn consume_exact_ndx_done(app: &[u8], start: usize, count: usize) -> usize {
 /// direction up to but NOT including the trailing NDX_DONE + summary
 /// + NDX_DONE tail.
 ///
-/// Returns the offset at which the file_csum ends — the caller can
+/// Returns the offset at which the file_csum ends: the caller can
 /// then step over the session-level trailer.
 fn decode_download_s2c_up_to_file_csum(
     app: &[u8],
@@ -2810,7 +2810,7 @@ fn decode_download_s2c_up_to_file_csum(
     cursor += n;
 
     // Delta stream + file_csum. `decode_delta_stream` terminates on
-    // END_FLAG and then reads exactly `file_checksum_len` bytes — this
+    // END_FLAG and then reads exactly `file_checksum_len` bytes: this
     // is the FILE-level strong checksum negotiated upfront (xxh128 =
     // 16 bytes for the frozen oracle), NOT the per-block strong
     // checksum length carried in sum_head (which is 2 bytes here).
@@ -2852,7 +2852,7 @@ fn real_wire_decodes_summary_frame_from_frozen_download_s2c_stream() {
     // send_files emits a fixed number of trailing NDX_DONE markers
     // before handle_stats writes the summary. The count comes from
     // sender.c:246/254/460 (phase transitions + final write_ndx) and
-    // is pinned for the frozen oracle — a greedy drain would
+    // is pinned for the frozen oracle: a greedy drain would
     // over-consume because a small total_read varlong can legitimately
     // start with 0x00.
     let summary_start =
@@ -2967,7 +2967,7 @@ fn real_wire_summary_frame_flist_times_in_realistic_range() {
     let sum = summary.flist_buildtime.unwrap() + summary.flist_xfertime.unwrap();
     assert!(
         (0..10).contains(&sum),
-        "flist_buildtime + flist_xfertime = {} looks out of range — unit regression?",
+        "flist_buildtime + flist_xfertime = {} looks out of range: unit regression?",
         sum
     );
 }
@@ -3011,7 +3011,7 @@ fn real_wire_summary_frame_pre_ndx_done_count_matches_frozen_oracle() {
     // change (e.g. a capture that adds phases) fails here.
     assert!(
         count <= FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT + 1,
-        "observed more leading zeros ({}) than expected — summary offset is drifting",
+        "observed more leading zeros ({}) than expected: summary offset is drifting",
         count
     );
 }
@@ -3035,7 +3035,7 @@ fn real_wire_summary_frame_absent_on_upload_server_to_client_stream() {
     // Hard pin #1: the stream must terminate with a bare 0x00
     // (NDX_DONE), not with the last byte of a summary varlong. Every
     // proto-31 summary frame ends with the last byte of
-    // `flist_xfertime`'s varlong — which for any realistic non-zero
+    // `flist_xfertime`'s varlong: which for any realistic non-zero
     // time value is NOT zero.
     assert_eq!(
         app[app.len() - 1],
@@ -3061,19 +3061,19 @@ fn real_wire_summary_frame_absent_on_upload_server_to_client_stream() {
     }
     assert!(
         trailing_zeros >= 3,
-        "upload s->c tail has only {} trailing zero bytes — unexpected layout",
+        "upload s->c tail has only {} trailing zero bytes: unexpected layout",
         trailing_zeros
     );
 }
 
 // ---------------------------------------------------------------------------
-// real_wire — Sinergia 8f-bis literal decompression vs frozen oracle.
+// real_wire: Sinergia 8f-bis literal decompression vs frozen oracle.
 //
 // S8f left `DeltaOp::Literal { compressed_payload }` as opaque zstd
 // bytes. S8f-bis wires the `zstd` crate (feature-gated) so callers can
 // recover the raw uncompressed file bytes. The frozen oracle's upload
 // client->server delta stream has TWO Literal records whose combined
-// uncompressed length is 700 bytes — the same number that shows up in
+// uncompressed length is 700 bytes: the same number that shows up in
 // sum_head.remainder (block_length 700 + 375 full blocks = file_size
 // 262_144, with the 700-byte trailing segment covered by literals).
 // ---------------------------------------------------------------------------
@@ -3116,7 +3116,7 @@ fn real_wire_decompresses_upload_c2s_literals_to_700_bytes_total() {
     );
 
     // Feed all literals through a single streaming decoder (one zstd
-    // context per session — see token.c:681 `ZSTD_e_continue`).
+    // context per session: see token.c:681 `ZSTD_e_continue`).
     let decompressed = decompress_zstd_literal_stream(&literal_slices)
         .unwrap_or_else(|e| panic!("literal stream decompression failed: {:?}", e));
     assert_eq!(
@@ -3170,11 +3170,11 @@ fn real_wire_decompressed_literals_cover_full_700_bytes_and_carry_zstd_magic() {
     // Hardening: the two Literal records combined must produce exactly
     // 700 uncompressed bytes (sum_head.remainder on the fixture) and
     // the first compressed payload must start with the ZSTD frame
-    // magic — so a silent swap to a bare-deflate container would
+    // magic: so a silent swap to a bare-deflate container would
     // fail here before the session even begins.
     //
     // NOTE: the decompressed bytes are NOT a contiguous slice of the
-    // original file — rsync emits literals for the gaps between
+    // original file: rsync emits literals for the gaps between
     // matched block runs. For a multi-run delta with overlapping
     // matches (as on this fixture), literals cover sparse file
     // regions. A pattern check like `(i % 256)` would be wrong.
@@ -3209,7 +3209,7 @@ fn real_wire_decompressed_literals_cover_full_700_bytes_and_carry_zstd_magic() {
         .collect();
     assert_eq!(literal_slices.len(), 2);
     // Only the first literal in a session starts with the ZSTD frame
-    // magic — subsequent literals are flush-block continuations of
+    // magic: subsequent literals are flush-block continuations of
     // the same frame and carry only block headers.
     assert_eq!(
         &literal_slices[0][..4],
@@ -3222,7 +3222,7 @@ fn real_wire_decompressed_literals_cover_full_700_bytes_and_carry_zstd_magic() {
 }
 
 // =============================================================================
-// Sinergia 8h — OOB event integration vs frozen oracle.
+// Sinergia 8h: OOB event integration vs frozen oracle.
 // =============================================================================
 
 /// Pin the empirical observation captured by the S8e/S8g scouts: the
@@ -3270,7 +3270,7 @@ fn real_wire_frozen_oracle_has_zero_oob_events_on_all_four_streams() {
             report.terminal.is_none(),
             "stream {name} unexpectedly hit a terminal event"
         );
-        // Cross-check the legacy reassembly contract — `app_stream`
+        // Cross-check the legacy reassembly contract: `app_stream`
         // must be byte-identical between the two entry points.
         let legacy = reassemble_msg_data(mux_tail).unwrap();
         assert_eq!(
@@ -3363,7 +3363,7 @@ fn real_wire_events_mock_driver_bails_cleanly_on_mid_session_error() {
 
     let report = reassemble_until_terminal(&buf).unwrap();
 
-    // App stream stops at "FLIST" + "NDXS" — the trailing GHOSTBYT
+    // App stream stops at "FLIST" + "NDXS": the trailing GHOSTBYT
     // is never appended.
     assert_eq!(report.app_stream, b"FLISTNDXS");
 
@@ -3455,7 +3455,7 @@ fn real_wire_events_terminal_inside_summary_region_yields_no_partial_summary() {
 
     let err_msg = b"summary aborted";
     let mut buf = Vec::new();
-    // First 7 bytes of summary — half-shipped before the error.
+    // First 7 bytes of summary: half-shipped before the error.
     buf.extend_from_slice(
         &MuxHeader {
             tag: MuxTag::Data,
@@ -3484,7 +3484,7 @@ fn real_wire_events_terminal_inside_summary_region_yields_no_partial_summary() {
     buf.extend_from_slice(&summary[7..]);
 
     let report = reassemble_until_terminal(&buf).unwrap();
-    // Only the first 7 bytes of summary land in app_stream — the
+    // Only the first 7 bytes of summary land in app_stream: the
     // trailer is dropped, so attempting to decode a summary off this
     // partial buffer would correctly fail with TruncatedBuffer.
     assert_eq!(report.app_stream.len(), 7);
@@ -3496,7 +3496,7 @@ fn real_wire_events_terminal_inside_summary_region_yields_no_partial_summary() {
 }
 
 // =============================================================================
-// Sinergia 8i-encode — byte-identical writers vs frozen oracle.
+// Sinergia 8i-encode: byte-identical writers vs frozen oracle.
 // =============================================================================
 
 /// Re-encode the frozen oracle's server preamble through
@@ -3584,7 +3584,7 @@ fn encode_file_list_entry_matches_frozen_oracle_byte_for_byte() {
 /// must select the same wire form (TOKEN_REL / TOKEN_LONG / TOKENRUN_*
 /// / DEFLATED_DATA) that rsync 3.2.7 picked for every op, AND the
 /// `Literal` payloads must round-trip raw byte-for-byte (the zstd
-/// payload is opaque to the outer encoder — what we verify here is the
+/// payload is opaque to the outer encoder: what we verify here is the
 /// outer framing including the 2-byte DEFLATED_DATA header). Trailing
 /// `END_FLAG` + 16-byte file checksum must also match.
 #[test]
@@ -3600,7 +3600,7 @@ fn encode_delta_stream_matches_frozen_oracle_byte_for_byte() {
 
     // Mirrors real_wire_decodes_full_delta_stream_from_frozen_upload_client_stream:
     // the client→server upload stream is `flist + sum_head` (NO sum_blocks
-    // here — those are emitted by the server on the OTHER direction)
+    // here: those are emitted by the server on the OTHER direction)
     // followed directly by the delta stream. `advance_past_sum_head`
     // consumes flist terminator + io_error + NDX_FLIST_EOF + ndx + iflags
     // + sum_head and lands at delta_start.
@@ -3675,8 +3675,8 @@ fn encode_sum_block_matches_frozen_oracle_byte_for_byte() {
 /// then decompress the new blobs and assert byte-identical match.
 ///
 /// Note: the re-compressed BYTES will not match the frozen oracle
-/// blob-for-blob — zstd compression is non-deterministic across
-/// versions / levels / context state — but the SEMANTIC round trip
+/// blob-for-blob: zstd compression is non-deterministic across
+/// versions / levels / context state: but the SEMANTIC round trip
 /// (raw → compressed → raw') MUST be the identity. This pins the
 /// sender↔receiver session-wide context discipline against real
 /// captured payloads, not synthetic ones.
@@ -3716,12 +3716,12 @@ fn compress_zstd_literal_stream_round_trips_through_frozen_oracle_payloads() {
     );
 
     // Step 2: feed the raw bytes back through OUR encoder. We split
-    // them at the same boundaries the original ones had — proving the
+    // them at the same boundaries the original ones had: proving the
     // encoder's per-payload Flush discipline survives the round.
     let mut split_payloads: Vec<&[u8]> = Vec::new();
     let mut cursor = 0;
     for original in &literal_slices {
-        // We don't know the original UNCOMPRESSED chunk sizes — they
+        // We don't know the original UNCOMPRESSED chunk sizes: they
         // are an artefact of rsync's matcher. So split raw evenly over
         // the same number of chunks as the frozen oracle (the
         // round-trip works regardless of chunk boundaries; this just

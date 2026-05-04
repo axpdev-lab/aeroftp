@@ -6,7 +6,7 @@
 //! Status: v1.3.0
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvider};
 use async_trait::async_trait;
@@ -30,7 +30,7 @@ pub type SharedSshHandle = Arc<TokioMutex<Handle<SshHandler>>>;
 /// Exposed as `pub` because [`SharedSshHandle`] (a public type alias in the same
 /// module) names it, and clippy's `exported_private_dependencies` lint requires the
 /// visibility levels to match. Callers outside this module don't construct or
-/// manipulate it — they only hold the handle and pass it back through APIs that
+/// manipulate it: they only hold the handle and pass it back through APIs that
 /// expect `SharedSshHandle`.
 pub struct SshHandler {
     /// The host being connected to (for known_hosts lookup)
@@ -43,7 +43,7 @@ pub struct SshHandler {
     /// SHA-256 hex fingerprint (lowercase, colon-free) of the server
     /// host key's SSH-wire-encoded bytes. The native rsync path
     /// (`providers::sftp::delta_transport`) consumes this to pin its
-    /// second SSH connection — U-02 closes the MITM hole that
+    /// second SSH connection: U-02 closes the MITM hole that
     /// `SshHostKeyPolicy::AcceptAny` left open on the native leg.
     host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
 }
@@ -67,7 +67,7 @@ impl SshHandler {
     /// key bytes, matching the layout that libssh2's
     /// `session.host_key()` returns on the other side of the native
     /// rsync connection. Returns `None` if the russh key encoding fails
-    /// — in that case the native path will refuse to enable because
+    ///: in that case the native path will refuse to enable because
     /// the slot stays empty (secure default).
     fn compute_host_key_fingerprint_hex(key: &PublicKey) -> Option<String> {
         use sha2::{Digest, Sha256};
@@ -117,10 +117,10 @@ impl Handler for SshHandler {
                     }
                     Ok(true)
                 } else {
-                    // SEC-P1-06: Host not in known_hosts — reject here.
+                    // SEC-P1-06: Host not in known_hosts: reject here.
                     // Frontend must call sftp_check_host_key + sftp_accept_host_key first.
                     tracing::warn!(
-                        "SFTP: Host key for {} not pre-approved via TOFU dialog — rejecting",
+                        "SFTP: Host key for {} not pre-approved via TOFU dialog: rejecting",
                         self.host
                     );
                     Ok(false)
@@ -134,7 +134,7 @@ impl Handler for SshHandler {
                 Ok(false)
             }
             Err(e) => {
-                // SEC: Reject on unknown errors — do not silently accept.
+                // SEC: Reject on unknown errors: do not silently accept.
                 // Only TOFU (Ok(false)) should auto-accept; other errors may indicate
                 // corrupted known_hosts or key format issues.
                 tracing::error!(
@@ -213,7 +213,7 @@ impl SftpProvider {
     ///
     /// Exposed to let sibling modules (rsync-over-SSH, port forwarding, ...)
     /// open additional channels on the same authenticated session. The handle
-    /// is protected by a Tokio [`Mutex`](TokioMutex) — callers should hold the
+    /// is protected by a Tokio [`Mutex`](TokioMutex): callers should hold the
     /// guard for the minimal time required to send a message, since concurrent
     /// SFTP operations go through the same inner mpsc sender.
     pub fn handle_shared(&self) -> Option<SharedSshHandle> {
@@ -279,7 +279,7 @@ impl SftpProvider {
             // SFTP session. We only enable the native leg when the
             // classic SFTP flow has already captured the accepted host
             // key's SHA-256 fingerprint. Without a fingerprint we refuse
-            // to enable native — the fresh SSH connection would otherwise
+            // to enable native: the fresh SSH connection would otherwise
             // ride `AcceptAny`, which is a MITM window on a second
             // independent socket.
             if crate::settings::load_native_rsync_enabled() {
@@ -290,7 +290,7 @@ impl SftpProvider {
                     Some(hex) => SshHostKeyPolicy::pinned_hex(hex),
                     None => {
                         tracing::warn!(
-                            "providers::sftp: native rsync disabled for this session — parent \
+                            "providers::sftp: native rsync disabled for this session: parent \
                              SFTP handshake did not capture a host key fingerprint (possible \
                              password-only auth or early error); falling back to classic"
                         );
@@ -739,7 +739,7 @@ impl StorageProvider for SftpProvider {
 
         // Close SSH handle. Arc<Mutex<_>> means other clones (e.g. rsync-over-SSH borrowers)
         // may still hold references; the disconnect message is sent through the shared sender,
-        // which is exactly what we want — the session is tore down once for everyone.
+        // which is exactly what we want: the session is tore down once for everyone.
         if let Some(handle) = self.ssh_handle.take() {
             let guard = handle.lock().await;
             let _ = guard

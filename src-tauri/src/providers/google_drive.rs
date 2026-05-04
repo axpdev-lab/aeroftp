@@ -4,7 +4,7 @@
 //! Uses OAuth2 for authentication.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -116,7 +116,7 @@ pub struct GoogleDriveProvider {
     connected: bool,
     current_folder_id: String,
     current_path: String,
-    /// Cache: path -> (folder_id, last_access_counter) — LRU eviction by access counter
+    /// Cache: path -> (folder_id, last_access_counter): LRU eviction by access counter
     folder_cache: HashMap<String, (String, u64)>,
     /// Monotonic access counter for LRU eviction
     cache_access_counter: u64,
@@ -291,7 +291,7 @@ impl GoogleDriveProvider {
         Ok(list.files.into_iter().next())
     }
 
-    /// P2-6: LRU eviction — remove least-recently-accessed half when cache exceeds max
+    /// P2-6: LRU eviction: remove least-recently-accessed half when cache exceeds max
     fn trim_cache_if_needed(&mut self) {
         const MAX_CACHE_SIZE: usize = 10_000;
         if self.folder_cache.len() > MAX_CACHE_SIZE {
@@ -1237,7 +1237,7 @@ impl StorageProvider for GoogleDriveProvider {
             self.resolve_path(parent_path).await?
         };
 
-        // Check if file already exists in target folder — update instead of creating duplicate
+        // Check if file already exists in target folder: update instead of creating duplicate
         let existing_file_id = self
             .find_by_name(file_name, &parent_id)
             .await?
@@ -1247,7 +1247,7 @@ impl StorageProvider for GoogleDriveProvider {
         const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
 
         if total_size > RESUMABLE_THRESHOLD {
-            // Resumable upload for large files — stream from file handle
+            // Resumable upload for large files: stream from file handle
             let metadata = if existing_file_id.is_some() {
                 // Update: only send name, no parents (already in correct folder)
                 serde_json::json!({ "name": file_name })

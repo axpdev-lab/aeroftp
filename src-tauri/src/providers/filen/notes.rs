@@ -13,7 +13,7 @@
 //! - Tag name: `encrypt_metadata(JSON({"name": "..."}))` with master key
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -464,7 +464,7 @@ impl FilenProvider {
             let note_key = match self.resolve_note_key(raw) {
                 Some(k) => k,
                 None => {
-                    debug!(target: "filen_notes", "Skipping note {} — cannot decrypt key", raw.uuid);
+                    debug!(target: "filen_notes", "Skipping note {}: cannot decrypt key", raw.uuid);
                     continue;
                 }
             };
@@ -871,7 +871,7 @@ impl FilenProvider {
         for raw in &raw_tags {
             let name = self.decrypt_tag_name(&raw.name).unwrap_or_default();
             if name.is_empty() {
-                debug!(target: "filen_notes", "Skipping tag {} — cannot decrypt name", raw.uuid);
+                debug!(target: "filen_notes", "Skipping tag {}: cannot decrypt name", raw.uuid);
                 continue;
             }
             tags.push(FilenNoteTag {

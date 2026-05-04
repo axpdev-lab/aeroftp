@@ -167,7 +167,7 @@ AeroFTP bridges profiles with the three most widely used file transfer tools. Im
 | **WinSCP** | `WinSCP.ini` (INI) | SFTP, SCP, FTP, FTPS, WebDAV, S3 | XOR obfuscation | **[WinSCP Bridge](https://docs.aeroftp.app/features/winscp)** |
 | **FileZilla** | `sitemanager.xml` (XML) | FTP, SFTP, FTPS, S3 | Base64 (plaintext) | **[FileZilla Bridge](https://docs.aeroftp.app/features/filezilla)** |
 
-> **rclone crypt interop (full read/write):** in addition to profile import/export, AeroFTP can browse, decrypt **and re-encrypt** existing `rclone crypt` remotes natively. Upload, download, rename, and delete all stream through a transparent crypto overlay session — the underlying provider sees only encrypted blobs and obfuscated filenames, while the UI shows plaintext paths. See the **[rclone crypt page](https://docs.aeroftp.app/features/rclone-crypt)**.
+> **rclone crypt interop (full read/write):** in addition to profile import/export, AeroFTP can browse, decrypt **and re-encrypt** existing `rclone crypt` remotes natively. Upload, download, rename, and delete all stream through a transparent crypto overlay session: the underlying provider sees only encrypted blobs and obfuscated filenames, while the UI shows plaintext paths. See the **[rclone crypt page](https://docs.aeroftp.app/features/rclone-crypt)**.
 
 > **rclone filter conversion:** `aeroftp-cli import rclone-filter <path>` converts an rclone `--filter-from` file (with `+`/`-` rules and `#` comments) into an `.aeroignore` file. Rule order is reversed automatically to preserve rclone's first-match-wins semantics under gitignore last-match-wins. Brace alternation `{a,b}` and `!` reset directives are reported as warnings since they have no direct gitignore equivalent.
 
@@ -184,7 +184,8 @@ Web hosting providers can generate encrypted `.aeroftp` connection profiles from
 ```
 AeroFTP
 ├── AeroCloud    - Personal cloud (7 transport protocols + 20+ native providers, sync, share)
-├── AeroFile     - Professional file manager
+├── AeroFile     - Professional file manager (multi-file Properties, recursive search, default-app routing)
+├── Mount Manager - Persistent FUSE / WebDAV mounts with cross-platform autostart
 ├── AeroSync     - Bidirectional sync engine
 │   └── AeroRsync    - Native Rust delta sync (clean-room rsync protocol 31)
 ├── AeroVault    - Military-grade encryption
@@ -210,6 +211,20 @@ Turn **any server** into a private personal cloud. Connect through 7 transport p
 
 A full-featured local file manager built into AeroFTP. Toggle between remote and local modes, or use both side-by-side. Three view modes (list, grid, large icons), Places sidebar with drives and network shares, Quick Look preview (Space), drag-and-drop transfers, batch rename, duplicate finder, disk usage treemap, trash browser, properties dialog with checksums, and 20+ keyboard shortcuts.
 
+**v3.7.1 polish**: aggregate **multi-file Properties** dialog (Windows-style mixed-state indicators across the selection), **recursive `*` flatten search** that lists every descendant under the current directory in one shot, **smart "Open with default app"** routing in the right-click menu (vault containers open in AeroFTP, scripts drop into the AeroTools Terminal with the right shell prefix, anything else goes through the OS), and a **PathBar** with empty-area edit mode plus a trailing chevron dropdown over first-generation subdirectories.
+
+---
+
+### Mount Manager
+
+> [Full documentation →](https://docs.aeroftp.app/features/mount-manager.html)
+
+Persistent mount manager reachable from File > Mount Manager, the My Servers toolbar, and the connected remote address bar. Save multiple FUSE / WebDAV mount configs (profile, remote path, mountpoint, read-only, cache TTL, allow-other, auto-start) in either a plaintext sidecar JSON (default, daemon-friendly) or in the encrypted vault, toggleable from the dialog header. Per-row Mount / Unmount / Open in file manager / Edit / Delete actions, with a "Pick free drive letter" helper on Windows.
+
+- **Cross-platform autostart**: installs `~/.config/systemd/user/aeroftp-mount-<id>.service` units on Linux (Type=simple, Restart=on-failure) and Task Scheduler ONLOGON entries on Windows. Master-password vault mode blocks autostart with a clear UI explanation since the daemon cannot prompt for a password.
+- **Open mount in file manager**: a one-click action on the My Servers context menu that auto-creates a sensible default mount for the selected profile when none exists yet, waits 800 ms for the FUSE / WebDAV layer to settle, then opens the OS file manager at the mountpoint.
+- **No secrets in mount configs**: credentials are always resolved by the spawned `aeroftp-cli` through `--profile` against the same vault the GUI uses, mount configs only carry the profile id.
+
 ---
 
 ### AeroSync - Bidirectional Sync Engine
@@ -232,7 +247,7 @@ The delta path is wired into:
 - **Cross-Profile Transfer** SFTP to SFTP with key-based auth, so only the bytes that differ from the destination travel on the wire.
 - **AeroTools Code Editor** save against a remote SFTP file, so a one-line change to a 5 MB file ships only the diff.
 
-**Session-cached batch transport (v3.7.0)**: a single SSH session amortizes many consecutive delta transfers via the new `AerorsyncBatch` trait — open the session once, transfer N files, close once. `SyncReport` surfaces `delta_files` (per-file delta breakdown) and `bytes_on_wire` so the UI shows exactly which files used the optimized path and the cumulative wire savings. Current scope is SFTP destinations with key-based auth; other providers and the classic `rsync` binary path on Unix coexist on the same `DeltaTransport` trait surface. The Cargo feature `aerorsync` is compiled by default; the runtime toggle (Settings → Advanced) is OFF pending the host-key algorithm negotiation asymmetry fix. Soft fallbacks (file too small, no key on disk, missing remote helper) silently route back to the classic upload path.
+**Session-cached batch transport (v3.7.0)**: a single SSH session amortizes many consecutive delta transfers via the new `AerorsyncBatch` trait: open the session once, transfer N files, close once. `SyncReport` surfaces `delta_files` (per-file delta breakdown) and `bytes_on_wire` so the UI shows exactly which files used the optimized path and the cumulative wire savings. Current scope is SFTP destinations with key-based auth; other providers and the classic `rsync` binary path on Unix coexist on the same `DeltaTransport` trait surface. The Cargo feature `aerorsync` is compiled by default; the runtime toggle (Settings → Advanced) is OFF pending the host-key algorithm negotiation asymmetry fix. Soft fallbacks (file too small, no key on disk, missing remote helper) silently route back to the classic upload path.
 
 ---
 
@@ -313,7 +328,7 @@ aeroftp-cli daemon start                                   # Background job queu
 
 **Key features**: `--profile` credential isolation for AI agents, `--json` structured output, semantic exit codes (0-11), `.aeroftp` batch scripts, `check` / `cryptcheck` for local-vs-remote verification (size/checksum against cleartext or encrypted remotes), `dedupe` / `cleanup` for orphan management, `hashsum` for remote file hashing (sha256/md5/blake3), `link` for shareable URLs, `--bwlimit "08:00,512k 18:00,off"` time-based bandwidth schedule (local time), `serve http/webdav/ftp/sftp`, MCP server mode, `--immutable` append-only mode, `--files-from` selective transfers, `--fast-list` S3 optimization, bisync with `--conflict-mode rename`, `NO_COLOR` compliant. See the **[CLI Guide](https://docs.aeroftp.app/cli/installation.html)** and **[Credential Isolation](https://docs.aeroftp.app/credential-isolation)** docs.
 
-**MCP server (39 tools, v3.7.0+)**: curated tools for agents covering safe / medium / destructive operation tiers — file ops (`aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_upload_file`), batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with per-file `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` with two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree` between two saved profiles in one batch), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`), and pool introspection (`aeroftp://connections` resource + `aeroftp_close_connection`). Real-time `notifications/progress` during uploads, downloads, and sync. The pool auto-recovers from transport-level failures (stale FTP data channels, broken pipes) without manual intervention. Pool reuse gives roughly **14x speedup** vs CLI cold-start on warm calls (measured 13-14 ms vs ~194 ms on Docker SFTP). Run `aeroftp-cli mcp` and plug it into Claude Desktop, Cursor, Windsurf, or VS Code via the [`axpdev-lab.aeroftp-mcp` extension](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp).
+**MCP server (39 tools, v3.7.0+)**: curated tools for agents covering safe / medium / destructive operation tiers: file ops (`aeroftp_list_files`, `aeroftp_read_file`, `aeroftp_upload_file`), batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with per-file `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` with two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree` between two saved profiles in one batch), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`), and pool introspection (`aeroftp://connections` resource + `aeroftp_close_connection`). Real-time `notifications/progress` during uploads, downloads, and sync. The pool auto-recovers from transport-level failures (stale FTP data channels, broken pipes) without manual intervention. Pool reuse gives roughly **14x speedup** vs CLI cold-start on warm calls (measured 13-14 ms vs ~194 ms on Docker SFTP). Run `aeroftp-cli mcp` and plug it into Claude Desktop, Cursor, Windsurf, or VS Code via the [`axpdev-lab.aeroftp-mcp` extension](https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp).
 
 ---
 

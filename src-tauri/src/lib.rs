@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroFTP - Modern FTP Client with Tauri
 // Real-time transfer progress with event emission
@@ -64,7 +64,7 @@ pub mod storage_dedup;
 pub mod rsync_over_ssh;
 mod ssh_exec;
 pub mod util;
-// Strada C — native rsync prototype (dev-only, gitignored, feature-gated).
+// Strada C: native rsync prototype (dev-only, gitignored, feature-gated).
 // Does not affect production builds. See `src/aerorsync/README.md`.
 #[cfg(feature = "aerorsync")]
 pub mod aerorsync;
@@ -117,7 +117,7 @@ mod windows_acl;
 pub mod winscp_import;
 #[cfg(target_os = "macos")]
 mod speech {
-    //! Stub: macOS uses native Web Speech API via WKWebView — whisper.cpp not needed.
+    //! Stub: macOS uses native Web Speech API via WKWebView: whisper.cpp not needed.
     use serde::Serialize;
     use std::sync::Mutex;
 
@@ -149,7 +149,7 @@ mod speech {
         _app: tauri::AppHandle,
         _state: tauri::State<'_, SpeechState>,
     ) -> Result<String, String> {
-        Err("Speech-to-text not available on macOS — use native voice input".to_string())
+        Err("Speech-to-text not available on macOS: use native voice input".to_string())
     }
 
     #[tauri::command]
@@ -159,7 +159,7 @@ mod speech {
         _app: tauri::AppHandle,
         _state: tauri::State<'_, SpeechState>,
     ) -> Result<serde_json::Value, String> {
-        Err("Speech-to-text not available on macOS — use native voice input".to_string())
+        Err("Speech-to-text not available on macOS: use native voice input".to_string())
     }
 }
 #[cfg(windows)]
@@ -1227,7 +1227,7 @@ static EXITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::n
 /// Gracefully exit the application, performing cleanup before terminating.
 /// Used by both the app menu Quit and the tray Quit so that an explicit quit
 /// always exits even when AeroCloud's hide-to-tray is active.
-/// Safe to call multiple times — cleanup runs only on the first invocation.
+/// Safe to call multiple times: cleanup runs only on the first invocation.
 fn exit_app(app: &tauri::AppHandle) {
     if EXITING.swap(true, std::sync::atomic::Ordering::SeqCst) {
         return; // Already exiting
@@ -2622,7 +2622,7 @@ async fn download_file(
     state: State<'_, AppState>,
     params: DownloadParams,
 ) -> Result<String, String> {
-    // Check if already cancelled (batch stop) — bail immediately
+    // Check if already cancelled (batch stop): bail immediately
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
     }
@@ -2769,7 +2769,7 @@ async fn upload_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadParams,
 ) -> Result<String, String> {
-    // Check if already cancelled (batch stop) — bail immediately
+    // Check if already cancelled (batch stop): bail immediately
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
     }
@@ -2819,7 +2819,7 @@ async fn upload_file(
                 // is self-gated: `None` for non-SFTP / password-only /
                 // missing SSH handle, `used_delta=true` when rsync ran,
                 // `hard_error` when security (host-key, permission) said
-                // no — in which case we must NOT silently fall back to
+                // no: in which case we must NOT silently fall back to
                 // the classic provider path. Same contract as
                 // `sync::perform_upload`.
                 #[cfg(unix)]
@@ -6604,7 +6604,7 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
 
     let reader = BufReader::new(file);
 
-    // Try to open without password — 7z metadata is often unencrypted even when content is
+    // Try to open without password: 7z metadata is often unencrypted even when content is
     let mut archive = match SevenZReader::new(reader, len, Password::empty()) {
         Ok(a) => a,
         Err(e) => {
@@ -6621,7 +6621,7 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
     };
 
     // Metadata opened fine, but content may still be encrypted.
-    // Try to decompress the first file — if it fails, content is encrypted.
+    // Try to decompress the first file: if it fails, content is encrypted.
     let has_files = archive.archive().files.iter().any(|f| f.has_stream());
     if !has_files {
         return Ok(false);
@@ -7194,7 +7194,7 @@ fn guess_mime_from_path(path: &str) -> Option<&'static str> {
     }
 }
 
-/// Validate SVG content — must contain <svg tag (safe when rendered via <img> data URL)
+/// Validate SVG content: must contain <svg tag (safe when rendered via <img> data URL)
 fn is_valid_svg(bytes: &[u8]) -> bool {
     std::str::from_utf8(bytes)
         .map(|s| s.contains("<svg"))
@@ -7345,7 +7345,7 @@ async fn detect_server_favicon(
     .await;
     match result {
         Ok(inner) => inner,
-        Err(_) => Ok(None), // Timeout — no favicon found
+        Err(_) => Ok(None), // Timeout: no favicon found
     }
 }
 
@@ -7418,7 +7418,7 @@ async fn detect_provider_favicon(
     .await;
     match result {
         Ok(inner) => inner,
-        Err(_) => Ok(None), // Timeout — no favicon found
+        Err(_) => Ok(None), // Timeout: no favicon found
     }
 }
 
@@ -7567,7 +7567,7 @@ fn set_close_to_tray(enabled: bool) {
     CLOSE_TO_TRAY.store(enabled, std::sync::atomic::Ordering::SeqCst);
 }
 
-/// Timestamp when splash screen was created — used to enforce minimum display time.
+/// Timestamp when splash screen was created: used to enforce minimum display time.
 static SPLASH_CREATED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
 /// Returns true if the app was launched via the OS autostart entry.
@@ -7582,7 +7582,7 @@ fn is_autostart_launch() -> bool {
 /// prevent GTK menu flash on the borderless splash), and shows the main window.
 ///
 /// `start_minimized`: when true, the main window stays hidden and the user
-/// only sees the tray icon — used for launches from the OS autostart entry.
+/// only sees the tray icon: used for launches from the OS autostart entry.
 #[tauri::command]
 async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
     use tauri_plugin_window_state::{StateFlags, WindowExt};
@@ -7605,7 +7605,7 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
         }
     }
 
-    // 1. Close splash — GTK window destruction is async, takes ~500ms
+    // 1. Close splash: GTK window destruction is async, takes ~500ms
     if let Some(splash) = app.get_webview_window("splashscreen") {
         let _ = splash.close();
         info!("Splash screen closed");
@@ -7617,7 +7617,7 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
     #[cfg(target_os = "linux")]
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
-    // 3. Splash is dead — safe to set the global app menu
+    // 3. Splash is dead: safe to set the global app menu
     if let Some(deferred) =
         app.try_state::<std::sync::Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>()
     {
@@ -7632,7 +7632,7 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
     // 4. Restore saved size/position/maximized state only after splash teardown,
     // then show the main window without menu (frontend controls visibility via toggle_menu_bar).
     // When start_minimized is true (autostart launch + user opt-in), keep the window
-    // hidden — user reaches the app via the tray icon.
+    // hidden: user reaches the app via the tray icon.
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.remove_menu();
         let _ = main_window
@@ -7894,7 +7894,7 @@ fn rebuild_menu(
     let menu = Menu::with_items(&app, &[&file_menu, &edit_menu, &view_menu, &help_menu])
         .map_err(|e| e.to_string())?;
 
-    // If splash is still open (APP_READY_DONE==false), store menu for later —
+    // If splash is still open (APP_READY_DONE==false), store menu for later -
     // don't set globally (GTK applies global menus to ALL windows, causing flash).
     if !APP_READY_DONE.load(Ordering::SeqCst) {
         if let Some(deferred) =
@@ -8205,7 +8205,7 @@ pub async fn get_local_files_recursive_parallel(
         return Ok(HashMap::new());
     }
 
-    // Phase 1: Walk the directory tree (sequential — fast, mostly metadata)
+    // Phase 1: Walk the directory tree (sequential: fast, mostly metadata)
     #[allow(clippy::type_complexity)]
     let mut file_entries: Vec<(
         String,
@@ -8341,7 +8341,7 @@ pub async fn get_local_files_recursive_parallel(
             }
         }
     } else {
-        // No checksums — just convert entries to FileInfo directly
+        // No checksums: just convert entries to FileInfo directly
         for (relative_path, abs_path, size, modified, is_dir) in file_entries {
             let name = std::path::Path::new(&abs_path)
                 .file_name()
@@ -8375,7 +8375,7 @@ async fn get_remote_files_recursive_with_progress(
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<HashMap<String, FileInfo>, String> {
     let mut files = HashMap::new();
-    // (absolute_path, depth) — depth limit prevents infinite loops on servers
+    // (absolute_path, depth): depth limit prevents infinite loops on servers
     // that list the current directory itself as a child entry.
     let mut dirs_to_process: Vec<(String, u32)> = vec![(base_path.to_string(), 0)];
     let mut visited = std::collections::HashSet::new();
@@ -8388,7 +8388,7 @@ async fn get_remote_files_recursive_with_progress(
             continue;
         }
 
-        // Check cancellation flag — release FTP lock immediately on cancel
+        // Check cancellation flag: release FTP lock immediately on cancel
         if let Some(flag) = cancel_flag {
             if flag.load(std::sync::atomic::Ordering::Relaxed) {
                 info!("Remote scan cancelled by user after {} files", files.len());
@@ -8736,13 +8736,13 @@ async fn get_transfer_optimization_hints(
         // key-based SSH session was in place. That split produced two
         // divergent codepaths for the same semantic question:
         //
-        //   - `get_transfer_optimization_hints` — hints/badges/checkbox
-        //   - `sftp_probe_delta_eligibility` — eligibility gate modal
+        //   - `get_transfer_optimization_hints`: hints/badges/checkbox
+        //   - `sftp_probe_delta_eligibility`: eligibility gate modal
         //
         // On Windows the extra-map was not reliably populated even
         // when the live `SftpProvider` instance held a valid
         // `private_key_path`, so the modal's probe could say "eligible"
-        // while the hints said "not active" — the AeroSync Delta Sync
+        // while the hints said "not active": the AeroSync Delta Sync
         // checkbox stayed greyed out even when the user had toggled
         // native rsync ON in Settings and held an SSH key profile.
         //
@@ -9016,7 +9016,7 @@ fn import_sync_script_cmd(script_content: String) -> Result<sync::SyncScriptMeta
 #[tauri::command]
 fn create_sync_snapshot_cmd(local_path: String, remote_path: String) -> Result<String, String> {
     let index = sync::load_sync_index(&local_path, &remote_path)?
-        .ok_or_else(|| "No sync index found — run sync first".to_string())?;
+        .ok_or_else(|| "No sync index found: run sync first".to_string())?;
     let snapshot = sync::create_sync_snapshot(&local_path, &remote_path, &index);
     sync::save_sync_snapshot(&snapshot)?;
     Ok(snapshot.id)
@@ -9365,7 +9365,7 @@ async fn delta_sync_analyze(
     let block_size = delta_sync::compute_block_size(local_data.len() as u64);
     let sigs = delta_sync::compute_signatures(&local_data, block_size);
 
-    // Read remote (local copy for now — real impl would use provider)
+    // Read remote (local copy for now: real impl would use provider)
     let remote_data = tokio::fs::read(&remote_path)
         .await
         .map_err(|e| format!("Failed to read remote file: {}", e))?;
@@ -9441,7 +9441,7 @@ async fn sync_canary_run(
         // Determine projected action based on index state
         let action = if let Some(idx) = &index {
             if let Some(cached) = idx.files.get(rel_path) {
-                // File exists in index — check if it changed locally
+                // File exists in index: check if it changed locally
                 let local_changed = info.size != cached.size
                     || !sync::timestamps_equal(info.modified, cached.modified);
                 if local_changed {
@@ -9453,7 +9453,7 @@ async fn sync_canary_run(
                 "upload" // New file not in index
             }
         } else {
-            "upload" // No index available — assume upload needed
+            "upload" // No index available: assume upload needed
         };
 
         if action == "skip" {
@@ -9502,11 +9502,11 @@ async fn sync_canary_run(
     })
 }
 
-/// Approve canary results — placeholder that returns a success message.
+/// Approve canary results: placeholder that returns a success message.
 /// The actual full sync is triggered by the frontend calling `parallel_sync_execute`.
 #[tauri::command]
 async fn sync_canary_approve() -> Result<String, String> {
-    Ok("Canary approved — proceed with full sync".to_string())
+    Ok("Canary approved: proceed with full sync".to_string())
 }
 
 // =============================
@@ -10082,7 +10082,7 @@ fn classify_transfer_error(raw_error: String, file_path: Option<String>) -> Sync
 
 /// Active non-streaming ai_chat requests, keyed by a caller-supplied id.
 /// `ai_cancel_chat(id)` flips the token and the running `call_ai` future
-/// drops — the underlying reqwest HTTP request is cancelled by drop.
+/// drops: the underlying reqwest HTTP request is cancelled by drop.
 static AI_CHAT_CANCEL_TOKENS: std::sync::LazyLock<
     tokio::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
 > = std::sync::LazyLock::new(|| tokio::sync::Mutex::new(std::collections::HashMap::new()));
@@ -10095,7 +10095,7 @@ async fn ai_chat(
     let token = CancellationToken::new();
 
     // Register cancel token if the caller provided an id. Without an id the
-    // call simply cannot be cancelled externally — same as before this fix —
+    // call simply cannot be cancelled externally: same as before this fix -
     // but at least it will not block another id's cancel.
     if let Some(id) = request_id.as_ref() {
         AI_CHAT_CANCEL_TOKENS
@@ -10871,7 +10871,7 @@ fn generate_share_link_remote(remote_path: String) -> Result<String, String> {
 }
 
 /// Generate share link for any server with a configured public URL base.
-/// Works for FTP/FTPS/SFTP/WebDAV — maps remote path to HTTP URL.
+/// Works for FTP/FTPS/SFTP/WebDAV: maps remote path to HTTP URL.
 #[tauri::command]
 fn generate_server_share_link(
     public_url_base: String,
@@ -10897,7 +10897,7 @@ fn generate_server_share_link(
             .unwrap_or(&remote_path)
             .trim_start_matches('/')
     } else {
-        // No initial path or path doesn't match — use full remote path
+        // No initial path or path doesn't match: use full remote path
         remote_path.trim_start_matches('/')
     };
 
@@ -10947,7 +10947,7 @@ async fn trigger_cloud_sync(
         return Err("AeroCloud is not configured. Please set it up first.".to_string());
     }
 
-    // Use multi-protocol factory (same as background sync) — supports FTP, SFTP, S3, etc.
+    // Use multi-protocol factory (same as background sync): supports FTP, SFTP, S3, etc.
     let result = perform_background_sync_with_app(&config, Some(&app)).await;
 
     match result {
@@ -11026,7 +11026,7 @@ fn cancel_background_sync_waits() {
         .cancel();
 }
 
-/// Background sync worker — `tokio::select!` event loop
+/// Background sync worker: `tokio::select!` event loop
 ///
 /// Listens for three trigger sources:
 /// 1. **Scheduler timer**: fires based on `SyncSchedule` (interval + time window)
@@ -11127,7 +11127,7 @@ async fn background_sync_worker(app: AppHandle) {
                 config.sync_interval_secs.max(30)
             };
 
-            // Wait using tokio::select! — first event wins
+            // Wait using tokio::select!: first event wins
             tokio::select! {
                 _ = stop_token.cancelled() => {
                     transfer_pool::SyncTrigger::Stop
@@ -11338,7 +11338,7 @@ async fn perform_background_sync_with_app(
     config: &cloud_config::CloudConfig,
     app: Option<&AppHandle>,
 ) -> Result<cloud_service::SyncOperationResult, String> {
-    // Prevent concurrent syncs — if one is already running, skip
+    // Prevent concurrent syncs: if one is already running, skip
     if SYNC_IN_PROGRESS.swap(true, Ordering::SeqCst) {
         info!("Sync skipped: another sync is already in progress");
         return Ok(cloud_service::SyncOperationResult {
@@ -11695,7 +11695,7 @@ async fn unlock_credential_store(
     state: State<'_, master_password::MasterPasswordState>,
     totp_state: State<'_, totp::TotpState>,
 ) -> Result<(), String> {
-    // Step 0: Check throttle (M69 — brute-force protection)
+    // Step 0: Check throttle (M69: brute-force protection)
     if let Err(wait_secs) = state.check_throttle() {
         return Err(format!("THROTTLED:{}", wait_secs));
     }
@@ -11728,7 +11728,7 @@ async fn unlock_credential_store(
 
     if let Some(secret) = totp_secret {
         if !secret.is_empty() {
-            // TOTP is enabled — load secret into state and verify code
+            // TOTP is enabled: load secret into state and verify code
             totp::load_secret_internal(&totp_state, &secret).map_err(|e| {
                 state.set_locked(true);
                 format!("Failed to load TOTP secret: {}", e)
@@ -11751,7 +11751,7 @@ async fn unlock_credential_store(
                 }
             }
 
-            // A2-08: TOTP verified — NOW cache the vault key
+            // A2-08: TOTP verified: NOW cache the vault key
             credential_store::CredentialStore::cache_vault(vault_path, vault_key);
         }
     }
@@ -11909,7 +11909,7 @@ async fn import_server_profiles(
             }
         }
         None => {
-            // Vault not ready — credentials cannot be stored
+            // Vault not ready: credentials cannot be stored
             let cred_count = servers.iter().filter(|s| s.credential.is_some()).count();
             if cred_count > 0 {
                 cred_errors.push(format!(
@@ -12068,7 +12068,7 @@ async fn export_rclone_config(
     let mut passwords = std::collections::HashMap::new();
     if include_credentials {
         if let Some(store) = credential_store::CredentialStore::from_cache() {
-            // We need server IDs to look up credentials — pass them via a separate field
+            // We need server IDs to look up credentials: pass them via a separate field
             // But RcloneExportServer doesn't have id. We use server name as password key.
             // Actually, we need a way to look up by ID. Let's parse the raw JSON to get IDs.
             let raw: Vec<serde_json::Value> =
@@ -12629,7 +12629,7 @@ pub fn run() {
     // By serving via http://localhost, production behaves identically to dev mode.
     //
     // SECURITY NOTE (H26): This serves the frontend over unencrypted HTTP on localhost:14321.
-    // This is a known design trade-off required by WebKitGTK on Linux — the tauri:// custom
+    // This is a known design trade-off required by WebKitGTK on Linux: the tauri:// custom
     // protocol does not support web workers, canvas rendering, or iframe CSS in WebKitGTK.
     // Risk assessment:
     //   - Traffic is loopback-only (127.0.0.1), not exposed on network interfaces
@@ -12715,7 +12715,7 @@ pub fn run() {
             // its own `Plugin::initialize`. On the warm path (manual launch),
             // the bind beats the splash creation by an order of magnitude. On
             // cold OS-autostart with the app launched alongside login services
-            // and minimised to tray, the bind can lose by 100-500ms — long
+            // and minimised to tray, the bind can lose by 100-500ms: long
             // enough for WebKit to GET 127.0.0.1:14321 and render
             // "Could not connect to 127.0.0.1: Connection refused" inside
             // the splash and the main window. Restarting the app from the
@@ -12850,7 +12850,7 @@ pub fn run() {
                 }
             }
 
-            // Start mount watcher — emits 'volumes-changed' events instead of 5s polling
+            // Start mount watcher: emits 'volumes-changed' events instead of 5s polling
             filesystem::start_mount_watcher(app.handle().clone());
 
             // Local panel filesystem watcher state (one watcher slot, swapped on path change)
@@ -12858,8 +12858,8 @@ pub fn run() {
 
             // Navigate main window from tauri:// to http://localhost to fix
             // WebKitGTK rendering issues with Monaco, xterm.js, and iframes.
-            // Linux-only — macOS/Windows use Tauri's default asset protocol.
-            // Only in production — in dev mode, Tauri uses devUrl (Vite on :5173).
+            // Linux-only: macOS/Windows use Tauri's default asset protocol.
+            // Only in production: in dev mode, Tauri uses devUrl (Vite on :5173).
             #[cfg(all(not(dev), target_os = "linux"))]
             if let Some(window) = app.get_webview_window("main") {
                 let url = url::Url::parse(&format!("http://127.0.0.1:{}", port))
@@ -13063,7 +13063,7 @@ pub fn run() {
             SPLASH_CREATED_AT.get_or_init(std::time::Instant::now);
             info!("Splash screen created");
 
-            // Build menu but do NOT set it globally yet — GTK applies global menus
+            // Build menu but do NOT set it globally yet: GTK applies global menus
             // to ALL windows instantly, causing a menu flash on the splash screen.
             // The menu will be set in app_ready() after the splash is closed.
             let menu = Menu::with_items(app, &[&file_menu, &edit_menu, &view_menu, &help_menu])?;
@@ -13537,7 +13537,7 @@ pub fn run() {
             aerovault_v2::vault_v2_sync_apply,
             aerovault_v2::vault_v2_scan_directory,
             aerovault_v2::vault_v2_add_directory,
-            // Remote Vault — open .aerovault on remote servers
+            // Remote Vault: open .aerovault on remote servers
             vault_remote::vault_v2_download_remote,
             vault_remote::vault_v2_upload_remote,
             vault_remote::vault_v2_cleanup_temp,
@@ -13892,7 +13892,7 @@ pub fn run() {
             sync_badge::install_shell_extension_cmd,
             sync_badge::uninstall_shell_extension_cmd,
             sync_badge::restart_file_manager_cmd,
-            // Security Toolkit — Cyber Tools
+            // Security Toolkit: Cyber Tools
             cyber_tools::hash_text,
             cyber_tools::hash_file,
             cyber_tools::compare_hashes,

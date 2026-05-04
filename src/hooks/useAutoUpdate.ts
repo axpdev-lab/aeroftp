@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * useAutoUpdate Hook
@@ -36,7 +36,7 @@ interface UseAutoUpdateProps {
    * When true, skips the startup check and the periodic 24h interval.
    * Manual `checkForUpdate(true)` invocations are unaffected so the user can
    * still trigger a check on demand from Settings. Used by users who manage
-   * updates externally (WinGet, AUR, Snap auto-refresh) — see issue #123.
+   * updates externally (WinGet, AUR, Snap auto-refresh): see issue #123.
    */
   disabled?: boolean;
 }
@@ -90,13 +90,13 @@ export const useAutoUpdate = ({ activityLog, disabled = false }: UseAutoUpdatePr
         activityLogRef.current.log('INFO', `${checkType} Update v${info.latest_version} available! (current: v${info.current_version}, format: ${info.install_format?.toUpperCase() || 'DEB'})`, 'success');
         await invoke('log_update_detection', { version: info.latest_version || '' });
 
-        // Asset found — clear any pending retry
+        // Asset found: clear any pending retry
         if (pendingRetryRef.current) {
           clearTimeout(pendingRetryRef.current);
           pendingRetryRef.current = null;
         }
       } else {
-        // Newer version exists but asset not yet available — retry in 30 minutes
+        // Newer version exists but asset not yet available: retry in 30 minutes
         const assetPending =
           !!info.latest_version &&
           info.latest_version !== info.current_version &&
@@ -129,7 +129,7 @@ export const useAutoUpdate = ({ activityLog, disabled = false }: UseAutoUpdatePr
 
   // Check on startup (5s delay) + periodic every 24h.
   // When the user has opted out (manages updates via WinGet/AUR/Snap), skip
-  // both — manual checkForUpdate() calls are still honored.
+  // both: manual checkForUpdate() calls are still honored.
   useEffect(() => {
     if (disabled) {
       if (pendingRetryRef.current) {

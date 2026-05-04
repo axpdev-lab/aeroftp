@@ -7,7 +7,7 @@
 //! - Efficient partial reads (no full-file rewrite)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -291,7 +291,7 @@ fn sanitize_fts_query(query: &str) -> String {
     format!("\"{}\"", cleaned)
 }
 
-/// Sanitize FTS5 snippet HTML — escape all HTML except <mark> tags (SEC-001)
+/// Sanitize FTS5 snippet HTML: escape all HTML except <mark> tags (SEC-001)
 fn sanitize_fts_snippet(snippet: &str) -> String {
     snippet
         .replace('&', "&amp;")
@@ -534,7 +534,7 @@ pub fn migrate_from_json(conn: &Connection, app: &AppHandle) -> Result<usize, St
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers (non-command, avoid double-lock — BUG-003)
+// Internal helpers (non-command, avoid double-lock: BUG-003)
 // ---------------------------------------------------------------------------
 
 fn get_session_inner(conn: &Connection, session_id: &str) -> Result<SessionWithMessages, String> {
@@ -563,7 +563,7 @@ fn get_session_inner(conn: &Connection, session_id: &str) -> Result<SessionWithM
         )
         .map_err(|e| format!("Session not found: {e}"))?;
 
-    // Messages (with 2000 limit — SEC-010)
+    // Messages (with 2000 limit: SEC-010)
     let mut msg_stmt = conn
         .prepare(
             "SELECT id, session_id, role, content, tool_calls, thinking, tokens_in, tokens_out, cost, model, created_at
@@ -744,7 +744,7 @@ pub async fn chat_history_save_message(
     let db = app.state::<ChatHistoryDb>();
     let conn = acquire_lock(&db);
 
-    // True upsert — preserves rowid for FTS sync (BUG-001/PERF-002)
+    // True upsert: preserves rowid for FTS sync (BUG-001/PERF-002)
     conn.execute(
         "INSERT INTO messages (id, session_id, role, content, tool_calls, thinking, tokens_in, tokens_out, cost, model, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
@@ -1104,7 +1104,7 @@ pub async fn chat_history_import(app: AppHandle, json_data: String) -> Result<St
     ))
 }
 
-// F4: Dedicated clear-all command — avoids semantic overload of `older_than_days = 0`
+// F4: Dedicated clear-all command: avoids semantic overload of `older_than_days = 0`
 #[tauri::command]
 pub async fn chat_history_clear_all(app: AppHandle) -> Result<i64, String> {
     let db = app.state::<ChatHistoryDb>();

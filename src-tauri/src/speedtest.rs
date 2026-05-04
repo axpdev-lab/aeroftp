@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Professional server speed test (Phase 2).
 //!
@@ -124,7 +124,7 @@ pub struct SpeedTestResult {
     /// True when SHA-256 integrity check was performed (vs explicitly skipped).
     pub integrity_checked: bool,
     /// True only when the check was performed AND hashes matched. False both
-    /// for corruption AND for skipped runs — always read together with
+    /// for corruption AND for skipped runs: always read together with
     /// `integrity_checked` to disambiguate.
     pub integrity_verified: bool,
     pub upload_sha256: String,
@@ -358,7 +358,7 @@ async fn run_speedtest_inner(
 
     // Allocate BOTH local tempfiles BEFORE opening any network connection.
     // This way, OS-level allocation failures cannot orphan a remote file or
-    // leak a connected provider — there's nothing to clean up yet.
+    // leak a connected provider: there's nothing to clean up yet.
     let size = request.size_bytes;
     let (local_upload_tmp, upload_sha256) =
         tokio::task::spawn_blocking(move || create_random_temp_file(size))

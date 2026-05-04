@@ -1,10 +1,10 @@
 //! OAuth 1.0a Authentication Module (RFC 5849)
 //!
 //! Provides HMAC-SHA1 request signing for 4shared and other OAuth 1.0 APIs.
-//! Zero new dependencies — uses hmac, sha1, base64, rand already in Cargo.toml.
+//! Zero new dependencies: uses hmac, sha1, base64, rand already in Cargo.toml.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use base64::Engine;
 use hmac::{Hmac, Mac};

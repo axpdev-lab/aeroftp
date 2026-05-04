@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroCloud Sync Service
 // Background synchronization between local and remote folders
@@ -356,7 +356,7 @@ impl CloudService {
         })
         .await;
 
-        // Ensure remote folder exists before scanning (check first — some providers
+        // Ensure remote folder exists before scanning (check first: some providers
         // like FileLu create duplicates if mkdir is called on an existing folder)
         if provider.cd(&config.remote_folder).await.is_err() {
             if let Err(e) = provider.mkdir(&config.remote_folder).await {
@@ -471,7 +471,7 @@ impl CloudService {
                         .push(format!("{}: {}", comparison.relative_path, e));
 
                     // Detect token revocation (e.g. 4shared OAuth 1.0a) and notify frontend.
-                    // OAuth 1.0a tokens cannot be refreshed — abort sync and prompt user.
+                    // OAuth 1.0a tokens cannot be refreshed: abort sync and prompt user.
                     if self.notify_reauth_if_token_revoked(&config.protocol_type, &e) {
                         result
                             .errors

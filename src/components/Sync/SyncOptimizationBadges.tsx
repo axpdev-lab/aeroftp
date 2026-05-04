@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * SyncOptimizationBadges — Read-only badges showing per-provider capabilities
+ * SyncOptimizationBadges: Read-only badges showing per-provider capabilities
  * Reused in both Quick Sync and Advanced tabs
  */
 
@@ -37,7 +37,7 @@ export const SyncOptimizationBadges: React.FC<SyncOptimizationBadgesProps> = Rea
     if (loading || !hints) return null;
 
     // "available" used to be the fallback label for "neither active
-    // nor eligible right now" — which reads to users as "I can enable
+    // nor eligible right now": which reads to users as "I can enable
     // this", the opposite of its intent. Rename the tone to
     // "inactive" so the badge text mirrors reality when the delta
     // path is off; the colour remains the neutral slate fallback.

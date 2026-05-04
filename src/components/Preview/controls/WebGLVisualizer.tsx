@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * WebGL 2 Audio Visualizer Component
@@ -45,7 +45,7 @@ function compileShader(
     const typeName = type === gl.VERTEX_SHADER ? 'vertex' : 'fragment';
     const shader = gl.createShader(type);
     if (!shader) {
-        throw new Error(`createShader(${typeName}) returned null — WebGL context may be invalid`);
+        throw new Error(`createShader(${typeName}) returned null: WebGL context may be invalid`);
     }
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
@@ -65,7 +65,7 @@ function linkProgram(
 ): WebGLProgram {
     const program = gl.createProgram();
     if (!program) {
-        throw new Error('createProgram returned null — WebGL context may be invalid');
+        throw new Error('createProgram returned null: WebGL context may be invalid');
     }
     gl.attachShader(program, vs);
     gl.attachShader(program, fs);
@@ -133,7 +133,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
 
     // Last shader successfully compiled. The init effect writes to this
     // after its compile, and the shader-change effect reads it and skips
-    // when the prop matches — no self-mutating sentinel, no spurious
+    // when the prop matches: no self-mutating sentinel, no spurious
     // recompile on remounts that happen to have the same shader prop.
     const compiledShaderRef = useRef<WebGLShaderName | null>(null);
 
@@ -160,7 +160,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
 
         glRef.current = gl;
 
-        // Handle context loss — notify parent to fallback to Canvas 2D
+        // Handle context loss: notify parent to fallback to Canvas 2D
         const handleContextLost = (e: Event) => {
             e.preventDefault();
             cancelAnimationFrame(rafRef.current);
@@ -309,7 +309,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
         const observer = new ResizeObserver((entries) => {
             for (const entry of entries) {
                 const { width, height } = entry.contentRect;
-                // Cap resolution to reduce GPU load — WebKitGTK can't handle full DPR
+                // Cap resolution to reduce GPU load: WebKitGTK can't handle full DPR
                 let pixelWidth = Math.floor(width);
                 let pixelHeight = Math.floor(height);
 

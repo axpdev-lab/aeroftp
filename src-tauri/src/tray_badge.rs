@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // Tray badge icon generation and management
 // Generates tray icons with colored dot badges + overlay icons for AeroCloud sync state
@@ -14,7 +14,7 @@ use tracing::{error, info, warn};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TrayBadgeState {
-    Default = 0, // No badge — idle/synced (Dropbox-style: no badge = all good)
+    Default = 0, // No badge: idle/synced (Dropbox-style: no badge = all good)
     Syncing = 1, // Blue dot + white sync arrows (sync in progress)
     Error = 2,   // Red dot + white X (error occurred)
     Paused = 3,  // Grey dot + white pause bars (user paused sync)
@@ -52,9 +52,9 @@ impl TrayBadgeState {
     fn tooltip(&self) -> &'static str {
         match self {
             Self::Default => "AeroFTP",
-            Self::Syncing => "AeroSync — Syncing...",
-            Self::Error => "AeroSync — Sync Error",
-            Self::Paused => "AeroSync — Paused",
+            Self::Syncing => "AeroSync: Syncing...",
+            Self::Error => "AeroSync: Sync Error",
+            Self::Paused => "AeroSync: Paused",
         }
     }
 }
@@ -62,7 +62,7 @@ impl TrayBadgeState {
 // Current tray state (atomic for lock-free reads)
 static CURRENT_TRAY_STATE: AtomicU8 = AtomicU8::new(0);
 
-// Base icon bytes — white monochrome (standard for system tray)
+// Base icon bytes: white monochrome (standard for system tray)
 const BASE_ICON_BYTES: &[u8] = include_bytes!("../../icons/AeroFTP_simbol_white_120x120.png");
 
 /// Draw a thick line segment between two points using distance-based rasterization.
@@ -105,7 +105,7 @@ fn draw_thick_line(
     }
 }
 
-/// Draw white pause bars (‖) inside the badge — two vertical bars
+/// Draw white pause bars (‖) inside the badge: two vertical bars
 fn draw_badge_pause(rgba: &mut image::RgbaImage, cx: f32, cy: f32, r: f32) {
     let white = Rgba([255, 255, 255, 255]);
     let hw = (r * 0.14).max(1.0);
@@ -134,7 +134,7 @@ fn draw_badge_pause(rgba: &mut image::RgbaImage, cx: f32, cy: f32, r: f32) {
     );
 }
 
-/// Draw white sync arrows (↻) inside the badge — two curved arrows forming a cycle
+/// Draw white sync arrows (↻) inside the badge: two curved arrows forming a cycle
 fn draw_badge_sync(rgba: &mut image::RgbaImage, cx: f32, cy: f32, r: f32) {
     let white = Rgba([255, 255, 255, 255]);
     let arc_r = r * 0.50;
@@ -232,13 +232,13 @@ fn generate_badge_icon(
     let mut rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
 
-    // Badge parameters — bottom-right, nudged 1px up + 1px right (no white border, like Ubuntu Livepatch)
-    let badge_radius = (width as f32 * 0.22).round() as i32; // 22% of width — visible like Ubuntu Livepatch
+    // Badge parameters: bottom-right, nudged 1px up + 1px right (no white border, like Ubuntu Livepatch)
+    let badge_radius = (width as f32 * 0.22).round() as i32; // 22% of width: visible like Ubuntu Livepatch
     let badge_center_x = width as i32 - badge_radius; // 1px more right than original
     let badge_center_y = height as i32 - badge_radius - 2; // 1px more up than original
     let badge_rgba = Rgba(badge_color);
 
-    // Draw solid badge circle (no border — matches Ubuntu Livepatch style)
+    // Draw solid badge circle (no border: matches Ubuntu Livepatch style)
     let x_min = (badge_center_x - badge_radius).max(0);
     let x_max = (badge_center_x + badge_radius).min(width as i32 - 1);
     let y_min = (badge_center_y - badge_radius).max(0);
@@ -269,7 +269,7 @@ fn generate_badge_icon(
         TrayBadgeState::Default => {}
     }
 
-    // Return raw RGBA directly — no PNG re-encoding needed
+    // Return raw RGBA directly: no PNG re-encoding needed
     Some((rgba.into_raw(), width, height))
 }
 
@@ -295,7 +295,7 @@ pub fn update_tray_badge(app: &AppHandle, state: TrayBadgeState) {
         }
     };
 
-    // Generate icon — either with badge overlay or plain base icon
+    // Generate icon: either with badge overlay or plain base icon
     let icon_result = if let Some(badge_color) = state.badge_color() {
         generate_badge_icon(BASE_ICON_BYTES, badge_color, state)
             .map(|(rgba_bytes, width, height)| Image::new_owned(rgba_bytes, width, height))

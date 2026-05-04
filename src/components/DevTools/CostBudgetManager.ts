@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { invoke } from '@tauri-apps/api/core';
 
@@ -56,7 +56,7 @@ function spendingKey(providerId: string, month: string): string {
 }
 
 /**
- * Initialize budget manager — load config and spending from vault
+ * Initialize budget manager: load config and spending from vault
  */
 export async function initBudgetManager(): Promise<void> {
     try {
@@ -179,7 +179,7 @@ export async function recordSpending(
             value: JSON.stringify(allRecords),
         });
     } catch {
-        // Vault not available — in-memory tracking still works
+        // Vault not available: in-memory tracking still works
     }
 
     return checkBudget(providerId);

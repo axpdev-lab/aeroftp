@@ -1,4 +1,4 @@
-//! Context Intelligence — project detection, import scanning, git context, agent memory
+//! Context Intelligence: project detection, import scanning, git context, agent memory
 //!
 //! Provides 5 Tauri commands for AeroAgent context awareness:
 //! - `detect_project_context`: Detect project type, scripts, dependencies
@@ -8,7 +8,7 @@
 //! - `write_agent_memory`: Store a persistent memory entry for a project
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -799,7 +799,7 @@ fn scan_js_imports(content: &str, parent: &Path) -> Vec<ImportEntry> {
 
 fn resolve_js_import(source: &str, parent: &Path) -> Option<String> {
     if !source.starts_with('.') {
-        return None; // node_module — not resolvable locally
+        return None; // node_module: not resolvable locally
     }
 
     let base = parent.join(source);

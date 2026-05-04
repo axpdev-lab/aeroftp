@@ -267,7 +267,7 @@ export function MyServersPanel({
     const scrollTimeout = useRef<number | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const healthScanRunRef = useRef(0);
-    // Passive scroll listener — runs on compositor thread, no React re-renders
+    // Passive scroll listener: runs on compositor thread, no React re-renders
     useEffect(() => {
         const el = scrollContainerRef.current;
         if (!el) return;
@@ -363,7 +363,7 @@ export function MyServersPanel({
             const others = prev.filter(id => id !== serverId);
             // If nothing else is selected, leave dest at index 1 by padding with
             // a sentinel-free shape: keep the array length 1 with this id at [1]
-            // is awkward; simpler — make it [otherFirst, serverId] when one
+            // is awkward; simpler: make it [otherFirst, serverId] when one
             // other exists, else [serverId] (which means it becomes source).
             if (others.length === 0) return [serverId];
             return [others[0], serverId];
@@ -390,7 +390,7 @@ export function MyServersPanel({
         setCrossProfileSelection([]);
     }, [crossProfileSelection.length]);
 
-    // Card layout toggle (compact ↔ detailed) — read here so the toolbar
+    // Card layout toggle (compact ↔ detailed): read here so the toolbar
     // toggle handler below can flip it. The same hook is also consumed below
     // for the per-card health-radial gating; both readers share state via the
     // global `aeroftp-settings-changed` event.
@@ -414,7 +414,7 @@ export function MyServersPanel({
     }, [cardLayout]);
 
     // Drag & reorder: works in any view (full list, search, or filter chip).
-    // dragIdx/overIdx hold real indices into the full `servers` array — when
+    // dragIdx/overIdx hold real indices into the full `servers` array: when
     // a filter is active we resolve the visible card to its real index by id,
     // so the reorder produces a coherent move in the underlying list.
     const canDrag = tableColumns.sort === null;
@@ -538,7 +538,7 @@ export function MyServersPanel({
         insertEdgesRef.current = { insertStartIdx, insertEndIdx };
     }, [insertStartIdx, insertEndIdx]);
 
-    // Per-server reachability probe — only meaningful in detailed layout, so
+    // Per-server reachability probe: only meaningful in detailed layout, so
     // we skip the scan otherwise to avoid burning network on a probe nobody
     // can see. `cardLayout` is read above (toolbar toggle uses it too).
     // Scans are throttled and cached for 5 minutes by the hook.

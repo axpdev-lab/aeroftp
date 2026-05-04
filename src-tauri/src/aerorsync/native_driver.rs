@@ -2,7 +2,7 @@
 //!
 //! This module is the S8i replacement for the RSNP-envelope driver at
 //! `driver.rs`. It lives **side-by-side** with the legacy driver (decision β,
-//! approved 2026-04-18) — the legacy driver stays untouched so its 270+ mock
+//! approved 2026-04-18): the legacy driver stays untouched so its 270+ mock
 //! tests keep serving as regression baseline until `protocol.rs`,
 //! `frame_io.rs`, `server.rs` and `driver.rs` are retired in Zona B5.
 //!
@@ -70,7 +70,7 @@ use xxhash_rust::xxh3::{xxh3_128, Xxh3Default};
 /// Compute the 16-byte file-level strong checksum rsync verifies at the
 /// end of the delta stream when `xxh128` is the negotiated algo.
 ///
-/// Byte layout — pinned by `xxh128_wire_bytes_match_SIVAL64_pair`
+/// Byte layout: pinned by `xxh128_wire_bytes_match_SIVAL64_pair`
 /// against rsync 3.2.7 `checksum.c::hash_struct`:
 ///
 /// ```text
@@ -95,7 +95,7 @@ fn compute_xxh128_wire(data: &[u8]) -> Vec<u8> {
 /// to bloat the scratch buffer for idle-ish channels.
 const RAW_READ_CHUNK: usize = 8192;
 
-/// P3-T01 W1.2 — read-side chunking for the streaming source reader of
+/// P3-T01 W1.2: read-side chunking for the streaming source reader of
 /// `send_delta_phase_streaming`. 4 MiB matches the SFTP/HTTP range
 /// default and keeps the per-chunk allocation tax (one `vec![0u8; N]`
 /// per `read()` call) negligible on multi-GiB sources.
@@ -110,7 +110,7 @@ const STREAMING_READ_CHUNK_BYTES: usize = 4 * 1024 * 1024;
 // A2.2 signature phase constants.
 //
 // `ITEM_TRANSFER` is the per-file flag (u16) the server-generator sets
-// when it wants the sender to push actual delta bytes — i.e. every file
+// when it wants the sender to push actual delta bytes: i.e. every file
 // that we are about to exchange signatures for. `ITEM_REPORT_CHANGE` is
 // the common companion bit telling the client "log this as changed".
 // Neither mapping belongs in a shared module yet; when a second
@@ -122,7 +122,7 @@ const ITEM_REPORT_CHANGE: u16 = 0x0002;
 const A2_2_DOWNLOAD_IFLAGS: u16 = ITEM_TRANSFER | ITEM_REPORT_CHANGE;
 /// Truncated strong checksum length used when *sending* signatures in
 /// the download path. Two bytes matches the frozen oracle's 256 KiB
-/// profile. Kept as a driver-level constant for A2.2 — S8j will revisit
+/// profile. Kept as a driver-level constant for A2.2: S8j will revisit
 /// when the delta engine can evaluate the impact on the matching rate.
 const A2_2_DOWNLOAD_S2LENGTH: i32 = 2;
 /// The per-file ndx the driver expects/emits in the single-file A2.2
@@ -133,7 +133,7 @@ const A2_2_FIRST_FILE_NDX: i32 = 1;
 /// S8j when the driver is wired against a live rsync server.
 const A2_3_FILE_CHECKSUM_LEN: usize = 16;
 
-/// S8j download — exact count of `NDX_DONE` markers rsync 3.2.7 interleaves
+/// S8j download: exact count of `NDX_DONE` markers rsync 3.2.7 interleaves
 /// between the file-level checksum trailer and the `SummaryFrame` on the
 /// server→client app stream. Pinned by `tests.rs` against the frozen
 /// download capture (`FROZEN_ORACLE_PRE_SUMMARY_NDX_DONE_COUNT = 3`);
@@ -188,7 +188,7 @@ pub enum AerorsyncSessionPhase {
     SummaryReceived,
     /// A2.4: raw stream has been shut down cleanly.
     Complete,
-    /// Stub frontier — reserved for sub-phases not yet wired. A2.4
+    /// Stub frontier: reserved for sub-phases not yet wired. A2.4
     /// eliminates the stub frontier for happy-path flow; the variant
     /// stays for future incremental sub-steps.
     #[allow(dead_code)]
@@ -253,7 +253,7 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// "Error allocating core memory buffers" (rsync exit 22).
     last_received_ndx: i32,
     /// Residual bytes left over after `read_signature_header` parsed
-    /// `ndx + iflags + sum_head` — these belong to the following
+    /// `ndx + iflags + sum_head`: these belong to the following
     /// sum_blocks stream. Used as a prefix by `read_signature_blocks`
     /// so MSG_DATA payload bytes never get dropped on the floor.
     sig_residual_after_header: Vec<u8>,
@@ -269,10 +269,10 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// `AsyncWrite` sink passed by reference.
     reconstructed: Option<Vec<u8>>,
     /// Download path: file-level strong checksum trailer read from the
-    /// wire (16 bytes in A2.3 — xxh128 / md5 / md4).
+    /// wire (16 bytes in A2.3: xxh128 / md5 / md4).
     received_file_checksum: Option<Vec<u8>>,
     /// Upload path: delta ops emitted on the wire, in emission order.
-    /// Kept for test visibility — production callers should ignore this.
+    /// Kept for test visibility: production callers should ignore this.
     emitted_delta_ops: Vec<DeltaOp>,
     /// Upload path: total MSG_DATA payload bytes written. The numerator
     /// of the progress indicator; A4 exposes it to the UI.
@@ -415,7 +415,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     pub fn sent_data_bytes(&self) -> u64 {
         self.sent_data_bytes
     }
-    /// S8j mirror of `sent_data_bytes` for the inbound direction —
+    /// S8j mirror of `sent_data_bytes` for the inbound direction -
     /// cumulative MSG_DATA payload bytes the driver has read from the
     /// remote. Used by `emit_summary_phase` to populate `total_read` in
     /// upload finishes.
@@ -456,7 +456,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 // SummaryFrame + shuts the stream down.
                 self.phase = AerorsyncSessionPhase::Stub;
                 Err(AerorsyncError::unsupported_version(
-                    "native summary/done phase not yet wired — call finish_session() explicitly",
+                    "native summary/done phase not yet wired: call finish_session() explicitly",
                 ))
             }
             Err(e) => {
@@ -480,7 +480,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             Ok(()) => {
                 self.phase = AerorsyncSessionPhase::Stub;
                 Err(AerorsyncError::unsupported_version(
-                    "native summary/done phase not yet wired — call finish_session() explicitly",
+                    "native summary/done phase not yet wired: call finish_session() explicitly",
                 ))
             }
             Err(e) => {
@@ -505,7 +505,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     // the error into `fallback_policy::classify_fallback`.
     //
     // The legacy `drive_upload` / `drive_download` entry points stay in place
-    // because the A2.x test suite pins the sentinel behaviour — removing the
+    // because the A2.x test suite pins the sentinel behaviour: removing the
     // sentinel would regress that pin.
 
     pub async fn drive_upload_through_delta(
@@ -528,14 +528,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    /// P3-T01 W1.2 — streaming-source sibling of
+    /// P3-T01 W1.2: streaming-source sibling of
     /// [`drive_upload_through_delta`]. Identical session-level flow up
     /// to the delta phase; the difference is that the source bytes
     /// arrive as an `AsyncRead` instead of a fully-buffered `&[u8]`,
     /// and the delta plan is produced incrementally via
     /// [`RollingDeltaPlanProducer`] instead of a bulk
     /// `compute_delta` call. Wire output is **byte-identical** with
-    /// the bulk path for the same source bytes — pinned by
+    /// the bulk path for the same source bytes: pinned by
     /// `streaming_send_matches_bulk_send_*` tests below.
     ///
     /// `source_len` is the declared length of `source_reader` (typically
@@ -593,11 +593,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    /// P3-T01 W2.4/W2.5 — streaming-sink sibling of
+    /// P3-T01 W2.4/W2.5: streaming-sink sibling of
     /// [`drive_download_through_delta`]. The pre-delta phases (preamble,
     /// file list receive, signature send) are identical to the bulk path;
     /// only the final `receive_delta_phase` differs. The reconstructed
-    /// bytes do not materialise as a `Vec<u8>` — they flow into the
+    /// bytes do not materialise as a `Vec<u8>`: they flow into the
     /// caller-supplied `writer` (typically a `StreamingAtomicWriter`,
     /// W2.3) which retains full ownership across the call so the caller
     /// can `finalize` it (commit the temp file via rename) once the
@@ -619,7 +619,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// must be the byte-for-byte identical content as `destination_data`
     /// (caller invariant; the streaming + bulk views of the same file).
     ///
-    /// `writer` is borrowed by `&mut` for the duration of the call —
+    /// `writer` is borrowed by `&mut` for the duration of the call -
     /// the caller retains ownership and is responsible for
     /// finalisation (flush + sync_all + rename) on success and for
     /// best-effort cleanup on error.
@@ -676,7 +676,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
-    /// P3-T01 W1.2 — streaming-source twin of [`drive_upload_inner`].
+    /// P3-T01 W1.2: streaming-source twin of [`drive_upload_inner`].
     /// The pre-delta phases (preamble, file list, signature receive)
     /// are identical to the bulk path; only the final delta phase
     /// differs. See [`drive_upload_through_delta_streaming`] for the
@@ -730,7 +730,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
-    /// P3-T01 W2.4 — streaming-sink twin of [`drive_download_inner`]. The
+    /// P3-T01 W2.4: streaming-sink twin of [`drive_download_inner`]. The
     /// pre-delta phases run unchanged against the bulk `destination_data`
     /// slice; the final phase swaps `receive_delta_phase_single_file` for
     /// `receive_delta_phase_streaming` which writes reconstructed bytes
@@ -774,7 +774,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
-    /// B.2 fix: rsync wire protocol places the CLIENT first — the client
+    /// B.2 fix: rsync wire protocol places the CLIENT first: the client
     /// writes its preamble onto the raw stream and only afterwards reads
     /// the server's response. The captured frozen transcripts confirm it:
     /// `capture/artifacts_real/frozen/upload/capture_in.bin` (bytes the
@@ -897,7 +897,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         payload.extend_from_slice(&encode_file_list_terminator(&opts));
         payload.extend_from_slice(&encode_ndx(NDX_FLIST_EOF, &mut self.outbound_ndx_state));
         self.write_data_frame(&payload).await?;
-        // S8j — remember the entry on the sender side so
+        // S8j: remember the entry on the sender side so
         // `emit_summary_phase` can populate `total_size`. Parity with the
         // receiver path, which already pushes decoded entries.
         self.file_list.push(entry.clone());
@@ -945,7 +945,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     Err(RealWireError::TruncatedBuffer { .. })
                     | Err(RealWireError::InvalidNameLen { .. })
                     | Err(RealWireError::InvalidAlgoListLen { .. }) => {
-                        // Need more bytes — poll another Data frame below.
+                        // Need more bytes: poll another Data frame below.
                     }
                     Err(other) => {
                         return Err(map_realwire_error(other, "file list entry"));
@@ -1107,7 +1107,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 "unexpected ndx sentinel at start of signature phase: {ndx}"
             )));
         }
-        // 2. iflags (u16 LE — 2 bytes)
+        // 2. iflags (u16 LE: 2 bytes)
         let iflags = loop {
             self.check_cancel("read_signature_header iflags")?;
             if buf.len() >= 2 {
@@ -1139,7 +1139,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         };
         // Stash any residual bytes back into the mux reader for the
         // subsequent sum_blocks reader. `MuxStreamReader.feed` takes raw
-        // mux frames — but at this point `buf` holds POST-mux payload
+        // mux frames: but at this point `buf` holds POST-mux payload
         // bytes, not raw mux. We cannot re-feed it into the reader.
         // Instead we carry the residual through `read_signature_blocks`
         // via an explicit argument.
@@ -1206,7 +1206,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
 
         // Compose sum_head. Block length from the engine's choice;
-        // remainder is (file_size mod block_size) — identical to rsync's
+        // remainder is (file_size mod block_size): identical to rsync's
         // own derivation.
         let file_size = destination_data.len() as i32;
         let block_length = block_size as i32;
@@ -1256,7 +1256,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// literals session-wide, encode the full stream (ops + END_FLAG +
     /// file_checksum trailer), and emit on the wire in a single MSG_DATA
     /// frame. Flips `committed = true` immediately before the first
-    /// wire byte — the PreCommit/PostCommit boundary.
+    /// wire byte: the PreCommit/PostCommit boundary.
     ///
     /// Phase transitions: `SumBlocksReceiving → DeltaSending → DeltaSent`.
     async fn send_delta_phase_single_file(
@@ -1274,7 +1274,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             .map(|h| h.block_length as usize)
             .unwrap_or(0);
 
-        // B.2 Step 4: `block_size == 0` is the "whole file" case — the
+        // B.2 Step 4: `block_size == 0` is the "whole file" case: the
         // receiver's local target is absent or zero-byte so it has
         // nothing to diff against. `generator.c::write_sum_head(f_out,
         // NULL)` emits four zero int32s in this scenario. The sender
@@ -1316,10 +1316,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             compress_zstd_literal_stream(&pending_raw)
                 .map_err(|e| map_realwire_error(e, "zstd compress literal stream"))?
         } else {
-            // No compression negotiated — emit raw payloads as-is.
+            // No compression negotiated: emit raw payloads as-is.
             pending_raw.iter().map(|p| p.to_vec()).collect()
         };
-        // S8j — multi-chunk DEFLATED_DATA splitting.
+        // S8j: multi-chunk DEFLATED_DATA splitting.
         //
         // Stock rsync's `send_zstd_token` (token.c:678-776) flushes the
         // zstd output buffer whenever it reaches `MAX_DATA_COUNT`
@@ -1328,7 +1328,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // A compressed literal larger than 16383 bytes therefore lands
         // as N consecutive DEFLATED_DATA frames on the wire; the
         // receiver's single session-wide `ZSTD_DCtx` concatenates the
-        // payloads transparently — the chunk boundaries carry no
+        // payloads transparently: the chunk boundaries carry no
         // logical meaning, they're pure transport fragmentation.
         //
         // We mirror that behaviour by chunking every compressed blob
@@ -1341,7 +1341,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // crossed 16 KiB, capping the native path at ~16 KiB delta
         // payloads. Post-fix the cap is the 24-bit DEFLATED_DATA
         // per-token length (unchanged) times an unbounded number of
-        // tokens — in practice governed by the driver's in-memory
+        // tokens: in practice governed by the driver's in-memory
         // cap (`AERORSYNC_MAX_IN_MEMORY_BYTES`).
 
         // Interleave literals with CopyRun ops in the original engine
@@ -1360,7 +1360,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     let blob = &compressed_blobs[blob_idx];
                     blob_idx += 1;
                     if blob.is_empty() {
-                        // Skip zero-length blobs — `compress_zstd_literal_stream`
+                        // Skip zero-length blobs: `compress_zstd_literal_stream`
                         // already drops empty inputs, but defensively guard
                         // the non-zstd branch where empty payloads could
                         // surface. DEFLATED_DATA length=0 is a protocol
@@ -1382,11 +1382,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             }
         }
 
-        // S8j — real xxh128 (XXH3-128) over `source_data`. Rsync 3.2.7
+        // S8j: real xxh128 (XXH3-128) over `source_data`. Rsync 3.2.7
         // verifies this trailer server-side when `xxh128` is negotiated
         // in `checksum_algos` (see `perform_preamble_exchange` call
         // sites below). Byte layout matches `checksum.c::hash_struct`'s
-        // `SIVAL64(buf, 0, lo); SIVAL64(buf, 8, hi)` — lower 64 bits LE
+        // `SIVAL64(buf, 0, lo); SIVAL64(buf, 8, hi)`: lower 64 bits LE
         // first, upper 64 bits LE second.
         let file_checksum = compute_xxh128_wire(source_data);
 
@@ -1401,14 +1401,14 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // `sender.c::send_files` (line 411-412). Without this echo the
         // receiver expects sum_head bytes where it gets delta tokens and
         // aborts with rsync exit 22 ("Error allocating core memory
-        // buffers" — sum.count is read as a huge int from delta bytes).
+        // buffers": sum.count is read as a huge int from delta bytes).
         //
         // Echo values come from the receiver's signature header that
         // `read_signature_header` stashed in `last_received_ndx`,
         // `last_iflags`, and `received_sum_head`.
         let echo_head = *self.received_sum_head.as_ref().ok_or_else(|| {
             AerorsyncError::invalid_frame(
-                "send_delta_phase: missing received sum_head — signature phase didn't run",
+                "send_delta_phase: missing received sum_head: signature phase didn't run",
             )
         })?;
         let mut payload = Vec::with_capacity(8 + delta_bytes.len());
@@ -1431,7 +1431,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
-    /// P3-T01 W1.2 / W1.3 — streaming-source twin of
+    /// P3-T01 W1.2 / W1.3: streaming-source twin of
     /// [`send_delta_phase_single_file`]. The engine plan is produced
     /// chunk-by-chunk (`RollingDeltaPlanProducer` for
     /// `block_size != 0`, fixed-slab chunking for `block_size == 0`)
@@ -1446,7 +1446,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// - For `block_size == 0` and source `<= STREAMING_READ_CHUNK_BYTES`:
     ///   byte-identical (single literal in both paths).
     /// - For `block_size == 0` and source `> STREAMING_READ_CHUNK_BYTES`:
-    ///   wire bytes **diverge** from the bulk path — the streaming
+    ///   wire bytes **diverge** from the bulk path: the streaming
     ///   path emits `ceil(source_len / STREAMING_READ_CHUNK_BYTES)`
     ///   engine literals through the session-wide zstd `CCtx`, where
     ///   the bulk path emits one. The receiver's session-wide
@@ -1454,7 +1454,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ///   per stock rsync's `send_zstd_token` semantics, so the
     ///   divergence is *protocol-equivalent*. The chunked emission is
     ///   what allows W1.3 to lift the 256 MiB upload-side cap without
-    ///   requesting a `Vec<u8>` of `source_len` bytes — the
+    ///   requesting a `Vec<u8>` of `source_len` bytes: the
     ///   contiguous-allocation failure mode that gated the bulk path
     ///   on multi-GiB uploads with no baseline.
     ///
@@ -1511,7 +1511,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             // one literal" sentinel). The producer would silently emit
             // zero ops here, so we materialise the literal explicitly.
             //
-            // P3-T01 W1.3 — emit one `EngineDeltaOp::Literal` per
+            // P3-T01 W1.3: emit one `EngineDeltaOp::Literal` per
             // `STREAMING_READ_CHUNK_BYTES`-bounded slab instead of one
             // big literal covering `source_len`. Reasons:
             //
@@ -1602,7 +1602,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // From here on the encoding/wire-emission path is byte-for-byte
         // identical to `send_delta_phase_single_file`. Any divergence
         // would break the `streaming_send_matches_bulk_send_*` parity
-        // pin below — kept in lockstep on purpose.
+        // pin below: kept in lockstep on purpose.
         let pending_raw: Vec<&[u8]> = ops
             .iter()
             .filter_map(|op| match op {
@@ -1665,7 +1665,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
         let echo_head = *self.received_sum_head.as_ref().ok_or_else(|| {
             AerorsyncError::invalid_frame(
-                "send_delta_phase_streaming: missing received sum_head — signature phase didn't run",
+                "send_delta_phase_streaming: missing received sum_head: signature phase didn't run",
             )
         })?;
         let mut payload = Vec::with_capacity(8 + delta_bytes.len());
@@ -1691,7 +1691,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// stashed in `self.reconstructed` for the A4 adapter to flush to
     /// disk via temp+rename.
     ///
-    /// `committed` stays `false` throughout — A2.3 download never writes
+    /// `committed` stays `false` throughout: A2.3 download never writes
     /// to disk. A4 will flip committed when it opens the temp file.
     ///
     /// Phase transitions: `SumBlocksSent → DeltaReceiving → DeltaReceived`.
@@ -1759,7 +1759,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
-    /// P3-T01 W2.4 — streaming sibling of [`receive_delta_phase_single_file`].
+    /// P3-T01 W2.4: streaming sibling of [`receive_delta_phase_single_file`].
     /// Identical wire-handling loop (drain MSG_DATA frames, decode delta
     /// stream, decompress literals, convert to engine ops); the only
     /// difference is the install step calls
@@ -1767,7 +1767,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// `apply_delta_streaming(baseline, ops, block_size, writer)` instead
     /// of stashing a `Vec<u8>` in `self.reconstructed`.
     ///
-    /// `committed` stays `false` throughout — the W2.5 caller flips its
+    /// `committed` stays `false` throughout: the W2.5 caller flips its
     /// own `local_committed` flag on the first byte successfully written
     /// to the `StreamingAtomicWriter` temp.
     async fn receive_delta_phase_streaming(
@@ -1808,7 +1808,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    /// P3-T01 W2.4/W2.5 — streaming sibling of
+    /// P3-T01 W2.4/W2.5: streaming sibling of
     /// [`install_reconstructed_from_wire`]. Decodes the wire ops to
     /// engine ops (same conversion as the bulk path) and dispatches to
     /// [`apply_delta_streaming`] against the caller-supplied baseline +
@@ -1816,7 +1816,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ///
     /// Errors:
     /// - `InvalidFrame` if `block_size == 0` (no `sent_sum_head` from the
-    ///   signature phase — a wire-level invariant violation, identical
+    ///   signature phase: a wire-level invariant violation, identical
     ///   to the bulk path).
     /// - `InvalidFrame` from `apply_delta_streaming` (baseline read errors,
     ///   writer poll_write errors, oversized block_size).
@@ -1829,7 +1829,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     ) -> Result<(), AerorsyncError> {
         let zstd_on = self.zstd_negotiated();
         let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, zstd_on)?;
-        let _ = adapter; // adapter is unused on the streaming path —
+        let _ = adapter; // adapter is unused on the streaming path -
                          // engine ops carry everything apply_delta_streaming needs.
                          // Kept in the signature for parity with the bulk twin and
                          // to leave room for future adapter-driven dispatch.
@@ -1846,7 +1846,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         apply_delta_streaming(baseline, engine_ops, block_size, writer)
             .await
             .map_err(|e| AerorsyncError::invalid_frame(format!("apply_delta_streaming: {e}")))?;
-        // self.reconstructed intentionally stays None — the bytes flowed
+        // self.reconstructed intentionally stays None: the bytes flowed
         // through the writer and reading them back from RAM would defeat
         // the purpose of the streaming path. W2.4 acceptance test 4
         // pins this.
@@ -1970,7 +1970,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // Rsync's preamble serialises algo lists as SPACE-separated,
         // priority-descending tokens (see `perform_preamble_exchange`
         // above). The historical comma split here silently disabled
-        // zstd against every real rsync peer — the list parses as a
+        // zstd against every real rsync peer: the list parses as a
         // single "zstd lz4 zlibx zlib" literal token that never equals
         // "zstd". The resulting raw-literal delta stream was still a
         // protocol-shaped `DEFLATED_DATA` payload, which stock rsync
@@ -2022,7 +2022,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         //   here for now to keep the A2.4 mock upload tests working.
         // - `None` → legacy mock test that drove `finish_session`
         //   directly on a synthesised inbound buffer without entering
-        //   `drive_*_inner`. Skip the drain entirely — the mock inbound
+        //   `drive_*_inner`. Skip the drain entirely: the mock inbound
         //   never contains leading NDX_DONE bytes and the peek-based
         //   heuristic of the drain would misread a varlong value of 0
         //   as a marker.
@@ -2059,11 +2059,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 // reaching `finish_session` with `session_role = None`
                 // means a caller skipped the drive loop entirely. Refuse
                 // the call with an explicit illegal-state error instead
-                // of silently running receive semantics — that path used
+                // of silently running receive semantics: that path used
                 // to mask wrong-role bugs in mock tests.
                 return Err(AerorsyncError::new(
                     AerorsyncErrorKind::IllegalStateTransition,
-                    "finish_session called without a session_role — invoke drive_upload*/drive_download* first",
+                    "finish_session called without a session_role: invoke drive_upload*/drive_download* first",
                 ));
             }
         }
@@ -2082,7 +2082,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     /// Empty-drain policy: tests that synthesise a clean `SummaryFrame`
     /// with NO leading markers (all A2.4 mock tests as written) MUST
     /// keep working. We detect that case by a peek at the first byte
-    /// — if it is not `0x00`, the drain is a no-op and the summary
+    ///: if it is not `0x00`, the drain is a no-op and the summary
     /// decoder sees the data unchanged.
     async fn drain_leading_ndx_done_download(
         &mut self,
@@ -2209,9 +2209,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.phase = AerorsyncSessionPhase::SummaryReceiving;
         // (1) phase loop with ping-pong echoes
         self.sender_phase_loop(bridge).await?;
-        // (2) sender.c:462 — final NDX_DONE once the phase loop breaks
+        // (2) sender.c:462: final NDX_DONE once the phase loop breaks
         self.emit_ndx_done_marker().await?;
-        // (3) handle_stats(-1) — intentional no-op for the client sender
+        // (3) handle_stats(-1): intentional no-op for the client sender
         // (4) read_final_goodbye + proto-31 ACK
         self.read_final_goodbye_marker(bridge).await?;
         self.received_summary = None;
@@ -2256,7 +2256,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             if phase > max_phase {
                 break;
             }
-            // sender.c:256 — echo NDX_DONE back to advance the receiver's phase loop
+            // sender.c:256: echo NDX_DONE back to advance the receiver's phase loop
             self.emit_ndx_done_marker().await?;
         }
         Ok(())
@@ -2341,7 +2341,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.phase = AerorsyncSessionPhase::SummaryReceiving;
         let total_size = self.file_list.first().map(|e| e.size).unwrap_or(0);
         // `SummaryFrame` snapshots the counters as of the moment the
-        // client decided to announce them — matching rsync 3.2.7's
+        // client decided to announce them: matching rsync 3.2.7's
         // `handle_stats`, which reads `stats.total_written` before
         // emitting the summary itself (so the reported number does NOT
         // include the summary bytes being written).
@@ -2356,7 +2356,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         payload.push(0x00); // NDX_DONE
         payload.extend_from_slice(&encode_summary_frame(&frame, self.protocol_version));
         self.write_data_frame(&payload).await?;
-        // `session_stats` is a post-emit aggregate — it DOES include the
+        // `session_stats` is a post-emit aggregate: it DOES include the
         // summary bytes we just wrote, so downstream consumers see the
         // actual wire-level totals for the session.
         self.session_stats.bytes_sent = self.sent_data_bytes;
@@ -2385,7 +2385,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                         )));
                     }
                 }
-                // bytes.is_empty() is valid too — nothing to check.
+                // bytes.is_empty() is valid too: nothing to check.
                 Ok(())
             }
             Err(e) if e.kind == AerorsyncErrorKind::TransportFailure => {
@@ -2672,12 +2672,12 @@ mod tests {
     /// under `build_flist_options` (varint flags, always_checksum on,
     /// preserve_uid/gid on with SAME_UID/SAME_GID gating uid/gid out).
     /// The flags include `XMIT_LONG_NAME` so the suffix length is encoded
-    /// as a varint — which the path length (9 chars) still fits in.
+    /// as a varint: which the path length (9 chars) still fits in.
     fn sample_file_list_entry(path: &str) -> FileListEntry {
         // Flags: XMIT_LONG_NAME (0x0040) | XMIT_SAME_MODE (0x0002) |
         //        XMIT_SAME_TIME (0x0080) | XMIT_SAME_UID (0x0008) |
         //        XMIT_SAME_GID (0x0010)
-        // — the "all same" upload case where only the name and size are
+        //: the "all same" upload case where only the name and size are
         // transmitted. Matches a minimum-viable shape; the 16-byte
         // checksum is required because B.2 turned `always_checksum` on
         // in `build_flist_options` to mirror the oracle (`-c` always
@@ -2761,7 +2761,7 @@ mod tests {
     #[tokio::test]
     async fn driver_preamble_exchange_round_trip_matches_frozen_oracle_server_side() {
         let Some(frozen) = RealRsyncBaselineByteTranscript::try_load_frozen() else {
-            eprintln!("frozen oracle missing — driver preamble pin skipped");
+            eprintln!("frozen oracle missing: driver preamble pin skipped");
             return;
         };
         let mut d = make_driver(mock_transport());
@@ -2802,7 +2802,7 @@ mod tests {
     async fn driver_upload_writes_preamble_then_filelist_then_terminator() {
         // Inbound: server preamble + a minimal synthetic signature
         // phase (upload path in A2.2 drains ndx+iflags+sum_head+blocks
-        // after the file list — without these bytes the test would
+        // after the file list: without these bytes the test would
         // fail with TransportFailure instead of the expected stub
         // frontier.)
         let head = SumHead {
@@ -3108,7 +3108,7 @@ mod tests {
 
     #[tokio::test]
     async fn driver_stream_exhaustion_during_preamble_surfaces_typed_error() {
-        // Empty inbound — the driver should surface a transport error
+        // Empty inbound: the driver should surface a transport error
         // with a clear "remote closed" detail, not panic.
         let transport = mock_transport_with_raw_inbound(Vec::new());
         let mut d = make_driver(transport);
@@ -3138,11 +3138,11 @@ mod tests {
         assert!(!ev.is_terminal());
     }
 
-    /// A7 — Lane 3 live integration test against a real `rsync 3.2.7`
+    /// A7: Lane 3 live integration test against a real `rsync 3.2.7`
     /// server (Docker harness at `capture/docker-compose.real-rsync.yml`,
     /// listening on `127.0.0.1:2224`).
     ///
-    /// The test drives `SshRemoteShellTransport` — not the mock — through
+    /// The test drives `SshRemoteShellTransport`: not the mock: through
     /// `drive_upload_through_delta` + `finish_session`, then asserts that:
     ///
     /// - upload + finish complete without errors,
@@ -3152,7 +3152,7 @@ mod tests {
     ///
     /// # Gating
     ///
-    /// `#[cfg(ci_lane3)]` — the test is compiled only when the
+    /// `#[cfg(ci_lane3)]`: the test is compiled only when the
     /// `ci_lane3` cfg flag is set via `RUSTFLAGS='--cfg ci_lane3'`.
     /// Local developers who cloned the repo do not need Docker to run the
     /// default test suite; CI on the `strada-c-*` branch sets the flag.
@@ -3181,7 +3181,7 @@ mod tests {
             .await
             .is_err()
         {
-            eprintln!("lane 3 Docker harness not reachable on 127.0.0.1:2224 — skipping");
+            eprintln!("lane 3 Docker harness not reachable on 127.0.0.1:2224: skipping");
             return;
         }
 
@@ -3196,7 +3196,7 @@ mod tests {
             .join("src/aerorsync/capture/keys/id_ed25519");
         assert!(
             key_path.exists(),
-            "ssh key not found at {key_path:?} — is the capture bundle present?"
+            "ssh key not found at {key_path:?}: is the capture bundle present?"
         );
 
         let ssh_config = SshTransportConfig {
@@ -3261,7 +3261,7 @@ mod tests {
         );
     }
 
-    /// P3-T01 W1.2 — live counterpart of
+    /// P3-T01 W1.2: live counterpart of
     /// [`driver_upload_live_lane_3_real_rsync_byte_identical`] that
     /// drives the **streaming** entry point
     /// `drive_upload_through_delta_streaming` against the real rsync
@@ -3283,7 +3283,7 @@ mod tests {
             .is_err()
         {
             eprintln!(
-                "lane 3 Docker harness not reachable on 127.0.0.1:2224 — skipping streaming variant"
+                "lane 3 Docker harness not reachable on 127.0.0.1:2224: skipping streaming variant"
             );
             return;
         }
@@ -3300,7 +3300,7 @@ mod tests {
             .join("src/aerorsync/capture/keys/id_ed25519");
         assert!(
             key_path.exists(),
-            "ssh key not found at {key_path:?} — is the capture bundle present?"
+            "ssh key not found at {key_path:?}: is the capture bundle present?"
         );
 
         let ssh_config = SshTransportConfig {
@@ -3494,7 +3494,7 @@ mod tests {
 
     #[tokio::test]
     async fn driver_upload_signature_phase_aborts_on_terminal_oob() {
-        // Error frame during the signature phase — driver must bail
+        // Error frame during the signature phase: driver must bail
         // with RemoteError and committed stays false.
         let mut inbound = canonical_server_preamble_bytes();
         // Corrupt signature phase: just an Error frame.
@@ -3530,7 +3530,7 @@ mod tests {
             remainder_length: 0,
         };
         let blocks = vec![make_sig_block(0x12345678, 0xEE, 2)];
-        // iflags = 0 — missing ITEM_TRANSFER.
+        // iflags = 0: missing ITEM_TRANSFER.
         let sig_payload = build_sig_phase_payload(1, 0x0000, &head, &blocks);
 
         let mut inbound = canonical_server_preamble_bytes();
@@ -3649,7 +3649,7 @@ mod tests {
         // driver absorbs the real signature phase: 375 sum_blocks per
         // the frozen oracle's 256 KiB source file.
         let Some(frozen) = RealRsyncBaselineByteTranscript::try_load_frozen() else {
-            eprintln!("frozen oracle missing — A2.2 upload sig pin skipped");
+            eprintln!("frozen oracle missing: A2.2 upload sig pin skipped");
             return;
         };
         let transport = mock_transport_with_raw_inbound(frozen.upload_server_to_client.clone());
@@ -3735,7 +3735,7 @@ mod tests {
         assert_eq!(literal_count, 2);
 
         // S8j: the outbound capture must contain the REAL xxh128 trailer
-        // computed over `source_data` — not the 16-zero placeholder the
+        // computed over `source_data`: not the 16-zero placeholder the
         // A2.3 prototype emitted. Verify by recomputing the expected
         // 16 bytes via `compute_xxh128_wire` and scanning the outbound
         // window. This pins both the encoder and the driver's wiring of
@@ -3783,7 +3783,7 @@ mod tests {
 
         // 64 KiB of pseudo-random bytes. Zstd cannot meaningfully
         // compress pseudo-random data, so the compressed blob will be
-        // ~64 KiB — comfortably above `MAX_DELTA_LITERAL_LEN = 16383`
+        // ~64 KiB: comfortably above `MAX_DELTA_LITERAL_LEN = 16383`
         // and therefore guaranteed to trigger the S8j chunk-split path.
         // Using a fixed seed keeps the assertion shape stable across
         // runs regardless of the exact zstd block layout.
@@ -3808,7 +3808,7 @@ mod tests {
             )
             .await
             .unwrap_err();
-        // Reaches the A2.3 stub frontier — the delta phase itself must
+        // Reaches the A2.3 stub frontier: the delta phase itself must
         // have succeeded (no InvalidFrame) for this to happen.
         assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
         assert_eq!(d.phase(), AerorsyncSessionPhase::Stub);
@@ -3832,7 +3832,7 @@ mod tests {
                 assert!(
                     !compressed_payload.is_empty()
                         && compressed_payload.len() <= MAX_DELTA_LITERAL_LEN,
-                    "chunk size {} out of (0, {}] — S8j must clamp every \
+                    "chunk size {} out of (0, {}]: S8j must clamp every \
                      chunk to the 14-bit DEFLATED_DATA length budget",
                     compressed_payload.len(),
                     MAX_DELTA_LITERAL_LEN
@@ -3841,7 +3841,7 @@ mod tests {
         }
 
         // Round-trip: concatenating the compressed chunks back through
-        // the session DCtx must recover the original bytes — this is
+        // the session DCtx must recover the original bytes: this is
         // what a real rsync receiver would see across the consecutive
         // DEFLATED_DATA frames (single session-wide DCtx per token.c
         // recv_zstd_token).
@@ -3929,7 +3929,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
         assert_eq!(d.phase(), AerorsyncSessionPhase::Stub);
-        // Download stays PreCommit — the reconstructed bytes are in RAM,
+        // Download stays PreCommit: the reconstructed bytes are in RAM,
         // A4 will flush + rename atomically.
         assert!(
             !d.committed(),
@@ -3957,7 +3957,7 @@ mod tests {
     async fn driver_download_delta_coalesces_consecutive_literal_chunks_into_one_engine_literal() {
         use crate::aerorsync::real_wire::{compress_zstd_literal_stream, encode_delta_stream};
 
-        // Build a 64 KiB pseudo-random logical literal — zstd cannot
+        // Build a 64 KiB pseudo-random logical literal: zstd cannot
         // meaningfully compress high-entropy bytes, so the compressed
         // blob stays above `MAX_DELTA_LITERAL_LEN = 16383` and
         // requires at least 3 DEFLATED_DATA frames. Writing 4 bytes
@@ -3980,7 +3980,7 @@ mod tests {
             MAX_DELTA_LITERAL_LEN
         );
         // Split the logical literal's compressed blob into 16383-byte
-        // wire chunks — exactly what stock rsync's `send_zstd_token`
+        // wire chunks: exactly what stock rsync's `send_zstd_token`
         // would emit.
         let wire_literal_chunks: Vec<Vec<u8>> = full_blob
             .chunks(MAX_DELTA_LITERAL_LEN)
@@ -4054,7 +4054,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.kind, AerorsyncErrorKind::UnsupportedVersion);
 
-        // Reconstructed must equal BLK1 + logical_literal + BLK2 —
+        // Reconstructed must equal BLK1 + logical_literal + BLK2 -
         // proof that the N wire chunks collapsed back into exactly
         // ONE engine literal, and the session DCtx recovered the
         // original 40 KiB stream.
@@ -4200,7 +4200,7 @@ mod tests {
 
     #[tokio::test]
     async fn driver_upload_delta_cancel_surfaces_typed_cancelled() {
-        // Cancel the driver before it reaches the delta phase — the
+        // Cancel the driver before it reaches the delta phase: the
         // check_cancel guards inside send_delta_phase_single_file must
         // surface a typed Cancelled error, not a transport failure.
         let head = SumHead {
@@ -4515,7 +4515,7 @@ mod tests {
         assert!(recv > 0, "some data must have been read for sig phase");
         assert_eq!(stats.bytes_sent, sent);
         assert_eq!(stats.bytes_received, recv);
-        // Other SessionStats fields remain at their default — A4 populates
+        // Other SessionStats fields remain at their default: A4 populates
         // files_seen / files_delta / literal_bytes / matched_bytes from
         // its own instrumentation layer.
         assert_eq!(stats.files_seen, 0);
@@ -4560,7 +4560,7 @@ mod tests {
         let sig_payload = build_sig_phase_payload(1, 0x8002, &head, &blocks);
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &sig_payload));
-        // No summary frame — but a cancel will fire before the read.
+        // No summary frame: but a cancel will fire before the read.
         let transport = mock_transport_with_raw_inbound(inbound);
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let cancel_handle = CancelHandle::new(cancel_flag.clone(), None);
@@ -4601,7 +4601,7 @@ mod tests {
         // S8j: real rsync 3.2.7 emits exactly 3 leading NDX_DONE
         // markers between the delta stream's file-csum trailer and the
         // SummaryFrame. `finish_session` on a Receiver-role driver now
-        // drains them before decoding — replicate that shape here.
+        // drains them before decoding: replicate that shape here.
         let ndx_done_leading: Vec<u8> = vec![0x00; PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD];
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -4643,7 +4643,7 @@ mod tests {
         // in little-endian. This mirrors rsync 3.2.7 `checksum.c`:
         //   SIVAL64(buf, 0, lo);
         //   SIVAL64(buf, 8, hi);
-        // — `SIVAL64` is the LE 64-bit writer. A future rsync version
+        //: `SIVAL64` is the LE 64-bit writer. A future rsync version
         // that switched byte order would surface here before reaching
         // lane 3.
         let payload = b"aeroftp strada-c s8j xxh128 pin";
@@ -4822,7 +4822,7 @@ mod tests {
         let term_bytes = encode_file_list_terminator(&opts);
 
         // First byte is NDX_DONE (drain enters the strict path), second
-        // byte is garbage — the drain must refuse.
+        // byte is garbage: the drain must refuse.
         let poisoned = vec![0x00, 0xAB, 0xCD, 0xEF, 0xFE];
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
@@ -4861,7 +4861,7 @@ mod tests {
         // caller gets `Ok(())` so it can call `finish_session` explicitly.
         //
         // Inbound: server preamble + signature phase payload (sum_head +
-        // 1 sum_block) — same shape as
+        // 1 sum_block): same shape as
         // `driver_upload_writes_preamble_then_filelist_then_terminator`.
         let head = SumHead {
             count: 1,
@@ -4976,7 +4976,7 @@ mod tests {
     // These tests are the byte-identical wire pin for
     // `send_delta_phase_streaming` against `send_delta_phase_single_file`.
     // If they fail, the streaming path has diverged from the bulk path
-    // on the wire — root-cause is one of:
+    // on the wire: root-cause is one of:
     //   1. the producer (W1.1) emits different ops than `compute_delta`
     //      (covered by `producer_streaming_matches_bulk_*` in
     //      `engine_adapter.rs`),
@@ -4984,13 +4984,13 @@ mod tests {
     //      bulk (covered by `streaming_xxh3_matches_bulk_xxh3` below),
     //   3. the post-plan emission code (zstd compression, wire op
     //      construction, NDX/iflags/sum_head echo, payload framing) was
-    //      changed in only one of the two functions — they MUST stay
+    //      changed in only one of the two functions: they MUST stay
     //      bit-for-bit symmetric until W1.3 lifts the upload cap.
     //
     // The tests avoid relying on `MockSigAdapter`: the bulk path now
     // calls `compute_delta` against `RealEngineAdapter`'s real rolling
     // checksum engine (see `_adapter` parameter in the streaming path,
-    // currently unused — both paths derive the plan from
+    // currently unused: both paths derive the plan from
     // `received_signatures` + the source bytes via the producer / bulk
     // computation, no mock substitution).
 
@@ -5034,7 +5034,7 @@ mod tests {
     /// Wire-byte parity pin: bulk and streaming send paths must produce
     /// the exact same outbound byte sequence on the raw transport. If
     /// the assertion fails, prefix of the diff is the first byte where
-    /// the two paths diverged — start hunting there.
+    /// the two paths diverged: start hunting there.
     ///
     /// Both paths use [`CurrentDeltaSyncBridge`] so the bulk plan and
     /// the streaming plan come from the SAME algorithm
@@ -5117,7 +5117,7 @@ mod tests {
         }
     }
 
-    /// Empty source against a `block_size == 0` server head — the
+    /// Empty source against a `block_size == 0` server head: the
     /// realistic shape: the receiver's local target is missing or
     /// zero-byte, so its sum_head emits `block_length = 0`. Both bulk
     /// and streaming paths then go through their respective
@@ -5181,7 +5181,7 @@ mod tests {
             remainder_length: 0,
         };
         let blocks = vec![make_sig_block(0xAAAAAAAA, 0x11, 2)];
-        // 5 KB pseudo-random source — rolling sums won't hit 0xAAAAAAAA.
+        // 5 KB pseudo-random source: rolling sums won't hit 0xAAAAAAAA.
         let source: Vec<u8> = (0..5000u32)
             .map(|i| (i.wrapping_mul(2654435761) >> 24) as u8)
             .collect();
@@ -5253,7 +5253,7 @@ mod tests {
         assert_send_parity(&source, head, blocks).await;
     }
 
-    /// P3-T01 W1.3 — `block_size == 0` chunked-literal pin.
+    /// P3-T01 W1.3: `block_size == 0` chunked-literal pin.
     ///
     /// When the receiver advertises `block_length == 0` (no baseline)
     /// **and** the source exceeds `STREAMING_READ_CHUNK_BYTES`, the
@@ -5363,7 +5363,7 @@ mod tests {
         // them is byte-observable in the compressed output.
         assert_ne!(
             bulk_bytes, stream_bytes,
-            "block_size==0 with source > STREAMING_READ_CHUNK_BYTES MUST chunk the literal — bulk and streaming wire bytes must differ"
+            "block_size==0 with source > STREAMING_READ_CHUNK_BYTES MUST chunk the literal: bulk and streaming wire bytes must differ"
         );
 
         // Pin 3: byte-count delta is small (at most a few KiB of zstd
@@ -5420,7 +5420,7 @@ mod tests {
         // Historical pre-S8j behaviour: a raw literal whose compressed
         // blob exceeded `MAX_DELTA_LITERAL_LEN` was rejected with
         // `InvalidFrame` and the detail string "multi-chunk splitting
-        // deferred". S8j (2026-04-26) removed that bail — the driver
+        // deferred". S8j (2026-04-26) removed that bail: the driver
         // now splits the oversized blob into successive DEFLATED_DATA
         // tokens of ≤ 16 383 bytes each. Reaching the A2.3 stub
         // frontier is proof that the delta phase did not abort on the
@@ -5476,13 +5476,13 @@ mod tests {
         // Skip-graceful when the frozen oracle is not checked out.
         //
         // The download capture continues past the file list terminator
-        // with ndx / sum_head / delta frames that A2.1 does not handle —
+        // with ndx / sum_head / delta frames that A2.1 does not handle -
         // the driver will surface an `InvalidFrame` error from the
         // decoder when it tries to read past the terminator as another
         // file-list entry. We accept both terminations as long as at
         // least one entry has already been absorbed.
         let Some(frozen) = RealRsyncBaselineByteTranscript::try_load_frozen() else {
-            eprintln!("frozen oracle missing — A2.1 driver pin skipped");
+            eprintln!("frozen oracle missing: A2.1 driver pin skipped");
             return;
         };
         let transport = mock_transport_with_raw_inbound(frozen.download_server_to_client.clone());
@@ -5499,7 +5499,7 @@ mod tests {
         // Whatever the outcome, the driver MUST have consumed the preamble
         // and started the file list phase. Either the happy path reached
         // the post-terminator stub frontier, or the decoder bailed on a
-        // downstream frame — both are acceptable for A2.1 so long as the
+        // downstream frame: both are acceptable for A2.1 so long as the
         // file list decode landed at least one entry.
         assert!(
             !d.file_list().is_empty(),
@@ -5515,7 +5515,7 @@ mod tests {
     }
 
     // ========================================================================
-    // P3-T01 W2.4 — drive_download_through_delta_streaming tests
+    // P3-T01 W2.4: drive_download_through_delta_streaming tests
     //
     // The 3 existing mock download tests
     // (`driver_download_delta_decodes_ops_and_reconstructs`,
@@ -5663,7 +5663,7 @@ mod tests {
         inbound
     }
 
-    /// W2.4 test 1 — happy path: streaming download decodes the wire
+    /// W2.4 test 1: happy path: streaming download decodes the wire
     /// ops and writes the reconstructed bytes (CopyBlock(0) +
     /// CopyBlock(1) + Literal) into the configured `Streaming(writer)`
     /// sink. The shape mirrors
@@ -5708,7 +5708,7 @@ mod tests {
         assert_eq!(&on_writer[0..4], b"BLK1");
         assert_eq!(&on_writer[4..8], b"BLK2");
         assert_eq!(&on_writer[8..], raw_literal.as_slice());
-        // `committed` stays false on the driver — matches the bulk-path
+        // `committed` stays false on the driver: matches the bulk-path
         // pin in `driver_download_delta_preserves_committed_false`.
         assert!(
             !d.committed(),
@@ -5721,7 +5721,7 @@ mod tests {
         );
     }
 
-    /// W2.4 test 2 — pin that the driver dispatches `CopyBlock(idx)`
+    /// W2.4 test 2: pin that the driver dispatches `CopyBlock(idx)`
     /// against the **caller-supplied baseline**, not the
     /// `destination_data` slice that the signature phase consumed. Uses
     /// distinct byte patterns for the two so a divergence is loud:
@@ -5774,7 +5774,7 @@ mod tests {
         assert_eq!(&on_writer[8..], raw_literal.as_slice());
     }
 
-    /// W2.4 test 3 — writer that returns `BrokenPipe` on the first
+    /// W2.4 test 3: writer that returns `BrokenPipe` on the first
     /// `poll_write` aborts the download with `InvalidFrame` (the
     /// `apply_delta_streaming: <io error>` envelope). No panic, no
     /// silent success.
@@ -5828,7 +5828,7 @@ mod tests {
         );
     }
 
-    /// W2.4 test 4 — after a successful streaming download,
+    /// W2.4 test 4: after a successful streaming download,
     /// `driver.reconstructed()` returns `None`. The bytes flowed
     /// through the writer; reading them back from RAM would defeat
     /// the streaming purpose.

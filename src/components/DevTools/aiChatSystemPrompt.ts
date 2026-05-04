@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { generateToolsPrompt } from '../../types/tools';
 import { AISettings, AIProviderType } from '../../types/ai';
@@ -36,7 +36,7 @@ export interface SystemPromptContext {
 export function buildContextBlock(ctx: SystemPromptContext): string {
     const contextLines: string[] = [];
 
-    // Connection mode — clear distinction between server, AeroCloud, and local-only
+    // Connection mode: clear distinction between server, AeroCloud, and local-only
     if (ctx.isConnected && ctx.isCloudConnection) {
         contextLines.push(`- Mode: AeroCloud connected (background sync active, browsing remote files)`);
         if (ctx.providerType) contextLines.push(`- AeroCloud protocol: ${ctx.providerType.toUpperCase()}`);
@@ -55,7 +55,7 @@ export function buildContextBlock(ctx: SystemPromptContext): string {
         contextLines.push(`- Mode: AeroFile (local only, no server connected)`);
     }
 
-    // Active panel — tells the AI what the user is looking at
+    // Active panel: tells the AI what the user is looking at
     if (ctx.activeFilePanel === 'local') {
         contextLines.push(`- Active panel: LOCAL files (user is browsing local filesystem)`);
     } else if (ctx.activeFilePanel === 'remote' && ctx.isConnected) {
@@ -82,7 +82,7 @@ export function buildContextBlock(ctx: SystemPromptContext): string {
         contextLines.push(`- Available macros: ${ctx.macros.map(m => `macro_${m.name}`).join(', ')}`);
     }
 
-    // Project context (#66) — skip if smart context handles it
+    // Project context (#66): skip if smart context handles it
     if (ctx.projectContext && !ctx.smartContextBlock) {
         const pc = ctx.projectContext;
         const nameVer = [pc.name, pc.version ? `v${pc.version}` : null].filter(Boolean).join(' ');
@@ -92,13 +92,13 @@ export function buildContextBlock(ctx: SystemPromptContext): string {
         if (pc.entry_points.length > 0) contextLines.push(`- Entry: ${pc.entry_points.join(', ')}`);
     }
 
-    // Git context (#70) — skip if smart context handles it (avoid double injection)
+    // Git context (#70): skip if smart context handles it (avoid double injection)
     if (!ctx.smartContextBlock) {
         if (ctx.gitBranch) contextLines.push(`- Git branch: ${ctx.gitBranch}`);
         if (ctx.gitSummary) contextLines.push(ctx.gitSummary);
     }
 
-    // File imports (#67) — skip if smart context handles it
+    // File imports (#67): skip if smart context handles it
     if (!ctx.smartContextBlock && ctx.fileImports && ctx.fileImports.length > 0) {
         const importNames = ctx.fileImports.map(p => {
             const parts = p.replace(/\\/g, '/').split('/');
@@ -107,7 +107,7 @@ export function buildContextBlock(ctx: SystemPromptContext): string {
         contextLines.push(`- Editor imports: ${importNames.slice(0, 10).join(', ')}`);
     }
 
-    // Agent memory (#68) — skip if smart context handles it (AA-SEC-007 protection now in both paths)
+    // Agent memory (#68): skip if smart context handles it (AA-SEC-007 protection now in both paths)
     if (!ctx.smartContextBlock && ctx.agentMemory && ctx.agentMemory.trim()) {
         const memLines = ctx.agentMemory.trim().split('\n').slice(-10);
         contextLines.push(
@@ -220,7 +220,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 
 ### Zoho WorkDrive
 - **Auth**: OAuth 2.0 with PKCE.
-- **Regions**: US, EU, IN, AU, JP, UK, CA, SA — endpoint auto-selected from \`accounts_server\`.
+- **Regions**: US, EU, IN, AU, JP, UK, CA, SA: endpoint auto-selected from \`accounts_server\`.
 - **Structure**: Team-based. Files live under team folders; team ID required for uploads.
 - **API**: \`https://workdrive.zoho.{tld}/api/v1/\` (JSON:API format).
 - **Features**: search, trash management (list/restore/permanent delete), folder hierarchy.
@@ -229,7 +229,7 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - **Auth**: API Key (query param \`key=\`). Generated at FileLu Account Settings → Developer API Key.
 - **API**: \`https://filelu.com/api\`. JSON responses with \`status/msg/result\` envelope.
 - **ID-based**: Folders use numeric \`fld_id\` (root = 0), files use alphanumeric \`file_code\`.
-- **Upload**: 2-step — GET \`/upload/server\` → POST multipart to returned URL.
+- **Upload**: 2-step: GET \`/upload/server\` → POST multipart to returned URL.
 - **Download**: POST \`/file/direct_link\` to get URL → stream from URL.
 - **Features**: list, upload, download, mkdir, delete, rename, move (set_folder/folder/move), clone, share link, storage quota.
 - **Also supports**: FTP/FTPS (ftp.filelu.com:21/990), WebDAV, S3-compatible (S5).
@@ -267,7 +267,7 @@ export function buildSystemPrompt(settings: AISettings, contextBlock: string, pr
         : profile.style;
 
     const toolSection = profile.toolFormat === 'native'
-        ? '' // Native function calling — no text format needed in prompt
+        ? '' // Native function calling: no text format needed in prompt
         : `\n\n## Tools\nWhen you need to use a tool, respond with:\nTOOL: tool_name\nARGS: {"param": "value"}\n\nWhen you need to use multiple tools, list them consecutively:\nTOOL: tool_name_1\nARGS: {"param1": "value1"}\n\nTOOL: tool_name_2\nARGS: {"param2": "value2"}\n\nAvailable tools:\n${generateToolsPrompt(extraTools)}`;
 
     // Token-aware protocol expertise (#71)
@@ -281,7 +281,7 @@ export function buildSystemPrompt(settings: AISettings, contextBlock: string, pr
         protocolSection = buildCompactProtocolExpertise(providerType);
     }
 
-    // App knowledge summary — always present (~550 tokens)
+    // App knowledge summary: always present (~550 tokens)
     const knowledgeSummary = effectiveBudgetMode !== 'minimal'
         ? `\n## AeroFTP Quick Reference\n${APP_KNOWLEDGE_SUMMARY}\n`
         : '';
@@ -314,7 +314,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
         ftp: '### FTP / FTPS\n- **Port**: 21 (FTP), 21 or 990 (FTPS)\n- **TLS**: explicit/implicit. Passive mode enabled by default.',
         sftp: '### SFTP\n- **Port**: 22 (SSH)\n- **Auth**: password or SSH key. Key passphrase supported.',
         s3: '### S3\n- **Required**: Endpoint URL, Access Key, Secret Key, Bucket, Region.\n- **Compatible**: MinIO, B2, Wasabi, DO Spaces, Cloudflare R2.',
-        webdav: '### WebDAV\n- **URL format**: full URL including path. Basic or Digest auth. HTTPS recommended.\n- **CloudMe**: `webdav.cloudme.com/{user}` (3 GB free, EU).\n- **4shared**: Now uses native REST API (OAuth 1.0) — select "4shared" protocol directly.',
+        webdav: '### WebDAV\n- **URL format**: full URL including path. Basic or Digest auth. HTTPS recommended.\n- **CloudMe**: `webdav.cloudme.com/{user}` (3 GB free, EU).\n- **4shared**: Now uses native REST API (OAuth 1.0): select "4shared" protocol directly.',
         googledrive: '### Google Drive\n- **Auth**: OAuth 2.0 with PKCE.',
         dropbox: '### Dropbox\n- **Auth**: OAuth 2.0 with PKCE. 150MB per upload.',
         onedrive: '### OneDrive\n- **Auth**: OAuth 2.0 via Microsoft Graph.',

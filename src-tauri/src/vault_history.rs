@@ -5,7 +5,7 @@
 //! database with WAL mode. Automatically trims to 20 most-recent entries.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -312,7 +312,7 @@ mod tests {
             .unwrap();
         assert_eq!(count, MAX_ENTRIES);
 
-        // Oldest entries should have been dropped — vault-0..vault-4 gone
+        // Oldest entries should have been dropped: vault-0..vault-4 gone
         let exists: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM recent_vaults WHERE vault_name = 'vault-0'",
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn max_entries_constant_matches_documented_cap() {
-        // Contract check — the retention cap is a documented invariant.
+        // Contract check: the retention cap is a documented invariant.
         assert_eq!(MAX_ENTRIES, 20);
     }
 }

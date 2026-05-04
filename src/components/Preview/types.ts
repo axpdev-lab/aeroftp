@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Universal Preview System - Type Definitions
@@ -119,7 +119,7 @@ export interface CropRect {
     height: number;
 }
 
-// All editable state — used with useReducer for clean reset
+// All editable state: used with useReducer for clean reset
 export interface EditState {
     crop: CropRect | null;
     resize: { width: number; height: number } | null;

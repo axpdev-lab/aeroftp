@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useEffect, useRef } from 'react';
 import { listen, type EventCallback, type UnlistenFn } from '@tauri-apps/api/event';
@@ -7,7 +7,7 @@ import { listen, type EventCallback, type UnlistenFn } from '@tauri-apps/api/eve
 /**
  * Tauri event listener with a synchronous disposable shell.
  *
- * The standard pattern — `const p = listen(...); return () => p.then(fn => fn())` —
+ * The standard pattern: `const p = listen(...); return () => p.then(fn => fn())` -
  * is teardown-racy: if cleanup runs before the promise resolves, the unlisten
  * function never runs and the listener leaks. Under React StrictMode every
  * effect is setup/cleanup/setup-tested, so the race is guaranteed in development.
@@ -45,7 +45,7 @@ export function useTauriListener<T>(
         let off: UnlistenFn | null = null;
 
         void listen<T>(event, (payload) => {
-            // Late events that arrive after unmount are ignored — the listener
+            // Late events that arrive after unmount are ignored: the listener
             // may not have been unregistered yet if the Tauri bridge is slow.
             if (disposed) return;
             handlerRef.current(payload);

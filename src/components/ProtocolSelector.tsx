@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * ProtocolSelector Component
@@ -109,7 +109,7 @@ interface ProtocolInfo {
     badge?: string;
     isOAuth?: boolean;
     color?: string;
-    isCloudStorage?: boolean;  // Legacy — use category instead
+    isCloudStorage?: boolean;  // Legacy: use category instead
     category?: 'aerocloud' | 'protocol' | 'service';  // Section grouping
     tooltip?: string;  // Tooltip on hover
     disabled?: boolean;  // If true, show as coming soon
@@ -117,8 +117,8 @@ interface ProtocolInfo {
 }
 
 // Cipher-strength badges rendered with a Lock icon.
-// "E2E 128-bit" / "E2E 256-bit" — provider with native client-side encryption (zero-knowledge).
-// "128-bit" / "256-bit" — Crypt overlay (cipher strength only; backend has no key).
+// "E2E 128-bit" / "E2E 256-bit": provider with native client-side encryption (zero-knowledge).
+// "128-bit" / "256-bit": Crypt overlay (cipher strength only; backend has no key).
 // Distinct from transport-secure badges (TLS/SSH/HMAC) which keep ShieldCheck.
 export const isCipherStrengthBadge = (badge?: string): boolean =>
     !!badge && /^(?:E2E\s+)?\d+-bit$/.test(badge);
@@ -455,20 +455,20 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'box', name: 'Box', icon: <BoxLogo size={18} />, description: 'Box (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Box OAuth2' },
     { type: 'zohoworkdrive', name: 'Zoho WorkDrive', icon: <ZohoWorkDriveLogo size={18} />, description: 'Zoho WorkDrive (5 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'Zoho WorkDrive OAuth2' },
     { type: 'filen', name: 'Filen', icon: <FilenLogo size={18} />, description: 'E2E Encrypted Cloud (10 GB free)', defaultPort: 443, badge: 'E2E 256-bit', color: 'text-emerald-600', isCloudStorage: true, tooltip: 'Filen zero-knowledge encryption (Argon2id v3 / PBKDF2 v2)' },
-    { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Drime Cloud (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud — Bearer Token auth' },
-    { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', defaultPort: 443, badge: 'API', color: 'text-sky-500', isCloudStorage: true, tooltip: 'FileLu — API Key auth, 1 GB free' },
+    { type: 'drime', name: 'Drime Cloud', icon: <DrimeCloudLogo size={18} />, description: 'Drime Cloud (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Drime Cloud: Bearer Token auth' },
+    { type: 'filelu', name: 'FileLu', icon: <FileLuLogo size={18} />, description: 'Multi-Protocol Cloud (1 GB free)', defaultPort: 443, badge: 'API', color: 'text-sky-500', isCloudStorage: true, tooltip: 'FileLu: API Key auth, 1 GB free' },
     { type: 'fourshared', name: '4shared', icon: <FourSharedLogo size={18} />, description: '4shared (15 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: '4shared OAuth 1.0' },
     { type: 'kdrive', name: 'kDrive', icon: <KDriveLogo size={18} />, description: 'Infomaniak kDrive (15 GB free)', defaultPort: 443, badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'Infomaniak kDrive API Token' },
-    { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud — Login Token auth' },
-    { type: 'koofr', name: 'Koofr', icon: <KoofrLogo size={18} />, description: 'Koofr Cloud (10 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Koofr — Email + App Password auth' },
+    { type: 'jottacloud', name: 'Jottacloud', icon: <JottacloudLogo size={18} />, description: 'Norwegian Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-purple-500', isCloudStorage: true, tooltip: 'Jottacloud: Login Token auth' },
+    { type: 'koofr', name: 'Koofr', icon: <KoofrLogo size={18} />, description: 'Koofr Cloud (10 GB free)', defaultPort: 443, badge: 'API', color: 'text-green-500', isCloudStorage: true, tooltip: 'Koofr: Email + App Password auth' },
     { type: 'opendrive', name: 'OpenDrive', icon: <OpenDriveLogo size={18} />, description: 'OpenDrive Cloud (5 GB free)', defaultPort: 443, badge: 'API', color: 'text-cyan-500', isCloudStorage: true, tooltip: 'OpenDrive - 5GB free cloud storage, username/password authentication' },
-    { type: 'yandexdisk', name: 'Yandex Disk', icon: <YandexDiskLogo size={18} />, description: 'Yandex Disk (5 GB free)', defaultPort: 443, badge: 'OAuth', color: 'text-yellow-500', isCloudStorage: true, tooltip: 'Yandex Disk — OAuth2 token auth' },
+    { type: 'yandexdisk', name: 'Yandex Disk', icon: <YandexDiskLogo size={18} />, description: 'Yandex Disk (5 GB free)', defaultPort: 443, badge: 'OAuth', color: 'text-yellow-500', isCloudStorage: true, tooltip: 'Yandex Disk: OAuth2 token auth' },
     { type: 'github', name: 'GitHub', icon: <GitHubLogo size={18} />, description: 'GitHub Repository (filesystem)', defaultPort: 443, badge: 'API', color: 'text-gray-400', isCloudStorage: true, tooltip: 'Browse GitHub repos as filesystem. Uploads create commits.' },
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E 256-bit', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
-    { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud — Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
-    { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich — Self-hosted photo/video management, API key auth' },
-    { type: 'backblaze', name: 'Backblaze B2', icon: <Flame size={18} />, description: 'Backblaze B2 native API v4', defaultPort: 443, badge: 'API', color: 'text-red-600', isCloudStorage: true, tooltip: 'Backblaze B2 native — applicationKeyId + applicationKey, large-file workflow, server-side copy' },
+    { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud: Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
+    { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich: Self-hosted photo/video management, API key auth' },
+    { type: 'backblaze', name: 'Backblaze B2', icon: <Flame size={18} />, description: 'Backblaze B2 native API v4', defaultPort: 443, badge: 'API', color: 'text-red-600', isCloudStorage: true, tooltip: 'Backblaze B2 native: applicationKeyId + applicationKey, large-file workflow, server-side copy' },
 ];
 
 export const getProtocolInfo = (type: ProviderType | ''): ProtocolInfo | null => {
@@ -593,7 +593,7 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
                         </button>
                     ))}
 
-                    {/* Service Providers — hidden when allowedProtocols filters them all out */}
+                    {/* Service Providers: hidden when allowedProtocols filters them all out */}
                     {(!allowedProtocols || PROTOCOLS.some(p => p.isCloudStorage && allowedProtocols.includes(p.type))) && (
                     <div className="col-span-2 mt-2">
                         <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Services</p>
@@ -826,7 +826,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         // - hasEndpointTemplate: endpoint computed from region/accountId (Wasabi, DO, Cloudflare R2)
         // - hasStaticEndpoint: fixed endpoint (FileLu S3)
         // - hasUserEndpointField: user must enter endpoint (Backblaze, IDrive e2, Storj)
-        // - hasAccountIdTemplate: endpoint computed from accountId (Cloudflare R2) — shows only fixed part
+        // - hasAccountIdTemplate: endpoint computed from accountId (Cloudflare R2): shows only fixed part
         const hasEndpointTemplate = !!providerConfig?.defaults?.endpointTemplate;
         const hasStaticEndpoint = !!providerConfig?.defaults?.endpoint;
         const hasAccountIdTemplate = hasEndpointTemplate && !!accountIdField;
@@ -879,7 +879,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <Database size={14} />
-                    {providerConfig ? `${providerConfig.name} — ${t('protocol.s3Config')}` : t('protocol.s3Config')}
+                    {providerConfig ? `${providerConfig.name}: ${t('protocol.s3Config')}` : t('protocol.s3Config')}
                 </div>
                 <div>
                     <label className="block text-sm font-medium mb-1.5">
@@ -995,7 +995,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             )}
                         </div>
 
-                        {/* Endpoint next to region — only when NOT hidden in Advanced */}
+                        {/* Endpoint next to region: only when NOT hidden in Advanced */}
                         {showEndpoint && !endpointInAdvanced && (
                             <div>
                                 <div className="flex items-center gap-2 mb-1.5">
@@ -1033,7 +1033,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     </div>
                 )}
 
-                {/* Endpoint standalone — only when NOT hidden in Advanced */}
+                {/* Endpoint standalone: only when NOT hidden in Advanced */}
                 {showEndpoint && !regionField && !endpointInAdvanced && (
                     <div>
                         <div className="flex items-center gap-2 mb-1.5">
@@ -1069,7 +1069,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     </div>
                 )}
 
-                {/* Path style — only visible when endpoint is NOT preset */}
+                {/* Path style: only visible when endpoint is NOT preset */}
                 {(showEndpoint || hasAccountIdTemplate) && !endpointInAdvanced && (
                     <Checkbox
                         checked={options.pathStyle ?? providerConfig?.defaults?.pathStyle ?? false}
@@ -1079,7 +1079,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     />
                 )}
 
-                {/* Advanced Options — endpoint + pathStyle for preset S3 providers */}
+                {/* Advanced Options: endpoint + pathStyle for preset S3 providers */}
                 {endpointInAdvanced && (
                     <div className="pt-1">
                         <button
@@ -1286,7 +1286,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     />
                 )}
 
-                {/* Insecure warning — only when user explicitly chooses plain FTP */}
+                {/* Insecure warning: only when user explicitly chooses plain FTP */}
                 {showInsecureWarning && (
                     <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                         <div className="flex items-start gap-2">

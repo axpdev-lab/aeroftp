@@ -13,7 +13,7 @@
 //! ```
 //!
 //! All tests cooperate inside an isolated prefix (`aeroftp-it/<run-id>/`) and
-//! delete every artifact at the end. Use a dedicated bucket — keep no other
+//! delete every artifact at the end. Use a dedicated bucket: keep no other
 //! data there.
 //!
 //! Cost note: the multipart test uploads a 250 MB blob and downloads it back.
@@ -21,7 +21,7 @@
 //! per day is well within the free quota.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use ftp_client_gui_lib::providers::b2::{B2Config, B2Provider};
 use ftp_client_gui_lib::providers::{ProviderError, StorageProvider};
@@ -319,7 +319,7 @@ async fn rmdir_recursive_clears_a_subtree() {
 #[tokio::test]
 #[ignore = "requires AEROFTP_TEST_B2_* env"]
 async fn invalid_application_key_surfaces_authentication_failed() {
-    // We do not need a real bucket to exercise the auth failure path —
+    // We do not need a real bucket to exercise the auth failure path -
     // authorize() rejects the credentials before list_buckets is called.
     let creds = match skip_unless_creds("invalid_application_key_surfaces_authentication_failed") {
         Some(c) => c,
@@ -332,7 +332,7 @@ async fn invalid_application_key_surfaces_authentication_failed() {
     );
     let mut p = make_provider(&bad, None);
     let err = p.connect().await.expect_err("must reject bad credentials");
-    // Either AuthenticationFailed or ConnectionFailed — different B2 backends
+    // Either AuthenticationFailed or ConnectionFailed: different B2 backends
     // map the 401 differently. Both are acceptable; what we forbid is silent
     // "Ok" on bad creds.
     assert!(
@@ -348,7 +348,7 @@ async fn invalid_application_key_surfaces_authentication_failed() {
 }
 
 /// Opt-in: rename of a file > 5 GB exercises the b2_copy_part chunked path.
-/// This test is double-gated — it requires both the standard B2 env vars AND
+/// This test is double-gated: it requires both the standard B2 env vars AND
 /// `AEROFTP_TEST_B2_LARGE_RENAME=1` because it transfers and stores ~5.1 GB.
 #[tokio::test]
 #[ignore = "requires AEROFTP_TEST_B2_* + AEROFTP_TEST_B2_LARGE_RENAME=1 (transfers ~5.1 GB)"]
@@ -381,7 +381,7 @@ async fn rename_above_5gb_uses_chunked_copy_part_path() {
         .await
         .expect("mk tmp dir");
     let local_in = local_dir.join("source.bin");
-    // Use a sparse file — works on ext4/xfs/btrfs/apfs but not on every
+    // Use a sparse file: works on ext4/xfs/btrfs/apfs but not on every
     // filesystem; if sparse is unsupported the file will be physically zeros.
     {
         use tokio::io::{AsyncSeekExt, AsyncWriteExt};

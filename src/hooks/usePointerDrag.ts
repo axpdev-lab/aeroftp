@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useCallback, useEffect, useRef } from 'react';
 
@@ -32,7 +32,7 @@ export function usePointerDrag(handlers: PointerDragHandlers) {
         try {
             element.releasePointerCapture(pointerId);
         } catch {
-            // The element may have been detached before we got here — ignore.
+            // The element may have been detached before we got here: ignore.
         }
     }, []);
 

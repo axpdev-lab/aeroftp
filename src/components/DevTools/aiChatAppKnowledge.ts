@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * AeroFTP App Knowledge Base
@@ -22,7 +22,7 @@ export interface KBSection {
 }
 
 export const APP_KNOWLEDGE: KBSection[] = [
-    // 1 — Connection Setup
+    // 1: Connection Setup
     {
         id: 'connection_setup',
         title: 'Connection & Server Setup',
@@ -51,7 +51,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 7. **Protocol presets**: Some providers have presets (e.g. CloudMe → WebDAV with pre-filled URL).`,
     },
 
-    // 2 — Connection Troubleshooting
+    // 2: Connection Troubleshooting
     {
         id: 'connection_troubleshoot',
         title: 'Connection Troubleshooting',
@@ -65,18 +65,18 @@ export const APP_KNOWLEDGE: KBSection[] = [
         full: `Common connection errors and solutions:
 
 - **Connection refused**: Wrong host or port. Verify the server address. FTP=21, FTPS=990(implicit)/21(explicit), SFTP=22.
-- **Authentication failed**: Wrong username/password. For SFTP, ensure your SSH key is in OpenSSH format (not PuTTY .ppk — convert with ssh-keygen).
-- **TLS handshake error**: Server may not support TLS, or uses a self-signed certificate. AeroFTP shows a confirmation dialog for untrusted certs — click "Accept" to proceed.
+- **Authentication failed**: Wrong username/password. For SFTP, ensure your SSH key is in OpenSSH format (not PuTTY .ppk: convert with ssh-keygen).
+- **TLS handshake error**: Server may not support TLS, or uses a self-signed certificate. AeroFTP shows a confirmation dialog for untrusted certs: click "Accept" to proceed.
 - **Host key verification**: First SFTP connection shows fingerprint. Click "Trust" to save it. If it changes later, AeroFTP warns about possible MITM attack.
 - **Timeout**: Server is unreachable. Check your network, VPN, or firewall. Try increasing timeout in Settings > General.
-- **OAuth token expired**: For Google Drive, Dropbox, OneDrive, Box, pCloud — disconnect and reconnect to refresh the OAuth token.
+- **OAuth token expired**: For Google Drive, Dropbox, OneDrive, Box, pCloud: disconnect and reconnect to refresh the OAuth token.
 - **MEGA 2FA**: Not yet supported. Disable 2FA temporarily or use an app-specific password.
 - **Filen 2FA**: Enter the 6-digit code in the 2FA field during login.
 - **S3 endpoint issues**: Use the full URL including region (e.g. https://s3.eu-west-1.amazonaws.com). Enable "Path Style" for MinIO/self-hosted.
 - **Passive mode (FTP)**: Enabled by default. If behind strict NAT, ensure your firewall allows data port range.`,
     },
 
-    // 3 — AeroCloud
+    // 3: AeroCloud
     {
         id: 'aerocloud',
         title: 'AeroCloud Setup & Usage',
@@ -115,10 +115,10 @@ export const APP_KNOWLEDGE: KBSection[] = [
 - Inotify limit: Linux has a default watch limit. AeroFTP shows a warning if near capacity. Increase manually with sysctl.`,
     },
 
-    // 4 — AeroSync
+    // 4: AeroSync
     {
         id: 'aerosync',
-        title: 'AeroSync — File Synchronization',
+        title: 'AeroSync: File Synchronization',
         keywords: [
             'aerosync', 'sync', 'synchronize', 'synchronization', 'mirror',
             'two-way', 'backup', 'profile', 'speed mode', 'turbo', 'maniac',
@@ -141,7 +141,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 - **Automation**: scheduler (interval + time window with day picker), filesystem watcher
 
 **Speed Modes** (5 levels):
-- Normal (1 stream), Fast (2), Turbo (4), Extreme (8), Maniac (16 — Cyber theme only, disables safety checks)
+- Normal (1 stream), Fast (2), Turbo (4), Extreme (8), Maniac (16: Cyber theme only, disables safety checks)
 
 **Conflict Resolution**:
 - When both local and remote changed, AeroSync shows a conflict dialog
@@ -157,10 +157,10 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Watcher**: Real-time filesystem watcher with health indicator (inotify capacity warnings on Linux).`,
     },
 
-    // 5 — AeroVault
+    // 5: AeroVault
     {
         id: 'aerovault',
-        title: 'AeroVault — Encrypted Containers',
+        title: 'AeroVault: Encrypted Containers',
         keywords: [
             'aerovault', 'vault', 'encrypt', 'encrypted', 'encryption', 'container',
             'aes', 'security', 'lock', 'unlock', 'master password',
@@ -196,10 +196,10 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Cryptomator compatibility**: AeroFTP can create and browse Cryptomator vaults (format 8). Create via context menu "Create Cryptomator Vault", open via right-click → "Open as Cryptomator Vault". Supports scrypt + AES-KW + AES-SIV + AES-GCM.`,
     },
 
-    // 6 — AeroPlayer
+    // 6: AeroPlayer
     {
         id: 'aeroplayer',
-        title: 'AeroPlayer — Media Player',
+        title: 'AeroPlayer: Media Player',
         keywords: [
             'aeroplayer', 'player', 'music', 'audio', 'play', 'mp3', 'flac',
             'visualizer', 'equalizer', 'eq', 'beat', 'spectrum', 'waveform',
@@ -229,10 +229,10 @@ export const APP_KNOWLEDGE: KBSection[] = [
 - V key cycles through all 14 modes sequentially`,
     },
 
-    // 7 — AeroTools
+    // 7: AeroTools
     {
         id: 'aerotools',
-        title: 'AeroTools — Editor, Terminal & Chat',
+        title: 'AeroTools: Editor, Terminal & Chat',
         keywords: [
             'aerotools', 'devtools', 'editor', 'terminal', 'code editor',
             'monaco', 'ssh', 'tab', 'panel', 'bottom panel', 'split',
@@ -264,7 +264,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Resize**: Drag the top edge of the panel to resize vertically.`,
     },
 
-    // 8 — AI Settings
+    // 8: AI Settings
     {
         id: 'ai_settings',
         title: 'AI Provider & Model Settings',
@@ -280,7 +280,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 
 **6 tabs**: Providers, Models, Advanced, System Prompt, Plugins, Macros
 
-**Providers tab** — Configure API credentials:
+**Providers tab**: Configure API credentials:
 - **OpenAI**: API key from platform.openai.com. Models: GPT-4o, GPT-4o-mini, o3, etc.
 - **Anthropic**: API key from console.anthropic.com. Models: Claude Sonnet 4.5, Claude Opus 4.6, etc.
 - **Google Gemini**: API key from ai.google.dev. Models: Gemini 2.5 Flash, Gemini 2.5 Pro, etc.
@@ -292,9 +292,9 @@ export const APP_KNOWLEDGE: KBSection[] = [
 - **DeepSeek**: API key from platform.deepseek.com. Models: DeepSeek-V3, DeepSeek-R1, etc.
 - **Custom**: Any OpenAI-compatible endpoint. Set base URL + API key.
 
-**Models tab** — Add/remove models per provider. Set context window size. Enable vision support.
+**Models tab**: Add/remove models per provider. Set context window size. Enable vision support.
 
-**Advanced tab** — Temperature (0-2), max tokens, thinking budget (5 presets: Off/Light/Balanced/Deep/Maximum + custom slider for reasoning models like o3, Claude, Gemini).
+**Advanced tab**: Temperature (0-2), max tokens, thinking budget (5 presets: Off/Light/Balanced/Deep/Maximum + custom slider for reasoning models like o3, Claude, Gemini).
 
 **System Prompt tab**: Toggle and edit the system prompt. Full textarea editor.
 **Plugins tab**: Manage AeroAgent plugins (shell-based extensions with JSON manifest).
@@ -302,7 +302,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Cost budget**: Set per-provider monthly spending limits. AeroAgent tracks cumulative cost and warns when approaching the limit.`,
     },
 
-    // 9 — AI Agent Usage
+    // 9: AI Agent Usage
     {
         id: 'ai_agent_usage',
         title: 'Using AeroAgent',
@@ -329,7 +329,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 - Stop button appears during multi-step execution
 
 **Extreme Mode** (Cyber theme only):
-- Auto-approves ALL tool calls without asking. 50-step limit. Fully autonomous — use with caution.
+- Auto-approves ALL tool calls without asking. 50-step limit. Fully autonomous: use with caution.
 
 **RAG Integration**: AeroAgent can index directories (rag_index) and search file contents (rag_search) for context-aware responses.
 **Persistent Memory**: AeroAgent saves project notes to a .aeroagent file for cross-session recall (agent_memory_write).
@@ -346,7 +346,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Keyboard shortcuts**: Ctrl+L (clear), Ctrl+Shift+N (new conversation), Ctrl+Shift+E (export), Ctrl+F (search), Ctrl+Shift+A (send editor selection to chat).`,
     },
 
-    // 10 — File Management
+    // 10: File Management
     {
         id: 'file_management',
         title: 'File Management & Navigation',
@@ -366,7 +366,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Views**: Toggle between List (detailed table), Grid (thumbnails), and Icon views.
 
 **Navigation**:
-- Breadcrumb bar at top — click any segment to jump
+- Breadcrumb bar at top: click any segment to jump
 - Double-click folders to enter, ".." to go up
 
 **Places Sidebar**: Left sidebar shows bookmarks, mounted drives, GVFS network shares (SMB/SFTP/FTP/NFS), unmounted partitions, and recent locations. Eject network shares and mount partitions directly.
@@ -386,7 +386,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Duplicate Finder**: Tools menu → Find Duplicates. Scans by hash to find identical files.`,
     },
 
-    // 11 — Transfers
+    // 11: Transfers
     {
         id: 'transfers',
         title: 'File Transfers',
@@ -420,10 +420,10 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Tips**:
 - Large files use chunked transfer for reliability
 - FTP uses passive mode by default for NAT compatibility
-- Transfer speed depends on server and network — use AeroSync for optimized bulk transfers`,
+- Transfer speed depends on server and network: use AeroSync for optimized bulk transfers`,
     },
 
-    // 12 — Archives
+    // 12: Archives
     {
         id: 'archives',
         title: 'Archives & Compression',
@@ -455,7 +455,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **Compression levels**: 0 = Store (fastest), 1-3 = Fast, 4-6 = Balanced (default: 6), 7-9 = Maximum (slowest).`,
     },
 
-    // 13 — Security
+    // 13: Security
     {
         id: 'security',
         title: 'Security & Credentials',
@@ -485,7 +485,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 - **Password Forge**: Generate secure passwords (CSPRNG) with length/charset options. BIP-39 passphrases up to 24 words. Entropy calculator.`,
     },
 
-    // 14 — Settings
+    // 14: Settings
     {
         id: 'settings',
         title: 'App Settings & Preferences',
@@ -520,7 +520,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 **AI Settings**: Separate panel accessible from AeroAgent header (see AI Settings topic for details).`,
     },
 
-    // 15 — Troubleshooting
+    // 15: Troubleshooting
     {
         id: 'troubleshooting',
         title: 'General Troubleshooting',
@@ -556,7 +556,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 ];
 
 /**
- * Compact summary of all knowledge sections — always embedded in system prompt (~550 tokens).
+ * Compact summary of all knowledge sections: always embedded in system prompt (~550 tokens).
  * One line per feature area for quick reference.
  */
 export const APP_KNOWLEDGE_SUMMARY: string = APP_KNOWLEDGE

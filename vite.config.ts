@@ -10,7 +10,7 @@ const cleanVer = (v: string) => v.replace(/^[\^~>=<]+/, '');
 /**
  * Copy Monaco Editor AMD assets to dist/vs at build time,
  * and serve them from node_modules in dev mode.
- * The AMD loader files are in IIFE format — workers load without ESM issues.
+ * The AMD loader files are in IIFE format: workers load without ESM issues.
  */
 function copyMonacoAssets(): Plugin {
   const monacoPath = resolve(__dirname, 'node_modules/monaco-editor/min');
@@ -37,7 +37,7 @@ function copyMonacoAssets(): Plugin {
           next();
         }
       });
-      // Return 204 for /min-maps/* requests — Monaco references source maps that don't exist
+      // Return 204 for /min-maps/* requests: Monaco references source maps that don't exist
       // in the npm package. Without this, Vite returns HTML (index fallback) causing JSON parse errors.
       server.middlewares.use('/min-maps', (_req, res) => {
         res.statusCode = 204;

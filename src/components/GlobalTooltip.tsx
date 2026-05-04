@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * GlobalTooltip — intercepts all [title] attributes in the DOM and replaces
+ * GlobalTooltip: intercepts all [title] attributes in the DOM and replaces
  * the native browser tooltip with a smooth animated one.
  *
  * Drop-in: mount once in App.tsx, no changes needed to existing components.

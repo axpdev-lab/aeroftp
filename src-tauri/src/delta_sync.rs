@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroFTP Delta Sync Module
 // rsync-style rolling checksum + block matching for efficient file transfers
@@ -183,7 +183,7 @@ pub fn compute_delta(
     let mut literal_total: u64 = 0;
 
     if source_data.len() < block_size {
-        // File smaller than block size — send as literal
+        // File smaller than block size: send as literal
         return (
             vec![DeltaOp::Literal(source_data.to_vec())],
             DeltaResult {
@@ -207,7 +207,7 @@ pub fn compute_delta(
 
     loop {
         if pos + block_size > source_data.len() {
-            // Remaining bytes smaller than block_size — emit as literal
+            // Remaining bytes smaller than block_size: emit as literal
             literal_buf.extend_from_slice(&source_data[pos..]);
             break;
         }
@@ -242,7 +242,7 @@ pub fn compute_delta(
         }
 
         if !matched {
-            // No match — add byte to literal buffer and roll window by 1
+            // No match: add byte to literal buffer and roll window by 1
             literal_buf.push(source_data[pos]);
             if pos + block_size < source_data.len() {
                 rolling.roll(source_data[pos], source_data[pos + block_size]);

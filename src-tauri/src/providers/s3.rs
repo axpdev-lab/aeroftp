@@ -7,7 +7,7 @@
 //! avoiding the heavyweight aws-sdk-s3 dependency for better compile times and smaller binaries.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -589,13 +589,13 @@ impl S3Provider {
                     }
                 }
                 Ok(Event::Text(ref e)) => {
-                    // Do NOT trim — leading/trailing whitespace inside an
+                    // Do NOT trim: leading/trailing whitespace inside an
                     // S3 Key is significant. Trimming the whole-element text
                     // is also wrong for entity-split fragments (see below):
                     // for a key like "a&b.txt" quick-xml emits
                     //   Text("a") + GeneralRef("amp") + Text("b.txt")
                     // and trimming each piece is fine, but blindly assigning
-                    // the last fragment overwrites the preceding "a" — which
+                    // the last fragment overwrites the preceding "a": which
                     // is exactly how `a&b.txt` was being shown as `b.txt`.
                     let raw = String::from_utf8_lossy(e.as_ref()).to_string();
                     if raw.is_empty() {
@@ -634,7 +634,7 @@ impl S3Provider {
                 // `&amp;`, `&apos;`, etc. quick-xml surfaces these as a
                 // separate `GeneralRef` event between the surrounding text
                 // fragments. Without this branch the entity is dropped and
-                // the key is rebuilt with a hole — which is the actual root
+                // the key is rebuilt with a hole: which is the actual root
                 // cause of "a&b.txt" being listed as "b.txt".
                 Ok(Event::GeneralRef(ref e)) => {
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
@@ -1109,7 +1109,7 @@ impl S3Provider {
     /// Splits the object into N contiguous byte ranges and downloads them
     /// concurrently via independent `GET` requests with `Range: bytes=start-end`.
     /// Each task seeks to its offset on a pre-allocated `.aerotmp` file, so the
-    /// final file is assembled in place — no concatenation step.
+    /// final file is assembled in place: no concatenation step.
     ///
     /// Equivalent to rclone `--multi-thread-streams N`.
     /// Caller must ensure `total_size > 0` and the server advertises range support.
@@ -1208,7 +1208,7 @@ impl S3Provider {
                         break;
                     }
                 }
-                // Final flush — ensures the user sees the last byte counts even if
+                // Final flush: ensures the user sees the last byte counts even if
                 // the download finished between two ticks.
                 let cur = agg.load(Ordering::Relaxed);
                 if cur != last_emitted {
@@ -1269,7 +1269,7 @@ impl S3Provider {
             return Err(err);
         }
 
-        // All ranges committed — atomic rename .aerotmp → final path.
+        // All ranges committed: atomic rename .aerotmp → final path.
         tokio::fs::rename(&temp_path, &final_pathbuf)
             .await
             .map_err(ProviderError::IoError)?;
@@ -1561,7 +1561,7 @@ impl StorageProvider for S3Provider {
                         .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
                     // Debug: Log raw XML response (truncated for readability).
-                    // Must NOT use `&xml[..2000]` — a byte slice that lands
+                    // Must NOT use `&xml[..2000]`: a byte slice that lands
                     // inside a multi-byte UTF-8 codepoint (emoji in an
                     // object key, non-ASCII bucket/prefix) panics with
                     // "end byte index is not a char boundary". Iterate on
@@ -1698,7 +1698,7 @@ impl StorageProvider for S3Provider {
         //   2. HEAD succeeds and reports a known content length,
         //   3. file size meets the configured cutoff,
         //   4. server advertises Accept-Ranges (or omits it, since S3 supports
-        //      ranges by default — only an explicit "none" disables it).
+        //      ranges by default: only an explicit "none" disables it).
         // On any HEAD-side problem we fall through to the single-stream path so
         // a one-off mismatch never fails an otherwise downloadable transfer.
         let on_progress = if self.multi_thread_streams >= 2 {
@@ -1751,7 +1751,7 @@ impl StorageProvider for S3Provider {
             StatusCode::OK => {
                 let total_size = response.content_length().unwrap_or(0);
 
-                // H-01: Streaming download — write chunks as they arrive (atomic)
+                // H-01: Streaming download: write chunks as they arrive (atomic)
                 let mut stream = response.bytes_stream();
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -1824,7 +1824,7 @@ impl StorageProvider for S3Provider {
                 Ok(())
             }
             StatusCode::OK => {
-                // Server ignored Range — full content returned, restart from scratch
+                // Server ignored Range: full content returned, restart from scratch
                 let total_size = response.content_length().unwrap_or(0);
                 let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
                     .await
@@ -1841,7 +1841,7 @@ impl StorageProvider for S3Provider {
                 let tmp = format!("{}.aerotmp", local_path);
                 let _ = tokio::fs::remove_file(&tmp).await;
                 Err(ProviderError::TransferFailed(
-                    "Range not satisfiable — file may have changed on server".to_string(),
+                    "Range not satisfiable: file may have changed on server".to_string(),
                 ))
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
@@ -3465,7 +3465,7 @@ async fn download_range_to_offset(
         let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         let chunk_len = chunk.len() as u64;
         if written + chunk_len > expected {
-            // Server returned more than requested — truncate to the planned
+            // Server returned more than requested: truncate to the planned
             // window so we don't trample a neighboring range.
             let allowed = (expected - written) as usize;
             file.write_all(&chunk[..allowed])
@@ -3574,7 +3574,7 @@ mod tests {
         ));
     }
 
-    // ── U-13 multi-thread download — range planner ─────────────────────
+    // ── U-13 multi-thread download: range planner ─────────────────────
 
     fn ranges_cover(total: u64, ranges: &[(u64, u64)]) -> bool {
         if ranges.is_empty() {

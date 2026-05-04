@@ -494,11 +494,11 @@ fn sha256_hex_of(bytes: &[u8]) -> String {
 }
 
 // =============================================================================
-// S8i / A2.1 — Raw byte-stream SSH transport (for the native rsync driver).
+// S8i / A2.1: Raw byte-stream SSH transport (for the native rsync driver).
 //
 // The legacy `SshProtoStream` above uses u32-BE length-prefixed frames
 // (RSNP). The real-wire rsync driver needs raw bytes without any framing
-// — the framing is done by `MuxHeader` inside the stream. We add a second
+//: the framing is done by `MuxHeader` inside the stream. We add a second
 // stream type `SshRawStream` that shares the connect+auth code path via
 // `connect_and_auth` but spawns its own worker with raw read/write.
 // =============================================================================
@@ -606,7 +606,7 @@ impl RawRemoteShellTransport for SshRemoteShellTransport {
         // machinery. We cannot reuse `ActiveSession` directly because its
         // `sender` type is the RSNP `WorkerCommand` channel, not our raw
         // one. For now we accept that raw streams do not contribute to
-        // `cancel()`'s "WorkerCommand::Terminate" broadcast — the TCP fd
+        // `cancel()`'s "WorkerCommand::Terminate" broadcast: the TCP fd
         // shutdown in `cancel()` still unblocks a libssh2 read, which is
         // the key forced-termination property.
         let _ = tcp;
@@ -863,7 +863,7 @@ mod tests {
 
         let result = reader.join().unwrap();
         let elapsed = started.elapsed();
-        // Either EOF (Ok(0)) or an I/O error — both prove the read was
+        // Either EOF (Ok(0)) or an I/O error: both prove the read was
         // unblocked by the shutdown. What must NOT happen is waiting out
         // the full 5s read timeout.
         if let Ok(n) = result {

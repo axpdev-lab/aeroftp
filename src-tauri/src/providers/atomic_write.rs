@@ -5,7 +5,7 @@
 //! If the download fails mid-stream, the temp file is cleaned up.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -99,7 +99,7 @@ impl AtomicFile {
 impl Drop for AtomicFile {
     fn drop(&mut self) {
         if !self.committed && !self.inplace {
-            // Best-effort cleanup of temp file (skip in inplace mode — file is the final path)
+            // Best-effort cleanup of temp file (skip in inplace mode: file is the final path)
             let temp = self.temp_path.clone();
             let _ = std::fs::remove_file(&temp);
         }
@@ -223,7 +223,7 @@ impl ResumableFile {
         if !self.inplace {
             fs::remove_file(&self.temp_path).await
         } else {
-            // In inplace mode, the temp file IS the final file — remove it
+            // In inplace mode, the temp file IS the final file: remove it
             fs::remove_file(&self.final_path).await
         }
     }
@@ -232,7 +232,7 @@ impl ResumableFile {
 impl Drop for ResumableFile {
     fn drop(&mut self) {
         if !self.committed {
-            // INTENTIONALLY keep .aerotmp on failure — this is the whole point
+            // INTENTIONALLY keep .aerotmp on failure: this is the whole point
             // of ResumableFile: partial data is preserved for later resume.
             tracing::debug!(
                 "ResumableFile: keeping partial download at {}",

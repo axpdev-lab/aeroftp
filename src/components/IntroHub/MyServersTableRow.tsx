@@ -130,7 +130,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     } : undefined;
     const quotaCells = (() => {
         if (!quotaSupported) {
-            return { used: '—', total: '—', pct: '—', toneText: TONE_TEXT_CLASS.unknown };
+            return { used: '-', total: '-', pct: '-', toneText: TONE_TEXT_CLASS.unknown };
         }
         const q = server.lastQuota;
         if (!q || !q.total || q.total <= 0) {
@@ -138,7 +138,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         }
         const { tone, pct } = getStorageTone(q.used, q.total, thresholds);
         const pctText = pct === null
-            ? '—'
+            ? '-'
             : pct >= 10
                 ? `${Math.round(pct)}%`
                 : `${Math.round(pct * 10) / 10}%`;

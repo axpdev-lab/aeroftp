@@ -1,4 +1,4 @@
-//! W2.3 — `StreamingAtomicWriter`: chunk-driven counterpart of
+//! W2.3: `StreamingAtomicWriter`: chunk-driven counterpart of
 //! `delta_transport_impl::write_atomic_chunked`.
 //!
 //! Where `write_atomic_chunked` takes a fully-materialized `&[u8]`,
@@ -37,7 +37,7 @@
 //! *replaces* the extension, which would map both `data.csv` and
 //! `data.json` to the same `data.aerotmp` and silently destroy one of
 //! them. We instead **append** `.aerotmp` so `data.csv` becomes
-//! `data.csv.aerotmp` — same naming convention used by
+//! `data.csv.aerotmp`: same naming convention used by
 //! `delta_transport_impl::temp_path_for` (minus its uniqueness salt).
 //! The single-`.aerotmp`-per-target shape is intentional: it gives the
 //! W2.3 acceptance test 7 (orphan recovery via truncate) a deterministic
@@ -87,7 +87,7 @@ fn temp_path_for_streaming(target: &Path) -> PathBuf {
 /// the caller invokes `finalize(mode, mtime)` to commit.
 ///
 /// **Always call `finalize` on success.** Dropping without finalizing
-/// leaves the `.aerotmp` orphan on disk by design — see the module
+/// leaves the `.aerotmp` orphan on disk by design: see the module
 /// docstring. The original `target` is never modified by the writer
 /// itself, only by the `rename` inside `finalize`.
 pub struct StreamingAtomicWriter {
@@ -107,7 +107,7 @@ pub struct StreamingAtomicWriter {
 impl StreamingAtomicWriter {
     /// Open `<target>.aerotmp` for writing. If a stale `.aerotmp` from a
     /// previous (crashed) session is in the way, it is truncated rather
-    /// than erroring out — this is the idempotent recovery path the W2.3
+    /// than erroring out: this is the idempotent recovery path the W2.3
     /// acceptance test 7 pins.
     ///
     /// The original `target` is **not** opened, modified, or even
@@ -153,7 +153,7 @@ impl StreamingAtomicWriter {
     ///   1. `flush` + `sync_all` on the open handle.
     ///   2. drop the handle (some kernels require this before rename
     ///      for cache coherency, mirroring `write_atomic_chunked`).
-    ///   3. apply `mode` to the temp (Unix only — silently ignored on
+    ///   3. apply `mode` to the temp (Unix only: silently ignored on
     ///      other platforms because the underlying `set_permissions`
     ///      cannot map the bits faithfully).
     ///   4. apply `mtime` (seconds + nanoseconds) to the temp via the
@@ -290,7 +290,7 @@ mod tests {
         tempfile::tempdir().expect("tempdir")
     }
 
-    /// Test 1 — the writer's `AsyncWrite` impl is byte-identical to
+    /// Test 1: the writer's `AsyncWrite` impl is byte-identical to
     /// concatenating the chunks and writing them to the target path.
     #[tokio::test]
     async fn streaming_atomic_writer_round_trips() {
@@ -310,7 +310,7 @@ mod tests {
         assert!(!temp.exists(), "rename must remove the temp file");
     }
 
-    /// Test 2 — pre-existing target with different bytes is overwritten
+    /// Test 2: pre-existing target with different bytes is overwritten
     /// by the rename cutover. The original bytes survive only until the
     /// rename completes; the test asserts the *post-finalize* state.
     #[tokio::test]
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(bytes, b"NEW PAYLOAD");
     }
 
-    /// Test 3 — kill-9 invariant: drop without finalize must leave the
+    /// Test 3: kill-9 invariant: drop without finalize must leave the
     /// original target untouched and the `.aerotmp` orphan on disk.
     #[tokio::test]
     async fn streaming_atomic_writer_kill9_invariant_keeps_target() {
@@ -346,7 +346,7 @@ mod tests {
             // Force the in-flight bytes to disk so the orphan assertion
             // below sees the "drop mid-write after partial flush" shape.
             w.flush().await.expect("flush");
-            // No finalize — drop the writer here.
+            // No finalize: drop the writer here.
         }
 
         let bytes = tokio::fs::read(&target).await.expect("read target");
@@ -360,7 +360,7 @@ mod tests {
         );
     }
 
-    /// Test 4 — `finalize(Some(mode), Some(mtime))` reflects on the
+    /// Test 4: `finalize(Some(mode), Some(mtime))` reflects on the
     /// final inode. Unix-gated because Windows file mode bits are not
     /// faithful.
     #[cfg(unix)]
@@ -383,14 +383,14 @@ mod tests {
         let mode_bits = meta.permissions().mode() & 0o777;
         assert_eq!(mode_bits, 0o600, "mode must be applied pre-rename");
 
-        // Verify mtime — read it back through the same `filetime` crate
+        // Verify mtime: read it back through the same `filetime` crate
         // we used to set it, to avoid platform discrepancies.
         let ft = filetime::FileTime::from_last_modification_time(&meta);
         assert_eq!(ft.unix_seconds(), mtime.0, "mtime seconds must match");
         assert_eq!(ft.nanoseconds(), mtime.1, "mtime nanoseconds must match");
     }
 
-    /// Test 5 — `bytes_written` accumulates accurately across N writes,
+    /// Test 5: `bytes_written` accumulates accurately across N writes,
     /// including a zero-length write (poll_write may legitimately
     /// return Ready(Ok(0)) for empty buffers; the counter must not
     /// over-count).
@@ -413,11 +413,11 @@ mod tests {
         assert_eq!(bytes, b"abcdefghij");
     }
 
-    /// Test 6 — defensive programming pin. `finalize` consumes `self`,
+    /// Test 6: defensive programming pin. `finalize` consumes `self`,
     /// so a "double finalize" is a compile-time impossibility. The test
     /// instead verifies (a) `committed()` returns `false` on a fresh
     /// writer and (b) the writer can be dropped without finalize and a
-    /// fresh writer afterwards lands the target normally — i.e. the
+    /// fresh writer afterwards lands the target normally: i.e. the
     /// no-finalize path leaves no lingering state that would block a
     /// retry.
     #[tokio::test]
@@ -437,8 +437,8 @@ mod tests {
         assert!(target.exists(), "target landed after finalize");
     }
 
-    /// Test 7 — orphan `.aerotmp` from a previous (crashed) session is
-    /// truncated by `new()` rather than failing — the idempotent
+    /// Test 7: orphan `.aerotmp` from a previous (crashed) session is
+    /// truncated by `new()` rather than failing: the idempotent
     /// recovery path that the cleanup CLI is the long-term solution
     /// for, but that the per-instance `new()` must not block on.
     #[tokio::test]
@@ -463,7 +463,7 @@ mod tests {
         );
     }
 
-    /// Integration pin — `apply_delta_streaming` (W2.2) drives the
+    /// Integration pin: `apply_delta_streaming` (W2.2) drives the
     /// writer end-to-end. This is the production wiring W2.5 will land,
     /// minus the `download_inner` plumbing. Verifies that the producer
     /// + sink composition produces the expected reconstructed file.
@@ -510,7 +510,7 @@ mod tests {
         assert_eq!(on_disk, expected);
     }
 
-    /// Diagnostic helper — `temp_path_for_streaming` preserves the full
+    /// Diagnostic helper: `temp_path_for_streaming` preserves the full
     /// extension chain (the deviation from the plan documented in the
     /// module docstring).
     #[test]
@@ -525,7 +525,7 @@ mod tests {
     }
 
     /// Smoke pin against any future buffering regression on
-    /// `tokio::fs::File` — interleave writes with tokio yields and
+    /// `tokio::fs::File`: interleave writes with tokio yields and
     /// verify the final bytes are intact and ordered.
     #[tokio::test]
     async fn streaming_atomic_writer_survives_tokio_yields() {

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * SettingsAeroCloudTab — Full AeroCloud configuration panel.
+ * SettingsAeroCloudTab: Full AeroCloud configuration panel.
  * Surfaces all settings that were previously only in CloudPanel settings modal,
  * plus new options (conflict strategy, exclude patterns, sync_on_startup).
  */
@@ -121,7 +121,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
     }
   }, []);
 
-  // Toggle acts as Pause/Resume — preserves config on OFF. Use CloudPanel's
+  // Toggle acts as Pause/Resume: preserves config on OFF. Use CloudPanel's
   // Disable button to fully remove the configuration.
   const handleTogglePaused = useCallback(async (running: boolean) => {
     try {

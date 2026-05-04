@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useState, useCallback } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -121,7 +121,7 @@ export function useAIChatImages() {
                 }
                 if (item.type === 'text/plain') hasText = true;
             }
-            // Text in clipboard — let browser handle paste, skip arboard (avoids X11 timeout)
+            // Text in clipboard: let browser handle paste, skip arboard (avoids X11 timeout)
             if (hasText) return;
         }
 

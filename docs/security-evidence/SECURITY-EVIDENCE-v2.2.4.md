@@ -1,7 +1,7 @@
-# Security Evidence — AeroFTP v2.2.4
+# Security Evidence: AeroFTP v2.2.4
 
 > Date: 18 February 2026
-> Release: v2.2.4 — Provider Marketplace, 2FA Vault, Remote Vault, CLI & Security Hardening
+> Release: v2.2.4: Provider Marketplace, 2FA Vault, Remote Vault, CLI & Security Hardening
 > Auditors: 4x Claude Opus 4.6 (Rust Backend, Frontend Components, Security Deep-Dive, Architecture & Integration) + GPT-5.3 Codex (Severe Deep Audit)
 
 ## Audit Scope
@@ -28,13 +28,13 @@ Five independent reviewers audited all new v2.2.4 code:
 ## Detailed Findings & Fixes
 
 ### P0-SEC-001: TOTP State Management (3 Mutex → 1)
-- **Finding**: Three separate `Mutex<Option<String>>` fields for `pending_secret`, `enabled`, `active_secret` — non-atomic state transitions possible
+- **Finding**: Three separate `Mutex<Option<String>>` fields for `pending_secret`, `enabled`, `active_secret`: non-atomic state transitions possible
 - **Fix**: Consolidated into single `Mutex<TotpInner>` struct with `setup_verified: bool` gate
 - **File**: `src-tauri/src/totp.rs`
 - **Verification**: `cargo check` passes, state transitions are atomic
 
 ### P0-SEC-002: TOTP Brute-Force via IPC
-- **Finding**: No rate limiting on TOTP verification — attacker with XSS could brute-force 6-digit codes (1M combinations)
+- **Finding**: No rate limiting on TOTP verification: attacker with XSS could brute-force 6-digit codes (1M combinations)
 - **Fix**: Exponential backoff: `MAX_FAILED_ATTEMPTS=5`, `BASE_LOCKOUT_SECS=30`, doubling per attempt, capped at 15 minutes. `check_rate_limit()` + `record_failure()` helpers
 - **File**: `src-tauri/src/totp.rs`
 - **Verification**: After 5 failed attempts, 6th attempt returns "Too many failed attempts" error
@@ -64,14 +64,14 @@ Five independent reviewers audited all new v2.2.4 code:
 - **Verification**: Remote Vault UI visible when connected to server
 
 ### P1-ARCH-001: Cohere Base URL Incompatible
-- **Finding**: Cohere `/v2` API is NOT OpenAI-compatible — different request/response format
+- **Finding**: Cohere `/v2` API is NOT OpenAI-compatible: different request/response format
 - **Fix**: Changed to `/compatibility` endpoint which provides OpenAI-compatible routing
 - **File**: `src/types/ai.ts`
 - **Verification**: Cohere provider can be tested with API key
 
 ### P1-ARCH-002: Perplexity Tool Format Wrong
 - **Finding**: Perplexity Sonar models do not support function calling despite `toolFormat: 'native'`
-- **Fix**: Changed to `'text'` — tools described in system prompt as text
+- **Fix**: Changed to `'text'`: tools described in system prompt as text
 - **File**: `src/components/DevTools/aiProviderProfiles.ts`
 - **Verification**: Perplexity requests no longer include `tools[]` parameter
 
@@ -88,14 +88,14 @@ Five independent reviewers audited all new v2.2.4 code:
 - **Verification**: Multiple `initCspReporter()` calls register only one listener
 
 ### P1-ARCH-005: SVG Gradient ID Collisions
-- **Finding**: QwenIcon and CohereIcon use static `id="qwen-grad"` / `id="cohere-grad"` — collisions when multiple instances mounted
+- **Finding**: QwenIcon and CohereIcon use static `id="qwen-grad"` / `id="cohere-grad"`: collisions when multiple instances mounted
 - **Fix**: Both components now use `React.useId()` for unique gradient IDs
 - **File**: `src/components/DevTools/AIIcons.tsx`
 - **Verification**: `npm run build` passes, each icon instance gets unique gradient ID
 
 ### P1-ARCH-006: Dead Default Export
 - **Finding**: `AIIcons.tsx` line 157 has unused `export default` object
-- **Fix**: Removed — all consumers use named imports
+- **Fix**: Removed: all consumers use named imports
 - **File**: `src/components/DevTools/AIIcons.tsx`
 - **Verification**: `npm run build` passes, no import errors
 

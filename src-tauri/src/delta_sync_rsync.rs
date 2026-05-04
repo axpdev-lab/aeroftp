@@ -8,20 +8,20 @@
 //! - Typed result with fallback reason, so the caller can log/report accurately
 //!
 //! The sync loop doesn't know (and shouldn't know) anything about rsync, SSH exec,
-//! or remote probing — it just calls [`transfer_with_delta`] and gets back either
+//! or remote probing: it just calls [`transfer_with_delta`] and gets back either
 //! a success with real stats or a `used_delta = false` with a reason to use the
 //! classic download/upload path.
 //!
 //! # Cross-OS status (PR-T11)
 //! The adapter itself is cross-platform. The only Unix-only reachability
 //! condition is the provider returning `None` from `delta_transport()` on
-//! Windows when the `aerorsync` feature is disabled — in that
+//! Windows when the `aerorsync` feature is disabled: in that
 //! case `try_delta_transfer` short-circuits to `None` silently and the
 //! caller proceeds with classic SFTP, identical to the behavior on Unix
 //! for non-SFTP providers.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // Cross-platform. Binary-rsync code paths live behind `RsyncBinaryTransport`
 // which is itself `#[cfg(unix)]`; the downcast/probe logic here works
@@ -186,7 +186,7 @@ static PROBE_CACHE: LazyLock<TokioMutex<HashMap<String, CacheEntry>>> =
 /// Probe remote capability via the transport, with 5-minute per-session cache.
 ///
 /// Returns the cached result if present and fresh; otherwise runs a live probe
-/// and stores the outcome. Cache stores failures too — if rsync isn't on the
+/// and stores the outcome. Cache stores failures too: if rsync isn't on the
 /// remote, we don't want to re-probe every file.
 async fn probe_capability_cached(
     transport: &dyn DeltaTransport,
@@ -320,7 +320,7 @@ pub async fn transfer_with_delta(
             // classic fallback (e.g. SSH host-key pinning mismatch). The
             // caller is responsible for surfacing the error to the UI.
             tracing::error!(
-                "delta sync {:?} hard rejection: {} — classic fallback suppressed",
+                "delta sync {:?} hard rejection: {}: classic fallback suppressed",
                 direction,
                 msg
             );
@@ -439,7 +439,7 @@ pub async fn check_delta_eligibility_with_transport(
 /// `provider_transfer_executor` and any future call site that wants delta sync
 /// as an optimization layer. It never panics, never blocks on I/O outside of
 /// the transfer itself, and downcasts using the existing `as_any_mut()` entry
-/// point on `StorageProvider` — no new trait methods are introduced.
+/// point on `StorageProvider`: no new trait methods are introduced.
 ///
 /// The post-downcast lifecycle (probe + transfer + typed-result translation)
 /// lives in [`try_delta_transfer_with_transport`] so integration tests can
@@ -452,7 +452,7 @@ pub async fn try_delta_transfer(
     remote_path: &str,
 ) -> Option<DeltaSyncResult> {
     // Only SFTP is delta-eligible in Fase 1. Downcasting via `as_any_mut()` keeps
-    // the generic trait intact — we don't need a new `delta_transport_context()`
+    // the generic trait intact: we don't need a new `delta_transport_context()`
     // contract on every provider implementation.
     let sftp = provider
         .as_any_mut()
@@ -462,7 +462,7 @@ pub async fn try_delta_transfer(
 
     // Session key: stable per connection (host+user). When the user reconnects
     // with different credentials, `invalidate_session_cache()` should be called
-    // by the connection lifecycle — for now the 5-minute TTL handles staleness.
+    // by the connection lifecycle: for now the 5-minute TTL handles staleness.
     let handle_ptr = sftp
         .handle_shared()
         .as_ref()
@@ -519,12 +519,12 @@ pub async fn check_delta_eligibility(
     Some(check_delta_eligibility_with_transport(transport.as_ref(), &session_key).await)
 }
 
-/// P3-T01 W4 — open a delta-sync batch for the current provider session.
+/// P3-T01 W4: open a delta-sync batch for the current provider session.
 ///
 /// Returns `None` when:
 /// - The provider is not delta-eligible (non-SFTP, password auth, etc.)
 /// - The transport's `begin_batch()` returns a [`NoopBatch`] marker
-///   (transport does not support session reuse — caller should fall
+///   (transport does not support session reuse: caller should fall
 ///   through to the per-file single-shot path).
 /// - `begin_batch()` itself returns an error (logged at warn).
 ///
@@ -551,7 +551,7 @@ pub async fn open_delta_batch(
         }
         Ok(_) => {
             tracing::debug!(
-                "delta batch open: transport={} returned NoopBatch — single-shot path",
+                "delta batch open: transport={} returned NoopBatch: single-shot path",
                 transport.name()
             );
             None
@@ -566,7 +566,7 @@ pub async fn open_delta_batch(
     }
 }
 
-/// P3-T01 W4.1 — adapter that runs a single file transfer through an
+/// P3-T01 W4.1: adapter that runs a single file transfer through an
 /// already-open [`DeltaBatch`] handle. The batch keeps an SSH session
 /// alive across N files, so the per-file cost drops from full handshake
 /// to channel-exec open. Returns the same [`DeltaSyncResult`] shape as
@@ -605,7 +605,7 @@ pub async fn try_delta_transfer_with_batch(
         )),
         Err(RsyncError::HardRejection(msg)) => {
             tracing::error!(
-                "delta batch {:?} hard rejection: {msg} — classic fallback suppressed",
+                "delta batch {:?} hard rejection: {msg}: classic fallback suppressed",
                 direction,
             );
             DeltaSyncResult::hard_error(sanitize_rsync_message(&msg))
@@ -719,7 +719,7 @@ mod tests {
             "test-hard-rejection",
         )
         .await
-        .expect("must succeed — hard rejection is a typed result, not an Err");
+        .expect("must succeed: hard rejection is a typed result, not an Err");
         assert!(!r.used_delta);
         assert!(
             r.fallback_reason.is_none(),

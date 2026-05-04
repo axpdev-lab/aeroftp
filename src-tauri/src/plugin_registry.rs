@@ -1,10 +1,10 @@
-//! Plugin Registry — fetches and installs plugins from a remote GitHub-based registry.
+//! Plugin Registry: fetches and installs plugins from a remote GitHub-based registry.
 //!
 //! Registry URL: https://raw.githubusercontent.com/axpdev-lab/aeroftp-plugins/main/registry.json
 //! Plugins are downloaded, integrity-verified (SHA-256), and installed to ~/.config/aeroftp/plugins/.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::plugins::PluginManifest;
 use reqwest::Client;

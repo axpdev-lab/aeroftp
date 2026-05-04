@@ -1,4 +1,4 @@
-//! Core tool dispatcher condiviso GUI + CLI + MCP — **Gate 1** (infrastruttura pura).
+//! Core tool dispatcher condiviso GUI + CLI + MCP: **Gate 1** (infrastruttura pura).
 //!
 //! Questo modulo è la base del piano T3 descritto in
 //! `docs/dev/roadmap/APPENDIX-C-Y-D/APPENDIX-C/tasks/2026-04-21_Piano_T3_Core_Tool_Engine.md`.
@@ -8,14 +8,14 @@
 //! `mcp::tools::execute_tool`). Gate 2 (per-area migration) e Gate 3
 //! (deprecazione vecchi dispatcher) restano aperti.
 //!
-//! Design note — `Surfaces` via wrapper `u8` invece di `bitflags`:
+//! Design note: `Surfaces` via wrapper `u8` invece di `bitflags`:
 //! evitiamo una nuova dep Cargo in Gate 1. L'ergonomia (`contains`,
 //! `insert`, `remove`, `|`) è replicata manualmente; quando il piano
 //! approda in Gate 2 si potrà valutare se passare a `bitflags` per
 //! avere `Debug` / `Display` automatici.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde_json::{json, Value};
 use std::sync::{Arc, LazyLock};
@@ -101,7 +101,7 @@ pub struct ToolDef {
 
 /// Contesto per-surface passato al dispatcher. Ogni surface fornisce
 /// una propria impl (`TauriToolCtx`, `CliToolCtx`, `McpToolCtx`);
-/// il dispatcher non conosce Tauri, libc o ssh2 — vede solo i trait.
+/// il dispatcher non conosce Tauri, libc o ssh2: vede solo i trait.
 ///
 /// I default method mantengono `context_local_path` / `approval_grant_id`
 /// / `extreme_mode` opzionali: il CLI oggi non propaga alcuni di questi
@@ -1149,7 +1149,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_tail",
-            description: "Return the last N lines of a remote UTF-8 text file (default 50, cap 10000). Mirrors `aeroftp tail` from the CLI. Useful for log inspection without downloading the full file. Streams the file through `download_to_bytes`. Hard cap on file size: 16 MB. Note: this is NOT a streaming `tail -f` — it is a one-shot read. For continuous follow, use the local CLI on a downloaded copy.",
+            description: "Return the last N lines of a remote UTF-8 text file (default 50, cap 10000). Mirrors `aeroftp tail` from the CLI. Useful for log inspection without downloading the full file. Streams the file through `download_to_bytes`. Hard cap on file size: 16 MB. Note: this is NOT a streaming `tail -f`: it is a one-shot read. For continuous follow, use the local CLI on a downloaded copy.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -1179,7 +1179,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_tree",
-            description: "Recursively list the contents of a remote directory as a flat JSON array, bounded by max_depth and max_entries. Mirrors `aeroftp tree` from the CLI. Output is flat (each entry includes `path` and `depth`) rather than nested — agents reconstruct hierarchy from `path` if needed, which is cheaper than deep nested JSON on large trees. Defaults: max_depth=3, max_entries=500. Hard caps: max_depth=20, max_entries=5000. Use this instead of N sequential aeroftp_list_files calls when exploring a layout.",
+            description: "Recursively list the contents of a remote directory as a flat JSON array, bounded by max_depth and max_entries. Mirrors `aeroftp tree` from the CLI. Output is flat (each entry includes `path` and `depth`) rather than nested: agents reconstruct hierarchy from `path` if needed, which is cheaper than deep nested JSON on large trees. Defaults: max_depth=3, max_entries=500. Hard caps: max_depth=20, max_entries=5000. Use this instead of N sequential aeroftp_list_files calls when exploring a layout.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -1261,7 +1261,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "dst_path": {"type": "string", "description": "Remote destination directory"},
                     "skip_existing": {"type": "boolean", "description": "Skip files where destination already has matching size+mtime (default: false)"},
                     "dry_run": {"type": "boolean", "description": "Plan without transferring (default: false)"},
-                    "max_files": {"type": "integer", "description": "Soft cap on planned files (default 1000, hard cap 10000). Plans exceeding the cap are rejected — narrow the path first."},
+                    "max_files": {"type": "integer", "description": "Soft cap on planned files (default 1000, hard cap 10000). Plans exceeding the cap are rejected: narrow the path first."},
                     "summary_only": {"type": "boolean", "description": "When dry_run=true, return only counters instead of the per-file plan (default: false)"}
                 },
                 "required": ["src_server", "src_path", "dst_server", "dst_path"],
@@ -1291,7 +1291,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_touch",
-            description: "Create an empty file or report an existing one. If the path exists, the call is a no-op (`action=\"exists\"`); otherwise an empty zero-byte file is uploaded (`action=\"created\"`). Useful for cache-bust triggers, lock files, `.maintenance` markers, opcache reset markers. Mtime-bump on existing files is NOT supported (most providers lack a portable utime API) — `touch` on existing files reports the state without modifying it.",
+            description: "Create an empty file or report an existing one. If the path exists, the call is a no-op (`action=\"exists\"`); otherwise an empty zero-byte file is uploaded (`action=\"created\"`). Useful for cache-bust triggers, lock files, `.maintenance` markers, opcache reset markers. Mtime-bump on existing files is NOT supported (most providers lack a portable utime API): `touch` on existing files reports the state without modifying it.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -1349,7 +1349,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_speed",
-            description: "Throughput benchmark for a saved profile: uploads a random payload, downloads it back, optionally verifies SHA-256 integrity, then deletes the test artifact. Returns upload/download bps + Mbps, integrity_verified, cleanup_ok. Default size 4 MiB, max 64 MiB (MCP cap), iterations clamped 1..3 (vs CLI 1..10) — agent-grade fast probe rather than long benchmark. Mirrors `aeroftp speed` from the CLI but tighter caps.",
+            description: "Throughput benchmark for a saved profile: uploads a random payload, downloads it back, optionally verifies SHA-256 integrity, then deletes the test artifact. Returns upload/download bps + Mbps, integrity_verified, cleanup_ok. Default size 4 MiB, max 64 MiB (MCP cap), iterations clamped 1..3 (vs CLI 1..10): agent-grade fast probe rather than long benchmark. Mirrors `aeroftp speed` from the CLI but tighter caps.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -1383,7 +1383,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_sync_doctor",
-            description: "Preflight risk summary for a sync between a local directory and a remote one. Lighter than `aeroftp_sync_tree dry_run=true` — counts files+bytes on both sides and emits a list of human-readable risk strings (delete enabled, bidirectional with no track-renames, remote unreachable, ...) plus a `suggested_next_command` agent can echo to the user. NO file-level plan. Hard cap on remote scan: 500k entries / depth 100. Mirrors `aeroftp sync-doctor` from the CLI.",
+            description: "Preflight risk summary for a sync between a local directory and a remote one. Lighter than `aeroftp_sync_tree dry_run=true`: counts files+bytes on both sides and emits a list of human-readable risk strings (delete enabled, bidirectional with no track-renames, remote unreachable, ...) plus a `suggested_next_command` agent can echo to the user. NO file-level plan. Hard cap on remote scan: 500k entries / depth 100. Mirrors `aeroftp sync-doctor` from the CLI.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -1455,7 +1455,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_reconcile",
-            description: "Categorized diff superset of `aeroftp_check_tree`: reports the same 4 buckets (match, differ, missing_local, missing_remote) plus elapsed time and a `suggested_next_command` (CLI-style `aeroftp-cli sync` invocation). Mirrors `aeroftp reconcile` from the CLI. Use `aeroftp_check_tree` when you want the same diff with per-group caps and `summary_only` short-circuit; use `aeroftp_reconcile` when you want elapsed-time + next-command for an end-to-end agent report. NOT capped by max_entries_reported — full lists returned.",
+            description: "Categorized diff superset of `aeroftp_check_tree`: reports the same 4 buckets (match, differ, missing_local, missing_remote) plus elapsed time and a `suggested_next_command` (CLI-style `aeroftp-cli sync` invocation). Mirrors `aeroftp reconcile` from the CLI. Use `aeroftp_check_tree` when you want the same diff with per-group caps and `summary_only` short-circuit; use `aeroftp_reconcile` when you want elapsed-time + next-command for an end-to-end agent report. NOT capped by max_entries_reported: full lists returned.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -1465,7 +1465,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "checksum": {"type": "boolean", "description": "Compute hashes on both sides where supported (default: false)"},
                     "one_way": {"type": "boolean", "description": "Skip remote-only entries (default: false)"},
                     "exclude": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns to exclude"},
-                    "summary_only": {"type": "boolean", "description": "Drop the `groups` arrays — only counters + elapsed + suggested_next_command (default: false)"}
+                    "summary_only": {"type": "boolean", "description": "Drop the `groups` arrays: only counters + elapsed + suggested_next_command (default: false)"}
                 },
                 "required": ["server", "local_dir", "remote_dir"],
             }),
@@ -1677,7 +1677,7 @@ pub fn find_tool(name: &str) -> Option<&'static ToolDef> {
 /// 1. lookup del tool in `TOOL_DEFINITIONS`
 /// 2. validazione surface
 /// 3. validazione `required` JSON Schema
-/// 4. dispatch — in Gate 1 ritorna `ToolError::NotMigrated` per forzare
+/// 4. dispatch: in Gate 1 ritorna `ToolError::NotMigrated` per forzare
 ///    i call site legacy (GUI/CLI/MCP) a continuare a gestire i loro
 ///    tool fino a Gate 2.
 pub async fn dispatch_tool(
@@ -1920,7 +1920,7 @@ mod tests {
     }
 
     // Minimal ToolCtx mock for dispatcher shape tests. Inline no-op
-    // EventSink — we could grow this into a shared helper in Gate 2
+    // EventSink: we could grow this into a shared helper in Gate 2
     // once multiple test suites need a silent sink.
     struct NoopSink;
     impl EventSink for NoopSink {

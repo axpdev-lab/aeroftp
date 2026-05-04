@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroFTP Universal Credential Vault
 // Single encrypted vault for ALL credential types:
@@ -11,7 +11,7 @@
 // - Auto mode (default): passphrase stored in OS keyring, vault.key stores only a mode marker
 // - Master mode (optional): vault.key passphrase encrypted with Argon2id(user_password) + AES-GCM
 //
-// v2.0 — February 2026
+// v2.0: February 2026
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use secrecy::zeroize::Zeroize;
@@ -369,7 +369,7 @@ impl CredentialStore {
         let lock_path = dir.join(Self::VAULT_INIT_LOCK_FILENAME);
 
         for attempt in 0..Self::VAULT_INIT_LOCK_MAX_RETRIES {
-            // Try atomic creation — fails if file already exists
+            // Try atomic creation: fails if file already exists
             match std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -379,7 +379,7 @@ impl CredentialStore {
                     return Ok(lock_path);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    // Lock file exists — check if stale
+                    // Lock file exists: check if stale
                     if let Ok(metadata) = std::fs::metadata(&lock_path) {
                         if let Ok(modified) = metadata.modified() {
                             if let Ok(elapsed) = modified.elapsed() {
@@ -395,7 +395,7 @@ impl CredentialStore {
                             }
                         }
                     }
-                    // Lock is held by another process — wait and retry
+                    // Lock is held by another process: wait and retry
                     if attempt < Self::VAULT_INIT_LOCK_MAX_RETRIES - 1 {
                         std::thread::sleep(std::time::Duration::from_millis(
                             Self::VAULT_INIT_LOCK_RETRY_MS,
@@ -707,7 +707,7 @@ impl CredentialStore {
         new_key_file.write()?;
         delete_passphrase_from_keyring();
 
-        info!("Master password enabled — vault.key encrypted");
+        info!("Master password enabled: vault.key encrypted");
         Ok(())
     }
 
@@ -728,7 +728,7 @@ impl CredentialStore {
         };
         new_key_file.write()?;
 
-        info!("Master password disabled — vault key moved back to system keyring");
+        info!("Master password disabled: vault key moved back to system keyring");
         Ok(())
     }
 
@@ -899,7 +899,7 @@ impl CredentialStore {
             }
             #[cfg(not(windows))]
             {
-                // On Unix rename is atomic even if destination exists — this shouldn't fail
+                // On Unix rename is atomic even if destination exists: this shouldn't fail
                 return Err(CredentialError::Io(std::io::Error::other(
                     "vault.db rename failed",
                 )));
@@ -909,7 +909,7 @@ impl CredentialStore {
         if let Ok(f) = std::fs::File::open(path) {
             let _ = f.sync_all();
         }
-        // fsync parent directory (Unix only — Windows doesn't support opening dirs as files)
+        // fsync parent directory (Unix only: Windows doesn't support opening dirs as files)
         #[cfg(unix)]
         if let Some(parent) = path.parent() {
             if let Ok(dir) = std::fs::File::open(parent) {
@@ -923,7 +923,7 @@ impl CredentialStore {
 
 // ============ Shared Helpers ============
 
-// fsync_file_and_parent removed — fsync logic is now inline in write_vault/VaultKeyFile::write
+// fsync_file_and_parent removed: fsync logic is now inline in write_vault/VaultKeyFile::write
 // with platform-specific handling (Windows can't open directories as files)
 
 /// Get aeroftp config directory, creating it with secure permissions if needed

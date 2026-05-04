@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -69,7 +69,7 @@ export const SyncScheduler: React.FC<SyncSchedulerProps> = ({ disabled }) => {
             })
             .catch(() => {});
 
-        // Listen for schedule events from backend — guardedUnlisten handles
+        // Listen for schedule events from backend: guardedUnlisten handles
         // the unmount-before-resolve race without bespoke mounted tracking.
         const disposeListener = guardedUnlisten(
             listen<{ next_sync_in_secs?: number; enabled?: boolean; paused?: boolean }>(

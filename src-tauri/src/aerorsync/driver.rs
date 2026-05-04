@@ -2,11 +2,11 @@
 //!
 //! The driver composes the stable pieces owned by other modules:
 //!
-//! - transport (`transport::RemoteShellTransport`) — open a byte stream
-//! - codec    (`protocol::AerorsyncFrameCodec`)       — encode / decode messages
-//! - session  (`session::AerorsyncSession`)      — validated state transitions
-//! - roles    (`remote_command::RemoteCommandSpec`) — capture-parity command shape
-//! - engine   (`engine_adapter::DeltaEngineAdapter`) — sigs / delta / apply
+//! - transport (`transport::RemoteShellTransport`): open a byte stream
+//! - codec    (`protocol::AerorsyncFrameCodec`)      : encode / decode messages
+//! - session  (`session::AerorsyncSession`)     : validated state transitions
+//! - roles    (`remote_command::RemoteCommandSpec`): capture-parity command shape
+//! - engine   (`engine_adapter::DeltaEngineAdapter`): sigs / delta / apply
 //!
 //! Nothing here talks to real SSH or real rsync wire format yet. The driver
 //! only exercises the contracts against a mock transport so every collaborator
@@ -15,15 +15,15 @@
 //! ## Two entry modes per direction
 //!
 //! Upload:
-//!   - `drive_upload(spec, UploadPlan)` — caller pre-computes deltas. Useful
+//!   - `drive_upload(spec, UploadPlan)`: caller pre-computes deltas. Useful
 //!     for unit tests or cached plans.
-//!   - `drive_upload_with_engine(spec, file_meta, source_data, adapter)` —
+//!   - `drive_upload_with_engine(spec, file_meta, source_data, adapter)` -
 //!     the driver receives the remote signatures and delegates delta
 //!     computation to the adapter internally. Typical production path.
 //!
 //! Download:
-//!   - `drive_download(spec, DownloadPlan)` — caller pre-computes signatures.
-//!   - `drive_download_with_engine(spec, destination_data, adapter)` — the
+//!   - `drive_download(spec, DownloadPlan)`: caller pre-computes signatures.
+//!   - `drive_download_with_engine(spec, destination_data, adapter)`: the
 //!     driver computes signatures, sends them, collects the remote delta,
 //!     and applies it to rebuild the file. `DriveOutcome.reconstructed` is
 //!     `Some(bytes)` for this path.
@@ -246,7 +246,7 @@ impl<T: RemoteShellTransport> SessionDriver<T> {
             .await?;
         self.guarded_transition(SessionState::Transferring)?;
 
-        // 7. Summary frame — authoritative literal/matched counters.
+        // 7. Summary frame: authoritative literal/matched counters.
         let summary_msg = self.recv_non_error(&mut stream).await?;
         let summary = match summary_msg {
             WireMessage::Summary(s) => s,

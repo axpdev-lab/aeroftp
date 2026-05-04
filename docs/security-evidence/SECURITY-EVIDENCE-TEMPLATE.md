@@ -1,4 +1,4 @@
-# Security Evidence — vX.Y.Z
+# Security Evidence: vX.Y.Z
 
 > Public release security evidence pack for AeroFTP.
 > Tracks security claims, applied fixes, verification status, and acceptance gates.

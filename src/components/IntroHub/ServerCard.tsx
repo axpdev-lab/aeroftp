@@ -21,9 +21,9 @@ import { HealthRadial } from './HealthRadial';
 
 /** Compact storage usage bar for the detailed card layout footer. Reads from
  *  `server.lastQuota` (cached on the last successful connection). Returns
- *  null when no quota is cached — caller decides whether to render an empty
+ *  null when no quota is cached: caller decides whether to render an empty
  *  slot. Many providers (S3, raw FTP/SFTP, WebDAV without quota support)
- *  never produce one, and a "— / —" placeholder is just visual noise. */
+ *  never produce one, and a "- / -" placeholder is just visual noise. */
 function StorageUsageBar({
     quota,
     supported,
@@ -49,7 +49,7 @@ function StorageUsageBar({
     const { used, total } = quota;
     const { tone, pct } = getStorageTone(used, total, thresholds);
     const pctClamped = pct === null ? 0 : Math.max(0, Math.min(100, pct));
-    const pctLabel = pct === null ? '—' : pct >= 10 ? `${Math.round(pct)}` : `${Math.round(pct * 10) / 10}`;
+    const pctLabel = pct === null ? '-' : pct >= 10 ? `${Math.round(pct)}` : `${Math.round(pct * 10) / 10}`;
     return (
         <div
             className="leading-tight"
@@ -205,7 +205,7 @@ interface ServerCardProps {
     /** Reachability probe state, fed by useProviderHealth in detailed layout. */
     healthStatus?: 'up' | 'slow' | 'down' | 'pending' | 'unknown';
     healthLatencyMs?: number;
-    /** Click-to-recheck — re-runs the probe just for this profile. Lets the
+    /** Click-to-recheck: re-runs the probe just for this profile. Lets the
      *  user verify a flaky tab-wide scan result without re-running the whole
      *  batch. Only wired in detailed layout. */
     onRetryHealth?: (server: ServerProfile) => void;
@@ -355,7 +355,7 @@ export const ServerCard = React.memo(function ServerCard({
     const timeAgo = getTimeAgo(server.lastConnected);
     const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
     const handleMouseLeave = onHoverChange ? () => onHoverChange(null) : undefined;
-    // Card body click toggles cross-profile selection — but only when the click
+    // Card body click toggles cross-profile selection: but only when the click
     // didn't bubble from an interactive child (icon/button/input) which already
     // calls e.stopPropagation() in its own handler.
     const handleCardClick = onSelect ? (e: React.MouseEvent) => {
@@ -467,7 +467,7 @@ export const ServerCard = React.memo(function ServerCard({
 
             {/* Footer (detailed layout): quota left (only when cached), radial
                 right. The radial is rendered whenever the layout is detailed so
-                the click-to-retry affordance is always available — even before
+                the click-to-retry affordance is always available: even before
                 the first scan completes. The top border anchors the section so
                 cards with and without quota still feel uniform. */}
             {cardLayout === 'detailed' && (

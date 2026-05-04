@@ -1,14 +1,14 @@
-//! Koofr Cloud Storage Provider — Native REST API v2.1
+//! Koofr Cloud Storage Provider: Native REST API v2.1
 //!
 //! European privacy-focused cloud storage with 10 GB free tier.
-//! Mount-centric, path-based API — every file operation uses (mountId, path).
+//! Mount-centric, path-based API: every file operation uses (mountId, path).
 //!
 //! Auth: App Password (HTTP Basic) or OAuth2 Bearer token.
 //! API: <https://app.koofr.net/api/v2.1>
 //! Content: <https://app.koofr.net/content/api/v2.1>
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE, RANGE};
@@ -421,7 +421,7 @@ impl KoofrProvider {
                     "Forbidden" => ProviderError::PermissionDenied(message.to_string()),
                     "Unauthorized" => ProviderError::AuthenticationFailed(message.to_string()),
                     _ => ProviderError::ServerError(format!(
-                        "Koofr API error ({}): {} — {}",
+                        "Koofr API error ({}): {}: {}",
                         status, code, message
                     )),
                 };
@@ -620,7 +620,7 @@ impl StorageProvider for KoofrProvider {
         self.mount_id = primary.id.clone();
 
         // Fetch detailed mount info for accurate quota (list may omit spaceTotal/spaceUsed)
-        // NOTE: Koofr API returns spaceTotal/spaceUsed in MiB — multiply by 1024*1024 for bytes
+        // NOTE: Koofr API returns spaceTotal/spaceUsed in MiB: multiply by 1024*1024 for bytes
         const MIB: i64 = 1024 * 1024;
         let mount_detail_url = format!("{}/mounts/{}", API_BASE, self.mount_id);
         match self.get(&mount_detail_url).await {
@@ -1121,7 +1121,7 @@ impl StorageProvider for KoofrProvider {
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok(format!(
-            "Koofr Cloud Storage — Mount: {} — {:.1} GB / {:.1} GB",
+            "Koofr Cloud Storage: Mount: {}: {:.1} GB / {:.1} GB",
             self.mount_id,
             self.space_used as f64 / 1_073_741_824.0,
             self.space_total as f64 / 1_073_741_824.0,
@@ -1292,7 +1292,7 @@ impl StorageProvider for KoofrProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        // Refresh mount info — Koofr returns spaceTotal/spaceUsed in MiB
+        // Refresh mount info: Koofr returns spaceTotal/spaceUsed in MiB
         const MIB: i64 = 1024 * 1024;
         let url = format!("{}/mounts/{}", API_BASE, self.mount_id);
         let resp = self.get(&url).await?;

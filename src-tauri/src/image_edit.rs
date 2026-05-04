@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // ─── AeroImage: Image editing pipeline ──────────────────────────────────────
 //
@@ -85,7 +85,7 @@ pub async fn process_image(
         return Err("Image exceeds 100 MB limit".to_string());
     }
 
-    // Load image (blocking — spawn on rayon / blocking thread)
+    // Load image (blocking: spawn on rayon / blocking thread)
     let input = input_path.clone();
     let output = output_path.clone();
     let quality = jpeg_quality.unwrap_or(90).clamp(1, 100);
@@ -120,7 +120,7 @@ pub async fn process_image(
         // Save with appropriate format to temp file
         match ext.as_str() {
             "jpg" | "jpeg" => {
-                // JPEG: no alpha channel — convert to RGB8
+                // JPEG: no alpha channel: convert to RGB8
                 let rgb = img.to_rgb8();
                 let file = std::fs::File::create(&temp_path)
                     .map_err(|e| format!("Failed to create output file: {e}"))?;

@@ -4,7 +4,7 @@
 //! messages. Every variant tells the user *what happened* and *what to do next*.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use super::super::ProviderError;
 use std::fmt;
@@ -14,7 +14,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum GitHubError {
     // ── Auth ────────────────────────────────────────────────────────
-    /// 401 — token invalid or revoked.
+    /// 401: token invalid or revoked.
     Unauthorized,
     /// Token present but expired (fine-grained PAT).
     TokenExpired,
@@ -24,7 +24,7 @@ pub enum GitHubError {
     PermissionDenied(String),
 
     // ── Repository ──────────────────────────────────────────────────
-    /// 404 on the repo endpoint — wrong owner/repo or private without access.
+    /// 404 on the repo endpoint: wrong owner/repo or private without access.
     RepoNotFound,
     /// Named branch does not exist.
     BranchNotFound(String),
@@ -34,7 +34,7 @@ pub enum GitHubError {
     NotFound(String),
 
     // ── Write policy ────────────────────────────────────────────────
-    /// Branch is protected — direct pushes are blocked.
+    /// Branch is protected: direct pushes are blocked.
     ProtectedBranch(String),
     /// Repository rules require changes via pull request.
     RequiredPullRequest,
@@ -50,7 +50,7 @@ pub enum GitHubError {
     // ── Rate limits ─────────────────────────────────────────────────
     /// Primary rate limit hit (X-RateLimit-Remaining = 0).
     PrimaryRateLimit { reset_at: u64 },
-    /// Secondary (abuse) rate limit — Retry-After header present.
+    /// Secondary (abuse) rate limit: Retry-After header present.
     SecondaryRateLimit { retry_after: u64 },
 
     // ── Transport ───────────────────────────────────────────────────

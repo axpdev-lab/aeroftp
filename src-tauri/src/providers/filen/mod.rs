@@ -5,7 +5,7 @@
 //! All file names, metadata, and content are encrypted locally.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 pub mod notes;
 
@@ -708,7 +708,7 @@ impl StorageProvider for FilenProvider {
         let (auth_hash, derived_master_key) =
             Self::derive_auth_credentials(password, &auth_data.salt, auth_data.auth_version)?;
 
-        // Step 3: Login — Filen API requires twoFactorCode always; use "XXXXXX" when 2FA is not enabled
+        // Step 3: Login: Filen API requires twoFactorCode always; use "XXXXXX" when 2FA is not enabled
         let two_fa = self.config.two_factor_code.as_deref().unwrap_or("XXXXXX");
         let login_body = serde_json::json!({
             "email": self.config.email,
@@ -852,7 +852,7 @@ impl StorageProvider for FilenProvider {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         // F-LIST-01: Filen API does not support server-side pagination for dir/content.
         // The entire folder listing is returned in a single response. This is inherent
-        // to Filen's zero-knowledge design — the server cannot sort/page encrypted entries.
+        // to Filen's zero-knowledge design: the server cannot sort/page encrypted entries.
         let folder_uuid = if path == "." || path.is_empty() {
             self.current_folder_uuid.clone()
         } else {
@@ -1205,7 +1205,7 @@ impl StorageProvider for FilenProvider {
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
 
-        // H2: Download and decrypt each chunk (with retry) — with size cap
+        // H2: Download and decrypt each chunk (with retry): with size cap
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
         let mut all_data = Vec::new();
         for chunk_idx in 0..chunks {
@@ -1285,7 +1285,7 @@ impl StorageProvider for FilenProvider {
             )));
         }
 
-        // M9: Full file read into memory for encryption — Filen requires client-side AES-256-GCM
+        // M9: Full file read into memory for encryption: Filen requires client-side AES-256-GCM
         // encryption before upload, which currently buffers the entire file. For very large files
         // (>1GB), this may cause high memory usage. Chunked encryption would require significant
         // refactoring of the Filen encryption pipeline.
@@ -1709,7 +1709,7 @@ impl StorageProvider for FilenProvider {
         } else {
             // File rename: need encrypted name + metadata JSON with updated name
             let encrypted_name = self.encrypt_metadata(&new_name)?;
-            // H4: Reject empty key — using an empty key would produce a ciphertext
+            // H4: Reject empty key: using an empty key would produce a ciphertext
             // that any attacker could decrypt. Require re-listing the directory.
             let file_key = self.file_key_cache.get(uuid).cloned().ok_or_else(|| {
                 ProviderError::Other(
@@ -1719,7 +1719,7 @@ impl StorageProvider for FilenProvider {
             })?;
             if file_key.is_empty() {
                 return Err(ProviderError::Other(
-                    "Empty encryption key for file — cannot rename safely".to_string(),
+                    "Empty encryption key for file: cannot rename safely".to_string(),
                 ));
             }
             let mime = entry

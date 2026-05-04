@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -128,7 +128,7 @@ interface SyncReport {
   totalBytes: number;
   durationMs: number;
   // Absent when no file traveled through the rsync delta path in this
-  // run — same absence-vs-null contract as the backend MCP response.
+  // run: same absence-vs-null contract as the backend MCP response.
   delta_savings?: DeltaSavingsSummary;
   // W4 surface: populated by backend when batch stats are available.
   // In the current client-driven loop we compute a conservative fallback
@@ -265,7 +265,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
   const [isComparing, setIsComparing] = useState(false);
   // Tracks the outcome of the last completed compare, so the empty-state UI
   // can distinguish "not yet compared" from "compared but nothing to sync".
-  // `rawResultCount` is the count before the directional filter — if it's >0
+  // `rawResultCount` is the count before the directional filter: if it's >0
   // but differences is 0, we can hint that the direction hides everything.
   const [lastCompare, setLastCompare] = useState<{
     rawResultCount: number;
@@ -287,7 +287,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     new Map(),
   );
   // Per-file delta stats (only files that went through the rsync delta
-  // path — SFTP + key-auth + rsync on the remote). Used to render the
+  // path: SFTP + key-auth + rsync on the remote). Used to render the
   // per-row "delta" badge and to feed the end-of-sync savings card.
   // `useRef` instead of `useState` to avoid re-rendering the whole
   // list on every transfer_event (can fire hundreds of times per sync).
@@ -386,7 +386,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
 
-  // Batched state update refs — prevent O(n²) Map copies with large file counts
+  // Batched state update refs: prevent O(n²) Map copies with large file counts
   const pendingFileResultsRef = useRef<Map<string, FileSyncResult>>(new Map());
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSyncProgressRef = useRef<{
@@ -423,7 +423,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     [flushFileResults],
   );
 
-  // Virtual scroll handler — update scroll position for visible row calculation
+  // Virtual scroll handler: update scroll position for visible row calculation
   const handleVirtualScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
       setScrollTop(e.currentTarget.scrollTop);
@@ -581,7 +581,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     }, [deltaSyncEnabled, getSavedServerProfile, protocol]);
 
   // Sync paths from props when panel opens
-  // Hide all scrollbars while modal is open — WebKitGTK paints native scrollbars above CSS z-index
+  // Hide all scrollbars while modal is open: WebKitGTK paints native scrollbars above CSS z-index
   useEffect(() => {
     if (isOpen) {
       document.documentElement.classList.add("modal-open");
@@ -765,7 +765,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
       // Filter to only show differences (not identical)
       let differences = results.filter((r) => r.status !== "identical");
 
-      // Remove directory size/mtime mismatches — directory "size" is filesystem block
+      // Remove directory size/mtime mismatches: directory "size" is filesystem block
       // metadata (always 4.0 KB on ext4), not actual content size. Comparing is meaningless.
       // Only keep directories that are truly new (remote_only/local_only).
       differences = differences.filter(
@@ -907,7 +907,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     }
   };
 
-  // Cancel an ongoing compare/scan — signals the Rust backend to abort and release the FTP lock.
+  // Cancel an ongoing compare/scan: signals the Rust backend to abort and release the FTP lock.
   // IMPORTANT: do NOT call reset_cancel_flag here. The scan polls the flag between
   // directories; if we flip it back to false immediately, the running scan never
   // observes the cancellation and keeps walking the tree (I/O+CPU burn until done).
@@ -1078,7 +1078,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     }
   };
 
-  // #149: Dry-run export — JSON
+  // #149: Dry-run export: JSON
   const handleExportJSON = async () => {
     if (comparisons.length === 0) return;
     try {
@@ -1105,7 +1105,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     }
   };
 
-  // #149: Dry-run export — CSV
+  // #149: Dry-run export: CSV
   const handleExportCSV = async () => {
     if (comparisons.length === 0) return;
     try {
@@ -1137,7 +1137,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     }
   };
 
-  // #146: Safety Score — computed from comparisons
+  // #146: Safety Score: computed from comparisons
   const safetyScore = React.useMemo(() => {
     if (comparisons.length === 0) return null;
     const files = comparisons.filter((c) => !c.is_dir);
@@ -1290,7 +1290,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     setCompressionMode(result.compressionMode);
   };
 
-  // Speed mode change handler — applies preset values
+  // Speed mode change handler: applies preset values
   const handleSpeedModeChange = (mode: SpeedMode) => {
     setSpeedMode(mode);
     if (mode !== "maniac") {
@@ -1304,7 +1304,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     setCompressionMode(preset.compressionMode);
     setDeltaSyncEnabled(preset.deltaSyncEnabled);
 
-    // Maniac overrides are NOT applied here — they are gated behind maniacConfirmed
+    // Maniac overrides are NOT applied here: they are gated behind maniacConfirmed
     // See handleManiacConfirm below
 
     // Mark active profile as custom when speed mode changes
@@ -1513,7 +1513,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
       /* ignore */
     }
 
-    // Build transfer list — from comparisons or from journal entries (resume without compare)
+    // Build transfer list: from comparisons or from journal entries (resume without compare)
     let selectedComparisons: FileComparison[];
     if (resumeJournal && comparisons.length === 0) {
       // Resume mode: reconstruct minimal FileComparison objects from journal entries
@@ -1893,7 +1893,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
       const localFilePath = `${editLocalPath.replace(/\/+$/, "")}/${item.relative_path}`;
       const remoteFilePath = `${editRemotePath.replace(/\/+$/, "")}/${item.relative_path}`;
 
-      // Determine transfer direction — use conflict resolution if available
+      // Determine transfer direction: use conflict resolution if available
       // Conflicts without explicit resolution are safely skipped (falls through to else branch below)
       const conflictRes =
         item.status === "conflict"
@@ -2153,7 +2153,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
       }
 
       // FTP delay ONLY after successful transfers that opened a data connection
-      // Skipped/failed files never opened a data connection — no delay needed
+      // Skipped/failed files never opened a data connection: no delay needed
       if (isFtp && didTransfer && i < selectedComparisons.length - 1) {
         if (selectedComparisons.length > 100) {
           // Large batch: minimal delay, NOOP only every 10 files for keep-alive
@@ -2179,7 +2179,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
       completed++;
       updateSyncProgress(completed, selectedComparisons.length);
 
-      // Save journal checkpoint — adaptive interval to reduce I/O (F7)
+      // Save journal checkpoint: adaptive interval to reduce I/O (F7)
       const checkpointInterval =
         selectedComparisons.length > 2000
           ? 200
@@ -2246,7 +2246,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
       }
       // Effective directory-wide speedup = total_size / total_bytes_sent
       // (recomputed here instead of averaging per-file ratios, which
-      // would over-weight tiny fully-cached files — matches the
+      // would over-weight tiny fully-cached files: matches the
       // Rust-side aggregation in `apply_sync_tree_outcome`).
       const average_speedup =
         total_bytes_sent > 0 ? total_size / total_bytes_sent : null;
@@ -2759,8 +2759,8 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                         {c.relative_path}
                       </span>
                       <span className="text-gray-500 flex-shrink-0">
-                        {c.local_info ? formatSize(c.local_info.size) : "—"} /{" "}
-                        {c.remote_info ? formatSize(c.remote_info.size) : "—"}
+                        {c.local_info ? formatSize(c.local_info.size) : "-"} /{" "}
+                        {c.remote_info ? formatSize(c.remote_info.size) : "-"}
                       </span>
                       <div className="flex gap-1 flex-shrink-0">
                         <button
@@ -2904,7 +2904,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 </span>
               </div>
             </div>
-            {/* Delta Savings card — rendered only when at least
+            {/* Delta Savings card: rendered only when at least
                             one file traveled through the rsync delta path.
                             Absent otherwise (no "0 files" noise). Tailwind
                             `dark:` + a light/tokyo/cyber-tolerant palette
@@ -2941,7 +2941,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                             bytes: formatSize(
                               Math.max(0, syncReport.delta_savings.bytes_saved),
                             ),
-                            speedup: avg ? avg.toFixed(1) : "—",
+                            speedup: avg ? avg.toFixed(1) : "-",
                           })}
                     </div>
                     {(() => {
@@ -3204,7 +3204,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 ref={scrollContainerRef}
                 onScroll={handleVirtualScroll}
               >
-                {/* Virtual scroll container — total height for scrollbar, only visible rows rendered */}
+                {/* Virtual scroll container: total height for scrollbar, only visible rows rendered */}
                 <div
                   style={{ height: virtualTotalHeight, position: "relative" }}
                 >
@@ -3319,7 +3319,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                                   title={t("syncPanel.deltaBadgeTooltip", {
                                     speedup: deltaEntry.speedup
                                       ? deltaEntry.speedup.toFixed(1)
-                                      : "—",
+                                      : "-",
                                     sent: formatSize(deltaEntry.bytes_sent),
                                     total: formatSize(deltaEntry.total_size),
                                   })}
@@ -3360,10 +3360,10 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
           )}
         </div>
 
-        {/* Transfer progress — positioned at bottom to avoid layout shift */}
+        {/* Transfer progress: positioned at bottom to avoid layout shift */}
         {isSyncing && syncProgress && (
           <div className="sync-progress-wrapper">
-            {/* Batch progress bar — always visible even when individual files fail */}
+            {/* Batch progress bar: always visible even when individual files fail */}
             <div className="mb-2">
               <div className="flex justify-between text-xs text-gray-400 mb-1">
                 <span>
@@ -3387,7 +3387,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 />
               </div>
             </div>
-            {/* Per-file transfer progress — always visible during sync to prevent flicker */}
+            {/* Per-file transfer progress: always visible during sync to prevent flicker */}
             <TransferProgressBar
               percentage={currentFileProgress?.percentage ?? 0}
               filename={currentFileProgress?.filename}

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * Outline Icon Theme — Lucide stroke icons with color-coded file types
+ * Outline Icon Theme: Lucide stroke icons with color-coded file types
  * This is the default icon theme, matching the original AeroFTP icon set.
  */
 

@@ -4,7 +4,7 @@
 //! Uses OAuth2 for authentication. Supports US and EU regions.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use chrono;
@@ -375,7 +375,7 @@ impl StorageProvider for PCloudProvider {
             ));
         }
 
-        // pCloud returns HTTP 200 even for errors — must check JSON result field
+        // pCloud returns HTTP 200 even for errors: must check JSON result field
         let body: serde_json::Value = resp
             .json()
             .await
@@ -540,7 +540,7 @@ impl StorageProvider for PCloudProvider {
 
         let download_url = format!("https://{}{}", host, path);
 
-        // Step 2: Streaming download (no retry for data stream — only the link request is retried)
+        // Step 2: Streaming download (no retry for data stream: only the link request is retried)
         let resp = self
             .client
             .get(&download_url)
@@ -763,7 +763,7 @@ impl StorageProvider for PCloudProvider {
             )));
         }
 
-        // PA-008: Check pCloud JSON result field — pCloud returns result:0 for success
+        // PA-008: Check pCloud JSON result field: pCloud returns result:0 for success
         let upload_resp: PCloudUploadResponse = resp
             .json()
             .await
@@ -1327,7 +1327,7 @@ impl StorageProvider for PCloudProvider {
             urlencoding::encode(&resolved)
         );
 
-        // pCloud listrevisions rejects Bearer header — use query param auth
+        // pCloud listrevisions rejects Bearer header: use query param auth
         let resp: PCloudRevisions = self
             .get_with_token_param(&url)
             .await?
@@ -1548,8 +1548,8 @@ struct PCloudSimpleResponse {
 
 impl PCloudProvider {
     /// List items in the pCloud trash/recycle bin.
-    /// API: GET trash_list?access_token=TOKEN — returns metadata.contents[]
-    /// Note: pCloud trash/revisions endpoints reject Bearer header — must use query param auth.
+    /// API: GET trash_list?access_token=TOKEN: returns metadata.contents[]
+    /// Note: pCloud trash/revisions endpoints reject Bearer header: must use query param auth.
     pub async fn list_trash(&self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let url = format!("{}/trash_list?recursive=1", self.config.api_base());
         let resp: PCloudResponse = self

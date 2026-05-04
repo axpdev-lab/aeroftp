@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -8,7 +8,7 @@ import type { Components } from 'react-markdown';
 import Prism from 'prismjs';
 import DOMPurify from 'dompurify';
 
-// Prism core languages (same set as FilePreview.tsx — loaded once via Vite)
+// Prism core languages (same set as FilePreview.tsx: loaded once via Vite)
 import 'prismjs/components/prism-markup';
 import 'prismjs/components/prism-clike';
 import 'prismjs/components/prism-markup-templating';
@@ -196,7 +196,7 @@ function splitIntoFinalized(content: string, isStreaming: boolean): FinalizedSpl
             // We're at a code block opening. Find its close.
             const closeIdx = findCodeBlockClose(content, codeBlockStart);
             if (closeIdx === -1) {
-                // Unclosed code block — everything from cursor onward is in-progress
+                // Unclosed code block: everything from cursor onward is in-progress
                 break;
             }
             // Found a complete code block. Find the end of the closing ``` line.
@@ -238,7 +238,7 @@ function splitIntoFinalized(content: string, isStreaming: boolean): FinalizedSpl
         }
 
         if (splitAt === -1 || splitAt <= cursor) {
-            // No more safe split points found — rest is in-progress
+            // No more safe split points found: rest is in-progress
             break;
         }
 
@@ -353,7 +353,7 @@ function useMarkdownComponents(editorFilePath?: string, editorFileName?: string)
                             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlighted) }}
                         />
                     </pre>
-                    {/* Action buttons (visible on hover) — rendered after <pre> so DiffPreview flows naturally */}
+                    {/* Action buttons (visible on hover): rendered after <pre> so DiffPreview flows naturally */}
                     <CodeBlockActions
                         code={rawCode}
                         language={lang}
@@ -363,7 +363,7 @@ function useMarkdownComponents(editorFilePath?: string, editorFileName?: string)
                 </div>
             );
         },
-        // Links — open in external browser (SEC-010: validate href scheme)
+        // Links: open in external browser (SEC-010: validate href scheme)
         a({ href, children }) {
             const safeHref = href && /^(https?:|mailto:|#)/.test(href) ? href : undefined;
             return (
@@ -494,7 +494,7 @@ const MarkdownRendererInner: React.FC<MarkdownRendererProps> = ({
                     </ReactMarkdown>
                 );
             })}
-            {/* Streaming cursor indicator — only on the in-progress tail */}
+            {/* Streaming cursor indicator: only on the in-progress tail */}
             {isStreaming && (
                 <span className="inline-block w-1.5 h-4 bg-purple-400 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
             )}

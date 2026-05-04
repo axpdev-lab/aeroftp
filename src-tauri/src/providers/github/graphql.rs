@@ -5,7 +5,7 @@
 //! on behalf of the authenticated user.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde::Deserialize;
@@ -266,7 +266,7 @@ mod tests {
     fn test_classify_unprocessable_empty() {
         let err = GraphQLError {
             error_type: Some("UNPROCESSABLE".into()),
-            message: "Empty commit — no file changes provided".into(),
+            message: "Empty commit: no file changes provided".into(),
             path: None,
         };
         assert!(matches!(

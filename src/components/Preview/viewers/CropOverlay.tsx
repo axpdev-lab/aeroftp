@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * CropOverlay — AeroImage crop selection overlay
+ * CropOverlay: AeroImage crop selection overlay
  *
  * Renders a Photoshop-style crop rectangle with darkened surrounds,
  * 8 resize handles, and a dimension badge. Supports free and

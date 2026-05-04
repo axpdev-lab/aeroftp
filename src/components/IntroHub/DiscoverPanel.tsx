@@ -138,7 +138,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         return (saved as CatalogCategoryId) || 'protocols';
     });
 
-    // Provider health scan — per-tab, triggered on tab change
+    // Provider health scan: per-tab, triggered on tab change
     const { getStatus, scanItems, scanning } = useProviderHealth();
 
     const activeItems = useMemo(() => {
@@ -169,7 +169,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
 
     return (
         <div className="h-full flex gap-4">
-            {/* Category Sidebar — min stays at the original 13rem (~208px); on wider
+            {/* Category Sidebar: min stays at the original 13rem (~208px); on wider
                 windows it grows modestly (capped at 17rem) so longer category labels
                 stay readable without dominating the layout. */}
             <div className="shrink-0 space-y-1" style={{ width: 'clamp(13rem, 16vw, 17rem)' }}>

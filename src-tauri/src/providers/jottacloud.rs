@@ -11,7 +11,7 @@
 //! Listing: XML format parsed with quick-xml
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use base64::Engine;
@@ -233,7 +233,7 @@ impl JottacloudProvider {
         jotta_log("Refreshing access token");
         // RFC 6749 §6 `grant_type=refresh_token` (lowercase). The prior
         // "Jottacloud quirk: uppercase REFRESH_TOKEN" is no longer
-        // accepted by Jotta's OIDC server — the endpoint now returns
+        // accepted by Jotta's OIDC server: the endpoint now returns
         // `unsupported_grant_type` for the uppercase form, which forced
         // every second invocation to fall back to the single-use login
         // token (J1 finding part 2).
@@ -331,7 +331,7 @@ impl JottacloudProvider {
         let (rt, te, un) = match Self::load_persisted_refresh_token() {
             Some(data) => data,
             None => {
-                jotta_log("No persisted refresh token in vault — will use login token");
+                jotta_log("No persisted refresh token in vault: will use login token");
                 return Ok(false);
             }
         };
@@ -363,7 +363,7 @@ impl JottacloudProvider {
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             jotta_log(&format!(
-                "Persisted refresh token rejected by Jotta OIDC (status={}, body={}) — falling back to login token",
+                "Persisted refresh token rejected by Jotta OIDC (status={}, body={}): falling back to login token",
                 status,
                 sanitize_api_error(&body)
             ));
@@ -384,7 +384,7 @@ impl JottacloudProvider {
         self.username = un;
         self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
         // Jotta rotates the refresh token at every exchange. Persisting
-        // the rotated value is mandatory — if we keep the old one in the
+        // the rotated value is mandatory: if we keep the old one in the
         // on-disk slot, the next invocation reads an already-consumed
         // token and falls through to the (one-shot) login token, which
         // returns "Login token expired or already used". The prior
@@ -711,7 +711,7 @@ impl JottacloudProvider {
                                     || (root_depth.is_some()
                                         && depth == root_depth.unwrap() + 1)) =>
                         {
-                            // Direct child folder (full element) — inside <folders> or direct child of root
+                            // Direct child folder (full element): inside <folders> or direct child of root
                             let mut name = String::new();
                             let mut is_deleted = false;
                             for attr in e.attributes().flatten() {
@@ -776,7 +776,7 @@ impl JottacloudProvider {
                         && (in_folders_section
                             || (root_depth.is_some() && depth == root_depth.unwrap()))
                     {
-                        // Self-closing <folder name="X"/> — direct child
+                        // Self-closing <folder name="X"/>: direct child
                         let mut name = String::new();
                         let mut is_deleted = false;
                         for attr in e.attributes().flatten() {
@@ -1239,7 +1239,7 @@ impl StorageProvider for JottacloudProvider {
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(remote_path);
-        // M9: Full file read into memory — Jottacloud's upload API requires the complete body
+        // M9: Full file read into memory: Jottacloud's upload API requires the complete body
         // with an MD5 hash for deduplication. This limits practical upload size to available RAM.
         let data = tokio::fs::read(local_path)
             .await
@@ -1355,7 +1355,7 @@ impl StorageProvider for JottacloudProvider {
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
-        // Hard delete (?rm=true) — removes immediately without going to trash
+        // Hard delete (?rm=true): removes immediately without going to trash
         let url = format!("{}?rm=true", self.jfs_url(&resolved));
 
         let resp = self
@@ -1570,7 +1570,7 @@ impl StorageProvider for JottacloudProvider {
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok(format!(
-            "Jottacloud — User: {}, Device: {}, Mountpoint: {}",
+            "Jottacloud: User: {}, Device: {}, Mountpoint: {}",
             self.username, self.config.device, self.config.mountpoint
         ))
     }
@@ -1673,7 +1673,7 @@ impl JottacloudProvider {
             &xml[..xml.len().min(2000)]
         ));
 
-        // Parse trash listing — include ALL items (even "deleted" ones, since they ARE trash)
+        // Parse trash listing: include ALL items (even "deleted" ones, since they ARE trash)
         let entries = Self::parse_trash_xml(&xml);
         jotta_log(&format!("Trash: {} items", entries.len()));
         Ok(entries)
@@ -2050,7 +2050,7 @@ mod tests {
 
     #[test]
     fn parse_jotta_time_normalizes_nonstandard_format() {
-        // Jottacloud uses "-T" separator — parse_jotta_time should strip it
+        // Jottacloud uses "-T" separator: parse_jotta_time should strip it
         let out = JottacloudProvider::parse_jotta_time("2023-01-15-T10:30:45+0100");
         assert!(out.starts_with("2023-01-15"));
         // Fallback: string not parseable is returned cleaned (no "-T")

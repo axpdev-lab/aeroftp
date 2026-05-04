@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, X, ChevronDown, ChevronRight, Loader2, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
@@ -186,7 +186,7 @@ export const ToolApproval: React.FC<ToolApprovalProps> = ({ toolCall, onApprove,
                     </div>
                 )}
 
-                {/* Action buttons / status — bottom row */}
+                {/* Action buttons / status: bottom row */}
                 <div className="flex items-center gap-2 mt-2">
                     {isPending && toolCall.status === 'pending' && (
                         <>

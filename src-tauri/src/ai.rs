@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AI Provider Integration Module for AeroFTP
 // Supports: Google Gemini, OpenAI, Anthropic, xAI, OpenRouter, Ollama
@@ -937,7 +937,7 @@ mod openai_compat {
                 }
             }
             return Err(AIError::Api(format!(
-                "HTTP {} — {}",
+                "HTTP {}: {}",
                 status,
                 truncate_safe(&body, 500)
             )));
@@ -945,7 +945,7 @@ mod openai_compat {
 
         let openai_response: OpenAIResponse = serde_json::from_str(&body).map_err(|e| {
             AIError::InvalidResponse(format!(
-                "JSON parse error: {} — body: {}",
+                "JSON parse error: {}: body: {}",
                 e,
                 truncate_safe(&body, 200)
             ))
@@ -1359,7 +1359,7 @@ pub async fn list_models(
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
                 return Err(AIError::Api(format!(
-                    "HTTP {} — {}",
+                    "HTTP {}: {}",
                     status,
                     truncate_safe(&body, 200)
                 )));
@@ -1392,7 +1392,7 @@ pub async fn list_models(
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
                 return Err(AIError::Api(format!(
-                    "HTTP {} — {}",
+                    "HTTP {}: {}",
                     status,
                     truncate_safe(&body, 200)
                 )));
@@ -1421,7 +1421,7 @@ pub async fn list_models(
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
                 return Err(AIError::Api(format!(
-                    "HTTP {} — {}",
+                    "HTTP {}: {}",
                     status,
                     truncate_safe(&body, 200)
                 )));
@@ -1478,7 +1478,7 @@ pub async fn ollama_pull_model(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("HTTP {} — {}", status, truncate_safe(&body, 500)));
+        return Err(format!("HTTP {}: {}", status, truncate_safe(&body, 500)));
     }
 
     let mut stream = response.bytes_stream();
@@ -1600,7 +1600,7 @@ pub async fn gemini_create_cache(
         let msg = resp_body["error"]["message"]
             .as_str()
             .unwrap_or("Unknown error");
-        return Err(format!("HTTP {} — {}", status, msg));
+        return Err(format!("HTTP {}: {}", status, msg));
     }
 
     let name = resp_body["name"].as_str().unwrap_or("").to_string();
@@ -1641,7 +1641,7 @@ pub async fn ollama_list_running(base_url: String) -> Result<Vec<OllamaRunningMo
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("HTTP {} — {}", status, truncate_safe(&body, 500)));
+        return Err(format!("HTTP {}: {}", status, truncate_safe(&body, 500)));
     }
 
     let body: serde_json::Value = response

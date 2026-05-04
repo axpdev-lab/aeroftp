@@ -4,7 +4,7 @@
 //! including configuration structs, file entry representations, and error types.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -246,7 +246,7 @@ impl ProviderConfig {
     /// A3-05: Explicitly zeroize the password field to reduce credential exposure in memory.
     /// Call this after the password has been consumed (e.g., converted to SecretString).
     /// Cannot use `impl Drop` because ProviderConfig derives Clone and uses partial moves
-    /// across 20+ provider modules — Drop trait would break `..config.clone()` patterns.
+    /// across 20+ provider modules: Drop trait would break `..config.clone()` patterns.
     /// TODO: migrate `password: Option<String>` to `Option<SecretString>` for automatic zeroization.
     pub fn zeroize_password(&mut self) {
         use zeroize::Zeroize;

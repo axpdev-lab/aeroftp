@@ -1,5 +1,5 @@
 /**
- * VersionBrowser — Browse and restore archived file versions from .aeroversions/
+ * VersionBrowser: Browse and restore archived file versions from .aeroversions/
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Audio Player Component - AeroPlayer CYBER EDITION
@@ -274,7 +274,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 audioEl.load();
                 connectedAudioElements.delete(audioEl);
             }
-            // Disconnect Web Audio nodes before closing the context — prevents
+            // Disconnect Web Audio nodes before closing the context: prevents
             // the browser from retaining their references until the AudioContext
             // is garbage-collected.
             try { sourceNodeRef.current?.disconnect(); } catch { /* noop */ }
@@ -743,7 +743,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                             className={isFullscreen ? '' : 'rounded-lg'}
                             onContextLost={() => {
                                 // Auto-fallback to Canvas 2D when WebGL context is lost
-                                logger.warn('WebGL context lost — falling back to Canvas 2D');
+                                logger.warn('WebGL context lost: falling back to Canvas 2D');
                                 setGlShader(null);
                             }}
                         />

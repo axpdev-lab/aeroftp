@@ -6,7 +6,7 @@
 //! - Max line size: 1 MB
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 /// Maximum bytes per JSON-RPC line (1 MB).
 const MAX_LINE_BYTES: usize = 1_048_576;
 
-/// Async stdin reader — yields one JSON-RPC line at a time.
+/// Async stdin reader: yields one JSON-RPC line at a time.
 pub struct StdinReader {
     reader: BufReader<io::Stdin>,
 }
@@ -53,7 +53,7 @@ impl StdinReader {
     }
 }
 
-/// Async stdout writer — serialized JSON-RPC output.
+/// Async stdout writer: serialized JSON-RPC output.
 pub struct StdoutWriter {
     writer: Mutex<io::Stdout>,
 }

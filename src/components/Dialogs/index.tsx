@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Dialog components - Modal dialogs for confirmation, input, etc.
@@ -320,7 +320,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     };
 
     const formatDate = (dateStr: string | null | undefined): string => {
-        if (!dateStr) return '—';
+        if (!dateStr) return '-';
         try {
             const date = new Date(dateStr);
             return date.toLocaleString();
@@ -334,7 +334,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
 
     // Permission string parser (e.g., "drwxr-xr-x" or "0755")
     const parsePermissions = (perms: string | null | undefined): { display: string; octal?: string } => {
-        if (!perms) return { display: '—' };
+        if (!perms) return { display: '-' };
 
         // If it's already in rwx format
         if (perms.match(/^[d\-l][rwx\-]{9}$/)) {
@@ -367,7 +367,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
             const octal = mode.toString(8).padStart(3, '0');
             return parsePermissions(octal);
         }
-        return { display: '—' };
+        return { display: '-' };
     };
 
     const permInfo = getPermissionsInfo();

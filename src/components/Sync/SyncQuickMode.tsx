@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * SyncQuickMode — Quick Sync tab with preset cards and speed mode pills
- * "Made for freedom, made for all" — accessible to beginners and power users
+ * SyncQuickMode: Quick Sync tab with preset cards and speed mode pills
+ * "Made for freedom, made for all": accessible to beginners and power users
  */
 
 import React from 'react';
@@ -107,7 +107,7 @@ export const SyncQuickMode: React.FC<SyncQuickModeProps> = React.memo(({
                             </button>
                         );
                     })}
-                    {/* Custom card — shown when settings don't match any preset */}
+                    {/* Custom card: shown when settings don't match any preset */}
                     {activeProfileId === 'custom' && (
                         <button
                             className="sync-preset-card selected"
@@ -173,7 +173,7 @@ export const SyncQuickMode: React.FC<SyncQuickModeProps> = React.memo(({
                     <div className="flex items-center gap-2">
                         <Skull size={14} className="text-green-500" />
                         <span className="text-xs font-medium text-green-500">
-                            {t('syncPanel.maniacWarningTitle')} — {t('syncPanel.maniacActive')}
+                            {t('syncPanel.maniacWarningTitle')}: {t('syncPanel.maniacActive')}
                         </span>
                     </div>
                 </div>

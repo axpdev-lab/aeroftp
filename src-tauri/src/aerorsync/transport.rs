@@ -92,7 +92,7 @@ pub trait RemoteShellTransport: Send + Sync {
 ///
 /// `requested()` is the single source of truth; the wake closure only exists
 /// to unblock a sync worker stuck in a blocking read. If the closure is
-/// absent, the handle behaves as a pure best-effort flag — good for mocks.
+/// absent, the handle behaves as a pure best-effort flag: good for mocks.
 #[derive(Clone)]
 pub struct CancelHandle {
     flag: Arc<AtomicBool>,
@@ -133,7 +133,7 @@ impl std::fmt::Debug for CancelHandle {
 }
 
 // =============================================================================
-// S8i / A2.1 — Raw byte-stream transport layer.
+// S8i / A2.1: Raw byte-stream transport layer.
 //
 // `BidirectionalByteStream` above is length-prefixed (RSNP envelope). The
 // native real-wire rsync driver needs raw bytes: framing is done by the
@@ -145,7 +145,7 @@ impl std::fmt::Debug for CancelHandle {
 // =============================================================================
 
 /// Raw, unframed bidirectional byte stream. `read_bytes(max)` returns up
-/// to `max` bytes (short reads are valid and expected — SSH does not
+/// to `max` bytes (short reads are valid and expected: SSH does not
 /// guarantee a single read matches a message boundary). `write_bytes`
 /// writes the whole slice. `shutdown` tears the remote end down.
 #[async_trait]
@@ -158,7 +158,7 @@ pub trait RawByteStream: Send {
 /// Transport that can open a raw byte-stream session in addition to the
 /// RSNP-framed one. Implemented by `MockRemoteShellTransport` (A2.1) and
 /// `SshRemoteShellTransport` (A2.1 step 7). The legacy `driver.rs` path
-/// only needs `RemoteShellTransport` — it never calls `open_raw_stream`.
+/// only needs `RemoteShellTransport`: it never calls `open_raw_stream`.
 #[async_trait]
 pub trait RawRemoteShellTransport: RemoteShellTransport {
     type RawStream: RawByteStream + Send;

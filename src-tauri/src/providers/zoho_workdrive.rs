@@ -9,7 +9,7 @@
 //! For personal use, we navigate the user's "privatespace" (My Folders).
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
@@ -44,7 +44,7 @@ impl ZohoWorkdriveConfig {
     }
 
     /// Zoho API domain for this region (different from web domain!)
-    /// Web: workdrive.zoho.{tld} — API: www.zohoapis.{ext}
+    /// Web: workdrive.zoho.{tld}: API: www.zohoapis.{ext}
     fn api_domain(&self) -> &str {
         match self.region.as_str() {
             "eu" => "www.zohoapis.eu",
@@ -61,7 +61,7 @@ impl ZohoWorkdriveConfig {
     }
 
     /// Download domain for this region (dedicated download servers).
-    /// Different from API domain! API: www.zohoapis.{ext} — Download: download.zoho.{tld}
+    /// Different from API domain! API: www.zohoapis.{ext}: Download: download.zoho.{tld}
     fn download_domain(&self) -> &str {
         match self.region.as_str() {
             "eu" => "download.zoho.eu",
@@ -342,7 +342,7 @@ struct FileAttributes {
 
 #[derive(Debug, Deserialize)]
 struct StorageInfoAttr {
-    /// Human-readable size string (e.g. "6.35 KB") — not used for parsing
+    /// Human-readable size string (e.g. "6.35 KB"): not used for parsing
     #[serde(default)]
     #[allow(dead_code)]
     size: Option<String>,
@@ -499,7 +499,7 @@ pub struct ZohoWorkdriveProvider {
     folder_cache: HashMap<String, String>,
     /// Team ID (discovered on connect)
     team_id: Option<String>,
-    /// Privatespace (workspace) ID — needs different list endpoint than folder IDs
+    /// Privatespace (workspace) ID: needs different list endpoint than folder IDs
     privatespace_id: Option<String>,
     /// Authenticated user email
     account_email: Option<String>,
@@ -881,7 +881,7 @@ impl ZohoWorkdriveProvider {
         let mut result = Vec::new();
         for label_val in &labels_arr {
             if let Some(label_id) = label_val.as_str() {
-                // Simple string ID — create minimal ZohoLabel
+                // Simple string ID: create minimal ZohoLabel
                 result.push(ZohoLabel {
                     id: label_id.to_string(),
                     attributes: ZohoLabelAttributes {
@@ -1343,7 +1343,7 @@ impl ZohoWorkdriveProvider {
             debug!("Zoho WorkDrive /users/me failed ({}): {}", status, text);
         }
 
-        // Step 2: Get teams — try /teams first, then /users/{id}/teams as fallback
+        // Step 2: Get teams: try /teams first, then /users/{id}/teams as fallback
         let teams_url = format!("{}/teams", self.api_base());
         info!("Zoho WorkDrive: GET {}", teams_url);
         let resp = self
@@ -1613,7 +1613,7 @@ impl ZohoWorkdriveProvider {
         // Fallback: use workspaces as team folders (they appear as "Cartelle Team" in the UI)
         let ws_url = format!("{}/teams/{}/workspaces", self.api_base(), team_id);
         info!(
-            "Zoho WorkDrive: GET {} (fallback — treating workspaces as team folders)",
+            "Zoho WorkDrive: GET {} (fallback: treating workspaces as team folders)",
             ws_url
         );
 
@@ -1744,7 +1744,7 @@ impl ZohoWorkdriveProvider {
             let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body_text)
                 .map_err(|e| {
                     ProviderError::Other(format!(
-                        "Parse files error: {} — body: {}",
+                        "Parse files error: {}: body: {}",
                         e,
                         sanitize_api_error(&body_text)
                     ))
@@ -1889,7 +1889,7 @@ impl ZohoWorkdriveProvider {
             });
         }
 
-        // 2. Privatespace files (My Folders contents) — merge at root level
+        // 2. Privatespace files (My Folders contents): merge at root level
         if let Some(ref ps_id) = self.privatespace_id {
             match self.list_folder(ps_id).await {
                 Ok(files) => {
@@ -1916,7 +1916,7 @@ impl ZohoWorkdriveProvider {
 
         if entries.is_empty() {
             info!(
-                "Zoho WorkDrive root listing is empty — no team folders and no privatespace files"
+                "Zoho WorkDrive root listing is empty: no team folders and no privatespace files"
             );
         }
 
@@ -2142,7 +2142,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
-        // WorkDrive download URL (same for regular files and native docs — auto-converts)
+        // WorkDrive download URL (same for regular files and native docs: auto-converts)
         let download_url = format!(
             "https://{}/v1/workdrive/download/{}",
             self.config.download_domain(),
@@ -2317,7 +2317,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
-        // Check if this is a Zoho native doc — use same download URL (WorkDrive auto-converts)
+        // Check if this is a Zoho native doc: use same download URL (WorkDrive auto-converts)
         let download_url = format!(
             "https://{}/v1/workdrive/download/{}",
             self.config.download_domain(),
@@ -2338,7 +2338,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             debug!(
-                "Zoho WorkDrive download_to_bytes error: {} — {}",
+                "Zoho WorkDrive download_to_bytes error: {}: {}",
                 status,
                 &text[..text.len().min(500)]
             );
@@ -2746,7 +2746,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         };
 
         Ok(format!(
-            "Zoho WorkDrive — Team: {} — Region: {}",
+            "Zoho WorkDrive: Team: {}: Region: {}",
             team_name,
             self.config.region.to_uppercase()
         ))
@@ -3131,7 +3131,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body).map_err(|e| {
             ProviderError::ParseError(format!(
-                "Parse search results: {} — body: {}",
+                "Parse search results: {}: body: {}",
                 e,
                 sanitize_api_error(&body)
             ))
@@ -3188,7 +3188,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let parsed: JsonApiListResponse<VersionResource> =
             serde_json::from_str(&body).map_err(|e| {
                 ProviderError::ParseError(format!(
-                    "Parse versions: {} — body: {}",
+                    "Parse versions: {}: body: {}",
                     e,
                     sanitize_api_error(&body)
                 ))

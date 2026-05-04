@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroCloud Multi-Protocol Provider Factory
 // Creates and connects a StorageProvider based on CloudConfig protocol_type
@@ -71,7 +71,7 @@ pub(crate) fn parse_server_field(server: &str) -> (String, Option<u16>) {
         return (server.to_string(), None);
     }
 
-    // No path — just "hostname" or "hostname:port"
+    // No path: just "hostname" or "hostname:port"
     if let Some(colon_pos) = server.rfind(':') {
         if let Ok(port) = server[colon_pos + 1..].parse::<u16>() {
             return (server[..colon_pos].to_string(), Some(port));

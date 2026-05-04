@@ -5,7 +5,7 @@
 //! labels. Data is persisted in a per-user SQLite database with WAL mode.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::filesystem::validate_path;
 use rusqlite::{params, Connection};
@@ -338,7 +338,7 @@ pub async fn file_tags_get_tags_for_files(
     let db = app.state::<FileTagsDb>();
     let conn = acquire_lock(&db);
 
-    // SAFETY: placeholders are always "?" — never interpolate user values in the IN clause
+    // SAFETY: placeholders are always "?": never interpolate user values in the IN clause
     let placeholders: String = file_paths.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
         "SELECT ft.id, ft.file_path, ft.label_id, l.name, l.color, ft.created_at

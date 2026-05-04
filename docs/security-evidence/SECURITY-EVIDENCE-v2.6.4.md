@@ -1,4 +1,4 @@
-# AeroFTP Security Evidence — v2.6.4 Audit Remediation
+# AeroFTP Security Evidence: v2.6.4 Audit Remediation
 
 **Date**: 2026-02-24
 **Audit sources**: 8x Claude Opus 4.6 + 1x GPT-5.3-Codex
@@ -7,7 +7,7 @@
 
 ---
 
-## Phase 0 — Critical/High Fixes (Release Blocking)
+## Phase 0: Critical/High Fixes (Release Blocking)
 
 ### C1: Azure HeaderValue unwrap() crash prevention
 
@@ -193,7 +193,7 @@ The `terminal-execute` event now includes `displayOnly: true` flag. SSHTerminal 
 
 ---
 
-## Phase 1 — High Fixes
+## Phase 1: High Fixes
 
 ### H1: Jottacloud SecretString tokens
 
@@ -786,7 +786,7 @@ On unlock, `unlock_credential_store` reads back the secret from the vault via `c
 
 ---
 
-## Phase 2 — Medium Fixes
+## Phase 2: Medium Fixes
 
 ### M1: S3 search 10K result cap
 
@@ -1289,7 +1289,7 @@ Blocks path traversal, canonicalization bypass, and system directory access.
 
 ## Summary
 
-### Phase 0 (Critical + High) — 10 fixes
+### Phase 0 (Critical + High): 10 fixes
 
 | Fix | Severity | Status | File(s) | Key Change |
 | --- | -------- | ------ | ------- | ---------- |
@@ -1304,7 +1304,7 @@ Blocks path traversal, canonicalization bypass, and system directory access.
 | H22 | High | FIXED | `lib.rs` | `symlink_metadata()` + skip symlinks |
 | H34 | High | FIXED | `AIChat.tsx`, `SSHTerminal.tsx` | `displayOnly` flag prevents PTY re-execution |
 
-### Phase 1 (High) — 22 fixes
+### Phase 1 (High): 22 fixes
 
 | Fix | Severity | Status | File(s) | Key Change |
 | --- | -------- | ------ | ------- | ---------- |
@@ -1334,7 +1334,7 @@ Blocks path traversal, canonicalization bypass, and system directory access.
 | H31 | High | FIXED | `pty.rs`, `SSHTerminal.tsx` | session_id mandatory, no fallback |
 | H32 | High | FIXED | `SettingsPanel.tsx`, `totp.rs` | TOTP persistence via `store_credential` |
 
-### Phase 2 (Medium) — 21 fixes
+### Phase 2 (Medium): 21 fixes
 
 | Fix | Severity | Status | File(s) | Key Change |
 | --- | -------- | ------ | ------- | ---------- |

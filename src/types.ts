@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // Remote file from FTP server
 export interface RemoteFile {
@@ -418,7 +418,7 @@ export interface AeroVaultOverlaySession {
 // FTP Session for multi-session tabs (Hybrid Cache Architecture)
 export interface FtpSession {
   id: string;
-  serverId: string; // Display key (host/displayName) — kept for backwards compat with favicon lookups
+  serverId: string; // Display key (host/displayName): kept for backwards compat with favicon lookups
   savedServerId?: string; // ServerProfile.id when connecting from a saved server
   serverName: string; // Display name for tab
   status: SessionStatus;

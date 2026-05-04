@@ -1,10 +1,10 @@
-//! AI Core — Trait abstractions for decoupling AI backend from Tauri
+//! AI Core: Trait abstractions for decoupling AI backend from Tauri
 //!
 //! These traits allow the same AI tool execution and streaming logic to run
 //! in both the Tauri GUI and the standalone CLI binary.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 pub mod agent_tools;
 pub mod cli_impl;

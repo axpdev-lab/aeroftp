@@ -14,32 +14,32 @@
 //! reader can verify in one click. The mapping was validated against the
 //! frozen byte oracle in `capture/artifacts_real/frozen/` (zero OOB on all
 //! four streams, consistent with `MSG_STATS` being a generator-only pipe
-//! signal — see `io.c:1507-1511`).
+//! signal: see `io.c:1507-1511`).
 //!
 //! # Severity policy
 //!
 //! Four tags are **terminal** (the consumer must abort the session):
 //!
-//! - `MuxTag::Error` (3)        — `log.c:251-253`, `FERROR`
-//! - `MuxTag::ErrorXfer` (1)    — `log.c:251-253`, `FERROR_XFER`
-//! - `MuxTag::ErrorSocket` (5)  — `log.c:281-282`, reroutes stderr
-//! - `MuxTag::ErrorExit` (86)   — `io.c:1662-1700`, only when code != 0
+//! - `MuxTag::Error` (3)       : `log.c:251-253`, `FERROR`
+//! - `MuxTag::ErrorXfer` (1)   : `log.c:251-253`, `FERROR_XFER`
+//! - `MuxTag::ErrorSocket` (5) : `log.c:281-282`, reroutes stderr
+//! - `MuxTag::ErrorExit` (86)  : `io.c:1662-1700`, only when code != 0
 //!
 //! Everything else is **non-terminal**. Critical correction caught in S8h:
 //!
-//! - `MuxTag::IoError` (22)     — `io.c:1520-1528`, `io_error |= val`
+//! - `MuxTag::IoError` (22)    : `io.c:1520-1528`, `io_error |= val`
 //!   (flag merging, warning-level, NEVER bail)
-//! - `MuxTag::IoTimeout` (33)   — `io.c:1529-1539`, client-side timeout
+//! - `MuxTag::IoTimeout` (33)  : `io.c:1529-1539`, client-side timeout
 //!   refresh, NEVER bail
-//! - `MuxTag::ErrorUtf8` (8)    — `log.c:362-395`, iconv warning, NEVER
+//! - `MuxTag::ErrorUtf8` (8)   : `log.c:362-395`, iconv warning, NEVER
 //!   bail
-//! - `MuxTag::Redo` (9)         — `receiver.c:958`, retry signal
+//! - `MuxTag::Redo` (9)        : `receiver.c:958`, retry signal
 //! - `MuxTag::Stats`/`Success`/`Deleted`/`NoSend`/`Noop`/`Log`/`Info`/
-//!   `Warning`/`Client` — all state markers or display hints
+//!   `Warning`/`Client`: all state markers or display hints
 //!
 //! An early draft of the classifier put IoError/IoTimeout/ErrorUtf8 in the
 //! terminal set. The S8h trust-but-verify pass against `io.c` rejected
-//! that — a generator that bails on `io_error |= val` would treat every
+//! that: a generator that bails on `io_error |= val` would treat every
 //! permission error during file-list scan as a fatal session failure,
 //! breaking real-world rsync semantics. Pinned by
 //! `terminal_set_matches_io_c_policy` in tests below.
@@ -50,7 +50,7 @@
 //!   Client/ErrorUtf8) are **UTF-8 with a trailing newline included**.
 //!   `log.c:353` strips the newline at display time; we strip it at
 //!   classification time so consumers see clean strings. Lossy decode
-//!   (`from_utf8_lossy`) is used unconditionally — a malformed UTF-8
+//!   (`from_utf8_lossy`) is used unconditionally: a malformed UTF-8
 //!   sequence inside the payload is logged-from-remote-style data, not a
 //!   protocol error.
 //! - All integer payloads (Redo/IoError/IoTimeout/Success/NoSend/
@@ -61,17 +61,17 @@
 //!   that tunnels generator stats (or a hand-crafted test) doesn't trip a
 //!   panic.
 //! - `ErrorExit` has TWO payload forms: 0 bytes (cleanup propagation,
-//!   non-terminal — see `io.c:1668-1672`) or 4 bytes (binary exit code,
+//!   non-terminal: see `io.c:1668-1672`) or 4 bytes (binary exit code,
 //!   terminal iff non-zero).
 //! - `Deleted` carries a UTF-8 filename, optionally null-terminated for
 //!   directories (`log.c:863`).
-//! - `Noop` (42) has empty payload — keep-alive only.
+//! - `Noop` (42) has empty payload: keep-alive only.
 //! - `Unknown(tag)` never panics; raw payload is preserved byte-for-byte
 //!   so a future protocol bump doesn't silently corrupt data.
 
 use crate::aerorsync::real_wire::MuxTag;
 
-/// Severity gradient. Richer than a single `is_terminal` bool — lets the
+/// Severity gradient. Richer than a single `is_terminal` bool: lets the
 /// driver progress events route to different sinks (status bar vs log
 /// pane vs error toast) without switching on the variant in two places.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,10 +81,10 @@ pub enum EventSeverity {
     /// Warning-level (`Warning`, `IoError`, `IoTimeout`, `ErrorUtf8`).
     /// The session continues but the consumer should surface to the user.
     Warning,
-    /// Soft error — emitted but the session may still continue
+    /// Soft error: emitted but the session may still continue
     /// (`ErrorExit` with code 0). Reserved for future use.
     Error,
-    /// Terminal — the consumer MUST abort. See the `is_terminal`
+    /// Terminal: the consumer MUST abort. See the `is_terminal`
     /// list in the module-level doc.
     Terminal,
 }
@@ -97,78 +97,78 @@ pub enum EventSeverity {
 /// Variants ordered to mirror `MuxTag::from_code` for cross-reference.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AerorsyncEvent {
-    /// `MSG_ERROR_XFER` (tag 1) — file-transfer error reported by remote.
+    /// `MSG_ERROR_XFER` (tag 1): file-transfer error reported by remote.
     /// `log.c:251-253` (FERROR_XFER), text payload, terminal.
     ErrorXfer { message: String },
 
-    /// `MSG_INFO` (tag 2) — info-level message. `log.c:251-253` (FINFO).
+    /// `MSG_INFO` (tag 2): info-level message. `log.c:251-253` (FINFO).
     Info { message: String },
 
-    /// `MSG_ERROR` (tag 3) — error-level message. `log.c:251-253`
+    /// `MSG_ERROR` (tag 3): error-level message. `log.c:251-253`
     /// (FERROR). Terminal.
     Error { message: String },
 
-    /// `MSG_WARNING` (tag 4) — warning-level message. `log.c:251-253`
+    /// `MSG_WARNING` (tag 4): warning-level message. `log.c:251-253`
     /// (FWARNING). Non-terminal.
     Warning { message: String },
 
-    /// `MSG_ERROR_SOCKET` (tag 5) — socket-level error. `log.c:281-282`
+    /// `MSG_ERROR_SOCKET` (tag 5): socket-level error. `log.c:281-282`
     /// reroutes to stderr. Terminal.
     ErrorSocket { message: String },
 
-    /// `MSG_LOG` (tag 6) — local log message. `log.c:304-307` shows it
+    /// `MSG_LOG` (tag 6): local log message. `log.c:304-307` shows it
     /// is rarely on the wire but we accept it.
     Log { message: String },
 
-    /// `MSG_CLIENT` (tag 7) — message addressed to the client. `log.c:288`
+    /// `MSG_CLIENT` (tag 7): message addressed to the client. `log.c:288`
     /// converts to FINFO at display time.
     Client { message: String },
 
-    /// `MSG_ERROR_UTF8` (tag 8) — UTF-8 decoding warning, typically a
+    /// `MSG_ERROR_UTF8` (tag 8): UTF-8 decoding warning, typically a
     /// filename outside the active locale. `log.c:362-395` runs iconv;
     /// non-terminal.
     ErrorUtf8 { message: String },
 
-    /// `MSG_REDO` (tag 9) — file-list-index retry signal from receiver
+    /// `MSG_REDO` (tag 9): file-list-index retry signal from receiver
     /// to generator. `receiver.c:958`. Pipe-internal in current rsync;
     /// non-terminal.
     Redo { flist_index: u32 },
 
-    /// `MSG_STATS` (tag 10) — pipe-only stats from sender/receiver to
+    /// `MSG_STATS` (tag 10): pipe-only stats from sender/receiver to
     /// generator. `io.c:1507-1511`, `!am_generator => goto invalid_msg`.
     /// Surfaces here so a hand-crafted test or a future tunneled
     /// generator-feed doesn't panic.
     Stats { total_read: u64 },
 
-    /// `MSG_IO_ERROR` (tag 22) — receiver-side io_error flag merge.
+    /// `MSG_IO_ERROR` (tag 22): receiver-side io_error flag merge.
     /// `io.c:1520-1528`, `io_error |= val`. **Non-terminal**.
     IoError { flags: u32 },
 
-    /// `MSG_IO_TIMEOUT` (tag 33) — client-side io_timeout refresh.
+    /// `MSG_IO_TIMEOUT` (tag 33): client-side io_timeout refresh.
     /// `io.c:1529-1539`. Non-terminal.
     IoTimeout { seconds: u32 },
 
-    /// `MSG_NOOP` (tag 42) — keep-alive. Empty payload. Non-terminal.
+    /// `MSG_NOOP` (tag 42): keep-alive. Empty payload. Non-terminal.
     Noop,
 
-    /// `MSG_ERROR_EXIT` (tag 86) — propagated exit-code. `io.c:1662-1700`.
+    /// `MSG_ERROR_EXIT` (tag 86): propagated exit-code. `io.c:1662-1700`.
     /// Empty payload encodes code 0 (cleanup propagation, non-terminal);
     /// 4-byte payload carries a binary code, terminal iff non-zero.
     ErrorExit { code: Option<u32> },
 
-    /// `MSG_SUCCESS` (tag 100) — file-list-index success marker.
+    /// `MSG_SUCCESS` (tag 100): file-list-index success marker.
     /// `io.c:1601-1615`. Non-terminal state push.
     Success { flist_index: u32 },
 
-    /// `MSG_DELETED` (tag 101) — `--delete` notification from generator.
+    /// `MSG_DELETED` (tag 101): `--delete` notification from generator.
     /// `log.c:863`. Filename UTF-8, optionally null-terminated for dirs.
     Deleted { path: String },
 
-    /// `MSG_NO_SEND` (tag 102) — receiver could not open file for sending.
+    /// `MSG_NO_SEND` (tag 102): receiver could not open file for sending.
     /// `io.c:1617-1625`. Non-terminal state push.
     NoSend { flist_index: u32 },
 
-    /// Tag we do not know yet. Never panics — payload preserved raw.
+    /// Tag we do not know yet. Never panics: payload preserved raw.
     /// Always treated as non-terminal so a future opcode that the
     /// receiver does not recognise does not bring the session down.
     Unknown { tag: u8, payload: Vec<u8> },
@@ -254,13 +254,13 @@ impl AerorsyncEvent {
 
 /// Decode a single OOB frame `(tag, payload)` into a typed event.
 ///
-/// Pure function. Never panics. Never returns `Result` — every malformed
+/// Pure function. Never panics. Never returns `Result`: every malformed
 /// payload is folded into `Unknown` (for an unrecognised tag) or a
 /// best-effort decode (e.g. truncated 4-byte int yields `Some(0)` for
 /// missing slots). Rationale: rsync receivers tolerate slightly
 /// malformed OOB rather than aborting; we mirror that semantics.
 ///
-/// `Data` (tag 0) is a programming error — that frame is the app
+/// `Data` (tag 0) is a programming error: that frame is the app
 /// stream, not an event. We classify it as `Unknown` rather than panic
 /// so a misuse surfaces in tests instead of crashing prod.
 pub fn classify_oob_frame(tag: MuxTag, payload: &[u8]) -> AerorsyncEvent {
@@ -318,7 +318,7 @@ pub fn classify_oob_frame(tag: MuxTag, payload: &[u8]) -> AerorsyncEvent {
             flist_index: read_u32_le_or_zero(payload),
         },
 
-        // 64-bit binary (Stats — pipe-only in real rsync, accepted here
+        // 64-bit binary (Stats: pipe-only in real rsync, accepted here
         // for hand-crafted tests / future tunneling).
         MuxTag::Stats => AerorsyncEvent::Stats {
             total_read: read_u64_le_or_zero(payload),
@@ -327,7 +327,7 @@ pub fn classify_oob_frame(tag: MuxTag, payload: &[u8]) -> AerorsyncEvent {
         // Empty payload only.
         MuxTag::Noop => AerorsyncEvent::Noop,
 
-        // Two payload forms — see `io.c:1668-1672`.
+        // Two payload forms: see `io.c:1668-1672`.
         MuxTag::ErrorExit => AerorsyncEvent::ErrorExit {
             code: classify_error_exit_payload(payload),
         },
@@ -387,7 +387,7 @@ fn read_u64_le_or_zero(payload: &[u8]) -> u64 {
 }
 
 // ============================================================================
-// Sinks — the consumer-side abstraction.
+// Sinks: the consumer-side abstraction.
 // ============================================================================
 
 /// Callback trait for OOB events. Sync-only by design: events arrive
@@ -402,7 +402,7 @@ fn read_u64_le_or_zero(payload: &[u8]) -> u64 {
 ///
 /// The `Send` super-bound is required so drivers that hold
 /// `&mut dyn EventSink` across an `.await` point can be embedded in
-/// `Send` futures (needed by `DeltaTransport` impls — see
+/// `Send` futures (needed by `DeltaTransport` impls: see
 /// `delta_transport_impl.rs`). All existing `impl EventSink` consumers
 /// are already `Send` (simple owned structs or closures that capture
 /// `Send` state), so the bound is purely additive.
@@ -681,7 +681,7 @@ mod tests {
 
     #[test]
     fn classify_data_tag_misuse_folds_to_unknown_without_panic() {
-        // Programmer error — Data is the app stream, never an event.
+        // Programmer error: Data is the app stream, never an event.
         // We surface it as Unknown(0) so a misuse trips a test rather
         // than a prod panic.
         let event = classify_oob_frame(MuxTag::Data, &[0x42]);
@@ -695,14 +695,14 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Terminal-set policy (HARDENING — pinned against io.c)
+    // Terminal-set policy (HARDENING: pinned against io.c)
     // -------------------------------------------------------------------------
 
     #[test]
     fn terminal_set_matches_io_c_policy() {
         // The S8h trust-but-verify pass against rsync 3.2.7 io.c +
         // log.c yielded exactly four terminal mux tags. Any drift is
-        // a regression — either io.c semantics changed (re-verify) or
+        // a regression: either io.c semantics changed (re-verify) or
         // someone moved a tag class without updating the doc.
         for tag in all_known_mux_tags() {
             let payload: &[u8] = match tag {
@@ -729,7 +729,7 @@ mod tests {
 
     #[test]
     fn severity_gradient_matches_terminal_for_terminal_events() {
-        // Cross-check is_terminal() vs severity() Terminal — they MUST
+        // Cross-check is_terminal() vs severity() Terminal: they MUST
         // agree (single source of truth). If a future refactor splits
         // these, this test catches drift.
         for tag in all_known_mux_tags() {
@@ -753,7 +753,7 @@ mod tests {
         // same tag back via `event.tag()`. Pins the reverse mapping.
         for tag in all_known_mux_tags() {
             if matches!(tag, MuxTag::Data) {
-                continue; // misuse path — surfaces as Unknown(0)
+                continue; // misuse path: surfaces as Unknown(0)
             }
             let event = classify_oob_frame(tag, &[]);
             assert_eq!(

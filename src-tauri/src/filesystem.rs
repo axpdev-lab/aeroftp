@@ -16,7 +16,7 @@
 //! - `volumes_changed`: Fast change detection for mounted volumes (hash-based)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::Serialize;
 use std::path::{Component, Path, PathBuf};
@@ -154,7 +154,7 @@ pub async fn list_mounted_volumes() -> Result<Vec<VolumeInfo>, String> {
 }
 
 /// Pseudo-filesystem types to exclude from volume listings.
-/// NOTE: `fuse.gvfsd-fuse` is here intentionally — the GVFS FUSE root mount at
+/// NOTE: `fuse.gvfsd-fuse` is here intentionally: the GVFS FUSE root mount at
 /// `/run/user/<uid>/gvfs` is filtered out, and individual GVFS network shares are
 /// enumerated separately by the GVFS scanning block in `list_mounted_volumes_linux()`.
 /// Do NOT remove `fuse.gvfsd-fuse` without also removing the GVFS block (audit fix FS-004).
@@ -406,7 +406,7 @@ fn classify_volume(mount_point: &str, fs_type: &str) -> String {
 }
 
 /// Get disk space (total, free) in bytes for a mount point using `statvfs(2)`.
-/// Uses the `libc` crate directly — no subprocess spawning.
+/// Uses the `libc` crate directly: no subprocess spawning.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn get_disk_space(mount_point: &str) -> (u64, u64) {
     // Unescape octal sequences in mount point (e.g. \040 for space)
@@ -846,7 +846,7 @@ fn validate_device_path(path: &str) -> Result<(), String> {
 
 #[cfg(target_os = "linux")]
 async fn eject_volume_linux(mount_point: &str) -> Result<String, String> {
-    // GVFS mounts (Nautilus network shares) need `gio mount -u` — not udisksctl/umount
+    // GVFS mounts (Nautilus network shares) need `gio mount -u`: not udisksctl/umount
     if mount_point.contains("/gvfs/") {
         let result = std::process::Command::new("gio")
             .args(["mount", "-u", mount_point])
@@ -1818,7 +1818,7 @@ fn build_usage_tree(
 #[cfg(target_os = "linux")]
 static LAST_MOUNTS_HASH: LazyLock<Mutex<u64>> = LazyLock::new(|| Mutex::new(0));
 
-/// DJB2 hash function — fast, deterministic, no crypto needed.
+/// DJB2 hash function: fast, deterministic, no crypto needed.
 #[cfg(target_os = "linux")]
 fn djb2_hash(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 5381;
@@ -1885,7 +1885,7 @@ pub fn volumes_changed() -> bool {
 /// `volumes-changed` Tauri event when either source changes, so the frontend
 /// can react immediately instead of polling every 5 seconds.
 ///
-/// On non-Linux platforms this is a no-op — frontend falls back to polling.
+/// On non-Linux platforms this is a no-op: frontend falls back to polling.
 #[cfg(target_os = "linux")]
 pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
     use std::io::{Read, Seek, SeekFrom};
@@ -1894,7 +1894,7 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
     std::thread::Builder::new()
         .name("mount-watcher".to_string())
         .spawn(move || {
-            // Open /proc/mounts — poll() returns POLLPRI|POLLERR on mount table changes
+            // Open /proc/mounts: poll() returns POLLPRI|POLLERR on mount table changes
             let mut mounts_file = match std::fs::File::open("/proc/mounts") {
                 Ok(f) => f,
                 Err(e) => {
@@ -1954,7 +1954,7 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
                 if ret < 0 {
                     let err = std::io::Error::last_os_error();
                     if err.kind() == std::io::ErrorKind::Interrupted {
-                        continue; // EINTR — retry
+                        continue; // EINTR: retry
                     }
                     error!("mount-watcher poll error: {}", err);
                     break;
@@ -1963,7 +1963,7 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
                     continue; // Spurious wakeup
                 }
 
-                // /proc/mounts changed — seek to 0 and re-read to reset the event
+                // /proc/mounts changed: seek to 0 and re-read to reset the event
                 if fds[0].revents != 0 {
                     let _ = mounts_file.seek(SeekFrom::Start(0));
                     buf.clear();
@@ -2004,5 +2004,5 @@ pub fn start_mount_watcher(app_handle: tauri::AppHandle) {
 
 #[cfg(not(target_os = "linux"))]
 pub fn start_mount_watcher(_app_handle: tauri::AppHandle) {
-    // No-op — macOS/Windows rely on frontend polling fallback
+    // No-op: macOS/Windows rely on frontend polling fallback
 }

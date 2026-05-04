@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useCallback } from 'react';
 import { Copy, Check, Terminal, FileInput, AlertTriangle, FileDiff, ShieldAlert } from 'lucide-react';
@@ -75,7 +75,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                 setApplied(true);
                 setTimeout(() => setApplied(false), 2000);
             } else {
-                // No file open — show save dialog
+                // No file open: show save dialog
                 const ext = language || 'txt';
                 const extMap: Record<string, string> = {
                     javascript: 'js', typescript: 'ts', python: 'py', rust: 'rs',
@@ -131,7 +131,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
             setDiffOriginal(original);
             setShowDiff(true);
         } catch {
-            // File might not exist yet — show diff against empty
+            // File might not exist yet: show diff against empty
             setDiffOriginal('');
             setShowDiff(true);
         }
@@ -150,7 +150,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
 
     return (
         <>
-            {/* Action buttons (visible on hover) — absolutely positioned in parent group */}
+            {/* Action buttons (visible on hover): absolutely positioned in parent group */}
             <div className="absolute top-0 right-0 flex items-center gap-0.5 p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                 {/* Copy */}
                 <button

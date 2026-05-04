@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from '../../i18n';
@@ -315,7 +315,7 @@ type PendingTerminalCommand = {
     insertOnly?: boolean;
 };
 
-// Synchronous fallback used as the React initial state — vault reads are
+// Synchronous fallback used as the React initial state: vault reads are
 // async and we can't block the render. The full vault refresh happens
 // right after mount in a useEffect (see `loadSettingsFromVault` below).
 function loadSettingsSync(): TerminalSettings {
@@ -344,7 +344,7 @@ function saveSettings(s: TerminalSettings) {
     void secureStoreAndClean(TERMINAL_SETTINGS_VAULT_KEY, SETTINGS_KEY, s).catch(() => { /* ignore */ });
 }
 
-// Scrollback persistence — save/restore terminal buffer text per tab
+// Scrollback persistence: save/restore terminal buffer text per tab
 function saveScrollback(tabId: string, xterm: XTerm) {
     try {
         const buf = xterm.buffer.active;
@@ -368,7 +368,7 @@ function saveScrollback(tabId: string, xterm: XTerm) {
         if (keys.length > 5) {
             delete allScrollbacks[keys[0]];
         }
-        // L57: Enforce total size limit — evict oldest tabs until under budget
+        // L57: Enforce total size limit: evict oldest tabs until under budget
         let serialized = JSON.stringify(allScrollbacks);
         const sortedKeys = Object.keys(allScrollbacks);
         while (serialized.length > SCROLLBACK_MAX_TOTAL && sortedKeys.length > 1) {
@@ -441,7 +441,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     const [showThemeMenu, setShowThemeMenu] = useState(false);
     const themeMenuRef = useRef<HTMLDivElement>(null);
 
-    // Tabs — start empty, user clicks "+" to create first tab
+    // Tabs: start empty, user clicks "+" to create first tab
     const [tabs, setTabs] = useState<TerminalTab[]>([]);
     const [activeTabId, setActiveTabId] = useState<string>('');
 
@@ -471,11 +471,11 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
 
     // Drops only the Tauri event listeners attached for this tab (pty-output,
     // ssh-shell-closed). Xterm-side handlers like `xterm.onData` are tied to
-    // the xterm instance lifetime — they live until the tab is closed and are
+    // the xterm instance lifetime: they live until the tab is closed and are
     // released by `disposeXtermHandlers` below. Mixing the two pools caused
     // issue #125 on Linux: starting the shell called setupListener, which
     // called this function, which (when it also disposed xterm handlers)
-    // killed the onData keystroke pipe right after the shell connected — the
+    // killed the onData keystroke pipe right after the shell connected: the
     // terminal showed the prompt but silently dropped every key the user
     // typed. Symptom on Windows was hidden because spawn_shell stalled before
     // setupListener even ran.
@@ -560,7 +560,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         (terminalRef as React.MutableRefObject<HTMLDivElement | null>).current = container;
 
         const tabId = activeTabId;
-        // Already initialized? Just focus + refit — DOM stays mounted.
+        // Already initialized? Just focus + refit: DOM stays mounted.
         if (xtermInstances.current.has(tabId)) {
             const xterm = xtermInstances.current.get(tabId)!;
             xterm.focus();
@@ -668,7 +668,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             ro.observe(container);
         }
 
-        // Handle keystrokes — route to PTY or SSH shell based on tab type
+        // Handle keystrokes: route to PTY or SSH shell based on tab type
         terminalDisposables.push(
             xterm.onData(async (data) => {
                 if (connectedTabs.current.has(tabId)) {
@@ -832,7 +832,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 xterm.writeln('');
             }
 
-            // Resize (local PTY only — SSH shell resize is a no-op currently)
+            // Resize (local PTY only: SSH shell resize is a no-op currently)
             if (tab.type !== 'ssh') {
                 const fa = fitAddons.current.get(tabId);
                 if (fa) {
@@ -971,7 +971,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
         });
     }, [activeTabId, disposeTabListeners, disposeXtermHandlers, tabs]);
 
-    // Cleanup on unmount — save scrollback for all tabs
+    // Cleanup on unmount: save scrollback for all tabs
     useEffect(() => {
         return () => {
             xtermInstances.current.forEach((xterm, tabId) => {
@@ -996,7 +996,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             if (!command) return;
 
             // displayOnly: shell_execute already ran the command in Rust backend.
-            // Only display a visual note in the terminal — do NOT write to PTY (H34 audit fix).
+            // Only display a visual note in the terminal: do NOT write to PTY (H34 audit fix).
             if (displayOnly) {
                 const tabId = activeTabId;
                 const targetTab = tabId && connectedTabs.current.has(tabId)
@@ -1005,7 +1005,7 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
                 if (targetTab) {
                     const xterm = xtermInstances.current.get(targetTab);
                     if (xterm) {
-                        // Display as dim comment — ANSI dim (2m) + reset (0m)
+                        // Display as dim comment: ANSI dim (2m) + reset (0m)
                         xterm.write(`\r\n\x1b[2m# [AeroAgent] executed: ${command}\x1b[0m\r\n`);
                     }
                 }
@@ -1015,10 +1015,10 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
             // Find active connected tab
             const tabId = activeTabId;
             if (!tabId || !connectedTabs.current.has(tabId)) {
-                // No active terminal — try to find any connected tab
+                // No active terminal: try to find any connected tab
                 const connectedTabIds = Array.from(connectedTabs.current);
                 if (connectedTabIds.length === 0) {
-                    // No connected terminals — auto-create a local tab and queue the command
+                    // No connected terminals: auto-create a local tab and queue the command
                     pendingCommandRef.current = { command, insertOnly };
                     addTab();
                     return;

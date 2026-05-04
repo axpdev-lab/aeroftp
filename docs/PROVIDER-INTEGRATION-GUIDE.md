@@ -2,7 +2,7 @@
 
 > A comprehensive technical reference for implementing cloud storage providers in Rust using AeroFTP's `StorageProvider` trait architecture. Written for developers and AI agents integrating new protocols.
 
-> **For storage providers and integrators**: this is the only public reference of its kind in the file-client space — a complete blueprint that lets a new cloud or self-hosted storage service ship a first-class native integration in AeroFTP without reverse-engineering the codebase. If you run a storage service and want a dedicated provider entry (instead of a generic preset), this guide is the contract. We're already collaborating with one provider on a native integration using exactly this document; we welcome more. Reach out via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues) and we'll review the API together.
+> **For storage providers and integrators**: this is the only public reference of its kind in the file-client space: a complete blueprint that lets a new cloud or self-hosted storage service ship a first-class native integration in AeroFTP without reverse-engineering the codebase. If you run a storage service and want a dedicated provider entry (instead of a generic preset), this guide is the contract. We're already collaborating with one provider on a native integration using exactly this document; we welcome more. Reach out via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues) and we'll review the API together.
 
 **Version**: 3.7
 **Last Updated**: 2026-05-02

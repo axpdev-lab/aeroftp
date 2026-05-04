@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * Text Viewer Component
@@ -73,7 +73,7 @@ const ZOOM_LEVELS = [50, 75, 100, 125, 150];
  * Returns null if the resolved path escapes the base directory (path traversal).
  */
 function resolveAndValidatePath(href: string, baseDir: string): string | null {
-    // Reject absolute paths — only allow relative within the HTML file's directory
+    // Reject absolute paths: only allow relative within the HTML file's directory
     if (href.startsWith('/')) return null;
     // Reject backslash paths (Windows-style traversal attempt)
     if (href.includes('\\')) return null;
@@ -136,7 +136,7 @@ async function inlineLocalStyles(html: string, filePath: string): Promise<string
             const cssContent = await invoke<string>('read_local_file', { path: cssPath });
             processed = processed.replace(fullMatch, `<style>/* ${href} */\n${cssContent}</style>`);
         } catch {
-            // CSS file not found — keep original link tag
+            // CSS file not found: keep original link tag
         }
     }
     return processed;
@@ -334,7 +334,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Render toggle — only for HTML/Markdown */}
+                    {/* Render toggle: only for HTML/Markdown */}
                     {canRender && (
                         <button
                             onClick={toggleRender}
@@ -346,7 +346,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         </button>
                     )}
 
-                    {/* Word wrap toggle — hide in render mode */}
+                    {/* Word wrap toggle: hide in render mode */}
                     {!renderMode && (
                         <button
                             onClick={() => setWordWrap(!wordWrap)}
@@ -377,7 +377,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                 </div>
             </div>
 
-            {/* Dev Tools Bar — only in HTML render mode */}
+            {/* Dev Tools Bar: only in HTML render mode */}
             {renderMode && isHTML && (
                 <div className="flex items-center gap-3 px-4 py-1.5 bg-gray-800/60 border-b border-gray-700/50">
                     {/* Viewport presets */}
@@ -437,7 +437,7 @@ export const TextViewer: React.FC<TextViewerProps> = ({
                         </button>
                     </div>
 
-                    {/* Color Picker — only shown when EyeDropper API is available */}
+                    {/* Color Picker: only shown when EyeDropper API is available */}
                     {hasEyeDropper && (
                         <>
                             <div className="w-px h-4 bg-gray-700" />

@@ -4,7 +4,7 @@
 //! Blomp-specific constraints: single container, segments in .file-segments/.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use log::{debug, info, warn};
@@ -215,7 +215,7 @@ impl SwiftProvider {
                     .trim_end_matches('/')
                     .to_string();
 
-                info!("Swift TempAuth OK — storage: {}", storage_url);
+                info!("Swift TempAuth OK: storage: {}", storage_url);
                 self.auth = Some(SwiftAuth {
                     token: SecretString::from(token),
                     storage_url,
@@ -332,7 +332,7 @@ impl SwiftProvider {
                     })?;
                 let storage_url = storage_url_str.trim_end_matches('/').to_string();
 
-                info!("Swift Keystone v2 OK — storage: {}", storage_url);
+                info!("Swift Keystone v2 OK: storage: {}", storage_url);
                 self.auth = Some(SwiftAuth {
                     token: SecretString::from(token),
                     storage_url,
@@ -388,7 +388,7 @@ impl SwiftProvider {
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
-                "Container list failed: HTTP {status} — {}",
+                "Container list failed: HTTP {status}: {}",
                 &body[..body.len().min(200)]
             )));
         }
@@ -405,7 +405,7 @@ impl SwiftProvider {
 
         let containers: Vec<ContainerEntry> = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ServerError(format!(
-                "Invalid container JSON: {e} — body: {}",
+                "Invalid container JSON: {e}: body: {}",
                 &text[..text.len().min(200)]
             ))
         })?;
@@ -638,7 +638,7 @@ impl StorageProvider for SwiftProvider {
         self.authenticate().await?;
         self.container = self.discover_container().await?;
         self.connected = true;
-        info!("Swift connected — container: {}", self.container);
+        info!("Swift connected: container: {}", self.container);
         Ok(())
     }
 
@@ -930,7 +930,7 @@ impl StorageProvider for SwiftProvider {
                 Ok(())
             }
             StatusCode::UNPROCESSABLE_ENTITY => Err(ProviderError::ServerError(
-                "ETag mismatch — data corrupted in transit".into(),
+                "ETag mismatch: data corrupted in transit".into(),
             )),
             status => Err(ProviderError::ServerError(format!(
                 "Upload failed: HTTP {status}"
@@ -1163,7 +1163,7 @@ impl StorageProvider for SwiftProvider {
         }
     }
 
-    /// HEAD {storage_url} — lightweight, validates token
+    /// HEAD {storage_url}: lightweight, validates token
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         self.ensure_auth().await?;
         let url = self.storage_url()?.to_string();

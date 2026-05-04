@@ -8,7 +8,7 @@
 //! Parsers that simply do `field = String::from_utf8_lossy(text)` on
 //! each `Event::Text` overwrite the first fragment ("a") with the last
 //! ("b") and silently drop the entity. The result is a key listed as
-//! `b` instead of `a&b` — and downstream operations (delete/get) then
+//! `b` instead of `a&b`: and downstream operations (delete/get) then
 //! act on the wrong key. This is exactly what triggered the
 //! `aeroftp-encoding-test/a&b.txt` regression on Storj.
 //!
@@ -19,7 +19,7 @@
 //!      `quot`, `apos`) emitted as `Event::GeneralRef` into their
 //!      single-character expansion.
 //!
-//! Numeric character references (`&#39;`, `&#x27;`) are also handled —
+//! Numeric character references (`&#39;`, `&#x27;`) are also handled -
 //! Storj's S3 gateway in particular emits `&#39;` instead of `&apos;`
 //! for U+0027 in object keys, so a builtin-only translator silently
 //! drops apostrophes in listed file names.

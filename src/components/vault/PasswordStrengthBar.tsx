@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useTranslation } from '../../i18n';
@@ -15,7 +15,7 @@ interface StrengthResult {
     score: number; // 0-100
 }
 
-/** Lightweight password strength calculator — no external deps */
+/** Lightweight password strength calculator: no external deps */
 function computeStrength(pw: string): StrengthResult {
     if (!pw) return { level: 0, score: 0 };
 

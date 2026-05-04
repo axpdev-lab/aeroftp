@@ -4,7 +4,7 @@
 //! the GitHub provider submodules.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
 
@@ -200,10 +200,10 @@ pub struct GitHubContentUpdate {
     pub sha: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
-    /// Committer identity — defaults to AeroFTP bot
+    /// Committer identity: defaults to AeroFTP bot
     #[serde(skip_serializing_if = "Option::is_none")]
     pub committer: Option<GitHubCommitter>,
-    /// Author identity — the human user behind the commit
+    /// Author identity: the human user behind the commit
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<GitHubCommitter>,
 }
@@ -215,10 +215,10 @@ pub struct GitHubContentDelete {
     pub sha: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
-    /// Committer identity — defaults to AeroFTP bot
+    /// Committer identity: defaults to AeroFTP bot
     #[serde(skip_serializing_if = "Option::is_none")]
     pub committer: Option<GitHubCommitter>,
-    /// Author identity — the human user behind the commit
+    /// Author identity: the human user behind the commit
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<GitHubCommitter>,
 }

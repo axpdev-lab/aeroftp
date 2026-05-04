@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * TransferToastContainer — Isolated toast state management
+ * TransferToastContainer: Isolated toast state management
  *
  * Subscribes to 'transfer-toast-update' custom DOM events to update the toast
  * WITHOUT causing the parent (App.tsx) to re-render. This prevents the entire

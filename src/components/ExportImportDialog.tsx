@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
@@ -69,7 +69,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [rcloneResult, setRcloneResult] = useState<RcloneImportResult | null>(null);
     const [rcloneSelectedIds, setRcloneSelectedIds] = useState<Set<string>>(new Set());
 
-    // WinSCP-specific state (reuses RcloneImportResult shape — same servers/skipped structure)
+    // WinSCP-specific state (reuses RcloneImportResult shape: same servers/skipped structure)
     const [winscpDetectedPath, setWinscpDetectedPath] = useState<string | null>(null);
     const [winscpResult, setWinscpResult] = useState<RcloneImportResult | null>(null);
     const [winscpSelectedIds, setWinscpSelectedIds] = useState<Set<string>>(new Set());
@@ -832,7 +832,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                             <div className="min-w-0 flex-1">
                                                 <div className="text-sm font-medium truncate">{server.name}</div>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                                    {server.host}:{server.port} — {server.username}
+                                                    {server.host}:{server.port}: {server.username}
                                                 </div>
                                             </div>
                                             <span className="text-[10px] text-gray-400 uppercase flex-shrink-0">
@@ -1641,7 +1641,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                             <div className="min-w-0 flex-1">
                                                 <div className="text-sm font-medium truncate">{server.name}</div>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                                    {server.host}:{server.port} — {server.username}
+                                                    {server.host}:{server.port}: {server.username}
                                                 </div>
                                             </div>
                                             <span className="text-[10px] text-gray-400 uppercase flex-shrink-0">

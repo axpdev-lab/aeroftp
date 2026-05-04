@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Import server profiles from rclone configuration files.
 //!
 //! Parses `rclone.conf` (INI format), maps rclone backend types to AeroFTP
 //! ProviderType, and de-obfuscates rclone "obscured" passwords (AES-256-CTR
-//! with a well-known key — NOT real encryption).
+//! with a well-known key: NOT real encryption).
 //!
 //! Imported credentials are stored in our AES-256-GCM vault, upgrading security
 //! from rclone's reversible obfuscation to proper authenticated encryption.
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 // ============ rclone obscure: AES-256-CTR with published key ============
 // Source: https://github.com/rclone/rclone/blob/master/fs/config/obscure/obscure.go
-// This is NOT encryption — the key is public. We reveal it to store in our vault.
+// This is NOT encryption: the key is public. We reveal it to store in our vault.
 
 const RCLONE_CRYPT_KEY: [u8; 32] = [
     0x9c, 0x93, 0x5b, 0x48, 0x73, 0x0a, 0x55, 0x4d, 0x6b, 0xfd, 0x7c, 0x63, 0xc8, 0x86, 0xa9, 0x2b,
@@ -258,7 +258,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             } else if provider_id == "amazon-s3" {
                 format!("s3.{}.amazonaws.com", region)
             } else {
-                // Generic S3 — need endpoint
+                // Generic S3: need endpoint
                 return None;
             };
 
@@ -336,7 +336,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             host: "www.googleapis.com".to_string(),
             port: 443,
             username: name.to_string(), // rclone doesn't store email for drive
-            password: None,             // OAuth — token not importable
+            password: None,             // OAuth: token not importable
             options: None,
             initial_path: get_str("root_folder_id").map(|s| s.to_string()),
         }),
@@ -567,7 +567,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             initial_path: None,
         }),
 
-        // Unsupported rclone types — skip gracefully
+        // Unsupported rclone types: skip gracefully
         _ => None,
     }
 }
@@ -1125,7 +1125,7 @@ pub fn export_rclone(
                     ));
                 }
             }
-            // Protocols without rclone equivalent — skip
+            // Protocols without rclone equivalent: skip
             _ => {
                 continue;
             }

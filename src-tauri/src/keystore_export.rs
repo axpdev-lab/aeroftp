@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AeroFTP Full Keystore Export/Import
 // Exports ALL vault entries as encrypted .aeroftp-keystore file
@@ -192,7 +192,7 @@ pub fn export_keystore(
     // A2-01: write+fsync via a write-mode handle. On Windows `File::open` returns
     // a read-only handle and `sync_all` (FlushFileBuffers) needs GENERIC_WRITE,
     // which would fail with ERROR_ACCESS_DENIED (os error 5) and leave the .tmp
-    // behind without ever renaming — see issue #124.
+    // behind without ever renaming: see issue #124.
     {
         use std::io::Write;
         let mut f = std::fs::File::create(&tmp_path)?;
@@ -216,7 +216,7 @@ pub fn export_keystore(
 }
 
 /// Import vault entries from an encrypted file
-/// `on_progress` callback receives (phase, current, total) — phase is "decrypting" or "importing"
+/// `on_progress` callback receives (phase, current, total): phase is "decrypting" or "importing"
 #[allow(clippy::type_complexity)]
 pub fn import_keystore(
     password: &str,
@@ -277,7 +277,7 @@ pub fn import_keystore(
         HashSet::new()
     };
 
-    // GPT-A2-02: Stage entries first — collect what to import, then commit all-or-nothing
+    // GPT-A2-02: Stage entries first: collect what to import, then commit all-or-nothing
     // Uses owned values to support profile list merging
     let mut staged: Vec<(String, String)> = Vec::new();
     let mut originals: HashMap<String, Option<String>> = HashMap::new();
@@ -286,7 +286,7 @@ pub fn import_keystore(
 
     for (account, value) in &entries {
         if merge_strategy == "skip_existing" && existing.contains(account) {
-            // Special case: config_server_profiles is an aggregate list — merge by ID
+            // Special case: config_server_profiles is an aggregate list: merge by ID
             if account == "config_server_profiles" {
                 if let Ok(existing_json) = store.get(account) {
                     let merged = merge_profile_lists(&existing_json, value);
@@ -327,7 +327,7 @@ pub fn import_keystore(
             }
             Err(e) => {
                 tracing::error!(
-                    "Failed to import keystore entry '{}': {} — rolling back {} committed entries",
+                    "Failed to import keystore entry '{}': {}: rolling back {} committed entries",
                     account,
                     e,
                     committed.len()

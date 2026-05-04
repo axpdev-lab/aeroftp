@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useEffect } from 'react';
 
@@ -62,7 +62,7 @@ export function useMouseBackButton(): void {
         // mouseup before bubbling.
         document.addEventListener('mousedown', swallow, true);
         document.addEventListener('mouseup', onUp, true);
-        // Some browsers also fire `auxclick` for the side buttons —
+        // Some browsers also fire `auxclick` for the side buttons -
         // suppress it too to avoid double-firing on link targets.
         const onAux = (e: MouseEvent) => {
             if (e.button === 3 || e.button === 4) {

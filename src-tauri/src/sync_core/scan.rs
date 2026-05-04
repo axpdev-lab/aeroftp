@@ -3,7 +3,7 @@
 //! the same operations.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::providers::{ProviderError, StorageProvider};
 use sha2::Digest;
@@ -52,7 +52,7 @@ pub struct ScanOptions {
     pub compute_checksum: bool,
     /// Request server-side checksums for each remote file.
     ///
-    /// Gated at call-time by `provider.supports_checksum()` — on unsupported
+    /// Gated at call-time by `provider.supports_checksum()`: on unsupported
     /// providers the flag is silently ignored (comparison falls back to size).
     pub compute_remote_checksum: bool,
     /// Override the 500 000 entry cap (None = use the default).
@@ -238,7 +238,7 @@ pub async fn scan_remote_tree(
 /// Motivation: FTP control channels can land in a half-open state after a
 /// previous upload that failed mid-way (e.g. `553 No such file`). The
 /// subsequent `list` call then returns *"Data connection is already open"*
-/// or similar — symptoms of a dead session, not a missing directory. Left
+/// or similar: symptoms of a dead session, not a missing directory. Left
 /// alone, `scan_remote_tree` was silently treating the failure as an empty
 /// listing, which let sync duplicate files that actually existed. We now
 /// detect transport-level errors, `disconnect()` + `connect()` the provider,
@@ -252,7 +252,7 @@ async fn list_with_transport_retry(
         Ok(v) => Ok(v),
         Err(e) if is_transport_level(&e) => {
             eprintln!(
-                "[scan_remote_tree] transport error on {}: {} — reconnecting",
+                "[scan_remote_tree] transport error on {}: {}: reconnecting",
                 abs_dir, e
             );
             // Best-effort tear-down; we already know the session is dirty.
@@ -264,7 +264,7 @@ async fn list_with_transport_retry(
     }
 }
 
-/// Same classifier shape used by the MCP pool — keep the two in sync.
+/// Same classifier shape used by the MCP pool: keep the two in sync.
 ///
 /// Any provider-level failure that leaves the underlying TCP/TLS/SSH session
 /// unusable qualifies. Pattern matching errs on the side of retrying: worst
@@ -335,7 +335,7 @@ fn pick_preferred_checksum(
             return (Some(canonical.to_string()), Some((*val).clone()));
         }
     }
-    // Fallback: any key. Stable ordering is not required — the consumer
+    // Fallback: any key. Stable ordering is not required: the consumer
     // compares by both algo label and value.
     checksums
         .iter()

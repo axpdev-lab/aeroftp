@@ -1,10 +1,10 @@
-//! EventSink trait — abstracts event emission from Tauri AppHandle
+//! EventSink trait: abstracts event emission from Tauri AppHandle
 //!
 //! Replaces all `app.emit()` calls in ai_tools.rs and ai_stream.rs with
 //! a trait that can be implemented for both Tauri (GUI) and CLI contexts.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::ai_stream::StreamChunk;
 use serde::Serialize;
@@ -19,7 +19,7 @@ pub struct ToolProgress {
     pub item: String,
 }
 
-/// Abstraction over event emission — Tauri GUI or CLI stdout/stderr.
+/// Abstraction over event emission: Tauri GUI or CLI stdout/stderr.
 pub trait EventSink: Send + Sync {
     /// Emit a streaming chunk to a named stream channel.
     /// In Tauri: `app.emit(&format!("ai-stream-{}", stream_id), chunk)`

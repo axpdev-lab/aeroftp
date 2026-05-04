@@ -92,7 +92,7 @@ describe('useTableColumns helpers', () => {
     });
 
     it('computeOrderedColumns puts pinnedStart first and pinnedEnd last regardless of order blob', () => {
-        // user "moved" d before a — should be ignored: a stays start-pinned, d stays end-pinned
+        // user "moved" d before a: should be ignored: a stays start-pinned, d stays end-pinned
         const order: ColId[] = ['d', 'c', 'b', 'a'];
         const visibility: Record<ColId, boolean> = { a: true, b: true, c: true, d: true };
         const result = computeOrderedColumns(cols, order, visibility).map(c => c.id);

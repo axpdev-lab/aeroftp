@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! RAII guard that aborts a Tokio task on drop.
 //!
 //! Raw `tokio::spawn(future)` returns a `JoinHandle<T>`. Dropping the handle
-//! does **not** abort the task — it detaches it. Any task that should be
+//! does **not** abort the task: it detaches it. Any task that should be
 //! bounded by a parent scope (reader loops, progress emitters, OAuth
 //! callbacks, plugin hooks) leaks if the handle is dropped.
 //!

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "AeroFTP default capabilities — file manager requires full FS access. A8-01: fs:read-all/write-all are REQUIRED because AeroFTP is a file manager that must read/write any user-chosen path. The fs:scope provides additional deny rules (webview-data). Risk-accepted: removing *-all would break core functionality.",
+  "description": "AeroFTP default capabilities: file manager requires full FS access. A8-01: fs:read-all/write-all are REQUIRED because AeroFTP is a file manager that must read/write any user-chosen path. The fs:scope provides additional deny rules (webview-data). Risk-accepted: removing *-all would break core functionality.",
   "windows": [
     "main"
   ],

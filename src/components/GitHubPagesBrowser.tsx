@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * GitHubPagesBrowser Component
@@ -133,12 +133,12 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
   };
 
   const formatDuration = (secs: number | null) => {
-    if (!secs) return '—';
+    if (!secs) return '-';
     return secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
   };
 
   const formatDate = (iso: string | null) => {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const d = new Date(iso);
     const now = Date.now();
     const diff = now - d.getTime();
@@ -279,7 +279,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                 )}
               </div>
 
-              {/* DNS Health & Config — W3-02 */}
+              {/* DNS Health & Config: W3-02 */}
               {site.cname && (
                 <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-primary)' }}>
                   <div className="flex items-center justify-between">
@@ -310,7 +310,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                 </div>
               )}
 
-              {/* Pages Configuration — W3-02: wire github_update_pages */}
+              {/* Pages Configuration: W3-02: wire github_update_pages */}
               {site.build_type === 'legacy' && (
                 <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-primary)' }}>
                   <div className="flex items-center justify-between">
@@ -424,14 +424,14 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
                           <StatusIcon status={build.status} size={12} />
                         </div>
                         <span className="font-mono flex-shrink-0 text-gray-500 dark:text-gray-400">
-                          {build.commit ? build.commit.slice(0, 7) : '—'}
+                          {build.commit ? build.commit.slice(0, 7) : '-'}
                         </span>
                         <span className="flex items-center gap-1 flex-shrink-0">
                           {build.pusher?.avatar_url && (
                             <img src={build.pusher.avatar_url} alt="" className="w-4 h-4 rounded-full" />
                           )}
                           <span className="text-gray-500 dark:text-gray-400">
-                            {build.pusher?.login || '—'}
+                            {build.pusher?.login || '-'}
                           </span>
                         </span>
                         {build.error?.message ? (

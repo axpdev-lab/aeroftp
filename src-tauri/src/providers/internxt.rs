@@ -16,7 +16,7 @@
 //! Reference: github.com/internxt/rclone-adapter (Go, open-source)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use aes::cipher::{KeyIvInit, StreamCipher};
 use async_trait::async_trait;
@@ -47,7 +47,7 @@ fn internxt_log(msg: &str) {
     tracing::debug!(target: "internxt", "{}", msg);
 }
 
-/// Internxt API gateway — acts as a reverse proxy that routes requests:
+/// Internxt API gateway: acts as a reverse proxy that routes requests:
 /// - `gateway.internxt.com/drive/*` → `drive.internxt.com/*` (Drive REST API)
 /// - `gateway.internxt.com/network/*` → `api.internxt.com/*` (Bridge/Network storage API)
 ///
@@ -55,12 +55,12 @@ fn internxt_log(msg: &str) {
 /// All `/drive/*` and `/network/*` prefixed paths in this file rely on this routing.
 /// Reference: rclone-adapter uses the same gateway approach.
 const GATEWAY: &str = "https://gateway.internxt.com";
-/// Direct API URL — used as fallback when gateway blocks CLI access (402 on free tier).
+/// Direct API URL: used as fallback when gateway blocks CLI access (402 on free tier).
 const API_URL: &str = "https://api.internxt.com";
 
 /// Well-known application-level crypto secret, identical across all Internxt clients
 /// (web, desktop, CLI, rclone adapter). Used for encrypting/decrypting the sKey (salt)
-/// and password hash during the login flow. Not a vulnerability — this is public knowledge
+/// and password hash during the login flow. Not a vulnerability: this is public knowledge
 /// and is hardcoded in Internxt's open-source SDK: https://github.com/niclas19/sdk
 /// Changing this value would break compatibility with all Internxt clients.
 const APP_CRYPTO_SECRET: &str = "6KYQBP847D4ATSFA";
@@ -346,7 +346,7 @@ pub struct InternxtProvider {
     connected: bool,
     /// JWT Bearer token for /drive/* endpoints (SecretString for memory zeroization)
     token: SecretString,
-    /// Decrypted BIP39 mnemonic — never sent to frontend (SecretString for memory zeroization)
+    /// Decrypted BIP39 mnemonic: never sent to frontend (SecretString for memory zeroization)
     mnemonic: SecretString,
     /// User's storage bucket ID
     bucket: String,
@@ -1078,7 +1078,7 @@ impl StorageProvider for InternxtProvider {
         internxt_log(&format!("[CONNECT] email={}, gateway={}", email, GATEWAY));
 
         // Step 1: POST /drive/auth/login with email → get sKey + TFA flag
-        // (login endpoint uses gateway /drive/ prefix — see GATEWAY doc)
+        // (login endpoint uses gateway /drive/ prefix: see GATEWAY doc)
         let login_url = format!("{}/drive/auth/login", GATEWAY);
         tracing::debug!(target: "internxt", "[STEP 1] POST {}", login_url);
         let login_body = serde_json::json!({ "email": email });
@@ -1128,7 +1128,7 @@ impl StorageProvider for InternxtProvider {
         tracing::debug!(target: "internxt", "[STEP 2 OK] Encrypted password length={}", encrypted_password.len());
 
         // Step 3: POST /drive/auth/cli/login/access
-        // (CLI access endpoint uses gateway /drive/ prefix — see GATEWAY doc)
+        // (CLI access endpoint uses gateway /drive/ prefix: see GATEWAY doc)
         let access_url = format!("{}/drive/auth/cli/login/access", GATEWAY);
         tracing::debug!(target: "internxt", "[STEP 3] POST {}", access_url);
         let mut access_body = serde_json::json!({
@@ -1523,7 +1523,7 @@ impl StorageProvider for InternxtProvider {
             .await
             .map_err(|e| ProviderError::ServerError(format!("Failed to parse file info: {}", e)))?;
 
-        // Handle empty files — atomic write for consistency
+        // Handle empty files: atomic write for consistency
         if bucket_info.size == 0 {
             let atomic = super::atomic_write::AtomicFile::new(local_path)
                 .await
@@ -1838,7 +1838,7 @@ impl StorageProvider for InternxtProvider {
             progress(encrypted.len() as u64, encrypted.len() as u64);
         }
 
-        // RIPEMD-160(SHA-256(encrypted_data)) — matches the Internxt web client and rclone adapter.
+        // RIPEMD-160(SHA-256(encrypted_data)): matches the Internxt web client and rclone adapter.
         // The API field is labeled "sha256_of_encrypted_data" but the actual hash algorithm
         // is RIPEMD-160 wrapping SHA-256, a Bitcoin-style hash (Hash160) used by Internxt's
         // Bridge service for shard integrity verification.
@@ -1882,7 +1882,7 @@ impl StorageProvider for InternxtProvider {
                 // If still 409 despite preemptive delete, provide clear error
                 if format!("{}", e).contains("409") {
                     ProviderError::ServerError(format!(
-                        "File {} already exists — try again in a few seconds",
+                        "File {} already exists: try again in a few seconds",
                         filename
                     ))
                 } else {
@@ -2102,7 +2102,7 @@ impl StorageProvider for InternxtProvider {
             return Ok(());
         }
 
-        // Try as folder — resolve UUID (may not be cached)
+        // Try as folder: resolve UUID (may not be cached)
         let folder_uuid = match self.resolve_folder_uuid(&from_resolved).await {
             Ok(uuid) => uuid,
             Err(_) => {
@@ -2484,7 +2484,7 @@ impl InternxtProvider {
                 ProviderError::ServerError(format!("Failed to read trash response: {}", e))
             })?;
 
-            // Parse response — may contain both "files" and "folders" arrays
+            // Parse response: may contain both "files" and "folders" arrays
             let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
                 ProviderError::ServerError(format!("Failed to parse trash response: {}", e))
             })?;

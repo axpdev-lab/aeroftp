@@ -1,5 +1,5 @@
 /**
- * SelectiveSyncTree — Remote folder tree with checkboxes for selective sync.
+ * SelectiveSyncTree: Remote folder tree with checkboxes for selective sync.
  * Users can exclude/include remote folders from AeroCloud sync.
  */
 import React, { useState, useEffect, useCallback } from 'react';

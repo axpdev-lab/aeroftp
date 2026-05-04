@@ -1,4 +1,4 @@
-# Strada C — Capture Harnesses (Three Lanes)
+# Strada C: Capture Harnesses (Three Lanes)
 
 This folder hosts the Docker + shell harnesses that produce the fixtures
 the Strada C prototype is developed against. Three independent "lanes"
@@ -18,11 +18,11 @@ Everything here is prototype-only and already covered by the repository
 Only lane 2 runs inside the Rust test process; lanes 1 and 3 are driven by
 shell harnesses.
 
-## Lane 1 — wrapper baseline (frozen)
+## Lane 1: wrapper baseline (frozen)
 
 Reference data for the current production wrapper (`rsync_over_ssh.rs`).
 Captures stdout/stderr, `execve` chains, and SSH debug lines into
-`artifacts/<timestamp>/`. **Do not modify** — the frozen artifact under
+`artifacts/<timestamp>/`. **Do not modify**: the frozen artifact under
 `artifacts/20260417_154800/` is the parity oracle referenced by
 `fixtures.rs`.
 
@@ -30,7 +30,7 @@ Captures stdout/stderr, `execve` chains, and SSH debug lines into
 ./capture_wrapper_transcripts.sh
 ```
 
-## Lane 2 — native RSNP live tests
+## Lane 2: native RSNP live tests
 
 Our dev-only `aerorsync_serve` binary is cross-compiled from the host
 and mounted into a debian:trixie-slim container. The Rust test process
@@ -46,7 +46,7 @@ extracted deterministically with `docker exec cat` and exported as
 ./run_native_live_tests.sh
 ```
 
-## Lane 3 — real rsync byte oracle (S8a)
+## Lane 3: real rsync byte oracle (S8a)
 
 A debian:bookworm-slim container running stock rsync 3.2.7. sshd's
 `ForceCommand` points at `rsync_server_wrapper.sh`, which `exec`s
@@ -55,7 +55,7 @@ A debian:bookworm-slim container running stock rsync 3.2.7. sshd's
 fans each direction to a file under
 `/workspace/real_capture/<ts>/{capture_in.bin, capture_out.bin,
 stderr.txt}` before forwarding the bytes on. The result is a byte-level
-transcript of the real rsync protocol 31/32 as flown over SSH — the
+transcript of the real rsync protocol 31/32 as flown over SSH: the
 oracle the wire work in S8b+ parses against.
 
 Why a Python proxy and not a bash `tee | cmd | tee` pipeline: the naive
@@ -89,7 +89,7 @@ lane 2.
 ## Conventions
 
 - Do not `docker compose build` two lanes in the same shell session
-  without explaining why — they use different base images and the
+  without explaining why: they use different base images and the
   build caches can mask issues.
 - `KEEP_STACK=1` keeps the lane's Docker stack alive after the script
   exits (useful for `docker exec` post-mortem). Defaults to 0 (teardown

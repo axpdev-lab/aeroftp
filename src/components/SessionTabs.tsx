@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useRef, useCallback } from 'react';
@@ -14,7 +14,7 @@ interface CloudTabState {
     enabled: boolean;
     syncing: boolean;
     active: boolean;  // background sync running
-    paused?: boolean; // user paused — config retained, worker stopped
+    paused?: boolean; // user paused: config retained, worker stopped
     serverName?: string;
 }
 
@@ -393,9 +393,9 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                             {session.serverName}
                         </span>
 
-                        {/* Mode badges disabled in tabs — will be replaced by colored dot indicator */}
+                        {/* Mode badges disabled in tabs: will be replaced by colored dot indicator */}
 
-                        {/* Close button — hidden during transfer lock */}
+                        {/* Close button: hidden during transfer lock */}
                         {!isLocked && (
                             <button
                                 onClick={(e) => {
@@ -421,7 +421,7 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                 <Plus size={13} />
             </button>
 
-            {/* AeroFile local tabs — right-aligned */}
+            {/* AeroFile local tabs: right-aligned */}
             {onLocalNewTab && (
                 <>
                     <div className="flex-1" />

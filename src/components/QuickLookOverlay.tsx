@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
@@ -103,7 +103,7 @@ export const QuickLookOverlay: React.FC<QuickLookOverlayProps> = ({
     };
   }, []);
 
-  // Load content when file changes — uses per-load cancellation flag
+  // Load content when file changes: uses per-load cancellation flag
   // to prevent race conditions with overlapping async loads.
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +137,7 @@ export const QuickLookOverlay: React.FC<QuickLookOverlayProps> = ({
             bmp: 'image/bmp', ico: 'image/x-icon', tif: 'image/tiff', tiff: 'image/tiff',
           };
           // SECURITY: SVG files are rendered via <img src="data:image/svg+xml;base64,...">
-          // which is safe — browsers do NOT execute <script> tags or event handlers
+          // which is safe: browsers do NOT execute <script> tags or event handlers
           // embedded in SVGs when loaded through <img> tags. This is a fundamental
           // browser security restriction (same-origin policy for img elements).
           // NEVER use <object>, <embed>, or <iframe src="data:..."> for SVG rendering,

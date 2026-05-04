@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * Chat History Persistence for AeroAgent — SQLite Backend
+ * Chat History Persistence for AeroAgent: SQLite Backend
  *
  * All persistence is handled by Rust via Tauri invoke calls.
  * The old JSON flat-file approach is replaced by SQLite + FTS5.
@@ -435,7 +435,7 @@ export async function saveBranchMessage(branchId: string, msg: ConversationMessa
     }
 }
 
-// Legacy compatibility — createConversation for hook usage
+// Legacy compatibility: createConversation for hook usage
 export function createConversation(firstMessage?: string): Conversation {
     return {
         id: `conv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -448,7 +448,7 @@ export function createConversation(firstMessage?: string): Conversation {
     };
 }
 
-// Legacy compat — saveConversation (wraps incremental saves)
+// Legacy compat: saveConversation (wraps incremental saves)
 export async function saveConversation(
     conversations: Conversation[],
     conversation: Conversation,
@@ -480,7 +480,7 @@ export async function saveConversation(
     return updated;
 }
 
-// Legacy compat — deleteConversation
+// Legacy compat: deleteConversation
 export async function deleteConversation(
     conversations: Conversation[],
     conversationId: string,

@@ -1,4 +1,4 @@
-//! aerorsync — AeroFTP's native Rust implementation of the rsync wire
+//! aerorsync: AeroFTP's native Rust implementation of the rsync wire
 //! protocol 31. Clean-room module born as Strada C, now promoted to
 //! first-class component of the Aero family.
 //!

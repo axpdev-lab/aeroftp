@@ -10,7 +10,7 @@
 //! - Pagination: `x-next-page` header (not Link header)
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 mod client;
 mod model;
@@ -121,7 +121,7 @@ fn parse_host_field(host: &str) -> Result<(String, String), ProviderError> {
         let api_base = format!("https://{}/api/v4", domain);
         Ok((api_base, path.to_string()))
     } else {
-        // "owner/repo" format — domain is actually the owner
+        // "owner/repo" format: domain is actually the owner
         let api_base = "https://gitlab.com/api/v4".to_string();
         Ok((api_base, format!("{}/{}", domain, path)))
     }
@@ -656,7 +656,7 @@ impl StorageProvider for GitLabProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // 1. Validate token — GET /user
+        // 1. Validate token: GET /user
         match self.client.get_json::<GitLabUser>("/user").await {
             Ok(user) => {
                 self.account_name = user.name.clone().or(Some(user.username.clone()));
@@ -673,7 +673,7 @@ impl StorageProvider for GitLabProvider {
             Err(e) => return Err(e),
         }
 
-        // 2. Resolve project — GET /projects/:id
+        // 2. Resolve project: GET /projects/:id
         let project_url = format!("/projects/{}", encode_project_path(&self.project_path));
         let project: GitLabProject = self.client.get_json(&project_url).await?;
 
@@ -1096,7 +1096,7 @@ impl StorageProvider for GitLabProvider {
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
-        Ok(()) // REST API — no persistent connection
+        Ok(()) // REST API: no persistent connection
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
@@ -1146,7 +1146,7 @@ mod tests {
     #[test]
     fn parse_host_field_strips_scheme_and_upgrades_to_https() {
         // The helper accepts both http:// and https:// prefixes but the
-        // computed api_base is always https:// — input scheme is dropped as a
+        // computed api_base is always https://: input scheme is dropped as a
         // defense-in-depth measure. Test asserts the actual behavior so any
         // future change is intentional.
         let (api, path) = parse_host_field("http://gitlab.local/team/svc/").unwrap();

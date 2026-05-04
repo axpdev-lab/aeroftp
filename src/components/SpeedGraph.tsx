@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * SpeedGraph — Real-time transfer speed visualization
+ * SpeedGraph: Real-time transfer speed visualization
  *
  * Canvas-based area chart showing transfer speed over time.
  * Displays: current speed, average, peak, with auto-scaling Y axis.

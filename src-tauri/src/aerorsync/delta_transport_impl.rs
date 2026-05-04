@@ -1,4 +1,4 @@
-//! A4 — `AerorsyncDeltaTransport`: production-facing `DeltaTransport`
+//! A4: `AerorsyncDeltaTransport`: production-facing `DeltaTransport`
 //! implementation backed by the Strada C native rsync driver.
 //!
 //! The module is the bridge between the prototype driver
@@ -7,7 +7,7 @@
 //! loop. It owns:
 //!
 //! - Construction of the SSH transport, driver, adapter, and bridge for
-//!   each individual transfer (no cross-transfer session caching — the
+//!   each individual transfer (no cross-transfer session caching: the
 //!   trait is `&self`, so we avoid locking altogether).
 //! - Translation of typed `AerorsyncError` into `RsyncError` through
 //!   the `fallback_policy::classify_fallback` matrix. HardError variants
@@ -48,7 +48,7 @@
 //!   `build_signatures_streaming` adapter API is the post-P3-T01
 //!   follow-up that brings the resident set to `O(window)` regardless of
 //!   baseline size. Until then, baselines are still read once into RAM
-//!   for signatures, but the reconstructed buffer is gone — RSS scales
+//!   for signatures, but the reconstructed buffer is gone: RSS scales
 //!   with `O(baseline + writer_buffer)` instead of
 //!   `O(baseline + reconstructed)`.
 
@@ -111,7 +111,7 @@ pub struct AerorsyncDeltaTransport {
 }
 
 impl AerorsyncDeltaTransport {
-    /// Primary constructor — takes a fully-populated SSH config and the
+    /// Primary constructor: takes a fully-populated SSH config and the
     /// size threshold below which delta is declined.
     pub fn new(ssh_config: SshTransportConfig, min_file_size: u64) -> Self {
         Self {
@@ -170,7 +170,7 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         // runs `aerorsync_serve --probe`. A non-zero exit or a
         // transport failure propagates as `RsyncError::RemoteNotAvailable`
         // so the adapter's probe cache (`PROBE_CACHE`, 5-minute TTL)
-        // memoises a typed "unavailable" verdict — without this, every
+        // memoises a typed "unavailable" verdict: without this, every
         // file in a multi-file sync would enter the native path, pay a
         // fresh SSH setup, fail at `open_raw_stream`, and only then
         // fall back to classic.
@@ -183,7 +183,7 @@ impl DeltaTransport for AerorsyncDeltaTransport {
                     return Err(rsync_error);
                 }
                 tracing::warn!(
-                    "native rsync probe failed for {}:{}: {} — marking remote unavailable",
+                    "native rsync probe failed for {}:{}: {}: marking remote unavailable",
                     self.ssh_config.host,
                     self.ssh_config.port,
                     rsync_error
@@ -213,11 +213,11 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         self.upload_inner(local_path, remote_path).await
     }
 
-    /// P3-T01 W3.2(b2) — open a session-reuse batch backed by russh.
+    /// P3-T01 W3.2(b2): open a session-reuse batch backed by russh.
     ///
     /// Performs one SSH handshake here ([`RusshSessionTransport::connect`])
     /// and returns an [`AerorsyncBatch`] that opens a fresh channel-exec
-    /// per file over that single SSH session — the per-file cost drops
+    /// per file over that single SSH session: the per-file cost drops
     /// from full handshake to channel allocation. Failure to connect
     /// degrades to [`crate::delta_transport::NoopBatch`] via the trait
     /// default, so the sync loop falls back to the single-shot path
@@ -228,7 +228,7 @@ impl DeltaTransport for AerorsyncDeltaTransport {
             Err(e) => {
                 tracing::warn!(
                     "AerorsyncDeltaTransport::begin_batch: russh connect failed ({}); \
-                     falling back to NoopBatch — sync loop will use single-shot per-file path",
+                     falling back to NoopBatch: sync loop will use single-shot per-file path",
                     e
                 );
                 Ok(Box::new(crate::delta_transport::NoopBatch::new()))
@@ -270,9 +270,9 @@ impl AerorsyncDeltaTransport {
 /// parameters so the same logic serves both the trait single-shot path
 /// (`AerorsyncDeltaTransport::upload`, fresh transport per call) and the
 /// session-reuse batch (`AerorsyncBatch::upload` in W3.2b, transport
-/// preallocated once per batch). All other behavior — metadata probe,
+/// preallocated once per batch). All other behavior: metadata probe,
 /// `min_file_size` gate, streaming xxh128, source entry build, driver
-/// drive + finish_session, stats build — is byte-identical to the
+/// drive + finish_session, stats build: is byte-identical to the
 /// pre-W3.2 single-shot path.
 ///
 /// Pinned by `cargo test --features aerorsync --lib aerorsync::` 453/453;
@@ -296,7 +296,7 @@ where
             threshold: min_file_size,
         });
     }
-    // P3-T01 W1.3 — upload-side cap removed. Sources of any size now
+    // P3-T01 W1.3: upload-side cap removed. Sources of any size now
     // flow through `drive_upload_through_delta_streaming` (W1.2).
     // The driver reads `STREAMING_READ_CHUNK_BYTES`-bounded slabs
     // from the file handle and emits engine literals incrementally,
@@ -403,7 +403,7 @@ where
     // P3-T01 W2.5: the bulk read still feeds the signature phase
     // (`adapter.build_signatures` is bulk-only until the post-P3-T01
     // streaming variant lands). Reconstruction, however, no longer
-    // materialises a `Vec<u8>` — it streams into a
+    // materialises a `Vec<u8>`: it streams into a
     // `StreamingAtomicWriter` opened below.
     //
     // U-03: distinguish `NotFound` (legitimate empty baseline) from
@@ -443,7 +443,7 @@ where
 
     // Random-access baseline for `apply_delta_streaming`'s
     // `CopyBlock(idx)` dispatch. When the target does not exist yet
-    // we substitute an empty `MemoryBaseline` — the engine never
+    // we substitute an empty `MemoryBaseline`: the engine never
     // emits CopyBlocks against an empty signature set, so the
     // baseline is unused but the trait object is still required by
     // the streaming entry-point signature.
@@ -550,13 +550,13 @@ where
 
 // --- batch (W3.2(b2)) -----------------------------------------------------
 
-/// P3-T01 W3.2(b2) — concrete [`DeltaBatch`] impl backed by russh.
+/// P3-T01 W3.2(b2): concrete [`DeltaBatch`] impl backed by russh.
 ///
 /// Holds a single [`RusshSessionTransport`] for the lifetime of the
 /// batch. `share_session()` per file gives the driver a transport view
 /// that points at the same SSH session, so N files cost 1 handshake +
 /// N channel-exec opens (vs. N full handshakes on the single-shot
-/// path). [`do_upload`] / [`do_download`] are reused unchanged — the
+/// path). [`do_upload`] / [`do_download`] are reused unchanged: the
 /// batch is the same wire semantics, fewer handshakes.
 pub struct AerorsyncBatch {
     transport: RusshSessionTransport,
@@ -682,7 +682,7 @@ fn build_source_entry(
     let (uid_value, gid_value) = file_owner_components(metadata);
     let uid_name = lookup_user_name(uid_value);
     let gid_name = lookup_group_name(gid_value);
-    // P3-T01 W1.3 — caller computes xxh128 via streaming pass over the
+    // P3-T01 W1.3: caller computes xxh128 via streaming pass over the
     // file (`compute_xxh128_file_streaming`) so we no longer require a
     // fully-buffered `source_data: &[u8]` argument here. xxh128 over
     // the file bytes mirrors `rsync -c` always-checksum. Server reads
@@ -786,7 +786,7 @@ fn xxh128_digest_bytes(data: &[u8]) -> Vec<u8> {
     digest.to_le_bytes().to_vec()
 }
 
-/// P3-T01 W1.3 — streaming xxh128 over a file path. Reads the file in
+/// P3-T01 W1.3: streaming xxh128 over a file path. Reads the file in
 /// `XXH128_STREAM_BUF_BYTES`-bounded slabs and feeds them into a
 /// reusable `Xxh3Default` hasher. Output layout matches
 /// [`xxh128_digest_bytes`] exactly: `digest.to_le_bytes()`.
@@ -1013,7 +1013,7 @@ fn temp_path_for(local: &Path) -> PathBuf {
 /// fallback; the latter MUST NOT at the rename stage).
 #[derive(Debug)]
 pub enum WriteAtomicError {
-    /// Failed before the temp file was successfully opened — includes
+    /// Failed before the temp file was successfully opened: includes
     /// `create_new` contention with a stale `.aerotmp` that could not be
     /// removed and re-opened, and initial metadata errors. No disk state
     /// changed on `local_path`.
@@ -1036,7 +1036,7 @@ pub enum WriteAtomicError {
 /// 2. Write `data` in chunks of `chunk_size` bytes; optionally sleep
 ///    `inter_chunk_delay` between chunks (test-only knob used to
 ///    reproduce a stable mid-write drop window).
-/// 3. `sync_all()` the temp file — durability commit on the temp before
+/// 3. `sync_all()` the temp file: durability commit on the temp before
 ///    the rename that makes the new data visible under `local_path`.
 /// 4. If `preserve_mode` is provided, apply it to the temp before
 ///    rename (U-09) so the final inode keeps the caller-specified
@@ -1049,7 +1049,7 @@ pub enum WriteAtomicError {
 /// On any post-open failure the function best-effort `remove_file`s the
 /// temp to avoid leaking it. If the caller's future is dropped mid-write
 /// the temp may survive on disk but `local_path` is guaranteed to still
-/// hold either the original contents or the new contents complete —
+/// hold either the original contents or the new contents complete -
 /// never half-written bytes (rename-last invariant).
 pub async fn write_atomic_chunked(
     local_path: &Path,
@@ -1070,8 +1070,8 @@ pub async fn write_atomic_chunked(
 
     // Open with create_new. If a stale `.aerotmp` is in the way, remove
     // it once (this recovers from a prior crash between temp open and
-    // rename) and retry. A second `AlreadyExists` is a real conflict —
-    // another process is writing concurrently — and we bail with
+    // rename) and retry. A second `AlreadyExists` is a real conflict -
+    // another process is writing concurrently: and we bail with
     // `PreOpen` so the caller can pick a fallback.
     let mut file = match OpenOptions::new()
         .create_new(true)
@@ -1228,7 +1228,7 @@ mod tests {
     fn map_pre_commit_host_key_rejected_is_hard_rejection() {
         // R4 pin: HostKeyRejected MUST produce HardRejection even pre-commit,
         // so `transfer_with_delta` routes it to `hard_error` and the user
-        // sees the failure — no silent classic fallback.
+        // sees the failure: no silent classic fallback.
         let err = AerorsyncError::host_key_rejected("fingerprint mismatch");
         let rs = map_native_error_to_rsync(err, false);
         match rs {
@@ -1456,7 +1456,7 @@ mod tests {
         // for this target: with the U-14 unique suffix we cannot assert
         // on a deterministic tmp path (it is per-invocation), but we can
         // assert that no files with the `.aerotmp.` prefix appear in the
-        // tempdir — because zero chunk fails before any open attempt.
+        // tempdir: because zero chunk fails before any open attempt.
         let entries = std::fs::read_dir(dir.path())
             .unwrap()
             .flatten()
@@ -1529,7 +1529,7 @@ mod tests {
         // U-12 renamed: this is a `timeout + drop` simulation, not a
         // real SIGKILL. The invariant tested is the rename-last atomicity
         // contract: after a mid-write future drop, `local_path` holds
-        // either the OLD contents OR the NEW contents complete — never
+        // either the OLD contents OR the NEW contents complete: never
         // a torn mix. Real SIGKILL preserves the same invariant because
         // the temp file is always a separate inode until rename.
         let dir = fresh_tempdir();
@@ -1569,7 +1569,7 @@ mod tests {
 
             assert!(
                 res.is_err(),
-                "iteration {interrupt_ms}ms: write completed before timeout — chunking tuning off"
+                "iteration {interrupt_ms}ms: write completed before timeout: chunking tuning off"
             );
 
             let after = fs::read(&target).await.unwrap();

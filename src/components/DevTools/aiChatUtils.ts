@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { Message } from './aiChatTypes';
 import { TaskType } from '../../types/ai';
@@ -81,7 +81,7 @@ export function buildMessageWindow(
     const availableTokens = maxContextTokens - systemPromptTokens - currentUserTokens - responseBuffer - contextTokens;
 
     if (availableTokens <= 0) {
-        // Not enough budget — include only the last message, truncated to ~500 tokens
+        // Not enough budget: include only the last message, truncated to ~500 tokens
         const lastMessage = allMessages[allMessages.length - 1];
         if (!lastMessage) {
             return { messages: [], summarized: false, historyTokens: 0 };
@@ -140,7 +140,7 @@ export function buildMessageWindow(
         };
     }
 
-    // Some messages were excluded — generate a summary placeholder
+    // Some messages were excluded: generate a summary placeholder
     const excludedMessages = allMessages.slice(0, lastIncludedIndex);
     let includedMessages = allMessages.slice(lastIncludedIndex);
 
@@ -381,7 +381,7 @@ export function formatToolResult(_toolName: string, result: unknown): string {
         // File info results
         if (r.is_file !== undefined && r.name) {
             const lines: string[] = [];
-            lines.push(`**${escapeMarkdown(String(r.name))}** — ${r.is_dir ? 'Directory' : `${r.size} bytes`}`);
+            lines.push(`**${escapeMarkdown(String(r.name))}**: ${r.is_dir ? 'Directory' : `${r.size} bytes`}`);
             if (r.mime_type) lines.push(`Type: ${r.mime_type}`);
             if (r.permissions_octal) lines.push(`Permissions: ${r.permissions_octal}`);
             if (r.readonly) lines.push('Read-only');
@@ -390,13 +390,13 @@ export function formatToolResult(_toolName: string, result: unknown): string {
         }
         // Disk usage results
         if (r.total_human && r.file_count !== undefined) {
-            return `**${r.total_human}** — ${r.file_count} files, ${r.dir_count} dirs\n\`${r.path}\``;
+            return `**${r.total_human}**: ${r.file_count} files, ${r.dir_count} dirs\n\`${r.path}\``;
         }
         // Find duplicates results
         if (r.duplicates && Array.isArray(r.duplicates)) {
             const dupes = r.duplicates as Array<{ hash: string; size: number; count: number; files: string[] }>;
             const lines: string[] = [];
-            lines.push(`**${r.groups} duplicate group(s)** — ${r.total_wasted_human} wasted`);
+            lines.push(`**${r.groups} duplicate group(s)**: ${r.total_wasted_human} wasted`);
             for (const g of dupes.slice(0, 10)) {
                 lines.push(`\n${g.count}x (${g.size} bytes):`);
                 g.files.forEach(f => lines.push(`  - ${escapeMarkdown(f)}`));
@@ -417,7 +417,7 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             const lines: string[] = [];
             lines.push(`**${matches.length} match(es)** for "${r.query}" (${r.files_scanned} files scanned)`);
             for (const m of matches.slice(0, 20)) {
-                lines.push(`  \`${m.path}:${m.line}\` — ${m.context}`);
+                lines.push(`  \`${m.path}:${m.line}\`: ${m.context}`);
             }
             return lines.join('\n');
         }
@@ -432,7 +432,7 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             const lines: string[] = [];
             lines.push(`**${r.total_matches} match(es)** in ${r.files_searched} files for \`${r.pattern}\``);
             for (const m of matches.slice(0, 30)) {
-                lines.push(`  \`${m.file}:${m.line_number}\` — ${m.line}`);
+                lines.push(`  \`${m.file}:${m.line_number}\`: ${m.line}`);
             }
             if (matches.length > 30) lines.push(`  _...and ${matches.length - 30} more_`);
             return lines.join('\n');
@@ -449,10 +449,10 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             lines.push(`**${r.total} path(s)**`);
             for (const f of files) {
                 if (!f.exists) {
-                    lines.push(`  \u2717 \`${f.name}\` — not found`);
+                    lines.push(`  \u2717 \`${f.name}\`: not found`);
                 } else {
                     const type_ = f.is_dir ? 'dir' : 'file';
-                    lines.push(`  \`${f.name}\` — ${f.size_human || '0 B'} | ${type_} | ${f.permissions || ''} | ${f.modified || ''}`);
+                    lines.push(`  \`${f.name}\`: ${f.size_human || '0 B'} | ${type_} | ${f.permissions || ''} | ${f.modified || ''}`);
                 }
             }
             return lines.join('\n');
@@ -476,9 +476,9 @@ export function formatToolResult(_toolName: string, result: unknown): string {
             const lines: string[] = [];
             const cmd = r.command ? `\`${r.command}\`` : 'command';
             if (r.timed_out) {
-                lines.push(`**${cmd}** — timed out`);
+                lines.push(`**${cmd}**: timed out`);
             } else {
-                lines.push(`**${cmd}** — exit code ${r.exit_code}`);
+                lines.push(`**${cmd}**: exit code ${r.exit_code}`);
             }
             const stdout = (r.stdout as string || '').trim();
             const stderr = (r.stderr as string || '').trim();
@@ -541,7 +541,7 @@ export function formatProviderError(
             const parsed = JSON.parse(jsonMatch[0]);
             if (parsed?.error?.code && !httpCode) httpCode = parseInt(String(parsed.error.code), 10) || 0;
 
-            // Extract the most useful message — check metadata.raw first (OpenRouter),
+            // Extract the most useful message: check metadata.raw first (OpenRouter),
             // then error.message, then top-level message
             const metadataRaw = parsed?.error?.metadata?.raw;
             const errorMessage = parsed?.error?.message;
@@ -559,12 +559,12 @@ export function formatProviderError(
             } else if (errorMessage) {
                 friendlyMsg = errorMessage;
             }
-        } catch { /* keep empty — fallback below */ }
+        } catch { /* keep empty: fallback below */ }
     }
 
     // Fallback: use raw error without JSON blob
     if (!friendlyMsg) {
-        friendlyMsg = rawErr.replace(/\s*[\-—]\s*\{[\s\S]*\}/, '').trim() || rawErr;
+        friendlyMsg = rawErr.replace(/\s*[\--]\s*\{[\s\S]*\}/, '').trim() || rawErr;
     }
 
     // Sanitize file paths
@@ -606,8 +606,8 @@ export function formatProviderError(
         hint = t('ai.errorDefault');
     }
 
-    // Build HTTP label (e.g. "429 — ")
-    const codeLabel = httpCode ? `${httpCode} — ` : '';
+    // Build HTTP label (e.g. "429: ")
+    const codeLabel = httpCode ? `${httpCode}: ` : '';
 
     return `**Error**: ${codeLabel}${friendlyMsg}\n\n${hint}`;
 }

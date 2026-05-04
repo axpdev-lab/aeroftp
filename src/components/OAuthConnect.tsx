@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
  * OAuthConnect Component
@@ -221,7 +221,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   // active state so users can rotate credentials without leaving Edit.
   const [showEditCredentials, setShowEditCredentials] = useState(false);
 
-  // In edit mode the user is already saving — keep the toggle implicit ON
+  // In edit mode the user is already saving: keep the toggle implicit ON
   // and never collapse the connection name field. Done once on mount.
   useEffect(() => {
     if (isEditing && !wantToSave) {
@@ -289,13 +289,13 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
         const savedId = await invoke<string>('get_credential', { account: `oauth_${credKey}_client_id` });
         if (savedId) setClientId(savedId);
       } catch {
-        // SEC: No localStorage fallback — credentials must be in vault.
+        // SEC: No localStorage fallback: credentials must be in vault.
       }
       try {
         const savedSecret = await invoke<string>('get_credential', { account: `oauth_${credKey}_client_secret` });
         if (savedSecret) setClientSecret(savedSecret);
       } catch {
-        // SEC: No localStorage fallback — credentials must be in vault.
+        // SEC: No localStorage fallback: credentials must be in vault.
       }
       // Load saved Zoho region
       if (isZoho) {
@@ -448,7 +448,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           </div>
         </div>
 
-        {/* Local Path (optional — editable even in quick-connect mode) */}
+        {/* Local Path (optional: editable even in quick-connect mode) */}
         <div>
           <label className="block text-sm font-medium mb-1.5">{t('connection.oauth.localFolderOptional')}</label>
           <div className="flex gap-2">
@@ -473,7 +473,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           </div>
         </div>
 
-        {/* Save Connection toggle — visible in active state too so users can rename or save an existing OAuth session */}
+        {/* Save Connection toggle: visible in active state too so users can rename or save an existing OAuth session */}
         <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
           <Checkbox
             checked={wantToSave}
@@ -729,7 +729,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
         </div>
       )}
 
-      {/* Credentials Form — always visible, fields first, button last */}
+      {/* Credentials Form: always visible, fields first, button last */}
       <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="font-medium text-sm">{t('connection.oauth.oauth2Credentials')}</h4>
@@ -745,7 +745,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
             {t('connection.oauth.createAppInstructions', { provider: providerNames[provider] })}
           </p>
 
-          {/* Redirect URI — required for developer app configuration */}
+          {/* Redirect URI: required for developer app configuration */}
           {REDIRECT_URIS[provider] && (
             <div>
               <label className="block text-xs font-medium mb-1">{t('connection.oauth.redirectUri')}</label>

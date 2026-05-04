@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -228,7 +228,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             await invoke(cmd, args);
             // Track temp file for cleanup on unmount (A7-03)
             tempPreviewPathsRef.current.push(tempPath);
-            // The file is extracted — frontend can use UniversalPreview to display it
+            // The file is extracted: frontend can use UniversalPreview to display it
             // For now we just extract it; integration with preview system is handled by the parent
         } catch (e) {
             setError(String(e));

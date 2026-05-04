@@ -1,9 +1,9 @@
-//! Backblaze B2 Cloud Storage — Native API v4 provider.
+//! Backblaze B2 Cloud Storage: Native API v4 provider.
 //!
 //! See `docs/dev/guides/Backblaze/` for the full API reference and design notes.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -106,7 +106,7 @@ struct ApiInfo {
 struct StorageApiInfo {
     api_url: String,
     download_url: String,
-    // Phase 2 (large-file upload) — kept here so the wire shape is complete.
+    // Phase 2 (large-file upload): kept here so the wire shape is complete.
     #[allow(dead_code)]
     #[serde(default)]
     absolute_minimum_part_size: u64,
@@ -709,7 +709,7 @@ impl B2Provider {
             .map_err(|e| ProviderError::ServerError(format!("copy_file parse: {}", e)))
     }
 
-    /// `b2_copy_part` — server-side copy of a byte range from a source file
+    /// `b2_copy_part`: server-side copy of a byte range from a source file
     /// into a part of an in-progress large-file upload. Used for renaming
     /// files larger than 5 GB (where `b2_copy_file` is rejected).
     async fn copy_part(
@@ -755,7 +755,7 @@ impl B2Provider {
     /// 2. Loop: `b2_copy_part` with `Range: bytes=N-M` for each chunk.
     /// 3. `b2_finish_large_file` with the array of per-part `contentSha1`
     ///    values returned by the server (these may be `"none"` when the
-    ///    source itself was a large-file copy — B2 accepts that).
+    ///    source itself was a large-file copy: B2 accepts that).
     /// 4. `b2_delete_file_version` on the source to make the rename atomic.
     ///
     /// On any failure mid-way the in-progress large file is cancelled to
@@ -813,7 +813,7 @@ impl B2Provider {
         match copy_result {
             Ok(()) => {}
             Err(e) => {
-                // Best-effort cancel — release parts already copied so they
+                // Best-effort cancel: release parts already copied so they
                 // don't accrue storage charges. Failures here are logged but
                 // do not mask the original error.
                 if let Err(cancel_err) = self.cancel_large_file_inner(&large_file_id).await {
@@ -828,7 +828,7 @@ impl B2Provider {
         // Materialize the new file. After this call the destination key is live.
         self.finish_large_file(&large_file_id, part_sha1s).await?;
         // Delete the original version. Mirror `rename` semantics: a delete
-        // failure does not undo the rename — the new copy is already in place.
+        // failure does not undo the rename: the new copy is already in place.
         if let Err(e) = self.do_delete_file_version(from_key, source_file_id).await {
             b2_log(&format!(
                 "rename_large_file: copy + finish ok but source delete failed: {}",
@@ -841,7 +841,7 @@ impl B2Provider {
     /// Streamed download to a local path. Borrows `&self` only so the trait
     /// method can wrap a single attempt in reauth retry without re-locking.
     /// `progress` is moved (not borrowed) because `Box<dyn Fn + Send>` is not
-    /// Sync — borrowing it across an await would break the Send-future contract.
+    /// Sync: borrowing it across an await would break the Send-future contract.
     async fn do_download(
         &self,
         key: &str,
@@ -992,7 +992,7 @@ impl B2Provider {
     }
 
     /// `b2_list_file_versions` paginated page. Returns every version that
-    /// matches the given prefix (including hide markers — caller filters).
+    /// matches the given prefix (including hide markers: caller filters).
     async fn list_file_versions_page(
         &self,
         prefix: &str,
@@ -1093,7 +1093,7 @@ impl B2Provider {
 
     /// `b2_get_download_authorization` mints a download token for any object
     /// whose key starts with `file_name_prefix`, valid for `valid_duration_seconds`.
-    /// The bucket must be private — public buckets reject this call.
+    /// The bucket must be private: public buckets reject this call.
     async fn get_download_authorization(
         &self,
         file_name_prefix: &str,
@@ -1320,7 +1320,7 @@ impl StorageProvider for B2Provider {
         let mut entries: Vec<RemoteEntry> = Vec::new();
         let mut first_call = true;
         loop {
-            // Only the first round needs reauth retry — subsequent pages run
+            // Only the first round needs reauth retry: subsequent pages run
             // with a freshly minted token (B2 tokens are valid 24h, well
             // beyond a single listing).
             let resp = match self
@@ -1450,7 +1450,7 @@ impl StorageProvider for B2Provider {
         let key = self.b2_key(&abs);
         let local_pb = std::path::PathBuf::from(local_path);
         // First attempt consumes `progress`; the rare reauth retry runs without
-        // progress reporting (Box<dyn Fn + Send> isn't Sync — see do_download).
+        // progress reporting (Box<dyn Fn + Send> isn't Sync: see do_download).
         match self.do_download(&key, &local_pb, progress).await {
             Ok(()) => Ok(()),
             Err(e) if is_b2_token_failure(&e) => {
@@ -1780,7 +1780,7 @@ impl StorageProvider for B2Provider {
             Err(e) => return Err(e),
         };
         // Delete (hard) the original version so this is a true rename.
-        // If the source delete fails, the copy is still in place — surface as
+        // If the source delete fails, the copy is still in place: surface as
         // warning and keep the rename successful.
         let del = match self.do_delete_file_version(&from_key, &file_id).await {
             Err(e) if is_b2_token_failure(&e) => {
@@ -1872,7 +1872,7 @@ impl StorageProvider for B2Provider {
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         // B2 bills per stored byte; the API does not return a per-bucket quota.
-        // Return zeros — UI hides storage panels when total == 0, matching the
+        // Return zeros: UI hides storage panels when total == 0, matching the
         // behavior of other providers without quota.
         Ok(StorageInfo {
             used: 0,
@@ -1900,7 +1900,7 @@ impl StorageProvider for B2Provider {
         loop {
             // `b2_list_file_versions` returns versions across every key sharing
             // this prefix; we filter to the exact match. The cursor is
-            // `(nextFileName, nextFileId)` — both must round-trip.
+            // `(nextFileName, nextFileId)`: both must round-trip.
             let page = match self
                 .list_file_versions_page(
                     &key,
@@ -1927,7 +1927,7 @@ impl StorageProvider for B2Provider {
                 Err(e) => return Err(e),
             };
             first_call = false;
-            // Detect cursor that points past our key — once nextFileName diverges,
+            // Detect cursor that points past our key: once nextFileName diverges,
             // any further pages won't yield matches and just burn Class C calls.
             let mut diverged = false;
             for f in &page.files {
@@ -1939,7 +1939,7 @@ impl StorageProvider for B2Provider {
                 }
                 if f.action == "hide" {
                     // Hide markers are versions, but they don't have downloadable
-                    // content — surface them with size 0 and an explicit modified
+                    // content: surface them with size 0 and an explicit modified
                     // timestamp so the UI can render them as "deleted" markers.
                     if let Some(fid) = &f.file_id {
                         versions.push(FileVersion {
@@ -1997,7 +1997,7 @@ impl StorageProvider for B2Provider {
             return Err(ProviderError::NotConnected);
         }
         let local_pb = std::path::PathBuf::from(local_path);
-        // `_path` is unused here — the fileId is the canonical reference; B2
+        // `_path` is unused here: the fileId is the canonical reference; B2
         // routes by id, not name. We still accept the parameter to match the
         // trait shape (and to let callers log a meaningful path).
         match self.do_download_by_id(version_id, &local_pb, None).await {
@@ -2019,7 +2019,7 @@ impl StorageProvider for B2Provider {
         }
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
-        // B2 has no "restore" verb — we replay the chosen version as a fresh
+        // B2 has no "restore" verb: we replay the chosen version as a fresh
         // upload via b2_copy_file (server-side, no client byte transfer). The
         // copy becomes the new latest version with the original fileName.
         match self.copy_file_to(version_id, &key).await {
@@ -2076,7 +2076,7 @@ impl StorageProvider for B2Provider {
             }
             Err(e) => return Err(e),
         };
-        // Build a shareable URL — the download authorization token is passed
+        // Build a shareable URL: the download authorization token is passed
         // as the `Authorization` query param on the standard download endpoint.
         let url = format!(
             "{}/file/{}/{}?Authorization={}",
@@ -2395,7 +2395,7 @@ mod tests {
 
     #[test]
     fn reauth_filter_rejects_other_auth_messages() {
-        // Generic auth failures (e.g. parse errors) must not trigger reauth —
+        // Generic auth failures (e.g. parse errors) must not trigger reauth -
         // re-running authorize() would not help and would burn an HTTP round-trip.
         let err = ProviderError::AuthenticationFailed("authorize parse: oops".into());
         assert!(!is_b2_token_failure(&err));
@@ -2421,7 +2421,7 @@ mod tests {
     #[tokio::test]
     async fn maybe_reauth_returns_false_for_filtered_errors_without_network() {
         // Verifies the filter short-circuits before any HTTP call. The provider
-        // has empty creds/URLs — if we ever hit authorize() it would return
+        // has empty creds/URLs: if we ever hit authorize() it would return
         // an error (not panic), but the filter must short-circuit first.
         let mut p = B2Provider::new(B2Config {
             application_key_id: "id".into(),
@@ -2448,7 +2448,7 @@ mod tests {
 
     #[test]
     fn supports_versions_advertises_true() {
-        // B2 has first-class versioning — the trait flag must reflect that
+        // B2 has first-class versioning: the trait flag must reflect that
         // so frontend "Versions" panels render.
         let p = empty_provider();
         assert!(p.supports_versions());

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // AI Tool Types for AeroFTP Agent
 
@@ -33,7 +33,7 @@ export interface AgentToolCall {
 
 // Provider-agnostic tool definitions (works with all 21 protocols)
 export const AGENT_TOOLS: AITool[] = [
-    // Safe — auto-execute
+    // Safe: auto-execute
     {
         name: 'remote_list',
         description: 'List files and folders in a remote directory',
@@ -105,7 +105,7 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'medium',
     },
 
-    // Medium — requires confirmation
+    // Medium: requires confirmation
     {
         name: 'local_mkdir',
         description: 'Create a local directory (including parents)',
@@ -411,7 +411,7 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'safe',
     },
 
-    // High — explicit confirmation
+    // High: explicit confirmation
     {
         name: 'remote_delete',
         description: 'Delete a file or directory on remote',
@@ -439,7 +439,7 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'high',
     },
 
-    // RAG — file indexing and content search
+    // RAG: file indexing and content search
     {
         name: 'rag_index',
         description: 'Index files in a directory for AI context. Returns file listing with types, sizes, and text previews for understanding the workspace structure.',
@@ -461,7 +461,7 @@ export const AGENT_TOOLS: AITool[] = [
         dangerLevel: 'medium',
     },
 
-    // Agent memory — persistent project notes
+    // Agent memory: persistent project notes
     {
         name: 'agent_memory_write',
         description: 'Save a note to persistent project memory (.aeroagent file) for future reference across sessions',
@@ -581,7 +581,7 @@ ${builtInSection}${extraSection}
 
 RULES:
 1. Safe tools (remote_list, remote_read, remote_info, remote_search) execute automatically.
-2. Medium/high risk tools need user approval — the system shows an approval prompt automatically. Do NOT ask for confirmation yourself — just call the tool directly and the UI will handle approval.
+2. Medium/high risk tools need user approval: the system shows an approval prompt automatically. Do NOT ask for confirmation yourself: just call the tool directly and the UI will handle approval.
 3. Never delete files without explicit user request.
 4. For multi-file uploads or downloads, call generate_transfer_plan first. Use the reviewed plan before executing transfer operations.
 
