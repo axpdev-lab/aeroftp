@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet — AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
@@ -138,6 +138,14 @@ interface SettingsPanelProps {
 const SETTINGS_KEY = 'aeroftp_settings';
 const SETTINGS_VAULT_KEY = 'app_settings';
 const CUSTOM_FONT_VALUE = '__custom__';
+const FOCUSABLE_SELECTOR = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 const FONT_PRESETS = [
     { label: 'Inter (Default)', value: DEFAULT_APP_FONT_FAMILY, bundled: true },
@@ -265,6 +273,7 @@ const defaultSettings: AppSettings = {
 };
 
 type TabId = 'general' | 'connection' | 'servers' | 'aerocloud' | 'cloudproviders' | 'transfers' | 'filehandling' | 'ui' | 'security' | 'backup' | 'privacy';
+type AppearanceSubTabId = 'theme' | 'icons' | 'interface' | 'backgrounds';
 
 // Check Update Button with loading animation and Activity Log support
 interface CheckUpdateButtonProps {
@@ -357,7 +366,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
     const [activeTab, setActiveTab] = useState<TabId>(initialTab || 'general');
-    const [appearanceSubTab, setAppearanceSubTab] = useState<'theme' | 'icons' | 'interface' | 'backgrounds'>('theme');
+    const [appearanceSubTab, setAppearanceSubTab] = useState<AppearanceSubTabId>('theme');
     const { iconTheme, setIconTheme } = useIconTheme();
 
     // Reset to initialTab when panel opens with a specific tab
@@ -376,6 +385,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [nativeRsyncCompiled, setNativeRsyncCompiled] = useState<boolean | null>(null);
     const [nativeRsyncEnabled, setNativeRsyncEnabled] = useState(false);
     const modalDrag = useDraggableModal();
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const sidebarButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+    const appearanceSubTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
     // Resolve S3 endpoint from registry when editing a server that doesn't have it stored
     // Resolve S3 endpoint and accountId when editing a server
@@ -762,8 +774,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         onServersChanged?.();
     };
 
-    if (!isOpen) return null;
-
     const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
         {
             id: 'general',
@@ -798,6 +808,143 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         { id: 'privacy', label: t('settings.privacy'), icon: <Shield size={16} /> },
     ];
 
+    const appearanceTabs: { id: AppearanceSubTabId; label: string; icon: React.ReactNode }[] = [
+        {
+            id: 'theme',
+            label: t('settings.themeTab'),
+            icon: <Palette size={13} />,
+        },
+        {
+            id: 'icons',
+            label: t('settings.iconsTab'),
+            icon: <Shapes size={13} />,
+        },
+        {
+            id: 'interface',
+            label: t('settings.interfaceTab'),
+            icon: <Monitor size={13} />,
+        },
+        {
+            id: 'backgrounds',
+            label: t('settings.backgroundsTab'),
+            icon: <Image size={13} />,
+        },
+    ];
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const handle = window.setTimeout(() => {
+            const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.id === activeTab));
+            sidebarButtonRefs.current[activeIndex]?.focus();
+        }, 0);
+        return () => window.clearTimeout(handle);
+    }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const focusSidebarTab = useCallback((index: number) => {
+        const normalized = (index + tabs.length) % tabs.length;
+        const tab = tabs[normalized];
+        if (!tab) return;
+        setActiveTab(tab.id);
+        window.requestAnimationFrame(() => {
+            sidebarButtonRefs.current[normalized]?.focus();
+        });
+    }, [tabs]);
+
+    const handleSidebarKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        const currentIndex = Math.max(0, tabs.findIndex((tab) => tab.id === activeTab));
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            focusSidebarTab(currentIndex + 1);
+        } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            focusSidebarTab(currentIndex - 1);
+        } else if (e.key === 'Home') {
+            e.preventDefault();
+            focusSidebarTab(0);
+        } else if (e.key === 'End') {
+            e.preventDefault();
+            focusSidebarTab(tabs.length - 1);
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            const focusedIndex = sidebarButtonRefs.current.findIndex((button) => button === document.activeElement);
+            if (focusedIndex >= 0) {
+                e.preventDefault();
+                focusSidebarTab(focusedIndex);
+            }
+        }
+    }, [activeTab, focusSidebarTab, tabs]);
+
+    const handlePanelKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            onClose();
+            return;
+        }
+
+        if (e.key !== 'Tab') return;
+        const panel = panelRef.current;
+        if (!panel) return;
+
+        const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+            .filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
+        if (focusable.length === 0) {
+            e.preventDefault();
+            panel.focus();
+            return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+
+        if (e.shiftKey && (!active || active === first || !panel.contains(active))) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && active === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    }, [onClose]);
+
+    const activeTabIndex = Math.max(0, tabs.findIndex((tab) => tab.id === activeTab));
+    const activeAppearanceSubTabIndex = Math.max(0, appearanceTabs.findIndex((tab) => tab.id === appearanceSubTab));
+
+    const focusAppearanceSubTab = useCallback((index: number) => {
+        const normalized = (index + appearanceTabs.length) % appearanceTabs.length;
+        const tab = appearanceTabs[normalized];
+        if (!tab) return;
+        setAppearanceSubTab(tab.id);
+        window.requestAnimationFrame(() => {
+            appearanceSubTabRefs.current[normalized]?.focus();
+        });
+    }, [appearanceTabs]);
+
+    const handleAppearanceSubTabKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        const currentIndex = Math.max(0, appearanceTabs.findIndex((tab) => tab.id === appearanceSubTab));
+
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            focusAppearanceSubTab(currentIndex + 1);
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            focusAppearanceSubTab(currentIndex - 1);
+        } else if (e.key === 'Home') {
+            e.preventDefault();
+            focusAppearanceSubTab(0);
+        } else if (e.key === 'End') {
+            e.preventDefault();
+            focusAppearanceSubTab(appearanceTabs.length - 1);
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            const focusedIndex = appearanceSubTabRefs.current.findIndex((button) => button === document.activeElement);
+            if (focusedIndex >= 0) {
+                e.preventDefault();
+                focusAppearanceSubTab(focusedIndex);
+            }
+        }
+    }, [appearanceSubTab, appearanceTabs, focusAppearanceSubTab]);
+
+    if (!isOpen) return null;
+
     const updateOAuthSetting = (provider: keyof OAuthSettings, field: 'clientId' | 'clientSecret', value: string) => {
         setOauthSettings((prev) => ({
             ...prev,
@@ -814,6 +961,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 {/* Panel */}
                 <div
                     {...modalDrag.panelProps}
+                    ref={panelRef}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="settings-panel-title"
+                    tabIndex={-1}
+                    onKeyDown={handlePanelKeyDown}
                     className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col"
                 >
                     {/* Header: drag moves this modal, not the native app window. */}
@@ -823,9 +976,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     >
                         <div className="flex items-center gap-2 pointer-events-none">
                             <Settings size={20} />
-                            <h2 className="text-lg font-semibold">{t('settings.title')}</h2>
+                            <h2 id="settings-panel-title" className="text-lg font-semibold">{t('settings.title')}</h2>
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                        <button onClick={onClose} aria-label={t('common.close')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                             <X size={18} />
                         </button>
                     </div>
@@ -833,9 +986,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     {/* Content */}
                     <div className="flex flex-1 overflow-hidden">
                         {/* Sidebar */}
-                        <div className="w-48 border-r border-gray-200 dark:border-gray-700 p-2 space-y-1">
-                            {tabs.map((tab) => (
-                                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full flex items-start gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${activeTab === tab.id ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                        <div
+                            role="tablist"
+                            aria-orientation="vertical"
+                            aria-label={t('settings.title')}
+                            onKeyDown={handleSidebarKeyDown}
+                            className="w-48 border-r border-gray-200 dark:border-gray-700 p-2 space-y-1"
+                        >
+                            {tabs.map((tab, index) => (
+                                <button
+                                    key={tab.id}
+                                    ref={(node) => { sidebarButtonRefs.current[index] = node; }}
+                                    id={`settings-tab-${tab.id}`}
+                                    role="tab"
+                                    aria-selected={activeTab === tab.id}
+                                    aria-controls={`settings-panel-${tab.id}`}
+                                    tabIndex={index === activeTabIndex ? 0 : -1}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`w-full flex items-start gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-800 ${activeTab === tab.id ? 'bg-blue-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                                >
                                     {tab.icon}
                                     {tab.label}
                                 </button>
@@ -843,7 +1012,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         </div>
 
                         {/* Main content */}
-                        <div className="flex-1 p-6 overflow-y-auto">
+                        <div
+                            id={`settings-panel-${activeTab}`}
+                            role="tabpanel"
+                            aria-labelledby={`settings-tab-${activeTab}`}
+                            className="flex-1 p-6 overflow-y-auto"
+                        >
                             {activeTab === 'general' && (
                                 <div className="space-y-6">
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.generalSettings')}</h3>
@@ -2862,30 +3036,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             {activeTab === 'ui' && (
                                 <div className="space-y-4">
                                     {/* Appearance Sub-tabs */}
-                                    <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-                                        {[
-                                            {
-                                                id: 'theme' as const,
-                                                label: t('settings.themeTab'),
-                                                icon: <Palette size={13} />,
-                                            },
-                                            {
-                                                id: 'icons' as const,
-                                                label: t('settings.iconsTab'),
-                                                icon: <Shapes size={13} />,
-                                            },
-                                            {
-                                                id: 'interface' as const,
-                                                label: t('settings.interfaceTab'),
-                                                icon: <Monitor size={13} />,
-                                            },
-                                            {
-                                                id: 'backgrounds' as const,
-                                                label: t('settings.backgroundsTab'),
-                                                icon: <Image size={13} />,
-                                            },
-                                        ].map((sub) => (
-                                            <button key={sub.id} onClick={() => setAppearanceSubTab(sub.id)} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors ${appearanceSubTab === sub.id ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'}`}>
+                                    <div
+                                        role="tablist"
+                                        aria-orientation="horizontal"
+                                        aria-label={t('settings.appearance')}
+                                        onKeyDown={handleAppearanceSubTabKeyDown}
+                                        className="flex gap-1 border-b border-gray-200 dark:border-gray-700"
+                                    >
+                                        {appearanceTabs.map((sub, index) => (
+                                            <button
+                                                key={sub.id}
+                                                ref={(node) => { appearanceSubTabRefs.current[index] = node; }}
+                                                id={`settings-appearance-tab-${sub.id}`}
+                                                role="tab"
+                                                aria-selected={appearanceSubTab === sub.id}
+                                                aria-controls={`settings-appearance-panel-${sub.id}`}
+                                                tabIndex={index === activeAppearanceSubTabIndex ? 0 : -1}
+                                                onClick={() => setAppearanceSubTab(sub.id)}
+                                                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-800 ${appearanceSubTab === sub.id ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'}`}
+                                            >
                                                 {sub.icon}
                                                 {sub.label}
                                             </button>
@@ -2894,7 +3063,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     {/* Sub-tab: Theme */}
                                     {appearanceSubTab === 'theme' && (
-                                        <div className="space-y-4">
+                                        <div id="settings-appearance-panel-theme" role="tabpanel" aria-labelledby="settings-appearance-tab-theme" className="space-y-4">
                                             <p className="text-xs text-gray-500">{t('settings.themeDesc')}</p>
                                             <div className="grid grid-cols-2 gap-3">
                                                 {[
@@ -3012,7 +3181,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     {/* Sub-tab: Icons */}
                                     {appearanceSubTab === 'icons' && (
-                                        <div className="space-y-4">
+                                        <div id="settings-appearance-panel-icons" role="tabpanel" aria-labelledby="settings-appearance-tab-icons" className="space-y-4">
                                             <p className="text-xs text-gray-500">{t('settings.iconThemeDesc')}</p>
                                             <div className="grid grid-cols-3 gap-3">
                                                 {[
@@ -3073,7 +3242,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     {/* Sub-tab: Interface */}
                                     {appearanceSubTab === 'interface' && (
-                                        <div className="space-y-4">
+                                        <div id="settings-appearance-panel-interface" role="tabpanel" aria-labelledby="settings-appearance-tab-interface" className="space-y-4">
                                             {/* Language Selector */}
                                             <LanguageSelector
                                                 currentLanguage={language}
@@ -3405,7 +3574,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
                                     {/* Sub-tab: Backgrounds */}
                                     {appearanceSubTab === 'backgrounds' && (
-                                        <div className="space-y-6">
+                                        <div id="settings-appearance-panel-backgrounds" role="tabpanel" aria-labelledby="settings-appearance-tab-backgrounds" className="space-y-6">
                                             {/* App Background Pattern */}
                                             <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                                                 <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
