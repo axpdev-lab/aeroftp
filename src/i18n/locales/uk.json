@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Автовиявлення, квота в реальному часі, розширені функції",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Цей режим використовує InfiniCLOUD REST API v2 для автовиявлення та квоти в реальному часі. Наразі доступно для розробників та внутрішнього бета-тестування.",
-            "discoverBackblazeNative": "Нативне B2 v4 API: робочий процес для великих файлів, копія на боці сервера, історія версій (10 ГБ безкоштовно)"
+            "discoverBackblazeNative": "Нативне B2 v4 API: робочий процес для великих файлів, копія на боці сервера, історія версій (10 ГБ безкоштовно)",
+            "setupSteps": "Спочатку налаштуйте {provider}",
+            "openProviderDocs": "Відкрити документацію {provider}"
         },
         "shortcuts": {
             "title": "Грячі клавіші",

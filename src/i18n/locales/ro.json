@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Descoperire automată, cotă în timp real, funcții avansate",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Acest mod folosește InfiniCLOUD REST API v2 pentru descoperire automată și cotă în timp real. Disponibil în prezent pentru dezvoltatori și testare beta internă.",
-            "discoverBackblazeNative": "API B2 v4 nativ: flux pentru fișiere mari, copiere pe server, istoric versiuni (10 GB gratuit)"
+            "discoverBackblazeNative": "API B2 v4 nativ: flux pentru fișiere mari, copiere pe server, istoric versiuni (10 GB gratuit)",
+            "setupSteps": "Configurați mai întâi {provider}",
+            "openProviderDocs": "Deschide documentația {provider}"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

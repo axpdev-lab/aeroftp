@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automatikus felderítés, valós idejű kvóta, speciális funkciók",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Ez a mód az InfiniCLOUD REST API v2-t használja automatikus felderítéshez és valós idejű kvótához. Jelenleg fejlesztők és belső béta tesztelők számára érhető el.",
-            "discoverBackblazeNative": "Natív B2 v4 API: nagy fájlok munkafolyamata, szerveroldali másolás, verzióelőzmények (10 GB ingyen)"
+            "discoverBackblazeNative": "Natív B2 v4 API: nagy fájlok munkafolyamata, szerveroldali másolás, verzióelőzmények (10 GB ingyen)",
+            "setupSteps": "Először állítsa be a következőt: {provider}",
+            "openProviderDocs": "{provider} dokumentáció megnyitása"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

@@ -2120,6 +2120,8 @@
       "advanced": "Advanced",
       "advancedWarning": "These fields are pre-configured for this provider. Changing them may prevent the connection from working correctly.",
       "advancedUnlock": "Edit anyway",
+      "setupSteps": "Setup {provider} first",
+      "openProviderDocs": "Open {provider} documentation",
       "aerocloudDesc": "Personal cloud sync (21 protocols)",
       "aerocloudTooltip": "Turn any server into your personal cloud with automatic sync",
       "azureAuthHelp": "Use Account Name as username and Access Key as password. Alternatively, leave password empty and provide a SAS token in the endpoint field.",

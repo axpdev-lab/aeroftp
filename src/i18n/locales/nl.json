@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automatische detectie, realtime quota, geavanceerde functies",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Deze modus gebruikt InfiniCLOUD REST API v2 voor automatische detectie en realtime quota. Momenteel beschikbaar voor ontwikkelaars en intern bètatesten.",
-            "discoverBackblazeNative": "Native B2 v4 API: workflow voor grote bestanden, server-side kopie, versiegeschiedenis (10 GB gratis)"
+            "discoverBackblazeNative": "Native B2 v4 API: workflow voor grote bestanden, server-side kopie, versiegeschiedenis (10 GB gratis)",
+            "setupSteps": "Stel eerst {provider} in",
+            "openProviderDocs": "Open {provider}-documentatie"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

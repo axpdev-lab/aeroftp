@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Otomatik keşif, gerçek zamanlı kota, gelişmiş özellikler",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Bu mod, otomatik keşif ve gerçek zamanlı kota için InfiniCLOUD REST API v2 kullanır. Şu anda geliştiriciler ve dahili beta testi için kullanılabilir.",
-            "discoverBackblazeNative": "Yerel B2 v4 API: büyük dosya iş akışı, sunucu taraflı kopya, sürüm geçmişi (10 GB ücretsiz)"
+            "discoverBackblazeNative": "Yerel B2 v4 API: büyük dosya iş akışı, sunucu taraflı kopya, sürüm geçmişi (10 GB ücretsiz)",
+            "setupSteps": "Önce {provider} kurulumunu yapın",
+            "openProviderDocs": "{provider} belgelerini aç"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

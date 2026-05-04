@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automatyczne wykrywanie, przydział w czasie rzeczywistym, zaawansowane funkcje",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Ten tryb używa InfiniCLOUD REST API v2 do automatycznego wykrywania i przyziału w czasie rzeczywistym. Obecnie dostępny dla programistów i wewnętrznych testów beta.",
-            "discoverBackblazeNative": "Natywne API B2 v4: obsługa dużych plików, kopia po stronie serwera, historia wersji (10 GB za darmo)"
+            "discoverBackblazeNative": "Natywne API B2 v4: obsługa dużych plików, kopia po stronie serwera, historia wersji (10 GB za darmo)",
+            "setupSteps": "Najpierw skonfiguruj {provider}",
+            "openProviderDocs": "Otwórz dokumentację {provider}"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automatsko otkrivanje, kvota u stvarnom vremenu, napredne značajke",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Ovaj način koristi InfiniCLOUD REST API v2 za automatsko otkrivanje i kvotu u stvarnom vremenu. Trenutno dostupno za programere i interno beta testiranje.",
-            "discoverBackblazeNative": "Izvorni B2 v4 API: tijek rada za velike datoteke, kopiranje na poslužitelju, povijest verzija (10 GB besplatno)"
+            "discoverBackblazeNative": "Izvorni B2 v4 API: tijek rada za velike datoteke, kopiranje na poslužitelju, povijest verzija (10 GB besplatno)",
+            "setupSteps": "Najprije postavite {provider}",
+            "openProviderDocs": "Otvori dokumentaciju za {provider}"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

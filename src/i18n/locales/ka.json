@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "ავტომატური აღმოჩენა, რეალურ დროში კვოტა, გაფართოებული ფუნქციები",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "ეს რეჟიმი იყენებს InfiniCLOUD REST API v2-ს ავტომატური აღმოჩენისა და რეალურ დროში კვოტისთვის. ამჟამად ხელმისაწვდომია დეველოპერებისა და შიდა ბეტა ტესტირებისთვის.",
-            "discoverBackblazeNative": "მშობლიური B2 v4 API: დიდი ფაილების სამუშაო პროცესი, სერვერის მხარეს კოპირება, ვერსიების ისტორია (10 GB უფასოდ)"
+            "discoverBackblazeNative": "მშობლიური B2 v4 API: დიდი ფაილების სამუშაო პროცესი, სერვერის მხარეს კოპირება, ვერსიების ისტორია (10 GB უფასოდ)",
+            "setupSteps": "ჯერ დააყენეთ {provider}",
+            "openProviderDocs": "გახსენით {provider}-ის დოკუმენტაცია"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

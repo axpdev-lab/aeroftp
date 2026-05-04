@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "自動検出、リアルタイムクォータ、高度な機能",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "このモードはInfiniCLOUD REST API v2を使用して自動検出とリアルタイムクォータを提供します。現在、開発者と内部ベータテスト向けに利用可能です。",
-            "discoverBackblazeNative": "ネイティブ B2 v4 API: 大容量ファイルのワークフロー、サーバー側コピー、バージョン履歴 (10 GB 無料)"
+            "discoverBackblazeNative": "ネイティブ B2 v4 API: 大容量ファイルのワークフロー、サーバー側コピー、バージョン履歴 (10 GB 無料)",
+            "setupSteps": "最初に {provider} をセットアップ",
+            "openProviderDocs": "{provider} のドキュメントを開く"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

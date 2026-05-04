@@ -966,9 +966,9 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#0E7490',
         stable: false,
         fields: [
-            { ...COMMON_FIELDS.accessKeyId, placeholder: 'AKIA...', helpText: 'Copy from S3Drive or from the S3Drive rclone.conf entry.' },
-            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Copy from S3Drive or from the S3Drive rclone.conf entry.' },
-            { ...COMMON_FIELDS.bucket, placeholder: 'your-s3drive-bucket' },
+            { ...COMMON_FIELDS.accessKeyId, placeholder: 'AKIA...', helpText: 'From S3Drive: open the "Setup with Rclone" page and copy the access_key_id value.' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'From S3Drive: same "Setup with Rclone" page, copy the secret_access_key value.' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'your-s3drive-bucket', helpText: 'The bucket created for your S3Drive account (visible in the S3Drive desktop app or in your generated rclone.conf).' },
         ],
         defaults: {
             endpoint: 'https://storage.kapsa.io',
@@ -980,8 +980,15 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         healthCheckUrl: 'https://storage.kapsa.io',
-        helpUrl: 'https://s3drive.app',
+        helpUrl: 'https://docs.s3drive.app/Advanced/Setup-rclone/',
         signupUrl: 'https://s3drive.app',
+        setupInstructions: [
+            'Sign in to S3Drive (free plan includes 12 GB on Storj)',
+            'In the S3Drive desktop app open Settings, then "Setup with Rclone" (or visit docs.s3drive.app/Advanced/Setup-rclone)',
+            'Generate the rclone configuration to reveal the S3 credentials issued for your account',
+            'Copy access_key_id, secret_access_key and the bucket name into the fields here',
+            'Endpoint and Region come from the same rclone snippet: open "Advanced" below if your values differ from the defaults (storage.kapsa.io / us-east-1)',
+        ],
     },
 
     // =========================================================================

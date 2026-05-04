@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Penemuan otomatis, kuota real-time, fitur lanjutan",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Mode ini menggunakan InfiniCLOUD REST API v2 untuk penemuan otomatis dan kuota real-time. Saat ini tersedia untuk pengembang dan pengujian beta internal.",
-            "discoverBackblazeNative": "API B2 v4 native: alur kerja file besar, salin sisi server, riwayat versi (10 GB gratis)"
+            "discoverBackblazeNative": "API B2 v4 native: alur kerja file besar, salin sisi server, riwayat versi (10 GB gratis)",
+            "setupSteps": "Siapkan {provider} terlebih dahulu",
+            "openProviderDocs": "Buka dokumentasi {provider}"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

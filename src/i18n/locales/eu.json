@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Aurkikuntza automatikoa, denbora errealeko kuota, funtzio aurreratuak",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Modu honek InfiniCLOUD REST API v2 erabiltzen du aurkikuntza automatikorako eta denbora errealeko kuotarako. Gaur egun garatzaileentzat eta barneko beta probentzat eskuragarri.",
-            "discoverBackblazeNative": "Jatorrizko B2 v4 APIa: fitxategi handien lan-fluxua, zerbitzariko kopia, bertsio-historia (10 GB doan)"
+            "discoverBackblazeNative": "Jatorrizko B2 v4 APIa: fitxategi handien lan-fluxua, zerbitzariko kopia, bertsio-historia (10 GB doan)",
+            "setupSteps": "Konfiguratu {provider} lehenik",
+            "openProviderDocs": "Ireki {provider} dokumentazioa"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automaatne tuvastamine, reaalajas kvoot, täiustatud funktsioonid",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "See režiim kasutab InfiniCLOUD REST API v2 automaatseks tuvastamiseks ja reaalajas kvoodi jaoks. Praegu saadaval arendajatele ja sisemiseks beetatestimiseks.",
-            "discoverBackblazeNative": "Natiivne B2 v4 API: suurte failide töövoog, serveripoolne kopeerimine, versiooniajalugu (10 GB tasuta)"
+            "discoverBackblazeNative": "Natiivne B2 v4 API: suurte failide töövoog, serveripoolne kopeerimine, versiooniajalugu (10 GB tasuta)",
+            "setupSteps": "Seadistage kõigepealt {provider}",
+            "openProviderDocs": "Ava {provider} dokumentatsioon"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

@@ -511,7 +511,9 @@
             "infinicloudModeApiDesc": "Rilevamento automatico, quota in tempo reale, funzionalità avanzate",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Questa modalità utilizza InfiniCLOUD REST API v2 per il rilevamento automatico e la quota in tempo reale. Attualmente disponibile per sviluppatori e beta testing interno.",
-            "discoverBackblazeNative": "API B2 v4 nativa: workflow file grandi, copia server-side, cronologia versioni (10 GB gratis)"
+            "discoverBackblazeNative": "API B2 v4 nativa: workflow file grandi, copia server-side, cronologia versioni (10 GB gratis)",
+            "setupSteps": "Configura prima {provider}",
+            "openProviderDocs": "Apri la documentazione di {provider}"
         },
         "browser": {
             "remote": "Remoto",

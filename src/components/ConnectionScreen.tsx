@@ -3869,6 +3869,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : ''}>
                                     {/* LEFT COLUMN: Connection fields */}
                                     <div className="space-y-3">
+                                        {/* Provider-specific setup steps (S3Drive, Filen Desktop S3, etc.) */}
+                                        {selectedProvider?.setupInstructions && selectedProvider.setupInstructions.length > 0 && !editingProfileId && (
+                                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                                                <p className="font-medium mb-2">{t('protocol.setupSteps', { provider: selectedProvider.name })}</p>
+                                                <ol className="list-decimal list-inside space-y-1">
+                                                    {selectedProvider.setupInstructions.map((step) => (
+                                                        <li key={step}>{step}</li>
+                                                    ))}
+                                                </ol>
+                                                {selectedProvider.helpUrl && (
+                                                    <a
+                                                        href={selectedProvider.helpUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="mt-2 inline-flex items-center gap-1 underline hover:no-underline"
+                                                    >
+                                                        <ExternalLink size={11} />
+                                                        {t('protocol.openProviderDocs', { provider: selectedProvider.name })}
+                                                    </a>
+                                                )}
+                                            </div>
+                                        )}
                                         {(() => {
                                             const isNonGenericS3 = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.isGeneric;
                                             const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric;

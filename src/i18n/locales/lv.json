@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automātiska noteikšana, reāllaika kvota, papildu funkcijas",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Šis režīms izmanto InfiniCLOUD REST API v2 automātiskai noteikšanai un reāllaika kvotai. Pašlaik pieejams izstrādātājiem un iekšējai beta testēšanai.",
-            "discoverBackblazeNative": "Vietējā B2 v4 API: lielu failu darbplūsma, kopēšana serverī, versiju vēsture (10 GB bez maksas)"
+            "discoverBackblazeNative": "Vietējā B2 v4 API: lielu failu darbplūsma, kopēšana serverī, versiju vēsture (10 GB bez maksas)",
+            "setupSteps": "Vispirms iestatiet {provider}",
+            "openProviderDocs": "Atvērt {provider} dokumentāciju"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

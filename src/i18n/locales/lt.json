@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automatinis aptikimas, kvota realiuoju laiku, išplėstinės funkcijos",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Šis režimas naudoja InfiniCLOUD REST API v2 automatiniam aptikimui ir kvotai realiuoju laiku. Šiuo metu prieinamas kūrėjams ir vidiniams beta bandymams.",
-            "discoverBackblazeNative": "Savoji B2 v4 API: didelių failų darbo eiga, kopijavimas serveryje, versijų istorija (10 GB nemokamai)"
+            "discoverBackblazeNative": "Savoji B2 v4 API: didelių failų darbo eiga, kopijavimas serveryje, versijų istorija (10 GB nemokamai)",
+            "setupSteps": "Pirmiausia nustatykite {provider}",
+            "openProviderDocs": "Atidaryti {provider} dokumentaciją"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

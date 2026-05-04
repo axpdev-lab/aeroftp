@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "ค้นหาอัตโนมัติ, โควต้าแบบเรียลไทม์, คุณสมบัติขั้นสูง",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "โหมดนี้ใช้ InfiniCLOUD REST API v2 สำหรับการค้นหาอัตโนมัติและโควต้าแบบเรียลไทม์ ปัจจุบันพร้อมใช้งานสำหรับนักพัฒนาและการทดสอบเบต้าภายใน",
-            "discoverBackblazeNative": "B2 v4 API ดั้งเดิม: เวิร์กโฟลว์ไฟล์ขนาดใหญ่ สำเนาฝั่งเซิร์ฟเวอร์ ประวัติเวอร์ชัน (10 GB ฟรี)"
+            "discoverBackblazeNative": "B2 v4 API ดั้งเดิม: เวิร์กโฟลว์ไฟล์ขนาดใหญ่ สำเนาฝั่งเซิร์ฟเวอร์ ประวัติเวอร์ชัน (10 GB ฟรี)",
+            "setupSteps": "ตั้งค่า {provider} ก่อน",
+            "openProviderDocs": "เปิดเอกสาร {provider}"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

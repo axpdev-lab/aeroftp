@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automatische Erkennung, Echtzeit-Kontingent, erweiterte Funktionen",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Dieser Modus verwendet InfiniCLOUD REST API v2 für automatische Erkennung und Echtzeit-Kontingent. Derzeit verfügbar für Entwickler und interne Betatests.",
-            "discoverBackblazeNative": "Native B2 v4 API: Workflow für große Dateien, serverseitige Kopie, Versionsverlauf (10 GB kostenlos)"
+            "discoverBackblazeNative": "Native B2 v4 API: Workflow für große Dateien, serverseitige Kopie, Versionsverlauf (10 GB kostenlos)",
+            "setupSteps": "Zuerst {provider} einrichten",
+            "openProviderDocs": "{provider}-Dokumentation öffnen"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

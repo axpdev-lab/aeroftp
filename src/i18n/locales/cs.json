@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Automatické zjištění, kvóta v reálném čase, pokročilé funkce",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Tento režim používá InfiniCLOUD REST API v2 pro automatické zjištění a kvótu v reálném čase. Momentálně dostupné pro vývojáře a interní beta testování.",
-            "discoverBackblazeNative": "Nativní B2 v4 API: pracovní postup pro velké soubory, kopie na straně serveru, historie verzí (10 GB zdarma)"
+            "discoverBackblazeNative": "Nativní B2 v4 API: pracovní postup pro velké soubory, kopie na straně serveru, historie verzí (10 GB zdarma)",
+            "setupSteps": "Nejprve nastavte {provider}",
+            "openProviderDocs": "Otevřít dokumentaci {provider}"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

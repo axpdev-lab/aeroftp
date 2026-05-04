@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Автоматично откриване, квота в реално време, разширени функции",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Този режим използва InfiniCLOUD REST API v2 за автоматично откриване и квота в реално време. В момента е достъпен за разработчици и вътрешно бета тестване.",
-            "discoverBackblazeNative": "Нативно B2 v4 API: работен поток за големи файлове, копиране от страна на сървъра, история на версиите (10 GB безплатно)"
+            "discoverBackblazeNative": "Нативно B2 v4 API: работен поток за големи файлове, копиране от страна на сървъра, история на версиите (10 GB безплатно)",
+            "setupSteps": "Първо настройте {provider}",
+            "openProviderDocs": "Отваряне на документацията на {provider}"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

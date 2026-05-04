@@ -1596,7 +1596,9 @@
             "infinicloudModeApiDesc": "Ugunduzi otomatiki, kiwango cha wakati halisi, vipengele vya juu",
             "infinicloudApiInfoTitle": "REST API (Beta)",
             "infinicloudApiInfoDesc": "Hali hii inatumia InfiniCLOUD REST API v2 kwa ugunduzi otomatiki na kiwango cha wakati halisi. Kwa sasa inapatikana kwa watengenezaji na majaribio ya beta ya ndani.",
-            "discoverBackblazeNative": "API ya asili ya B2 v4: mtiririko wa faili kubwa, nakala upande wa seva, historia ya matoleo (10 GB bure)"
+            "discoverBackblazeNative": "API ya asili ya B2 v4: mtiririko wa faili kubwa, nakala upande wa seva, historia ya matoleo (10 GB bure)",
+            "setupSteps": "Sanidi {provider} kwanza",
+            "openProviderDocs": "Fungua nyaraka za {provider}"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
