@@ -255,6 +255,22 @@ impl ProviderConnectionParams {
             }
         }
 
+        // WebDAV scheme override + self-signed cert opt-out. tls_mode accepts
+        // "http", "https", or "auto" (default). Required for local WebDAV
+        // bridges such as Filen Desktop (port 1900, HTTP) and any custom-
+        // port HTTP server where the auto-detection would otherwise pick
+        // HTTPS.
+        if provider_type == ProviderType::WebDav {
+            if let Some(ref tls_mode) = self.tls_mode {
+                if !tls_mode.is_empty() {
+                    extra.insert("tls_mode".to_string(), tls_mode.clone());
+                }
+            }
+            if let Some(verify) = self.verify_cert {
+                extra.insert("verify_cert".to_string(), verify.to_string());
+            }
+        }
+
         // Add MEGA-specific options
         if provider_type == ProviderType::Mega {
             if self.save_session.unwrap_or(true) {

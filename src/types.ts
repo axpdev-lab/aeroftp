@@ -215,6 +215,12 @@ export interface ProviderOptions {
   tlsMode?: FtpTlsMode; // TLS encryption mode
   verifyCert?: boolean; // Verify server certificate (default: true)
 
+  // WebDAV-specific scheme override.
+  // "auto" (default): port 443 -> https, port 80 -> http, localhost / RFC1918
+  // / *.local / Filen Desktop hostnames -> http on any port, otherwise https.
+  // "http"/"https" force the scheme regardless of port.
+  webdavScheme?: 'http' | 'https' | 'auto';
+
   // SFTP-specific
   private_key_path?: string; // Path to SSH private key
   key_passphrase?: string; // Passphrase for encrypted keys

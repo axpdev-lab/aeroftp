@@ -1259,6 +1259,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         region: provider.defaults?.region,
                         endpoint: provider.defaults?.endpoint,
                         anonymous: provider.defaults?.anonymous,
+                        // Propagate WebDAV scheme override (Filen Desktop, MEGAcmd, etc.)
+                        // so the backend builds http://... instead of https://...
+                        webdavScheme: provider.defaults?.webdavScheme,
+                        bucket: provider.defaults?.bucket,
                     },
                 });
                 onQuickConnectDirsChange({

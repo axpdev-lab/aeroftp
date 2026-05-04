@@ -104,6 +104,13 @@ export interface ProviderConfig {
         anonymous?: boolean;
         /** FTP TLS mode */
         tls_mode?: string;
+        /** WebDAV scheme override: "http" | "https" | "auto" (default).
+         *  Required for local WebDAV bridges (Filen Desktop port 1900,
+         *  MEGAcmd port 4443) where the auto-detection would otherwise
+         *  pick HTTPS for non-standard ports. */
+        webdavScheme?: 'http' | 'https' | 'auto';
+        /** Default S3 bucket (Filen Desktop S3 fixes this to "filen") */
+        bucket?: string;
     };
 
     /** API endpoints for provider-specific features */

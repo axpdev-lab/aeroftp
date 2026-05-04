@@ -339,22 +339,51 @@ pub struct WebDavConfig {
 
 impl WebDavConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        // Build WebDAV URL from host
-        let scheme = if config.effective_port() == 80 {
-            "http"
-        } else {
-            "https"
+        // Build WebDAV URL from host. Three knobs decide the scheme, in order:
+        //   1. Explicit scheme prefix on `host` (`http://...` / `https://...`)
+        //      always wins.
+        //   2. `extra["tls_mode"]` ("http", "https", "auto"). Default "auto".
+        //   3. Auto rules: port 443 → https, port 80 → http, otherwise infer
+        //      from the host: localhost / 127.0.0.1 / RFC1918 / `*.local` /
+        //      Filen Desktop hostnames default to http (their local servers
+        //      don't speak TLS by default), everything else falls back to
+        //      https. This keeps the public-internet default safe but unblocks
+        //      local network drives such as Filen Desktop's WebDAV bridge
+        //      (port 1900) and MEGAcmd (port 4443).
+        let port = config.effective_port();
+        let tls_mode = config
+            .extra
+            .get("tls_mode")
+            .map(|v| v.to_ascii_lowercase())
+            .unwrap_or_else(|| "auto".to_string());
+
+        let resolved_scheme = match tls_mode.as_str() {
+            "http" => "http",
+            "https" => "https",
+            _ => match port {
+                443 => "https",
+                80 => "http",
+                _ => {
+                    if Self::is_local_or_filen_host(&config.host) {
+                        "http"
+                    } else {
+                        "https"
+                    }
+                }
+            },
         };
-        let port_suffix = if config.effective_port() == 443 || config.effective_port() == 80 {
-            String::new()
-        } else {
-            format!(":{}", config.effective_port())
+
+        // Suppress port suffix when it matches the implied default for the
+        // resolved scheme so URLs stay clean for traditional WebDAV servers.
+        let port_suffix = match (resolved_scheme, port) {
+            ("https", 443) | ("http", 80) => String::new(),
+            _ => format!(":{}", port),
         };
 
         let raw_url = if config.host.starts_with("http://") || config.host.starts_with("https://") {
             config.host.clone()
         } else {
-            format!("{}://{}{}", scheme, config.host, port_suffix)
+            format!("{}://{}{}", resolved_scheme, config.host, port_suffix)
         };
 
         // Resolve {username} template in URL (used by CloudMe, Nextcloud presets)
@@ -380,6 +409,142 @@ impl WebDavConfig {
             verify_cert,
             anonymous,
         })
+    }
+
+    /// Returns true when the host targets a local-only WebDAV bridge (Filen
+    /// Desktop, MEGAcmd, OpenDrive Desktop, custom localhost gateways) so we
+    /// know to default to HTTP on non-standard ports. The decision is based
+    /// purely on the host string: no DNS lookup, no IP stack heuristic.
+    pub(crate) fn is_local_or_filen_host(host: &str) -> bool {
+        let h = host
+            .trim()
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .trim_start_matches('[');
+        // Strip user info, brackets, and port. We intentionally do not use
+        // `url::Url::parse` because raw `host:port` isn't a valid URL.
+        let host_only = h
+            .split('@')
+            .next_back()
+            .unwrap_or(h)
+            .split('/')
+            .next()
+            .unwrap_or(h);
+        let host_only = host_only.trim_end_matches(']');
+        let host_only = match host_only.rsplit_once(':') {
+            Some((before, after)) if after.chars().all(|c| c.is_ascii_digit()) => before,
+            _ => host_only,
+        };
+        let lower = host_only.to_ascii_lowercase();
+        if lower == "localhost"
+            || lower == "127.0.0.1"
+            || lower == "::1"
+            || lower.ends_with(".localhost")
+            || lower.ends_with(".local")
+            || lower == "local.webdav.filen.io"
+            || lower == "local.s3.filen.io"
+        {
+            return true;
+        }
+        // RFC 1918 / link-local IPv4: 10/8, 172.16/12, 192.168/16, 169.254/16
+        if let Some(first) = lower.split('.').next().and_then(|s| s.parse::<u8>().ok()) {
+            if first == 10 {
+                return true;
+            }
+            let parts: Vec<u8> = lower
+                .split('.')
+                .filter_map(|s| s.parse::<u8>().ok())
+                .collect();
+            if parts.len() == 4 {
+                if parts[0] == 192 && parts[1] == 168 {
+                    return true;
+                }
+                if parts[0] == 169 && parts[1] == 254 {
+                    return true;
+                }
+                if parts[0] == 172 && (16..=31).contains(&parts[1]) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+#[cfg(test)]
+mod webdav_config_tests {
+    use super::*;
+
+    fn build(host: &str, port: Option<u16>, tls_mode: Option<&str>) -> WebDavConfig {
+        let mut extra = std::collections::HashMap::new();
+        if let Some(m) = tls_mode {
+            extra.insert("tls_mode".to_string(), m.to_string());
+        }
+        let cfg = ProviderConfig {
+            name: "test".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: host.to_string(),
+            port,
+            username: Some("u".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        WebDavConfig::from_provider_config(&cfg).unwrap()
+    }
+
+    #[test]
+    fn auto_picks_http_for_filen_local_hostname() {
+        let cfg = build("local.webdav.filen.io", Some(1900), None);
+        assert_eq!(cfg.url, "http://local.webdav.filen.io:1900");
+    }
+
+    #[test]
+    fn auto_picks_http_for_localhost_with_custom_port() {
+        let cfg = build("127.0.0.1", Some(1900), None);
+        assert_eq!(cfg.url, "http://127.0.0.1:1900");
+        let cfg = build("localhost", Some(4443), None);
+        assert_eq!(cfg.url, "http://localhost:4443");
+    }
+
+    #[test]
+    fn auto_picks_http_for_rfc1918_with_custom_port() {
+        let cfg = build("192.168.1.50", Some(8080), None);
+        assert_eq!(cfg.url, "http://192.168.1.50:8080");
+        let cfg = build("10.0.0.5", Some(1900), None);
+        assert_eq!(cfg.url, "http://10.0.0.5:1900");
+        let cfg = build("172.20.10.1", Some(8443), None);
+        assert_eq!(cfg.url, "http://172.20.10.1:8443");
+    }
+
+    #[test]
+    fn auto_picks_https_for_public_host_with_custom_port() {
+        let cfg = build("cloud.example.com", Some(8443), None);
+        assert_eq!(cfg.url, "https://cloud.example.com:8443");
+    }
+
+    #[test]
+    fn explicit_tls_mode_overrides_auto() {
+        let cfg = build("cloud.example.com", Some(80), Some("https"));
+        assert_eq!(cfg.url, "https://cloud.example.com:80");
+        let cfg = build("local.webdav.filen.io", Some(1900), Some("https"));
+        assert_eq!(cfg.url, "https://local.webdav.filen.io:1900");
+        let cfg = build("cloud.example.com", Some(443), Some("http"));
+        assert_eq!(cfg.url, "http://cloud.example.com:443");
+    }
+
+    #[test]
+    fn explicit_scheme_in_host_wins_over_everything() {
+        let cfg = build("https://cloud.example.com:1234", Some(80), Some("http"));
+        assert_eq!(cfg.url, "https://cloud.example.com:1234");
+    }
+
+    #[test]
+    fn standard_ports_omit_port_suffix() {
+        let cfg = build("cloud.example.com", Some(443), None);
+        assert_eq!(cfg.url, "https://cloud.example.com");
+        let cfg = build("intranet.local", Some(80), None);
+        assert_eq!(cfg.url, "http://intranet.local");
     }
 }
 

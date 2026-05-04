@@ -190,6 +190,8 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
 const BADGE_OVERRIDES: Record<string, string> = {
     'felicloud': 'API OCS',   // Nextcloud-based, OCS REST API for sharing
     'megacmd-webdav': 'LOCAL',
+    'filen-desktop-webdav': 'LOCAL',
+    'filen-desktop-s3': 'LOCAL',
     'nextcloud': 'OCS',       // Self-hosted Nextcloud, OCS REST API
 };
 
@@ -230,7 +232,7 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
                 'mega-s4': 7, 'backblaze': 8, 'idrive-e2': 9,
                 // Row 4+: remaining
                 'digitalocean-spaces': 10, 'filelu-s3': 11, 'wasabi': 12,
-                'oracle-cloud': 13, 's3drive': 14,
+                'oracle-cloud': 13, 's3drive': 14, 'filen-desktop-s3': 15,
                 // Asian providers
                 'alibaba-oss': 20, 'tencent-cos': 21, 'yandex-storage': 22,
                 // Trial-only / restricted signup — kept at the end
@@ -251,6 +253,7 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
                 'felicloud': 2,
                 'koofr': 3,
                 'megacmd-webdav': 4,
+                'filen-desktop-webdav': 5,
                 'quotaless-webdav': 99,
             };
             const pa = priority[a.id] ?? 10;
