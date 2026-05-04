@@ -166,6 +166,9 @@ function loadCustomIcons(): CustomIcon[] {
 function persistCustomIcons(icons: CustomIcon[]) {
     try {
         localStorage.setItem(CUSTOM_ICONS_KEY, JSON.stringify(icons));
+        // Mirror the change to any other surface listening for library updates
+        // (Settings > Appearance > Custom icons gallery in particular).
+        window.dispatchEvent(new CustomEvent('aeroftp-custom-icons-changed'));
     } catch (e) {
         logger.warn('icon-picker: failed to persist custom icons', e);
     }

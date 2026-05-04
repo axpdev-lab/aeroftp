@@ -26,6 +26,7 @@ import { TotpSetup } from './TotpSetup';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { SettingsAeroCloudTab } from './settings/SettingsAeroCloudTab';
 import { Checkbox } from './ui/Checkbox';
+import { CustomIconsManager } from './CustomIconsManager';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
@@ -3236,6 +3237,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         </button>
                                                     );
                                                 })}
+                                            </div>
+                                            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                                                <CustomIconsManager />
                                             </div>
                                         </div>
                                     )}
