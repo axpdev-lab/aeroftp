@@ -12434,6 +12434,58 @@ pub fn run() {
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder};
             use tauri_plugin_window_state::{StateFlags, WindowExt};
 
+            // Wait for tauri-plugin-localhost to bind the loopback port before
+            // any webview tries to load from it.
+            //
+            // The plugin spawns its actix server on a background thread during
+            // its own `Plugin::initialize`. On the warm path (manual launch),
+            // the bind beats the splash creation by an order of magnitude. On
+            // cold OS-autostart with the app launched alongside login services
+            // and minimised to tray, the bind can lose by 100-500ms — long
+            // enough for WebKit to GET 127.0.0.1:14321 and render
+            // "Could not connect to 127.0.0.1: Connection refused" inside
+            // the splash and the main window. Restarting the app from the
+            // tray hides the issue because by then the port is already up.
+            //
+            // Short blocking poll: zero cost on the warm path (the connect
+            // succeeds on the first attempt), bounded by 5s on the cold path
+            // before we fall through with a warning.
+            #[cfg(all(not(dev), target_os = "linux"))]
+            {
+                use std::net::{SocketAddr, TcpStream};
+                use std::time::{Duration, Instant};
+
+                let addr: SocketAddr = format!("127.0.0.1:{}", port)
+                    .parse()
+                    .expect("valid localhost addr");
+                let deadline = Instant::now() + Duration::from_secs(5);
+                let mut last_err: Option<std::io::Error> = None;
+                while Instant::now() < deadline {
+                    match TcpStream::connect_timeout(&addr, Duration::from_millis(150)) {
+                        Ok(_) => {
+                            last_err = None;
+                            break;
+                        }
+                        Err(e) => {
+                            last_err = Some(e);
+                            std::thread::sleep(Duration::from_millis(50));
+                        }
+                    }
+                }
+                if let Some(e) = last_err {
+                    log::warn!(
+                        "tauri-plugin-localhost did not bind 127.0.0.1:{} within 5s ({}); \
+                         splash and main window may briefly show a connection-refused page",
+                        port, e
+                    );
+                } else {
+                    log::info!(
+                        "tauri-plugin-localhost is listening on 127.0.0.1:{}",
+                        port
+                    );
+                }
+            }
+
             // Ensure AppConfig directory exists with restricted permissions (0700)
             if let Ok(config_dir) = app.path().app_config_dir() {
                 let _ = std::fs::create_dir_all(&config_dir);
