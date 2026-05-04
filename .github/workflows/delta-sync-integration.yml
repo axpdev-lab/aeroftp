@@ -100,7 +100,7 @@ jobs:
           docker logs aeroftp-delta-sync-fixture >&2 || true
           exit 1
 
-      - name: Unit tests: delta-sync modules
+      - name: "Unit tests: delta-sync modules"
         working-directory: src-tauri
         run: |
           cargo test --lib --no-fail-fast -- \
@@ -110,7 +110,7 @@ jobs:
             delta_transport:: \
             delta_sync_rsync::
 
-      - name: Integration test: delta sync over SSH
+      - name: "Integration test: delta sync over SSH"
         working-directory: src-tauri
         run: cargo test --test integration_delta_sync -- --ignored --nocapture
 
@@ -207,7 +207,7 @@ jobs:
             hard_error_branch_runs_before_classic_fallback_in_bivio \
             --nocapture
 
-      - name: Fallback integration test: password-only fixture
+      - name: "Fallback integration test: password-only fixture"
         working-directory: src-tauri
         run: |
           cargo test --test integration_delta_sync -- \
@@ -284,7 +284,7 @@ jobs:
       # (`RsyncCapability`/`RsyncConfig`/`RsyncError`/`RsyncStats`),
       # the cross-platform adapter, and `SftpProvider::delta_transport()`
       # all build cleanly under MSVC with the feature on.
-      - name: cargo check (default features: shipping configuration)
+      - name: "cargo check (default features: shipping configuration)"
         working-directory: src-tauri
         run: cargo check --locked --all-targets
       # Note on the test binary: a full `cargo test --lib` on Windows
