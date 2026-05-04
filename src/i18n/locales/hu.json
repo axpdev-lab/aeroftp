@@ -938,7 +938,9 @@
             "myServersDensity": "Szervereim lista sűrűsége",
             "myServersDensityDesc": "Kompakt csökkenti a margókat és az ikont; kényelmes megtartja az eredeti távolságot.",
             "densityCompact": "Kompakt",
-            "densityComfortable": "Kényelmes"
+            "densityComfortable": "Kényelmes",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

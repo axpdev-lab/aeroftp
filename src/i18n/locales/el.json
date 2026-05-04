@@ -938,7 +938,9 @@
             "myServersDensity": "Πυκνότητα λίστας Διακομιστές μου",
             "myServersDensityDesc": "Συμπαγής μειώνει τα περιθώρια και το εικονίδιο· άνετη διατηρεί την παλιά απόσταση.",
             "densityCompact": "Συμπαγής",
-            "densityComfortable": "Άνετη"
+            "densityComfortable": "Άνετη",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

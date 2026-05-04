@@ -938,7 +938,9 @@
             "myServersDensity": "Minu serverite loendi tihedus",
             "myServersDensityDesc": "Tihendatud vähendab paddingit ja ikooni; mugav säilitab varasema vahekauguse.",
             "densityCompact": "Tihendatud",
-            "densityComfortable": "Mugav"
+            "densityComfortable": "Mugav",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

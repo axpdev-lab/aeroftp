@@ -938,7 +938,9 @@
             "myServersDensity": "Densidad de la lista Mis servidores",
             "myServersDensityDesc": "Compacta reduce los rellenos y el icono; cómoda mantiene el espaciado original.",
             "densityCompact": "Compacta",
-            "densityComfortable": "Cómoda"
+            "densityComfortable": "Cómoda",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

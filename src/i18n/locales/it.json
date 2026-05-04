@@ -1219,7 +1219,9 @@
             "myServersDensity": "Densità elenco I miei server",
             "myServersDensityDesc": "Compatta riduce padding e icona; comoda mantiene la spaziatura originale.",
             "densityCompact": "Compatta",
-            "densityComfortable": "Comoda"
+            "densityComfortable": "Comoda",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "appearance": {
             "patternCross": "Croce",

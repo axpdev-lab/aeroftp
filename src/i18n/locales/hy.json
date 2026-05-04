@@ -938,7 +938,9 @@
             "myServersDensity": "My Servers ցուցակի խտություն",
             "myServersDensityDesc": "Կոմպակտ տարբերակը փոքրացնում է լրացումը ու պատկերակը, հարմարավետը—պահպանում է սկզբնական հեռավորությունը։",
             "densityCompact": "Կոմպակտ",
-            "densityComfortable": "Հարմարավետ"
+            "densityComfortable": "Հարմարավետ",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

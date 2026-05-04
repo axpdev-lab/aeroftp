@@ -938,7 +938,9 @@
             "myServersDensity": "Þéttleiki Mínir þjónar lista",
             "myServersDensityDesc": "Þétt minnkar bil og táknið; þægilegt heldur upprunalegu bili.",
             "densityCompact": "Þétt",
-            "densityComfortable": "Þægilegt"
+            "densityComfortable": "Þægilegt",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

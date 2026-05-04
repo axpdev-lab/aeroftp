@@ -938,7 +938,9 @@
             "myServersDensity": "My Servers liste yoğunluğu",
             "myServersDensityDesc": "Kompakt iç boşlukları ve simgeyi küçültür; rahat orijinal aralığı korur.",
             "densityCompact": "Kompakt",
-            "densityComfortable": "Rahat"
+            "densityComfortable": "Rahat",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

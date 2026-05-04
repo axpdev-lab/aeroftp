@@ -938,7 +938,9 @@
             "myServersDensity": "Densitatea listei Serverele mele",
             "myServersDensityDesc": "Compact reduce padding-ul și pictograma; confortabil păstrează spațierea originală.",
             "densityCompact": "Compact",
-            "densityComfortable": "Confortabil"
+            "densityComfortable": "Confortabil",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

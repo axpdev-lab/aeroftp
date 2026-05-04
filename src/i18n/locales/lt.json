@@ -938,7 +938,9 @@
             "myServersDensity": "Mano serverių sąrašo tankis",
             "myServersDensityDesc": "Glaustas mažina paraštes ir piktogramą; patogus išlaiko pradinį tarpą.",
             "densityCompact": "Glaustas",
-            "densityComfortable": "Patogus"
+            "densityComfortable": "Patogus",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

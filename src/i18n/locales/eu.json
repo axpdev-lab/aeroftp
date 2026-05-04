@@ -938,7 +938,9 @@
             "myServersDensity": "Nire zerbitzariak zerrendaren dentsitatea",
             "myServersDensityDesc": "Trinkoak betetzeak eta ikonoa txikitzen ditu; erosoak lehengo tartea mantentzen du.",
             "densityCompact": "Trinkoa",
-            "densityComfortable": "Erosoa"
+            "densityComfortable": "Erosoa",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

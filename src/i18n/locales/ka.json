@@ -938,7 +938,9 @@
             "myServersDensity": "My Servers სიის სიმკვრივე",
             "myServersDensityDesc": "კომპაქტური ამცირებს ჩაშვებებს და ხატულას; კომფორტული ინარჩუნებს თავდაპირველ დაშორებას.",
             "densityCompact": "კომპაქტური",
-            "densityComfortable": "კომფორტული"
+            "densityComfortable": "კომფორტული",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

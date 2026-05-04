@@ -938,7 +938,9 @@
             "myServersDensity": "Kepadatan daftar Server Saya",
             "myServersDensityDesc": "Ringkas mengecilkan padding dan ikon; nyaman mempertahankan jarak asli.",
             "densityCompact": "Ringkas",
-            "densityComfortable": "Nyaman"
+            "densityComfortable": "Nyaman",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

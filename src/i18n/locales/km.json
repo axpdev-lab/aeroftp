@@ -938,7 +938,9 @@
             "myServersDensity": "ដង់ស៊ីតេបញ្ជី My Servers",
             "myServersDensityDesc": "បង្រួមកាត់បន្ថយ padding និងរូបតំណាង; ស្រួលរក្សាគម្លាតដើម។",
             "densityCompact": "បង្រួម",
-            "densityComfortable": "ស្រួល"
+            "densityComfortable": "ស្រួល",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

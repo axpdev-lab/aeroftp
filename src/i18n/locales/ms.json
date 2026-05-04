@@ -938,7 +938,9 @@
             "myServersDensity": "Kepadatan senarai My Servers",
             "myServersDensityDesc": "Padat mengecilkan padding dan ikon; selesa mengekalkan jarak asal.",
             "densityCompact": "Padat",
-            "densityComfortable": "Selesa"
+            "densityComfortable": "Selesa",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

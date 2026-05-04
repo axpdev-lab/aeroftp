@@ -938,7 +938,9 @@
             "myServersDensity": "My Servers リストの密度",
             "myServersDensityDesc": "コンパクトは余白とアイコンを縮小、快適は元の間隔を維持。",
             "densityCompact": "コンパクト",
-            "densityComfortable": "快適"
+            "densityComfortable": "快適",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

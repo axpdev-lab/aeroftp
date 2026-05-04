@@ -938,7 +938,9 @@
             "myServersDensity": "My Servers सूची घनत्व",
             "myServersDensityDesc": "कॉम्पैक्ट पैडिंग और आइकन सिकोड़ता है; आरामदायक मूल अंतर बनाए रखता है।",
             "densityCompact": "कॉम्पैक्ट",
-            "densityComfortable": "आरामदायक"
+            "densityComfortable": "आरामदायक",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

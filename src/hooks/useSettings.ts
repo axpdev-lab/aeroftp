@@ -24,6 +24,9 @@ const SETTINGS_VAULT_KEY = 'app_settings';
 export const MIN_APP_FONT_SIZE = 10;
 export const MAX_APP_FONT_SIZE = 22;
 export const DEFAULT_APP_FONT_FAMILY = "'Inter', system-ui, sans-serif";
+export const MIN_INTRO_HUB_ICON_SIZE = 18;
+export const MAX_INTRO_HUB_ICON_SIZE = 32;
+export const DEFAULT_INTRO_HUB_ICON_SIZE = 24;
 
 const LEGACY_FONT_SIZE_MAP: Record<string, number> = {
   small: 13,
@@ -45,6 +48,14 @@ export const clampAppFontSize = (value: unknown): number => {
 
 export const normalizeAppFontFamily = (value: unknown): string => {
   return typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_APP_FONT_FAMILY;
+};
+
+export const clampIntroHubIconSize = (value: unknown): number => {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) {
+    return DEFAULT_INTRO_HUB_ICON_SIZE;
+  }
+  return Math.min(MAX_INTRO_HUB_ICON_SIZE, Math.max(MIN_INTRO_HUB_ICON_SIZE, Math.round(normalized)));
 };
 
 export interface AppSettings {
@@ -77,6 +88,8 @@ export interface AppSettings {
   /** Layout density for My Servers / Discover cards. `detailed` shows the
    *  cached storage usage bar; `compact` keeps the legacy minimal card. */
   cardLayout: 'compact' | 'detailed';
+  /** Provider logo size in the IntroHub My Servers and Discover cards. */
+  introHubIconSize: number;
 }
 
 export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
@@ -107,6 +120,7 @@ const DEFAULTS: AppSettings = {
   swapPanels: false,
   disableUpdateChecks: false,
   cardLayout: 'compact',
+  introHubIconSize: DEFAULT_INTRO_HUB_ICON_SIZE,
 };
 
 export const useSettings = () => {
@@ -135,6 +149,7 @@ export const useSettings = () => {
   const [swapPanels, setSwapPanels] = useState(DEFAULTS.swapPanels);
   const [disableUpdateChecks, setDisableUpdateChecks] = useState(DEFAULTS.disableUpdateChecks);
   const [cardLayout, setCardLayout] = useState<AppSettings['cardLayout']>(DEFAULTS.cardLayout);
+  const [introHubIconSize, setIntroHubIconSize] = useState<number>(DEFAULTS.introHubIconSize);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -169,6 +184,9 @@ export const useSettings = () => {
     if (typeof parsed.disableUpdateChecks === 'boolean') setDisableUpdateChecks(parsed.disableUpdateChecks);
     if (parsed.cardLayout === 'compact' || parsed.cardLayout === 'detailed') {
       setCardLayout(parsed.cardLayout);
+    }
+    if (typeof parsed.introHubIconSize === 'number' || typeof parsed.introHubIconSize === 'string') {
+      setIntroHubIconSize(clampIntroHubIconSize(parsed.introHubIconSize));
     }
   }, []);
 
@@ -255,6 +273,7 @@ export const useSettings = () => {
     swapPanels,
     disableUpdateChecks,
     cardLayout,
+    introHubIconSize,
     showSettingsPanel,
 
     // Setters
@@ -283,6 +302,7 @@ export const useSettings = () => {
     setSwapPanels,
     setDisableUpdateChecks,
     setCardLayout,
+    setIntroHubIconSize,
     setShowSettingsPanel,
 
     // Constants

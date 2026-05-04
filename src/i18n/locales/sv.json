@@ -938,7 +938,9 @@
             "myServersDensity": "Täthet av Mina servrar-listan",
             "myServersDensityDesc": "Kompakt minskar utfyllnad och ikon; bekväm behåller ursprungligt avstånd.",
             "densityCompact": "Kompakt",
-            "densityComfortable": "Bekväm"
+            "densityComfortable": "Bekväm",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

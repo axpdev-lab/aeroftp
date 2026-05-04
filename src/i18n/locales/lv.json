@@ -938,7 +938,9 @@
             "myServersDensity": "Manu serveru saraksta blīvums",
             "myServersDensityDesc": "Kompakts samazina atkāpes un ikonu; ērts saglabā sākotnējo atstarpi.",
             "densityCompact": "Kompakts",
-            "densityComfortable": "Ērts"
+            "densityComfortable": "Ērts",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

@@ -938,7 +938,9 @@
             "myServersDensity": "My Servers 列表密度",
             "myServersDensityDesc": "紧凑缩小内边距和图标；舒适保持原有间距。",
             "densityCompact": "紧凑",
-            "densityComfortable": "舒适"
+            "densityComfortable": "舒适",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

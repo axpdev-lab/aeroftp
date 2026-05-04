@@ -938,7 +938,9 @@
             "myServersDensity": "Dwysedd rhestr My Servers",
             "myServersDensityDesc": "Mae cryno yn lleihau'r padin a'r eicon; cyfforddus yn cadw'r bylchu blaenorol.",
             "densityCompact": "Cryno",
-            "densityComfortable": "Cyfforddus"
+            "densityComfortable": "Cyfforddus",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

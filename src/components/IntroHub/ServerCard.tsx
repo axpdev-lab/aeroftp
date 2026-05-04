@@ -8,6 +8,7 @@ import { getFilenAuthVersion } from '../../utils/filenAuthVersion';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { useTranslation } from '../../i18n';
 import { useCardLayout } from '../../hooks/useCardLayout';
+import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { formatBytes } from '../../utils/formatters';
 import {
     DEFAULT_THRESHOLDS,
@@ -273,10 +274,10 @@ export function RenameInput({
 
 export function getServerIcon(server: ServerProfile, size = 20): React.ReactNode {
     if (server.customIconUrl) {
-        return <img src={server.customIconUrl} className="w-6 h-6 rounded object-contain" alt="" />;
+        return <img src={server.customIconUrl} className="rounded object-contain" alt="" style={{ width: size, height: size }} />;
     }
     if (server.faviconUrl) {
-        return <img src={server.faviconUrl} className="w-6 h-6 rounded object-contain" alt="" />;
+        return <img src={server.faviconUrl} className="rounded object-contain" alt="" style={{ width: size, height: size }} />;
     }
     const providerId = server.providerId;
     if (providerId && PROVIDER_LOGOS[providerId]) {
@@ -339,6 +340,10 @@ export const ServerCard = React.memo(function ServerCard({
 }: ServerCardProps) {
     const t = useTranslation();
     const cardLayout = useCardLayout();
+    const introHubIconSize = useIntroHubIconSize();
+    const connectButtonSize = Math.max(40, Math.min(48, introHubIconSize + 16));
+    const connectIconSize = Math.min(introHubIconSize, connectButtonSize - 10);
+    const connectSpinnerSize = Math.max(16, Math.min(22, connectIconSize - 2));
     const radialTitle = healthStatus
         ? t(`introHub.health.${healthStatus}`)
             + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
@@ -418,10 +423,11 @@ export const ServerCard = React.memo(function ServerCard({
                     <button
                         onClick={(e) => { e.stopPropagation(); onConnect(server); }}
                         disabled={isConnecting}
-                        className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer disabled:cursor-wait"
+                        className="rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer disabled:cursor-wait"
+                        style={{ width: connectButtonSize, height: connectButtonSize }}
                         title={t('common.connect')}
                     >
-                        {isConnecting ? <Loader2 size={18} className="animate-spin text-blue-500" /> : getServerIcon(server)}
+                        {isConnecting ? <Loader2 size={connectSpinnerSize} className="animate-spin text-blue-500" /> : getServerIcon(server, connectIconSize)}
                     </button>
                     {cardLayout !== 'detailed' && healthStatus && healthStatus !== 'unknown' && (
                         <span

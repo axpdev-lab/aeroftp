@@ -11,6 +11,7 @@ import { useTranslation } from '../../i18n';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS } from './discoverData';
 import { CatalogCategoryId } from '../../types/catalog';
 import { useProviderHealth, type HealthStatus } from '../../hooks/useProviderHealth';
+import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
     Server: <Server size={16} />,
@@ -34,9 +35,20 @@ interface DiscoverPanelProps {
     onSelectProvider: (protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }) => void;
 }
 
-function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onSelect: () => void; healthStatus?: HealthStatus }) {
+function ServiceCard({
+    item,
+    onSelect,
+    healthStatus,
+    iconSize,
+}: {
+    item: DiscoverItem;
+    onSelect: () => void;
+    healthStatus?: HealthStatus;
+    iconSize: number;
+}) {
     const t = useTranslation();
     const LogoComponent = PROVIDER_LOGOS[item.providerId || item.id] || PROVIDER_LOGOS[item.protocol];
+    const iconFrameSize = Math.max(28, Math.min(40, iconSize + 6));
     // Mirrors the overlay-dot pattern from ServerCard so reachability is
     // visible without expanding the card. Hidden on `unknown` to avoid a
     // placeholder dot on services without a `healthCheckUrl`.
@@ -49,11 +61,14 @@ function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onS
             className="group flex items-center gap-3 p-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30 rounded-lg transition-all text-left shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
         >
             {/* Logo - no container box, just the icon like original ProtocolSelector */}
-            <div className="relative w-7 h-7 shrink-0 flex items-center justify-center">
+            <div
+                className="relative shrink-0 flex items-center justify-center"
+                style={{ width: iconFrameSize, height: iconFrameSize }}
+            >
                 {LogoComponent ? (
-                    <LogoComponent size={22} />
+                    <LogoComponent size={iconSize} />
                 ) : (
-                    <ProtocolIcon protocol={item.protocol} size={22} />
+                    <ProtocolIcon protocol={item.protocol} size={iconSize} />
                 )}
                 {showHealthDot && (
                     <span
@@ -116,6 +131,7 @@ function ServiceCard({ item, onSelect, healthStatus }: { item: DiscoverItem; onS
 
 export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     const t = useTranslation();
+    const introHubIconSize = useIntroHubIconSize();
     const categories = useMemo(() => buildDiscoverCategories(), []);
     const [activeCategory, setActiveCategory] = useState<CatalogCategoryId>(() => {
         const saved = localStorage.getItem('aeroftp-discover-category');
@@ -251,6 +267,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                                     item={item}
                                     onSelect={() => handleSelect(item)}
                                     healthStatus={item.healthCheckUrl ? getStatus(item.providerId || item.id).status : 'unknown'}
+                                    iconSize={introHubIconSize}
                                 />
                             ))}
                         </div>

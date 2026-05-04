@@ -938,7 +938,9 @@
             "myServersDensity": "Плотность списка Мои серверы",
             "myServersDensityDesc": "Компактный уменьшает отступы и иконку; удобный сохраняет исходное расстояние.",
             "densityCompact": "Компактный",
-            "densityComfortable": "Удобный"
+            "densityComfortable": "Удобный",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

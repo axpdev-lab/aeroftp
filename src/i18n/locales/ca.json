@@ -938,7 +938,9 @@
             "myServersDensity": "Densitat de la llista Els meus servidors",
             "myServersDensityDesc": "Compacta encongeix els marges i la icona; còmoda manté l'espaiat original.",
             "densityCompact": "Compacta",
-            "densityComfortable": "Còmoda"
+            "densityComfortable": "Còmoda",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

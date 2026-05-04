@@ -2663,6 +2663,8 @@
       "privacy": "Privacy",
       "privacyDesc": "Your data stays on your device",
       "privacyRespect": "AeroFTP protects your privacy. No data is collected, no tracking, no telemetry.",
+      "providerIconSize": "Provider icon size",
+      "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards.",
       "protocolAzure": "Azure Blob",
       "protocolBox": "Box",
       "protocolDropbox": "Dropbox",

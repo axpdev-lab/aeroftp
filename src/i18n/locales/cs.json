@@ -938,7 +938,9 @@
             "myServersDensity": "Hustota seznamu Moje servery",
             "myServersDensityDesc": "Kompaktní zmenší odsazení a ikonu; pohodlný zachovává původní rozestup.",
             "densityCompact": "Kompaktní",
-            "densityComfortable": "Pohodlný"
+            "densityComfortable": "Pohodlný",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

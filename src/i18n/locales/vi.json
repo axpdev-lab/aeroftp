@@ -938,7 +938,9 @@
             "myServersDensity": "Mật độ danh sách My Servers",
             "myServersDensityDesc": "Nhỏ gọn thu nhỏ phần đệm và biểu tượng; thoải mái giữ nguyên khoảng cách ban đầu.",
             "densityCompact": "Nhỏ gọn",
-            "densityComfortable": "Thoải mái"
+            "densityComfortable": "Thoải mái",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

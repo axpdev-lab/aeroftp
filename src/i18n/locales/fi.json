@@ -938,7 +938,9 @@
             "myServersDensity": "Omat palvelimet -listan tiheys",
             "myServersDensityDesc": "Tiivis pienentää täytteet ja kuvakkeen; mukava säilyttää alkuperäisen välistyksen.",
             "densityCompact": "Tiivis",
-            "densityComfortable": "Mukava"
+            "densityComfortable": "Mukava",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

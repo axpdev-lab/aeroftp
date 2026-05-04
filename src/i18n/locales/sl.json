@@ -938,7 +938,9 @@
             "myServersDensity": "Gostota seznama Moji strežniki",
             "myServersDensityDesc": "Kompaktno zmanjša padding in ikono; udobno ohrani izvirno razmik.",
             "densityCompact": "Kompaktno",
-            "densityComfortable": "Udobno"
+            "densityComfortable": "Udobno",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

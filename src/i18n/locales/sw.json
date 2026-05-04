@@ -938,7 +938,9 @@
             "myServersDensity": "Msongamano wa orodha ya Seva Zangu",
             "myServersDensityDesc": "Mfupi hupunguza nafasi za ndani na ikoni; vizuri huhifadhi nafasi ya awali.",
             "densityCompact": "Mfupi",
-            "densityComfortable": "Vizuri"
+            "densityComfortable": "Vizuri",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

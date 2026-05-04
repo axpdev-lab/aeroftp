@@ -31,7 +31,17 @@ import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { maskCredential } from '../utils/maskCredential';
-import { DEFAULT_APP_FONT_FAMILY, MIN_APP_FONT_SIZE, MAX_APP_FONT_SIZE, clampAppFontSize, normalizeAppFontFamily } from '../hooks/useSettings';
+import {
+    DEFAULT_APP_FONT_FAMILY,
+    DEFAULT_INTRO_HUB_ICON_SIZE,
+    MAX_APP_FONT_SIZE,
+    MAX_INTRO_HUB_ICON_SIZE,
+    MIN_APP_FONT_SIZE,
+    MIN_INTRO_HUB_ICON_SIZE,
+    clampAppFontSize,
+    clampIntroHubIconSize,
+    normalizeAppFontFamily,
+} from '../hooks/useSettings';
 import { useStorageThresholds, DEFAULT_THRESHOLDS } from '../hooks/useStorageThresholds';
 import { useMyServersDensity } from '../hooks/useMyServersDensity';
 import { createTauriListener } from '../hooks/useTauriListener';
@@ -200,6 +210,7 @@ interface AppSettings {
     fontSize: number;
     fontFamily: string;
     cardLayout: 'compact' | 'detailed';
+    introHubIconSize: number;
     // Columns
     visibleColumns: string[];
     // File browser
@@ -240,6 +251,7 @@ const defaultSettings: AppSettings = {
     fontSize: 14,
     fontFamily: DEFAULT_APP_FONT_FAMILY,
     cardLayout: 'compact',
+    introHubIconSize: DEFAULT_INTRO_HUB_ICON_SIZE,
     visibleColumns: ['name', 'size', 'type', 'permissions', 'modified'],
     sortFoldersFirst: true,
     showFileExtensions: true,
@@ -545,6 +557,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             ...saved,
                             fontSize: clampAppFontSize(saved.fontSize ?? defaultSettings.fontSize),
                             fontFamily: normalizeAppFontFamily(saved.fontFamily ?? defaultSettings.fontFamily),
+                            introHubIconSize: clampIntroHubIconSize(saved.introHubIconSize ?? defaultSettings.introHubIconSize),
                         };
                         setSettings(normalizedSettings);
                         // One-way idempotent migration to vault with plaintext cleanup
@@ -651,6 +664,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 if (typeof detail.fontFamily === 'string') {
                     merged.fontFamily = normalizeAppFontFamily(detail.fontFamily);
                 }
+                if (detail.introHubIconSize !== undefined) {
+                    merged.introHubIconSize = clampIntroHubIconSize(detail.introHubIconSize);
+                }
                 return merged;
             });
         };
@@ -677,6 +693,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             // Normalize font values before saving to vault
             settings.fontSize = clampAppFontSize(settings.fontSize);
             settings.fontFamily = normalizeAppFontFamily(settings.fontFamily);
+            settings.introHubIconSize = clampIntroHubIconSize(settings.introHubIconSize);
 
             await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
             secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => {});
@@ -3092,6 +3109,47 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 </select>
                                                 {fontSelectValue === CUSTOM_FONT_VALUE && <input type="text" value={settings.fontFamily} onChange={(e) => updateSetting('fontFamily', e.target.value)} placeholder={t('settings.fontCustomPlaceholder')} className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30" />}
                                                 {selectedFontPreset && !selectedFontPreset.bundled && <p className="text-xs text-gray-500 mt-2">Requires system install. AeroFTP falls back automatically if unavailable.</p>}
+                                            </div>
+
+                                            <div>
+                                                <div className="flex items-center justify-between gap-4 mb-2">
+                                                    <label className="block text-sm font-medium">{t('settings.providerIconSize')}</label>
+                                                    <span className="text-sm font-medium text-blue-600 dark:text-blue-400">{settings.introHubIconSize}px</span>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="range"
+                                                        min={MIN_INTRO_HUB_ICON_SIZE}
+                                                        max={MAX_INTRO_HUB_ICON_SIZE}
+                                                        step={1}
+                                                        value={settings.introHubIconSize}
+                                                        onChange={(e) => updateSetting('introHubIconSize', clampIntroHubIconSize(Number(e.target.value)))}
+                                                        className="flex-1 accent-blue-500"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        min={MIN_INTRO_HUB_ICON_SIZE}
+                                                        max={MAX_INTRO_HUB_ICON_SIZE}
+                                                        step={1}
+                                                        value={settings.introHubIconSize}
+                                                        onChange={(e) => updateSetting('introHubIconSize', clampIntroHubIconSize(Number(e.target.value)))}
+                                                        className="w-20 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2.5 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                                    />
+                                                </div>
+                                                <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                                                    <span>{MIN_INTRO_HUB_ICON_SIZE}px</span>
+                                                    <span>{MAX_INTRO_HUB_ICON_SIZE}px</span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-2">{t('settings.providerIconSizeDesc')}</p>
+                                                {settings.introHubIconSize !== DEFAULT_INTRO_HUB_ICON_SIZE && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateSetting('introHubIconSize', DEFAULT_INTRO_HUB_ICON_SIZE)}
+                                                        className="mt-2 text-xs text-blue-500 hover:text-blue-400 transition-colors"
+                                                    >
+                                                        {t('common.reset')}
+                                                    </button>
+                                                )}
                                             </div>
 
                                             <div>

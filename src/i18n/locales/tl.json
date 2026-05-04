@@ -938,7 +938,9 @@
             "myServersDensity": "Density ng listahan ng My Servers",
             "myServersDensityDesc": "Maigsi pinaliit ang mga padding at icon; maginhawa pinapanatili ang dating espasyo.",
             "densityCompact": "Maigsi",
-            "densityComfortable": "Maginhawa"
+            "densityComfortable": "Maginhawa",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

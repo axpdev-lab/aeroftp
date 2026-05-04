@@ -938,7 +938,9 @@
             "myServersDensity": "Tetthet av Mine servere-listen",
             "myServersDensityDesc": "Kompakt krymper innrykk og ikon; komfortabel beholder den opprinnelige avstanden.",
             "densityCompact": "Kompakt",
-            "densityComfortable": "Komfortabel"
+            "densityComfortable": "Komfortabel",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",

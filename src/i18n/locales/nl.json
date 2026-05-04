@@ -938,7 +938,9 @@
             "myServersDensity": "Dichtheid van Mijn servers-lijst",
             "myServersDensityDesc": "Compact verkleint paddings en het pictogram; comfortabel behoudt de oorspronkelijke afstand.",
             "densityCompact": "Compact",
-            "densityComfortable": "Comfortabel"
+            "densityComfortable": "Comfortabel",
+            "providerIconSize": "Provider icon size",
+            "providerIconSizeDesc": "Adjust provider icon size on My Servers and Discover Services cards."
         },
         "devtools": {
             "title": "AeroTools",
