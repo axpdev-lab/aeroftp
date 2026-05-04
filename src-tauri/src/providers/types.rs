@@ -333,6 +333,8 @@ pub struct WebDavConfig {
     pub initial_path: Option<String>,
     /// Whether to verify TLS certificates (default: true). Set to false for self-signed certs.
     pub verify_cert: bool,
+    /// Whether requests should omit Authorization headers.
+    pub anonymous: bool,
 }
 
 impl WebDavConfig {
@@ -364,6 +366,11 @@ impl WebDavConfig {
             .get("verify_cert")
             .map(|v| v != "false")
             .unwrap_or(true);
+        let anonymous = config
+            .extra
+            .get("anonymous")
+            .map(|v| v == "true")
+            .unwrap_or(false);
 
         Ok(Self {
             url,
@@ -371,6 +378,7 @@ impl WebDavConfig {
             password: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
             initial_path: config.initial_path.clone(),
             verify_cert,
+            anonymous,
         })
     }
 }

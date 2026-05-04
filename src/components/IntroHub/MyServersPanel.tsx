@@ -659,7 +659,7 @@ export function MyServersPanel({
 
             // Build connection params - for provider protocols, use host only (no port append)
             const proto = server.protocol || 'ftp';
-            const isProviderProtocol = ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab', 'opendrive', 'internxt', 'filen', 'drime', 'jottacloud', 'kdrive', 'swift'].includes(proto);
+            const isProviderProtocol = ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab', 'opendrive', 'internxt', 'filen', 'drime', 'jottacloud', 'kdrive', 'swift', 'backblaze'].includes(proto);
             const defaultPort = proto === 'sftp' ? 22 : proto === 'ftps' ? 990 : 21;
             const serverString = server.host;
 

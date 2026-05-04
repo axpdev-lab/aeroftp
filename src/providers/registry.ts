@@ -915,6 +915,33 @@ export const PROVIDERS: ProviderConfig[] = [
         helpUrl: 'https://quotaless.cloud/',
         signupUrl: 'https://quotaless.cloud/clientarea/index.php?rp=/login',
     },
+    {
+        id: 's3drive',
+        name: 'S3Drive',
+        description: 'S3-compatible cloud built on Storj (12 GB free). Storage quota is not exposed by the standard S3 API.',
+        protocol: 's3',
+        category: 's3',
+        icon: 'HardDrive',
+        color: '#0E7490',
+        stable: false,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, placeholder: 'AKIA...', helpText: 'Copy from S3Drive or from the S3Drive rclone.conf entry.' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Copy from S3Drive or from the S3Drive rclone.conf entry.' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'your-s3drive-bucket' },
+        ],
+        defaults: {
+            endpoint: 'https://storage.kapsa.io',
+            region: 'us-east-1',
+            pathStyle: false,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://storage.kapsa.io',
+        helpUrl: 'https://s3drive.app',
+        signupUrl: 'https://s3drive.app',
+    },
 
     // =========================================================================
     // WEBDAV PROVIDERS
@@ -1024,6 +1051,37 @@ export const PROVIDERS: ProviderConfig[] = [
         passwordGenUrl: 'https://app.koofr.net/app/admin/preferences/password',
         helpUrl: 'https://app.koofr.net/help/webdav',
         signupUrl: 'https://app.koofr.net/signup',
+    },
+    {
+        id: 'megacmd-webdav',
+        name: 'MEGAcmd (local WebDAV)',
+        description: 'Local WebDAV bridge to MEGA via the official MEGAcmd CLI. Anonymous, runs on 127.0.0.1.',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Server',
+        color: '#D9272E',
+        stable: true,
+        fields: [],
+        defaults: {
+            server: 'http://127.0.0.1:4443/',
+            port: 4443,
+            basePath: '/',
+            anonymous: true,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'http://127.0.0.1:4443/',
+        helpUrl: 'https://mega.io/cmd',
+        signupUrl: 'https://mega.io/cmd',
+        setupInstructions: [
+            'Install MEGAcmd from https://mega.io/cmd',
+            'Open the MEGAcmd terminal',
+            'Run: login your-email@example.com',
+            'Run: webdav /',
+            'Close the terminal; the WebDAV server keeps running in the background',
+        ],
     },
     {
         id: 'opendrive-webdav',

@@ -133,10 +133,10 @@ export function IntroHub(props: IntroHubProps) {
     // Create a form tab from Discover (provider selection)
     const handleSelectProvider = useCallback((protocol: ProviderType, providerId?: string, demo?: { server: string; port: number; username: string; password: string }) => {
         const id = generateTabId();
-        const PROVIDER_NAMES: Record<string, string> = { pixelunion: 'PixelUnion' };
-        const label = demo ? `Demo: ${protocol.toUpperCase()}` : (PROVIDER_NAMES[providerId || ''] || providerId || protocol.toUpperCase());
         // Apply provider defaults (server, port, basePath) when creating the tab
         const provider = providerId ? getProviderById(providerId) : undefined;
+        const PROVIDER_NAMES: Record<string, string> = { pixelunion: 'PixelUnion' };
+        const label = demo ? `Demo: ${protocol.toUpperCase()}` : (provider?.name || PROVIDER_NAMES[providerId || ''] || providerId || protocol.toUpperCase());
         const defaultLabel = `New: ${label}`;
         const newTab: FormTabState = {
             id,
@@ -155,6 +155,7 @@ export function IntroHub(props: IntroHubProps) {
                     pathStyle: provider?.defaults?.pathStyle,
                     region: provider?.defaults?.region,
                     endpoint: provider?.defaults?.endpoint,
+                    anonymous: provider?.defaults?.anonymous,
                 },
             },
             quickConnectDirs: { remoteDir: provider?.defaults?.basePath || '', localDir: '' },
@@ -234,7 +235,8 @@ export function IntroHub(props: IntroHubProps) {
             const raw = params.server?.trim() || '';
             const cleaned = raw.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
             const provider = ft.providerId ? getProviderById(ft.providerId) : undefined;
-            const isDefault = !cleaned || cleaned === provider?.defaults?.server;
+            const defaultCleaned = provider?.defaults?.server?.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+            const isDefault = !cleaned || raw === provider?.defaults?.server || cleaned === defaultCleaned;
             const label = isDefault ? ft.defaultLabel : cleaned;
             return { ...ft, connectionParams: params, editingProfile: updatedProfile, label };
         }));
@@ -250,7 +252,8 @@ export function IntroHub(props: IntroHubProps) {
                 const raw = ft.connectionParams.server?.trim() || '';
                 const cleaned = raw.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
                 const provider = ft.providerId ? getProviderById(ft.providerId) : undefined;
-                const isDefault = !cleaned || cleaned === provider?.defaults?.server;
+                const defaultCleaned = provider?.defaults?.server?.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+                const isDefault = !cleaned || raw === provider?.defaults?.server || cleaned === defaultCleaned;
                 return { ...ft, label: isDefault ? ft.defaultLabel : cleaned, userLabel: undefined };
             }
             return { ...ft, label: name, userLabel: name };

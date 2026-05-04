@@ -100,6 +100,8 @@ export interface ProviderConfig {
         endpointTemplate?: string;
         /** Direct S3 endpoint URL */
         endpoint?: string;
+        /** Skip WebDAV auth headers for local anonymous bridges */
+        anonymous?: boolean;
         /** FTP TLS mode */
         tls_mode?: string;
     };
@@ -148,6 +150,9 @@ export interface ProviderConfig {
      *  button next to the password field — saves the user from hunting
      *  through provider preferences for the right screen. (#129) */
     passwordGenUrl?: string;
+
+    /** Optional setup steps shown by Quick Connect for local bridge presets. */
+    setupInstructions?: string[];
 
     /** Whether this provider is fully tested/stable */
     stable?: boolean;

@@ -122,6 +122,8 @@ pub struct ProviderConnectionParams {
     pub endpoint: Option<String>,
     /// Use path-style URLs for S3
     pub path_style: Option<bool>,
+    /// Skip WebDAV Authorization headers for anonymous local bridges
+    pub anonymous: Option<bool>,
     /// S3: Default storage class for uploads (STANDARD, STANDARD_IA, GLACIER, etc.)
     pub storage_class: Option<String>,
     /// S3: Server-side encryption mode (AES256 or aws:kms)
@@ -229,6 +231,18 @@ impl ProviderConnectionParams {
                     extra.insert("sse_kms_key_id".to_string(), kms.clone());
                 }
             }
+        }
+
+        if provider_type == ProviderType::Backblaze {
+            if let Some(ref bucket) = self.bucket {
+                extra.insert("bucket".to_string(), bucket.clone());
+            } else {
+                return Err("Backblaze B2 requires a bucket name".to_string());
+            }
+        }
+
+        if provider_type == ProviderType::WebDav && self.anonymous.unwrap_or(false) {
+            extra.insert("anonymous".to_string(), "true".to_string());
         }
 
         // Add FTP/FTPS-specific options
@@ -8501,6 +8515,7 @@ mod tests {
             region: Some("garage".to_string()),
             endpoint: None,
             path_style,
+            anonymous: None,
             storage_class: None,
             sse_mode: None,
             sse_kms_key_id: None,
@@ -8535,6 +8550,30 @@ mod tests {
         assert_eq!(
             config.extra.get("path_style").map(String::as_str),
             Some("false")
+        );
+    }
+
+    #[test]
+    fn test_backblaze_provider_params_forward_bucket() {
+        let mut params = s3_params(None);
+        params.protocol = "backblaze".to_string();
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("bucket").map(String::as_str),
+            Some("garage-bucket")
+        );
+    }
+
+    #[test]
+    fn test_webdav_provider_params_forward_anonymous() {
+        let mut params = s3_params(None);
+        params.protocol = "webdav".to_string();
+        params.bucket = None;
+        params.anonymous = Some(true);
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("anonymous").map(String::as_str),
+            Some("true")
         );
     }
 

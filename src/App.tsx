@@ -2600,6 +2600,7 @@ interface UpdateVerificationInfo {
       region: effectiveParams.options?.region || (effectiveParams.providerId === 'filelu-s3' ? 'global' : 'us-east-1'),
       endpoint: effectiveParams.options?.endpoint || resolveS3Endpoint(effectiveParams.providerId, effectiveParams.options?.region as string) || (protocol === 's3' && effectiveParams.server && !effectiveParams.server.includes('amazonaws.com') ? effectiveParams.server : null),
       path_style: effectiveParams.options?.pathStyle,
+      anonymous: effectiveParams.options?.anonymous || false,
       storage_class: effectiveParams.options?.storage_class || null,
       sse_mode: effectiveParams.options?.sse_mode || null,
       sse_kms_key_id: effectiveParams.options?.sse_kms_key_id || null,

@@ -248,6 +248,10 @@ impl WebDavProvider {
         let url = self.build_url(path);
         let builder = self.client.request(method.clone(), &url);
 
+        if self.config.anonymous {
+            return builder;
+        }
+
         if let Some(ref mut state) = self.digest_auth {
             let uri_path = extract_uri_path(&url);
             tracing::debug!(
@@ -321,6 +325,9 @@ impl WebDavProvider {
     /// that live outside the WebDAV files path).
     fn request_url(&mut self, method: Method, url: &str) -> reqwest::RequestBuilder {
         let builder = self.client.request(method.clone(), url);
+        if self.config.anonymous {
+            return builder;
+        }
         if let Some(ref mut state) = self.digest_auth {
             let uri_path = extract_uri_path(url);
             let auth = state.authorization(
@@ -374,7 +381,11 @@ impl WebDavProvider {
         // first entry if no mount is flagged as primary.
         let mount = mounts
             .iter()
-            .find(|m| m.get("isPrimary").and_then(|v| v.as_bool()).unwrap_or(false))
+            .find(|m| {
+                m.get("isPrimary")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            })
             .or_else(|| mounts.first())
             .ok_or_else(|| ProviderError::ParseError("koofr quota: empty mounts".into()))?;
         let used = mount
@@ -1158,6 +1169,17 @@ impl StorageProvider for WebDavProvider {
     }
 
     fn display_name(&self) -> String {
+        if self.config.anonymous {
+            return self
+                .config
+                .url
+                .replace("https://", "")
+                .replace("http://", "")
+                .split('/')
+                .next()
+                .unwrap_or(&self.config.url)
+                .to_string();
+        }
         format!(
             "{}@{}",
             self.config.username,
@@ -2336,6 +2358,7 @@ mod tests {
             password: secrecy::SecretString::from("pass".to_string()),
             initial_path: None,
             verify_cert: true,
+            anonymous: false,
         }
     }
 

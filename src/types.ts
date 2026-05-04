@@ -127,6 +127,7 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "gitlab",
     "swift",
     "immich",
+    "backblaze",
   ].includes(type);
 };
 
@@ -208,7 +209,7 @@ export interface ProviderOptions {
   sse_kms_key_id?: string; // S3 KMS key ARN for SSE-KMS
 
   // WebDAV-specific
-  // (no extra options needed, uses standard auth)
+  anonymous?: boolean; // Skip auth headers for local WebDAV bridges
 
   // FTP/FTPS-specific
   tlsMode?: FtpTlsMode; // TLS encryption mode

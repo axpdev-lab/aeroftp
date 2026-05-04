@@ -452,6 +452,8 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'mega-s4': MegaLogo,
     'cloudflare-r2': CloudflareLogo,
     'backblaze': BackblazeLogo,
+    'backblaze-native': BackblazeLogo,
+    'megacmd-webdav': MegaLogo,
     'wasabi': WasabiLogo,
     'storj': StorjLogo,
     'minio': MinIOLogo,

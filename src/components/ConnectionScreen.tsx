@@ -707,6 +707,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     username: connectionParams.username || 'api-key',
                     port: connectionParams.port || 443,
                 }
+            : protocol === 'backblaze'
+                ? {
+                    ...connectionParams,
+                    server: connectionParams.server || 'api.backblazeb2.com',
+                    port: connectionParams.port || 443,
+                }
             : selectedProvider?.defaults?.server && !connectionParams.server
                 ? {
                     ...connectionParams,
@@ -904,6 +910,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 ? { ...connectionParams, server: connectionParams.server || 'dev.opendrive.com', port: connectionParams.port || 443 }
             : protocol === 'github' || protocol === 'gitlab'
                 ? { ...connectionParams, server: connectionParams.server || '', port: connectionParams.port || 443 }
+            : protocol === 'backblaze'
+                ? { ...connectionParams, server: connectionParams.server || 'api.backblazeb2.com', port: connectionParams.port || 443 }
             : selectedProvider?.defaults?.server && !connectionParams.server
                 ? { ...connectionParams, server: selectedProvider.defaults.server, port: connectionParams.port || selectedProvider.defaults.port || getDefaultPort(protocol) }
             : connectionParams;
@@ -1127,7 +1135,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     protocol: newProtocol,
                     port: provider.defaults?.port || getDefaultPort(newProtocol),
                     providerId: provider.id,
-                    options: newProtocol === 'mega' ? normalizeMegaOptions() : {},
+                    options: newProtocol === 'mega' ? normalizeMegaOptions() : {
+                        pathStyle: provider.defaults?.pathStyle,
+                        region: provider.defaults?.region,
+                        endpoint: provider.defaults?.endpoint,
+                        anonymous: provider.defaults?.anonymous,
+                    },
                 });
                 onQuickConnectDirsChange({
                     remoteDir: provider.defaults?.basePath || '',
@@ -1189,6 +1202,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 pathStyle: provider.defaults?.pathStyle,
                 region: effectiveRegion,
                 endpoint: resolvedEndpoint,
+                anonymous: provider.defaults?.anonymous,
             },
         };
         onConnectionParamsChange(newParams);
@@ -1287,6 +1301,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             )}
         </div>
     );
+
+    const parseEndpointPort = (value: string, fallback: number) => {
+        try {
+            const url = new URL(value);
+            if (url.port) return parseInt(url.port, 10) || fallback;
+            return url.protocol === 'http:' ? 80 : url.protocol === 'https:' ? 443 : fallback;
+        } catch {
+            return fallback;
+        }
+    };
 
     // Provider logo for connect buttons (OAuth/API providers show their logo instead of Cloud icon)
     const ConnectIcon = (() => {
@@ -1429,7 +1453,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'filelu', 'drime', 'jottacloud'];
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'filelu', 'drime', 'jottacloud', 'backblaze'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
@@ -2967,6 +2991,69 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </>
                                         )}
                                     </div>
+                                ) : protocol === 'backblaze' ? (
+                                    /* Backblaze B2 native form */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                            <div>
+                                                {renderUsernameLabel('Application Key ID')}
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.username}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        username: e.target.value,
+                                                        server: 'api.backblazeb2.com',
+                                                        port: 443,
+                                                        providerId: connectionParams.providerId || selectedProviderId || 'backblaze-native',
+                                                    })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                    placeholder="003d90ca9d33900000000001"
+                                                    autoFocus
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    B2 Application Key ID, starts with 003. Generate one from the Backblaze App Keys page.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                {renderPasswordLabel('Application Key')}
+                                                <div className="relative">
+                                                    <input
+                                                        type={showPassword ? 'text' : 'password'}
+                                                        value={connectionParams.password}
+                                                        onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
+                                                        className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                    />
+                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">Shown only once at creation. Treat it as a password.</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">Bucket Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.options?.bucket || ''}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        server: connectionParams.server || 'api.backblazeb2.com',
+                                                        port: connectionParams.port || 443,
+                                                        options: { ...(connectionParams.options || {}), bucket: e.target.value },
+                                                    })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                    placeholder="my-b2-bucket"
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">Exact bucket name, case sensitive.</p>
+                                            </div>
+                                        </div>
+
+                                        {renderRightColumn({
+                                            disabled: !connectionParams.username || !connectionParams.password || !connectionParams.options?.bucket,
+                                            buttonColorClass: 'bg-red-600 hover:bg-red-700',
+                                            showCancelSaveAsNew: true,
+                                        })}
+                                    </div>
                                 ) : protocol === 'immich' ? (
                                     /* Immich Specific Form — Server URL + API Key */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
@@ -3580,6 +3667,50 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 )}
                                             </button>
                                         </div>
+                                    </div>
+                                ) : protocol === 'webdav' && selectedProviderId === 'megacmd-webdav' ? (
+                                    /* MEGAcmd local anonymous WebDAV */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                            <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-900 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-100">
+                                                <p className="font-medium mb-2">Setup MEGAcmd first</p>
+                                                <ol className="list-decimal list-inside space-y-1">
+                                                    {(selectedProvider?.setupInstructions || []).map((step) => (
+                                                        <li key={step}>{step}</li>
+                                                    ))}
+                                                </ol>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">{t('connection.endpointUrl')}</label>
+                                                <input
+                                                    type="url"
+                                                    value={connectionParams.server}
+                                                    onChange={(e) => {
+                                                        const endpoint = e.target.value;
+                                                        onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            server: endpoint,
+                                                            username: '',
+                                                            password: '',
+                                                            port: parseEndpointPort(endpoint, connectionParams.port || 4443),
+                                                            options: { ...(connectionParams.options || {}), anonymous: true },
+                                                        });
+                                                    }}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                    placeholder="http://127.0.0.1:4443/"
+                                                    autoFocus
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Username and Password are intentionally omitted. Change the port here if MEGAcmd uses a custom one.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {renderRightColumn({
+                                            disabled: !connectionParams.server,
+                                            buttonColorClass: 'bg-red-600 hover:bg-red-700',
+                                            showCancelSaveAsNew: true,
+                                        })}
                                     </div>
                                 ) : (
                                     /* Traditional connection fields (FTP/S3/WebDAV) — 2-column layout in formOnly */
