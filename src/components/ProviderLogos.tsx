@@ -330,6 +330,17 @@ export const FeliCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// S3Drive: Storj-backed S3 client, official logo
+export const S3DriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/s3drive.png"
+        alt="S3Drive"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Blomp — purple smiling cloud (OpenStack Swift, 40 GB free)
 export const BlompLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
@@ -456,6 +467,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'megacmd-webdav': MegaLogo,
     'wasabi': WasabiLogo,
     'storj': StorjLogo,
+    's3drive': S3DriveLogo,
     'minio': MinIOLogo,
     'digitalocean-spaces': DigitalOceanLogo,
     'oracle-cloud': OracleCloudLogo,
