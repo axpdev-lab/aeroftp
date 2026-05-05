@@ -134,7 +134,12 @@ jobs:
     # blocks the PR independently.
     name: SFTP password-only fixture + fallback contract
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Cold-cache PRs (Cargo.lock churn from deps bumps) compile the full
+    # workspace + Tauri + aeroftp lib before the test binary links. The
+    # sibling key-auth job needs ~11min on a warm shared cache; this lane
+    # uses an isolated shared-key so the first cache miss can take 18-22
+    # minutes. 25min gives enough headroom without parking PRs forever.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
