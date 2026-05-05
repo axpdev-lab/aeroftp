@@ -1166,12 +1166,14 @@ enum Commands {
         sort: Option<String>,
 
         /// Comma-separated columns to hide for this run only (not persisted).
-        /// Available: name, type, host, used, total, pct, path, last, fav.
+        /// Available (case-insensitive): name, type, host, used, total, pct,
+        /// path, last, fav (also accepts `favorite`/`favourite`).
         #[arg(long, value_name = "COLS")]
         hide: Option<String>,
 
         /// Comma-separated columns to force-show for this run only (not persisted).
-        /// Available: name, type, host, used, total, pct, path, last, fav.
+        /// Available (case-insensitive): name, type, host, used, total, pct,
+        /// path, last, fav (also accepts `favorite`/`favourite`).
         #[arg(long, value_name = "COLS")]
         show: Option<String>,
 
@@ -2464,6 +2466,14 @@ fn sanitize_filename(name: &str) -> String {
         }
     }
     result
+}
+
+/// Best-effort terminal width detection. Falls back to 120 columns when the
+/// stream is not a TTY or `crossterm` cannot read the size. Used by the
+/// `profiles` table to fit the row inside the visible area instead of
+/// spilling onto a second line (issue #129).
+fn terminal_width() -> usize {
+    crossterm::terminal::size().map(|(c, _)| c as usize).unwrap_or(120)
 }
 
 /// Check if we should use color in output (respects NO_COLOR env var and TTY detection).
@@ -4016,7 +4026,7 @@ impl ProfileColId {
             "pct" | "%" | "percent" => Some(ProfileColId::Pct),
             "path" | "paths" => Some(ProfileColId::Paths),
             "last" | "time" => Some(ProfileColId::Time),
-            "fav" | "favorite" => Some(ProfileColId::Favorite),
+            "fav" | "favorite" | "favourite" | "favs" => Some(ProfileColId::Favorite),
             _ => None,
         }
     }
@@ -4796,17 +4806,65 @@ fn render_profiles_text(
 
     // Compute column widths in chars. Index uses the row count, percent and
     // bytes have fixed widths, name/host/path are capped to keep wide tables
-    // readable on standard terminals.
+    // readable on standard terminals. The caps for shrinkable columns are
+    // reduced when the terminal is too narrow, so the whole row fits on a
+    // single line instead of spilling (issue #129).
     let row_count = sorted.len();
     let index_width = ((row_count.max(1) as f64).log10().floor() as usize) + 1;
     let index_width = index_width.max(1);
+
+    let term_cols = terminal_width();
+    let used_width = 10;
+    let total_width = 10;
+    let pct_width = 6;
+    let last_width = 6;
+    let fav_width = 3;
+
+    // Total width of the always-fixed columns (those visible in `visible`).
+    let fixed_total: usize = visible
+        .iter()
+        .map(|c| match c {
+            ProfileColId::Index => index_width.max(c.header().chars().count()),
+            ProfileColId::Used => used_width,
+            ProfileColId::Total => total_width,
+            ProfileColId::Pct => pct_width,
+            ProfileColId::Time => last_width,
+            ProfileColId::Favorite => fav_width,
+            _ => 0,
+        })
+        .sum();
+
+    // Shrinkable columns (Name, Badges, Subtitle, Paths) share the leftover
+    // budget. Two-space gap between cells + two-space margin on each side.
+    let gap_chars = visible.len().saturating_sub(1) * 2;
+    let margin_chars = 4;
+    let shrinkable_count = visible
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                ProfileColId::Name
+                    | ProfileColId::Badges
+                    | ProfileColId::Subtitle
+                    | ProfileColId::Paths
+            )
+        })
+        .count()
+        .max(1);
+    // Default per-shrinkable cap (matches pre-#129 behaviour for wide terms).
+    let default_cap = 30usize;
+    // Budget for ALL shrinkable columns combined.
+    let total_budget = term_cols
+        .saturating_sub(fixed_total + gap_chars + margin_chars);
+    // Per-column cap. Floor at 8 so even a 60-col terminal stays readable.
+    let per_col_cap = (total_budget / shrinkable_count).max(8).min(default_cap);
 
     let name_width = sorted
         .iter()
         .map(|(_, p)| {
             p.get("name")
                 .and_then(|v| v.as_str())
-                .map(|s| s.chars().count().min(30))
+                .map(|s| s.chars().count().min(per_col_cap))
                 .unwrap_or(7)
         })
         .max()
@@ -4815,36 +4873,29 @@ fn render_profiles_text(
 
     let badge_width = sorted
         .iter()
-        .map(|(_, p)| badge_display_label(p).chars().count())
+        .map(|(_, p)| badge_display_label(p).chars().count().min(per_col_cap))
         .max()
         .unwrap_or(4)
         .max(4);
 
     let host_width = sorted
         .iter()
-        .map(|(_, p)| host_subtitle(p).chars().count().min(35))
+        .map(|(_, p)| host_subtitle(p).chars().count().min(per_col_cap))
         .max()
         .unwrap_or(4)
         .max(4);
-
-    let used_width = 10;
-    let total_width = 10;
-    let pct_width = 6;
 
     let path_width = sorted
         .iter()
         .map(|(_, p)| {
             p.get("initialPath")
                 .and_then(|v| v.as_str())
-                .map(|s| s.chars().count().min(30))
+                .map(|s| s.chars().count().min(per_col_cap))
                 .unwrap_or(1)
         })
         .max()
         .unwrap_or(4)
         .max(4);
-
-    let last_width = 6;
-    let fav_width = 3;
 
     let col_width = |c: ProfileColId| -> usize {
         match c {
@@ -4901,7 +4952,8 @@ fn render_profiles_text(
                 }
                 ProfileColId::Badges => {
                     let label = badge_display_label(p);
-                    format!("{:<w$}", label, w = w)
+                    let cap = badge_width.max(c.header().chars().count());
+                    format!("{:<w$}", truncate_cell(&label, cap), w = w)
                 }
                 ProfileColId::Subtitle => {
                     let host = host_subtitle(p);
@@ -5012,10 +5064,6 @@ fn render_profiles_text(
     } else {
         "unique cloud drives"
     };
-    println!(
-        "  {}",
-        paint_dim(&"\u{2500}".repeat(total_width_with_gaps), color_on)
-    );
     let footer_line = if summary.deduped_quota_count > 0 {
         format!(
             "{} {} \u{00B7} {} {} \u{00B7} {}",
@@ -5027,17 +5075,24 @@ fn render_profiles_text(
             count, plural, summary.unique_count, drive_word
         )
     };
-    println!("  {}", paint_bold(&footer_line, color_on));
 
-    // Per-protocol-class breakdown table when --breakdown is requested.
     if overrides.breakdown && !summary.by_protocol_class.is_empty() {
-        println!();
-        let class_w = summary
-            .by_protocol_class
-            .iter()
-            .map(|r| r.protocol_class.chars().count())
-            .max()
-            .unwrap_or(8)
+        // Unified layout when --breakdown is on (issue #129):
+        // 1) main profile rows
+        // 2) horizontal separator
+        // 3) per-protocol breakdown rows
+        // 4) horizontal separator
+        // 5) TOTAL row (footer rendered as a row in the same shape as #3)
+        let class_w = "TOTAL"
+            .len()
+            .max(
+                summary
+                    .by_protocol_class
+                    .iter()
+                    .map(|r| r.protocol_class.chars().count())
+                    .max()
+                    .unwrap_or(8),
+            )
             .max("Protocol".len());
         let profiles_w = "Profiles".len().max(
             summary
@@ -5045,7 +5100,8 @@ fn render_profiles_text(
                 .iter()
                 .map(|r| r.profiles.to_string().len())
                 .max()
-                .unwrap_or(1),
+                .unwrap_or(1)
+                .max(summary.profiles.to_string().len()),
         );
         let unique_w = "Unique".len().max(
             summary
@@ -5053,12 +5109,16 @@ fn render_profiles_text(
                 .iter()
                 .map(|r| r.unique.to_string().len())
                 .max()
-                .unwrap_or(1),
+                .unwrap_or(1)
+                .max(summary.unique_count.to_string().len()),
         );
         let used_w = 10;
         let total_w = 10;
         let pct_w = 6;
+        let sep_w = class_w + profiles_w + unique_w + used_w + total_w + pct_w + 5 * 2;
 
+        // Separator after main profile rows, then breakdown header.
+        println!("  {}", paint_dim(&"\u{2500}".repeat(sep_w), color_on));
         let header = format!(
             "{:<cw$}  {:>pw$}  {:>uw$}  {:>used_w$}  {:>total_w$}  {:>pct_w$}",
             "Protocol",
@@ -5075,7 +5135,6 @@ fn render_profiles_text(
             pct_w = pct_w,
         );
         println!("  {}", paint_bold(&header, color_on));
-        let sep_w = class_w + profiles_w + unique_w + used_w + total_w + pct_w + 5 * 2;
         println!("  {}", paint_dim(&"\u{2500}".repeat(sep_w), color_on));
         for row in &summary.by_protocol_class {
             let used_cell = if row.total > 0 {
@@ -5110,6 +5169,63 @@ fn render_profiles_text(
                 total_w = total_w,
             );
         }
+
+        // TOTAL row: same shape as breakdown rows. Used/total/pct are taken
+        // from the dedup-aware summary so multi-protocol drives don't get
+        // counted twice.
+        println!("  {}", paint_dim(&"\u{2500}".repeat(sep_w), color_on));
+        let total_used_cell = if summary.total_total > 0 {
+            format_size(summary.total_used.min(u64::MAX as u128) as u64)
+        } else {
+            "-".to_string()
+        };
+        let total_total_cell = if summary.total_total > 0 {
+            format_size(summary.total_total.min(u64::MAX as u128) as u64)
+        } else {
+            "-".to_string()
+        };
+        let (total_tone, total_pct) = if summary.total_total > 0 {
+            let pct = (summary.total_used as f64 / summary.total_total as f64) * 100.0;
+            (
+                ftp_client_gui_lib_storage_tone(
+                    summary.total_used,
+                    summary.total_total,
+                )
+                .0,
+                Some(pct),
+            )
+        } else {
+            (Tone::Unknown, None)
+        };
+        let total_pct_str = match total_pct {
+            Some(p) => format!("{:>5.1}%", p),
+            None => format!("{:>6}", "-"),
+        };
+        let total_pct_padded = format!("{:>w$}", total_pct_str, w = pct_w);
+        let total_pct_painted = paint_tone(&total_pct_padded, total_tone, color_on);
+        let total_label = paint_bold("TOTAL", color_on);
+        let row = format!(
+            "{:<cw$}  {:>pw$}  {:>uw$}  {:>used_w$}  {:>total_w$}  {}",
+            total_label,
+            summary.profiles,
+            summary.unique_count,
+            total_used_cell,
+            total_total_cell,
+            total_pct_painted,
+            cw = class_w + total_label.len() - "TOTAL".len(),
+            pw = profiles_w,
+            uw = unique_w,
+            used_w = used_w,
+            total_w = total_w,
+        );
+        println!("  {}", row);
+    } else {
+        // Plain mode: keep the legacy summary line right under the rows.
+        println!(
+            "  {}",
+            paint_dim(&"\u{2500}".repeat(total_width_with_gaps), color_on)
+        );
+        println!("  {}", paint_bold(&footer_line, color_on));
     }
 
     if std::io::stderr().is_terminal() {
@@ -6708,6 +6824,8 @@ fn profile_to_provider_config(
         "fourshared" => ProviderType::FourShared,
         "drime" => ProviderType::DrimeCloud,
         "immich" => ProviderType::Immich,
+        "imagekit" | "image_kit" => ProviderType::ImageKit,
+        "uploadcare" | "upload_care" => ProviderType::Uploadcare,
         "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
         _ => {
             print_error(
@@ -6769,6 +6887,20 @@ fn profile_to_provider_config(
 
     if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
         extra.insert("mega_mode".to_string(), "native".to_string());
+    }
+
+    if provider_type == ProviderType::ImageKit {
+        extra.insert("imagekit_id".to_string(), cred_user.clone());
+        if host.trim().is_empty() {
+            host = "api.imagekit.io".to_string();
+        }
+    }
+
+    if provider_type == ProviderType::Uploadcare {
+        extra.insert("public_key".to_string(), cred_user.clone());
+        if host.trim().is_empty() {
+            host = "api.uploadcare.com".to_string();
+        }
     }
 
     print_profile_banner_once(
