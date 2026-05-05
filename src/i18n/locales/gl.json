@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Este modo usa InfiniCLOUD REST API v2 para descubrimento automático e cota en tempo real. Actualmente dispoñible para desenvolvedores e probas beta internas.",
             "discoverBackblazeNative": "API B2 v4 nativa: fluxo para arquivos grandes, copia no servidor, historial de versións (10 GB gratis)",
             "setupSteps": "Configura primeiro {provider}",
-            "openProviderDocs": "Abrir a documentación de {provider}"
+            "openProviderDocs": "Abrir a documentación de {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Atallos de teclado",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Eliminar \"{name}\"?",
             "deleteSelectedItems": "Eliminar {count} elementos seleccionados?",
             "newFolder": "Novo cartafol",
-            "selectFilesToUpload": "Seleccionar ficheiros para subir"
+            "selectFilesToUpload": "Seleccionar ficheiros para subir",
+            "deleteOneFile": "Eliminar o ficheiro \"{name}\"?",
+            "deleteOneFolder": "Eliminar o cartafol \"{name}\"?",
+            "deleteFiles": "Eliminar {count} ficheiros?",
+            "deleteFolders": "Eliminar {count} cartafoles?",
+            "deleteFilesAndFolders": "Eliminar {files} ficheiros e {folders} cartafoles?"
         },
         "toolbar": {
             "hideSystemMenu": "Ocultar barra de menú do sistema",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "Restablecer valores predeterminados",
             "dragToReorder": "Arrastrar para reordenar",
             "dragToResize": "Arrastrar para redimensionar columna",
-            "pinned": "Fixada"
+            "pinned": "Fixada",
+            "alignmentGroup": "Aliñamento da columna",
+            "alignLeft": "Aliñar á esquerda",
+            "alignCenter": "Aliñar ao centro",
+            "alignRight": "Aliñar á dereita"
         },
         "mountManager": {
             "title": "Xestor de montaxes",

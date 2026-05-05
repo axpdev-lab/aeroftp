@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Denne modusen bruker InfiniCLOUD REST API v2 for automatisk oppdagelse og sanntidskvote. For tiden tilgjengelig for utviklere og intern betatesting.",
             "discoverBackblazeNative": "Innfødt B2 v4 API: arbeidsflyt for store filer, kopiering på serversiden, versjonshistorikk (10 GB gratis)",
             "setupSteps": "Konfigurer {provider} først",
-            "openProviderDocs": "Åpne {provider}-dokumentasjon"
+            "openProviderDocs": "Åpne {provider}-dokumentasjon",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Slett \"{name}\"?",
             "deleteSelectedItems": "Slett {count} valgte elementer?",
             "newFolder": "Ny mappe",
-            "selectFilesToUpload": "Velg filer å laste opp"
+            "selectFilesToUpload": "Velg filer å laste opp",
+            "deleteOneFile": "Slette filen \"{name}\"?",
+            "deleteOneFolder": "Slette mappen \"{name}\"?",
+            "deleteFiles": "Slette {count} filer?",
+            "deleteFolders": "Slette {count} mapper?",
+            "deleteFilesAndFolders": "Slette {files} filer og {folders} mapper?"
         },
         "toolbar": {
             "hideSystemMenu": "Skjul systemmenylinje",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "Tilbakestill til standard",
             "dragToReorder": "Dra for å omorganisere",
             "dragToResize": "Dra for å endre størrelse på kolonne",
-            "pinned": "Festet"
+            "pinned": "Festet",
+            "alignmentGroup": "Kolonnejustering",
+            "alignLeft": "Venstrejuster",
+            "alignCenter": "Sentrer",
+            "alignRight": "Høyrejuster"
         },
         "mountManager": {
             "title": "Monteringsbehandler",

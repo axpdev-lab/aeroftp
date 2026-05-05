@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Acest mod folosește InfiniCLOUD REST API v2 pentru descoperire automată și cotă în timp real. Disponibil în prezent pentru dezvoltatori și testare beta internă.",
             "discoverBackblazeNative": "API B2 v4 nativ: flux pentru fișiere mari, copiere pe server, istoric versiuni (10 GB gratuit)",
             "setupSteps": "Configurați mai întâi {provider}",
-            "openProviderDocs": "Deschide documentația {provider}"
+            "openProviderDocs": "Deschide documentația {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Ștergeți \"{name}\"?",
             "deleteSelectedItems": "Ștergeți {count} elemente selectate?",
             "newFolder": "Folder Nou",
-            "selectFilesToUpload": "Selectați Fișiere pentru Încărcare"
+            "selectFilesToUpload": "Selectați Fișiere pentru Încărcare",
+            "deleteOneFile": "Ștergeți fișierul \"{name}\"?",
+            "deleteOneFolder": "Ștergeți folderul \"{name}\"?",
+            "deleteFiles": "Ștergeți {count} fișiere?",
+            "deleteFolders": "Ștergeți {count} foldere?",
+            "deleteFilesAndFolders": "Ștergeți {files} fișiere și {folders} foldere?"
         },
         "toolbar": {
             "hideSystemMenu": "Ascunde bara de meniu sistem",
@@ -4259,7 +4266,11 @@
             "resetToDefaults": "Resetați la valorile implicite",
             "dragToReorder": "Trageți pentru a reordona",
             "dragToResize": "Trageți pentru a redimensiona coloana",
-            "pinned": "Fixată"
+            "pinned": "Fixată",
+            "alignmentGroup": "Aliniere coloană",
+            "alignLeft": "Aliniază la stânga",
+            "alignCenter": "Aliniază la centru",
+            "alignRight": "Aliniază la dreapta"
         },
         "mountManager": {
             "title": "Manager de montări",

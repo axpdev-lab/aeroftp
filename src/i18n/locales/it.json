@@ -504,6 +504,8 @@
             "mediaInfoLine2": "Alcuni servizi sono in sola lettura o solo caricamento a causa di limitazioni API - controlla ogni provider per i dettagli.",
             "discoverImmich": "Gestione foto e video self-hosted (open source)",
             "discoverPixelUnion": "Cloud foto Immich in UE (16 GB gratis)",
+            "discoverImageKit": "Media CDN e storage con cartelle native (20 GB gratis)",
+            "discoverUploadcare": "Media management UE con CDN e API file (3 GB gratis)",
             "infinicloudConnectionMode": "Modalità di connessione",
             "infinicloudModeWebdav": "WebDAV",
             "infinicloudModeWebdavDesc": "Configurazione manuale - inserisci URL e porta WebDAV",
@@ -3598,6 +3600,11 @@
         "dialog": {
             "deleteFile": "Eliminare \"{name}\"?",
             "deleteSelectedItems": "Eliminare {count} elementi selezionati?",
+            "deleteOneFile": "Eliminare il file \"{name}\"?",
+            "deleteOneFolder": "Eliminare la cartella \"{name}\"?",
+            "deleteFiles": "Eliminare {count} file?",
+            "deleteFolders": "Eliminare {count} cartelle?",
+            "deleteFilesAndFolders": "Eliminare {files} file e {folders} cartelle?",
             "newFolder": "Nuova Cartella",
             "selectFilesToUpload": "Seleziona File da Caricare"
         },
@@ -4291,7 +4298,11 @@
             "resetToDefaults": "Ripristina predefiniti",
             "dragToReorder": "Trascina per riordinare",
             "dragToResize": "Trascina per ridimensionare la colonna",
-            "pinned": "Fissata"
+            "pinned": "Fissata",
+            "alignmentGroup": "Allineamento colonna",
+            "alignLeft": "Allinea a sinistra",
+            "alignCenter": "Allinea al centro",
+            "alignRight": "Allinea a destra"
         },
         "reconnect": {
             "toastTitle": "Connessione",

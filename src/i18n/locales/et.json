@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "See režiim kasutab InfiniCLOUD REST API v2 automaatseks tuvastamiseks ja reaalajas kvoodi jaoks. Praegu saadaval arendajatele ja sisemiseks beetatestimiseks.",
             "discoverBackblazeNative": "Natiivne B2 v4 API: suurte failide töövoog, serveripoolne kopeerimine, versiooniajalugu (10 GB tasuta)",
             "setupSteps": "Seadistage kõigepealt {provider}",
-            "openProviderDocs": "Ava {provider} dokumentatsioon"
+            "openProviderDocs": "Ava {provider} dokumentatsioon",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Kustuta \"{name}\"?",
             "deleteSelectedItems": "Kustuta {count} valitud elementi?",
             "newFolder": "Uus kaust",
-            "selectFilesToUpload": "Vali üleslaadimiseks failid"
+            "selectFilesToUpload": "Vali üleslaadimiseks failid",
+            "deleteOneFile": "Kas kustutada fail \"{name}\"?",
+            "deleteOneFolder": "Kas kustutada kaust \"{name}\"?",
+            "deleteFiles": "Kas kustutada {count} faili?",
+            "deleteFolders": "Kas kustutada {count} kausta?",
+            "deleteFilesAndFolders": "Kas kustutada {files} faili ja {folders} kausta?"
         },
         "toolbar": {
             "hideSystemMenu": "Peida süsteemi menüüriba",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Lähtesta vaikeväärtused",
             "dragToReorder": "Lohista ümberjärjestamiseks",
             "dragToResize": "Lohista veeru suuruse muutmiseks",
-            "pinned": "Kinnitatud"
+            "pinned": "Kinnitatud",
+            "alignmentGroup": "Veeru joondus",
+            "alignLeft": "Joonda vasakule",
+            "alignCenter": "Joonda keskele",
+            "alignRight": "Joonda paremale"
         },
         "mountManager": {
             "title": "Ühenduste haldur",

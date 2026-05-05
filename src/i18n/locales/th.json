@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "โหมดนี้ใช้ InfiniCLOUD REST API v2 สำหรับการค้นหาอัตโนมัติและโควต้าแบบเรียลไทม์ ปัจจุบันพร้อมใช้งานสำหรับนักพัฒนาและการทดสอบเบต้าภายใน",
             "discoverBackblazeNative": "B2 v4 API ดั้งเดิม: เวิร์กโฟลว์ไฟล์ขนาดใหญ่ สำเนาฝั่งเซิร์ฟเวอร์ ประวัติเวอร์ชัน (10 GB ฟรี)",
             "setupSteps": "ตั้งค่า {provider} ก่อน",
-            "openProviderDocs": "เปิดเอกสาร {provider}"
+            "openProviderDocs": "เปิดเอกสาร {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -3526,7 +3528,12 @@
             "deleteFile": "ลบ \"{name}\" หรือไม่?",
             "deleteSelectedItems": "ลบ {count} รายการที่เลือก?",
             "newFolder": "โฟลเดอร์ใหม่",
-            "selectFilesToUpload": "เลือกไฟล์ที่จะอัปโหลด"
+            "selectFilesToUpload": "เลือกไฟล์ที่จะอัปโหลด",
+            "deleteOneFile": "ลบไฟล์ \"{name}\" หรือไม่?",
+            "deleteOneFolder": "ลบโฟลเดอร์ \"{name}\" หรือไม่?",
+            "deleteFiles": "ลบ {count} ไฟล์หรือไม่?",
+            "deleteFolders": "ลบ {count} โฟลเดอร์หรือไม่?",
+            "deleteFilesAndFolders": "ลบ {files} ไฟล์และ {folders} โฟลเดอร์หรือไม่?"
         },
         "toolbar": {
             "hideSystemMenu": "ซ่อนแถบเมนูระบบ",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "รีเซ็ตเป็นค่าเริ่มต้น",
             "dragToReorder": "ลากเพื่อจัดเรียงใหม่",
             "dragToResize": "ลากเพื่อปรับขนาดคอลัมน์",
-            "pinned": "ปักหมุด"
+            "pinned": "ปักหมุด",
+            "alignmentGroup": "การจัดแนวคอลัมน์",
+            "alignLeft": "จัดชิดซ้าย",
+            "alignCenter": "จัดกึ่งกลาง",
+            "alignRight": "จัดชิดขวา"
         },
         "mountManager": {
             "title": "ตัวจัดการการเมาท์",

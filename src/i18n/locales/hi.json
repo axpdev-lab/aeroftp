@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "यह मोड स्वचालित खोज और रीयल-टाइम कोटा के लिए InfiniCLOUD REST API v2 का उपयोग करता है। वर्तमान में डेवलपर्स और आंतरिक बीटा परीक्षण के लिए उपलब्ध है।",
             "discoverBackblazeNative": "नेटिव B2 v4 API: बड़ी फ़ाइल वर्कफ़्लो, सर्वर-साइड कॉपी, संस्करण इतिहास (10 GB मुफ़्त)",
             "setupSteps": "पहले {provider} सेटअप करें",
-            "openProviderDocs": "{provider} दस्तावेज़ खोलें"
+            "openProviderDocs": "{provider} दस्तावेज़ खोलें",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",
@@ -3526,7 +3528,12 @@
             "deleteFile": "\"{name}\" हटाएं?",
             "deleteSelectedItems": "{count} चयनित आइटम हटाएं?",
             "newFolder": "नया फ़ोल्डर",
-            "selectFilesToUpload": "अपलोड करने के लिए फ़ाइलें चुनें"
+            "selectFilesToUpload": "अपलोड करने के लिए फ़ाइलें चुनें",
+            "deleteOneFile": "फ़ाइल \"{name}\" हटाएं?",
+            "deleteOneFolder": "फ़ोल्डर \"{name}\" हटाएं?",
+            "deleteFiles": "{count} फ़ाइलें हटाएं?",
+            "deleteFolders": "{count} फ़ोल्डर हटाएं?",
+            "deleteFilesAndFolders": "{files} फ़ाइलें और {folders} फ़ोल्डर हटाएं?"
         },
         "toolbar": {
             "hideSystemMenu": "सिस्टम मेनू बार छुपाएं",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "डिफ़ॉल्ट पर रीसेट करें",
             "dragToReorder": "पुनर्व्यवस्थित करने के लिए खींचें",
             "dragToResize": "कॉलम का आकार बदलने के लिए खींचें",
-            "pinned": "पिन किया गया"
+            "pinned": "पिन किया गया",
+            "alignmentGroup": "कॉलम संरेखण",
+            "alignLeft": "बाएं संरेखित करें",
+            "alignCenter": "केंद्र में संरेखित करें",
+            "alignRight": "दाएं संरेखित करें"
         },
         "mountManager": {
             "title": "माउंट प्रबंधक",

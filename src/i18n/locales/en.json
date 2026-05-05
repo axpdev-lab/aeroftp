@@ -1470,6 +1470,11 @@
     "dialog": {
       "deleteFile": "Delete \"{name}\"?",
       "deleteSelectedItems": "Delete {count} selected items?",
+      "deleteOneFile": "Delete file \"{name}\"?",
+      "deleteOneFolder": "Delete folder \"{name}\"?",
+      "deleteFiles": "Delete {count} files?",
+      "deleteFolders": "Delete {count} folders?",
+      "deleteFilesAndFolders": "Delete {files} files and {folders} folders?",
       "newFolder": "New Folder",
       "selectFilesToUpload": "Select Files to Upload"
     },
@@ -2323,6 +2328,8 @@
       "discoverGooglePhotos": "Google photo library (read + upload, 15 GB shared)",
       "discoverImmich": "Self-hosted photo and video management (open source)",
       "discoverPixelUnion": "EU-hosted Immich photo cloud (16 GB free)",
+      "discoverImageKit": "Media CDN and storage with native folders (20 GB free)",
+      "discoverUploadcare": "EU media management with CDN and file APIs (3 GB free)",
       "discoverOneDrive": "Microsoft cloud storage (5 GB free)",
       "discoverDropbox": "File sync and sharing (2 GB free)",
       "discoverMega": "Secure cloud with client-side encryption (20 GB free)",
@@ -4297,7 +4304,11 @@
       "resetToDefaults": "Reset to defaults",
       "dragToReorder": "Drag to reorder",
       "dragToResize": "Drag to resize column",
-      "pinned": "Pinned"
+      "pinned": "Pinned",
+      "alignmentGroup": "Column alignment",
+      "alignLeft": "Align left",
+      "alignCenter": "Align center",
+      "alignRight": "Align right"
     }
   }
 }

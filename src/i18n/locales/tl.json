@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Gumagamit ang mode na ito ng InfiniCLOUD REST API v2 para sa auto-discovery at real-time na quota. Kasalukuyang available para sa mga developer at internal beta testing.",
             "discoverBackblazeNative": "Katutubong B2 v4 API: workflow para sa malalaking file, kopya sa server, kasaysayan ng bersyon (10 GB libre)",
             "setupSteps": "I-setup muna ang {provider}",
-            "openProviderDocs": "Buksan ang dokumentasyon ng {provider}"
+            "openProviderDocs": "Buksan ang dokumentasyon ng {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Tanggalin ang \"{name}\"?",
             "deleteSelectedItems": "Tanggalin ang {count} napiling item?",
             "newFolder": "Bagong Folder",
-            "selectFilesToUpload": "Pumili ng mga File na I-upload"
+            "selectFilesToUpload": "Pumili ng mga File na I-upload",
+            "deleteOneFile": "Burahin ang file na \"{name}\"?",
+            "deleteOneFolder": "Burahin ang folder na \"{name}\"?",
+            "deleteFiles": "Burahin ang {count} na file?",
+            "deleteFolders": "Burahin ang {count} na folder?",
+            "deleteFilesAndFolders": "Burahin ang {files} na file at {folders} na folder?"
         },
         "toolbar": {
             "hideSystemMenu": "Itago ang system menu bar",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "I-reset sa default",
             "dragToReorder": "I-drag upang muling ayusin",
             "dragToResize": "I-drag upang baguhin ang sukat ng column",
-            "pinned": "Naka-pin"
+            "pinned": "Naka-pin",
+            "alignmentGroup": "Pagkakahanay ng hanay",
+            "alignLeft": "Ihanay sa kaliwa",
+            "alignCenter": "Ihanay sa gitna",
+            "alignRight": "Ihanay sa kanan"
         },
         "mountManager": {
             "title": "Tagapamahala ng Mount",

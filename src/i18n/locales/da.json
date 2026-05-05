@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Denne tilstand bruger InfiniCLOUD REST API v2 til automatisk opdagelse og kvote i realtid. Aktuelt tilgængelig for udviklere og intern betatest.",
             "discoverBackblazeNative": "Native B2 v4 API: arbejdsgang for store filer, serverside-kopi, versionshistorik (10 GB gratis)",
             "setupSteps": "Konfigurer {provider} først",
-            "openProviderDocs": "Åbn {provider}-dokumentation"
+            "openProviderDocs": "Åbn {provider}-dokumentation",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Slet \"{name}\"?",
             "deleteSelectedItems": "Slet {count} valgte elementer?",
             "newFolder": "Ny mappe",
-            "selectFilesToUpload": "Vælg filer at uploade"
+            "selectFilesToUpload": "Vælg filer at uploade",
+            "deleteOneFile": "Slet filen \"{name}\"?",
+            "deleteOneFolder": "Slet mappen \"{name}\"?",
+            "deleteFiles": "Slet {count} filer?",
+            "deleteFolders": "Slet {count} mapper?",
+            "deleteFilesAndFolders": "Slet {files} filer og {folders} mapper?"
         },
         "toolbar": {
             "hideSystemMenu": "Skjul systemmenulinje",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Nulstil til standard",
             "dragToReorder": "Træk for at omarrangere",
             "dragToResize": "Træk for at ændre størrelse på kolonne",
-            "pinned": "Fastgjort"
+            "pinned": "Fastgjort",
+            "alignmentGroup": "Kolonnejustering",
+            "alignLeft": "Venstrejuster",
+            "alignCenter": "Centrér",
+            "alignRight": "Højrejuster"
         },
         "mountManager": {
             "title": "Mount-håndtering",

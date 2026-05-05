@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Цей режим використовує InfiniCLOUD REST API v2 для автовиявлення та квоти в реальному часі. Наразі доступно для розробників та внутрішнього бета-тестування.",
             "discoverBackblazeNative": "Нативне B2 v4 API: робочий процес для великих файлів, копія на боці сервера, історія версій (10 ГБ безкоштовно)",
             "setupSteps": "Спочатку налаштуйте {provider}",
-            "openProviderDocs": "Відкрити документацію {provider}"
+            "openProviderDocs": "Відкрити документацію {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Видалити \"{name}\"?",
             "deleteSelectedItems": "Видалити {count} вибраних елементів?",
             "newFolder": "Нова тека",
-            "selectFilesToUpload": "Виберіть файли для завантаження"
+            "selectFilesToUpload": "Виберіть файли для завантаження",
+            "deleteOneFile": "Видалити файл \"{name}\"?",
+            "deleteOneFolder": "Видалити папку \"{name}\"?",
+            "deleteFiles": "Видалити {count} файлів?",
+            "deleteFolders": "Видалити {count} папок?",
+            "deleteFilesAndFolders": "Видалити {files} файлів і {folders} папок?"
         },
         "toolbar": {
             "hideSystemMenu": "Приховати системне меню",
@@ -4259,7 +4266,11 @@
             "resetToDefaults": "Скинути до типових",
             "dragToReorder": "Перетягніть для перевпорядкування",
             "dragToResize": "Перетягніть для зміни розміру колонки",
-            "pinned": "Закріплено"
+            "pinned": "Закріплено",
+            "alignmentGroup": "Вирівнювання стовпця",
+            "alignLeft": "Вирівняти ліворуч",
+            "alignCenter": "Вирівняти по центру",
+            "alignRight": "Вирівняти праворуч"
         },
         "mountManager": {
             "title": "Менеджер монтування",

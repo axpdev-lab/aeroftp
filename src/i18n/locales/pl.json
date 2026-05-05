@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Ten tryb używa InfiniCLOUD REST API v2 do automatycznego wykrywania i przyziału w czasie rzeczywistym. Obecnie dostępny dla programistów i wewnętrznych testów beta.",
             "discoverBackblazeNative": "Natywne API B2 v4: obsługa dużych plików, kopia po stronie serwera, historia wersji (10 GB za darmo)",
             "setupSteps": "Najpierw skonfiguruj {provider}",
-            "openProviderDocs": "Otwórz dokumentację {provider}"
+            "openProviderDocs": "Otwórz dokumentację {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Usunąć \"{name}\"?",
             "deleteSelectedItems": "Usunąć {count} zaznaczonych elementów?",
             "newFolder": "Nowy folder",
-            "selectFilesToUpload": "Wybierz pliki do przesłania"
+            "selectFilesToUpload": "Wybierz pliki do przesłania",
+            "deleteOneFile": "Usunąć plik \"{name}\"?",
+            "deleteOneFolder": "Usunąć folder \"{name}\"?",
+            "deleteFiles": "Usunąć {count} plików?",
+            "deleteFolders": "Usunąć {count} folderów?",
+            "deleteFilesAndFolders": "Usunąć {files} plików i {folders} folderów?"
         },
         "toolbar": {
             "hideSystemMenu": "Ukryj menu systemowe",
@@ -4259,7 +4266,11 @@
             "resetToDefaults": "Przywróć domyślne",
             "dragToReorder": "Przeciągnij, aby zmienić kolejność",
             "dragToResize": "Przeciągnij, aby zmienić rozmiar kolumny",
-            "pinned": "Przypięte"
+            "pinned": "Przypięte",
+            "alignmentGroup": "Wyrównanie kolumny",
+            "alignLeft": "Wyrównaj do lewej",
+            "alignCenter": "Wyśrodkuj",
+            "alignRight": "Wyrównaj do prawej"
         },
         "mountManager": {
             "title": "Menedżer montowań",

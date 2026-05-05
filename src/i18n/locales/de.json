@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Dieser Modus verwendet InfiniCLOUD REST API v2 für automatische Erkennung und Echtzeit-Kontingent. Derzeit verfügbar für Entwickler und interne Betatests.",
             "discoverBackblazeNative": "Native B2 v4 API: Workflow für große Dateien, serverseitige Kopie, Versionsverlauf (10 GB kostenlos)",
             "setupSteps": "Zuerst {provider} einrichten",
-            "openProviderDocs": "{provider}-Dokumentation öffnen"
+            "openProviderDocs": "{provider}-Dokumentation öffnen",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",
@@ -3526,7 +3528,12 @@
             "deleteFile": "\"{name}\" löschen?",
             "deleteSelectedItems": "{count} ausgewählte Elemente löschen?",
             "newFolder": "Neuer Ordner",
-            "selectFilesToUpload": "Dateien zum Hochladen auswählen"
+            "selectFilesToUpload": "Dateien zum Hochladen auswählen",
+            "deleteOneFile": "Datei \"{name}\" löschen?",
+            "deleteOneFolder": "Ordner \"{name}\" löschen?",
+            "deleteFiles": "{count} Dateien löschen?",
+            "deleteFolders": "{count} Ordner löschen?",
+            "deleteFilesAndFolders": "{files} Dateien und {folders} Ordner löschen?"
         },
         "toolbar": {
             "hideSystemMenu": "Systemmenüleiste ausblenden",
@@ -4259,7 +4266,11 @@
             "resetToDefaults": "Auf Standard zurücksetzen",
             "dragToReorder": "Zum Umordnen ziehen",
             "dragToResize": "Zum Ändern der Spaltenbreite ziehen",
-            "pinned": "Angeheftet"
+            "pinned": "Angeheftet",
+            "alignmentGroup": "Spaltenausrichtung",
+            "alignLeft": "Linksbündig",
+            "alignCenter": "Zentriert",
+            "alignRight": "Rechtsbündig"
         },
         "mountManager": {
             "title": "Mount-Manager",

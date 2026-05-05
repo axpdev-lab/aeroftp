@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Bu mod, otomatik keşif ve gerçek zamanlı kota için InfiniCLOUD REST API v2 kullanır. Şu anda geliştiriciler ve dahili beta testi için kullanılabilir.",
             "discoverBackblazeNative": "Yerel B2 v4 API: büyük dosya iş akışı, sunucu taraflı kopya, sürüm geçmişi (10 GB ücretsiz)",
             "setupSteps": "Önce {provider} kurulumunu yapın",
-            "openProviderDocs": "{provider} belgelerini aç"
+            "openProviderDocs": "{provider} belgelerini aç",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -3526,7 +3528,12 @@
             "deleteFile": "\"{name}\" silinsin mi?",
             "deleteSelectedItems": "{count} seçili öğe silinsin mi?",
             "newFolder": "Yeni Klasör",
-            "selectFilesToUpload": "Yüklenecek Dosyaları Seçin"
+            "selectFilesToUpload": "Yüklenecek Dosyaları Seçin",
+            "deleteOneFile": "\"{name}\" dosyası silinsin mi?",
+            "deleteOneFolder": "\"{name}\" klasörü silinsin mi?",
+            "deleteFiles": "{count} dosya silinsin mi?",
+            "deleteFolders": "{count} klasör silinsin mi?",
+            "deleteFilesAndFolders": "{files} dosya ve {folders} klasör silinsin mi?"
         },
         "toolbar": {
             "hideSystemMenu": "Sistem menü çubuğunu gizle",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Varsayılanlara sıfırla",
             "dragToReorder": "Yeniden sıralamak için sürükleyin",
             "dragToResize": "Sütunu yeniden boyutlandırmak için sürükleyin",
-            "pinned": "Sabitlenmiş"
+            "pinned": "Sabitlenmiş",
+            "alignmentGroup": "Sütun hizalama",
+            "alignLeft": "Sola hizala",
+            "alignCenter": "Ortaya hizala",
+            "alignRight": "Sağa hizala"
         },
         "mountManager": {
             "title": "Bağlama Yöneticisi",

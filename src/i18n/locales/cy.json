@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Mae'r modd hwn yn defnyddio InfiniCLOUD REST API v2 ar gyfer darganfod awtomatig a chwota amser real. Ar gael ar hyn o bryd ar gyfer datblygwyr a phrofion beta mewnol.",
             "discoverBackblazeNative": "API B2 v4 brodorol: llif gwaith ffeiliau mawr, copio ochr y gweinydd, hanes fersiynau (10 GB am ddim)",
             "setupSteps": "Sefydlu {provider} yn gyntaf",
-            "openProviderDocs": "Agor dogfennaeth {provider}"
+            "openProviderDocs": "Agor dogfennaeth {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Dileu \"{name}\"?",
             "deleteSelectedItems": "Dileu {count} eitem a ddewiswyd?",
             "newFolder": "Ffolder newydd",
-            "selectFilesToUpload": "Dewis ffeiliau i'w huwchlwytho"
+            "selectFilesToUpload": "Dewis ffeiliau i'w huwchlwytho",
+            "deleteOneFile": "Dileu y ffeil \"{name}\"?",
+            "deleteOneFolder": "Dileu y ffolder \"{name}\"?",
+            "deleteFiles": "Dileu {count} o ffeiliau?",
+            "deleteFolders": "Dileu {count} o ffolderi?",
+            "deleteFilesAndFolders": "Dileu {files} o ffeiliau a {folders} o ffolderi?"
         },
         "toolbar": {
             "hideSystemMenu": "Cuddio bar dewislen y system",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "Ailosod i ddiofyn",
             "dragToReorder": "Llusgwch i aildrefnu",
             "dragToResize": "Llusgwch i newid maint y golofn",
-            "pinned": "Wedi'i binio"
+            "pinned": "Wedi'i binio",
+            "alignmentGroup": "Aliniad colofnau",
+            "alignLeft": "Alinio i'r chwith",
+            "alignCenter": "Alinio i'r canol",
+            "alignRight": "Alinio i'r dde"
         },
         "mountManager": {
             "title": "Rheolwr Mowntio",

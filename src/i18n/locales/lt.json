@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Šis režimas naudoja InfiniCLOUD REST API v2 automatiniam aptikimui ir kvotai realiuoju laiku. Šiuo metu prieinamas kūrėjams ir vidiniams beta bandymams.",
             "discoverBackblazeNative": "Savoji B2 v4 API: didelių failų darbo eiga, kopijavimas serveryje, versijų istorija (10 GB nemokamai)",
             "setupSteps": "Pirmiausia nustatykite {provider}",
-            "openProviderDocs": "Atidaryti {provider} dokumentaciją"
+            "openProviderDocs": "Atidaryti {provider} dokumentaciją",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Ištrinti \"{name}\"?",
             "deleteSelectedItems": "Ištrinti {count} pasirinktus elementus?",
             "newFolder": "Naujas aplankas",
-            "selectFilesToUpload": "Pasirinkite failus įkėlimui"
+            "selectFilesToUpload": "Pasirinkite failus įkėlimui",
+            "deleteOneFile": "Ar ištrinti failą „{name}\"?",
+            "deleteOneFolder": "Ar ištrinti aplanką „{name}\"?",
+            "deleteFiles": "Ar ištrinti {count} failų?",
+            "deleteFolders": "Ar ištrinti {count} aplankų?",
+            "deleteFilesAndFolders": "Ar ištrinti {files} failų ir {folders} aplankų?"
         },
         "toolbar": {
             "hideSystemMenu": "Slėpti sistemos meniu juostą",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Atkurti numatytąsias",
             "dragToReorder": "Vilkite, kad pertvarkytumėte",
             "dragToResize": "Vilkite, kad pakeistumėte stulpelio dydį",
-            "pinned": "Prisegta"
+            "pinned": "Prisegta",
+            "alignmentGroup": "Stulpelio lygiavimas",
+            "alignLeft": "Lygiuoti kairėn",
+            "alignCenter": "Lygiuoti centre",
+            "alignRight": "Lygiuoti dešinėn"
         },
         "mountManager": {
             "title": "Prijungimo tvarkyklė",

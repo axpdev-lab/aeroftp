@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "របៀបនេះប្រើ InfiniCLOUD REST API v2 សម្រាប់ការរកឃើញស្វ័យប្រវត្តិ និងកូតាពេលវេលាជាក់ស្តែង។ បច្ចុប្បន្នអាចប្រើបានសម្រាប់អ្នកអភិវឌ្ឍន៍ និងការសាកល្បងបេតាផ្ទៃក្នុង។",
             "discoverBackblazeNative": "API B2 v4 ដើម៖ លំហូរការងារឯកសារធំ ការចម្លងផ្នែកម៉ាស៊ីនមេ ប្រវត្តិកំណែ (10 GB ឥតគិតថ្លៃ)",
             "setupSteps": "រៀបចំ {provider} ជាមុនសិន",
-            "openProviderDocs": "បើកឯកសារ {provider}"
+            "openProviderDocs": "បើកឯកសារ {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -3526,7 +3528,12 @@
             "deleteFile": "លុប \"{name}\"?",
             "deleteSelectedItems": "លុប {count} ធាតុដែលបានជ្រើសរើស?",
             "newFolder": "ថតថ្មី",
-            "selectFilesToUpload": "ជ្រើសរើសឯកសារដើម្បីផ្ទុកឡើង"
+            "selectFilesToUpload": "ជ្រើសរើសឯកសារដើម្បីផ្ទុកឡើង",
+            "deleteOneFile": "លុបឯកសារ \"{name}\"?",
+            "deleteOneFolder": "លុបថត \"{name}\"?",
+            "deleteFiles": "លុបឯកសារចំនួន {count}?",
+            "deleteFolders": "លុបថតចំនួន {count}?",
+            "deleteFilesAndFolders": "លុបឯកសារចំនួន {files} និងថតចំនួន {folders}?"
         },
         "toolbar": {
             "hideSystemMenu": "លាក់របារម៉ឺនុយប្រព័ន្ធ",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "កំណត់ឡើងវិញទៅលំនាំដើម",
             "dragToReorder": "អូសដើម្បីរៀបរៀងឡើងវិញ",
             "dragToResize": "អូសដើម្បីប្តូរទំហំជួរឈរ",
-            "pinned": "បានដោត"
+            "pinned": "បានដោត",
+            "alignmentGroup": "ការតម្រឹមជួរឈរ",
+            "alignLeft": "តម្រឹមឆ្វេង",
+            "alignCenter": "តម្រឹមកណ្ដាល",
+            "alignRight": "តម្រឹមស្ដាំ"
         },
         "mountManager": {
             "title": "កម្មវិធីគ្រប់គ្រងការភ្ជាប់",

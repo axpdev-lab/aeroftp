@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Ez a mód az InfiniCLOUD REST API v2-t használja automatikus felderítéshez és valós idejű kvótához. Jelenleg fejlesztők és belső béta tesztelők számára érhető el.",
             "discoverBackblazeNative": "Natív B2 v4 API: nagy fájlok munkafolyamata, szerveroldali másolás, verzióelőzmények (10 GB ingyen)",
             "setupSteps": "Először állítsa be a következőt: {provider}",
-            "openProviderDocs": "{provider} dokumentáció megnyitása"
+            "openProviderDocs": "{provider} dokumentáció megnyitása",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Törli a \"{name}\" fájlt?",
             "deleteSelectedItems": "Töröl {count} kiválasztott elemet?",
             "newFolder": "Új Mappa",
-            "selectFilesToUpload": "Válassza ki a Feltöltendő Fájlokat"
+            "selectFilesToUpload": "Válassza ki a Feltöltendő Fájlokat",
+            "deleteOneFile": "Törli a(z) \"{name}\" fájlt?",
+            "deleteOneFolder": "Törli a(z) \"{name}\" mappát?",
+            "deleteFiles": "Törli a(z) {count} fájlt?",
+            "deleteFolders": "Törli a(z) {count} mappát?",
+            "deleteFilesAndFolders": "Törli a(z) {files} fájlt és {folders} mappát?"
         },
         "toolbar": {
             "hideSystemMenu": "Rendszer menüsor elrejtése",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Alapértelmezések visszaállítása",
             "dragToReorder": "Húzza az átrendezéshez",
             "dragToResize": "Húzza az oszlop átméretezéséhez",
-            "pinned": "Rögzítve"
+            "pinned": "Rögzítve",
+            "alignmentGroup": "Oszlop igazítása",
+            "alignLeft": "Balra igazítás",
+            "alignCenter": "Középre igazítás",
+            "alignRight": "Jobbra igazítás"
         },
         "mountManager": {
             "title": "Csatolási kezelő",

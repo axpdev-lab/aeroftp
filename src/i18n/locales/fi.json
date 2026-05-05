@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Tämä tila käyttää InfiniCLOUD REST API v2:ta automaattiseen tunnistukseen ja reaaliaikaiseen kiintiöön. Tällä hetkellä saatavilla kehittäjille ja sisäiseen betatestaukseen.",
             "discoverBackblazeNative": "Natiivi B2 v4 API: suurten tiedostojen työnkulku, palvelinpuolen kopio, versiohistoria (10 Gt ilmaiseksi)",
             "setupSteps": "Määritä {provider} ensin",
-            "openProviderDocs": "Avaa {provider}-dokumentaatio"
+            "openProviderDocs": "Avaa {provider}-dokumentaatio",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Poista \"{name}\"?",
             "deleteSelectedItems": "Poista {count} valittua kohdetta?",
             "newFolder": "Uusi kansio",
-            "selectFilesToUpload": "Valitse lähetettävät tiedostot"
+            "selectFilesToUpload": "Valitse lähetettävät tiedostot",
+            "deleteOneFile": "Poistetaanko tiedosto \"{name}\"?",
+            "deleteOneFolder": "Poistetaanko kansio \"{name}\"?",
+            "deleteFiles": "Poistetaanko {count} tiedostoa?",
+            "deleteFolders": "Poistetaanko {count} kansiota?",
+            "deleteFilesAndFolders": "Poistetaanko {files} tiedostoa ja {folders} kansiota?"
         },
         "toolbar": {
             "hideSystemMenu": "Piilota järjestelmävalikkorivi",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Palauta oletukset",
             "dragToReorder": "Vedä järjestääksesi uudelleen",
             "dragToResize": "Vedä muuttaaksesi sarakkeen kokoa",
-            "pinned": "Kiinnitetty"
+            "pinned": "Kiinnitetty",
+            "alignmentGroup": "Sarakkeen tasaus",
+            "alignLeft": "Tasaa vasemmalle",
+            "alignCenter": "Tasaa keskelle",
+            "alignRight": "Tasaa oikealle"
         },
         "mountManager": {
             "title": "Liitäntöjen hallinta",

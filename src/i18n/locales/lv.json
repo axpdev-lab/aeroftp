@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Šis režīms izmanto InfiniCLOUD REST API v2 automātiskai noteikšanai un reāllaika kvotai. Pašlaik pieejams izstrādātājiem un iekšējai beta testēšanai.",
             "discoverBackblazeNative": "Vietējā B2 v4 API: lielu failu darbplūsma, kopēšana serverī, versiju vēsture (10 GB bez maksas)",
             "setupSteps": "Vispirms iestatiet {provider}",
-            "openProviderDocs": "Atvērt {provider} dokumentāciju"
+            "openProviderDocs": "Atvērt {provider} dokumentāciju",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Dzēst \"{name}\"?",
             "deleteSelectedItems": "Dzēst {count} izvēlētos vienumus?",
             "newFolder": "Jauna mape",
-            "selectFilesToUpload": "Izvēlieties failus augšupielādei"
+            "selectFilesToUpload": "Izvēlieties failus augšupielādei",
+            "deleteOneFile": "Dzēst failu \"{name}\"?",
+            "deleteOneFolder": "Dzēst mapi \"{name}\"?",
+            "deleteFiles": "Dzēst {count} failus?",
+            "deleteFolders": "Dzēst {count} mapes?",
+            "deleteFilesAndFolders": "Dzēst {files} failus un {folders} mapes?"
         },
         "toolbar": {
             "hideSystemMenu": "Slēpt sistēmas izvēlnes joslu",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Atiestatīt uz noklusējumu",
             "dragToReorder": "Velciet, lai pārkārtotu",
             "dragToResize": "Velciet, lai mainītu kolonnas izmēru",
-            "pinned": "Piesprausts"
+            "pinned": "Piesprausts",
+            "alignmentGroup": "Kolonnas līdzinājums",
+            "alignLeft": "Līdzināt pa kreisi",
+            "alignCenter": "Centrēt",
+            "alignRight": "Līdzināt pa labi"
         },
         "mountManager": {
             "title": "Montēšanas pārvaldnieks",

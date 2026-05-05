@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Ta način uporablja InfiniCLOUD REST API v2 za samodejno odkrivanje in kvoto v realnem času. Trenutno na voljo za razvijalce in interno beta testiranje.",
             "discoverBackblazeNative": "Izvorni B2 v4 API: potek dela za velike datoteke, kopiranje na strežniku, zgodovina različic (10 GB brezplačno)",
             "setupSteps": "Najprej nastavite {provider}",
-            "openProviderDocs": "Odpri dokumentacijo {provider}"
+            "openProviderDocs": "Odpri dokumentacijo {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Izbrisati \"{name}\"?",
             "deleteSelectedItems": "Izbrisati {count} izbranih postavk?",
             "newFolder": "Nova mapa",
-            "selectFilesToUpload": "Izberite datoteke za prenos"
+            "selectFilesToUpload": "Izberite datoteke za prenos",
+            "deleteOneFile": "Izbriši datoteko \"{name}\"?",
+            "deleteOneFolder": "Izbriši mapo \"{name}\"?",
+            "deleteFiles": "Izbriši {count} datotek?",
+            "deleteFolders": "Izbriši {count} map?",
+            "deleteFilesAndFolders": "Izbriši {files} datotek in {folders} map?"
         },
         "toolbar": {
             "hideSystemMenu": "Skrij sistemski meni",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Ponastavi na privzete",
             "dragToReorder": "Povlecite za razvrščanje",
             "dragToResize": "Povlecite za spreminjanje velikosti stolpca",
-            "pinned": "Pripeto"
+            "pinned": "Pripeto",
+            "alignmentGroup": "Poravnava stolpca",
+            "alignLeft": "Poravnaj levo",
+            "alignCenter": "Poravnaj na sredino",
+            "alignRight": "Poravnaj desno"
         },
         "mountManager": {
             "title": "Upravitelj priklopov",

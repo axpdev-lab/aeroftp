@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Mod ini menggunakan InfiniCLOUD REST API v2 untuk penemuan automatik dan kuota masa nyata. Kini tersedia untuk pembangun dan ujian beta dalaman.",
             "discoverBackblazeNative": "API B2 v4 asli: aliran kerja fail besar, salinan sisi pelayan, sejarah versi (10 GB percuma)",
             "setupSteps": "Sediakan {provider} dahulu",
-            "openProviderDocs": "Buka dokumentasi {provider}"
+            "openProviderDocs": "Buka dokumentasi {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Padam \"{name}\"?",
             "deleteSelectedItems": "Padam {count} item yang dipilih?",
             "newFolder": "Folder Baharu",
-            "selectFilesToUpload": "Pilih Fail untuk Dimuat Naik"
+            "selectFilesToUpload": "Pilih Fail untuk Dimuat Naik",
+            "deleteOneFile": "Padam fail \"{name}\"?",
+            "deleteOneFolder": "Padam folder \"{name}\"?",
+            "deleteFiles": "Padam {count} fail?",
+            "deleteFolders": "Padam {count} folder?",
+            "deleteFilesAndFolders": "Padam {files} fail dan {folders} folder?"
         },
         "toolbar": {
             "hideSystemMenu": "Sembunyikan bar menu sistem",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Tetapkan semula ke lalai",
             "dragToReorder": "Seret untuk susun semula",
             "dragToResize": "Seret untuk ubah saiz lajur",
-            "pinned": "Disemat"
+            "pinned": "Disemat",
+            "alignmentGroup": "Penjajaran lajur",
+            "alignLeft": "Jajar kiri",
+            "alignCenter": "Jajar tengah",
+            "alignRight": "Jajar kanan"
         },
         "mountManager": {
             "title": "Pengurus Lekapan",

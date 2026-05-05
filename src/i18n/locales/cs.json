@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Tento režim používá InfiniCLOUD REST API v2 pro automatické zjištění a kvótu v reálném čase. Momentálně dostupné pro vývojáře a interní beta testování.",
             "discoverBackblazeNative": "Nativní B2 v4 API: pracovní postup pro velké soubory, kopie na straně serveru, historie verzí (10 GB zdarma)",
             "setupSteps": "Nejprve nastavte {provider}",
-            "openProviderDocs": "Otevřít dokumentaci {provider}"
+            "openProviderDocs": "Otevřít dokumentaci {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Odstranit \"{name}\"?",
             "deleteSelectedItems": "Odstranit {count} vybraných položek?",
             "newFolder": "Nová složka",
-            "selectFilesToUpload": "Vyberte soubory k nahrání"
+            "selectFilesToUpload": "Vyberte soubory k nahrání",
+            "deleteOneFile": "Smazat soubor \"{name}\"?",
+            "deleteOneFolder": "Smazat složku \"{name}\"?",
+            "deleteFiles": "Smazat {count} souborů?",
+            "deleteFolders": "Smazat {count} složek?",
+            "deleteFilesAndFolders": "Smazat {files} souborů a {folders} složek?"
         },
         "toolbar": {
             "hideSystemMenu": "Skrýt systémové menu",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Obnovit výchozí",
             "dragToReorder": "Přetáhněte pro změnu pořadí",
             "dragToResize": "Přetáhněte pro změnu velikosti sloupce",
-            "pinned": "Připnuto"
+            "pinned": "Připnuto",
+            "alignmentGroup": "Zarovnání sloupce",
+            "alignLeft": "Zarovnat doleva",
+            "alignCenter": "Zarovnat na střed",
+            "alignRight": "Zarovnat doprava"
         },
         "mountManager": {
             "title": "Správce připojení",

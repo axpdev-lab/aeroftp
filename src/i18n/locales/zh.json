@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "此模式使用 InfiniCLOUD REST API v2 进行自动发现和实时配额。目前可供开发者和内部测试使用。",
             "discoverBackblazeNative": "原生 B2 v4 API：大文件工作流、服务器端复制、版本历史（10 GB 免费）",
             "setupSteps": "请先设置 {provider}",
-            "openProviderDocs": "打开 {provider} 文档"
+            "openProviderDocs": "打开 {provider} 文档",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -3526,7 +3528,12 @@
             "deleteFile": "删除\"{name}\"？",
             "deleteSelectedItems": "删除{count}个选中项目？",
             "newFolder": "新建文件夹",
-            "selectFilesToUpload": "选择要上传的文件"
+            "selectFilesToUpload": "选择要上传的文件",
+            "deleteOneFile": "删除文件 \"{name}\"?",
+            "deleteOneFolder": "删除文件夹 \"{name}\"?",
+            "deleteFiles": "删除 {count} 个文件?",
+            "deleteFolders": "删除 {count} 个文件夹?",
+            "deleteFilesAndFolders": "删除 {files} 个文件和 {folders} 个文件夹?"
         },
         "toolbar": {
             "hideSystemMenu": "隐藏系统菜单栏",
@@ -4259,7 +4266,11 @@
             "resetToDefaults": "重置为默认",
             "dragToReorder": "拖动以重新排序",
             "dragToResize": "拖动以调整列宽",
-            "pinned": "已固定"
+            "pinned": "已固定",
+            "alignmentGroup": "列对齐",
+            "alignLeft": "左对齐",
+            "alignCenter": "居中对齐",
+            "alignRight": "右对齐"
         },
         "mountManager": {
             "title": "挂载管理器",

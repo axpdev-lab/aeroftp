@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Овај режим користи InfiniCLOUD REST API v2 за аутоматско откривање и квоту у реалном времену. Тренутно доступно за програмере и интерно бета тестирање.",
             "discoverBackblazeNative": "Изворни B2 v4 API: радни ток за велике датотеке, копија на серверу, историја верзија (10 GB бесплатно)",
             "setupSteps": "Прво подесите {provider}",
-            "openProviderDocs": "Отвори документацију за {provider}"
+            "openProviderDocs": "Отвори документацију за {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Обрисати \"{name}\"?",
             "deleteSelectedItems": "Обрисати {count} изабраних ставки?",
             "newFolder": "Нови фолдер",
-            "selectFilesToUpload": "Изаберите фајлове за пренос"
+            "selectFilesToUpload": "Изаберите фајлове за пренос",
+            "deleteOneFile": "Обрисати датотеку \"{name}\"?",
+            "deleteOneFolder": "Обрисати фасциклу \"{name}\"?",
+            "deleteFiles": "Обрисати {count} датотека?",
+            "deleteFolders": "Обрисати {count} фасцикли?",
+            "deleteFilesAndFolders": "Обрисати {files} датотека и {folders} фасцикли?"
         },
         "toolbar": {
             "hideSystemMenu": "Сакриј системски мени",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Врати на подразумевано",
             "dragToReorder": "Превуците за преуређење",
             "dragToResize": "Превуците за промену величине колоне",
-            "pinned": "Закачено"
+            "pinned": "Закачено",
+            "alignmentGroup": "Поравнање колоне",
+            "alignLeft": "Поравнај лево",
+            "alignCenter": "Поравнај по средини",
+            "alignRight": "Поравнај десно"
         },
         "mountManager": {
             "title": "Управљач монтирања",

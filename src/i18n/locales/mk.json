@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Овој режим го користи InfiniCLOUD REST API v2 за автоматско откривање и квота во реално време. Моментално достапно за програмери и внатрешно бета тестирање.",
             "discoverBackblazeNative": "Изворно B2 v4 API: работен тек за големи датотеки, копија на серверот, историја на верзии (10 GB бесплатно)",
             "setupSteps": "Прво поставете {provider}",
-            "openProviderDocs": "Отвори ја документацијата за {provider}"
+            "openProviderDocs": "Отвори ја документацијата за {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Избриши \"{name}\"?",
             "deleteSelectedItems": "Избриши {count} избрани ставки?",
             "newFolder": "Нова папка",
-            "selectFilesToUpload": "Изберете датотеки за прикачување"
+            "selectFilesToUpload": "Изберете датотеки за прикачување",
+            "deleteOneFile": "Да се избрише датотеката \"{name}\"?",
+            "deleteOneFolder": "Да се избрише папката \"{name}\"?",
+            "deleteFiles": "Да се избришат {count} датотеки?",
+            "deleteFolders": "Да се избришат {count} папки?",
+            "deleteFilesAndFolders": "Да се избришат {files} датотеки и {folders} папки?"
         },
         "toolbar": {
             "hideSystemMenu": "Сокриј системско мени",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "Ресетирај на стандардни",
             "dragToReorder": "Влечете за преуредување",
             "dragToResize": "Влечете за промена на големината на колоната",
-            "pinned": "Закачено"
+            "pinned": "Закачено",
+            "alignmentGroup": "Порамнување на колоната",
+            "alignLeft": "Порамни лево",
+            "alignCenter": "Порамни во средина",
+            "alignRight": "Порамни десно"
         },
         "mountManager": {
             "title": "Управувач со монтирања",

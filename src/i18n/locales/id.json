@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Mode ini menggunakan InfiniCLOUD REST API v2 untuk penemuan otomatis dan kuota real-time. Saat ini tersedia untuk pengembang dan pengujian beta internal.",
             "discoverBackblazeNative": "API B2 v4 native: alur kerja file besar, salin sisi server, riwayat versi (10 GB gratis)",
             "setupSteps": "Siapkan {provider} terlebih dahulu",
-            "openProviderDocs": "Buka dokumentasi {provider}"
+            "openProviderDocs": "Buka dokumentasi {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Hapus \"{name}\"?",
             "deleteSelectedItems": "Hapus {count} item yang dipilih?",
             "newFolder": "Folder Baru",
-            "selectFilesToUpload": "Pilih File untuk Diunggah"
+            "selectFilesToUpload": "Pilih File untuk Diunggah",
+            "deleteOneFile": "Hapus berkas \"{name}\"?",
+            "deleteOneFolder": "Hapus folder \"{name}\"?",
+            "deleteFiles": "Hapus {count} berkas?",
+            "deleteFolders": "Hapus {count} folder?",
+            "deleteFilesAndFolders": "Hapus {files} berkas dan {folders} folder?"
         },
         "toolbar": {
             "hideSystemMenu": "Sembunyikan bilah menu sistem",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Atur ulang ke default",
             "dragToReorder": "Tarik untuk menyusun ulang",
             "dragToResize": "Tarik untuk mengubah ukuran kolom",
-            "pinned": "Disematkan"
+            "pinned": "Disematkan",
+            "alignmentGroup": "Perataan kolom",
+            "alignLeft": "Rata kiri",
+            "alignCenter": "Rata tengah",
+            "alignRight": "Rata kanan"
         },
         "mountManager": {
             "title": "Pengelola Mount",

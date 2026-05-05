@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Αυτή η λειτουργία χρησιμοποιεί InfiniCLOUD REST API v2 για αυτόματη ανίχνευση και ποσόστωση σε πραγματικό χρόνο. Προς το παρόν διαθέσιμο για προγραμματιστές και εσωτερική δοκιμή beta.",
             "discoverBackblazeNative": "Εγγενές B2 v4 API: ροή εργασίας για μεγάλα αρχεία, αντιγραφή στον διακομιστή, ιστορικό εκδόσεων (10 GB δωρεάν)",
             "setupSteps": "Διαμορφώστε πρώτα το {provider}",
-            "openProviderDocs": "Άνοιγμα τεκμηρίωσης {provider}"
+            "openProviderDocs": "Άνοιγμα τεκμηρίωσης {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Διαγραφή του \"{name}\";",
             "deleteSelectedItems": "Διαγραφή {count} επιλεγμένων στοιχείων;",
             "newFolder": "Νέος Φάκελος",
-            "selectFilesToUpload": "Επιλέξτε Αρχεία για Μεταφόρτωση"
+            "selectFilesToUpload": "Επιλέξτε Αρχεία για Μεταφόρτωση",
+            "deleteOneFile": "Διαγραφή του αρχείου \"{name}\";",
+            "deleteOneFolder": "Διαγραφή του φακέλου \"{name}\";",
+            "deleteFiles": "Διαγραφή {count} αρχείων;",
+            "deleteFolders": "Διαγραφή {count} φακέλων;",
+            "deleteFilesAndFolders": "Διαγραφή {files} αρχείων και {folders} φακέλων;"
         },
         "toolbar": {
             "hideSystemMenu": "Απόκρυψη γραμμής μενού συστήματος",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Επαναφορά προεπιλογών",
             "dragToReorder": "Σύρετε για αναδιάταξη",
             "dragToResize": "Σύρετε για αλλαγή μεγέθους στήλης",
-            "pinned": "Καρφιτσωμένη"
+            "pinned": "Καρφιτσωμένη",
+            "alignmentGroup": "Στοίχιση στήλης",
+            "alignLeft": "Στοίχιση αριστερά",
+            "alignCenter": "Στοίχιση στο κέντρο",
+            "alignRight": "Στοίχιση δεξιά"
         },
         "mountManager": {
             "title": "Διαχειριστής Προσαρτήσεων",

@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "このモードはInfiniCLOUD REST API v2を使用して自動検出とリアルタイムクォータを提供します。現在、開発者と内部ベータテスト向けに利用可能です。",
             "discoverBackblazeNative": "ネイティブ B2 v4 API: 大容量ファイルのワークフロー、サーバー側コピー、バージョン履歴 (10 GB 無料)",
             "setupSteps": "最初に {provider} をセットアップ",
-            "openProviderDocs": "{provider} のドキュメントを開く"
+            "openProviderDocs": "{provider} のドキュメントを開く",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -3491,7 +3493,12 @@
             "deleteFile": "「{name}」を削除しますか？",
             "deleteSelectedItems": "選択した{count}項目を削除しますか？",
             "newFolder": "新しいフォルダー",
-            "selectFilesToUpload": "アップロードするファイルを選択"
+            "selectFilesToUpload": "アップロードするファイルを選択",
+            "deleteOneFile": "ファイル「{name}」を削除しますか？",
+            "deleteOneFolder": "フォルダ「{name}」を削除しますか？",
+            "deleteFiles": "{count} 個のファイルを削除しますか？",
+            "deleteFolders": "{count} 個のフォルダを削除しますか？",
+            "deleteFilesAndFolders": "{files} 個のファイルと {folders} 個のフォルダを削除しますか？"
         },
         "toolbar": {
             "hideSystemMenu": "システムメニューバーを非表示",
@@ -4259,7 +4266,11 @@
             "resetToDefaults": "デフォルトにリセット",
             "dragToReorder": "ドラッグして並べ替え",
             "dragToResize": "ドラッグして列のサイズを変更",
-            "pinned": "固定"
+            "pinned": "固定",
+            "alignmentGroup": "列の配置",
+            "alignLeft": "左揃え",
+            "alignCenter": "中央揃え",
+            "alignRight": "右揃え"
         },
         "mountManager": {
             "title": "マウントマネージャー",

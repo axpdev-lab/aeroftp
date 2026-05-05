@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Ovaj način koristi InfiniCLOUD REST API v2 za automatsko otkrivanje i kvotu u stvarnom vremenu. Trenutno dostupno za programere i interno beta testiranje.",
             "discoverBackblazeNative": "Izvorni B2 v4 API: tijek rada za velike datoteke, kopiranje na poslužitelju, povijest verzija (10 GB besplatno)",
             "setupSteps": "Najprije postavite {provider}",
-            "openProviderDocs": "Otvori dokumentaciju za {provider}"
+            "openProviderDocs": "Otvori dokumentaciju za {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Obrisati \"{name}\"?",
             "deleteSelectedItems": "Obrisati {count} odabranih stavki?",
             "newFolder": "Nova mapa",
-            "selectFilesToUpload": "Odaberite datoteke za prijenos"
+            "selectFilesToUpload": "Odaberite datoteke za prijenos",
+            "deleteOneFile": "Izbrisati datoteku \"{name}\"?",
+            "deleteOneFolder": "Izbrisati mapu \"{name}\"?",
+            "deleteFiles": "Izbrisati {count} datoteka?",
+            "deleteFolders": "Izbrisati {count} mapa?",
+            "deleteFilesAndFolders": "Izbrisati {files} datoteka i {folders} mapa?"
         },
         "toolbar": {
             "hideSystemMenu": "Sakrij sistemski izbornik",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Vrati zadane vrijednosti",
             "dragToReorder": "Povucite za promjenu redoslijeda",
             "dragToResize": "Povucite za promjenu veličine stupca",
-            "pinned": "Pričvršćeno"
+            "pinned": "Pričvršćeno",
+            "alignmentGroup": "Poravnanje stupca",
+            "alignLeft": "Poravnaj lijevo",
+            "alignCenter": "Poravnaj po sredini",
+            "alignRight": "Poravnaj desno"
         },
         "mountManager": {
             "title": "Upravitelj montiranja",

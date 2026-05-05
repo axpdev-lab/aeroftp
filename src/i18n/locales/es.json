@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Este modo utiliza InfiniCLOUD REST API v2 para descubrimiento automático y cuota en tiempo real. Actualmente disponible para desarrolladores y pruebas beta internas.",
             "discoverBackblazeNative": "API B2 v4 nativa: flujo para archivos grandes, copia en servidor, historial de versiones (10 GB gratis)",
             "setupSteps": "Configura {provider} primero",
-            "openProviderDocs": "Abrir documentación de {provider}"
+            "openProviderDocs": "Abrir documentación de {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Atajos de Teclado",
@@ -3526,7 +3528,12 @@
             "deleteFile": "¿Eliminar \"{name}\"?",
             "deleteSelectedItems": "¿Eliminar {count} elementos seleccionados?",
             "newFolder": "Nueva carpeta",
-            "selectFilesToUpload": "Seleccionar archivos para subir"
+            "selectFilesToUpload": "Seleccionar archivos para subir",
+            "deleteOneFile": "¿Eliminar el archivo \"{name}\"?",
+            "deleteOneFolder": "¿Eliminar la carpeta \"{name}\"?",
+            "deleteFiles": "¿Eliminar {count} archivos?",
+            "deleteFolders": "¿Eliminar {count} carpetas?",
+            "deleteFilesAndFolders": "¿Eliminar {files} archivos y {folders} carpetas?"
         },
         "toolbar": {
             "hideSystemMenu": "Ocultar barra de menú del sistema",
@@ -4259,7 +4266,11 @@
             "resetToDefaults": "Restablecer valores predeterminados",
             "dragToReorder": "Arrastrar para reordenar",
             "dragToResize": "Arrastrar para cambiar tamaño de columna",
-            "pinned": "Fijada"
+            "pinned": "Fijada",
+            "alignmentGroup": "Alineación de columna",
+            "alignLeft": "Alinear a la izquierda",
+            "alignCenter": "Alinear al centro",
+            "alignRight": "Alinear a la derecha"
         },
         "mountManager": {
             "title": "Administrador de montajes",

@@ -1596,7 +1596,9 @@
             "infinicloudApiInfoDesc": "Այս եղանակը օգտագործում է InfiniCLOUD REST API v2-ը՝ ինքնահայտնաբերման և իրական ժամանակի քվոտայի համար: Ներկայումս հասանելի է ծրագրողների և ներքին բետա թեստավորման համար:",
             "discoverBackblazeNative": "Բնիկ B2 v4 API. մեծ ֆայլերի աշխատանքային հոսք, սերվերի կողմից պատճենում, տարբերակների պատմություն (10 ԳԲ անվճար)",
             "setupSteps": "Նախ կարգավորեք {provider}-ը",
-            "openProviderDocs": "Բացել {provider}-ի փաստաթղթերը"
+            "openProviderDocs": "Բացել {provider}-ի փաստաթղթերը",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -3519,7 +3521,12 @@
             "deleteFile": "Ջնջե՞լ «{name}»-ը։",
             "deleteSelectedItems": "Ջնջե՞լ {count} ընտրված տարրերը։",
             "newFolder": "Նոր թղթապանակ",
-            "selectFilesToUpload": "Ընտրել ֆայլեր վերբեռնելու համար"
+            "selectFilesToUpload": "Ընտրել ֆայլեր վերբեռնելու համար",
+            "deleteOneFile": "Ջնջե՞լ «{name}» ֆայլը։",
+            "deleteOneFolder": "Ջնջե՞լ «{name}» թղթապանակը։",
+            "deleteFiles": "Ջնջե՞լ {count} ֆայլ։",
+            "deleteFolders": "Ջնջե՞լ {count} թղթապանակ։",
+            "deleteFilesAndFolders": "Ջնջե՞լ {files} ֆայլ և {folders} թղթապանակ։"
         },
         "toolbar": {
             "hideSystemMenu": "Թաքցնել համակարգի մենյուի գոտին",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Վերականգնել կանխադրվածները",
             "dragToReorder": "Քաշեք վերադասավորելու համար",
             "dragToResize": "Քաշեք սյունակը չափափոխելու համար",
-            "pinned": "Ամրացված"
+            "pinned": "Ամրացված",
+            "alignmentGroup": "Սյունակի հավասարեցում",
+            "alignLeft": "Հավասարեցնել ձախ",
+            "alignCenter": "Հավասարեցնել կենտրոնում",
+            "alignRight": "Հավասարեցնել աջ"
         },
         "mountManager": {
             "title": "Միացման կառավարիչ",

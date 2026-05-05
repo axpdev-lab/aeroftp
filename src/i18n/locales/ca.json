@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Aquest mode utilitza InfiniCLOUD REST API v2 per al descobriment automàtic i la quota en temps real. Actualment disponible per a desenvolupadors i proves beta internes.",
             "discoverBackblazeNative": "API B2 v4 nativa: flux per a fitxers grans, copia al servidor, historial de versions (10 GB gratis)",
             "setupSteps": "Configureu {provider} primer",
-            "openProviderDocs": "Obre la documentació de {provider}"
+            "openProviderDocs": "Obre la documentació de {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Eliminar \"{name}\"?",
             "deleteSelectedItems": "Eliminar {count} elements seleccionats?",
             "newFolder": "Nova carpeta",
-            "selectFilesToUpload": "Seleccionar fitxers per pujar"
+            "selectFilesToUpload": "Seleccionar fitxers per pujar",
+            "deleteOneFile": "Voleu suprimir el fitxer \"{name}\"?",
+            "deleteOneFolder": "Voleu suprimir la carpeta \"{name}\"?",
+            "deleteFiles": "Voleu suprimir {count} fitxers?",
+            "deleteFolders": "Voleu suprimir {count} carpetes?",
+            "deleteFilesAndFolders": "Voleu suprimir {files} fitxers i {folders} carpetes?"
         },
         "toolbar": {
             "hideSystemMenu": "Amagar barra de menú del sistema",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "Restablir per defecte",
             "dragToReorder": "Arrossegueu per reordenar",
             "dragToResize": "Arrossegueu per redimensionar la columna",
-            "pinned": "Fixada"
+            "pinned": "Fixada",
+            "alignmentGroup": "Alineació de columna",
+            "alignLeft": "Alinea a l'esquerra",
+            "alignCenter": "Alinea al centre",
+            "alignRight": "Alinea a la dreta"
         },
         "mountManager": {
             "title": "Gestor de muntatges",

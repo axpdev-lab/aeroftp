@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Chế độ này sử dụng InfiniCLOUD REST API v2 để tự động khám phá và hạn mức thời gian thực. Hiện có sẵn cho nhà phát triển và thử nghiệm beta nội bộ.",
             "discoverBackblazeNative": "API B2 v4 gốc: quy trình tệp lớn, sao chép phía máy chủ, lịch sử phiên bản (10 GB miễn phí)",
             "setupSteps": "Thiết lập {provider} trước",
-            "openProviderDocs": "Mở tài liệu {provider}"
+            "openProviderDocs": "Mở tài liệu {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Xóa \"{name}\"?",
             "deleteSelectedItems": "Xóa {count} mục đã chọn?",
             "newFolder": "Thư mục mới",
-            "selectFilesToUpload": "Chọn tệp để tải lên"
+            "selectFilesToUpload": "Chọn tệp để tải lên",
+            "deleteOneFile": "Xóa tệp \"{name}\"?",
+            "deleteOneFolder": "Xóa thư mục \"{name}\"?",
+            "deleteFiles": "Xóa {count} tệp?",
+            "deleteFolders": "Xóa {count} thư mục?",
+            "deleteFilesAndFolders": "Xóa {files} tệp và {folders} thư mục?"
         },
         "toolbar": {
             "hideSystemMenu": "Ẩn thanh menu hệ thống",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Đặt lại mặc định",
             "dragToReorder": "Kéo để sắp xếp lại",
             "dragToResize": "Kéo để thay đổi kích thước cột",
-            "pinned": "Đã ghim"
+            "pinned": "Đã ghim",
+            "alignmentGroup": "Căn chỉnh cột",
+            "alignLeft": "Căn trái",
+            "alignCenter": "Căn giữa",
+            "alignRight": "Căn phải"
         },
         "mountManager": {
             "title": "Trình quản lý gắn kết",

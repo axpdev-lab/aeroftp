@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Ce mode utilise InfiniCLOUD REST API v2 pour la découverte automatique et le quota en temps réel. Actuellement disponible pour les développeurs et les tests bêta internes.",
             "discoverBackblazeNative": "API B2 v4 native : flux de gros fichiers, copie côté serveur, historique des versions (10 Go gratuits)",
             "setupSteps": "Configurez d'abord {provider}",
-            "openProviderDocs": "Ouvrir la documentation de {provider}"
+            "openProviderDocs": "Ouvrir la documentation de {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Supprimer \"{name}\" ?",
             "deleteSelectedItems": "Supprimer {count} éléments sélectionnés ?",
             "newFolder": "Nouveau dossier",
-            "selectFilesToUpload": "Sélectionner les fichiers à téléverser"
+            "selectFilesToUpload": "Sélectionner les fichiers à téléverser",
+            "deleteOneFile": "Supprimer le fichier « {name} » ?",
+            "deleteOneFolder": "Supprimer le dossier « {name} » ?",
+            "deleteFiles": "Supprimer {count} fichiers ?",
+            "deleteFolders": "Supprimer {count} dossiers ?",
+            "deleteFilesAndFolders": "Supprimer {files} fichiers et {folders} dossiers ?"
         },
         "toolbar": {
             "hideSystemMenu": "Masquer la barre de menu système",
@@ -4259,7 +4266,11 @@
             "resetToDefaults": "Restaurer les valeurs par défaut",
             "dragToReorder": "Glisser pour réorganiser",
             "dragToResize": "Glisser pour redimensionner la colonne",
-            "pinned": "Épinglé"
+            "pinned": "Épinglé",
+            "alignmentGroup": "Alignement de colonne",
+            "alignLeft": "Aligner à gauche",
+            "alignCenter": "Centrer",
+            "alignRight": "Aligner à droite"
         },
         "mountManager": {
             "title": "Gestionnaire de montages",

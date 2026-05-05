@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Tento režim používa InfiniCLOUD REST API v2 na automatické zistenie a kvótu v reálnom čase. Momentálne dostupné pre vývojárov a interné beta testovanie.",
             "discoverBackblazeNative": "Natívne B2 v4 API: pracovný tok pre veľké súbory, kopírovanie na strane servera, história verzií (10 GB zdarma)",
             "setupSteps": "Najprv nastavte {provider}",
-            "openProviderDocs": "Otvoriť dokumentáciu {provider}"
+            "openProviderDocs": "Otvoriť dokumentáciu {provider}",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Odstrániť \"{name}\"?",
             "deleteSelectedItems": "Odstrániť {count} vybraných položiek?",
             "newFolder": "Nový priečinok",
-            "selectFilesToUpload": "Vyberte súbory na nahratie"
+            "selectFilesToUpload": "Vyberte súbory na nahratie",
+            "deleteOneFile": "Zmazať súbor \"{name}\"?",
+            "deleteOneFolder": "Zmazať priečinok \"{name}\"?",
+            "deleteFiles": "Zmazať {count} súborov?",
+            "deleteFolders": "Zmazať {count} priečinkov?",
+            "deleteFilesAndFolders": "Zmazať {files} súborov a {folders} priečinkov?"
         },
         "toolbar": {
             "hideSystemMenu": "Skryť systémové menu",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Obnoviť predvolené",
             "dragToReorder": "Presuňte na zmenu poradia",
             "dragToResize": "Presuňte na zmenu veľkosti stĺpca",
-            "pinned": "Pripnuté"
+            "pinned": "Pripnuté",
+            "alignmentGroup": "Zarovnanie stĺpca",
+            "alignLeft": "Zarovnať doľava",
+            "alignCenter": "Zarovnať na stred",
+            "alignRight": "Zarovnať doprava"
         },
         "mountManager": {
             "title": "Správca pripojení",

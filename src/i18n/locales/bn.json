@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "এই মোডটি স্বয়ংক্রিয় আবিষ্কার এবং রিয়েল-টাইম কোটার জন্য InfiniCLOUD REST API v2 ব্যবহার করে। বর্তমানে ডেভেলপার এবং অভ্যন্তরীণ বেটা পরীক্ষার জন্য উপলব্ধ।",
             "discoverBackblazeNative": "নেটিভ B2 v4 API: বড় ফাইল ওয়ার্কফ্লো, সার্ভার-সাইড কপি, সংস্করণ ইতিহাস (10 GB বিনামূল্যে)",
             "setupSteps": "প্রথমে {provider} সেটআপ করুন",
-            "openProviderDocs": "{provider} ডকুমেন্টেশন খুলুন"
+            "openProviderDocs": "{provider} ডকুমেন্টেশন খুলুন",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -3526,7 +3528,12 @@
             "deleteFile": "\"{name}\" মুছে ফেলবেন?",
             "deleteSelectedItems": "{count}টি নির্বাচিত আইটেম মুছে ফেলবেন?",
             "newFolder": "নতুন ফোল্ডার",
-            "selectFilesToUpload": "আপলোড করার জন্য ফাইল নির্বাচন করুন"
+            "selectFilesToUpload": "আপলোড করার জন্য ফাইল নির্বাচন করুন",
+            "deleteOneFile": "ফাইল \"{name}\" মুছবেন?",
+            "deleteOneFolder": "ফোল্ডার \"{name}\" মুছবেন?",
+            "deleteFiles": "{count}টি ফাইল মুছবেন?",
+            "deleteFolders": "{count}টি ফোল্ডার মুছবেন?",
+            "deleteFilesAndFolders": "{files}টি ফাইল এবং {folders}টি ফোল্ডার মুছবেন?"
         },
         "toolbar": {
             "hideSystemMenu": "সিস্টেম মেনু বার লুকান",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "ডিফল্টে রিসেট করুন",
             "dragToReorder": "পুনর্বিন্যাস করতে টেনে আনুন",
             "dragToResize": "কলামের আকার পরিবর্তন করতে টেনে আনুন",
-            "pinned": "পিন করা"
+            "pinned": "পিন করা",
+            "alignmentGroup": "কলামের সারিবদ্ধতা",
+            "alignLeft": "বাঁদিকে সারিবদ্ধ করুন",
+            "alignCenter": "কেন্দ্রে সারিবদ্ধ করুন",
+            "alignRight": "ডানদিকে সারিবদ্ধ করুন"
         },
         "mountManager": {
             "title": "মাউন্ট ম্যানেজার",

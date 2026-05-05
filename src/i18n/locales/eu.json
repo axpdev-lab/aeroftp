@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Modu honek InfiniCLOUD REST API v2 erabiltzen du aurkikuntza automatikorako eta denbora errealeko kuotarako. Gaur egun garatzaileentzat eta barneko beta probentzat eskuragarri.",
             "discoverBackblazeNative": "Jatorrizko B2 v4 APIa: fitxategi handien lan-fluxua, zerbitzariko kopia, bertsio-historia (10 GB doan)",
             "setupSteps": "Konfiguratu {provider} lehenik",
-            "openProviderDocs": "Ireki {provider} dokumentazioa"
+            "openProviderDocs": "Ireki {provider} dokumentazioa",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -3526,7 +3528,12 @@
             "deleteFile": "\"{name}\" ezabatu?",
             "deleteSelectedItems": "{count} hautatutako elementu ezabatu?",
             "newFolder": "Karpeta berria",
-            "selectFilesToUpload": "Hautatu fitxategiak igotzeko"
+            "selectFilesToUpload": "Hautatu fitxategiak igotzeko",
+            "deleteOneFile": "\"{name}\" fitxategia ezabatu?",
+            "deleteOneFolder": "\"{name}\" karpeta ezabatu?",
+            "deleteFiles": "{count} fitxategi ezabatu?",
+            "deleteFolders": "{count} karpeta ezabatu?",
+            "deleteFilesAndFolders": "{files} fitxategi eta {folders} karpeta ezabatu?"
         },
         "toolbar": {
             "hideSystemMenu": "Ezkutatu sistemaren menu-barra",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "Berrezarri lehenetsiak",
             "dragToReorder": "Arrastatu berrantolatzeko",
             "dragToResize": "Arrastatu zutabearen tamaina aldatzeko",
-            "pinned": "Finkatua"
+            "pinned": "Finkatua",
+            "alignmentGroup": "Zutabearen lerrokadura",
+            "alignLeft": "Lerrokatu ezkerrera",
+            "alignCenter": "Lerrokatu erdira",
+            "alignRight": "Lerrokatu eskuinera"
         },
         "mountManager": {
             "title": "Muntaketa-kudeatzailea",

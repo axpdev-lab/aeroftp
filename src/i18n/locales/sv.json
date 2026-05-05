@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Detta läge använder InfiniCLOUD REST API v2 för automatisk upptäckt och realtidskvot. För närvarande tillgängligt för utvecklare och intern betatestning.",
             "discoverBackblazeNative": "Inbyggt B2 v4 API: arbetsflöde för stora filer, kopiering på serversidan, versionshistorik (10 GB gratis)",
             "setupSteps": "Konfigurera {provider} först",
-            "openProviderDocs": "Öppna {provider}-dokumentation"
+            "openProviderDocs": "Öppna {provider}-dokumentation",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Radera \"{name}\"?",
             "deleteSelectedItems": "Radera {count} valda objekt?",
             "newFolder": "Ny mapp",
-            "selectFilesToUpload": "Välj filer att ladda upp"
+            "selectFilesToUpload": "Välj filer att ladda upp",
+            "deleteOneFile": "Radera filen \"{name}\"?",
+            "deleteOneFolder": "Radera mappen \"{name}\"?",
+            "deleteFiles": "Radera {count} filer?",
+            "deleteFolders": "Radera {count} mappar?",
+            "deleteFilesAndFolders": "Radera {files} filer och {folders} mappar?"
         },
         "toolbar": {
             "hideSystemMenu": "Dölj systemmenyrad",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "Återställ till standard",
             "dragToReorder": "Dra för att ordna om",
             "dragToResize": "Dra för att ändra kolumnstorlek",
-            "pinned": "Fäst"
+            "pinned": "Fäst",
+            "alignmentGroup": "Kolumnjustering",
+            "alignLeft": "Vänsterjustera",
+            "alignCenter": "Centrera",
+            "alignRight": "Högerjustera"
         },
         "mountManager": {
             "title": "Monteringshanterare",

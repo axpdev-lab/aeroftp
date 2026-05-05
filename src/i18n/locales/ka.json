@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "ეს რეჟიმი იყენებს InfiniCLOUD REST API v2-ს ავტომატური აღმოჩენისა და რეალურ დროში კვოტისთვის. ამჟამად ხელმისაწვდომია დეველოპერებისა და შიდა ბეტა ტესტირებისთვის.",
             "discoverBackblazeNative": "მშობლიური B2 v4 API: დიდი ფაილების სამუშაო პროცესი, სერვერის მხარეს კოპირება, ვერსიების ისტორია (10 GB უფასოდ)",
             "setupSteps": "ჯერ დააყენეთ {provider}",
-            "openProviderDocs": "გახსენით {provider}-ის დოკუმენტაცია"
+            "openProviderDocs": "გახსენით {provider}-ის დოკუმენტაცია",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -3526,7 +3528,12 @@
             "deleteFile": "წაიშალოს \"{name}\"?",
             "deleteSelectedItems": "წაიშალოს {count} არჩეული ელემენტი?",
             "newFolder": "ახალი საქაღალდე",
-            "selectFilesToUpload": "აირჩიეთ ფაილები ასატვირთად"
+            "selectFilesToUpload": "აირჩიეთ ფაილები ასატვირთად",
+            "deleteOneFile": "წავშალოთ ფაილი \"{name}\"?",
+            "deleteOneFolder": "წავშალოთ საქაღალდე \"{name}\"?",
+            "deleteFiles": "წავშალოთ {count} ფაილი?",
+            "deleteFolders": "წავშალოთ {count} საქაღალდე?",
+            "deleteFilesAndFolders": "წავშალოთ {files} ფაილი და {folders} საქაღალდე?"
         },
         "toolbar": {
             "hideSystemMenu": "სისტემის მენიუს ზოლის დამალვა",
@@ -4269,7 +4276,11 @@
             "resetToDefaults": "ნაგულისხმევზე დაბრუნება",
             "dragToReorder": "გადაათრიეთ გადასაწყობად",
             "dragToResize": "გადაათრიეთ სვეტის ზომის შესაცვლელად",
-            "pinned": "მიმაგრებული"
+            "pinned": "მიმაგრებული",
+            "alignmentGroup": "სვეტის სწორება",
+            "alignLeft": "მარცხნივ სწორება",
+            "alignCenter": "ცენტრში სწორება",
+            "alignRight": "მარჯვნივ სწორება"
         },
         "mountManager": {
             "title": "მონტირების მენეჯერი",

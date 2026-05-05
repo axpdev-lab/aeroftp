@@ -1603,7 +1603,9 @@
             "infinicloudApiInfoDesc": "Þessi stilling notar InfiniCLOUD REST API v2 fyrir sjálfvirka uppgötvun og rauntímakvóta. Sem stendur aðgengilegt fyrir forritara og innri beta prófun.",
             "discoverBackblazeNative": "Innfædd B2 v4 API: vinnuflæði fyrir stórar skrár, afrit á þjóni, útgáfusaga (10 GB ókeypis)",
             "setupSteps": "Settu {provider} upp fyrst",
-            "openProviderDocs": "Opna {provider} skjölun"
+            "openProviderDocs": "Opna {provider} skjölun",
+            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
+            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3526,7 +3528,12 @@
             "deleteFile": "Eyða \"{name}\"?",
             "deleteSelectedItems": "Eyða {count} völdum atriðum?",
             "newFolder": "Ný mappa",
-            "selectFilesToUpload": "Veldu skrár til að hlaða upp"
+            "selectFilesToUpload": "Veldu skrár til að hlaða upp",
+            "deleteOneFile": "Eyða skránni \"{name}\"?",
+            "deleteOneFolder": "Eyða möppunni \"{name}\"?",
+            "deleteFiles": "Eyða {count} skrám?",
+            "deleteFolders": "Eyða {count} möppum?",
+            "deleteFilesAndFolders": "Eyða {files} skrám og {folders} möppum?"
         },
         "toolbar": {
             "hideSystemMenu": "Fela valmyndarstiku kerfis",
@@ -4288,7 +4295,11 @@
             "resetToDefaults": "Endurstilla á sjálfgefið",
             "dragToReorder": "Dragðu til að endurraða",
             "dragToResize": "Dragðu til að breyta stærð dálks",
-            "pinned": "Fest"
+            "pinned": "Fest",
+            "alignmentGroup": "Jöfnun dálks",
+            "alignLeft": "Jafna til vinstri",
+            "alignCenter": "Miðja",
+            "alignRight": "Jafna til hægri"
         },
         "mountManager": {
             "title": "Tengingarstjóri",
