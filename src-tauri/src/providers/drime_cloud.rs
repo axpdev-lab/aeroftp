@@ -347,7 +347,7 @@ impl DrimeCloudProvider {
                     )
                 } else {
                     format!(
-                        "{}?page={}&perPage=100&workspaceId=0&parentIds[]={}",
+                        "{}?page={}&perPage=100&workspaceId=0&parentIds={}",
                         Self::api_url("/drive/file-entries"),
                         page,
                         current_id
@@ -440,7 +440,7 @@ impl DrimeCloudProvider {
                 )
             } else {
                 format!(
-                    "{}?page={}&perPage=100&workspaceId=0&parentIds[]={}",
+                    "{}?page={}&perPage=100&workspaceId=0&parentIds={}",
                     Self::api_url("/drive/file-entries"),
                     page,
                     folder_id
@@ -979,7 +979,7 @@ impl StorageProvider for DrimeCloudProvider {
                 )
             } else {
                 format!(
-                    "{}?page={}&perPage=50&workspaceId=0&parentIds[]={}",
+                    "{}?page={}&perPage=50&workspaceId=0&parentIds={}",
                     Self::api_url("/drive/file-entries"),
                     page,
                     folder_id
@@ -1459,7 +1459,7 @@ impl StorageProvider for DrimeCloudProvider {
                 )
             } else {
                 format!(
-                    "{}?page={}&perPage=100&workspaceId=0&parentIds[]={}",
+                    "{}?page={}&perPage=100&workspaceId=0&parentIds={}",
                     Self::api_url("/drive/file-entries"),
                     page,
                     parent_id
