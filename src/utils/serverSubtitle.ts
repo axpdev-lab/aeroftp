@@ -70,7 +70,7 @@ export const getServerSubtitle = (
             const user = masked ? maskCredential(server.username) : server.username;
             return hostPort ? `${user} · ${hostPort}` : user;
         }
-        return hostPort;
+        return showUsername ? hostPort : '';
     }
 
     // Native API providers known to store opaque identifiers in `username`.

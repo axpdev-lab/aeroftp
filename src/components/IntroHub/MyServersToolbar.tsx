@@ -79,13 +79,13 @@ export function MyServersToolbar({
         <div className="flex items-center gap-2 mb-4 flex-wrap">
             {/* Search bar */}
             <div className="relative flex-1 min-w-[200px]">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => onSearchChange(e.target.value)}
                     placeholder={t('introHub.searchServers')}
-                    className="w-full h-9 pl-9 pr-8 text-sm rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-400/25 transition-colors"
+                    className="w-full h-9 pl-10 pr-8 text-sm rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-400/25 transition-colors"
                 />
                 {searchQuery && (
                     <button
@@ -119,30 +119,28 @@ export function MyServersToolbar({
                 );
             })}
 
-            {/* View mode toggle */}
+            {/* View mode toggle: show only the inactive view as a single
+                "switch to" button. Two buttons (active highlighted + inactive)
+                doubled the toolbar real-estate without adding signal: the user
+                already knows which view they're in by looking at the cards. */}
             <div className="flex items-center border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
-                <button
-                    onClick={() => onViewModeChange('grid')}
-                    className={`p-2 transition-colors ${
-                        viewMode === 'grid'
-                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                            : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                    title={t('introHub.viewGrid')}
-                >
-                    <LayoutGrid size={15} />
-                </button>
-                <button
-                    onClick={() => onViewModeChange('list')}
-                    className={`p-2 transition-colors ${
-                        viewMode === 'list'
-                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                            : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                    title={t('introHub.viewList')}
-                >
-                    <List size={15} />
-                </button>
+                {viewMode === 'grid' ? (
+                    <button
+                        onClick={() => onViewModeChange('list')}
+                        className="p-2 transition-colors text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
+                        title={t('introHub.viewList')}
+                    >
+                        <List size={15} />
+                    </button>
+                ) : (
+                    <button
+                        onClick={() => onViewModeChange('grid')}
+                        className="p-2 transition-colors text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
+                        title={t('introHub.viewGrid')}
+                    >
+                        <LayoutGrid size={15} />
+                    </button>
+                )}
                 {onToggleCardLayout && (
                     <button
                         onClick={onToggleCardLayout}

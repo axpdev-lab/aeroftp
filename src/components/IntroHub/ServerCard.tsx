@@ -382,11 +382,12 @@ export const ServerCard = React.memo(function ServerCard({
         // Smart subtitle: hides opaque OAuth/API tokens by default, shows
         // hostname[:port] for traditional protocols, optionally adds the
         // username when the toolbar's "show usernames" override is on.
-        const text = getServerSubtitle(server, {
+        // Returns '' (not nbsp) so the caller can collapse the slot entirely
+        // when the user toggled identifiers off, saving a row in grid view.
+        return getServerSubtitle(server, {
             credentialsMasked,
             showUsername: !hideUsername,
         });
-        return text || '\u00A0';
     }, [server, credentialsMasked, hideUsername]);
 
     // ===== GRID VIEW =====
@@ -466,8 +467,13 @@ export const ServerCard = React.memo(function ServerCard({
                 </div>
             </div>
 
-            {/* Subtitle */}
-            <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-2 min-h-[1rem]">{subtitle}</div>
+            {/* Subtitle: rendered only when there's content to show. Hiding it
+                entirely when the toolbar's @ toggle is off saves a row in the
+                grid and keeps card heights uniform across providers that
+                resolve to an empty identifier (S3, OAuth, opaque tokens). */}
+            {subtitle && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-2 min-h-[1rem]">{subtitle}</div>
+            )}
 
             {/* Footer (detailed layout): quota left (only when cached), radial
                 right. The radial is rendered whenever the layout is detailed so
