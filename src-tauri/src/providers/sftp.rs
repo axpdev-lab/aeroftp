@@ -8,6 +8,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use super::types::is_session_closed_error_message;
 use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvider};
 use async_trait::async_trait;
 use russh::client::AuthResult;
@@ -19,6 +20,28 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex as TokioMutex;
+
+/// Map a russh / russh-sftp / io error onto a [`ProviderError`].
+///
+/// The russh family does not type-tag transport-level failures (broken
+/// pipe, channel torn down, EOF after server idle reaper); they all
+/// surface as opaque `Display` strings nested inside the operation
+/// error. We string-match those patterns and route them into
+/// [`ProviderError::ConnectionLost`] so the command layer can attempt
+/// a silent reconnect+replay. Anything else falls through to the
+/// caller-supplied fallback variant (NotFound / TransferFailed /
+/// ServerError / ...) preserving the previous behavior.
+fn classify_russh_err(
+    e: impl std::fmt::Display,
+    fallback: impl FnOnce(String) -> ProviderError,
+) -> ProviderError {
+    let s = e.to_string();
+    if is_session_closed_error_message(&s) {
+        ProviderError::ConnectionLost(s)
+    } else {
+        fallback(s)
+    }
+}
 
 /// Shared, lock-protected handle to the underlying russh SSH session.
 /// Used by sibling modules (e.g. rsync-over-SSH) to open additional channels
@@ -764,10 +787,11 @@ impl StorageProvider for SftpProvider {
 
         tracing::debug!("SFTP: Listing directory: {}", full_path);
 
-        let entries = sftp
-            .read_dir(&full_path)
-            .await
-            .map_err(|e| ProviderError::NotFound(format!("Failed to list directory: {}", e)))?;
+        let entries = sftp.read_dir(&full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::NotFound(format!("Failed to list directory: {}", s))
+            })
+        })?;
 
         let mut result = Vec::new();
 
@@ -834,11 +858,15 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        // Verify the directory exists
-        let metadata = sftp
-            .metadata(&full_path)
-            .await
-            .map_err(|e| ProviderError::NotFound(format!("Directory not found: {}", e)))?;
+        // Verify the directory exists. Transport-level failures (server
+        // idle reaper, broken pipe) are routed to ConnectionLost so the
+        // command layer can reconnect+replay instead of misclassifying
+        // them as a missing path.
+        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::NotFound(format!("Directory not found: {}", s))
+            })
+        })?;
 
         if let Some(perms) = metadata.permissions {
             if (perms & 0o40000) == 0 {
@@ -870,15 +898,18 @@ impl StorageProvider for SftpProvider {
         tracing::info!("SFTP: Downloading {} to {}", full_path, local_path);
 
         // Get file size
-        let metadata = sftp
-            .metadata(&full_path)
-            .await
-            .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
+        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::NotFound(format!("File not found: {}", s))
+            })
+        })?;
         let total_size = metadata.size.unwrap_or(0);
 
         // Open remote file
         let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to open remote file: {}", e))
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Failed to open remote file: {}", s))
+            })
         })?;
 
         // Create atomic local file (writes to .aerotmp, renames on commit)
@@ -894,10 +925,11 @@ impl StorageProvider for SftpProvider {
         let start = std::time::Instant::now();
 
         loop {
-            let bytes_read = remote_file
-                .read(&mut buffer)
-                .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Read error: {}", e)))?;
+            let bytes_read = remote_file.read(&mut buffer).await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!("Read error: {}", s))
+                })
+            })?;
 
             if bytes_read == 0 {
                 break;
@@ -952,10 +984,11 @@ impl StorageProvider for SftpProvider {
             }
         }
 
-        let data = sftp
-            .read(&full_path)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Failed to read file: {}", e)))?;
+        let data = sftp.read(&full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Failed to read file: {}", s))
+            })
+        })?;
 
         if data.len() as u64 > limit {
             return Err(ProviderError::TransferFailed(format!(
@@ -995,7 +1028,9 @@ impl StorageProvider for SftpProvider {
 
         // Create remote file via russh_sftp (uses existing SSH session, no second connection)
         let mut remote_file = sftp.create(&full_path).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to create remote file: {}", e))
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Failed to create remote file: {}", s))
+            })
         })?;
 
         // Read and write in chunks with optional rate limiting
@@ -1015,7 +1050,11 @@ impl StorageProvider for SftpProvider {
             remote_file
                 .write_all(&buffer[..bytes_read])
                 .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Remote write error: {}", e)))?;
+                .map_err(|e| {
+                    classify_russh_err(e, |s| {
+                        ProviderError::TransferFailed(format!("Remote write error: {}", s))
+                    })
+                })?;
 
             transferred += bytes_read as u64;
 
@@ -1037,7 +1076,9 @@ impl StorageProvider for SftpProvider {
 
         // Ensure all data is flushed to remote
         remote_file.shutdown().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to flush remote file: {}", e))
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Failed to flush remote file: {}", s))
+            })
         })?;
 
         // Verify upload size
@@ -1103,7 +1144,9 @@ impl StorageProvider for SftpProvider {
         tracing::info!("SFTP: Creating directory: {}", full_path);
 
         sftp.create_dir(&full_path).await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to create directory: {}", e))
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to create directory: {}", s))
+            })
         })?;
 
         Ok(())
@@ -1115,9 +1158,11 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Deleting file: {}", full_path);
 
-        sftp.remove_file(&full_path)
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to delete file: {}", e)))?;
+        sftp.remove_file(&full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to delete file: {}", s))
+            })
+        })?;
 
         Ok(())
     }
@@ -1129,7 +1174,9 @@ impl StorageProvider for SftpProvider {
         tracing::info!("SFTP: Removing directory: {}", full_path);
 
         sftp.remove_dir(&full_path).await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to remove directory: {}", e))
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to remove directory: {}", s))
+            })
         })?;
 
         Ok(())
@@ -1166,9 +1213,11 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Renaming {} to {}", from_path, to_path);
 
-        sftp.rename(&from_path, &to_path)
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to rename: {}", e)))?;
+        sftp.rename(&from_path, &to_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to rename: {}", s))
+            })
+        })?;
 
         Ok(())
     }
@@ -1177,10 +1226,11 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp
-            .metadata(&full_path)
-            .await
-            .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
+        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::NotFound(format!("File not found: {}", s))
+            })
+        })?;
 
         let name = Path::new(&full_path)
             .file_name()
@@ -1208,10 +1258,11 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = sftp
-            .metadata(&full_path)
-            .await
-            .map_err(|e| ProviderError::NotFound(format!("File not found: {}", e)))?;
+        let metadata = sftp.metadata(&full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::NotFound(format!("File not found: {}", s))
+            })
+        })?;
 
         Ok(metadata.size.unwrap_or(0))
     }
@@ -1233,12 +1284,17 @@ impl StorageProvider for SftpProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        // Optionally do a simple operation to verify connection
-        // canonicalize(".") is lightweight
+        // Optionally do a simple operation to verify connection.
+        // canonicalize(".") is lightweight. A failure here means the
+        // server idle reaper or NAT closed the channel: classify as
+        // ConnectionLost so the caller can reconnect+replay rather than
+        // treating it as a permanent disconnect.
         if let Some(sftp) = &self.sftp {
-            sftp.canonicalize(".")
-                .await
-                .map_err(|_| ProviderError::NotConnected)?;
+            sftp.canonicalize(".").await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ConnectionLost(format!("SFTP keepalive failed: {}", s))
+                })
+            })?;
         }
 
         Ok(())
@@ -1266,9 +1322,11 @@ impl StorageProvider for SftpProvider {
             ..Default::default()
         };
 
-        sftp.set_metadata(&full_path, attrs)
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to chmod: {}", e)))?;
+        sftp.set_metadata(&full_path, attrs).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to chmod: {}", s))
+            })
+        })?;
 
         Ok(())
     }
@@ -1331,7 +1389,11 @@ impl StorageProvider for SftpProvider {
         let stat = sftp
             .fs_info(path)
             .await
-            .map_err(|e| ProviderError::ServerError(format!("statvfs failed: {}", e)))?
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("statvfs failed: {}", s))
+                })
+            })?
             .ok_or_else(|| {
                 ProviderError::NotSupported("Server does not support statvfs".to_string())
             })?;
@@ -1401,14 +1463,20 @@ impl StorageProvider for SftpProvider {
         let full_path = self.normalize_path(path);
 
         let mut file = sftp.open(&full_path).await.map_err(|e| {
-            ProviderError::ServerError(format!("Failed to open file for range read: {}", e))
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to open file for range read: {}", s))
+            })
         })?;
 
         // Seek to offset
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
         file.seek(std::io::SeekFrom::Start(offset))
             .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to seek: {}", e)))?;
+            .map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to seek: {}", s))
+                })
+            })?;
 
         // GAP-A03: Cap read_range allocation to prevent attacker-controlled OOM
         const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
@@ -1423,10 +1491,11 @@ impl StorageProvider for SftpProvider {
         let mut buf = vec![0u8; len as usize];
         let mut total_read = 0usize;
         while total_read < len as usize {
-            let n = file
-                .read(&mut buf[total_read..])
-                .await
-                .map_err(|e| ProviderError::ServerError(format!("Failed to read range: {}", e)))?;
+            let n = file.read(&mut buf[total_read..]).await.map_err(|e| {
+                classify_russh_err(e, |s| {
+                    ProviderError::ServerError(format!("Failed to read range: {}", s))
+                })
+            })?;
             if n == 0 {
                 break;
             }

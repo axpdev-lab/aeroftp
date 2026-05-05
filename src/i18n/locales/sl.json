@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Register priklopov, šifriran z vašim glavnim geslom. Trezor mora biti odklenjen ob zagonu aplikacije.",
             "confirmDelete": "Izbrišem priklop '{{name}}'? To ne vpliva na oddaljene datoteke.",
             "openMountAction": "Odpri priklop v upravitelju datotek"
+        },
+        "reconnect": {
+            "toastTitle": "Povezava",
+            "reconnecting": "Seja je potekla, ponovno povezovanje...",
+            "reconnected": "Ponovno povezan s strežnikom",
+            "reconnectFailed": "Ponovna povezava ni uspela. Ponovno se povežite ročno."
         }
     }
 }

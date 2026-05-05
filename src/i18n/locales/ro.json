@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "Registrul de montări criptat cu parola ta principală. Seiful trebuie să fie deblocat la pornirea aplicației.",
             "confirmDelete": "Șterge montarea '{{name}}'? Acest lucru nu afectează fișierele de la distanță.",
             "openMountAction": "Deschide montarea în managerul de fișiere"
+        },
+        "reconnect": {
+            "toastTitle": "Conexiune",
+            "reconnecting": "Sesiunea a expirat, reconectare...",
+            "reconnected": "Reconectat la server",
+            "reconnectFailed": "Reconectarea a eșuat. Reconectați-vă manual."
         }
     }
 }

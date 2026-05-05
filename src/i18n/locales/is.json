@@ -4318,6 +4318,12 @@
             "storageModeVaultHint": "Tengingaskrá dulkóðuð með aðallykilorði þínu. Hvelfingin verður að vera opin þegar forritið ræsir.",
             "confirmDelete": "Eyða tengingu '{{name}}'? Þetta hefur ekki áhrif á fjarskrár.",
             "openMountAction": "Opna tengingu í skráastjóra"
+        },
+        "reconnect": {
+            "toastTitle": "Tenging",
+            "reconnecting": "Lota rann út, tengist aftur...",
+            "reconnected": "Tengt aftur við netþjón",
+            "reconnectFailed": "Endurtenging mistókst. Vinsamlega tengstu handvirkt aftur."
         }
     }
 }

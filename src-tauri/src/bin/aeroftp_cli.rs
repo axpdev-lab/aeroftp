@@ -2305,6 +2305,7 @@ fn print_error(format: OutputFormat, msg: &str, code: i32) {
 fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
     match err {
         ProviderError::ConnectionFailed(_)
+        | ProviderError::ConnectionLost(_)
         | ProviderError::NotConnected
         | ProviderError::NetworkError(_) => 1,
         ProviderError::NotFound(_) => 2,

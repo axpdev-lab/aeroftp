@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Bağlama kayıt defteri, ana parolanızla şifrelenmiştir. Uygulama başlangıcında kasanın kilidi açılmalıdır.",
             "confirmDelete": "'{{name}}' bağlaması silinsin mi? Bu, uzak dosyaları etkilemez.",
             "openMountAction": "Bağlamayı dosya yöneticisinde aç"
+        },
+        "reconnect": {
+            "toastTitle": "Bağlantı",
+            "reconnecting": "Oturum süresi doldu, yeniden bağlanılıyor...",
+            "reconnected": "Sunucuya yeniden bağlanıldı",
+            "reconnectFailed": "Yeniden bağlantı başarısız. Lütfen elle yeniden bağlanın."
         }
     }
 }

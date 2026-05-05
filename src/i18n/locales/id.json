@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Registri mount terenkripsi dengan kata sandi master Anda. Brankas harus dibuka saat aplikasi dimulai.",
             "confirmDelete": "Hapus mount '{{name}}'? Ini tidak memengaruhi berkas jarak jauh.",
             "openMountAction": "Buka mount di pengelola berkas"
+        },
+        "reconnect": {
+            "toastTitle": "Koneksi",
+            "reconnecting": "Sesi kedaluwarsa, menghubungkan kembali...",
+            "reconnected": "Terhubung kembali ke server",
+            "reconnectFailed": "Penghubungan kembali gagal. Silakan hubungkan kembali secara manual."
         }
     }
 }

@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Pendaftaran lekapan disulitkan dengan kata laluan induk anda. Peti besi mesti dibuka semasa aplikasi dimulakan.",
             "confirmDelete": "Padam lekapan '{{name}}'? Ini tidak menjejaskan fail jauh.",
             "openMountAction": "Buka lekapan dalam pengurus fail"
+        },
+        "reconnect": {
+            "toastTitle": "Sambungan",
+            "reconnecting": "Sesi tamat tempoh, menyambung semula...",
+            "reconnected": "Disambung semula ke pelayan",
+            "reconnectFailed": "Penyambungan semula gagal. Sila sambung semula secara manual."
         }
     }
 }

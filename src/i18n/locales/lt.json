@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Prijungimų registras užšifruotas jūsų pagrindiniu slaptažodžiu. Saugykla turi būti atrakinta paleidžiant programą.",
             "confirmDelete": "Ištrinti prijungimą '{{name}}'? Tai neturi įtakos nuotoliniams failams.",
             "openMountAction": "Atidaryti prijungimą failų tvarkyklėje"
+        },
+        "reconnect": {
+            "toastTitle": "Ryšys",
+            "reconnecting": "Seanso laikas baigėsi, jungiamasi iš naujo...",
+            "reconnected": "Vėl prisijungta prie serverio",
+            "reconnectFailed": "Nepavyko prisijungti iš naujo. Prisijunkite rankiniu būdu."
         }
     }
 }

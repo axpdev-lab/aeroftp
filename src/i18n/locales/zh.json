@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "使用主密码加密的挂载注册表。应用启动时必须解锁保险库。",
             "confirmDelete": "删除挂载 '{{name}}'？这不会影响远程文件。",
             "openMountAction": "在文件管理器中打开挂载"
+        },
+        "reconnect": {
+            "toastTitle": "连接",
+            "reconnecting": "会话已过期，正在重新连接...",
+            "reconnected": "已重新连接到服务器",
+            "reconnectFailed": "重新连接失败。请手动重新连接。"
         }
     }
 }

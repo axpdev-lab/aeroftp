@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Daftari la upachikaji limesimbwa kwa nenosiri lako kuu. Kasha la usalama lazima lifunguliwe wakati wa kuanza kwa programu.",
             "confirmDelete": "Futa upachikaji '{{name}}'? Hii haiathiri faili za mbali.",
             "openMountAction": "Fungua upachikaji katika kidhibiti cha faili"
+        },
+        "reconnect": {
+            "toastTitle": "Muunganisho",
+            "reconnecting": "Kipindi kimekwisha, kinaunganisha tena...",
+            "reconnected": "Imeunganishwa tena kwa seva",
+            "reconnectFailed": "Kuunganisha tena kumeshindwa. Tafadhali unganisha tena mwenyewe."
         }
     }
 }

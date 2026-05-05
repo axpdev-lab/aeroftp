@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "Registro de montagens criptografado com sua senha mestra. O cofre deve estar desbloqueado ao iniciar o aplicativo.",
             "confirmDelete": "Excluir a montagem '{{name}}'? Isso não afeta os arquivos remotos.",
             "openMountAction": "Abrir montagem no gerenciador de arquivos"
+        },
+        "reconnect": {
+            "toastTitle": "Conexão",
+            "reconnecting": "Sessão expirada, reconectando...",
+            "reconnected": "Reconectado ao servidor",
+            "reconnectFailed": "A reconexão falhou. Reconecte manualmente."
         }
     }
 }

@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Mount-register krypteret med din hovedadgangskode. Boksen skal være låst op ved appstart.",
             "confirmDelete": "Slet mount '{{name}}'? Dette påvirker ikke fjernfiler.",
             "openMountAction": "Åbn mount i filhåndtering"
+        },
+        "reconnect": {
+            "toastTitle": "Forbindelse",
+            "reconnecting": "Session udløbet, opretter forbindelse igen...",
+            "reconnected": "Forbundet til serveren igen",
+            "reconnectFailed": "Genoprettelse af forbindelse mislykkedes. Opret forbindelse manuelt igen."
         }
     }
 }

@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "Mount-Registry verschlüsselt mit Ihrem Master-Passwort. Der Tresor muss beim Start der App entsperrt sein.",
             "confirmDelete": "Mount '{{name}}' löschen? Dies wirkt sich nicht auf Remote-Dateien aus.",
             "openMountAction": "Mount im Dateimanager öffnen"
+        },
+        "reconnect": {
+            "toastTitle": "Verbindung",
+            "reconnecting": "Sitzung abgelaufen, Verbindung wird wiederhergestellt...",
+            "reconnected": "Erneut mit Server verbunden",
+            "reconnectFailed": "Wiederverbindung fehlgeschlagen. Bitte manuell erneut verbinden."
         }
     }
 }

@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "Registro de montajes cifrado con tu contraseña maestra. La bóveda debe estar desbloqueada al iniciar la aplicación.",
             "confirmDelete": "¿Eliminar el montaje '{{name}}'? Esto no afecta a los archivos remotos.",
             "openMountAction": "Abrir montaje en el administrador de archivos"
+        },
+        "reconnect": {
+            "toastTitle": "Conexión",
+            "reconnecting": "Sesión caducada, reconectando...",
+            "reconnected": "Reconectado al servidor",
+            "reconnectFailed": "La reconexión falló. Reconecta manualmente."
         }
     }
 }

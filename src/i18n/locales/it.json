@@ -4289,6 +4289,12 @@
             "dragToReorder": "Trascina per riordinare",
             "dragToResize": "Trascina per ridimensionare la colonna",
             "pinned": "Fissata"
+        },
+        "reconnect": {
+            "toastTitle": "Connessione",
+            "reconnecting": "Sessione scaduta, riconnessione in corso...",
+            "reconnected": "Riconnesso al server",
+            "reconnectFailed": "Riconnessione fallita. Riconnetti manualmente."
         }
     }
 }

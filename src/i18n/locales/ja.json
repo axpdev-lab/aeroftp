@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "マスターパスワードで暗号化されたマウントレジストリ。アプリ起動時にボールトをロック解除する必要があります。",
             "confirmDelete": "マウント '{{name}}' を削除しますか？これはリモートファイルには影響しません。",
             "openMountAction": "ファイルマネージャーでマウントを開く"
+        },
+        "reconnect": {
+            "toastTitle": "接続",
+            "reconnecting": "セッションが期限切れです。再接続しています...",
+            "reconnected": "サーバーに再接続しました",
+            "reconnectFailed": "再接続に失敗しました。手動で再接続してください。"
         }
     }
 }

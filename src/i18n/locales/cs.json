@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Registr připojení šifrovaný hlavním heslem. Trezor musí být při startu aplikace odemčen.",
             "confirmDelete": "Smazat připojení '{{name}}'? Toto neovlivní vzdálené soubory.",
             "openMountAction": "Otevřít připojení ve správci souborů"
+        },
+        "reconnect": {
+            "toastTitle": "Připojení",
+            "reconnecting": "Relace vypršela, opakované připojení...",
+            "reconnected": "Znovu připojeno k serveru",
+            "reconnectFailed": "Opakované připojení se nezdařilo. Připojte se prosím znovu ručně."
         }
     }
 }

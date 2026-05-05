@@ -274,6 +274,7 @@ fn is_transport_level(e: &ProviderError) -> bool {
     match e {
         ProviderError::NotConnected
         | ProviderError::ConnectionFailed(_)
+        | ProviderError::ConnectionLost(_)
         | ProviderError::Timeout
         | ProviderError::NetworkError(_)
         | ProviderError::IoError(_) => true,

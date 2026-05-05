@@ -4318,6 +4318,12 @@
             "storageModeVaultHint": "Muntaketa-erregistroa zure pasahitz nagusiarekin enkriptatuta. Aplikazioa abiaraztean kutxa gotorra desblokeatuta egon behar da.",
             "confirmDelete": "Ezabatu '{{name}}' muntaketa? Honek ez du urruneko fitxategiei eragiten.",
             "openMountAction": "Ireki muntaketa fitxategi-kudeatzailean"
+        },
+        "reconnect": {
+            "toastTitle": "Konexioa",
+            "reconnecting": "Saioa iraungi da, berriro konektatzen...",
+            "reconnected": "Berriro zerbitzariarekin konektatuta",
+            "reconnectFailed": "Birkonexioak huts egin du. Mesedez, eskuz berriro konektatu."
         }
     }
 }

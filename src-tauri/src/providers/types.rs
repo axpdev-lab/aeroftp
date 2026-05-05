@@ -1325,6 +1325,15 @@ pub enum ProviderError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
+    /// The transport (TCP/SSH/TLS/HTTP keep-alive) was torn down by the peer
+    /// after a successful connect+auth. Distinct from `ConnectionFailed`
+    /// (which is a connect-time failure) and `NotConnected` (which is the
+    /// pre-connect state). Surfaced when the next user action hits a dead
+    /// session, typically because the server's idle reaper closed it.
+    /// Carries enough context for the UI to offer a silent reconnect.
+    #[error("Connection lost: {0}")]
+    ConnectionLost(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 
@@ -1338,9 +1347,52 @@ impl ProviderError {
     pub fn is_recoverable(&self) -> bool {
         matches!(
             self,
-            ProviderError::Timeout | ProviderError::NetworkError(_) | ProviderError::NotConnected
+            ProviderError::Timeout
+                | ProviderError::NetworkError(_)
+                | ProviderError::NotConnected
+                | ProviderError::ConnectionLost(_)
         )
     }
+
+    /// True if this error indicates the live session was torn down by the
+    /// peer mid-flight. Caller can attempt a silent reconnect + replay.
+    #[allow(dead_code)]
+    pub fn is_connection_lost(&self) -> bool {
+        matches!(self, ProviderError::ConnectionLost(_))
+    }
+}
+
+/// Heuristic check for transport-level errors that indicate the session
+/// was closed by the peer (server idle timeout, NAT eviction, network
+/// blip), as opposed to a logical "path not found" or permission error.
+///
+/// Used to upgrade misclassified errors (e.g. russh returning a generic
+/// error string when the SFTP channel is dead) into [`ProviderError::ConnectionLost`]
+/// so the command layer can attempt a silent reconnect.
+pub fn is_session_closed_error_message(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    [
+        "session closed",
+        "channel closed",
+        "channel is closed",
+        "stream closed",
+        "broken pipe",
+        "connection reset",
+        "connection aborted",
+        "connection closed",
+        "unexpected eof",
+        "early eof",
+        "transport endpoint is not connected",
+        "epipe",
+        "econnreset",
+        "econnaborted",
+        "the remote host closed the connection",
+        "operation timed out",
+        "ssh disconnect",
+        "remote disconnected",
+    ]
+    .iter()
+    .any(|p| m.contains(p))
 }
 
 /// Storage quota information

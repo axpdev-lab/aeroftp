@@ -2350,6 +2350,12 @@
       "noPreview": "No preview available",
       "title": "Quick Look"
     },
+    "reconnect": {
+      "toastTitle": "Connection",
+      "reconnecting": "Session expired, reconnecting...",
+      "reconnected": "Reconnected to server",
+      "reconnectFailed": "Reconnect failed. Please reconnect manually."
+    },
     "savedServers": {
       "dragToReorder": "Drag to reorder",
       "e2eAes128": "E2E AES-128 - {username}",

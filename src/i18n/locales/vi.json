@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Sổ đăng ký gắn kết được mã hóa bằng mật khẩu chính của bạn. Kho phải được mở khóa khi khởi động ứng dụng.",
             "confirmDelete": "Xóa gắn kết '{{name}}'? Điều này không ảnh hưởng đến các tệp từ xa.",
             "openMountAction": "Mở gắn kết trong trình quản lý tệp"
+        },
+        "reconnect": {
+            "toastTitle": "Kết nối",
+            "reconnecting": "Phiên đã hết hạn, đang kết nối lại...",
+            "reconnected": "Đã kết nối lại với máy chủ",
+            "reconnectFailed": "Kết nối lại thất bại. Vui lòng kết nối lại thủ công."
         }
     }
 }

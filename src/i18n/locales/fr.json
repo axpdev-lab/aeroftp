@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "Registre des montages chiffré avec votre mot de passe maître. Le coffre doit être déverrouillé au démarrage de l'application.",
             "confirmDelete": "Supprimer le montage « {{name}} » ? Cela n'affecte pas les fichiers distants.",
             "openMountAction": "Ouvrir le montage dans le gestionnaire de fichiers"
+        },
+        "reconnect": {
+            "toastTitle": "Connexion",
+            "reconnecting": "Session expirée, reconnexion en cours...",
+            "reconnected": "Reconnecté au serveur",
+            "reconnectFailed": "Échec de la reconnexion. Veuillez vous reconnecter manuellement."
         }
     }
 }

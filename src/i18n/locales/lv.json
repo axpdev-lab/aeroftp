@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Montēšanas reģistrs šifrēts ar jūsu galveno paroli. Glabātavai jābūt atbloķētai lietotnes startēšanas brīdī.",
             "confirmDelete": "Dzēst montāžu '{{name}}'? Tas neietekmē attālos failus.",
             "openMountAction": "Atvērt montāžu failu pārvaldniekā"
+        },
+        "reconnect": {
+            "toastTitle": "Savienojums",
+            "reconnecting": "Sesijas laiks beidzies, atkārtoti savienojas...",
+            "reconnected": "Atkārtoti savienots ar serveri",
+            "reconnectFailed": "Atkārtota savienošana neizdevās. Lūdzu, atkārtoti savienojieties manuāli."
         }
     }
 }

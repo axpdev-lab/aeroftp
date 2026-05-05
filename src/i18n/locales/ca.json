@@ -4318,6 +4318,12 @@
             "storageModeVaultHint": "Registre de muntatges xifrat amb la teva contrasenya mestra. La caixa forta s'ha de desbloquejar a l'inici de l'aplicació.",
             "confirmDelete": "Vols suprimir el muntatge '{{name}}'? Això no afecta els fitxers remots.",
             "openMountAction": "Obre el muntatge al gestor de fitxers"
+        },
+        "reconnect": {
+            "toastTitle": "Connexió",
+            "reconnecting": "La sessió ha caducat, tornant a connectar...",
+            "reconnected": "Reconnectat al servidor",
+            "reconnectFailed": "Ha fallat la reconnexió. Reconnecta manualment."
         }
     }
 }

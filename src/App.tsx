@@ -2206,6 +2206,42 @@ interface UpdateVerificationInfo {
     };
   }, [loadLocalFiles]);
 
+  // T-AUTO-RECONNECT-IDLE: surface silent reconnect lifecycle as a toast
+  // so the user gets feedback that the click that hit a dead session
+  // was recovered automatically. Backend emits four phases: lost,
+  // reconnecting, reconnected, reconnect-failed.
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+    let pendingId: string | null = null;
+    (async () => {
+      try {
+        const fn = await listen<{ kind: string; detail?: string }>('provider-session', (event) => {
+          const kind = event.payload?.kind;
+          if (kind === 'reconnecting') {
+            pendingId = notify.info(t('reconnect.toastTitle'), t('reconnect.reconnecting'));
+          } else if (kind === 'reconnected') {
+            if (pendingId) toast.removeToast(pendingId);
+            pendingId = null;
+            notify.success(t('reconnect.toastTitle'), t('reconnect.reconnected'));
+          } else if (kind === 'reconnect-failed') {
+            if (pendingId) toast.removeToast(pendingId);
+            pendingId = null;
+            notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
+          }
+          // 'lost' is intentionally silent: showing it would briefly flash
+          // a scary message before 'reconnecting' replaces it.
+        });
+        if (cancelled) fn();
+        else unlistenFn = fn;
+      } catch { /* ignore */ }
+    })();
+    return () => {
+      cancelled = true;
+      if (unlistenFn) unlistenFn();
+    };
+  }, [notify, toast, t]);
+
   const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean): Promise<FileListResponse | null> => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)

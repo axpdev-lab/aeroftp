@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Monteringsregister krypterat med ditt huvudlösenord. Valvet måste vara upplåst vid appstart.",
             "confirmDelete": "Ta bort monteringen '{{name}}'? Detta påverkar inte fjärrfiler.",
             "openMountAction": "Öppna montering i filhanterare"
+        },
+        "reconnect": {
+            "toastTitle": "Anslutning",
+            "reconnecting": "Sessionen har gått ut, återansluter...",
+            "reconnected": "Återansluten till servern",
+            "reconnectFailed": "Återanslutning misslyckades. Återanslut manuellt."
         }
     }
 }

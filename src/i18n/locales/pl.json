@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "Rejestr montaży zaszyfrowany hasłem głównym. Sejf musi być odblokowany przy starcie aplikacji.",
             "confirmDelete": "Usunąć montaż '{{name}}'? Nie wpływa to na pliki zdalne.",
             "openMountAction": "Otwórz montaż w menedżerze plików"
+        },
+        "reconnect": {
+            "toastTitle": "Połączenie",
+            "reconnecting": "Sesja wygasła, ponowne łączenie...",
+            "reconnected": "Ponownie połączono z serwerem",
+            "reconnectFailed": "Ponowne łączenie nie powiodło się. Połącz się ponownie ręcznie."
         }
     }
 }

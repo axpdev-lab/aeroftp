@@ -4318,6 +4318,12 @@
             "storageModeVaultHint": "Mount registry na naka-encrypt sa ilalim ng iyong master password. Dapat naka-unlock ang vault sa pag-umpisa ng app.",
             "confirmDelete": "Tanggalin ang mount na '{{name}}'? Hindi ito makakaapekto sa mga remote file.",
             "openMountAction": "Buksan ang mount sa file manager"
+        },
+        "reconnect": {
+            "toastTitle": "Koneksyon",
+            "reconnecting": "Nag-expire ang session, muling kumokonekta...",
+            "reconnected": "Muling nakakonekta sa server",
+            "reconnectFailed": "Nabigo ang muling pagkonekta. Mangyaring muling kumonekta nang manu-mano."
         }
     }
 }

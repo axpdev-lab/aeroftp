@@ -4318,6 +4318,12 @@
             "storageModeVaultHint": "Cofrestrfa mownt wedi'i hamgryptio o dan eich prif gyfrinair. Rhaid datgloi'r gladdgell wrth gychwyn yr ap.",
             "confirmDelete": "Dileu mownt '{{name}}'? Nid yw hyn yn effeithio ar ffeiliau pell.",
             "openMountAction": "Agor mownt yn y rheolwr ffeiliau"
+        },
+        "reconnect": {
+            "toastTitle": "Cysylltiad",
+            "reconnecting": "Mae'r sesiwn wedi dod i ben, yn ailgysylltu...",
+            "reconnected": "Wedi ailgysylltu â'r gweinydd",
+            "reconnectFailed": "Methodd yr ailgysylltiad. Ailgysylltwch â llaw."
         }
     }
 }

@@ -16,9 +16,9 @@ use tracing::{info, warn};
 
 use crate::provider_transfer_executor::{ProviderDownloadExecutor, ProviderUploadExecutor};
 use crate::providers::{
-    FileVersion, LockInfo, ProviderConfig, ProviderFactory, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, SharePermission, StorageInfo,
-    StorageProvider,
+    FileVersion, LockInfo, ProviderConfig, ProviderError, ProviderFactory, ProviderType,
+    RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, SharePermission,
+    StorageInfo, StorageProvider,
 };
 use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
 use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
@@ -96,6 +96,79 @@ impl Default for ProviderState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ============ Auto-reconnect on idle disconnect (T-AUTO-RECONNECT-IDLE) ============
+
+/// Lifecycle phases of a silent reconnect attempt. Mirrored to the
+/// frontend via the `provider-session` Tauri event so the UI can
+/// surface a transient toast (e.g. "Session expired, reconnecting...")
+/// without forcing the user to disconnect and reconnect manually.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum SessionEventKind {
+    /// The previous operation hit a dead session.
+    Lost,
+    /// Reconnect attempt is in flight.
+    Reconnecting,
+    /// Reconnect succeeded and the original op was replayed.
+    Reconnected,
+    /// Reconnect itself failed: the original error stands.
+    ReconnectFailed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SessionEvent {
+    kind: SessionEventKind,
+    /// Free-form detail (server reply, network error, ...). Empty for
+    /// success transitions where there is nothing meaningful to show.
+    detail: String,
+}
+
+fn emit_session_event(app: &AppHandle, kind: SessionEventKind, detail: impl Into<String>) {
+    let _ = app.emit(
+        "provider-session",
+        SessionEvent {
+            kind,
+            detail: detail.into(),
+        },
+    );
+}
+
+/// Drive a single silent reconnect attempt against the live provider
+/// instance, reusing the credentials it captured at original
+/// connect-time. The provider's internal `current_dir` is saved and
+/// best-effort restored after the new session is established, so a
+/// subsequent retry of the user's operation sees the same path
+/// context as before the disconnect.
+///
+/// Returns `Ok(restored_pwd)` on success. The caller is responsible
+/// for replaying the failed operation against the freshly-reconnected
+/// provider.
+async fn try_silent_reconnect(
+    app: &AppHandle,
+    provider: &mut Box<dyn StorageProvider>,
+) -> Result<String, ProviderError> {
+    let prev_dir = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    emit_session_event(app, SessionEventKind::Reconnecting, "");
+    tracing::warn!("Provider session lost; attempting silent reconnect");
+
+    provider.connect().await.inspect_err(|e| {
+        emit_session_event(app, SessionEventKind::ReconnectFailed, e.to_string());
+    })?;
+
+    // Best-effort cwd restore. Failure here is not fatal: the caller's
+    // retry will hit the right error if the path is genuinely gone.
+    if prev_dir != "/" {
+        if let Err(e) = provider.cd(&prev_dir).await {
+            tracing::warn!(
+                "Reconnect succeeded but failed to restore previous dir {}: {}",
+                prev_dir,
+                e
+            );
+        }
+    }
+    Ok(prev_dir)
 }
 
 // ============ Request/Response Types ============
@@ -592,6 +665,7 @@ pub async fn provider_check_connection(
 /// List files in the specified path
 #[tauri::command]
 pub async fn provider_list_files(
+    app: AppHandle,
     state: State<'_, ProviderState>,
     path: Option<String>,
 ) -> Result<ProviderListResponse, String> {
@@ -603,10 +677,27 @@ pub async fn provider_list_files(
 
     let list_path = path.as_deref().unwrap_or(".");
 
-    let files = provider
-        .list(list_path)
-        .await
-        .map_err(|e| format!("Failed to list files: {}", e))?;
+    // Retry once on a transport-level disconnect (server idle reaper,
+    // NAT eviction). Pre-existing successful sessions can become dead
+    // between user actions; surfacing the raw `session closed` as a
+    // hard error forces a manual reconnect, which Tom (issue #161)
+    // flagged as the workflow killer.
+    let files = match provider.list(list_path).await {
+        Ok(files) => files,
+        Err(e) if e.is_connection_lost() => {
+            emit_session_event(&app, SessionEventKind::Lost, e.to_string());
+            try_silent_reconnect(&app, provider)
+                .await
+                .map_err(|err| format!("Failed to reconnect: {}", err))?;
+            let files = provider
+                .list(list_path)
+                .await
+                .map_err(|err| format!("Failed to list files after reconnect: {}", err))?;
+            emit_session_event(&app, SessionEventKind::Reconnected, "");
+            files
+        }
+        Err(e) => return Err(format!("Failed to list files: {}", e)),
+    };
 
     let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
 
@@ -619,6 +710,7 @@ pub async fn provider_list_files(
 /// Change to the specified directory
 #[tauri::command]
 pub async fn provider_change_dir(
+    app: AppHandle,
     state: State<'_, ProviderState>,
     path: String,
 ) -> Result<ProviderListResponse, String> {
@@ -628,17 +720,42 @@ pub async fn provider_change_dir(
         .as_mut()
         .ok_or("Not connected to any provider")?;
 
-    // Handle ".." specifically to go to parent directory
-    if path == ".." {
-        provider
-            .cd_up()
-            .await
-            .map_err(|e| format!("Failed to go up: {}", e))?;
+    // Run the cd op, and on a transport-level disconnect retry it
+    // exactly once after a silent reconnect. `try_silent_reconnect`
+    // restores the pre-disconnect cwd, so a `cd("..")` request is
+    // resolved relative to where the user actually was (not the
+    // post-reconnect home dir).
+    let nav_result = if path == ".." {
+        provider.cd_up().await
     } else {
-        provider
-            .cd(&path)
+        provider.cd(&path).await
+    };
+
+    if let Err(e) = nav_result {
+        if !e.is_connection_lost() {
+            return Err(if path == ".." {
+                format!("Failed to go up: {}", e)
+            } else {
+                format!("Failed to change directory: {}", e)
+            });
+        }
+        emit_session_event(&app, SessionEventKind::Lost, e.to_string());
+        try_silent_reconnect(&app, provider)
             .await
-            .map_err(|e| format!("Failed to change directory: {}", e))?;
+            .map_err(|err| format!("Failed to reconnect: {}", err))?;
+        let retry = if path == ".." {
+            provider.cd_up().await
+        } else {
+            provider.cd(&path).await
+        };
+        retry.map_err(|err| {
+            if path == ".." {
+                format!("Failed to go up after reconnect: {}", err)
+            } else {
+                format!("Failed to change directory after reconnect: {}", err)
+            }
+        })?;
+        emit_session_event(&app, SessionEventKind::Reconnected, "");
     }
 
     let files = provider
@@ -657,6 +774,7 @@ pub async fn provider_change_dir(
 /// Navigate to parent directory
 #[tauri::command]
 pub async fn provider_go_up(
+    app: AppHandle,
     state: State<'_, ProviderState>,
 ) -> Result<ProviderListResponse, String> {
     let mut provider_lock = state.provider.lock().await;
@@ -665,10 +783,20 @@ pub async fn provider_go_up(
         .as_mut()
         .ok_or("Not connected to any provider")?;
 
-    provider
-        .cd_up()
-        .await
-        .map_err(|e| format!("Failed to go up: {}", e))?;
+    if let Err(e) = provider.cd_up().await {
+        if !e.is_connection_lost() {
+            return Err(format!("Failed to go up: {}", e));
+        }
+        emit_session_event(&app, SessionEventKind::Lost, e.to_string());
+        try_silent_reconnect(&app, provider)
+            .await
+            .map_err(|err| format!("Failed to reconnect: {}", err))?;
+        provider
+            .cd_up()
+            .await
+            .map_err(|err| format!("Failed to go up after reconnect: {}", err))?;
+        emit_session_event(&app, SessionEventKind::Reconnected, "");
+    }
 
     let files = provider
         .list(".")

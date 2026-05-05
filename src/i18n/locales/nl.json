@@ -4289,6 +4289,12 @@
             "storageModeVaultHint": "Koppelingsregister versleuteld met uw hoofdwachtwoord. De kluis moet ontgrendeld zijn bij het starten van de app.",
             "confirmDelete": "Koppeling '{{name}}' verwijderen? Dit heeft geen invloed op externe bestanden.",
             "openMountAction": "Koppeling openen in bestandsbeheer"
+        },
+        "reconnect": {
+            "toastTitle": "Verbinding",
+            "reconnecting": "Sessie verlopen, opnieuw verbinden...",
+            "reconnected": "Opnieuw verbonden met server",
+            "reconnectFailed": "Opnieuw verbinden mislukt. Verbind handmatig opnieuw."
         }
     }
 }

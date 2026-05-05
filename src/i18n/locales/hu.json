@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "A csatolási nyilvántartás titkosítva a fő jelszavával. Az alkalmazás indításakor a széfet fel kell oldani.",
             "confirmDelete": "Törli a(z) '{{name}}' csatolást? Ez nem érinti a távoli fájlokat.",
             "openMountAction": "Csatolás megnyitása fájlkezelőben"
+        },
+        "reconnect": {
+            "toastTitle": "Kapcsolat",
+            "reconnecting": "A munkamenet lejárt, újracsatlakozás...",
+            "reconnected": "Újra csatlakozva a kiszolgálóhoz",
+            "reconnectFailed": "Az újracsatlakozás nem sikerült. Csatlakozzon újra manuálisan."
         }
     }
 }

@@ -4318,6 +4318,12 @@
             "storageModeVaultHint": "Rexistro de montaxes cifrado co teu contrasinal mestre. A caixa forte debe estar desbloqueada ao iniciar a aplicación.",
             "confirmDelete": "Eliminar a montaxe '{{name}}'? Isto non afecta os ficheiros remotos.",
             "openMountAction": "Abrir montaxe no xestor de ficheiros"
+        },
+        "reconnect": {
+            "toastTitle": "Conexión",
+            "reconnecting": "Sesión caducada, reconectando...",
+            "reconnected": "Reconectado ao servidor",
+            "reconnectFailed": "A reconexión fallou. Reconecta manualmente."
         }
     }
 }

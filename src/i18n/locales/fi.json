@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Liitäntärekisteri salattu pääsalasanallasi. Holvin on oltava avattuna sovelluksen käynnistyessä.",
             "confirmDelete": "Poistetaanko liitäntä '{{name}}'? Tämä ei vaikuta etätiedostoihin.",
             "openMountAction": "Avaa liitäntä tiedostonhallinnassa"
+        },
+        "reconnect": {
+            "toastTitle": "Yhteys",
+            "reconnecting": "Istunto vanhentunut, yhdistetään uudelleen...",
+            "reconnected": "Yhdistetty uudelleen palvelimeen",
+            "reconnectFailed": "Uudelleenyhdistäminen epäonnistui. Yhdistä manuaalisesti."
         }
     }
 }

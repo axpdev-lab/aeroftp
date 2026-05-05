@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Ühenduste register, mis on krüpteeritud sinu peaparooli all. Võlv peab rakenduse käivitamisel olema avatud.",
             "confirmDelete": "Kustutada ühendus '{{name}}'? See ei mõjuta kaugfaile.",
             "openMountAction": "Ava ühendus failihalduris"
+        },
+        "reconnect": {
+            "toastTitle": "Ühendus",
+            "reconnecting": "Seanss aegus, ühendatakse uuesti...",
+            "reconnected": "Uuesti serveriga ühendatud",
+            "reconnectFailed": "Uuestiühendamine ebaõnnestus. Palun ühenda käsitsi uuesti."
         }
     }
 }

@@ -4299,6 +4299,12 @@
             "storageModeVaultHint": "Registar montaža šifriran vašom glavnom lozinkom. Trezor mora biti otključan pri pokretanju aplikacije.",
             "confirmDelete": "Izbrisati montažu '{{name}}'? Ovo ne utječe na udaljene datoteke.",
             "openMountAction": "Otvori montažu u upravitelju datotekama"
+        },
+        "reconnect": {
+            "toastTitle": "Veza",
+            "reconnecting": "Sesija je istekla, ponovno povezivanje...",
+            "reconnected": "Ponovno povezano s poslužiteljem",
+            "reconnectFailed": "Ponovno povezivanje nije uspjelo. Ručno se ponovno povežite."
         }
     }
 }

@@ -4318,6 +4318,12 @@
             "storageModeVaultHint": "Monteringsregister kryptert med hovedpassordet ditt. Hvelvet må være låst opp ved appstart.",
             "confirmDelete": "Slett monteringen '{{name}}'? Dette påvirker ikke eksterne filer.",
             "openMountAction": "Åpne montering i filbehandler"
+        },
+        "reconnect": {
+            "toastTitle": "Tilkobling",
+            "reconnecting": "Økten utløp, kobler til på nytt...",
+            "reconnected": "Koblet til serveren igjen",
+            "reconnectFailed": "Tilkobling på nytt mislyktes. Koble til manuelt igjen."
         }
     }
 }
