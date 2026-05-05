@@ -4799,6 +4799,11 @@ fn get_dependencies() -> Vec<DependencyInfo> {
             version: env!("DEP_VERSION_JSONWEBTOKEN").into(),
             category: "Security".into(),
         },
+        DependencyInfo {
+            name: "aerovault".into(),
+            version: env!("DEP_VERSION_AEROVAULT").into(),
+            category: "Security".into(),
+        },
         // Archives
         DependencyInfo {
             name: "sevenz-rust".into(),

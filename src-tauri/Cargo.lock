@@ -151,9 +151,9 @@ dependencies = [
 
 [[package]]
 name = "aerovault"
-version = "0.3.4"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e8d864d1580876592fe21611a478e107f96d371cb3e6c08fdc9a57398fa6fa5"
+checksum = "143037db72dec382d254a655748a8bfb8fbcb96d75554c2ad17811433856c47f"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",

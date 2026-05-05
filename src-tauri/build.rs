@@ -39,6 +39,7 @@ const TRACKED_DEPS: &[&str] = &[
     "hmac",
     "blake3",
     "jsonwebtoken",
+    "aerovault",
     // Archives
     "sevenz-rust",
     "zip",
