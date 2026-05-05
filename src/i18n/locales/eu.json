@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} hodeiko unitate esklusibo",
-                "footerDedupExplained": "Disko fisiko bera partekatzen duten profilak (Koofr WebDAV + REST, OpenDrive WebDAV + REST, access key bera duten Wasabi bucket-ak) unitate bakarrean batzen dira, kuotak behin bakarrik zenbatu daitezen."
+                "footerDedupExplained": "Disko fisiko bera partekatzen duten profilak (Koofr WebDAV + REST, OpenDrive WebDAV + REST, access key bera duten Wasabi bucket-ak) unitate bakarrean batzen dira, kuotak behin bakarrik zenbatu daitezen.",
+                "dragToReorder": "Arrastatu berrantolatzeko"
             },
             "breakdown": {
                 "title": "Biltegiratzea protokoloka",

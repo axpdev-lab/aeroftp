@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} профила · {unique} уникални облачни диска",
-                "footerDedupExplained": "Профилите, които споделят един и същ физически диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi бъкети с един и същ access key), се обединяват в един диск, така че квотите се броят само веднъж."
+                "footerDedupExplained": "Профилите, които споделят един и същ физически диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi бъкети с един и същ access key), се обединяват в един диск, така че квотите се броят само веднъж.",
+                "dragToReorder": "Плъзнете за пренареждане"
             },
             "breakdown": {
                 "title": "Хранилище по протокол",

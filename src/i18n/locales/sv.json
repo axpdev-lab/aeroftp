@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profiler · {unique} unika molnenheter",
-                "footerDedupExplained": "Profiler som delar samma fysiska disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-buckets under samma åtkomstnyckel) slås ihop till en enhet så att kvoter räknas endast en gång."
+                "footerDedupExplained": "Profiler som delar samma fysiska disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-buckets under samma åtkomstnyckel) slås ihop till en enhet så att kvoter räknas endast en gång.",
+                "dragToReorder": "Dra för att ordna om"
             },
             "breakdown": {
                 "title": "Lagring per protokoll",

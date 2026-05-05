@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "Wasifu {count} · diski za wingu {unique} za kipekee",
-                "footerDedupExplained": "Wasifu unaoshiriki diski moja ya kimwili (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ndoo za Wasabi chini ya ufunguo mmoja wa ufikiaji) huunganishwa kuwa diski moja ili kiasi kihesabiwe mara moja tu."
+                "footerDedupExplained": "Wasifu unaoshiriki diski moja ya kimwili (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ndoo za Wasabi chini ya ufunguo mmoja wa ufikiaji) huunganishwa kuwa diski moja ili kiasi kihesabiwe mara moja tu.",
+                "dragToReorder": "Buruta ili kupanga upya"
             },
             "breakdown": {
                 "title": "Hifadhi kwa itifaki",

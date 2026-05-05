@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} профили · {unique} уникатни облак-дискови",
-                "footerDedupExplained": "Профилите што го делат истиот физички диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi сегменти со истиот пристапен клуч) се спојуваат во еден диск за квотите да се бројат само еднаш."
+                "footerDedupExplained": "Профилите што го делат истиот физички диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi сегменти со истиот пристапен клуч) се спојуваат во еден диск за квотите да се бројат само еднаш.",
+                "dragToReorder": "Влечете за прередување"
             },
             "breakdown": {
                 "title": "Складирање по протокол",

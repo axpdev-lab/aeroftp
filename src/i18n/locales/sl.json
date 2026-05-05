@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profilov · {unique} edinstvenih oblačnih pogonov",
-                "footerDedupExplained": "Profili, ki si delijo isti fizični disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, vedra Wasabi pod istim ključem za dostop), se združijo v en pogon, tako da se kvote štejejo samo enkrat."
+                "footerDedupExplained": "Profili, ki si delijo isti fizični disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, vedra Wasabi pod istim ključem za dostop), se združijo v en pogon, tako da se kvote štejejo samo enkrat.",
+                "dragToReorder": "Povlecite za preureditev"
             },
             "breakdown": {
                 "title": "Pomnilnik po protokolu",

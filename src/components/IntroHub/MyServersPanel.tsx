@@ -417,7 +417,11 @@ export function MyServersPanel({
     // dragIdx/overIdx hold real indices into the full `servers` array: when
     // a filter is active we resolve the visible card to its real index by id,
     // so the reorder produces a coherent move in the underlying list.
-    const canDrag = tableColumns.sort === null;
+    //
+    // In grid view drag is always allowed (no sort UI to conflict with). In
+    // list/table view a stale sort persisted in localStorage would otherwise
+    // permanently lock drag, even after the user switches back to grid.
+    const canDrag = viewMode === 'grid' || tableColumns.sort === null;
 
     const maybeAutoScrollWhileDrag = useCallback((clientY: number) => {
         const el = scrollContainerRef.current;
@@ -678,7 +682,11 @@ export function MyServersPanel({
                     } else throw connectErr;
                 }
 
-                const updatedUsername = result.account_email || server.username;
+                // Yandex Disk doesn't expose account_email() from the backend
+                // (the username field is OAuth-config, not a profile email):
+                // fall back to the Client ID so the saved profile has a stable
+                // identifier the card can show (masked).
+                const updatedUsername = result.account_email || server.username || credentials.clientId;
                 const connectedAt = new Date().toISOString();
                 const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: connectedAt, username: updatedUsername || s.username } : s);
                 setServers(updated);

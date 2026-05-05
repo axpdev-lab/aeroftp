@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} proffil · {unique} gyriant cwmwl unigryw",
-                "footerDedupExplained": "Mae proffiliau sy'n rhannu'r un disg ffisegol (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bwcedi Wasabi o dan yr un access key) yn cael eu cyfuno'n un gyriant fel bod cwotâu'n cael eu cyfrif unwaith yn unig."
+                "footerDedupExplained": "Mae proffiliau sy'n rhannu'r un disg ffisegol (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bwcedi Wasabi o dan yr un access key) yn cael eu cyfuno'n un gyriant fel bod cwotâu'n cael eu cyfrif unwaith yn unig.",
+                "dragToReorder": "Llusgwch i aildrefnu"
             },
             "breakdown": {
                 "title": "Storfa yn ôl protocol",

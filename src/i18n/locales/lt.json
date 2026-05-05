@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profiliai · {unique} unikalūs debesų diskai",
-                "footerDedupExplained": "Profiliai, kurie naudoja tą patį fizinį diską (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi krepšiai su tuo pačiu prieigos raktu), sujungiami į vieną diską, kad kvotos būtų skaičiuojamos tik vieną kartą."
+                "footerDedupExplained": "Profiliai, kurie naudoja tą patį fizinį diską (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi krepšiai su tuo pačiu prieigos raktu), sujungiami į vieną diską, kad kvotos būtų skaičiuojamos tik vieną kartą.",
+                "dragToReorder": "Vilkite, kad pertvarkytumėte"
             },
             "breakdown": {
                 "title": "Saugykla pagal protokolą",

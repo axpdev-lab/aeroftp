@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profils · {unique} disques cloud uniques",
-                "footerDedupExplained": "Les profils qui partagent le même disque physique (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets Wasabi sous la même access key) sont regroupés en un seul disque afin que les quotas soient comptés une seule fois."
+                "footerDedupExplained": "Les profils qui partagent le même disque physique (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets Wasabi sous la même access key) sont regroupés en un seul disque afin que les quotas soient comptés une seule fois.",
+                "dragToReorder": "Glisser pour réordonner"
             },
             "breakdown": {
                 "title": "Stockage par protocole",

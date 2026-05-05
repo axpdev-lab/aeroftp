@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} профила · {unique} јединствених облак дискова",
-                "footerDedupExplained": "Профили који деле исти физички диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi кофе под истим приступним кључем) се спајају у један диск, тако да се квоте броје само једном."
+                "footerDedupExplained": "Профили који деле исти физички диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi кофе под истим приступним кључем) се спајају у један диск, тако да се квоте броје само једном.",
+                "dragToReorder": "Превуците за промену редоследа"
             },
             "breakdown": {
                 "title": "Складиште по протоколу",

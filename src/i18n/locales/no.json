@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profiler · {unique} unike skystasjoner",
-                "footerDedupExplained": "Profiler som deler den samme fysiske disken (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-bøtter under samme tilgangsnøkkel) slås sammen til én stasjon slik at kvoter telles kun én gang."
+                "footerDedupExplained": "Profiler som deler den samme fysiske disken (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-bøtter under samme tilgangsnøkkel) slås sammen til én stasjon slik at kvoter telles kun én gang.",
+                "dragToReorder": "Dra for å omorganisere"
             },
             "breakdown": {
                 "title": "Lagring etter protokoll",

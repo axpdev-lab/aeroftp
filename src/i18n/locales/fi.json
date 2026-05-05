@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profiilia · {unique} ainutlaatuista pilvilevyä",
-                "footerDedupExplained": "Profiilit, jotka jakavat saman fyysisen levyn (Koofr WebDAV + REST, OpenDrive WebDAV + REST, samalla access keyllä toimivat Wasabi-bucketit), yhdistetään yhdeksi levyksi, jotta kiintiöt lasketaan vain kerran."
+                "footerDedupExplained": "Profiilit, jotka jakavat saman fyysisen levyn (Koofr WebDAV + REST, OpenDrive WebDAV + REST, samalla access keyllä toimivat Wasabi-bucketit), yhdistetään yhdeksi levyksi, jotta kiintiöt lasketaan vain kerran.",
+                "dragToReorder": "Vedä järjestääksesi"
             },
             "breakdown": {
                 "title": "Tallennustila protokollan mukaan",

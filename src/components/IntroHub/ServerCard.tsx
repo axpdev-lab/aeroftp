@@ -406,9 +406,13 @@ export const ServerCard = React.memo(function ServerCard({
             onMouseLeave={handleMouseLeave}
             title={selectionTitle || undefined}
         >
-            {/* Cross-Profile selection badge (top-left, doesn't overlap actions on the right) */}
+            {/* Cross-Profile selection badge (top-left, doesn't overlap actions on the right).
+                z-10 keeps it above the connect button: the button (40-48px) and
+                the badge (20px) both anchor near the card's top-left corner, so
+                without z-stacking the badge gets visually hidden under the
+                button by DOM order. */}
             {isSelected && (
-                <div className={`absolute top-2 left-2 flex items-center justify-center w-5 h-5 rounded-full pointer-events-none ${
+                <div className={`absolute top-2 left-2 z-10 flex items-center justify-center w-5 h-5 rounded-full pointer-events-none ${
                     isSource
                         ? 'bg-indigo-500 text-white shadow ring-1 ring-indigo-400/60'
                         : 'bg-emerald-500 text-white shadow ring-1 ring-emerald-400/60'

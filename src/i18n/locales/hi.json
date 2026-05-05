@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} प्रोफ़ाइल · {unique} अद्वितीय क्लाउड ड्राइव",
-                "footerDedupExplained": "वे प्रोफ़ाइल जो एक ही भौतिक डिस्क साझा करती हैं (Koofr WebDAV + REST, OpenDrive WebDAV + REST, समान access key के अंतर्गत Wasabi बकेट) एक ही ड्राइव में संयोजित हो जाती हैं ताकि कोटा केवल एक बार गिना जाए।"
+                "footerDedupExplained": "वे प्रोफ़ाइल जो एक ही भौतिक डिस्क साझा करती हैं (Koofr WebDAV + REST, OpenDrive WebDAV + REST, समान access key के अंतर्गत Wasabi बकेट) एक ही ड्राइव में संयोजित हो जाती हैं ताकि कोटा केवल एक बार गिना जाए।",
+                "dragToReorder": "पुनः क्रमित करने के लिए खींचें"
             },
             "breakdown": {
                 "title": "प्रोटोकॉल के अनुसार स्टोरेज",

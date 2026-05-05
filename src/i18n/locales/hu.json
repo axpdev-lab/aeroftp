@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} egyedi felhőmeghajtó",
-                "footerDedupExplained": "Az azonos fizikai lemezt használó profilok (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ugyanazon hozzáférési kulcs alatti Wasabi tárolók) egyetlen meghajtóvá olvadnak össze, így a kvóták csak egyszer számítanak."
+                "footerDedupExplained": "Az azonos fizikai lemezt használó profilok (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ugyanazon hozzáférési kulcs alatti Wasabi tárolók) egyetlen meghajtóvá olvadnak össze, így a kvóták csak egyszer számítanak.",
+                "dragToReorder": "Húzza az átrendezéshez"
             },
             "breakdown": {
                 "title": "Tárhely protokoll szerint",

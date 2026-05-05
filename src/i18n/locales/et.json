@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profiili · {unique} unikaalset pilvedraivi",
-                "footerDedupExplained": "Profiilid, mis jagavad sama füüsilist ketast (Koofr WebDAV + REST, OpenDrive WebDAV + REST, sama access key alla kuuluvad Wasabi ämbrid), liidetakse üheks draiviks, et kvoote loetaks ainult üks kord."
+                "footerDedupExplained": "Profiilid, mis jagavad sama füüsilist ketast (Koofr WebDAV + REST, OpenDrive WebDAV + REST, sama access key alla kuuluvad Wasabi ämbrid), liidetakse üheks draiviks, et kvoote loetaks ainult üks kord.",
+                "dragToReorder": "Lohista ümberjärjestamiseks"
             },
             "breakdown": {
                 "title": "Salvestusruum protokolli järgi",

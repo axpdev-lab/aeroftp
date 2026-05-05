@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "프로필 {count}개 · 고유 클라우드 드라이브 {unique}개",
-                "footerDedupExplained": "동일한 물리 디스크를 공유하는 프로필(Koofr WebDAV + REST, OpenDrive WebDAV + REST, 동일한 액세스 키의 Wasabi 버킷)은 하나의 드라이브로 통합되어 할당량이 한 번만 계산됩니다."
+                "footerDedupExplained": "동일한 물리 디스크를 공유하는 프로필(Koofr WebDAV + REST, OpenDrive WebDAV + REST, 동일한 액세스 키의 Wasabi 버킷)은 하나의 드라이브로 통합되어 할당량이 한 번만 계산됩니다.",
+                "dragToReorder": "드래그하여 순서 변경"
             },
             "breakdown": {
                 "title": "프로토콜별 스토리지",

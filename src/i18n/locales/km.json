@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} ប្រវត្តិរូប · {unique} ដ្រាយ Cloud តែមួយ",
-                "footerDedupExplained": "ប្រវត្តិរូបដែលប្រើថាសរូបវន្តដូចគ្នា (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ធុង Wasabi ដែលប្រើ access key ដូចគ្នា) ត្រូវបានបញ្ចូលគ្នាជាដ្រាយតែមួយ ដើម្បីឱ្យកូតាត្រូវបានរាប់តែម្តងគត់។"
+                "footerDedupExplained": "ប្រវត្តិរូបដែលប្រើថាសរូបវន្តដូចគ្នា (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ធុង Wasabi ដែលប្រើ access key ដូចគ្នា) ត្រូវបានបញ្ចូលគ្នាជាដ្រាយតែមួយ ដើម្បីឱ្យកូតាត្រូវបានរាប់តែម្តងគត់។",
+                "dragToReorder": "អូសដើម្បីរៀបចំឡើងវិញ"
             },
             "breakdown": {
                 "title": "ការផ្ទុកតាមពិធីការ",

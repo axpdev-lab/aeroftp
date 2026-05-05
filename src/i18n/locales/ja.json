@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} 個のプロファイル · {unique} 個の固有クラウドドライブ",
-                "footerDedupExplained": "同じ物理ディスクを共有するプロファイル(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同じアクセスキーの Wasabi バケット)は 1 つのドライブにまとめられ、クォータは 1 回だけカウントされます。"
+                "footerDedupExplained": "同じ物理ディスクを共有するプロファイル(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同じアクセスキーの Wasabi バケット)は 1 つのドライブにまとめられ、クォータは 1 回だけカウントされます。",
+                "dragToReorder": "ドラッグして並べ替え"
             },
             "breakdown": {
                 "title": "プロトコル別ストレージ",

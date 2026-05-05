@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profila · {unique} jedinstvenih cloud diskova",
-                "footerDedupExplained": "Profili koji dijele isti fizički disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi spremnici pod istim ključem) spajaju se u jedan disk kako bi se kvote brojale samo jednom."
+                "footerDedupExplained": "Profili koji dijele isti fizički disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi spremnici pod istim ključem) spajaju se u jedan disk kako bi se kvote brojale samo jednom.",
+                "dragToReorder": "Povucite za promjenu redoslijeda"
             },
             "breakdown": {
                 "title": "Pohrana po protokolu",

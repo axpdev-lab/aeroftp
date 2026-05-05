@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profilů · {unique} unikátních cloudových disků",
-                "footerDedupExplained": "Profily, které sdílejí stejný fyzický disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckety pod stejným access key), se sloučí do jednoho disku, aby se kvóty počítaly jen jednou."
+                "footerDedupExplained": "Profily, které sdílejí stejný fyzický disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckety pod stejným access key), se sloučí do jednoho disku, aby se kvóty počítaly jen jednou.",
+                "dragToReorder": "Přetáhněte pro řazení"
             },
             "breakdown": {
                 "title": "Úložiště podle protokolu",

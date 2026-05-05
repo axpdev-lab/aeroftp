@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profilov · {unique} jedinečných cloudových diskov",
-                "footerDedupExplained": "Profily, ktoré zdieľajú rovnaký fyzický disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, koše Wasabi pod rovnakým prístupovým kľúčom), sa zlúčia do jedného disku, aby sa kvóty počítali len raz."
+                "footerDedupExplained": "Profily, ktoré zdieľajú rovnaký fyzický disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, koše Wasabi pod rovnakým prístupovým kľúčom), sa zlúčia do jedného disku, aby sa kvóty počítali len raz.",
+                "dragToReorder": "Potiahnutím zmeníte poradie"
             },
             "breakdown": {
                 "title": "Úložisko podľa protokolu",

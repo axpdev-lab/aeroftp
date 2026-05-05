@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} snið · {unique} einstök skýjadrif",
-                "footerDedupExplained": "Snið sem deila sama eðlislæga diski (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-fötur undir sama aðgangslykli) eru sameinuð í eitt drif svo kvótar séu taldir aðeins einu sinni."
+                "footerDedupExplained": "Snið sem deila sama eðlislæga diski (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-fötur undir sama aðgangslykli) eru sameinuð í eitt drif svo kvótar séu taldir aðeins einu sinni.",
+                "dragToReorder": "Dragðu til að endurraða"
             },
             "breakdown": {
                 "title": "Geymsla eftir samskiptareglu",

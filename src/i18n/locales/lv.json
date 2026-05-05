@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profili · {unique} unikāli mākoņdiski",
-                "footerDedupExplained": "Profili, kas izmanto vienu un to pašu fizisko disku (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi grozi ar vienu piekļuves atslēgu), tiek apvienoti vienā diskā, lai kvotas tiktu skaitītas tikai vienreiz."
+                "footerDedupExplained": "Profili, kas izmanto vienu un to pašu fizisko disku (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi grozi ar vienu piekļuves atslēgu), tiek apvienoti vienā diskā, lai kvotas tiktu skaitītas tikai vienreiz.",
+                "dragToReorder": "Velciet, lai pārkārtotu"
             },
             "breakdown": {
                 "title": "Krātuve pēc protokola",

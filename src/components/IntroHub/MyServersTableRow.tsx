@@ -161,7 +161,19 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         switch (id) {
             case 'index':
                 return (
-                    <td key="index" className={`${cellClass} text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500`} title={dragDisabledTitle}>
+                    <td
+                        key="index"
+                        // Drag initiates on the index <td> itself: WebKitGTK
+                        // doesn't fire dragstart on <tr>, but it does on <td>
+                        // and on plain divs/spans. Using the cell keeps the hit
+                        // area generous (whole index column) without nesting a
+                        // tiny div inside. The tr keeps drop-side handlers.
+                        draggable={isDraggable}
+                        onDragStart={isDraggable ? onDragStart : undefined}
+                        onDragEnd={isDraggable ? onDragEnd : undefined}
+                        className={`${cellClass} text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                        title={dragDisabledTitle || (isDraggable ? t('introHub.table.dragToReorder') : undefined)}
+                    >
                         <div className="flex items-center justify-end gap-1.5">
                             {isSelected && (
                                 <span className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full ${
@@ -304,18 +316,19 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
 
     return (
         <tr
-            draggable={isDraggable}
-            onDragStart={onDragStart}
+            // NOTE: `draggable`/`onDragStart` live on the explicit grip handle
+            // in the index cell (WebKitGTK doesn't reliably fire dragstart on
+            // <tr>). The row keeps the drop-side handlers so users can drop
+            // anywhere along the row.
             onDragEnter={onDragEnter}
             onDragOver={onDragOver}
             onDrop={onDrop}
-            onDragEnd={onDragEnd}
             onClick={handleRowClick}
             onContextMenu={(e) => onContextMenu?.(e, server)}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             title={selectionTitle || undefined}
-            className={`group transition-colors ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''} ${selectionRingClass}`}
+            className={`group transition-colors ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 bg-blue-50 dark:bg-blue-900/20' : isDragTarget ? '' : index % 2 === 1 ? 'bg-gray-50/30 dark:bg-white/[0.02]' : ''} hover:bg-gray-100/50 dark:hover:bg-white/[0.04] ${isDragTarget ? 'border-b-2 !border-b-blue-500 bg-blue-50/50 dark:bg-blue-900/15' : ''} ${selectionRingClass}`}
         >
             {orderedColumns.map(col => renderCell(col.id))}
         </tr>

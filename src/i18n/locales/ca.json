@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} perfils · {unique} unitats al núvol úniques",
-                "footerDedupExplained": "Els perfils que comparteixen el mateix disc físic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, cubs de Wasabi amb la mateixa access key) s'agrupen en una sola unitat per comptar les quotes una única vegada."
+                "footerDedupExplained": "Els perfils que comparteixen el mateix disc físic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, cubs de Wasabi amb la mateixa access key) s'agrupen en una sola unitat per comptar les quotes una única vegada.",
+                "dragToReorder": "Arrossega per reordenar"
             },
             "breakdown": {
                 "title": "Emmagatzematge per protocol",

@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} drive cloud unik",
-                "footerDedupExplained": "Profil yang berbagi disk fisik yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket Wasabi dengan access key yang sama) digabungkan menjadi satu drive sehingga kuota dihitung hanya sekali."
+                "footerDedupExplained": "Profil yang berbagi disk fisik yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket Wasabi dengan access key yang sama) digabungkan menjadi satu drive sehingga kuota dihitung hanya sekali.",
+                "dragToReorder": "Seret untuk menyusun ulang"
             },
             "breakdown": {
                 "title": "Penyimpanan menurut protokol",

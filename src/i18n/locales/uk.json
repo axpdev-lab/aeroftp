@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} профілів · {unique} унікальних хмарних дисків",
-                "footerDedupExplained": "Профілі, що використовують один і той самий фізичний диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, бакети Wasabi під одним ключем доступу), об’єднуються в один диск, тож квоти враховуються лише один раз."
+                "footerDedupExplained": "Профілі, що використовують один і той самий фізичний диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, бакети Wasabi під одним ключем доступу), об’єднуються в один диск, тож квоти враховуються лише один раз.",
+                "dragToReorder": "Перетягніть, щоб змінити порядок"
             },
             "breakdown": {
                 "title": "Сховище за протоколом",

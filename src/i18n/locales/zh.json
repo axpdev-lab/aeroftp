@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} 个配置 · {unique} 个独立云盘",
-                "footerDedupExplained": "共享同一物理磁盘的配置(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同一访问密钥下的 Wasabi 存储桶)会合并为一个云盘,因此配额只计算一次。"
+                "footerDedupExplained": "共享同一物理磁盘的配置(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同一访问密钥下的 Wasabi 存储桶)会合并为一个云盘,因此配额只计算一次。",
+                "dragToReorder": "拖动以重新排序"
             },
             "breakdown": {
                 "title": "按协议存储",

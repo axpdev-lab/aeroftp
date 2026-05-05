@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} perfis · {unique} drives na nuvem únicos",
-                "footerDedupExplained": "Perfis que compartilham o mesmo disco físico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets Wasabi sob a mesma chave de acesso) são agrupados em um único drive, para que as cotas sejam contadas apenas uma vez."
+                "footerDedupExplained": "Perfis que compartilham o mesmo disco físico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets Wasabi sob a mesma chave de acesso) são agrupados em um único drive, para que as cotas sejam contadas apenas uma vez.",
+                "dragToReorder": "Arraste para reordenar"
             },
             "breakdown": {
                 "title": "Armazenamento por protocolo",

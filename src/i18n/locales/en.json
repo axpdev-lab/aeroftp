@@ -4145,6 +4145,7 @@
         "manualOrderActive": "Manual order active",
         "clickToReturnManual": "Ordering by {column} - click # to enable manual reorder",
         "clickToSortBy": "Sort by {column}",
+        "dragToReorder": "Drag to reorder",
         "footerSummary": "{count} profiles · {unique} unique cloud drives · {usage}",
         "footerSummaryNoQuota": "{count} profiles · {unique} unique cloud drives",
         "footerDedupExplained": "Profiles that share the same physical disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets under the same access key) collapse into one drive so quotas are counted once.",

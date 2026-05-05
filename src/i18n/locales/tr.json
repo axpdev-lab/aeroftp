@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} benzersiz bulut sürücü",
-                "footerDedupExplained": "Aynı fiziksel diski paylaşan profiller (Koofr WebDAV + REST, OpenDrive WebDAV + REST, aynı erişim anahtarı altındaki Wasabi kovaları) tek bir sürücüde birleştirilir, böylece kotalar yalnızca bir kez sayılır."
+                "footerDedupExplained": "Aynı fiziksel diski paylaşan profiller (Koofr WebDAV + REST, OpenDrive WebDAV + REST, aynı erişim anahtarı altındaki Wasabi kovaları) tek bir sürücüde birleştirilir, böylece kotalar yalnızca bir kez sayılır.",
+                "dragToReorder": "Yeniden sıralamak için sürükleyin"
             },
             "breakdown": {
                 "title": "Protokole göre depolama",

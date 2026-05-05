@@ -4180,6 +4180,7 @@
                 "manualOrderActive": "Ordine manuale attivo",
                 "clickToReturnManual": "Ordinato per {column}: clicca # per riabilitare il riordino manuale",
                 "clickToSortBy": "Ordina per {column}",
+                "dragToReorder": "Trascina per riordinare",
                 "footerSummary": "{count} profili · {unique} drive cloud unici · {usage}",
                 "columns": {
                     "index": "#",

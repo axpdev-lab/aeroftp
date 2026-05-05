@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profiler · {unique} unikke cloud-drev",
-                "footerDedupExplained": "Profiler, der deler den samme fysiske disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets under samme access key), samles til ét drev, så kvoter kun tælles én gang."
+                "footerDedupExplained": "Profiler, der deler den samme fysiske disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets under samme access key), samles til ét drev, så kvoter kun tælles én gang.",
+                "dragToReorder": "Træk for at omarrangere"
             },
             "breakdown": {
                 "title": "Lager efter protokol",

@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profiluri · {unique} drive-uri cloud unice",
-                "footerDedupExplained": "Profilurile care partajează același disc fizic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket-uri Wasabi sub aceeași cheie de acces) se unesc într-un singur drive, astfel încât cotele sunt numărate o singură dată."
+                "footerDedupExplained": "Profilurile care partajează același disc fizic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket-uri Wasabi sub aceeași cheie de acces) se unesc într-un singur drive, astfel încât cotele sunt numărate o singură dată.",
+                "dragToReorder": "Trage pentru a reordona"
             },
             "breakdown": {
                 "title": "Stocare pe protocol",

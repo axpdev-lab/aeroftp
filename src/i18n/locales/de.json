@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} Profile · {unique} eindeutige Cloud-Laufwerke",
-                "footerDedupExplained": "Profile, die sich denselben physischen Speicher teilen (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-Buckets unter demselben Access Key), werden zu einem Laufwerk zusammengefasst, sodass Kontingente nur einmal gezählt werden."
+                "footerDedupExplained": "Profile, die sich denselben physischen Speicher teilen (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-Buckets unter demselben Access Key), werden zu einem Laufwerk zusammengefasst, sodass Kontingente nur einmal gezählt werden.",
+                "dragToReorder": "Ziehen zum Sortieren"
             },
             "breakdown": {
                 "title": "Speicher nach Protokoll",

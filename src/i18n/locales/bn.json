@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} প্রোফাইল · {unique} অনন্য ক্লাউড ড্রাইভ",
-                "footerDedupExplained": "যে প্রোফাইলগুলি একই ফিজিক্যাল ডিস্ক ভাগ করে (Koofr WebDAV + REST, OpenDrive WebDAV + REST, একই access key-এর অধীনে Wasabi বাকেট) সেগুলি একটি ড্রাইভে একত্রিত হয় যাতে কোটা একবারই গণনা করা হয়।"
+                "footerDedupExplained": "যে প্রোফাইলগুলি একই ফিজিক্যাল ডিস্ক ভাগ করে (Koofr WebDAV + REST, OpenDrive WebDAV + REST, একই access key-এর অধীনে Wasabi বাকেট) সেগুলি একটি ড্রাইভে একত্রিত হয় যাতে কোটা একবারই গণনা করা হয়।",
+                "dragToReorder": "সাজাতে টানুন"
             },
             "breakdown": {
                 "title": "প্রোটোকল অনুযায়ী স্টোরেজ",

@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} na profile · {unique} na natatanging cloud drive",
-                "footerDedupExplained": "Ang mga profile na nagbabahagi ng parehong pisikal na disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets sa ilalim ng parehong access key) ay pinagsasama sa isang drive upang ang quota ay mabilang minsan lamang."
+                "footerDedupExplained": "Ang mga profile na nagbabahagi ng parehong pisikal na disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets sa ilalim ng parehong access key) ay pinagsasama sa isang drive upang ang quota ay mabilang minsan lamang.",
+                "dragToReorder": "I-drag para isaayos"
             },
             "breakdown": {
                 "title": "Imbakan ayon sa protocol",

@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profili · {unique} unikalnych dysków chmurowych",
-                "footerDedupExplained": "Profile współdzielące ten sam dysk fizyczny (Koofr WebDAV + REST, OpenDrive WebDAV + REST, kubełki Wasabi pod tym samym kluczem dostępu) są łączone w jeden dysk, więc limity są liczone tylko raz."
+                "footerDedupExplained": "Profile współdzielące ten sam dysk fizyczny (Koofr WebDAV + REST, OpenDrive WebDAV + REST, kubełki Wasabi pod tym samym kluczem dostępu) są łączone w jeden dysk, więc limity są liczone tylko raz.",
+                "dragToReorder": "Przeciągnij, aby zmienić kolejność"
             },
             "breakdown": {
                 "title": "Pamięć według protokołu",

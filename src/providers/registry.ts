@@ -973,7 +973,7 @@ export const PROVIDERS: ProviderConfig[] = [
         defaults: {
             endpoint: 'https://storage.kapsa.io',
             region: 'us-east-1',
-            pathStyle: false,
+            pathStyle: true,
         },
         features: {
             shareLink: false,

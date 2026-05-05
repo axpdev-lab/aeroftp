@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} պրոֆիլ · {unique} ուրույն ամպային սկավառակներ",
-                "footerDedupExplained": "Նույն ֆիզիկական սկավառակն կիսող պրոֆիլները (Koofr WebDAV + REST, OpenDrive WebDAV + REST, նույն access key-ով Wasabi bucket-ներ) միավորվում են մեկ սկավառակի մեջ, որպեսզի քվոտաները հաշվարկվեն միայն մեկ անգամ։"
+                "footerDedupExplained": "Նույն ֆիզիկական սկավառակն կիսող պրոֆիլները (Koofr WebDAV + REST, OpenDrive WebDAV + REST, նույն access key-ով Wasabi bucket-ներ) միավորվում են մեկ սկավառակի մեջ, որպեսզի քվոտաները հաշվարկվեն միայն մեկ անգամ։",
+                "dragToReorder": "Քաշեք վերադասավորելու համար"
             },
             "breakdown": {
                 "title": "Պահպանում ըստ արձանագրության",

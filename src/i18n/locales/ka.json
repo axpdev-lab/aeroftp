@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} პროფილი · {unique} უნიკალური ღრუბლოვანი დისკი",
-                "footerDedupExplained": "პროფილები, რომლებიც ერთსა და იმავე ფიზიკურ დისკს იყენებენ (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ერთი წვდომის გასაღების ქვეშ მყოფი Wasabi bucket-ები), გაერთიანდებიან ერთ დისკში, რათა კვოტები მხოლოდ ერთხელ დაითვალოს."
+                "footerDedupExplained": "პროფილები, რომლებიც ერთსა და იმავე ფიზიკურ დისკს იყენებენ (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ერთი წვდომის გასაღების ქვეშ მყოფი Wasabi bucket-ები), გაერთიანდებიან ერთ დისკში, რათა კვოტები მხოლოდ ერთხელ დაითვალოს.",
+                "dragToReorder": "გადაიტანეთ თანმიმდევრობის შესაცვლელად"
             },
             "breakdown": {
                 "title": "საცავი პროტოკოლის მიხედვით",

@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} hồ sơ · {unique} ổ đám mây duy nhất",
-                "footerDedupExplained": "Các hồ sơ dùng chung một ổ đĩa vật lý (Koofr WebDAV + REST, OpenDrive WebDAV + REST, các bucket Wasabi dưới cùng một khóa truy cập) được gộp thành một ổ duy nhất để hạn mức chỉ được tính một lần."
+                "footerDedupExplained": "Các hồ sơ dùng chung một ổ đĩa vật lý (Koofr WebDAV + REST, OpenDrive WebDAV + REST, các bucket Wasabi dưới cùng một khóa truy cập) được gộp thành một ổ duy nhất để hạn mức chỉ được tính một lần.",
+                "dragToReorder": "Kéo để sắp xếp lại"
             },
             "breakdown": {
                 "title": "Bộ nhớ theo giao thức",

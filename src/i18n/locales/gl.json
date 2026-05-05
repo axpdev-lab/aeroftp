@@ -4187,7 +4187,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} perfís · {unique} unidades na nube únicas",
-                "footerDedupExplained": "Os perfís que comparten o mesmo disco físico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets de Wasabi coa mesma access key) agrúpanse nunha única unidade para que as cotas se conten unha soa vez."
+                "footerDedupExplained": "Os perfís que comparten o mesmo disco físico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets de Wasabi coa mesma access key) agrúpanse nunha única unidade para que as cotas se conten unha soa vez.",
+                "dragToReorder": "Arrastra para reordenar"
             },
             "breakdown": {
                 "title": "Almacenamento por protocolo",

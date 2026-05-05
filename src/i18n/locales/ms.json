@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} pemacu awan unik",
-                "footerDedupExplained": "Profil yang berkongsi cakera fizikal yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, baldi Wasabi dengan kunci akses yang sama) digabungkan menjadi satu pemacu supaya kuota dikira sekali sahaja."
+                "footerDedupExplained": "Profil yang berkongsi cakera fizikal yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, baldi Wasabi dengan kunci akses yang sama) digabungkan menjadi satu pemacu supaya kuota dikira sekali sahaja.",
+                "dragToReorder": "Seret untuk menyusun semula"
             },
             "breakdown": {
                 "title": "Storan mengikut protokol",

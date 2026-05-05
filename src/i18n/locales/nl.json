@@ -4158,7 +4158,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} profielen · {unique} unieke cloudschijven",
-                "footerDedupExplained": "Profielen die dezelfde fysieke schijf delen (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-buckets onder dezelfde toegangssleutel) worden samengevoegd tot één schijf, zodat quota maar één keer worden geteld."
+                "footerDedupExplained": "Profielen die dezelfde fysieke schijf delen (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-buckets onder dezelfde toegangssleutel) worden samengevoegd tot één schijf, zodat quota maar één keer worden geteld.",
+                "dragToReorder": "Sleep om te herschikken"
             },
             "breakdown": {
                 "title": "Opslag per protocol",

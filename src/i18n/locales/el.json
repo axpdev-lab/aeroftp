@@ -4168,7 +4168,8 @@
                     "favorite": "Favorite"
                 },
                 "footerSummaryNoQuota": "{count} προφίλ · {unique} μοναδικοί δίσκοι cloud",
-                "footerDedupExplained": "Τα προφίλ που μοιράζονται τον ίδιο φυσικό δίσκο (Koofr WebDAV + REST, OpenDrive WebDAV + REST, κάδοι Wasabi με το ίδιο access key) συγχωνεύονται σε έναν δίσκο, ώστε τα όρια να μετρώνται μόνο μία φορά."
+                "footerDedupExplained": "Τα προφίλ που μοιράζονται τον ίδιο φυσικό δίσκο (Koofr WebDAV + REST, OpenDrive WebDAV + REST, κάδοι Wasabi με το ίδιο access key) συγχωνεύονται σε έναν δίσκο, ώστε τα όρια να μετρώνται μόνο μία φορά.",
+                "dragToReorder": "Σύρετε για αναδιάταξη"
             },
             "breakdown": {
                 "title": "Αποθήκευση ανά πρωτόκολλο",
