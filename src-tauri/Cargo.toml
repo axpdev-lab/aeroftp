@@ -51,7 +51,7 @@ suppaftp = { version = "=8.0.3", features = ["tokio", "tokio-rustls-aws-lc-rs", 
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26"
 rustls-pki-types = "1"
-webpki-roots = "0.26"
+webpki-roots = "1.0"
 rustls-native-certs = "0.8"
 anyhow = "1"
 thiserror = "2"
