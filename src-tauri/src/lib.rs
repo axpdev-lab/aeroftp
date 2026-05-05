@@ -96,8 +96,8 @@ pub mod rclone_filter;
 pub mod rclone_import;
 mod session_commands;
 mod session_manager;
-#[cfg(not(target_os = "macos"))]
 mod mount_manager;
+#[cfg(not(target_os = "macos"))]
 mod speech;
 mod ssh_shell;
 pub mod sync;
