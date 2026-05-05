@@ -982,7 +982,8 @@
                 "starting": "Käynnistetään...",
                 "stop": "Pysäytä",
                 "stopShell": "Pysäytä komentotulkki",
-                "closed": "Terminaali suljettu."
+                "closed": "Terminaali suljettu.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Napsauta tiedostoa hiiren oikealla painikkeella ja valitse \"Muokkaa\"",
@@ -990,7 +991,8 @@
                 "save": "Tallenna",
                 "saving": "Tallennetaan...",
                 "noFileSelected": "Tiedostoa ei valittu muokattavaksi",
-                "loading": "Ladataan editoria..."
+                "loading": "Ladataan editoria...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Napsauta tiedostoa hiiren oikealla painikkeella ja valitse \"Esikatselu\""

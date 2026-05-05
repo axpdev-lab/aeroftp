@@ -982,7 +982,8 @@
                 "starting": "प्रारंभ हो रहा है...",
                 "stop": "रोकें",
                 "stopShell": "शेल रोकें",
-                "closed": "टर्मिनल बंद हो गया।"
+                "closed": "टर्मिनल बंद हो गया।",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "किसी फ़ाइल पर राइट-क्लिक करें और \"संपादित करें\" चुनें",
@@ -990,7 +991,8 @@
                 "save": "सहेजें",
                 "saving": "सहेजा जा रहा है...",
                 "noFileSelected": "संपादन के लिए कोई फ़ाइल चयनित नहीं है",
-                "loading": "संपादक लोड हो रहा है..."
+                "loading": "संपादक लोड हो रहा है...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "किसी फ़ाइल पर राइट-क्लिक करें और \"पूर्वावलोकन\" चुनें"

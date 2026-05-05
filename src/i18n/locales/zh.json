@@ -982,7 +982,8 @@
                 "starting": "正在启动...",
                 "stop": "停止",
                 "stopShell": "停止终端",
-                "closed": "终端已关闭。"
+                "closed": "终端已关闭。",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "右键点击文件并选择\"编辑\"",
@@ -990,7 +991,8 @@
                 "save": "保存",
                 "saving": "保存中...",
                 "noFileSelected": "未选择要编辑的文件",
-                "loading": "加载编辑器中..."
+                "loading": "加载编辑器中...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "右键点击文件并选择\"预览\""

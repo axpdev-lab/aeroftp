@@ -982,7 +982,8 @@
                 "starting": "Սկսվում է...",
                 "stop": "Դադարեցնել",
                 "stopShell": "Դադարեցնել թերմինալը",
-                "closed": "Տերմինալը փակված է։"
+                "closed": "Տերմինալը փակված է։",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Խմբագրել»",
@@ -990,7 +991,8 @@
                 "save": "Պահպանել",
                 "saving": "Պահպանվում է...",
                 "noFileSelected": "Ֆայլ ընտրված չէ խմբագրելու համար",
-                "loading": "Խմբագիր բեռնվում է..."
+                "loading": "Խմբագիր բեռնվում է...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Նախադիտում»"

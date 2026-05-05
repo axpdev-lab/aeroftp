@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
+import { Cloud, Database, Globe, KeyRound, Server as ServerIcon, Shield } from 'lucide-react';
 import { getE2EBits, getProtocolClass, ServerProfile, type ProviderType } from '../../types';
 import {
     MY_SERVERS_TABLE_COLUMNS,
@@ -11,9 +12,12 @@ import {
 } from '../../hooks/useMyServersColumns';
 import type { MyServersDensity } from '../../hooks/useMyServersDensity';
 import type { StorageThresholds } from '../../hooks/useStorageThresholds';
+import { TONE_TEXT_CLASS, getStorageTone } from '../../hooks/useStorageThresholds';
 import { useTranslation } from '../../i18n';
 import { MyServersTableHeader } from './MyServersTableHeader';
 import { MyServersTableRow } from './MyServersTableRow';
+import { aggregateByDedupKey } from '../../utils/storageDedup';
+import { formatBytes } from '../../utils/formatters';
 
 type HealthStatus = 'up' | 'slow' | 'down' | 'pending' | 'unknown';
 
@@ -62,6 +66,19 @@ const pctOf = (server: ServerProfile) => {
 const dateOf = (server: ServerProfile) => {
     const ts = Date.parse(server.lastConnected || '');
     return Number.isFinite(ts) ? ts : -1;
+};
+
+const PROTOCOL_ICON: Record<string, React.ReactNode> = {
+    OAuth: <Cloud size={14} className="text-blue-500" />,
+    API: <Database size={14} className="text-emerald-500" />,
+    WebDAV: <Globe size={14} className="text-cyan-500" />,
+    E2E: <Shield size={14} className="text-violet-500" />,
+    FTP: <ServerIcon size={14} className="text-gray-500" />,
+    FTPS: <ServerIcon size={14} className="text-sky-500" />,
+    SFTP: <KeyRound size={14} className="text-indigo-500" />,
+    S3: <Database size={14} className="text-orange-500" />,
+    Azure: <Cloud size={14} className="text-blue-600" />,
+    AeroCloud: <Cloud size={14} className="text-purple-500" />,
 };
 
 const badgeSortLabel = (server: ServerProfile) => {
@@ -169,6 +186,50 @@ export function MyServersTable({
             .map(item => item.server);
     }, [servers, sort, favorites]);
 
+    const protocolRows = React.useMemo(() => {
+        const aggregate = aggregateByDedupKey(servers);
+        return aggregate.byProtocolClass.filter(row => row.profiles > 0);
+    }, [servers]);
+
+    const renderProtocolSummaryCell = (id: MyServersTableColId, row: (typeof protocolRows)[number], idx: number) => {
+        const tone = getStorageTone(row.used, row.total, thresholds);
+        const pct = row.total > 0 ? (row.used / row.total) * 100 : null;
+        const pctText = pct === null ? '-' : `${pct.toFixed(1)}%`;
+        const usedText = row.total > 0 ? formatBytes(row.used) : '-';
+        const totalText = row.total > 0 ? formatBytes(row.total) : '-';
+        const cellClass = 'px-3 py-1.5 align-middle border-b border-gray-100 dark:border-gray-700/40 text-xs';
+
+        switch (id) {
+            case 'index':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-right text-gray-400 tabular-nums`}>P{idx + 1}</td>;
+            case 'icon':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-center`}><span className="inline-flex items-center justify-center">{PROTOCOL_ICON[row.protocolClass] || <ServerIcon size={14} className="text-gray-500" />}</span></td>;
+            case 'name':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-gray-800 dark:text-gray-100 font-medium`}>{row.protocolClass}</td>;
+            case 'badges':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-gray-500 dark:text-gray-400`}>{t('introHub.breakdown.title')}</td>;
+            case 'subtitle':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-gray-500 dark:text-gray-400`}>{t('introHub.table.footerUniqueCount', { count: row.unique })}</td>;
+            case 'used':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-right tabular-nums text-gray-600 dark:text-gray-300`}>{usedText}</td>;
+            case 'total':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-right tabular-nums text-gray-600 dark:text-gray-300`}>{totalText}</td>;
+            case 'pct':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-right tabular-nums font-medium ${TONE_TEXT_CLASS[tone.tone]}`}>{pctText}</td>;
+            case 'health':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-center text-gray-500 dark:text-gray-400 tabular-nums`}>{row.profiles}</td>;
+            case 'actions':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-right text-gray-500 dark:text-gray-400 tabular-nums`}>{row.unique}</td>;
+            case 'favorite':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass}`} />;
+            case 'paths':
+            case 'time':
+                return <td key={`${id}-${row.protocolClass}`} className={`${cellClass} text-right text-gray-400 dark:text-gray-500`}>-</td>;
+            default:
+                return <td key={`${id}-${row.protocolClass}`} className={cellClass}>-</td>;
+        }
+    };
+
     return (
         <div className="overflow-x-auto" data-my-servers-table>
             <table className="w-full min-w-[1100px] border-collapse text-left" style={{ tableLayout: 'fixed' }}>
@@ -235,6 +296,14 @@ export function MyServersTable({
                             />
                         );
                     })}
+                    {protocolRows.map((row, idx) => (
+                        <tr
+                            key={`protocol-${row.protocolClass}`}
+                            className="bg-blue-50/50 dark:bg-blue-900/10"
+                        >
+                            {orderedVisibleColumns.map(col => renderProtocolSummaryCell(col.id, row, idx))}
+                        </tr>
+                    ))}
                 </tbody>
             </table>
         </div>

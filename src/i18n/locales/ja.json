@@ -982,7 +982,8 @@
                 "starting": "起動中...",
                 "stop": "停止",
                 "stopShell": "シェルを停止",
-                "closed": "ターミナルが閉じました。"
+                "closed": "ターミナルが閉じました。",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "ファイルを右クリックして「編集」を選択",
@@ -990,7 +991,8 @@
                 "save": "保存",
                 "saving": "保存中...",
                 "noFileSelected": "編集するファイルが選択されていません",
-                "loading": "エディターを読み込み中..."
+                "loading": "エディターを読み込み中...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "ファイルを右クリックして「プレビュー」を選択"

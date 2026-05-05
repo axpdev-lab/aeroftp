@@ -11,6 +11,7 @@ import { AIChat } from './AIChat';
 import { useTranslation } from '../../i18n';
 import type { EffectiveTheme } from '../../hooks/useTheme';
 import { usePointerDrag } from '../../hooks/usePointerDrag';
+import { isSafeLocalOpenPath, shellQuoteLocalPath } from '../../utils/openWithDefault';
 
 interface DevToolsV2Props {
     isOpen: boolean;
@@ -91,6 +92,144 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     const [isMaximized, setIsMaximized] = useState(false);
     const [height, setHeight] = useState(500);
     const [panelRatios, setPanelRatios] = useState<number[]>([]);
+    const [editorFile, setEditorFile] = useState<PreviewFile | null>(previewFile);
+    const [editorDropActive, setEditorDropActive] = useState(false);
+    const [terminalDropActive, setTerminalDropActive] = useState(false);
+    const [dropInfoToast, setDropInfoToast] = useState<string | null>(null);
+    const dropInfoTimeoutRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        setEditorFile(previewFile);
+    }, [previewFile]);
+
+    const getPathFromDataTransfer = useCallback((dt: DataTransfer): string | null => {
+        const single = dt.getData('application/x-aeroftp-local-path');
+        if (single && single.startsWith('/')) return single;
+
+        const many = dt.getData('application/x-aeroftp-local-paths');
+        if (many) {
+            try {
+                const parsed = JSON.parse(many);
+                if (Array.isArray(parsed) && typeof parsed[0] === 'string' && parsed[0].startsWith('/')) {
+                    return parsed[0];
+                }
+            } catch {
+                // Ignore invalid payloads from external drags.
+            }
+        }
+
+        const plain = dt.getData('text/plain');
+        return plain && plain.startsWith('/') ? plain : null;
+    }, []);
+
+    const buildScriptRunCommand = useCallback((path: string): string | null => {
+        if (!isSafeLocalOpenPath(path)) return null;
+        const lower = path.toLowerCase();
+        const ext = lower.includes('.') ? lower.slice(lower.lastIndexOf('.')) : '';
+        const quoted = shellQuoteLocalPath(path);
+
+        if (ext === '.ps1') return `pwsh ${quoted}`;
+        if (ext === '.sh') return `bash ${quoted}`;
+        if (ext === '.py') return `python ${quoted}`;
+        return null;
+    }, []);
+
+    const isSupportedScriptPath = useCallback((path: string): boolean => {
+        const lower = path.toLowerCase();
+        return lower.endsWith('.ps1') || lower.endsWith('.sh') || lower.endsWith('.py');
+    }, []);
+
+    const canDropInEditor = useCallback((dt: DataTransfer): boolean => {
+        const path = getPathFromDataTransfer(dt);
+        return !!path && isSupportedScriptPath(path);
+    }, [getPathFromDataTransfer, isSupportedScriptPath]);
+
+    const maybeClearDropTarget = useCallback(
+        (e: React.DragEvent<HTMLElement>, clearFn: () => void) => {
+            const relatedTarget = e.relatedTarget as Node | null;
+            if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
+                clearFn();
+            }
+        },
+        []
+    );
+
+    const handleEditorDrop = useCallback(async (e: React.DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        setEditorDropActive(false);
+        const path = getPathFromDataTransfer(e.dataTransfer);
+        if (!path || !isSupportedScriptPath(path)) return;
+
+        try {
+            const content = await readTextFile(path);
+            const normalized = path.replace(/\\/g, '/');
+            const name = normalized.split('/').pop() || path;
+            setEditorFile({
+                name,
+                path,
+                content,
+                mimeType: 'text/plain',
+                size: content.length,
+                isRemote: false,
+            });
+            setPanels(prev => ({ ...prev, editor: true }));
+        } catch {
+            // Ignore unreadable file drops; App-level notifications stay centralized.
+        }
+    }, [getPathFromDataTransfer, isSupportedScriptPath]);
+
+    const handleEditorDragStart = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+        if (!editorFile || editorFile.isRemote) {
+            e.preventDefault();
+            return;
+        }
+        const command = buildScriptRunCommand(editorFile.path);
+        if (!command) {
+            e.preventDefault();
+            return;
+        }
+        e.dataTransfer.effectAllowed = 'copy';
+        e.dataTransfer.setData('application/x-aeroftp-terminal-command', command);
+        e.dataTransfer.setData('text/plain', editorFile.path);
+    }, [buildScriptRunCommand, editorFile]);
+
+    const canDropInTerminal = useCallback((dt: DataTransfer): boolean => {
+        const cmd = dt.getData('application/x-aeroftp-terminal-command');
+        if (cmd) return true;
+        const path = getPathFromDataTransfer(dt);
+        return !!(path && buildScriptRunCommand(path));
+    }, [buildScriptRunCommand, getPathFromDataTransfer]);
+
+    const handleTerminalDrop = useCallback((e: React.DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        setTerminalDropActive(false);
+
+        const explicitCommand = e.dataTransfer.getData('application/x-aeroftp-terminal-command');
+        const fallbackPath = getPathFromDataTransfer(e.dataTransfer);
+        const command = explicitCommand || (fallbackPath ? buildScriptRunCommand(fallbackPath) : null);
+        if (!command) return;
+
+        setPanels(prev => ({ ...prev, terminal: true }));
+        window.dispatchEvent(new CustomEvent('terminal-execute', {
+            detail: { command, insertOnly: true },
+        }));
+        setDropInfoToast(t('devtools.terminalPanel.commandInsertedReview'));
+        if (dropInfoTimeoutRef.current) {
+            window.clearTimeout(dropInfoTimeoutRef.current);
+        }
+        dropInfoTimeoutRef.current = window.setTimeout(() => {
+            setDropInfoToast(null);
+            dropInfoTimeoutRef.current = null;
+        }, 2200);
+    }, [buildScriptRunCommand, getPathFromDataTransfer]);
+
+    useEffect(() => {
+        return () => {
+            if (dropInfoTimeoutRef.current) {
+                window.clearTimeout(dropInfoTimeoutRef.current);
+            }
+        };
+    }, []);
 
     // Theme-aware classes based on appTheme
     const isLightTheme = appTheme === 'light';
@@ -338,11 +477,11 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     useEffect(() => {
         const handleFileChanged = async (e: Event) => {
             const { path } = (e as CustomEvent).detail;
-            if (!previewFile || !path) return;
+            if (!editorFile || !path) return;
 
             // Check if the changed file matches the currently open file
             const normalizedChanged = path.replace(/\\/g, '/');
-            const normalizedOpen = (previewFile.path || '').replace(/\\/g, '/');
+            const normalizedOpen = (editorFile.path || '').replace(/\\/g, '/');
 
             if (normalizedChanged === normalizedOpen) {
                 // Re-read the file content
@@ -357,7 +496,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
         window.addEventListener('file-changed', handleFileChanged);
         return () => window.removeEventListener('file-changed', handleFileChanged);
-    }, [previewFile]);
+    }, [editorFile]);
 
     // Keep mounted after first open to preserve AIChat state (history, conversations)
     const hasBeenOpenedRef = useRef(false);
@@ -394,7 +533,20 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                     <div className="flex items-center gap-1">
                         <button
                             onClick={() => togglePanel('editor')}
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${panels.editor
+                            onDragEnter={(e) => {
+                                if (!canDropInEditor(e.dataTransfer)) return;
+                                e.preventDefault();
+                                setEditorDropActive(true);
+                            }}
+                            onDragOver={(e) => {
+                                if (!canDropInEditor(e.dataTransfer)) return;
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'copy';
+                                setEditorDropActive(true);
+                            }}
+                            onDragLeave={(e) => maybeClearDropTarget(e, () => setEditorDropActive(false))}
+                            onDrop={handleEditorDrop}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${editorDropActive ? 'ring-2 ring-blue-300 ring-offset-1 ring-offset-transparent' : ''} ${panels.editor
                                 ? 'bg-blue-600 text-white'
                                 : theme.buttonInactive
                                 }`}
@@ -405,7 +557,20 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                         </button>
                         <button
                             onClick={() => togglePanel('terminal')}
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${panels.terminal
+                            onDragEnter={(e) => {
+                                if (!canDropInTerminal(e.dataTransfer)) return;
+                                e.preventDefault();
+                                setTerminalDropActive(true);
+                            }}
+                            onDragOver={(e) => {
+                                if (!canDropInTerminal(e.dataTransfer)) return;
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'copy';
+                                setTerminalDropActive(true);
+                            }}
+                            onDragLeave={(e) => maybeClearDropTarget(e, () => setTerminalDropActive(false))}
+                            onDrop={handleTerminalDrop}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${terminalDropActive ? 'ring-2 ring-emerald-300 ring-offset-1 ring-offset-transparent' : ''} ${panels.terminal
                                 ? 'bg-green-600 text-white'
                                 : theme.buttonInactive
                                 }`}
@@ -448,6 +613,11 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
             {/* Resizable 3-Column Content Area */}
             <div className="flex-1 flex overflow-hidden">
+                {dropInfoToast && (
+                    <div className="absolute right-4 top-12 z-40 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-100 shadow-lg">
+                        {dropInfoToast}
+                    </div>
+                )}
                 {visiblePanels.length === 0 ? (
                     <div className={`flex-1 flex items-center justify-center ${theme.text} text-sm`}>
                         <Columns3 size={24} className="mr-2 opacity-50" />
@@ -459,22 +629,45 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             <div
                                 className="flex flex-col overflow-hidden"
                                 style={{ width: getPanelWidth('editor') }}
+                                onDragEnter={(e) => {
+                                    if (!canDropInEditor(e.dataTransfer)) return;
+                                    e.preventDefault();
+                                    setEditorDropActive(true);
+                                }}
+                                onDragOver={(e) => {
+                                    if (!canDropInEditor(e.dataTransfer)) return;
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'copy';
+                                    setEditorDropActive(true);
+                                }}
+                                onDragLeave={(e) => maybeClearDropTarget(e, () => setEditorDropActive(false))}
+                                onDrop={handleEditorDrop}
                             >
-                                <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
+                                <div
+                                    className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}
+                                    draggable={!!editorFile && !editorFile.isRemote && !!buildScriptRunCommand(editorFile.path)}
+                                    onDragStart={handleEditorDragStart}
+                                    title={editorFile && !editorFile.isRemote && buildScriptRunCommand(editorFile.path)
+                                        ? t('devtools.editorPanel.dragToTerminalRun')
+                                        : undefined}
+                                >
                                     <Code size={12} className="text-blue-400" />
                                     <span className={`text-xs ${theme.text}`}>
-                                        {previewFile?.name || t('devtools.noFileOpen')}
+                                        {editorFile?.name || t('devtools.noFileOpen')}
                                     </span>
                                 </div>
                                 <div className="flex-1 overflow-hidden">
                                     <CodeEditor
-                                        file={previewFile}
+                                        file={editorFile}
                                         onSave={async (content) => {
-                                            if (onSaveFile && previewFile) {
-                                                await onSaveFile(content, previewFile);
+                                            if (onSaveFile && editorFile) {
+                                                await onSaveFile(content, editorFile);
                                             }
                                         }}
-                                        onClose={() => onClearFile?.()}
+                                        onClose={() => {
+                                            setEditorFile(null);
+                                            onClearFile?.();
+                                        }}
                                         className="h-full"
                                         theme={editorTheme}
                                         onAskAgent={(code, fileName) => {
@@ -500,6 +693,19 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             <div
                                 className="flex flex-col overflow-hidden"
                                 style={{ width: getPanelWidth('terminal') }}
+                                onDragEnter={(e) => {
+                                    if (!canDropInTerminal(e.dataTransfer)) return;
+                                    e.preventDefault();
+                                    setTerminalDropActive(true);
+                                }}
+                                onDragOver={(e) => {
+                                    if (!canDropInTerminal(e.dataTransfer)) return;
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'copy';
+                                    setTerminalDropActive(true);
+                                }}
+                                onDragLeave={(e) => maybeClearDropTarget(e, () => setTerminalDropActive(false))}
+                                onDrop={handleTerminalDrop}
                             >
                                 <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
                                     <Terminal size={12} className="text-green-400" />
@@ -531,7 +737,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                 <span className={`text-xs ${theme.text}`}>{t('devtools.agent')}</span>
                             </div>
                             <div className="flex-1 overflow-hidden">
-                                <AIChat className="h-full" remotePath={remotePath} localPath={localPath} appTheme={appTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} activeFilePanel={activeFilePanel} isCloudConnection={isCloudConnection} onFileMutation={onFileMutation} editorFileName={previewFile?.name} editorFilePath={previewFile?.path} />
+                                <AIChat className="h-full" remotePath={remotePath} localPath={localPath} appTheme={appTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} activeFilePanel={activeFilePanel} isCloudConnection={isCloudConnection} onFileMutation={onFileMutation} editorFileName={editorFile?.name} editorFilePath={editorFile?.path} />
                             </div>
                         </div>
                     </>

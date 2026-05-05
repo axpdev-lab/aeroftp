@@ -1275,6 +1275,7 @@
                 "connectPrompt": "Clicca \"Avvia\" per connetterti a {host}.",
                 "launchPrompt": "Clicca \"Avvia\" per avviare la shell.",
                 "newShellPrompt": "Clicca \"Avvia\" per avviare una nuova shell.",
+                "commandInsertedReview": "Comando inserito nel terminale. Premi Invio per eseguirlo.",
                 "remoteServer": "server remoto",
                 "restart": "Riavvia shell",
                 "start": "Avvia",
@@ -1284,6 +1285,7 @@
                 "closed": "Terminale chiuso."
             },
             "editorPanel": {
+                "dragToTerminalRun": "Trascina su Terminale per inserire il comando di esecuzione",
                 "emptyState": "Clicca col destro su un file e scegli \"Visualizza Sorgente\"",
                 "loading": "Caricamento editor...",
                 "noFileSelected": "Nessun file selezionato per la visualizzazione",

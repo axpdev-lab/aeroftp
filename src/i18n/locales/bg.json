@@ -982,7 +982,8 @@
                 "starting": "Стартиране...",
                 "stop": "Спри",
                 "stopShell": "Спри обвивка",
-                "closed": "Терминалът е затворен."
+                "closed": "Терминалът е затворен.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Натиснете с десен бутон върху файл и изберете \"Редактирай\"",
@@ -990,7 +991,8 @@
                 "save": "Запази",
                 "saving": "Запазване...",
                 "noFileSelected": "Не е избран файл за редактиране",
-                "loading": "Зареждане на редактор..."
+                "loading": "Зареждане на редактор...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Натиснете с десен бутон върху файл и изберете \"Преглед\""

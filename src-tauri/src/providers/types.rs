@@ -609,6 +609,21 @@ impl S3Config {
             config.extra.get("endpoint")
         );
         let endpoint = endpoint_raw.map(|host| normalize_s3_endpoint(&host, config.port));
+        if endpoint
+            .as_deref()
+            .map(|ep| ep.to_ascii_lowercase().contains("s4.mega.io"))
+            .unwrap_or(false)
+        {
+            const MEGA_S4_REGIONS: &[&str] =
+                &["eu-central-1", "eu-central-2", "ca-central-1", "ca-west-1"];
+            if !MEGA_S4_REGIONS.contains(&region.as_str()) {
+                return Err(ProviderError::InvalidConfig(format!(
+                    "Invalid MEGA S4 region '{}'. Supported regions: {}",
+                    region,
+                    MEGA_S4_REGIONS.join(", ")
+                )));
+            }
+        }
 
         let path_style = config
             .extra
@@ -1598,6 +1613,57 @@ mod tests {
             Some("http://s3.garage.localhost:3900")
         );
         assert!(!s3_config.path_style);
+    }
+
+    #[test]
+    fn test_mega_s4_endpoint_rejects_unknown_region() {
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "bucket".to_string());
+        extra.insert("region".to_string(), "us-east-1".to_string());
+        extra.insert(
+            "endpoint".to_string(),
+            "s3.us-east-1.s4.mega.io".to_string(),
+        );
+
+        let config = ProviderConfig {
+            name: "MEGA S4".to_string(),
+            provider_type: ProviderType::S3,
+            host: String::new(),
+            port: Some(443),
+            username: Some("access".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra,
+        };
+
+        let err = S3Config::from_provider_config(&config).unwrap_err();
+        assert!(matches!(err, ProviderError::InvalidConfig(_)));
+        assert!(err.to_string().contains("Invalid MEGA S4 region"));
+    }
+
+    #[test]
+    fn test_mega_s4_endpoint_accepts_supported_region() {
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "bucket".to_string());
+        extra.insert("region".to_string(), "eu-central-1".to_string());
+        extra.insert(
+            "endpoint".to_string(),
+            "s3.eu-central-1.s4.mega.io".to_string(),
+        );
+
+        let config = ProviderConfig {
+            name: "MEGA S4".to_string(),
+            provider_type: ProviderType::S3,
+            host: String::new(),
+            port: Some(443),
+            username: Some("access".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra,
+        };
+
+        let s3_config = S3Config::from_provider_config(&config).unwrap();
+        assert_eq!(s3_config.region, "eu-central-1");
     }
 
     #[test]

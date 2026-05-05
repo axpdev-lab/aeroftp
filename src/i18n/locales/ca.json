@@ -982,7 +982,8 @@
                 "starting": "Iniciant...",
                 "stop": "Aturar",
                 "stopShell": "Aturar shell",
-                "closed": "Terminal tancat."
+                "closed": "Terminal tancat.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Fes clic dret en un fitxer i tria \"Editar\"",
@@ -990,7 +991,8 @@
                 "save": "Guardar",
                 "saving": "Guardant...",
                 "noFileSelected": "Cap fitxer seleccionat per editar",
-                "loading": "Carregant editor..."
+                "loading": "Carregant editor...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Fes clic dret en un fitxer i tria \"Vista prèvia\""

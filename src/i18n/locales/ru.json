@@ -982,7 +982,8 @@
                 "starting": "Запуск...",
                 "stop": "Остановить",
                 "stopShell": "Остановить оболочку",
-                "closed": "Терминал закрыт."
+                "closed": "Терминал закрыт.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Щелкните правой кнопкой на файле и выберите \"Редактировать\"",
@@ -990,7 +991,8 @@
                 "save": "Сохранить",
                 "saving": "Сохранение...",
                 "noFileSelected": "Файл для редактирования не выбран",
-                "loading": "Загрузка редактора..."
+                "loading": "Загрузка редактора...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Щелкните правой кнопкой на файле и выберите \"Предпросмотр\""

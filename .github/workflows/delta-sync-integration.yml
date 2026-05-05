@@ -271,6 +271,28 @@ jobs:
           workspaces: './src-tauri -> target'
           shared-key: delta-sync-windows
 
+      # See build.yml for context: drop the CMake out/ dir of whisper-rs-sys
+      # so cmake-rs reconfigures against whatever Visual Studio version is
+      # installed on this runner. Survives any future windows-latest upgrade.
+      # Both target dirs are checked because cargo check runs in debug profile.
+      - name: Drop stale whisper-rs-sys CMake artifacts (Windows)
+        shell: pwsh
+        run: |
+          foreach ($profile in @('debug', 'release')) {
+            $base = "src-tauri/target/$profile/build"
+            if (Test-Path $base) {
+              Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like 'whisper-rs-sys-*' } |
+                ForEach-Object {
+                  $out = Join-Path $_.FullName 'out'
+                  if (Test-Path $out) {
+                    Write-Host "Removing stale CMake build dir: $out"
+                    Remove-Item -Recurse -Force $out
+                  }
+                }
+            }
+          }
+
       # Compile-surface gate for the classic-only fallback path:
       # `--no-default-features` turns `aerorsync` off, and on
       # Windows the binary-rsync transport is also gated out. The only

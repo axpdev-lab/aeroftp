@@ -982,7 +982,8 @@
                 "starting": "Запуск...",
                 "stop": "Зупинити",
                 "stopShell": "Зупинити оболонку",
-                "closed": "Термінал закрито."
+                "closed": "Термінал закрито.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Клацніть правою кнопкою на файлі та виберіть \"Редагувати\"",
@@ -990,7 +991,8 @@
                 "save": "Зберегти",
                 "saving": "Збереження...",
                 "noFileSelected": "Файл для редагування не вибрано",
-                "loading": "Завантаження редактора..."
+                "loading": "Завантаження редактора...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Клацніть правою кнопкою на файлі та виберіть \"Попередній перегляд\""

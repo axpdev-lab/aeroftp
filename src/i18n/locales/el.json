@@ -982,7 +982,8 @@
                 "starting": "Εκκίνηση...",
                 "stop": "Διακοπή",
                 "stopShell": "Διακοπή κελύφους",
-                "closed": "Το τερματικό έκλεισε."
+                "closed": "Το τερματικό έκλεισε.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Επεξεργασία\"",
@@ -990,7 +991,8 @@
                 "save": "Αποθήκευση",
                 "saving": "Αποθήκευση...",
                 "noFileSelected": "Δεν έχει επιλεγεί αρχείο για επεξεργασία",
-                "loading": "Φόρτωση επεξεργαστή..."
+                "loading": "Φόρτωση επεξεργαστή...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Προεπισκόπηση\""

@@ -982,7 +982,8 @@
                 "starting": "កំពុងចាប់ផ្តើម...",
                 "stop": "បញ្ឈប់",
                 "stopShell": "បញ្ឈប់សែល",
-                "closed": "Terminal បានបិទ។"
+                "closed": "Terminal បានបិទ។",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារហើយជ្រើសរើស \"កែសម្រួល\"",
@@ -990,7 +991,8 @@
                 "save": "រក្សាទុក",
                 "saving": "កំពុងរក្សាទុក...",
                 "noFileSelected": "មិនមានឯកសារដែលបានជ្រើសរើសដើម្បីកែសម្រួល",
-                "loading": "កំពុងផ្ទុកកម្មវិធីនិពន្ធ..."
+                "loading": "កំពុងផ្ទុកកម្មវិធីនិពន្ធ...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារហើយជ្រើសរើស \"មើលជាមុន\""

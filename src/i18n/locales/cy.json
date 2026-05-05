@@ -982,7 +982,8 @@
                 "starting": "Yn dechrau...",
                 "stop": "Stopio",
                 "stopShell": "Stopio'r plisgyn",
-                "closed": "Terfynell wedi cau."
+                "closed": "Terfynell wedi cau.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "De-gliciwch ar ffeil a dewiswch \"Golygu\"",
@@ -990,7 +991,8 @@
                 "save": "Cadw",
                 "saving": "Yn cadw...",
                 "noFileSelected": "Dim ffeil wedi'i dewis i'w golygu",
-                "loading": "Yn llwytho'r golygydd..."
+                "loading": "Yn llwytho'r golygydd...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "De-gliciwch ar ffeil a dewiswch \"Rhagolwg\""

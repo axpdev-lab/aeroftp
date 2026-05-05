@@ -982,7 +982,8 @@
                 "starting": "იწყება...",
                 "stop": "გაჩერება",
                 "stopShell": "ტერმინალის გაჩერება",
-                "closed": "ტერმინალი დაიხურა."
+                "closed": "ტერმინალი დაიხურა.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "დააწკაპუნეთ მარჯვენა ღილაკით ფაილზე და აირჩიეთ \"რედაქტირება\"",
@@ -990,7 +991,8 @@
                 "save": "შენახვა",
                 "saving": "ინახება...",
                 "noFileSelected": "ფაილი არ არის არჩეული რედაქტირებისთვის",
-                "loading": "რედაქტორის ჩატვირთვა..."
+                "loading": "რედაქტორის ჩატვირთვა...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "დააწკაპუნეთ მარჯვენა ღილაკით ფაილზე და აირჩიეთ \"გადახედვა\""

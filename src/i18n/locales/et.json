@@ -982,7 +982,8 @@
                 "starting": "Käivitub...",
                 "stop": "Peata",
                 "stopShell": "Peata shell",
-                "closed": "Terminal suletud."
+                "closed": "Terminal suletud.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Muuda\"",
@@ -990,7 +991,8 @@
                 "save": "Salvesta",
                 "saving": "Salvestamine...",
                 "noFileSelected": "Redigeerimiseks pole faili valitud",
-                "loading": "Redaktori laadimine..."
+                "loading": "Redaktori laadimine...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Eelvaade\""

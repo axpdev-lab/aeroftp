@@ -3284,6 +3284,11 @@ impl S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        if self.is_mega_s4_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "MEGA S4 does not support object tagging".to_string(),
+            ));
+        }
         let key = path.trim_start_matches('/');
         let response = self
             .s3_request(Method::DELETE, key, Some(&[("tagging", "")]), None)

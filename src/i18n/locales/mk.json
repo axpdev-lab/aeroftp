@@ -982,7 +982,8 @@
                 "starting": "Стартување...",
                 "stop": "Запри",
                 "stopShell": "Запри школка",
-                "closed": "Терминалот е затворен."
+                "closed": "Терминалот е затворен.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Кликнете со десно копче на датотека и изберете \"Уреди\"",
@@ -990,7 +991,8 @@
                 "save": "Зачувај",
                 "saving": "Зачувување...",
                 "noFileSelected": "Не е избрана датотека за уредување",
-                "loading": "Вчитување на уредувачот..."
+                "loading": "Вчитување на уредувачот...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Кликнете со десно копче на датотека и изберете \"Преглед\""

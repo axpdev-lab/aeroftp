@@ -982,7 +982,8 @@
                 "starting": "Hasten...",
                 "stop": "Gelditu",
                 "stopShell": "Gelditu shell-a",
-                "closed": "Terminala itxita."
+                "closed": "Terminala itxita.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Egin eskuin-klika fitxategi batean eta aukeratu \"Editatu\"",
@@ -990,7 +991,8 @@
                 "save": "Gorde",
                 "saving": "Gordetzen...",
                 "noFileSelected": "Ez da fitxategirik hautatu editatzeko",
-                "loading": "Editorea kargatzen..."
+                "loading": "Editorea kargatzen...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Egin eskuin-klika fitxategi batean eta aukeratu \"Aurrebista\""

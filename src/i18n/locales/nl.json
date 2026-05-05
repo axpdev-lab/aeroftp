@@ -982,7 +982,8 @@
                 "starting": "Starten...",
                 "stop": "Stoppen",
                 "stopShell": "Shell stoppen",
-                "closed": "Terminal gesloten."
+                "closed": "Terminal gesloten.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Klik met de rechtermuisknop op een bestand en kies \"Bewerken\"",
@@ -990,7 +991,8 @@
                 "save": "Opslaan",
                 "saving": "Opslaan...",
                 "noFileSelected": "Geen bestand geselecteerd om te bewerken",
-                "loading": "Editor laden..."
+                "loading": "Editor laden...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Klik met de rechtermuisknop op een bestand en kies \"Voorbeeld\""

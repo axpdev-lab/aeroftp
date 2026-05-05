@@ -982,7 +982,8 @@
                 "starting": "Indítás...",
                 "stop": "Leállítás",
                 "stopShell": "Shell leállítása",
-                "closed": "Terminál bezárva."
+                "closed": "Terminál bezárva.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Kattintson jobb gombbal egy fájlra, és válassza a \"Szerkesztés\" lehetőséget",
@@ -990,7 +991,8 @@
                 "save": "Mentés",
                 "saving": "Mentés...",
                 "noFileSelected": "Nincs fájl kiválasztva szerkesztésre",
-                "loading": "Szerkesztő betöltése..."
+                "loading": "Szerkesztő betöltése...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Kattintson jobb gombbal egy fájlra, és válassza az \"Előnézet\" lehetőséget"

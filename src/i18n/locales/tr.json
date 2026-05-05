@@ -982,7 +982,8 @@
                 "starting": "Başlatılıyor...",
                 "stop": "Durdur",
                 "stopShell": "Kabuğu durdur",
-                "closed": "Terminal kapatıldı."
+                "closed": "Terminal kapatıldı.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Bir dosyaya sağ tıklayın ve \"Düzenle\" seçeneğini seçin",
@@ -990,7 +991,8 @@
                 "save": "Kaydet",
                 "saving": "Kaydediliyor...",
                 "noFileSelected": "Düzenleme için dosya seçilmedi",
-                "loading": "Düzenleyici yükleniyor..."
+                "loading": "Düzenleyici yükleniyor...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Bir dosyaya sağ tıklayın ve \"Önizle\" seçeneğini seçin"

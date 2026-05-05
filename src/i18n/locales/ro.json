@@ -982,7 +982,8 @@
                 "starting": "Se pornește...",
                 "stop": "Oprire",
                 "stopShell": "Oprire shell",
-                "closed": "Terminalul s-a închis."
+                "closed": "Terminalul s-a închis.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Faceți clic dreapta pe un fișier și alegeți \"Editare\"",
@@ -990,7 +991,8 @@
                 "save": "Salvare",
                 "saving": "Se salvează...",
                 "noFileSelected": "Niciun fișier selectat pentru editare",
-                "loading": "Se încarcă editorul..."
+                "loading": "Se încarcă editorul...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Faceți clic dreapta pe un fișier și alegeți \"Previzualizare\""

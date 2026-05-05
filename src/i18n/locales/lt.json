@@ -982,7 +982,8 @@
                 "starting": "Pradedama...",
                 "stop": "Sustabdyti",
                 "stopShell": "Sustabdyti apvalkalą",
-                "closed": "Terminalas uždarytas."
+                "closed": "Terminalas uždarytas.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Spustelėkite dešiniuoju pelės mygtuku ant failo ir pasirinkite \"Redaguoti\"",
@@ -990,7 +991,8 @@
                 "save": "Išsaugoti",
                 "saving": "Išsaugoma...",
                 "noFileSelected": "Nepasirinktas failas redagavimui",
-                "loading": "Redaktoriaus įkėlimas..."
+                "loading": "Redaktoriaus įkėlimas...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Spustelėkite dešiniuoju pelės mygtuku ant failo ir pasirinkite \"Peržiūra\""

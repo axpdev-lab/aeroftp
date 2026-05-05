@@ -982,7 +982,8 @@
                 "starting": "Inaanza...",
                 "stop": "Simamisha",
                 "stopShell": "Simamisha ganda",
-                "closed": "Terminali imefungwa."
+                "closed": "Terminali imefungwa.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Bofya kulia kwenye faili na uchague \"Hariri\"",
@@ -990,7 +991,8 @@
                 "save": "Hifadhi",
                 "saving": "Inahifadhi...",
                 "noFileSelected": "Hakuna faili iliyochaguliwa kuhariri",
-                "loading": "Kupakia mhariri..."
+                "loading": "Kupakia mhariri...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Bofya kulia kwenye faili na uchague \"Onyesho la Awali\""

@@ -982,7 +982,8 @@
                 "starting": "Ræsir...",
                 "stop": "Stöðva",
                 "stopShell": "Stöðva skel",
-                "closed": "Flugstöð lokuð."
+                "closed": "Flugstöð lokuð.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Breyta\"",
@@ -990,7 +991,8 @@
                 "save": "Vista",
                 "saving": "Vistar...",
                 "noFileSelected": "Engin skrá valin til breytinga",
-                "loading": "Hleð ritli..."
+                "loading": "Hleð ritli...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Forskoða\""

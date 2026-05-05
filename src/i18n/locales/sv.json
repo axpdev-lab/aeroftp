@@ -982,7 +982,8 @@
                 "starting": "Startar...",
                 "stop": "Stoppa",
                 "stopShell": "Stoppa skal",
-                "closed": "Terminalen stängd."
+                "closed": "Terminalen stängd.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Högerklicka på en fil och välj \"Redigera\"",
@@ -990,7 +991,8 @@
                 "save": "Spara",
                 "saving": "Sparar...",
                 "noFileSelected": "Ingen fil vald för redigering",
-                "loading": "Läser in redigerare..."
+                "loading": "Läser in redigerare...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Högerklicka på en fil och välj \"Förhandsgranska\""

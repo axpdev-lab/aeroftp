@@ -982,7 +982,8 @@
                 "starting": "Zaganjanje...",
                 "stop": "Ustavi",
                 "stopShell": "Ustavi lupino",
-                "closed": "Terminal zaprt."
+                "closed": "Terminal zaprt.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Z desno tipko kliknite na datoteko in izberite \"Uredi\"",
@@ -990,7 +991,8 @@
                 "save": "Shrani",
                 "saving": "Shranjevanje...",
                 "noFileSelected": "Nobena datoteka ni izbrana za urejanje",
-                "loading": "Nalaganje urejevalnika..."
+                "loading": "Nalaganje urejevalnika...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Z desno tipko kliknite na datoteko in izberite \"Predogled\""

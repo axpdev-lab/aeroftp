@@ -982,7 +982,8 @@
                 "starting": "Đang khởi động...",
                 "stop": "Dừng",
                 "stopShell": "Dừng terminal",
-                "closed": "Đã đóng terminal."
+                "closed": "Đã đóng terminal.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Nhấn chuột phải vào tệp và chọn \"Chỉnh sửa\"",
@@ -990,7 +991,8 @@
                 "save": "Lưu",
                 "saving": "Đang lưu...",
                 "noFileSelected": "Chưa chọn tệp để chỉnh sửa",
-                "loading": "Đang tải trình chỉnh sửa..."
+                "loading": "Đang tải trình chỉnh sửa...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Nhấn chuột phải vào tệp và chọn \"Xem trước\""

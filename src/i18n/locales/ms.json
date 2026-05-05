@@ -982,7 +982,8 @@
                 "starting": "Memulakan...",
                 "stop": "Berhenti",
                 "stopShell": "Hentikan shell",
-                "closed": "Terminal ditutup."
+                "closed": "Terminal ditutup.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Klik kanan pada fail dan pilih \"Edit\"",
@@ -990,7 +991,8 @@
                 "save": "Simpan",
                 "saving": "Menyimpan...",
                 "noFileSelected": "Tiada fail dipilih untuk diedit",
-                "loading": "Memuatkan editor..."
+                "loading": "Memuatkan editor...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Klik kanan pada fail dan pilih \"Pratonton\""

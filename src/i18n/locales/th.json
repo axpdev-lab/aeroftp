@@ -982,7 +982,8 @@
                 "starting": "กำลังเริ่ม...",
                 "stop": "หยุด",
                 "stopShell": "หยุดเชลล์",
-                "closed": "ปิดเทอร์มินัลแล้ว"
+                "closed": "ปิดเทอร์มินัลแล้ว",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"แก้ไข\"",
@@ -990,7 +991,8 @@
                 "save": "บันทึก",
                 "saving": "กำลังบันทึก...",
                 "noFileSelected": "ไม่ได้เลือกไฟล์สำหรับแก้ไข",
-                "loading": "กำลังโหลดตัวแก้ไข..."
+                "loading": "กำลังโหลดตัวแก้ไข...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"ดูตัวอย่าง\""

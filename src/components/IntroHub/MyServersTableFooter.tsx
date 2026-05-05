@@ -1,4 +1,3 @@
-import { ChevronDown, ChevronUp } from 'lucide-react';
 import { ServerProfile } from '../../types';
 import { formatBytes } from '../../utils/formatters';
 import { aggregateByDedupKey } from '../../utils/storageDedup';
@@ -6,9 +5,6 @@ import { useTranslation } from '../../i18n';
 
 interface MyServersTableFooterProps {
     servers: ServerProfile[];
-    breakdownAvailable?: boolean;
-    breakdownOpen?: boolean;
-    onToggleBreakdown?: () => void;
 }
 
 /**
@@ -22,9 +18,6 @@ interface MyServersTableFooterProps {
  */
 export function MyServersTableFooter({
     servers,
-    breakdownAvailable = false,
-    breakdownOpen = false,
-    onToggleBreakdown,
 }: MyServersTableFooterProps) {
     const t = useTranslation();
     const aggregate = aggregateByDedupKey(servers);
@@ -45,39 +38,12 @@ export function MyServersTableFooter({
             unique: aggregate.uniqueCount,
         });
 
-    const interactive = breakdownAvailable && !!onToggleBreakdown;
-    const interactiveClasses = interactive
-        ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60'
-        : '';
-
-    const handleKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-        if (!interactive) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onToggleBreakdown?.();
-        }
-    };
-
     return (
         <div
-            className={`flex-none border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_-1px_3px_rgba(0,0,0,0.05)] transition-colors ${interactiveClasses}`}
-            onClick={interactive ? onToggleBreakdown : undefined}
-            onKeyDown={interactive ? handleKey : undefined}
-            role={interactive ? 'button' : undefined}
-            tabIndex={interactive ? 0 : undefined}
-            aria-expanded={interactive ? breakdownOpen : undefined}
-            aria-label={interactive ? t('introHub.breakdown.title') : undefined}
+            className="flex-none border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_-1px_3px_rgba(0,0,0,0.05)] transition-colors"
         >
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
                 <span title={t('introHub.table.footerDedupExplained')}>{summary}</span>
-                {interactive && (
-                    <span className="ml-auto inline-flex items-center gap-1 text-gray-400 dark:text-gray-500">
-                        <span className="hidden sm:inline">{t('introHub.breakdown.title')}</span>
-                        {breakdownOpen
-                            ? <ChevronUp className="w-3.5 h-3.5" />
-                            : <ChevronDown className="w-3.5 h-3.5" />}
-                    </span>
-                )}
             </div>
         </div>
     );

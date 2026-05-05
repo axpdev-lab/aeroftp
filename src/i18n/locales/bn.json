@@ -982,7 +982,8 @@
                 "starting": "শুরু হচ্ছে...",
                 "stop": "থামান",
                 "stopShell": "শেল থামান",
-                "closed": "টার্মিনাল বন্ধ হয়েছে।"
+                "closed": "টার্মিনাল বন্ধ হয়েছে।",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "একটি ফাইলে রাইট-ক্লিক করুন এবং \"সম্পাদনা\" নির্বাচন করুন",
@@ -990,7 +991,8 @@
                 "save": "সংরক্ষণ করুন",
                 "saving": "সংরক্ষণ করা হচ্ছে...",
                 "noFileSelected": "সম্পাদনার জন্য কোনো ফাইল নির্বাচিত নেই",
-                "loading": "সম্পাদক লোড করা হচ্ছে..."
+                "loading": "সম্পাদক লোড করা হচ্ছে...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "একটি ফাইলে রাইট-ক্লিক করুন এবং \"প্রিভিউ\" নির্বাচন করুন"

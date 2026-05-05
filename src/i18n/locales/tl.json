@@ -982,7 +982,8 @@
                 "starting": "Nagsisimula...",
                 "stop": "Ihinto",
                 "stopShell": "Ihinto ang shell",
-                "closed": "Nakasara ang terminal."
+                "closed": "Nakasara ang terminal.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Mag-right-click sa isang file at piliin ang \"Edit\"",
@@ -990,7 +991,8 @@
                 "save": "I-save",
                 "saving": "Nagse-save...",
                 "noFileSelected": "Walang napiling file para i-edit",
-                "loading": "Naglo-load ng editor..."
+                "loading": "Naglo-load ng editor...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Mag-right-click sa isang file at piliin ang \"Preview\""

@@ -982,7 +982,8 @@
                 "starting": "Wird gestartet...",
                 "stop": "Stoppen",
                 "stopShell": "Shell stoppen",
-                "closed": "Terminal geschlossen."
+                "closed": "Terminal geschlossen.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Rechtsklick auf eine Datei und \"Bearbeiten\" wählen",
@@ -990,7 +991,8 @@
                 "save": "Speichern",
                 "saving": "Wird gespeichert...",
                 "noFileSelected": "Keine Datei zum Bearbeiten ausgewählt",
-                "loading": "Editor wird geladen..."
+                "loading": "Editor wird geladen...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Rechtsklick auf eine Datei und \"Vorschau\" wählen"

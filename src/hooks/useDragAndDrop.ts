@@ -119,7 +119,19 @@ export function useDragAndDrop({
 
         // Allow both move (same panel) and copy (cross panel)
         e.dataTransfer.effectAllowed = 'copyMove';
-        e.dataTransfer.setData('text/plain', filesToDrag.map(f => f.name).join(', '));
+
+        // Expose local absolute paths for cross-surface drops (AeroAgent, DevTools).
+        // Internal panel drag/drop still relies on component state, not dataTransfer.
+        if (!isRemote) {
+            const localPaths = filesToDrag.map(f => f.path);
+            e.dataTransfer.setData('application/x-aeroftp-local-paths', JSON.stringify(localPaths));
+            if (localPaths.length > 0) {
+                e.dataTransfer.setData('application/x-aeroftp-local-path', localPaths[0]);
+            }
+            e.dataTransfer.setData('text/plain', localPaths[0] || filesToDrag.map(f => f.name).join(', '));
+        } else {
+            e.dataTransfer.setData('text/plain', filesToDrag.map(f => f.name).join(', '));
+        }
     }, [currentRemotePath, currentLocalPath]);
 
     /**

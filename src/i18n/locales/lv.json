@@ -982,7 +982,8 @@
                 "starting": "Sākas...",
                 "stop": "Apturēt",
                 "stopShell": "Apturēt čaulu",
-                "closed": "Terminālis aizvērts."
+                "closed": "Terminālis aizvērts.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Ar peles labo pogu noklikšķiniet uz faila un izvēlieties \"Rediģēt\"",
@@ -990,7 +991,8 @@
                 "save": "Saglabāt",
                 "saving": "Saglabā...",
                 "noFileSelected": "Nav izvēlēts fails rediģēšanai",
-                "loading": "Tiek ielādēts redaktors..."
+                "loading": "Tiek ielādēts redaktors...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Ar peles labo pogu noklikšķiniet uz faila un izvēlieties \"Priekšskatījums\""

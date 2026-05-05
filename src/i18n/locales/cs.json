@@ -982,7 +982,8 @@
                 "starting": "Spouštění...",
                 "stop": "Zastavit",
                 "stopShell": "Zastavit shell",
-                "closed": "Terminál uzavřen."
+                "closed": "Terminál uzavřen.",
+                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
             },
             "editorPanel": {
                 "emptyState": "Klikněte pravým tlačítkem na soubor a zvolte \"Upravit\"",
@@ -990,7 +991,8 @@
                 "save": "Uložit",
                 "saving": "Ukládání...",
                 "noFileSelected": "Nebyl vybrán soubor k úpravě",
-                "loading": "Načítání editoru..."
+                "loading": "Načítání editoru...",
+                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
             },
             "previewPanel": {
                 "emptyState": "Klikněte pravým tlačítkem na soubor a zvolte \"Náhled\""

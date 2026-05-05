@@ -48,6 +48,26 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      # See build.yml for context: drop the CMake out/ dir of whisper-rs-sys
+      # so cmake-rs reconfigures against whatever Visual Studio version is
+      # installed on this runner. Survives any future windows-latest upgrade.
+      - name: Drop stale whisper-rs-sys CMake artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $base = "src-tauri/target/release/build"
+          if (Test-Path $base) {
+            Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -like 'whisper-rs-sys-*' } |
+              ForEach-Object {
+                $out = Join-Path $_.FullName 'out'
+                if (Test-Path $out) {
+                  Write-Host "Removing stale CMake build dir: $out"
+                  Remove-Item -Recurse -Force $out
+                }
+              }
+          }
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
