@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Hoàn toàn miễn phí!",
-            "starOnGithub": "Ghi sao trên GitHub"
+            "starOnGithub": "Ghi sao trên GitHub",
+            "reviewSourceforge": "Đánh giá trên SourceForge",
+            "reviewVscode": "Đánh giá trên VS Marketplace",
+            "reviewsSection": "Để lại đánh giá"
         },
         "activity": {
             "connect_start": "Đang kết nối đến {server} ({protocol})...",

@@ -2,8 +2,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
-import { X, Mail, Copy, Check, ExternalLink, Heart } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { X, Mail, Copy, Check, ExternalLink, Heart, RefreshCw, CheckCircle, ArrowUpCircle, AlertTriangle, Loader2 } from 'lucide-react';
 
 const Github = ({ size = 24 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
@@ -52,6 +52,7 @@ const KEY_DEPENDENCY_LABELS: { name: string; description: string }[] = [
     { name: 'suppaftp', description: 'FTP/FTPS' },
     { name: 'reqwest', description: 'HTTP' },
     { name: 'keyring', description: 'OS Keyring' },
+    { name: 'aerovault', description: 'Vault format' },
     { name: 'aes-gcm', description: 'AES-256-GCM' },
     { name: 'argon2', description: 'KDF' },
     { name: 'zip', description: 'ZIP archives' },
@@ -59,6 +60,34 @@ const KEY_DEPENDENCY_LABELS: { name: string; description: string }[] = [
     { name: 'quick-xml', description: 'WebDAV' },
     { name: 'oauth2', description: 'OAuth2' },
 ];
+
+type LibStatus = 'idle' | 'checking' | 'up_to_date' | 'update_available' | 'major_update' | 'error';
+
+const compareSemver = (current: string, latest: string): 'up_to_date' | 'update_available' | 'major_update' => {
+    const parse = (v: string) => v.split('-')[0].split('.').map(Number);
+    const c = parse(current);
+    const l = parse(latest);
+    if (c[0] < l[0]) return 'major_update';
+    if (c[0] === l[0] && (c[1] < l[1] || (c[1] === l[1] && (c[2] || 0) < (l[2] || 0)))) return 'update_available';
+    return 'up_to_date';
+};
+
+const StatusIcon: React.FC<{ status: LibStatus }> = ({ status }) => {
+    switch (status) {
+        case 'checking':
+            return <Loader2 size={11} className="animate-spin text-gray-400" />;
+        case 'up_to_date':
+            return <CheckCircle size={11} className="text-green-500" />;
+        case 'update_available':
+            return <ArrowUpCircle size={11} className="text-yellow-500" />;
+        case 'major_update':
+            return <AlertTriangle size={11} className="text-red-500" />;
+        case 'error':
+            return <X size={11} className="text-gray-400" />;
+        default:
+            return null;
+    }
+};
 
 // Injected at build time by Vite (see vite.config.ts define)
 declare const __FRONTEND_VERSIONS__: { react: string; typescript: string; tailwindcss: string; monaco: string; vite: string };
@@ -87,6 +116,42 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
     const [appVersion, setAppVersion] = useState('0.0.0');
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
     const [copied, setCopied] = useState(false);
+    const [latestVersions, setLatestVersions] = useState<Record<string, string>>({});
+    const [libStatus, setLibStatus] = useState<Record<string, LibStatus>>({});
+    const [checking, setChecking] = useState(false);
+
+    const checkLibraryUpdates = useCallback(async () => {
+        if (!systemInfo) return;
+        setChecking(true);
+        const initial: Record<string, LibStatus> = {};
+        KEY_DEPENDENCY_LABELS.forEach(d => { initial[d.name] = 'checking'; });
+        setLibStatus(initial);
+
+        try {
+            const crateNames = KEY_DEPENDENCY_LABELS.map(d => d.name);
+            const results: { name: string; latest_version: string | null; error: string | null }[] =
+                await invoke('check_crate_versions', { crateNames });
+
+            const latest: Record<string, string> = {};
+            const status: Record<string, LibStatus> = {};
+            results.forEach(r => {
+                const current = systemInfo.dep_versions?.[r.name];
+                if (r.latest_version && current && current !== 'unknown') {
+                    latest[r.name] = r.latest_version;
+                    status[r.name] = compareSemver(current, r.latest_version);
+                } else {
+                    status[r.name] = 'error';
+                }
+            });
+            setLatestVersions(latest);
+            setLibStatus(status);
+        } catch {
+            const errored: Record<string, LibStatus> = {};
+            KEY_DEPENDENCY_LABELS.forEach(d => { errored[d.name] = 'error'; });
+            setLibStatus(errored);
+        }
+        setChecking(false);
+    }, [systemInfo]);
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
     useEffect(() => {
@@ -103,6 +168,8 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
         // Reset state on open
         setActiveTab('info');
         setCopied(false);
+        setLatestVersions({});
+        setLibStatus({});
     }, [isOpen]);
 
     const tabs: { id: TabId; label: string }[] = [
@@ -296,13 +363,39 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
 
                             {/* Linked Libraries */}
                             <div>
-                                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{t('about.linkedLibraries')}</h3>
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('about.linkedLibraries')}</h3>
+                                    <button
+                                        onClick={checkLibraryUpdates}
+                                        disabled={checking || !systemInfo}
+                                        className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-cyan-400 disabled:opacity-50 transition-colors font-mono"
+                                        title={t('dependencies.checkUpdates')}
+                                    >
+                                        <RefreshCw size={10} className={checking ? 'animate-spin' : ''} />
+                                        {checking ? t('dependencies.checking') : t('dependencies.checkUpdates')}
+                                    </button>
+                                </div>
                                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1">
-                                    {KEY_DEPENDENCY_LABELS.map(dep => (
-                                        <InfoRow key={dep.name} label={dep.name} value={
-                                            <span>{systemInfo?.dep_versions?.[dep.name] ?? '...'} <span className="text-gray-400 dark:text-gray-600">({dep.description})</span></span>
-                                        } />
-                                    ))}
+                                    {KEY_DEPENDENCY_LABELS.map(dep => {
+                                        const current = systemInfo?.dep_versions?.[dep.name];
+                                        const latest = latestVersions[dep.name];
+                                        const status = libStatus[dep.name] ?? 'idle';
+                                        const showUpgrade = latest && (status === 'update_available' || status === 'major_update');
+                                        return (
+                                            <InfoRow key={dep.name} label={dep.name} value={
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    <span>{current ?? '...'}</span>
+                                                    {showUpgrade && (
+                                                        <span className={`font-mono ${status === 'major_update' ? 'text-red-500 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
+                                                            → {latest}
+                                                        </span>
+                                                    )}
+                                                    <StatusIcon status={status} />
+                                                    <span className="text-gray-400 dark:text-gray-600">({dep.description})</span>
+                                                </span>
+                                            } />
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -334,17 +427,6 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 >
                                     <Mail size={16} />
                                     {t('about.contact')}
-                                </button>
-                            </div>
-
-                            {/* Reviews */}
-                            <div className="flex justify-center">
-                                <button
-                                    onClick={() => openUrl('https://sourceforge.net/software/product/AeroFTP/reviews/new')}
-                                    className="flex items-center gap-2 px-4 py-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 rounded-lg transition-colors text-sm text-green-600 dark:text-green-400 font-medium"
-                                >
-                                    <SourceForge size={16} />
-                                    {t('about.sourceforgeReviews')}
                                 </button>
                             </div>
 

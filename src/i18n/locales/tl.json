@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Libre ito!",
-            "starOnGithub": "Lagyan ng bituin sa GitHub"
+            "starOnGithub": "Lagyan ng bituin sa GitHub",
+            "reviewSourceforge": "I-review sa SourceForge",
+            "reviewVscode": "I-review sa VS Marketplace",
+            "reviewsSection": "Mag-iwan ng review"
         },
         "activity": {
             "connect_start": "Kumokonekta sa {server} ({protocol})...",

@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "無料です！",
-            "starOnGithub": "GitHubでスターを付ける"
+            "starOnGithub": "GitHubでスターを付ける",
+            "reviewSourceforge": "SourceForge でレビュー",
+            "reviewVscode": "VS Marketplace でレビュー",
+            "reviewsSection": "レビューを書く"
         },
         "activity": {
             "connect_start": "{server} ({protocol})に接続中...",

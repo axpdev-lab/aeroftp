@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "ฟรี!",
-            "starOnGithub": "ให้ดาวบน GitHub"
+            "starOnGithub": "ให้ดาวบน GitHub",
+            "reviewSourceforge": "รีวิวบน SourceForge",
+            "reviewVscode": "รีวิวบน VS Marketplace",
+            "reviewsSection": "เขียนรีวิว"
         },
         "activity": {
             "connect_start": "กำลังเชื่อมต่อไปยัง {server} ({protocol})...",

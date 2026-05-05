@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Ingyenes!",
-            "starOnGithub": "Csillag a GitHub-on"
+            "starOnGithub": "Csillag a GitHub-on",
+            "reviewSourceforge": "Értékelés a SourceForge-on",
+            "reviewVscode": "Értékelés a VS Marketplace-en",
+            "reviewsSection": "Értékelés írása"
         },
         "activity": {
             "connect_start": "Csatlakozás {server} ({protocol})...",

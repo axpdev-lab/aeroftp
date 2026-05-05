@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Tai nemokama!",
-            "starOnGithub": "Įvertinti GitHub"
+            "starOnGithub": "Įvertinti GitHub",
+            "reviewSourceforge": "Atsiliepimas „SourceForge“",
+            "reviewVscode": "Atsiliepimas „VS Marketplace“",
+            "reviewsSection": "Palikti atsiliepimą"
         },
         "activity": {
             "connect_start": "Jungiamasi prie {server} ({protocol})...",

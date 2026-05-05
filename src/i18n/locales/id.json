@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Gratis!",
-            "starOnGithub": "Beri bintang di GitHub"
+            "starOnGithub": "Beri bintang di GitHub",
+            "reviewSourceforge": "Ulasan di SourceForge",
+            "reviewVscode": "Ulasan di VS Marketplace",
+            "reviewsSection": "Tinggalkan Ulasan"
         },
         "activity": {
             "connect_start": "Menghubungkan ke {server} ({protocol})...",

@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Det är gratis!",
-            "starOnGithub": "Stjärnmärk på GitHub"
+            "starOnGithub": "Stjärnmärk på GitHub",
+            "reviewSourceforge": "Recension på SourceForge",
+            "reviewVscode": "Recension på VS Marketplace",
+            "reviewsSection": "Lämna en recension"
         },
         "activity": {
             "connect_start": "Ansluter till {server} ({protocol})...",

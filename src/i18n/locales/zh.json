@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "完全免费！",
-            "starOnGithub": "在 GitHub 上给个星标"
+            "starOnGithub": "在 GitHub 上给个星标",
+            "reviewSourceforge": "在 SourceForge 上评价",
+            "reviewVscode": "在 VS Marketplace 上评价",
+            "reviewsSection": "发表评价"
         },
         "activity": {
             "connect_start": "正在连接到 {server} ({protocol})...",

@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Είναι δωρεάν!",
-            "starOnGithub": "Δώστε αστέρι στο GitHub"
+            "starOnGithub": "Δώστε αστέρι στο GitHub",
+            "reviewSourceforge": "Κριτική στο SourceForge",
+            "reviewVscode": "Κριτική στο VS Marketplace",
+            "reviewsSection": "Αφήστε μια κριτική"
         },
         "activity": {
             "connect_start": "Σύνδεση σε {server} ({protocol})...",

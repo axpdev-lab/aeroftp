@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Tas ir bez maksas!",
-            "starOnGithub": "Ielikt zvaigzni GitHub"
+            "starOnGithub": "Ielikt zvaigzni GitHub",
+            "reviewSourceforge": "Atsauksme SourceForge",
+            "reviewVscode": "Atsauksme VS Marketplace",
+            "reviewsSection": "Atstāt atsauksmi"
         },
         "activity": {
             "connect_start": "Savienojas ar {server} ({protocol})...",

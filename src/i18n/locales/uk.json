@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Це безкоштовно!",
-            "starOnGithub": "Поставте зірку на GitHub"
+            "starOnGithub": "Поставте зірку на GitHub",
+            "reviewSourceforge": "Відгук на SourceForge",
+            "reviewVscode": "Відгук на VS Marketplace",
+            "reviewsSection": "Залишити відгук"
         },
         "activity": {
             "connect_start": "Підключаюсь до {server} ({protocol})...",

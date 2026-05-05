@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "É grátis!",
-            "starOnGithub": "Dar estrela no GitHub"
+            "starOnGithub": "Dar estrela no GitHub",
+            "reviewSourceforge": "Avaliar no SourceForge",
+            "reviewVscode": "Avaliar no VS Marketplace",
+            "reviewsSection": "Deixe uma avaliação"
         },
         "activity": {
             "connect_start": "Conectando a {server} ({protocol})...",

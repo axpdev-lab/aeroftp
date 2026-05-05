@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Babesleak",
             "buyMeACoffee": "Erosidazu kafe bat",
             "freeSupport": "Doakoa da!",
-            "starOnGithub": "Eman izar bat GitHub-en"
+            "starOnGithub": "Eman izar bat GitHub-en",
+            "reviewSourceforge": "Iritzia SourceForge-n",
+            "reviewVscode": "Iritzia VS Marketplace-n",
+            "reviewsSection": "Utzi iritzia"
         },
         "activity": {
             "connect_start": "Konektatzen: {server} ({protocol})...",

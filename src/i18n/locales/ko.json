@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "무료입니다!",
-            "starOnGithub": "GitHub에서 스타 누르기"
+            "starOnGithub": "GitHub에서 스타 누르기",
+            "reviewSourceforge": "SourceForge에서 리뷰",
+            "reviewVscode": "VS Marketplace에서 리뷰",
+            "reviewsSection": "리뷰 남기기"
         },
         "activity": {
             "connect_start": "{server} ({protocol})에 연결 중...",

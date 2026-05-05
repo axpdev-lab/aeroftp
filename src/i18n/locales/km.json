@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "ស្រីឥត់គិតថ្លៃ!",
-            "starOnGithub": "ផ្តល់ផ្កាយលើ GitHub"
+            "starOnGithub": "ផ្តល់ផ្កាយលើ GitHub",
+            "reviewSourceforge": "មតិវាយតម្លៃលើ SourceForge",
+            "reviewVscode": "មតិវាយតម្លៃលើ VS Marketplace",
+            "reviewsSection": "ផ្ដល់មតិវាយតម្លៃ"
         },
         "activity": {
             "connect_start": "កំពុងតភ្ជាប់ទៅ {server} តាមរយៈ {protocol}...",

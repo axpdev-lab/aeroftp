@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub प्रायोजक",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "यह मुफ़्त है!",
-            "starOnGithub": "GitHub पर स्टार दें"
+            "starOnGithub": "GitHub पर स्टार दें",
+            "reviewSourceforge": "SourceForge पर समीक्षा",
+            "reviewVscode": "VS Marketplace पर समीक्षा",
+            "reviewsSection": "समीक्षा छोड़ें"
         },
         "activity": {
             "connect_start": "{server} ({protocol}) से कनेक्ट हो रहा है...",

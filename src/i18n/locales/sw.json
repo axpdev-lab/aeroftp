@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Ni bure!",
-            "starOnGithub": "Weka nyota kwenye GitHub"
+            "starOnGithub": "Weka nyota kwenye GitHub",
+            "reviewSourceforge": "Kagua kwenye SourceForge",
+            "reviewVscode": "Kagua kwenye VS Marketplace",
+            "reviewsSection": "Acha ukaguzi"
         },
         "activity": {
             "connect_start": "Ninaunganisha kwa {server} ({protocol})...",

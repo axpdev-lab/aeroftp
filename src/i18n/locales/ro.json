@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Este gratuit!",
-            "starOnGithub": "Acordă o stea pe GitHub"
+            "starOnGithub": "Acordă o stea pe GitHub",
+            "reviewSourceforge": "Recenzie pe SourceForge",
+            "reviewVscode": "Recenzie pe VS Marketplace",
+            "reviewsSection": "Lasă o recenzie"
         },
         "activity": {
             "connect_start": "Deschid conexiunea cu {server} ({protocol})...",

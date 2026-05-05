@@ -1259,7 +1259,10 @@
             "githubSponsors": "GitHub Հովանավորներ",
             "buyMeACoffee": "Գնիր ինձ սուրճ",
             "freeSupport": "Անվճար է!",
-            "starOnGithub": "Աստղ GitHub-ում"
+            "starOnGithub": "Աստղ GitHub-ում",
+            "reviewSourceforge": "Կարծիք SourceForge-ում",
+            "reviewVscode": "Կարծիք VS Marketplace-ում",
+            "reviewsSection": "Թողնել կարծիք"
         },
         "activity": {
             "connect_start": "Միանում եմ {server}-ին ({protocol})...",

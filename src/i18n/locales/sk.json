@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Je to zadarmo!",
-            "starOnGithub": "Ohodnotiť hviezdou na GitHub"
+            "starOnGithub": "Ohodnotiť hviezdou na GitHub",
+            "reviewSourceforge": "Recenzia na SourceForge",
+            "reviewVscode": "Recenzia na VS Marketplace",
+            "reviewsSection": "Zanechať recenziu"
         },
         "activity": {
             "connect_start": "Otváram pripojenie k {server} ({protocol})...",

@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Thetta er okeypis!",
-            "starOnGithub": "Stjarna a GitHub"
+            "starOnGithub": "Stjarna a GitHub",
+            "reviewSourceforge": "Umsögn á SourceForge",
+            "reviewVscode": "Umsögn á VS Marketplace",
+            "reviewsSection": "Skrifa umsögn"
         },
         "activity": {
             "connect_start": "Tengist {server} ({protocol})...",

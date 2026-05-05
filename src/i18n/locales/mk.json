@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Бесплатно е!",
-            "starOnGithub": "Звезда на GitHub"
+            "starOnGithub": "Звезда на GitHub",
+            "reviewSourceforge": "Рецензија на SourceForge",
+            "reviewVscode": "Рецензија на VS Marketplace",
+            "reviewsSection": "Остави рецензија"
         },
         "activity": {
             "connect_start": "Поврзување на {server} ({protocol})...",

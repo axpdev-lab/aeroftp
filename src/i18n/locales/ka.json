@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "უფასოა!",
-            "starOnGithub": "ვარსკვლავი GitHub-ზე"
+            "starOnGithub": "ვარსკვლავი GitHub-ზე",
+            "reviewSourceforge": "მიმოხილვა SourceForge-ზე",
+            "reviewVscode": "მიმოხილვა VS Marketplace-ზე",
+            "reviewsSection": "დატოვე მიმოხილვა"
         },
         "activity": {
             "connect_start": "მიმდინარეობს დაკავშირება {server} ({protocol})...",

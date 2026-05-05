@@ -33,6 +33,29 @@ const CoffeeIcon = () => (
     </svg>
 );
 
+// SourceForge SVG Icon - for review section
+const SourceForgeIcon = ({ size = 16 }: { size?: number }) => (
+    <svg width={size} height={size} viewBox="0 0 117 103" fill="currentColor">
+        <path d="M46.2 94.8c-.4 0-.9-.2-1.2-.5L.5 49.8c-.6-.6-.6-1.7 0-2.4l47-47C47.8.2 48.2 0 48.6 0h13.5c.8 0 1.3.5 1.5 1s.2 1.2-.4 1.8L19.1 47c-.9.9-.9 2.3 0 3.2l34.9 35c.6.6.6 1.7 0 2.4l-6.7 6.8c-.3.2-.7.4-1.1.4z" />
+        <path d="M55.1 102.6c-.8 0-1.3-.5-1.5-1s-.2-1.2.4-1.8L98.2 55.6c.4-.4.7-1 .7-1.6s-.2-1.2-.7-1.6l-35-35c-.6-.6-.6-1.7 0-2.4L70 8.2c.3-.3.7-.5 1.2-.5s.8.3 1.1.6l44.4 44.5c.3.3.5.7.5 1.2s-.2.9-.5 1.2l-47 47c-.3.3-.7.5-1.2.5H55.1z" />
+        <path d="M67 54.2c0-5-1.8-7.4-2.8-8.2-.2-.2-.5 0-.4.2.2 2.9-3.4 3.6-3.4 8v.1c0 2.7 2 4.9 4.6 4.9s4.6-2.2 4.6-4.9v-.1c0-1.3-.5-2.5-1-3.4-.1-.2-.4-.1-.3.1.8 3.8-1.3 6.2-1.3 3.3z" />
+    </svg>
+);
+
+// VS Code Marketplace SVG Icon (official)
+const VSCodeIcon = ({ size = 16 }: { size?: number }) => (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <mask id="vscode-mask" mask-type="alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+            <path fillRule="evenodd" clipRule="evenodd" d="M70.91 99.41a6.21 6.21 0 0 0 4.95-.05l21.42-10.31a6.25 6.25 0 0 0 3.55-5.62V16.57a6.25 6.25 0 0 0-3.55-5.62L75.86.64a6.25 6.25 0 0 0-7.12 1.21L27.71 39.27 9.83 25.71a4.18 4.18 0 0 0-5.34.24L.74 29.36a4.17 4.17 0 0 0 0 6.16L16.27 50 .74 64.48a4.17 4.17 0 0 0 0 6.16l3.75 3.41a4.17 4.17 0 0 0 5.34.24l17.88-13.56 41.03 37.42a6.25 6.25 0 0 0 2.17 1.27ZM75.07 27.3 43.91 50l31.16 22.7V27.3Z" fill="white"/>
+        </mask>
+        <g mask="url(#vscode-mask)">
+            <path d="M97.28 10.96L75.83.61A6.25 6.25 0 0 0 68.7 1.83L.66 64.48a4.17 4.17 0 0 0 0 6.16l3.74 3.4a4.17 4.17 0 0 0 5.34.25l81.91-62.13c2.74-2.08 6.69-.13 6.69 3.32V15.7a6.25 6.25 0 0 0-3.05-4.74Z" fill="#0065A9"/>
+            <path d="M97.28 89.04L75.83 99.39a6.25 6.25 0 0 1-7.13-1.22L.66 35.52a4.17 4.17 0 0 1 0-6.16l3.74-3.4a4.17 4.17 0 0 1 5.34-.25l81.91 62.13c2.74 2.08 6.69.13 6.69-3.32V84.3a6.25 6.25 0 0 1-3.05 4.74Z" fill="#007ACC"/>
+            <path d="M75.83 99.39a6.25 6.25 0 0 1-7.12-1.22 3.67 3.67 0 0 0 6.27-2.59V4.42a3.67 3.67 0 0 0-6.27-2.59A6.25 6.25 0 0 1 75.83.61l21.45 10.34a6.25 6.25 0 0 1 3.55 5.62v66.86a6.25 6.25 0 0 1-3.55 5.62l-21.45 10.34Z" fill="#1F9CF0"/>
+        </g>
+    </svg>
+);
+
 // Crypto Wallet Icon - for crypto donation section
 const CryptoWalletIcon = () => (
     <svg viewBox="0 0 24 24" className="w-5 h-5 fill-gray-500 dark:fill-gray-400">
@@ -210,6 +233,34 @@ export const SupportDialog: React.FC<SupportDialogProps> = ({ isOpen, onClose })
                                     {t('support.starOnGithub')}
                                 </span>
                                 <span className="text-[10px] text-amber-500/70 dark:text-amber-500/50">{t('support.freeSupport')}</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Reviews Section */}
+                    <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Star size={16} className="text-amber-500" />
+                            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                {t('support.reviewsSection')}
+                            </h2>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => openUrl('https://sourceforge.net/software/product/AeroFTP/reviews/new')}
+                                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 transition-colors text-sm text-green-600 dark:text-green-400 font-medium"
+                            >
+                                <SourceForgeIcon size={16} />
+                                <span>{t('support.reviewSourceforge')}</span>
+                                <ExternalLink size={10} className="opacity-60" />
+                            </button>
+                            <button
+                                onClick={() => openUrl('https://marketplace.visualstudio.com/items?itemName=axpdev-lab.aeroftp-mcp&ssr=false#review-details')}
+                                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 transition-colors text-sm text-blue-600 dark:text-blue-400 font-medium"
+                            >
+                                <VSCodeIcon size={16} />
+                                <span>{t('support.reviewVscode')}</span>
+                                <ExternalLink size={10} className="opacity-60" />
                             </button>
                         </div>
                     </div>

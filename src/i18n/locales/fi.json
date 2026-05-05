@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Se on ilmaista!",
-            "starOnGithub": "Anna tähti GitHub-issa"
+            "starOnGithub": "Anna tähti GitHub-issa",
+            "reviewSourceforge": "Arvostelu SourceForgessa",
+            "reviewVscode": "Arvostelu VS Marketplacessa",
+            "reviewsSection": "Jätä arvostelu"
         },
         "activity": {
             "connect_start": "Yhdistetään palvelimeen {server} ({protocol})...",

@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "See on tasuta!",
-            "starOnGithub": "Anna täht GitHub-is"
+            "starOnGithub": "Anna täht GitHub-is",
+            "reviewSourceforge": "Arvustus SourceForge'is",
+            "reviewVscode": "Arvustus VS Marketplace'is",
+            "reviewsSection": "Jäta arvustus"
         },
         "activity": {
             "connect_start": "Ühendamine {server} ({protocol})...",

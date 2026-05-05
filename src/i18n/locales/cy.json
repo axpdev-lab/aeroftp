@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Mae'n rhad ac am ddim!",
-            "starOnGithub": "Rhowch seren ar GitHub"
+            "starOnGithub": "Rhowch seren ar GitHub",
+            "reviewSourceforge": "Adolygiad ar SourceForge",
+            "reviewVscode": "Adolygiad ar VS Marketplace",
+            "reviewsSection": "Gadael adolygiad"
         },
         "activity": {
             "connect_start": "Yn cysylltu a {server} ({protocol})...",

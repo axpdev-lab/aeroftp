@@ -1601,7 +1601,10 @@
             "footer": "Ogni donazione aiuta lo sviluppo",
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
-            "starOnGithub": "Stella su GitHub"
+            "starOnGithub": "Stella su GitHub",
+            "reviewsSection": "Lascia una recensione",
+            "reviewSourceforge": "Recensione su SourceForge",
+            "reviewVscode": "Recensione su VS Marketplace"
         },
         "activity": {
             "connect_start": "Connessione a {server} ({protocol})...",

@@ -1266,7 +1266,10 @@
             "githubSponsors": "GitHub Sponsors",
             "buyMeACoffee": "Buy Me a Coffee",
             "freeSupport": "Ücretsiz!",
-            "starOnGithub": "GitHub'da yıldız ver"
+            "starOnGithub": "GitHub'da yıldız ver",
+            "reviewSourceforge": "SourceForge'da Yorum Yap",
+            "reviewVscode": "VS Marketplace'te Yorum Yap",
+            "reviewsSection": "Yorum Bırak"
         },
         "activity": {
             "connect_start": "{server} sunucusuna bağlanıyorum ({protocol})...",
