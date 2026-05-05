@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
+export type TableColAlign = 'left' | 'center' | 'right';
+
 export interface TableColumnDef<TColId extends string> {
     id: TColId;
     labelKey: string;
@@ -19,6 +21,8 @@ export interface TableColumnDef<TColId extends string> {
     bodyClassName?: string;
     /** Hidden until the table is wide enough for a "detailed" layout. */
     detailedOnly?: boolean;
+    /** Default text alignment when the user has not picked one. */
+    defaultAlign?: TableColAlign;
 }
 
 export type TableSort<TColId extends string> = {
@@ -31,6 +35,8 @@ export interface TableColumnsConfig<TColId extends string> {
     order: TColId[];
     widths: Record<TColId, number>;
     sort: TableSort<TColId> | null;
+    /** Per-column user alignment override. Empty entries fall back to defaultAlign. */
+    aligns: Partial<Record<TColId, TableColAlign>>;
 }
 
 export interface UseTableColumnsResult<TColId extends string> {
@@ -43,6 +49,9 @@ export interface UseTableColumnsResult<TColId extends string> {
     setOrder: (order: TColId[]) => void;
     setWidth: (id: TColId, width: number) => void;
     setSort: (sort: TableSort<TColId> | null) => void;
+    setAlign: (id: TColId, align: TableColAlign | null) => void;
+    /** Resolve effective alignment: user override -> defaultAlign -> 'left'. */
+    resolveAlign: (id: TColId) => TableColAlign;
     reset: () => void;
     /** True when the user has saved at least one explicit value to the vault. */
     hasPersisted: boolean;
@@ -77,7 +86,25 @@ const buildDefaults = <TColId extends string>(
         widths[col.id] = col.defaultWidth;
         order.push(col.id);
     }
-    return { visibility, order, widths, sort: null };
+    return { visibility, order, widths, sort: null, aligns: {} };
+};
+
+const sanitizeAligns = <TColId extends string>(
+    raw: unknown,
+    columns: TableColumnDef<TColId>[],
+): Partial<Record<TColId, TableColAlign>> => {
+    const result: Partial<Record<TColId, TableColAlign>> = {};
+    if (!raw || typeof raw !== 'object') return result;
+    const obj = raw as Record<string, unknown>;
+    const known = new Set(columns.map(c => c.id));
+    for (const id of Object.keys(obj)) {
+        if (!known.has(id as TColId)) continue;
+        const value = obj[id];
+        if (value === 'left' || value === 'center' || value === 'right') {
+            result[id as TColId] = value;
+        }
+    }
+    return result;
 };
 
 const sanitizeOrder = <TColId extends string>(
@@ -159,6 +186,7 @@ const sanitizeConfig = <TColId extends string>(
         order: sanitizeOrder(obj.order, knownIds),
         widths: sanitizeWidths(obj.widths, columns, fallback.widths),
         sort: sanitizeSort(obj.sort, new Set(sortableColIds)),
+        aligns: sanitizeAligns(obj.aligns, columns),
     };
 };
 
@@ -339,6 +367,27 @@ export function useTableColumns<TColId extends string>(
         });
     }, [persist, sortableIds]);
 
+    const setAlign = useCallback((id: TColId, align: TableColAlign | null) => {
+        setConfig(prev => {
+            const nextAligns = { ...prev.aligns };
+            if (align === null) {
+                delete nextAligns[id];
+            } else {
+                nextAligns[id] = align;
+            }
+            const next = { ...prev, aligns: nextAligns };
+            void persist(next);
+            return next;
+        });
+    }, [persist]);
+
+    const resolveAlign = useCallback((id: TColId): TableColAlign => {
+        const userAlign = config.aligns[id];
+        if (userAlign) return userAlign;
+        const col = columns.find(c => c.id === id);
+        return col?.defaultAlign ?? 'left';
+    }, [config.aligns, columns]);
+
     const reset = useCallback(() => {
         const defaults = buildDefaults(columns, overrideDefaultVisibility);
         setConfig(defaults);
@@ -363,6 +412,8 @@ export function useTableColumns<TColId extends string>(
         setOrder,
         setWidth,
         setSort,
+        setAlign,
+        resolveAlign,
         reset,
         hasPersisted,
     }), [
@@ -373,6 +424,8 @@ export function useTableColumns<TColId extends string>(
         setOrder,
         setWidth,
         setSort,
+        setAlign,
+        resolveAlign,
         reset,
         hasPersisted,
     ]);

@@ -128,7 +128,7 @@ export function MyServersTable({
     density,
 }: MyServersTableProps) {
     const t = useTranslation();
-    const { config, orderedVisibleColumns } = columns;
+    const { config, orderedVisibleColumns, resolveAlign } = columns;
     const sort = config.sort;
     const sortLabel = sort
         ? t(MY_SERVERS_TABLE_COLUMNS.find(col => col.id === sort.colId)?.labelKey || '')
@@ -231,7 +231,7 @@ export function MyServersTable({
     };
 
     return (
-        <div className="overflow-x-auto" data-my-servers-table>
+        <div data-my-servers-table>
             <table className="w-full min-w-[1100px] border-collapse text-left" style={{ tableLayout: 'fixed' }}>
                 <colgroup>
                     {orderedVisibleColumns.map((col) => (
@@ -293,6 +293,7 @@ export function MyServersTable({
                                 onRetryHealth={cardLayout === 'detailed' ? onRetryHealth : undefined}
                                 thresholds={thresholds}
                                 density={density}
+                                resolveAlign={resolveAlign}
                             />
                         );
                     })}

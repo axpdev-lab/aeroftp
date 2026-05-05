@@ -14,7 +14,7 @@ import {
 } from '../../hooks/useStorageThresholds';
 import type { MyServersDensity } from '../../hooks/useMyServersDensity';
 import type { MyServersTableColId } from '../../hooks/useMyServersColumns';
-import type { TableColumnDef } from '../../hooks/useTableColumns';
+import type { TableColAlign, TableColumnDef } from '../../hooks/useTableColumns';
 import { useTranslation } from '../../i18n';
 import { HealthRadial } from './HealthRadial';
 import { getServerIcon, getTimeAgo, RenameInput, ServerBadges } from './ServerCard';
@@ -53,6 +53,8 @@ interface MyServersTableRowProps {
     onRetryHealth?: (server: ServerProfile) => void;
     thresholds?: StorageThresholds;
     density?: MyServersDensity;
+    /** Resolve effective alignment per column (user override or default). */
+    resolveAlign?: (id: MyServersTableColId) => TableColAlign;
 }
 
 export const MyServersTableRow = React.memo(function MyServersTableRow({
@@ -89,6 +91,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     onRetryHealth,
     thresholds = DEFAULT_THRESHOLDS,
     density = 'compact',
+    resolveAlign,
 }: MyServersTableRowProps) {
     const t = useTranslation();
     const isCompact = density === 'compact';
@@ -157,6 +160,15 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         : t('introHub.storageQuotaUnavailable');
     const cellClass = `px-3 ${rowPadY} align-middle border-b border-gray-100 dark:border-gray-700/50`;
 
+    const alignTd = (id: MyServersTableColId, fallback: 'left' | 'center' | 'right'): string => {
+        const a = resolveAlign?.(id) ?? fallback;
+        return a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : 'text-left';
+    };
+    const alignFlex = (id: MyServersTableColId, fallback: 'left' | 'center' | 'right'): string => {
+        const a = resolveAlign?.(id) ?? fallback;
+        return a === 'right' ? 'justify-end' : a === 'center' ? 'justify-center' : 'justify-start';
+    };
+
     const renderCell = (id: MyServersTableColId): React.ReactNode => {
         switch (id) {
             case 'index':
@@ -207,7 +219,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'name':
                 return (
-                    <td key="name" className={`${cellClass}`}>
+                    <td key="name" className={`${cellClass} ${alignTd('name', 'left')}`}>
                         {isRenaming ? (
                             <RenameInput
                                 initialValue={server.name}
@@ -222,34 +234,36 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'badges':
                 return (
-                    <td key="badges" className={`${cellClass}`}>
-                        <ServerBadges server={server} />
+                    <td key="badges" className={`${cellClass} ${alignTd('badges', 'left')}`}>
+                        <div className={`flex items-center ${alignFlex('badges', 'left')}`}>
+                            <ServerBadges server={server} />
+                        </div>
                     </td>
                 );
             case 'subtitle':
                 return (
-                    <td key="subtitle" className={`${cellClass} text-xs text-gray-500 dark:text-gray-400 truncate`}>
+                    <td key="subtitle" className={`${cellClass} ${alignTd('subtitle', 'left')} text-xs text-gray-500 dark:text-gray-400 truncate`}>
                         {subtitle}
                     </td>
                 );
             case 'used':
-                return <td key="used" className={`${cellClass} text-right text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={quotaTitle}>{quotaCells.used}</td>;
+                return <td key="used" className={`${cellClass} ${alignTd('used', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={quotaTitle}>{quotaCells.used}</td>;
             case 'total':
-                return <td key="total" className={`${cellClass} text-right text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={quotaTitle}>{quotaCells.total}</td>;
+                return <td key="total" className={`${cellClass} ${alignTd('total', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={quotaTitle}>{quotaCells.total}</td>;
             case 'pct':
-                return <td key="pct" className={`${cellClass} text-right text-[11px] font-medium tabular-nums ${quotaCells.toneText}`} title={quotaTitle}>{quotaCells.pct}</td>;
+                return <td key="pct" className={`${cellClass} ${alignTd('pct', 'right')} text-[11px] font-medium tabular-nums ${quotaCells.toneText}`} title={quotaTitle}>{quotaCells.pct}</td>;
             case 'paths':
                 return (
-                    <td key="paths" className={`${cellClass} text-right`}>
-                        <div className="flex flex-col gap-0.5 min-w-0 text-right">
+                    <td key="paths" className={`${cellClass} ${alignTd('paths', 'right')}`}>
+                        <div className={`flex flex-col gap-0.5 min-w-0 ${alignTd('paths', 'right')}`}>
                             {server.initialPath && (
-                                <span className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500" title={server.initialPath}>
+                                <span className={`flex items-center ${alignFlex('paths', 'right')} gap-1 text-[10px] text-gray-400 dark:text-gray-500`} title={server.initialPath}>
                                     <Folder size={8} className="shrink-0" />
                                     <span className="truncate" dir="rtl">{server.initialPath}</span>
                                 </span>
                             )}
                             {server.localInitialPath && (
-                                <span className="flex items-center justify-end gap-1 text-[10px] text-gray-400 dark:text-gray-500" title={server.localInitialPath}>
+                                <span className={`flex items-center ${alignFlex('paths', 'right')} gap-1 text-[10px] text-gray-400 dark:text-gray-500`} title={server.localInitialPath}>
                                     <HardDrive size={8} className="shrink-0" />
                                     <span className="truncate" dir="rtl">{server.localInitialPath}</span>
                                 </span>
@@ -259,14 +273,14 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'time':
                 return (
-                    <td key="time" className={`${cellClass} text-right text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`}>
+                    <td key="time" className={`${cellClass} ${alignTd('time', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`}>
                         {timeAgo && <span className="inline-flex items-center gap-0.5"><Clock size={9} />{timeAgo}</span>}
                     </td>
                 );
             case 'health':
                 return (
-                    <td key="health" className={`${cellClass} text-center text-gray-300 dark:text-gray-600`}>
-                        <span className="inline-flex items-center justify-center">
+                    <td key="health" className={`${cellClass} ${alignTd('health', 'center')} text-gray-300 dark:text-gray-600`}>
+                        <span className={`inline-flex items-center ${alignFlex('health', 'center')}`}>
                             <HealthRadial
                                 status={healthStatus || 'unknown'}
                                 latencyMs={healthLatencyMs}
@@ -279,8 +293,8 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'actions':
                 return (
-                    <td key="actions" className={`${cellClass} text-right`}>
-                        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td key="actions" className={`${cellClass} ${alignTd('actions', 'right')}`}>
+                        <div className={`flex items-center ${alignFlex('actions', 'right')} gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity`}>
                             <button onClick={(e) => { e.stopPropagation(); onEdit(server); }} className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title={t('common.edit')}>
                                 <Edit2 size={13} />
                             </button>
@@ -295,7 +309,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 );
             case 'favorite':
                 return (
-                    <td key="favorite" className={`${cellClass} text-center`}>
+                    <td key="favorite" className={`${cellClass} ${alignTd('favorite', 'center')}`}>
                         <button
                             onClick={(e) => { e.stopPropagation(); onToggleFavorite(server); }}
                             className={`p-1 rounded-lg transition-colors ${

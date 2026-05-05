@@ -395,22 +395,6 @@ export function MyServersPanel({
     const cardLayout = useCardLayout();
     const tableColumns = useMyServersColumns(cardLayout);
 
-    // Toggle compact ↔ detailed cards from the toolbar. Mirrors the Settings >
-    // Appearance checkbox: persists to the same vault/localStorage key that
-    // owns AppSettings, then broadcasts the change so useCardLayout and
-    // useSettings re-read it without a remount.
-    const handleToggleCardLayout = useCallback(async () => {
-        const next: 'compact' | 'detailed' = cardLayout === 'detailed' ? 'compact' : 'detailed';
-        try {
-            const current = (await secureGetWithFallback<Record<string, unknown>>('app_settings', 'aeroftp_settings')) || {};
-            const updated = { ...current, cardLayout: next };
-            await secureStoreAndClean('app_settings', 'aeroftp_settings', updated);
-            window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
-        } catch (e) {
-            logger.error('Failed to toggle cardLayout', e);
-        }
-    }, [cardLayout]);
-
     // Drag & reorder: works in any view (full list, search, or filter chip).
     // dragIdx/overIdx hold real indices into the full `servers` array: when
     // a filter is active we resolve the visible card to its real index by id,
@@ -985,8 +969,6 @@ export function MyServersPanel({
                 onOpenCrossProfile={onOpenCrossProfile && servers.length > 1 ? handleOpenCrossProfile : undefined}
                 onOpenMountManager={onOpenMountManager}
                 crossProfileSelectionCount={crossProfileSelection.length}
-                cardLayout={cardLayout}
-                onToggleCardLayout={handleToggleCardLayout}
                 listDensity={density}
                 onToggleListDensity={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
             />

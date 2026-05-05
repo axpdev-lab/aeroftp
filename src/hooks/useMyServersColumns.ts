@@ -63,19 +63,19 @@ const SORTABLE_IDS: MyServersSortableColId[] = MY_SERVERS_TABLE_COLUMNS
  * MY_SERVERS_TABLE_COLUMNS but adds defaultVisible/defaultWidth/min/pinned.
  */
 const TABLE_COLUMN_DEFS: TableColumnDef<MyServersTableColId>[] = [
-    { id: 'index', labelKey: 'introHub.table.columns.index', sortable: true, defaultVisible: true, defaultWidth: 56, minWidth: 40, pinnedStart: true, className: 'w-16 text-right' },
-    { id: 'icon', labelKey: 'introHub.table.columns.icon', sortable: false, defaultVisible: true, defaultWidth: 56, minWidth: 48, pinnedStart: true, className: 'w-14 text-center' },
-    { id: 'name', labelKey: 'introHub.table.columns.name', sortable: true, defaultVisible: true, defaultWidth: 200, minWidth: 120 },
-    { id: 'badges', labelKey: 'introHub.table.columns.badges', sortable: true, defaultVisible: true, defaultWidth: 140, minWidth: 100 },
-    { id: 'subtitle', labelKey: 'introHub.table.columns.subtitle', sortable: false, defaultVisible: true, defaultWidth: 240, minWidth: 140 },
-    { id: 'used', labelKey: 'introHub.table.columns.used', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80 },
-    { id: 'total', labelKey: 'introHub.table.columns.total', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80 },
-    { id: 'pct', labelKey: 'introHub.table.columns.pct', sortable: true, defaultVisible: true, defaultWidth: 80, minWidth: 60 },
-    { id: 'paths', labelKey: 'introHub.table.columns.paths', sortable: false, defaultVisible: false, defaultWidth: 240, minWidth: 140 },
-    { id: 'time', labelKey: 'introHub.table.columns.time', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80 },
-    { id: 'health', labelKey: 'introHub.table.columns.health', sortable: false, defaultVisible: false, defaultWidth: 80, minWidth: 60, detailedOnly: true },
-    { id: 'actions', labelKey: 'introHub.table.columns.actions', sortable: false, defaultVisible: true, defaultWidth: 112, minWidth: 96, pinnedEnd: true },
-    { id: 'favorite', labelKey: 'introHub.table.columns.favorite', sortable: true, defaultVisible: true, defaultWidth: 56, minWidth: 48, pinnedEnd: true },
+    { id: 'index', labelKey: 'introHub.table.columns.index', sortable: true, defaultVisible: true, defaultWidth: 56, minWidth: 40, pinnedStart: true, className: 'w-16 text-right', defaultAlign: 'right' },
+    { id: 'icon', labelKey: 'introHub.table.columns.icon', sortable: false, defaultVisible: true, defaultWidth: 56, minWidth: 48, pinnedStart: true, className: 'w-14 text-center', defaultAlign: 'center' },
+    { id: 'name', labelKey: 'introHub.table.columns.name', sortable: true, defaultVisible: true, defaultWidth: 200, minWidth: 120, defaultAlign: 'left' },
+    { id: 'badges', labelKey: 'introHub.table.columns.badges', sortable: true, defaultVisible: true, defaultWidth: 140, minWidth: 100, defaultAlign: 'left' },
+    { id: 'subtitle', labelKey: 'introHub.table.columns.subtitle', sortable: false, defaultVisible: true, defaultWidth: 240, minWidth: 140, defaultAlign: 'left' },
+    { id: 'used', labelKey: 'introHub.table.columns.used', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80, defaultAlign: 'right' },
+    { id: 'total', labelKey: 'introHub.table.columns.total', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80, defaultAlign: 'right' },
+    { id: 'pct', labelKey: 'introHub.table.columns.pct', sortable: true, defaultVisible: true, defaultWidth: 80, minWidth: 60, defaultAlign: 'right' },
+    { id: 'paths', labelKey: 'introHub.table.columns.paths', sortable: false, defaultVisible: false, defaultWidth: 240, minWidth: 140, defaultAlign: 'right' },
+    { id: 'time', labelKey: 'introHub.table.columns.time', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80, defaultAlign: 'right' },
+    { id: 'health', labelKey: 'introHub.table.columns.health', sortable: false, defaultVisible: false, defaultWidth: 80, minWidth: 60, detailedOnly: true, defaultAlign: 'center' },
+    { id: 'actions', labelKey: 'introHub.table.columns.actions', sortable: false, defaultVisible: true, defaultWidth: 112, minWidth: 96, pinnedEnd: true, defaultAlign: 'right' },
+    { id: 'favorite', labelKey: 'introHub.table.columns.favorite', sortable: true, defaultVisible: true, defaultWidth: 56, minWidth: 48, pinnedEnd: true, defaultAlign: 'center' },
 ];
 
 export const MY_SERVERS_TABLE_DEFS = TABLE_COLUMN_DEFS;

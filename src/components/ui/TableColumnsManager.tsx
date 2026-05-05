@@ -2,9 +2,9 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { GripVertical, Lock, RotateCcw, X } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, GripVertical, Lock, RotateCcw, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import type { TableColumnDef } from '../../hooks/useTableColumns';
+import type { TableColAlign, TableColumnDef } from '../../hooks/useTableColumns';
 
 interface TableColumnsManagerProps<TColId extends string> {
     columns: TableColumnDef<TColId>[];
@@ -15,6 +15,10 @@ interface TableColumnsManagerProps<TColId extends string> {
     onSetOrder: (order: TColId[]) => void;
     onReset: () => void;
     onClose: () => void;
+    /** Resolve effective alignment for a column (user override or default). */
+    resolveAlign?: (id: TColId) => TableColAlign;
+    /** Set or clear (null) the alignment override for a column. */
+    onSetAlign?: (id: TColId, align: TableColAlign | null) => void;
 }
 
 interface ColumnRowProps<TColId extends string> {
@@ -30,6 +34,8 @@ interface ColumnRowProps<TColId extends string> {
     onDragOver?: (e: React.DragEvent) => void;
     onDrop?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
+    align?: TableColAlign;
+    onSetAlign?: (align: TableColAlign) => void;
 }
 
 function ColumnRow<TColId extends string>({
@@ -45,10 +51,15 @@ function ColumnRow<TColId extends string>({
     onDragOver,
     onDrop,
     onDragEnd,
+    align,
+    onSetAlign,
 }: ColumnRowProps<TColId>) {
     const t = useTranslation();
     const label = t(column.labelKey);
     const isPinned = !!(column.pinnedStart || column.pinnedEnd);
+    const alignBtnCls = (active: boolean) => `p-1 rounded transition-colors ${active
+        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
+        : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'}`;
     return (
         <div
             data-testid={`table-cols-row-${column.id}`}
@@ -78,8 +89,39 @@ function ColumnRow<TColId extends string>({
                 />
                 <span className="truncate">{label || column.id}</span>
             </label>
-            {isPinned && (
-                <span className="shrink-0 text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            {onSetAlign && align && (
+                <div className="flex items-center gap-0.5 shrink-0" role="group" aria-label={t('table.alignmentGroup')}>
+                    <button
+                        type="button"
+                        onClick={() => onSetAlign('left')}
+                        className={alignBtnCls(align === 'left')}
+                        title={t('table.alignLeft')}
+                        aria-pressed={align === 'left'}
+                    >
+                        <AlignLeft size={12} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onSetAlign('center')}
+                        className={alignBtnCls(align === 'center')}
+                        title={t('table.alignCenter')}
+                        aria-pressed={align === 'center'}
+                    >
+                        <AlignCenter size={12} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onSetAlign('right')}
+                        className={alignBtnCls(align === 'right')}
+                        title={t('table.alignRight')}
+                        aria-pressed={align === 'right'}
+                    >
+                        <AlignRight size={12} />
+                    </button>
+                </div>
+            )}
+            {isPinned && !onSetAlign && (
+                <span className="shrink-0 text-[10px] tracking-wide text-gray-400 dark:text-gray-500">
                     {pinnedLabel}
                 </span>
             )}
@@ -95,6 +137,8 @@ export function TableColumnsManager<TColId extends string>({
     onSetOrder,
     onReset,
     onClose,
+    resolveAlign,
+    onSetAlign,
 }: TableColumnsManagerProps<TColId>) {
     const t = useTranslation();
     const [dragId, setDragId] = React.useState<TColId | null>(null);
@@ -129,7 +173,7 @@ export function TableColumnsManager<TColId extends string>({
             onClick={(e) => e.stopPropagation()}
         >
             <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
-                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 tracking-wide">
                     {t('table.manageColumns')}
                 </span>
                 <button
@@ -178,6 +222,8 @@ export function TableColumnsManager<TColId extends string>({
                                 setDragId(null);
                                 setOverId(null);
                             } : undefined}
+                            align={resolveAlign && onSetAlign ? resolveAlign(column.id) : undefined}
+                            onSetAlign={onSetAlign ? ((align) => onSetAlign(column.id, align)) : undefined}
                         />
                     );
                 })}

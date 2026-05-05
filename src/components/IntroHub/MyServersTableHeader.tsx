@@ -42,7 +42,7 @@ const findLegacyClass = (id: MyServersTableColId): string =>
 
 export function MyServersTableHeader({ columns, onReorder, onLiveResize }: MyServersTableHeaderProps) {
     const t = useTranslation();
-    const { config, orderedVisibleColumns, orderedAllColumns, setSort, setVisible, setWidth, reset } = columns;
+    const { config, orderedVisibleColumns, orderedAllColumns, setSort, setVisible, setWidth, setAlign, resolveAlign, reset } = columns;
     const sort = config.sort as MyServersSort | null;
     const sortLabel = sort
         ? t(MY_SERVERS_TABLE_COLUMNS.find(col => col.id === sort.colId)?.labelKey || '')
@@ -95,9 +95,10 @@ export function MyServersTableHeader({ columns, onReorder, onLiveResize }: MySer
                         ? sort.dir === 'asc' ? 'ascending' : 'descending'
                         : undefined;
                     const legacyCls = findLegacyClass(column.id);
-                    const alignClass = legacyCls.includes('text-right')
+                    const effectiveAlign = resolveAlign(column.id);
+                    const alignClass = effectiveAlign === 'right'
                         ? 'justify-end'
-                        : legacyCls.includes('text-center') ? 'justify-center' : '';
+                        : effectiveAlign === 'center' ? 'justify-center' : 'justify-start';
                     const isDragTarget = overId === column.id && dragId !== null && dragId !== column.id;
                     const isDragging = dragId === column.id;
 
@@ -148,7 +149,7 @@ export function MyServersTableHeader({ columns, onReorder, onLiveResize }: MySer
                                 setOverId(null);
                             } : undefined}
                             onDragEnd={canDrag ? () => { setDragId(null); setOverId(null); } : undefined}
-                            className={`${legacyCls} relative px-3 py-2 text-[11px] font-semibold uppercase text-gray-500 dark:text-gray-400 tracking-wide whitespace-nowrap
+                            className={`${legacyCls} relative px-3 py-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400 tracking-wide whitespace-nowrap
                                 ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}
                                 ${isDragging ? 'opacity-40' : ''}
                                 ${isDragTarget ? 'bg-blue-100 dark:bg-blue-900/30' : ''}`}
@@ -175,6 +176,8 @@ export function MyServersTableHeader({ columns, onReorder, onLiveResize }: MySer
                                                 onSetOrder={(order) => columns.setOrder(order)}
                                                 onReset={() => { reset(); setShowManager(false); }}
                                                 onClose={() => setShowManager(false)}
+                                                resolveAlign={resolveAlign}
+                                                onSetAlign={setAlign}
                                             />
                                         )}
                                     </div>

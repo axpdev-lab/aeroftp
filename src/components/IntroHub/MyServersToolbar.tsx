@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, BarChart3, Rows3, Rows2, HardDrive } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
@@ -28,10 +28,6 @@ interface MyServersToolbarProps {
     onOpenMountManager?: () => void;
     /** 0/1/2: drives the 3 brightness states of the cross-profile button. */
     crossProfileSelectionCount?: number;
-    /** Current card layout: drives the detailed-cards toggle visual state. */
-    cardLayout?: 'compact' | 'detailed';
-    /** Toggle compact ↔ detailed card layout (storage bar + health radial). */
-    onToggleCardLayout?: () => void;
     /** Row density in list view ('compact' shrinks paddings + icon size). */
     listDensity?: MyServersDensity;
     /** Cycle the row density. Only rendered when in list view. */
@@ -58,8 +54,6 @@ export function MyServersToolbar({
     onOpenCrossProfile,
     onOpenMountManager,
     crossProfileSelectionCount = 0,
-    cardLayout = 'compact',
-    onToggleCardLayout,
     listDensity = 'compact',
     onToggleListDensity,
 }: MyServersToolbarProps) {
@@ -139,20 +133,6 @@ export function MyServersToolbar({
                         title={t('introHub.viewGrid')}
                     >
                         <LayoutGrid size={15} />
-                    </button>
-                )}
-                {onToggleCardLayout && (
-                    <button
-                        onClick={onToggleCardLayout}
-                        className={`p-2 transition-colors border-l border-gray-200 dark:border-gray-600 ${
-                            cardLayout === 'detailed'
-                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }`}
-                        title={t('settings.detailedCards')}
-                        aria-pressed={cardLayout === 'detailed'}
-                    >
-                        <BarChart3 size={15} />
                     </button>
                 )}
                 {viewMode === 'list' && onToggleListDensity && (
