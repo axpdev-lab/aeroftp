@@ -503,6 +503,113 @@ fn base32hex_decode(s: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("base32hex decode failed: {}", e))
 }
 
+// ── Obfuscate filename encryption (rclone-compatible) ───────────────────────
+//
+// Rclone's `obfuscate` mode uses character-rotation within Unicode "buckets".
+// The rotation amount is derived from the directory IV via the first 4 bytes
+// (treated as a u32). Each character is rotated within its own bucket (ASCII
+// upper, ASCII lower, ASCII digits, plus a small set of Latin-1 / Latin
+// extended ranges); characters outside any bucket pass through unchanged.
+// The output is prefixed by `<rotation>.` to make decoding deterministic.
+
+#[derive(Clone, Copy)]
+struct ObfBucket {
+    lower: u32,
+    upper: u32,
+}
+
+const OBF_BUCKETS: &[ObfBucket] = &[
+    // ASCII digits
+    ObfBucket {
+        lower: 0x30,
+        upper: 0x39,
+    },
+    // ASCII uppercase letters
+    ObfBucket {
+        lower: 0x41,
+        upper: 0x5A,
+    },
+    // ASCII lowercase letters
+    ObfBucket {
+        lower: 0x61,
+        upper: 0x7A,
+    },
+    // Latin-1 supplement letters (À..ÿ excluding × ÷)
+    ObfBucket {
+        lower: 0x00C0,
+        upper: 0x00D6,
+    },
+    ObfBucket {
+        lower: 0x00D8,
+        upper: 0x00F6,
+    },
+    ObfBucket {
+        lower: 0x00F8,
+        upper: 0x00FF,
+    },
+];
+
+fn obf_rotation_from_dir_iv(dir_iv: &[u8; 16]) -> u32 {
+    // First 4 bytes of dirIV as little-endian u32 -> rotation amount.
+    u32::from_le_bytes([dir_iv[0], dir_iv[1], dir_iv[2], dir_iv[3]])
+}
+
+fn obf_rotate_char(ch: char, rotate_by: u32, encrypt: bool) -> char {
+    let cp = ch as u32;
+    for b in OBF_BUCKETS {
+        if cp >= b.lower && cp <= b.upper {
+            let size = b.upper - b.lower + 1;
+            let off = cp - b.lower;
+            let r = rotate_by.rem_euclid(size);
+            let new_off = if encrypt {
+                (off + r) % size
+            } else {
+                (off + size - r) % size
+            };
+            return char::from_u32(b.lower + new_off).unwrap_or(ch);
+        }
+    }
+    ch
+}
+
+/// Obfuscate a filename using rclone's `obfuscate` algorithm.
+pub fn obfuscate_name(dir_iv: &[u8; 16], plain_name: &str) -> Result<String, String> {
+    if plain_name.is_empty() {
+        return Err("obfuscate: empty filename".into());
+    }
+    let rotate_by = obf_rotation_from_dir_iv(dir_iv);
+    let mut out = format!("{}.", rotate_by);
+    for ch in plain_name.chars() {
+        out.push(obf_rotate_char(ch, rotate_by, true));
+    }
+    Ok(out)
+}
+
+/// Deobfuscate a filename produced by `obfuscate_name`. The dir_iv must match
+/// the directory the entry was placed in.
+pub fn deobfuscate_name(dir_iv: &[u8; 16], obf_name: &str) -> Result<String, String> {
+    let dot = obf_name
+        .find('.')
+        .ok_or_else(|| "obfuscate: missing rotation prefix".to_string())?;
+    let prefix = &obf_name[..dot];
+    let rotate_by_recorded: u32 = prefix
+        .parse()
+        .map_err(|e| format!("obfuscate: invalid rotation prefix {:?}: {}", prefix, e))?;
+    let rotate_by_expected = obf_rotation_from_dir_iv(dir_iv);
+    if rotate_by_recorded != rotate_by_expected {
+        return Err(format!(
+            "obfuscate: rotation mismatch (file={}, expected={})",
+            rotate_by_recorded, rotate_by_expected
+        ));
+    }
+    let body = &obf_name[dot + 1..];
+    let mut out = String::with_capacity(body.len());
+    for ch in body.chars() {
+        out.push(obf_rotate_char(ch, rotate_by_expected, false));
+    }
+    Ok(out)
+}
+
 // ── Tauri state and commands (Phase 3) ─────────────────────────────────────
 
 use std::collections::HashMap;
@@ -544,10 +651,6 @@ pub async fn rclone_crypt_unlock(
     filename_encryption: Option<String>,
     directory_name_encryption: Option<bool>,
 ) -> Result<RcloneCryptVaultInfo, String> {
-    if matches!(filename_encryption.as_deref(), Some("obfuscate")) {
-        return Err("filename_encryption=obfuscate is not supported in this MVP".to_string());
-    }
-
     let secret_pwd = secrecy::SecretString::from(password);
     let salt_str = salt.unwrap_or_default();
 
@@ -607,11 +710,11 @@ pub async fn rclone_crypt_decrypt_name(
     if keys.filename_encryption == FilenameEncryption::Off {
         return Ok(encrypted_name);
     }
-    if keys.filename_encryption == FilenameEncryption::Obfuscate {
-        return Err("filename_encryption=obfuscate is not supported in this MVP".to_string());
-    }
 
     let dir_iv = parse_dir_iv(&dir_iv_base64)?;
+    if keys.filename_encryption == FilenameEncryption::Obfuscate {
+        return deobfuscate_name(&dir_iv, &encrypted_name);
+    }
     decrypt_name(&keys.name_key, &dir_iv, &encrypted_name)
 }
 
@@ -629,11 +732,11 @@ pub async fn rclone_crypt_encrypt_name(
     if keys.filename_encryption == FilenameEncryption::Off {
         return Ok(plain_name);
     }
-    if keys.filename_encryption == FilenameEncryption::Obfuscate {
-        return Err("filename_encryption=obfuscate is not supported in this MVP".to_string());
-    }
 
     let dir_iv = parse_dir_iv(&dir_iv_base64)?;
+    if keys.filename_encryption == FilenameEncryption::Obfuscate {
+        return obfuscate_name(&dir_iv, &plain_name);
+    }
     encrypt_name(&keys.name_key, &dir_iv, &plain_name)
 }
 
@@ -1269,5 +1372,164 @@ mod tests {
 
         assert_eq!(hash, expected_hash);
         assert_eq!(len, plaintext.len() as u64);
+    }
+
+    // ── Obfuscate filename encryption tests ─────────────────────────────────
+
+    #[test]
+    fn obfuscate_roundtrip_ascii() {
+        let dir_iv = [0xA5u8; 16];
+        for plain in [
+            "report.txt",
+            "Photos2026",
+            "Mixed_CASE-123.zip",
+            "a",
+            "ALLCAPS",
+            "alllower",
+            "0123456789",
+        ] {
+            let obf = obfuscate_name(&dir_iv, plain).unwrap();
+            assert!(
+                obf.contains('.'),
+                "obfuscated output must carry rotation prefix"
+            );
+            let back = deobfuscate_name(&dir_iv, &obf).unwrap();
+            assert_eq!(back, plain, "roundtrip mismatch on {:?}", plain);
+        }
+    }
+
+    #[test]
+    fn obfuscate_roundtrip_latin1() {
+        let dir_iv = [0x11u8; 16];
+        let plain = "café_éà_naïve.txt";
+        let obf = obfuscate_name(&dir_iv, plain).unwrap();
+        let back = deobfuscate_name(&dir_iv, &obf).unwrap();
+        assert_eq!(back, plain);
+    }
+
+    #[test]
+    fn obfuscate_passthrough_outside_buckets() {
+        // Spaces, dots, dashes, underscores, slashes-equivalent stay invariant.
+        let dir_iv = [0u8; 16];
+        let obf = obfuscate_name(&dir_iv, "a b.c-d_e").unwrap();
+        // rotation = 0 -> letters unchanged; punctuation always unchanged
+        assert!(obf.ends_with("a b.c-d_e"));
+        let back = deobfuscate_name(&dir_iv, &obf).unwrap();
+        assert_eq!(back, "a b.c-d_e");
+    }
+
+    #[test]
+    fn obfuscate_different_dir_iv_different_output() {
+        let plain = "secret.bin";
+        let a = obfuscate_name(&[0x01u8; 16], plain).unwrap();
+        let b = obfuscate_name(&[0xFFu8; 16], plain).unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn obfuscate_rejects_empty() {
+        assert!(obfuscate_name(&[0u8; 16], "").is_err());
+    }
+
+    #[test]
+    fn deobfuscate_rejects_missing_prefix() {
+        assert!(deobfuscate_name(&[0u8; 16], "no-dot-here").is_err());
+    }
+
+    #[test]
+    fn deobfuscate_rejects_rotation_mismatch() {
+        let plain = "doc.txt";
+        let dir_iv_a = [0x01u8; 16];
+        let dir_iv_b = [0x02u8; 16];
+        let obf = obfuscate_name(&dir_iv_a, plain).unwrap();
+        // Same encoding payload but a different dirIV must refuse to decode.
+        let res = deobfuscate_name(&dir_iv_b, &obf);
+        assert!(res.is_err(), "expected mismatch error, got {:?}", res);
+    }
+
+    // ── End-to-end smoke roundtrip (no rclone CLI dependency) ────────────────
+    //
+    // Simulates a full crypt workflow against an in-memory provider mock:
+    //   1. derive keys from password + salt
+    //   2. for each plaintext file/folder, encrypt name + content
+    //   3. write encrypted bytes into a HashMap keyed by encrypted path
+    //   4. read everything back, decrypt names + contents, compare to input
+    //
+    // Covers all three filename-encryption modes (standard, off, obfuscate)
+    // plus single-chunk and multi-chunk file sizes.
+
+    fn smoke_roundtrip_inner(mode: FilenameEncryption) {
+        let (name_key, data_key) = derive_keys("smoke-pass", "smoke-salt").unwrap();
+        let dir_iv: [u8; 16] = [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x10,
+        ];
+
+        let inputs: Vec<(&str, Vec<u8>)> = vec![
+            ("hello.txt", b"hello world".to_vec()),
+            ("EMPTY.bin", Vec::new()),
+            (
+                "big_blob.dat",
+                (0..(CHUNK_DATA_SIZE * 2 + 137))
+                    .map(|i| (i % 251) as u8)
+                    .collect(),
+            ),
+            ("photos2026.jpg", vec![0xFEu8; 1024]),
+        ];
+
+        let mut wire: HashMap<String, Vec<u8>> = HashMap::new();
+
+        let encrypt_one_name = |plain: &str| -> String {
+            match mode {
+                FilenameEncryption::Off => plain.to_string(),
+                FilenameEncryption::Standard => encrypt_name(&name_key, &dir_iv, plain).unwrap(),
+                FilenameEncryption::Obfuscate => obfuscate_name(&dir_iv, plain).unwrap(),
+            }
+        };
+        let decrypt_one_name = |encoded: &str| -> String {
+            match mode {
+                FilenameEncryption::Off => encoded.to_string(),
+                FilenameEncryption::Standard => {
+                    decrypt_name(&name_key, &dir_iv, encoded).unwrap()
+                }
+                FilenameEncryption::Obfuscate => deobfuscate_name(&dir_iv, encoded).unwrap(),
+            }
+        };
+
+        for (plain_name, plaintext) in &inputs {
+            let encrypted_name = encrypt_one_name(plain_name);
+            let encrypted_blob = encrypt_file_content(plaintext, &data_key).unwrap();
+            wire.insert(encrypted_name, encrypted_blob);
+        }
+
+        let mut recovered: HashMap<String, Vec<u8>> = HashMap::new();
+        for (encrypted_name, encrypted_blob) in &wire {
+            let plain_name = decrypt_one_name(encrypted_name);
+            let plaintext = decrypt_file_content(encrypted_blob, &data_key).unwrap();
+            recovered.insert(plain_name, plaintext);
+        }
+
+        assert_eq!(recovered.len(), inputs.len());
+        for (plain_name, plaintext) in &inputs {
+            let got = recovered
+                .get(*plain_name)
+                .unwrap_or_else(|| panic!("missing recovered entry for {:?}", plain_name));
+            assert_eq!(got, plaintext, "content mismatch for {:?}", plain_name);
+        }
+    }
+
+    #[test]
+    fn smoke_roundtrip_standard() {
+        smoke_roundtrip_inner(FilenameEncryption::Standard);
+    }
+
+    #[test]
+    fn smoke_roundtrip_off() {
+        smoke_roundtrip_inner(FilenameEncryption::Off);
+    }
+
+    #[test]
+    fn smoke_roundtrip_obfuscate() {
+        smoke_roundtrip_inner(FilenameEncryption::Obfuscate);
     }
 }

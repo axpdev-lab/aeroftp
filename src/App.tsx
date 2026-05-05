@@ -501,6 +501,15 @@ const App: React.FC = () => {
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
   const [rcloneCryptVaultId, setRcloneCryptVaultId] = useState<string | null>(null);
+  const [rcloneCryptImportBanner, setRcloneCryptImportBanner] = useState<null | {
+    serverName: string;
+    password: string;
+    salt?: string;
+    filenameEncryption?: string;
+    directoryNameEncryption?: boolean;
+    initialPath?: string;
+  }>(null);
+  const rcloneCryptBannerHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (isConnected || !rcloneCryptVaultId) return;
     const vaultId = rcloneCryptVaultId;
@@ -509,6 +518,36 @@ const App: React.FC = () => {
       // Best effort cleanup: backend may already be cleared.
     });
   }, [isConnected, rcloneCryptVaultId]);
+  useEffect(() => {
+    if (!isConnected || rcloneCryptVaultId || rcloneCryptImportBanner) return;
+    const opts = (connectionParams.options ?? {}) as Record<string, unknown>;
+    if (opts.rcloneCryptEnabled !== true) return;
+    const password = typeof opts.rcloneCryptPassword === 'string' ? opts.rcloneCryptPassword : '';
+    if (!password) return;
+    const sessionKey = `${connectionParams.server || ''}:${connectionParams.protocol || ''}:${connectionParams.username || ''}`;
+    if (rcloneCryptBannerHandledRef.current === sessionKey) return;
+    rcloneCryptBannerHandledRef.current = sessionKey;
+    setRcloneCryptImportBanner({
+      serverName: typeof opts.rcloneCryptOverlayName === 'string'
+        ? (opts.rcloneCryptOverlayName as string)
+        : (connectionParams.server || 'remote'),
+      password,
+      salt: typeof opts.rcloneCryptPassword2 === 'string' ? (opts.rcloneCryptPassword2 as string) : undefined,
+      filenameEncryption: typeof opts.rcloneCryptFilenameEncryption === 'string'
+        ? (opts.rcloneCryptFilenameEncryption as string)
+        : 'standard',
+      directoryNameEncryption: typeof opts.rcloneCryptDirectoryNameEncryption === 'boolean'
+        ? (opts.rcloneCryptDirectoryNameEncryption as boolean)
+        : true,
+      initialPath: typeof opts.rcloneCryptRemote === 'string' ? (opts.rcloneCryptRemote as string) : undefined,
+    });
+  }, [isConnected, connectionParams.options, connectionParams.server, connectionParams.protocol, connectionParams.username, rcloneCryptVaultId, rcloneCryptImportBanner]);
+  useEffect(() => {
+    if (!isConnected) {
+      rcloneCryptBannerHandledRef.current = null;
+      setRcloneCryptImportBanner(null);
+    }
+  }, [isConnected]);
   // false → closed; object → open with optional pre-selection (sourceId/destId/sourcePath/destPath).
   // An empty object {} opens the panel with no overrides (active connection seeds source if connected).
   const [showCrossProfilePanel, setShowCrossProfilePanel] = useState<false | {
@@ -4405,10 +4444,19 @@ interface UpdateVerificationInfo {
         if (isAeroVaultOverlay) {
           throw new Error('AeroVault overlay: folder download not yet supported in main browser');
         }
-        if (isRcloneCryptOverlay) {
-          throw new Error('Rclone crypt: folder download in transparent mode is not yet supported in main browser');
-        }
         const downloadPath = destinationPath || await open({ directory: true, multiple: false, defaultPath: await downloadDir() });
+        if (isRcloneCryptOverlay && downloadPath) {
+          const folderPath = `${downloadPath}/${fileName}`;
+          await invoke<string>('rclone_crypt_provider_download_folder', {
+            vaultId: rcloneCryptVaultId,
+            remoteEncryptedPath: remoteFilePath,
+            localDestRoot: folderPath,
+          });
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          humanLog.log('DOWNLOAD', `[Rclone Crypt] Decrypted folder ${folderPath} in ${elapsed}s`, 'success');
+          humanLog.updateEntry(logId, { status: 'success', message: `Decrypted folder ${folderPath} in ${elapsed}s` });
+          return;
+        }
         if (downloadPath) {
           const folderPath = `${downloadPath}/${fileName}`;
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
@@ -4535,7 +4583,17 @@ interface UpdateVerificationInfo {
           throw new Error('AeroVault overlay: folder upload not yet supported in main browser');
         }
         if (isRcloneCryptOverlay) {
-          throw new Error('Rclone crypt: folder upload in transparent mode is not yet supported in main browser');
+          const logId = humanLog.logStart('UPLOAD', { filename: fileName });
+          pendingFileLogIds.current.set(fileName, logId);
+          await invoke<string>('rclone_crypt_provider_upload_folder', {
+            vaultId: rcloneCryptVaultId,
+            localPath: localFilePath,
+            remoteParentPath: currentRemotePath,
+          });
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          const msg = t('activity.upload_success', { filename: fileName, details: `(${elapsed}s)` });
+          humanLog.updateEntry(logId, { status: 'success', message: msg });
+          return;
         }
         const logId = humanLog.logStart('UPLOAD', { filename: fileName });
         pendingFileLogIds.current.set(fileName, logId); // Register for adoption by backend event
@@ -7231,32 +7289,9 @@ interface UpdateVerificationInfo {
       }
     }
 
-    // ─── Rclone-crypt overlay (remote provider directories) ─────────────
-    // Rclone-crypt has no marker file: nomi cifrati base32, struttura per-directory.
-    // Lo offriamo su qualsiasi directory remota in connessione provider/SFTP.
-    const rcloneCryptCompatible = !!currentProtocol && usesProviderApi(currentProtocol);
-    if (rcloneCryptCompatible) {
-      if (rcloneCryptVaultId) {
-        items.push({
-          label: t('contextMenu.lockRcloneCrypt') || 'Lock Rclone Crypt overlay',
-          icon: <Shield size={14} className="text-emerald-500" />,
-          action: () => {
-            const vaultId = rcloneCryptVaultId;
-            setRcloneCryptVaultId(null);
-            void invoke('rclone_crypt_lock', { vaultId }).catch(() => { });
-            void loadRemoteFiles(undefined, true);
-          },
-          divider: true,
-        });
-      } else if (count === 1 && file.is_dir) {
-        items.push({
-          label: t('contextMenu.unlockRcloneCrypt') || 'Decrypt as Rclone Crypt overlay…',
-          icon: <Shield size={14} className="text-blue-500" />,
-          action: () => setShowRcloneCryptUnlock(true),
-          divider: true,
-        });
-      }
-    }
+    // Rclone Crypt overlay non e' piu' nel context menu file/cartelle:
+    // l'overlay e' una proprieta' del pannello remoto, non del singolo entry.
+    // L'aggancio primario vive ora nel pulsante toolbar AeroCrypt.
 
     // Ask AeroAgent
     items.push({
@@ -8865,6 +8900,50 @@ interface UpdateVerificationInfo {
             }}
           />
         )}
+        {rcloneCryptImportBanner && !rcloneCryptVaultId && (
+          <div className="fixed bottom-12 right-6 z-40 max-w-sm rounded-lg border border-blue-400/40 bg-blue-500/10 dark:bg-blue-500/15 backdrop-blur shadow-xl p-4 flex flex-col gap-2 animate-scale-in">
+            <div className="flex items-start gap-2">
+              <Shield size={18} className="text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-gray-800 dark:text-gray-100">
+                <div className="font-semibold mb-0.5">{t('toolbar.aerocryptImportTitle') || 'Rclone Crypt overlay rilevato'}</div>
+                <div className="text-xs opacity-80">
+                  {(t('toolbar.aerocryptImportDesc') || 'Profilo importato da rclone.conf per {{name}}: aprire l\'overlay ora?').replace('{{name}}', rcloneCryptImportBanner.serverName)}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setRcloneCryptImportBanner(null)}
+                className="px-3 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+              >
+                {t('common.later') || 'Più tardi'}
+              </button>
+              <button
+                onClick={async () => {
+                  const banner = rcloneCryptImportBanner;
+                  setRcloneCryptImportBanner(null);
+                  if (!banner) return;
+                  try {
+                    const info = await invoke<{ vault_id: string }>('rclone_crypt_unlock', {
+                      password: banner.password,
+                      salt: banner.salt || null,
+                      filenameEncryption: banner.filenameEncryption || 'standard',
+                      directoryNameEncryption: banner.directoryNameEncryption !== false,
+                    });
+                    setRcloneCryptVaultId(info.vault_id);
+                    void loadRemoteFiles(undefined, true);
+                    notify.success('AeroCrypt', t('toolbar.aerocryptOverlayActive') || 'Rclone Crypt overlay attivo');
+                  } catch (err) {
+                    notify.error('AeroCrypt', String(err));
+                  }
+                }}
+                className="px-3 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white font-semibold"
+              >
+                {t('toolbar.aerocryptImportOpen') || 'Apri overlay'}
+              </button>
+            </div>
+          </div>
+        )}
         {showCrossProfilePanel && (() => {
           const activeSavedId = isConnected ? sessions.find(s => s.id === activeSessionId)?.savedServerId : undefined;
           const sourceId = showCrossProfilePanel.sourceId ?? activeSavedId;
@@ -9561,11 +9640,35 @@ interface UpdateVerificationInfo {
                           }`}
                         title={aeroVaultOverlaySession
                           ? t('toolbar.aerovaultOverlayActive') || 'AeroVault container overlay active: click to detach'
-                          : t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel. For rclone-crypt overlay use right-click on a remote folder.'}
+                          : t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel.'}
                       >
                         <VaultIcon size={16} className={aeroVaultOverlaySession ? 'text-white' : 'text-emerald-400'} />
                         {aeroVaultOverlaySession ? 'AeroVault ON' : 'AeroVault'}
                       </button>
+                      {usesProviderApi(getActiveProviderProtocol()) && (
+                        <button
+                          onClick={() => {
+                            if (rcloneCryptVaultId) {
+                              const vaultId = rcloneCryptVaultId;
+                              setRcloneCryptVaultId(null);
+                              void invoke('rclone_crypt_lock', { vaultId }).catch(() => { });
+                              void loadRemoteFiles(undefined, true);
+                            } else {
+                              setShowRcloneCryptUnlock(true);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${rcloneCryptVaultId
+                            ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                            : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
+                            }`}
+                          title={rcloneCryptVaultId
+                            ? t('toolbar.aerocryptOverlayActive') || 'Rclone Crypt overlay active: click to detach'
+                            : t('toolbar.aerocryptOverlayInactive') || 'Open a rclone-crypt remote (or create a new one) as a transparent overlay'}
+                        >
+                          <Shield size={16} className={rcloneCryptVaultId ? 'text-white' : 'text-blue-400'} />
+                          {rcloneCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
+                        </button>
+                      )}
                       <button
                         onClick={cancelTransfer}
                         disabled={!isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
@@ -9735,6 +9838,15 @@ interface UpdateVerificationInfo {
                       >
                         <VaultIcon size={11} className="text-emerald-400" />
                         OVERLAY
+                      </span>
+                    )}
+                    {rcloneCryptVaultId && (
+                      <span
+                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/20 text-blue-500 border border-blue-500/30"
+                        title={t('toolbar.aerocryptOverlayActive') || 'Rclone Crypt overlay attivo: gli upload e download in questo pannello sono cifrati'}
+                      >
+                        <Shield size={11} className="text-blue-400" />
+                        AEROCRYPT
                       </span>
                     )}
                     {isConnected && (getActiveProviderProtocol() === 'github' || getActiveProviderProtocol() === 'gitlab') && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown' && (

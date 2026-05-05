@@ -407,6 +407,7 @@ enum AgentBootstrapTask {
 #[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
 enum RcloneFilenameEncryption {
     Standard,
+    Obfuscate,
     Off,
 }
 
@@ -1431,10 +1432,10 @@ enum RcloneCryptCommands {
         /// Optional rclone password2/salt (empty by default)
         #[arg(long, env = "AEROFTP_RCLONE_CRYPT_SALT", hide_env_values = true)]
         salt: Option<String>,
-        /// Filename encryption mode (standard or off)
+        /// Filename encryption mode
         #[arg(long, value_enum, default_value_t = RcloneFilenameEncryption::Standard)]
         filename_encryption: RcloneFilenameEncryption,
-        /// Base64 dirIV (required with --filename-encryption standard)
+        /// Base64 dirIV (required with --filename-encryption standard or obfuscate)
         #[arg(long)]
         dir_iv_base64: Option<String>,
         /// Optional plaintext filename override before encryption
@@ -19284,6 +19285,34 @@ async fn cmd_rclone_crypt_put(
                 }
             }
         }
+        RcloneFilenameEncryption::Obfuscate => {
+            let Some(iv_b64) = dir_iv_base64 else {
+                print_error(
+                    format,
+                    "--dir-iv-base64 is required with --filename-encryption obfuscate",
+                    5,
+                );
+                return 5;
+            };
+            let dir_iv = match parse_rclone_dir_iv_base64(iv_b64) {
+                Ok(iv) => iv,
+                Err(e) => {
+                    print_error(format, &e, 5);
+                    return 5;
+                }
+            };
+            match ftp_client_gui_lib::rclone_crypt::obfuscate_name(&dir_iv, &plain_name) {
+                Ok(name) => name,
+                Err(e) => {
+                    print_error(
+                        format,
+                        &format!("rclone filename obfuscation failed: {}", e),
+                        99,
+                    );
+                    return 99;
+                }
+            }
+        }
     };
 
     let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
@@ -19322,6 +19351,7 @@ async fn cmd_rclone_crypt_put(
                         "encrypted": encrypted_name,
                         "mode": match filename_encryption {
                             RcloneFilenameEncryption::Standard => "standard",
+                            RcloneFilenameEncryption::Obfuscate => "obfuscate",
                             RcloneFilenameEncryption::Off => "off",
                         }
                     },
@@ -19343,6 +19373,7 @@ async fn cmd_rclone_crypt_put(
                     "filename mode: {}",
                     match filename_encryption {
                         RcloneFilenameEncryption::Standard => "standard",
+                        RcloneFilenameEncryption::Obfuscate => "obfuscate",
                         RcloneFilenameEncryption::Off => "off",
                     }
                 );
