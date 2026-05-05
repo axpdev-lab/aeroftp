@@ -6,6 +6,12 @@ import { useState, useEffect } from 'react';
 import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
+import {
+    getStorageTone,
+    TONE_BG_CLASS,
+    TONE_TEXT_CLASS,
+    useStorageThresholds,
+} from '../hooks/useStorageThresholds';
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
 
 type AIStatus = 'idle' | 'streaming' | 'tool-execution' | 'error';
@@ -92,6 +98,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     swapPanels = false,
 }) => {
     const t = useTranslation();
+    const { thresholds: quotaThresholds } = useStorageThresholds();
     const [aiStatus, setAiStatus] = useState<AIStatus>('idle');
 
     useEffect(() => {
@@ -189,25 +196,25 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
             {/* Right: File Count + Sync + DevTools */}
             <div className="flex items-center gap-4 min-w-0 shrink overflow-hidden">
-                {/* Storage Quota */}
-                {isConnected && storageQuota && storageQuota.total > 0 && (
-                    <div className="flex items-center gap-1.5" title={`${formatBytes(storageQuota.used)} / ${formatBytes(storageQuota.total)}`}>
-                        <HardDrive size={12} className="text-purple-500" />
-                        <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
-                            <div
-                                className={`h-full rounded-full transition-all ${
-                                    (storageQuota.used / storageQuota.total) > 0.9
-                                        ? 'bg-red-500'
-                                        : (storageQuota.used / storageQuota.total) > 0.7
-                                            ? 'bg-amber-500'
-                                            : 'bg-purple-500'
-                                }`}
-                                style={{ width: `${Math.min(100, (storageQuota.used / storageQuota.total) * 100)}%` }}
-                            />
+                {/* Storage Quota: shares thresholds + tone palette with the
+                    MyServers card storage bar so the dual panel and the intro
+                    hub stay visually consistent (emerald → amber → red). */}
+                {isConnected && storageQuota && storageQuota.total > 0 && (() => {
+                    const { tone } = getStorageTone(storageQuota.used, storageQuota.total, quotaThresholds);
+                    const pct = Math.min(100, (storageQuota.used / storageQuota.total) * 100);
+                    return (
+                        <div className="flex items-center gap-1.5" title={`${formatBytes(storageQuota.used)} / ${formatBytes(storageQuota.total)}`}>
+                            <HardDrive size={12} className={TONE_TEXT_CLASS[tone]} />
+                            <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
+                                <div
+                                    className={`h-full rounded-full transition-all ${TONE_BG_CLASS[tone]}`}
+                                    style={{ width: `${pct}%` }}
+                                />
+                            </div>
+                            <span className="text-[10px]">{formatBytes(storageQuota.used)} / {formatBytes(storageQuota.total)}</span>
                         </div>
-                        <span className="text-[10px]">{formatBytes(storageQuota.used)} / {formatBytes(storageQuota.total)}</span>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {swapPanels ? (
                     <>
