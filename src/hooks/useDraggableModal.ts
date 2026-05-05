@@ -17,8 +17,12 @@ interface DragStart {
 const clamp = (value: number, min: number, max: number) =>
     Math.min(Math.max(value, min), max);
 
+// We test against `Element` (not `HTMLElement`) so SVG icons inside <button>
+// also resolve via `closest()`. Otherwise WebKit fires pointerdown with
+// target = SVGElement, drag captures the pointer, and the button's click
+// never fires: this caused #129 ("X close needs many clicks to register").
 const isInteractiveTarget = (target: EventTarget | null): boolean =>
-    target instanceof HTMLElement
+    target instanceof Element
         && !!target.closest('button, input, select, textarea, a, [role="button"], [data-modal-drag-ignore]');
 
 /**

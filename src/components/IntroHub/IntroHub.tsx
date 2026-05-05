@@ -298,11 +298,27 @@ export function IntroHub(props: IntroHubProps) {
             } else if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
                 e.preventDefault();
                 handleNewConnection();
+            } else if (e.key === 'Escape') {
+                // Close the active form tab if one is open. Skip when focus is
+                // inside a text input/textarea/contenteditable so Esc still
+                // serves its native role (closing native autocomplete, etc).
+                const target = e.target as HTMLElement | null;
+                const isEditable = !!target && (
+                    target.tagName === 'INPUT' ||
+                    target.tagName === 'TEXTAREA' ||
+                    target.tagName === 'SELECT' ||
+                    target.isContentEditable
+                );
+                if (isEditable) return;
+                if (formTabs.some(ft => ft.id === activeTab)) {
+                    e.preventDefault();
+                    handleCloseFormTab(activeTab);
+                }
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [handleTabChange, handleCommandPalette, handleNewConnection]);
+    }, [handleTabChange, handleCommandPalette, handleNewConnection, formTabs, activeTab, handleCloseFormTab]);
 
     // Find active form tab (if any)
     const activeFormTab = formTabs.find(ft => ft.id === activeTab);

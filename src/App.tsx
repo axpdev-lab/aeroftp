@@ -1243,11 +1243,16 @@ interface UpdateVerificationInfo {
       }
     },
 
-    // Backspace: go up directory
+    // Backspace: go up directory. Only meaningful when a file panel is on
+    // screen, otherwise it tries to navigate against an empty path and the
+    // backend rejects the call with "Path must be absolute" (issue #129).
     'Backspace': () => {
+      if (showConnectionScreen) return;
       if (activePanel === 'remote') {
+        if (!isConnected || !showRemotePanel) return;
         if (currentRemotePath !== '/') changeRemoteDirectory('..');
       } else {
+        if (!currentLocalPath) return;
         if (currentLocalPath !== '/') changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/');
       }
     },
@@ -2417,6 +2422,16 @@ interface UpdateVerificationInfo {
     return () => window.removeEventListener('toggle-aerofile', handler);
   }, []);
 
+  // Clear file selections when leaving AeroFile / the file panel for the
+  // connection screen, so a stale selection cannot trigger a Delete prompt
+  // after the user has already moved on.
+  useEffect(() => {
+    if (showConnectionScreen) {
+      setSelectedLocalFiles(prev => prev.size === 0 ? prev : new Set());
+      setSelectedRemoteFiles(prev => prev.size === 0 ? prev : new Set());
+    }
+  }, [showConnectionScreen]);
+
   const handleRemoteSearch = async (query: string) => {
     if (!query.trim()) {
       setRemoteSearchResults(null);
@@ -2560,6 +2575,10 @@ interface UpdateVerificationInfo {
         return 'dev.opendrive.com';
       case 'yandexdisk':
         return 'cloud-api.yandex.net';
+      case 'imagekit':
+        return 'api.imagekit.io';
+      case 'uploadcare':
+        return 'api.uploadcare.com';
       case 'github':
         return 'api.github.com';
       default:
@@ -2583,6 +2602,22 @@ interface UpdateVerificationInfo {
         server: params.server || 'filelu.com',
         port: params.port || 443,
         username: params.username || 'api-key',
+      };
+    }
+    if (protocol === 'imagekit') {
+      return {
+        ...params,
+        server: params.server || 'api.imagekit.io',
+        port: params.port || 443,
+        providerId: params.providerId || 'imagekit',
+      };
+    }
+    if (protocol === 'uploadcare') {
+      return {
+        ...params,
+        server: params.server || 'api.uploadcare.com',
+        port: params.port || 443,
+        providerId: params.providerId || 'uploadcare',
       };
     }
     if (protocol === 'koofr') {
@@ -3204,6 +3239,10 @@ interface UpdateVerificationInfo {
           ? effectiveParams.options?.bucket || 'Azure'
           : protocol === 'filelu'
             ? 'FileLu'
+          : protocol === 'imagekit'
+            ? 'ImageKit'
+          : protocol === 'uploadcare'
+            ? 'Uploadcare'
           : protocol === 'koofr'
             ? `Koofr ${effectiveParams.username}`
           : protocol === 'opendrive'
@@ -5857,6 +5896,27 @@ interface UpdateVerificationInfo {
     }
   };
 
+  // Build a user-friendly delete confirm message that distinguishes a single
+  // file/folder from a batch, and shows separate counts when the selection
+  // mixes files and folders.
+  const buildDeleteConfirmMessage = (entries: { name: string; isDir: boolean }[]): string => {
+    const fileCount = entries.filter(e => !e.isDir).length;
+    const folderCount = entries.filter(e => e.isDir).length;
+    if (entries.length === 1) {
+      const only = entries[0];
+      return only.isDir
+        ? t('dialog.deleteOneFolder', { name: only.name })
+        : t('dialog.deleteOneFile', { name: only.name });
+    }
+    if (folderCount > 0 && fileCount > 0) {
+      return t('dialog.deleteFilesAndFolders', { files: fileCount, folders: folderCount });
+    }
+    if (folderCount > 0) {
+      return t('dialog.deleteFolders', { count: folderCount });
+    }
+    return t('dialog.deleteFiles', { count: fileCount });
+  };
+
   const deleteMultipleRemoteFiles = (filesOverride?: string[]) => {
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
@@ -6013,8 +6073,14 @@ interface UpdateVerificationInfo {
 
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
+      const entries = names
+        .map(n => remoteFiles.find(f => f.name === n))
+        .filter(Boolean)
+        .map(f => ({ name: f!.name, isDir: f!.is_dir }));
       setConfirmDialog({
-        message: t('dialog.deleteSelectedItems', { count: names.length }),
+        message: entries.length > 0
+          ? buildDeleteConfirmMessage(entries)
+          : t('dialog.deleteFiles', { count: names.length }),
         onConfirm: async () => {
           setConfirmDialog(null);
           await performDelete();
@@ -6086,8 +6152,14 @@ interface UpdateVerificationInfo {
 
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
+      const entries = names
+        .map(n => localFiles.find(f => f.name === n))
+        .filter(Boolean)
+        .map(f => ({ name: f!.name, isDir: f!.is_dir }));
       setConfirmDialog({
-        message: t('dialog.deleteSelectedItems', { count: names.length }),
+        message: entries.length > 0
+          ? buildDeleteConfirmMessage(entries)
+          : t('dialog.deleteFiles', { count: names.length }),
         onConfirm: async () => {
           setConfirmDialog(null);
           await performDelete();
@@ -9311,6 +9383,10 @@ interface UpdateVerificationInfo {
                       ? normalizedParams.options?.bucket || 'Azure'
                       : normalizedParams.protocol === 'filelu'
                         ? 'FileLu'
+                      : normalizedParams.protocol === 'imagekit'
+                        ? 'ImageKit'
+                      : normalizedParams.protocol === 'uploadcare'
+                        ? 'Uploadcare'
                         : normalizedParams.protocol === 'koofr'
                           ? `Koofr ${normalizedParams.username}`
                         : normalizedParams.protocol === 'opendrive'
