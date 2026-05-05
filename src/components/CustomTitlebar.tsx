@@ -354,115 +354,106 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
             {/* Center: drag region spacer */}
             <div data-tauri-drag-region className="flex-1 h-full" />
 
-            {/* Right: Toolbar buttons + Window controls */}
-            <div className="flex items-center gap-0.5">
-                {/* Connect / Disconnect: kept at the leftmost position so its
-                    appearance doesn't push the fixed icons (Vault, Lock, Settings)
-                    around. Without this, repeated toggling pushed those icons
-                    enough that an aimed click on Disconnect could land on Lock or
-                    Settings instead. (Issue #129, @EhudKirsh) */}
-                {isConnected ? (
-                    <>
+            {/* Right: 3-cluster layout (page-nav / utility / window controls).
+                gap-3 between clusters replaces ad-hoc vertical separators. */}
+            <div className="flex items-center gap-3">
+                {/* Cluster 1: Page Navigation.
+                    min-w-[96px] reserves the slot so the utility cluster never
+                    shifts when the button label/visibility changes (Connect vs
+                    Disconnect have different widths, and on the connection
+                    screen neither button renders). */}
+                <div className="flex items-center justify-end min-w-[96px]">
+                    {isConnected ? (
                         <button
                             onClick={onDisconnect}
-                            className="h-6 px-2 mr-1 flex items-center gap-1.5 text-xs rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
+                            className="h-6 px-2 flex items-center gap-1.5 text-xs rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
                             title={t('common.disconnect')}
                         >
                             <LogOut size={11} />
                             <span>{t('common.disconnect')}</span>
                         </button>
-                        <div className="w-px h-4 bg-[var(--color-border)] mr-1" />
-                    </>
-                ) : !showConnectionScreen ? (
-                    <>
+                    ) : !showConnectionScreen ? (
                         <button
                             onClick={onShowConnectionScreen}
-                            className="h-6 px-2 mr-1 flex items-center gap-1.5 text-xs rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer"
+                            className="h-6 px-2 flex items-center gap-1.5 text-xs rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors cursor-pointer"
                             title={t('common.connect')}
                         >
                             <Cloud size={11} />
                             <span>{t('common.connect')}</span>
                         </button>
-                        <div className="w-px h-4 bg-[var(--color-border)] mr-1" />
-                    </>
-                ) : null}
+                    ) : null}
+                </div>
 
-                {/* Cyber Toolkit: cyber theme only */}
-                {appTheme === 'cyber' && (
+                {/* Cluster 2: Utility (Cyber Toolkit if cyber theme, AeroVault, Lock, Settings) */}
+                <div className="flex items-center gap-0.5">
+                    {appTheme === 'cyber' && (
+                        <button
+                            onClick={onShowCyberTools}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                            title={t('cyberTools.title')}
+                        >
+                            <CyberShieldIcon size={14} className="text-emerald-400" />
+                        </button>
+                    )}
                     <button
-                        onClick={onShowCyberTools}
+                        onClick={onShowVault}
                         className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                        title={t('cyberTools.title')}
+                        title={t('vault.titleFull')}
                     >
-                        <CyberShieldIcon size={14} className="text-emerald-400" />
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" className="text-[var(--color-text-secondary)]">
+                            <path d="M12 21l.88-.38a11 11 0 006.63-9.26l.43-5.52a1 1 0 00-.76-1L12 3 4.82 4.8a1 1 0 00-.76 1l.43 5.52a11 11 0 006.63 9.26z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            <rect x="9.25" y="11" width="5.5" height="4" rx="0.75" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M10.25 11V9.5a1.75 1.75 0 013.5 0V11" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
                     </button>
-                )}
+                    <button
+                        onClick={masterPasswordSet ? onLockApp : onSetupMasterPassword}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                        title={masterPasswordSet ? t('masterPassword.lockTooltip') : t('masterPassword.setupTooltip')}
+                    >
+                        {masterPasswordSet ? (
+                            <Lock size={14} className="text-emerald-500" />
+                        ) : (
+                            <LockOpen size={14} className="text-[var(--color-text-tertiary)]" />
+                        )}
+                    </button>
+                    <button
+                        onClick={onOpenSettings}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                        title={t('common.settings')}
+                    >
+                        <Settings size={14} className="text-[var(--color-text-secondary)]" />
+                    </button>
+                </div>
 
-                {/* AeroVault */}
-                <button
-                    onClick={onShowVault}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                    title={t('vault.titleFull')}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" className="text-[var(--color-text-secondary)]">
-                        <path d="M12 21l.88-.38a11 11 0 006.63-9.26l.43-5.52a1 1 0 00-.76-1L12 3 4.82 4.8a1 1 0 00-.76 1l.43 5.52a11 11 0 006.63 9.26z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        <rect x="9.25" y="11" width="5.5" height="4" rx="0.75" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M10.25 11V9.5a1.75 1.75 0 013.5 0V11" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                </button>
-
-                <div className="w-px h-4 bg-[var(--color-border)] mx-1" />
-
-                {/* Lock / Master Password */}
-                <button
-                    onClick={masterPasswordSet ? onLockApp : onSetupMasterPassword}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                    title={masterPasswordSet ? t('masterPassword.lockTooltip') : t('masterPassword.setupTooltip')}
-                >
-                    {masterPasswordSet ? (
-                        <Lock size={14} className="text-emerald-500" />
-                    ) : (
-                        <LockOpen size={14} className="text-[var(--color-text-tertiary)]" />
-                    )}
-                </button>
-
-                {/* Settings */}
-                <button
-                    onClick={onOpenSettings}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                    title={t('common.settings')}
-                >
-                    <Settings size={14} className="text-[var(--color-text-secondary)]" />
-                </button>
-
-                <div className="w-px h-4 bg-[var(--color-border)] mx-1" />
-
-                {/* Window controls */}
-                <button
-                    onClick={handleMinimize}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                    title={t('ui.minimize')}
-                >
-                    <Minus size={14} className="text-[var(--color-text-secondary)]" />
-                </button>
-                <button
-                    onClick={handleMaximize}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
-                    title={isMaximized ? t('ui.restore') : t('ui.maximize')}
-                >
-                    {isMaximized ? (
-                        <Square size={11} className="text-[var(--color-text-secondary)]" />
-                    ) : (
-                        <Maximize2 size={14} className="text-[var(--color-text-secondary)]" />
-                    )}
-                </button>
-                <button
-                    onClick={handleClose}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-500/90 transition-colors cursor-pointer group"
-                    title={t('ui.close')}
-                >
-                    <X size={15} className="text-[var(--color-text-secondary)] group-hover:text-white" />
-                </button>
+                {/* Cluster 3: Window Controls */}
+                <div className="flex items-center gap-0.5">
+                    <button
+                        onClick={handleMinimize}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                        title={t('ui.minimize')}
+                    >
+                        <Minus size={14} className="text-[var(--color-text-secondary)]" />
+                    </button>
+                    <button
+                        onClick={handleMaximize}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                        title={isMaximized ? t('ui.restore') : t('ui.maximize')}
+                    >
+                        {isMaximized ? (
+                            <Square size={11} className="text-[var(--color-text-secondary)]" />
+                        ) : (
+                            <Maximize2 size={14} className="text-[var(--color-text-secondary)]" />
+                        )}
+                    </button>
+                    <button
+                        onClick={handleClose}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-500/90 transition-colors cursor-pointer group"
+                        title={t('ui.close')}
+                    >
+                        <X size={15} className="text-[var(--color-text-secondary)] group-hover:text-white" />
+                    </button>
+                </div>
             </div>
         </div>
     );
