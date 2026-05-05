@@ -79,6 +79,8 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Seven services beyond Immich and Google Photos.
 - **Mobile-friendly window dimensions**
   Shrink the minimum width below the current bound so AeroFTP runs comfortably on Linux phones and half-screen splits.
+- **Multiple AeroFTP users**
+  Per-user profile partitioning with a dropdown selector in the titlebar, F2 rename, separate import/export per user, separate AeroSync settings. Vault schema migration is forward-only (the existing single-user install becomes the "default" user). New `--user <name>` flag on `aeroftp-cli`.
 - **Universal File Versioning**
   Unified versions panel across 10 providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud).
 - **AeroCloud Selective Sync**
@@ -150,16 +152,20 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ## From the Community
 
-A continuous stream of fixes and small features driven by GitHub Issues. We treat the wishlist threads as a single rolling backlog: items get tagged, sorted by effort, and merged into the lanes above as they're picked up.
+A continuous stream of fixes and small features driven by GitHub Issues. From v3.7.2 onward the community input is split across two thread types:
 
-Recent contributors include **[@EhudKirsh](https://github.com/EhudKirsh)**, whose detailed wishlists across multiple releases shaped the IntroHub polish, Activity Log filtering, OAuth Edit form parity, AeroFile auto-refresh, keyboard accessibility (Enter/Space activation, font-size shortcuts), the Choose Icon dialog, and the detailed server cards with storage bar + Health Check radial.
+- **Wishlist** (one per release cycle): small UX paper cuts, quick wins, provider polish, CLI flags. Closes when the corresponding release ships. The current thread is the [v3.7.2 wishlist](https://github.com/axpdev-lab/aeroftp/issues).
+- **COMMUNITY ROADMAP** (permanent): big features that need multi-day or multi-week scope. Stays open across releases. Priority is shaped by comments (mentioning the codename), not by per-section voting prompts. Find it [here](https://github.com/axpdev-lab/aeroftp/issues).
 
-Open community items currently in our triage:
+Recent contributors include **[@EhudKirsh](https://github.com/EhudKirsh)**, whose detailed wishlists across multiple releases shaped the IntroHub polish, Activity Log filtering, OAuth Edit form parity, AeroFile auto-refresh, keyboard accessibility (Enter/Space activation, font-size shortcuts, terminal focus-aware Ctrl+- / Ctrl+= / Ctrl+0), the Choose Icon dialog, the detailed server cards with storage bar + Health Check radial, and the GUI Mount Manager push that paid off in v3.7.1.
 
-- Mobile-friendly window dimensions for Linux phones
-- Per-protocol comparison page in docs
-- Drag and drop from AeroFile to Editor to Terminal (`.ps1` / `.sh` execute helper)
-- Topbar 3-cluster layout (page-nav / utility / window controls)
+Currently open community items in our triage (carry-over to the v3.7.2 wishlist):
+
+- `T-EDITOR-DRAG-RUN`: drag from AeroFile to Editor to Terminal (`.ps1` / `.sh` / `.py` execute helper)
+- `T-PROTOCOL-COMPARISON-DOCS`: per-protocol comparison page in the docs site (API vs WebDAV)
+- `T-TOPBAR-3-CLUSTER`: topbar 3-cluster layout (page-nav / utility / window controls)
+
+Big-feature community items live in the COMMUNITY ROADMAP thread (`T-MULTI-USER`, `T-DUAL-PANEL-UNIFICATION`, `T-MOBILE-WINDOW`).
 
 If you spot a bug, want a small feature, or want to nominate a provider for native integration, [open an issue](https://github.com/axpdev-lab/aeroftp/issues). Tier 1 quick wins are typically picked up within one or two releases.
 
