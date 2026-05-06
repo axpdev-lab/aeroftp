@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.3] - 2026-05-06
+
+### Community Benchmark (Phase 1) + CI / UX fixes
+
+#### Added
+
+- **`aeroftp-cli benchmark` CLI command**: schema-v1 conforming, sanitization-enforced community benchmark across upload, download, list, stat, and delete operations. Four levels are available (`quick`, `standard`, `deep`, `custom`). Output is anonymized: no hostnames, paths, credentials, usernames, or bucket names are written to the report. See `docs/COMMUNITY-BENCHMARK.md` and the new Community Benchmark Report Issue template to participate.
+- **Community Benchmark public guide**: `docs/COMMUNITY-BENCHMARK.md` explains why the dataset exists, how to run each benchmark level, what the JSON report contains, what is never collected, how to submit a report manually, and how the 2-month Phase 2 decision gate works.
+- **Benchmark report Issue template**: `.github/ISSUE_TEMPLATE/benchmark-report.yml` accepts sanitized JSON reports with coarse region and connection-type metadata, keeping Phase 1 human-reviewed and consent-based.
+
+#### Fixed
+
+- **Windows titlebar**: modal close buttons (X) within the upper 36 px were blocked by an overly wide drag region. Drag is preserved by the two explicit child elements (logo + spacer), while interactive controls can receive their first click.
+- **ImageKit listing rejected by API**: the provider was sending `type=file-and-folder` to ImageKit's `/files` endpoint, which is not in the API's accepted set (`file | file-version | folder | all`). Every list call after a successful authentication failed with `Invalid configuration: Your request contains invalid value for type parameter`. Switched to `type=all`, which returns the folder + file mix the rest of the provider already consumes.
+- **ImageKit listing decode error on folder rows**: with `type=all`, ImageKit emits an explicit JSON `null` for fields that only make sense on file entries (`size`, `tags`, `mime`, `fileType`, dimensions). `#[serde(default)]` only fires on missing keys and tripped on `null`, so the response refused to deserialize against `Vec<IkFile>` and the connection failed with `Parse error: error decoding response body`. Added a `null_to_default` deserializer helper applied to every non-`Option` field that the API can return as `null` for folder rows.
+- **Activity log "Authenticated as htt***"**: `maskCredential()` was masking provider account identifiers that happen to be public URLs (ImageKit's `URL Endpoint ID`, Uploadcare's, self-hosted WebDAV / Immich) as the unhelpful three-char prefix. The endpoint URL is not secret. The helper now detects `https://...` and returns `host + pathname` unmasked, so the log reads `Authenticated as ik.imagekit.io/aeroftp` instead. AKIA / email / generic-username masking unchanged.
+- **`benchmark` CLI ignored profile initial path**: the working directory was anchored at the remote root (`/.aeroftp-bench/...`) regardless of the profile's `initialPath`. On read-only roots the benchmark failed before any measurement. Now anchored under the resolved profile base, so cleanup, leak grep and report paths share a single, profile-respecting prefix. Warm-up upload errors are also fatal now, instead of being swallowed into a `summary.errors=[]` "0 runs" report.
+
+#### CI
+
+- **Snap build**: Tauri release binary is now built inside the `build-snap` job before `snapcore/action-build`. The job pulls `libnghttp2-14` patched against USN-8233-1 from the Ubuntu archive at build time.
+- **`build-snap` no longer silently green**: dropped `continue-on-error` from the actual build step and switched the post-build confirm step to fail-loud (exit 1 on missing or sub-10 MB output). The v3.7.2 deploy of the dedicated job ran with `continue-on-error: true` masking a real failure as success and skipping the downstream sigstore / GitHub Release / Snap Store steps. With this change a snap regression now blocks the release like deb / rpm / AppImage do.
+
 ## [3.7.2] - 2026-05-06
 
 ### AeroCrypt overlay, IntroHub & community polish, CLI security hardening, 2 new image-CDN providers

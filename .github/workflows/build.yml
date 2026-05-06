@@ -384,11 +384,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Build the Snap package on a dedicated runner. Issue #164 background:
-  # the inline Snap step in `build-and-release` was silent-OOM-ing during
-  # LXD setup on the ubuntu-22.04 matrix runner, freezing the Snap Store
-  # at 3.6.10 since v3.6.9. Splitting it out gives Snap a fresh runner
-  # with native LXD 5.21+ headroom (ubuntu-24.04) and lets us drop
-  # continue-on-error once a tag run produces a real .snap.
+  # the original inline step was silent-OOM-ing during LXD setup on the
+  # ubuntu-22.04 matrix runner. Splitting it out (this job) gives Snap a
+  # fresh ubuntu-24.04 runner with native LXD 5.21+ headroom.
+  #
+  # NOTE 2026-05-06 (v3.7.3): the v3.7.2 deploy of this job produced
+  # zero-byte snaps because `snap/snapcraft.yaml`'s `override-build` step
+  # copies a *pre-built* `src-tauri/target/release/aeroftp` binary into
+  # the snap layout. The original inline step inherited that binary from
+  # the matrix Linux job's `npm run tauri build` earlier in the same
+  # workflow; the dedicated job did not. We now reproduce the full
+  # pre-build (Node + Rust + system deps + `npm run tauri build`) inside
+  # this job before invoking snapcore/action-build, which then packages
+  # the freshly-built binary. The workflow_dispatch validation lane
+  # exercises the same path so failures show up before tagging.
   #
   # Triggers:
   # - Tag pushes: full pipeline (build + sign + release upload + Snap Store)
@@ -403,16 +412,54 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      # snapcore/action-build@3bdaa03e is the latest pin (no v2 exists, see
-      # issue #164 for the analysis). On ubuntu-24.04 the native LXD is 5.21+
-      # which clears the silent OOM observed on the 22.04 image.
-      # `continue-on-error: true` is kept here for the first deploy as a
-      # transitional safety net: a follow-up PR will remove it once v3.7.2
-      # produces a real .snap on this job.
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+          # Same prefix as build.yml main matrix to keep cache keys
+          # aligned across jobs in this workflow.
+          prefix-key: 'v2-whisper-vs18'
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libfuse3-dev
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # Produces src-tauri/target/release/aeroftp, which the
+      # snap/snapcraft.yaml `override-build` step copies into the snap.
+      - name: Build Tauri release binary (Linux x64)
+        run: npm run tauri build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # snapcore/action-build@3bdaa03e is the latest pin (no v2 exists,
+      # see issue #164 for the analysis). On ubuntu-24.04 the native LXD
+      # is 5.21+ which clears the silent OOM observed on 22.04. No
+      # continue-on-error: a snap build failure must block the release
+      # like deb / rpm / AppImage, per the closing acceptance criterion
+      # of #164.
       - name: Build Snap package
         id: snap-build
         uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
-        continue-on-error: true
 
       - name: Confirm Snap was built
         id: snap-check
@@ -420,18 +467,21 @@ jobs:
         run: |
           SNAP="${{ steps.snap-build.outputs.snap }}"
           if [ -z "$SNAP" ] || [ ! -f "$SNAP" ]; then
-            echo "::warning::Snap file not produced by snapcore/action-build"
-            echo "produced=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::Snap file not produced by snapcore/action-build"
+            echo "Expected output `steps.snap-build.outputs.snap` was empty or missing on disk."
+            exit 1
+          fi
+          BYTES=$(stat -c %s "$SNAP")
+          if [ "$BYTES" -lt 10485760 ]; then
+            echo "::error::Snap file is suspiciously small ($BYTES bytes)"
+            exit 1
           fi
           echo "Snap produced: $SNAP ($(du -h "$SNAP" | cut -f1))"
-          echo "produced=true" >> "$GITHUB_OUTPUT"
           echo "snap=$SNAP" >> "$GITHUB_OUTPUT"
 
       # Persist the .snap as a workflow artifact so workflow_dispatch
       # validation runs (no tag) leave behind something downloadable.
       - name: Upload Snap as workflow artifact (validation runs)
-        if: steps.snap-check.outputs.produced == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: aeroftp-snap-${{ github.sha }}
@@ -441,11 +491,11 @@ jobs:
 
       # Sigstore keyless signing of the .snap: only on tags.
       - name: Install Cosign
-        if: startsWith(github.ref, 'refs/tags/') && steps.snap-check.outputs.produced == 'true'
+        if: startsWith(github.ref, 'refs/tags/')
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Sign Snap artifact with Sigstore
-        if: startsWith(github.ref, 'refs/tags/') && steps.snap-check.outputs.produced == 'true'
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           SNAP="${{ steps.snap-check.outputs.snap }}"
@@ -458,11 +508,11 @@ jobs:
           echo "Signed: $(basename "$SNAP").sigstore.json"
 
       # Upload .snap (and Sigstore bundle) to the GitHub Release additively.
-      # This runs after build-and-release has already created the release with
-      # deb/rpm/AppImage; softprops/action-gh-release with the same tag and
-      # `name` simply appends the new files.
+      # This runs after build-and-release has already created the release
+      # with deb/rpm/AppImage; softprops/action-gh-release with the same
+      # tag and `name` simply appends the new files.
       - name: Upload Snap to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') && steps.snap-check.outputs.produced == 'true'
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           name: 'AeroFTP ${{ github.ref_name }}'
@@ -475,10 +525,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Publish to Snap Store (stable channel). Kept on continue-on-error
-      # for now: a transient Snap Store outage should not retroactively
-      # fail the GitHub Release we already published above.
+      # because a transient Snap Store outage should not retroactively
+      # fail the GitHub Release we already published above; the .snap is
+      # still available as a release asset for manual upload if needed.
       - name: Publish to Snap Store
-        if: startsWith(github.ref, 'refs/tags/') && steps.snap-check.outputs.produced == 'true'
+        if: startsWith(github.ref, 'refs/tags/')
         continue-on-error: true
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}

@@ -834,6 +834,35 @@ enum Commands {
         #[arg(long)]
         md_out: Option<String>,
     },
+    /// Run a community-driven benchmark across upload/download/list/stat
+    /// operations. Output is sanitized: no hostnames, paths, credentials,
+    /// or bucket names are recorded. Schema v1 contract in
+    /// `docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md`.
+    Benchmark {
+        /// Preset level: quick (~30s, 10 MB), standard (~5min, 1M+100M+1G),
+        /// deep (~30min, broader matrix), custom (everything overridable).
+        /// Requires a saved profile via the global `--profile <name>` flag.
+        #[arg(value_enum, default_value = "quick")]
+        level: BenchmarkLevel,
+        /// Override file sizes (comma-separated, e.g. "1M,100M,1G")
+        #[arg(long)]
+        sizes: Option<String>,
+        /// Override timed runs per (operation, size) tuple
+        #[arg(long)]
+        runs: Option<u32>,
+        /// Comma-separated operations: upload,download,list,stat,delete
+        #[arg(long)]
+        operations: Option<String>,
+        /// Append anonymized environment metadata and print a paste-ready Issue block
+        #[arg(long)]
+        consent_publish: bool,
+        /// Hash provider hint as well (extra anonymization)
+        #[arg(long)]
+        anonymize_extra: bool,
+        /// Write the JSON report to a file
+        #[arg(long)]
+        report: Option<String>,
+    },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
         /// Server URL (omit when using --profile)
@@ -1835,6 +1864,106 @@ struct CliDoctorResult {
     checks: Vec<serde_json::Value>,
     risks: Vec<String>,
     suggested_next_command: String,
+}
+
+// ── Community Benchmark report (schema v1) ────────────────────────────
+// See docs/dev/roadmap/APPENDIX-BENCHMARK_Community-Protocol-Comparison.md
+// Schema contract: docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md
+
+#[derive(Copy, Clone, Debug, Serialize, ValueEnum)]
+#[serde(rename_all = "lowercase")]
+enum BenchmarkLevel {
+    Quick,
+    Standard,
+    Deep,
+    Custom,
+}
+
+#[derive(Serialize)]
+struct BenchmarkReport {
+    schema_version: u32,
+    report_id: String,
+    generated_at: String,
+    cli: BenchmarkCliMeta,
+    level: BenchmarkLevel,
+    environment: BenchmarkEnvironment,
+    consent: BenchmarkConsent,
+    results: Vec<BenchmarkResult>,
+    summary: BenchmarkSummary,
+}
+
+#[derive(Serialize)]
+struct BenchmarkCliMeta {
+    version: String,
+    build_target: String,
+    rustc: String,
+}
+
+#[derive(Serialize)]
+struct BenchmarkEnvironment {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    asn_bucket: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    country_bucket: Option<String>,
+    tod_bucket: String,
+    os_family: String,
+    os_arch: String,
+    cpu_class: String,
+}
+
+#[derive(Serialize)]
+struct BenchmarkConsent {
+    publish: bool,
+    anonymize_extra: bool,
+}
+
+#[derive(Serialize)]
+struct BenchmarkResult {
+    protocol: String,
+    provider_hint: Option<String>,
+    provider_hash: Option<String>,
+    operation: String,
+    payload_size_bytes: u64,
+    runs: u32,
+    warmup_runs_discarded: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    throughput_mbps: Option<BenchmarkStats>,
+    latency_ms: BenchmarkStats,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tls_handshake_ms: Option<BenchmarkStats>,
+    errors: BenchmarkErrors,
+    raw_runs: Vec<BenchmarkRawRun>,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+struct BenchmarkStats {
+    p50: f64,
+    p95: f64,
+    stddev: f64,
+    min: f64,
+    max: f64,
+}
+
+#[derive(Serialize)]
+struct BenchmarkErrors {
+    transient: u32,
+    fatal: u32,
+}
+
+#[derive(Serialize)]
+struct BenchmarkRawRun {
+    duration_ms: u64,
+    bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    throughput_mbps: Option<f64>,
+}
+
+#[derive(Serialize)]
+struct BenchmarkSummary {
+    total_runs: u32,
+    total_bytes_transferred: u64,
+    total_duration_ms: u64,
+    errors: Vec<String>,
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -14313,6 +14442,813 @@ async fn cmd_speed_compare(
     } else {
         0
     }
+}
+
+// ── Community Benchmark implementation ────────────────────────────────
+// Schema contract: docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md
+// Phase 1: single-profile run (uses global --profile), levels quick + standard
+// fully implemented; deep falls back to standard with widened matrix; custom
+// requires explicit overrides. No automated upload: report is paste-ready.
+
+const BENCHMARK_MAX_SIZE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+const BENCHMARK_TOTAL_TIMEOUT_SECS: u64 = 60 * 60;
+
+#[derive(Debug)]
+struct BenchmarkConfig {
+    sizes_bytes: Vec<u64>,
+    runs_per_size: u32,
+    warmup_runs: u32,
+    operations: Vec<&'static str>,
+}
+
+fn resolve_benchmark_config(
+    level: BenchmarkLevel,
+    sizes_override: Option<&str>,
+    runs_override: Option<u32>,
+    operations_override: Option<&str>,
+) -> Result<BenchmarkConfig, String> {
+    let mib: u64 = 1024 * 1024;
+    let gib: u64 = 1024 * mib;
+    let (default_sizes, default_runs, default_warmup, default_ops): (
+        Vec<u64>,
+        u32,
+        u32,
+        Vec<&'static str>,
+    ) = match level {
+        BenchmarkLevel::Quick => (vec![10 * mib], 1, 0, vec!["upload", "download"]),
+        BenchmarkLevel::Standard => (
+            vec![mib, 100 * mib, gib],
+            3,
+            1,
+            vec!["upload", "download", "list", "stat", "delete"],
+        ),
+        BenchmarkLevel::Deep => (
+            vec![mib, 10 * mib, 100 * mib, gib, 5 * gib],
+            5,
+            1,
+            vec!["upload", "download", "list", "stat", "delete"],
+        ),
+        BenchmarkLevel::Custom => (
+            vec![100 * mib],
+            3,
+            1,
+            vec!["upload", "download", "list", "stat", "delete"],
+        ),
+    };
+
+    let sizes_bytes = if let Some(s) = sizes_override {
+        let parsed: Result<Vec<u64>, String> = s
+            .split(',')
+            .filter(|t| !t.trim().is_empty())
+            .map(|tok| parse_size_filter(tok.trim()))
+            .collect();
+        let v = parsed?;
+        if v.is_empty() {
+            return Err("--sizes must contain at least one value".into());
+        }
+        v
+    } else {
+        default_sizes
+    };
+
+    for &sz in &sizes_bytes {
+        if sz == 0 {
+            return Err("benchmark size cannot be zero".into());
+        }
+        if sz > BENCHMARK_MAX_SIZE_BYTES {
+            return Err(format!(
+                "benchmark size {} exceeds 5 GiB cap",
+                format_size(sz)
+            ));
+        }
+    }
+
+    let runs_per_size = runs_override.unwrap_or(default_runs).clamp(1, 20);
+
+    let operations: Vec<&'static str> = if let Some(o) = operations_override {
+        let mut out = Vec::new();
+        for tok in o.split(',') {
+            let trimmed = tok.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            match trimmed {
+                "upload" => out.push("upload"),
+                "download" => out.push("download"),
+                "list" => out.push("list"),
+                "stat" => out.push("stat"),
+                "delete" => out.push("delete"),
+                other => return Err(format!("unknown operation: {}", other)),
+            }
+        }
+        if out.is_empty() {
+            return Err("--operations must contain at least one value".into());
+        }
+        out
+    } else {
+        default_ops
+    };
+
+    Ok(BenchmarkConfig {
+        sizes_bytes,
+        runs_per_size,
+        warmup_runs: default_warmup,
+        operations,
+    })
+}
+
+fn benchmark_percentile(sorted: &[f64], p: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+    let rank = (p / 100.0) * (sorted.len() - 1) as f64;
+    let lo = rank.floor() as usize;
+    let hi = rank.ceil() as usize;
+    if lo == hi {
+        return sorted[lo];
+    }
+    let frac = rank - lo as f64;
+    sorted[lo] * (1.0 - frac) + sorted[hi] * frac
+}
+
+fn benchmark_stats_from(values: &[f64]) -> BenchmarkStats {
+    if values.is_empty() {
+        return BenchmarkStats {
+            p50: 0.0,
+            p95: 0.0,
+            stddev: 0.0,
+            min: 0.0,
+            max: 0.0,
+        };
+    }
+    let mut sorted: Vec<f64> = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = sorted.len() as f64;
+    let mean = sorted.iter().sum::<f64>() / n;
+    let variance = sorted.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n;
+    let stddev = variance.sqrt();
+    BenchmarkStats {
+        p50: benchmark_percentile(&sorted, 50.0),
+        p95: benchmark_percentile(&sorted, 95.0),
+        stddev,
+        min: sorted[0],
+        max: sorted[sorted.len() - 1],
+    }
+}
+
+fn benchmark_os_family() -> String {
+    if cfg!(target_os = "linux") {
+        "linux".into()
+    } else if cfg!(target_os = "windows") {
+        "windows".into()
+    } else if cfg!(target_os = "macos") {
+        "macos".into()
+    } else if cfg!(target_os = "freebsd") {
+        "freebsd".into()
+    } else {
+        "other".into()
+    }
+}
+
+fn benchmark_cpu_class() -> String {
+    let arch = std::env::consts::ARCH;
+    match arch {
+        "x86_64" => "x64-modern".into(),
+        "aarch64" => "arm64-modern".into(),
+        "x86" | "i686" => "x64-legacy".into(),
+        "arm" | "armv7" => "arm64-legacy".into(),
+        other => format!("other-{}", other),
+    }
+}
+
+fn benchmark_tod_bucket() -> &'static str {
+    use chrono::{Local, Timelike};
+    let h = Local::now().hour();
+    match h {
+        0..=5 => "night",
+        6..=11 => "morning",
+        12..=17 => "afternoon",
+        18..=23 => "evening",
+        _ => "unknown",
+    }
+}
+
+fn benchmark_rounded_hour_utc() -> String {
+    use chrono::{Datelike, Timelike, Utc};
+    let now = Utc::now();
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:00:00Z",
+        now.year(),
+        now.month(),
+        now.day(),
+        now.hour()
+    )
+}
+
+fn benchmark_provider_hint(
+    protocol: &str,
+    anonymize_extra: bool,
+    report_id: &str,
+) -> (Option<String>, Option<String>) {
+    if anonymize_extra {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(protocol.as_bytes());
+        h.update(b"|");
+        h.update(report_id.as_bytes());
+        let hex = format!("{:x}", h.finalize());
+        (None, Some(hex.chars().take(16).collect()))
+    } else {
+        (Some(protocol.to_string()), None)
+    }
+}
+
+fn benchmark_remote_roots(initial_path: &str, report_id: &str) -> (String, String) {
+    let bench_base = resolve_cli_remote_path(initial_path, ".aeroftp-bench");
+    let test_root = if bench_base.trim_end_matches('/').is_empty() {
+        format!(".aeroftp-bench/{}", report_id)
+    } else {
+        format!("{}/{}", bench_base.trim_end_matches('/'), report_id)
+    };
+    (bench_base, test_root)
+}
+
+fn benchmark_sanitization_sweep(serialized: &str) -> Result<(), String> {
+    // Belt-and-suspenders: regex sweep for common credential prefixes,
+    // IPs, OS path prefixes, and email patterns. If any of these match,
+    // we refuse to write the report rather than risk leaking PII.
+    let patterns: &[(&str, &str)] = &[
+        (r"AKIA[0-9A-Z]{16}", "AWS access key"),
+        (r"xox[baprs]-[0-9a-zA-Z-]{10,}", "Slack token"),
+        (r"ghp_[A-Za-z0-9]{30,}", "GitHub PAT"),
+        (r"gho_[A-Za-z0-9]{30,}", "GitHub OAuth token"),
+        (
+            r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+",
+            "JWT",
+        ),
+        (
+            r"\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b",
+            "IPv4 address",
+        ),
+        (r"/home/[a-zA-Z0-9._-]+/", "Linux home path"),
+        (r"C:\\\\Users\\\\[a-zA-Z0-9._-]+", "Windows user path"),
+        (r"/Users/[a-zA-Z0-9._-]+/", "macOS user path"),
+        (
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+            "email",
+        ),
+    ];
+    for (pat, label) in patterns {
+        let re = regex::Regex::new(pat)
+            .map_err(|e| format!("internal: bad sweep regex {}: {}", pat, e))?;
+        if re.is_match(serialized) {
+            return Err(format!("sanitization sweep matched {}", label));
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_benchmark(
+    level: BenchmarkLevel,
+    sizes_override: Option<&str>,
+    runs_override: Option<u32>,
+    operations_override: Option<&str>,
+    consent_publish: bool,
+    anonymize_extra: bool,
+    report_path: Option<&str>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if cli.profile.is_none() {
+        print_error(
+            format,
+            "benchmark requires a saved profile via --profile <name>",
+            5,
+        );
+        return 5;
+    }
+
+    let cfg = match resolve_benchmark_config(
+        level,
+        sizes_override,
+        runs_override,
+        operations_override,
+    ) {
+        Ok(c) => c,
+        Err(msg) => {
+            print_error(format, &msg, 5);
+            return 5;
+        }
+    };
+
+    if matches!(level, BenchmarkLevel::Deep) && !cli.quiet && matches!(format, OutputFormat::Text) {
+        let total_bytes: u64 =
+            cfg.sizes_bytes.iter().sum::<u64>() * (cfg.runs_per_size + cfg.warmup_runs) as u64;
+        eprintln!(
+            "deep benchmark will transfer roughly {} (configurable via --sizes / --runs)",
+            format_size(total_bytes)
+        );
+    }
+
+    let (mut provider, initial_path) = match create_and_connect("_", cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let protocol = provider.provider_type().to_string();
+
+    let report_id = uuid::Uuid::new_v4().to_string();
+    let (bench_base, test_root) = benchmark_remote_roots(&initial_path, &report_id);
+    // Best-effort root creation: provider may auto-create on upload or may
+    // already have the directory. Failure here is handled by the upload path.
+    let _ = provider.mkdir(&bench_base).await;
+    let _ = provider.mkdir(&test_root).await;
+
+    let total_start = Instant::now();
+    let mut results: Vec<BenchmarkResult> = Vec::new();
+    let mut total_bytes_transferred: u64 = 0;
+    let mut total_runs: u32 = 0;
+    let mut errors: Vec<String> = Vec::new();
+    let mut early_abort = false;
+
+    'outer: for &size in &cfg.sizes_bytes {
+        if total_start.elapsed().as_secs() > BENCHMARK_TOTAL_TIMEOUT_SECS {
+            errors.push("benchmark hit total-timeout cap (1h), aborting".into());
+            early_abort = true;
+            break;
+        }
+
+        let local_payload = match NamedTempFile::new() {
+            Ok(f) => f,
+            Err(e) => {
+                errors.push(format!("cannot create local temp: {}", e));
+                early_abort = true;
+                break;
+            }
+        };
+        if let Err(e) = write_speed_test_file_random(local_payload.path(), size) {
+            errors.push(e);
+            early_abort = true;
+            break;
+        }
+
+        let local_download = match NamedTempFile::new() {
+            Ok(f) => f,
+            Err(e) => {
+                errors.push(format!("cannot create download temp: {}", e));
+                early_abort = true;
+                break;
+            }
+        };
+
+        let remote_path = format!("{}/payload-{}.bin", test_root, size);
+
+        if !cli.quiet && matches!(format, OutputFormat::Text) {
+            eprintln!("running benchmark with payload {}", format_size(size));
+        }
+
+        let mut upload_durations_ms: Vec<f64> = Vec::new();
+        let mut download_durations_ms: Vec<f64> = Vec::new();
+        let mut upload_throughput_mbps: Vec<f64> = Vec::new();
+        let mut download_throughput_mbps: Vec<f64> = Vec::new();
+        let upload_transient = 0u32;
+        let mut upload_fatal = 0u32;
+        let mut download_transient = 0u32;
+        let mut download_fatal = 0u32;
+        let mut upload_raw: Vec<BenchmarkRawRun> = Vec::new();
+        let mut download_raw: Vec<BenchmarkRawRun> = Vec::new();
+
+        let total_iters = cfg.warmup_runs + cfg.runs_per_size;
+        let needs_upload = cfg.operations.contains(&"upload");
+        let needs_download = cfg.operations.contains(&"download");
+
+        for iter in 0..total_iters {
+            let is_warmup = iter < cfg.warmup_runs;
+
+            if needs_upload {
+                let start = Instant::now();
+                let upload_result = provider
+                    .upload(
+                        local_payload.path().to_string_lossy().as_ref(),
+                        &remote_path,
+                        None,
+                    )
+                    .await;
+                let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+                match upload_result {
+                    Ok(()) => {
+                        if !is_warmup {
+                            upload_durations_ms.push(elapsed_ms);
+                            let mbps =
+                                (size as f64 * 8.0) / 1_000_000.0 / (elapsed_ms / 1000.0).max(1e-6);
+                            upload_throughput_mbps.push(mbps);
+                            upload_raw.push(BenchmarkRawRun {
+                                duration_ms: elapsed_ms as u64,
+                                bytes: size,
+                                throughput_mbps: Some(mbps),
+                            });
+                            total_bytes_transferred += size;
+                            total_runs += 1;
+                        }
+                    }
+                    Err(e) => {
+                        upload_fatal += 1;
+                        let (h, hh) = benchmark_provider_hint(
+                            &protocol,
+                            anonymize_extra,
+                            &report_id,
+                        );
+                        results.push(BenchmarkResult {
+                            protocol: protocol.clone(),
+                            provider_hint: h,
+                            provider_hash: hh,
+                            operation: "upload".into(),
+                            payload_size_bytes: size,
+                            runs: 0,
+                            warmup_runs_discarded: cfg.warmup_runs,
+                            throughput_mbps: None,
+                            latency_ms: BenchmarkStats {
+                                p50: 0.0, p95: 0.0, stddev: 0.0, min: 0.0, max: 0.0,
+                            },
+                            tls_handshake_ms: None,
+                            errors: BenchmarkErrors {
+                                transient: upload_transient,
+                                fatal: upload_fatal,
+                            },
+                            raw_runs: Vec::new(),
+                        });
+                        errors.push(format!("upload {} bytes failed: {}", format_size(size), e));
+                        early_abort = true;
+                        break 'outer;
+                    }
+                }
+            }
+
+            if needs_download {
+                let start = Instant::now();
+                let dl_result = provider
+                    .download(
+                        &remote_path,
+                        local_download.path().to_string_lossy().as_ref(),
+                        None,
+                    )
+                    .await;
+                let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+                match dl_result {
+                    Ok(()) => {
+                        if !is_warmup {
+                            download_durations_ms.push(elapsed_ms);
+                            let mbps =
+                                (size as f64 * 8.0) / 1_000_000.0 / (elapsed_ms / 1000.0).max(1e-6);
+                            download_throughput_mbps.push(mbps);
+                            download_raw.push(BenchmarkRawRun {
+                                duration_ms: elapsed_ms as u64,
+                                bytes: size,
+                                throughput_mbps: Some(mbps),
+                            });
+                            total_bytes_transferred += size;
+                            total_runs += 1;
+                        }
+                    }
+                    Err(e) => {
+                        if !is_warmup {
+                            download_fatal += 1;
+                        } else {
+                            download_transient += 1;
+                        }
+                        errors.push(format!("download {} bytes failed: {}", size, e));
+                    }
+                }
+            }
+        }
+
+        let (provider_hint_str, provider_hash_str) =
+            benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
+
+        if needs_upload && !upload_durations_ms.is_empty() {
+            results.push(BenchmarkResult {
+                protocol: protocol.clone(),
+                provider_hint: provider_hint_str.clone(),
+                provider_hash: provider_hash_str.clone(),
+                operation: "upload".into(),
+                payload_size_bytes: size,
+                runs: upload_durations_ms.len() as u32,
+                warmup_runs_discarded: cfg.warmup_runs,
+                throughput_mbps: Some(benchmark_stats_from(&upload_throughput_mbps)),
+                latency_ms: benchmark_stats_from(&upload_durations_ms),
+                tls_handshake_ms: None,
+                errors: BenchmarkErrors {
+                    transient: upload_transient,
+                    fatal: upload_fatal,
+                },
+                raw_runs: upload_raw,
+            });
+        }
+        if needs_download && !download_durations_ms.is_empty() {
+            results.push(BenchmarkResult {
+                protocol: protocol.clone(),
+                provider_hint: provider_hint_str.clone(),
+                provider_hash: provider_hash_str.clone(),
+                operation: "download".into(),
+                payload_size_bytes: size,
+                runs: download_durations_ms.len() as u32,
+                warmup_runs_discarded: cfg.warmup_runs,
+                throughput_mbps: Some(benchmark_stats_from(&download_throughput_mbps)),
+                latency_ms: benchmark_stats_from(&download_durations_ms),
+                tls_handshake_ms: None,
+                errors: BenchmarkErrors {
+                    transient: download_transient,
+                    fatal: download_fatal,
+                },
+                raw_runs: download_raw,
+            });
+        }
+
+        // list / stat / delete are measured once per size since they do not
+        // benefit from multiple runs in the same way as throughput tests.
+        if cfg.operations.contains(&"list") {
+            let start = Instant::now();
+            match provider.list(&test_root).await {
+                Ok(_) => {
+                    let ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let (h, hh) =
+                        benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
+                    results.push(BenchmarkResult {
+                        protocol: protocol.clone(),
+                        provider_hint: h,
+                        provider_hash: hh,
+                        operation: "list".into(),
+                        payload_size_bytes: 0,
+                        runs: 1,
+                        warmup_runs_discarded: 0,
+                        throughput_mbps: None,
+                        latency_ms: BenchmarkStats {
+                            p50: ms,
+                            p95: ms,
+                            stddev: 0.0,
+                            min: ms,
+                            max: ms,
+                        },
+                        tls_handshake_ms: None,
+                        errors: BenchmarkErrors {
+                            transient: 0,
+                            fatal: 0,
+                        },
+                        raw_runs: vec![BenchmarkRawRun {
+                            duration_ms: ms as u64,
+                            bytes: 0,
+                            throughput_mbps: None,
+                        }],
+                    });
+                    total_runs += 1;
+                }
+                Err(e) => errors.push(format!("list failed: {}", e)),
+            }
+        }
+
+        if cfg.operations.contains(&"stat") {
+            let start = Instant::now();
+            match provider.stat(&remote_path).await {
+                Ok(_) => {
+                    let ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let (h, hh) =
+                        benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
+                    results.push(BenchmarkResult {
+                        protocol: protocol.clone(),
+                        provider_hint: h,
+                        provider_hash: hh,
+                        operation: "stat".into(),
+                        payload_size_bytes: 0,
+                        runs: 1,
+                        warmup_runs_discarded: 0,
+                        throughput_mbps: None,
+                        latency_ms: BenchmarkStats {
+                            p50: ms,
+                            p95: ms,
+                            stddev: 0.0,
+                            min: ms,
+                            max: ms,
+                        },
+                        tls_handshake_ms: None,
+                        errors: BenchmarkErrors {
+                            transient: 0,
+                            fatal: 0,
+                        },
+                        raw_runs: vec![BenchmarkRawRun {
+                            duration_ms: ms as u64,
+                            bytes: 0,
+                            throughput_mbps: None,
+                        }],
+                    });
+                    total_runs += 1;
+                }
+                Err(e) => errors.push(format!("stat failed: {}", e)),
+            }
+        }
+
+        if cfg.operations.contains(&"delete") {
+            let start = Instant::now();
+            match provider.delete(&remote_path).await {
+                Ok(()) => {
+                    let ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let (h, hh) =
+                        benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
+                    results.push(BenchmarkResult {
+                        protocol: protocol.clone(),
+                        provider_hint: h,
+                        provider_hash: hh,
+                        operation: "delete".into(),
+                        payload_size_bytes: 0,
+                        runs: 1,
+                        warmup_runs_discarded: 0,
+                        throughput_mbps: None,
+                        latency_ms: BenchmarkStats {
+                            p50: ms,
+                            p95: ms,
+                            stddev: 0.0,
+                            min: ms,
+                            max: ms,
+                        },
+                        tls_handshake_ms: None,
+                        errors: BenchmarkErrors {
+                            transient: 0,
+                            fatal: 0,
+                        },
+                        raw_runs: vec![BenchmarkRawRun {
+                            duration_ms: ms as u64,
+                            bytes: 0,
+                            throughput_mbps: None,
+                        }],
+                    });
+                    total_runs += 1;
+                }
+                Err(e) => errors.push(format!("delete failed: {}", e)),
+            }
+        }
+    }
+
+    // Final cleanup: remove the test root recursively. Best-effort;
+    // any residual is logged as an error but does not invalidate the run.
+    if let Err(e) = provider.rmdir_recursive(&test_root).await {
+        // Some providers may not implement rmdir_recursive against a path
+        // they did not auto-create. We still try to delete the parent.
+        errors.push(format!(
+            "cleanup of {} returned error (manual review may be needed): {}",
+            test_root, e
+        ));
+    }
+    let _ = provider.disconnect().await;
+
+    let total_duration_ms = total_start.elapsed().as_millis() as u64;
+
+    let environment = BenchmarkEnvironment {
+        asn_bucket: if consent_publish {
+            // ASN/country lookup is server-side responsibility (Phase 2).
+            // In Phase 1 we only flag intent to publish; aggregator fills
+            // these from the submitter's network at submission time.
+            None
+        } else {
+            None
+        },
+        country_bucket: None,
+        tod_bucket: benchmark_tod_bucket().into(),
+        os_family: benchmark_os_family(),
+        os_arch: std::env::consts::ARCH.into(),
+        cpu_class: benchmark_cpu_class(),
+    };
+
+    let report = BenchmarkReport {
+        schema_version: 1,
+        report_id: report_id.clone(),
+        generated_at: benchmark_rounded_hour_utc(),
+        cli: BenchmarkCliMeta {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            build_target: std::env::var("TARGET")
+                .unwrap_or_else(|_| std::env::consts::ARCH.to_string()),
+            rustc: option_env!("RUSTC_VERSION")
+                .unwrap_or("unknown")
+                .to_string(),
+        },
+        level,
+        environment,
+        consent: BenchmarkConsent {
+            publish: consent_publish,
+            anonymize_extra,
+        },
+        results,
+        summary: BenchmarkSummary {
+            total_runs,
+            total_bytes_transferred,
+            total_duration_ms,
+            errors: errors.clone(),
+        },
+    };
+
+    let serialized = match serde_json::to_string_pretty(&report) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("could not serialize report: {}", e), 99);
+            return 99;
+        }
+    };
+
+    if let Err(e) = benchmark_sanitization_sweep(&serialized) {
+        print_error(
+            format,
+            &format!(
+                "report failed sanitization sweep: {}. \
+                 Refusing to write or publish. This is a bug, please open an issue.",
+                e
+            ),
+            99,
+        );
+        return 99;
+    }
+
+    if let Some(path) = report_path {
+        if let Err(e) = std::fs::write(path, &serialized) {
+            eprintln!("warning: could not write report to {}: {}", path, e);
+        } else if !cli.quiet && matches!(format, OutputFormat::Text) {
+            eprintln!("report written to {}", path);
+        }
+    }
+
+    let exit_code = if early_abort || !report.summary.errors.is_empty() {
+        if results_have_fatal(&report.results) {
+            4
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    match format {
+        OutputFormat::Json => print_json(&report),
+        OutputFormat::Text => {
+            if !cli.quiet {
+                print_benchmark_text_report(&report);
+                if consent_publish {
+                    print_benchmark_publish_block(&serialized);
+                }
+            }
+        }
+    }
+
+    exit_code
+}
+
+fn results_have_fatal(results: &[BenchmarkResult]) -> bool {
+    results.iter().any(|r| r.errors.fatal > 0)
+}
+
+fn print_benchmark_text_report(report: &BenchmarkReport) {
+    println!(
+        "Benchmark complete: level={:?} runs={} bytes={} duration={}ms",
+        report.level,
+        report.summary.total_runs,
+        format_size(report.summary.total_bytes_transferred),
+        report.summary.total_duration_ms
+    );
+    println!();
+    for r in &report.results {
+        let throughput = match &r.throughput_mbps {
+            Some(t) => format!("{:7.2} Mbps p50, {:7.2} Mbps p95", t.p50, t.p95),
+            None => "n/a".into(),
+        };
+        println!(
+            "  {:>8} {:>10}  {:>3} runs  latency p50={:6.1}ms p95={:6.1}ms  {}",
+            r.operation,
+            if r.payload_size_bytes == 0 {
+                "-".into()
+            } else {
+                format_size(r.payload_size_bytes)
+            },
+            r.runs,
+            r.latency_ms.p50,
+            r.latency_ms.p95,
+            throughput
+        );
+    }
+    if !report.summary.errors.is_empty() {
+        println!();
+        println!("Errors / warnings ({}):", report.summary.errors.len());
+        for e in &report.summary.errors {
+            println!("  - {}", e);
+        }
+    }
+}
+
+fn print_benchmark_publish_block(serialized: &str) {
+    println!();
+    println!("--- BEGIN BENCHMARK REPORT (paste into the GitHub Issue) ---");
+    println!("```json");
+    println!("{}", serialized);
+    println!("```");
+    println!("--- END BENCHMARK REPORT ---");
 }
 
 async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: OutputFormat) -> i32 {
@@ -26945,6 +27881,28 @@ async fn main() {
             )
             .await
         }
+        Commands::Benchmark {
+            level,
+            sizes,
+            runs,
+            operations,
+            consent_publish,
+            anonymize_extra,
+            report,
+        } => {
+            cmd_benchmark(
+                *level,
+                sizes.as_deref(),
+                *runs,
+                operations.as_deref(),
+                *consent_publish,
+                *anonymize_extra,
+                report.as_deref(),
+                &cli,
+                format,
+            )
+            .await
+        }
         Commands::Cleanup { url, path, force } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -28759,5 +29717,237 @@ mod tests {
         let stats = SyncCycleStats::default();
         assert_eq!(stats.exit_code, 0);
         assert_eq!(stats.uploaded, 0);
+    }
+
+    // ── Community Benchmark unit tests ────────────────────────────────
+
+    #[test]
+    fn benchmark_percentile_handles_edge_cases() {
+        assert_eq!(benchmark_percentile(&[], 50.0), 0.0);
+        assert_eq!(benchmark_percentile(&[42.0], 50.0), 42.0);
+        assert_eq!(benchmark_percentile(&[42.0], 95.0), 42.0);
+        let v = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        assert_eq!(benchmark_percentile(&v, 50.0), 3.0);
+        assert!((benchmark_percentile(&v, 95.0) - 4.8).abs() < 1e-9);
+        assert_eq!(benchmark_percentile(&v, 0.0), 1.0);
+        assert_eq!(benchmark_percentile(&v, 100.0), 5.0);
+    }
+
+    #[test]
+    fn benchmark_stats_reject_mean_field_only_returns_p50_p95() {
+        let v = vec![10.0, 20.0, 30.0, 40.0, 50.0];
+        let stats = benchmark_stats_from(&v);
+        assert_eq!(stats.min, 10.0);
+        assert_eq!(stats.max, 50.0);
+        assert_eq!(stats.p50, 30.0);
+        // The schema explicitly forbids `mean`; verify Serialize does not
+        // emit one and that the only fields are the documented five.
+        let json = serde_json::to_value(&stats).unwrap();
+        let obj = json.as_object().expect("stats is an object");
+        let mut keys: Vec<&str> = obj.keys().map(|k| k.as_str()).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["max", "min", "p50", "p95", "stddev"]);
+    }
+
+    #[test]
+    fn benchmark_stats_stddev_is_population() {
+        // variance = ((-2)^2 + (-1)^2 + 0 + 1^2 + 2^2) / 5 = 10/5 = 2
+        // stddev = sqrt(2) ≈ 1.41421356
+        let v = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let stats = benchmark_stats_from(&v);
+        assert!((stats.stddev - 2_f64.sqrt()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn benchmark_resolve_config_quick_defaults() {
+        let cfg =
+            resolve_benchmark_config(BenchmarkLevel::Quick, None, None, None).unwrap();
+        assert_eq!(cfg.sizes_bytes, vec![10 * 1024 * 1024]);
+        assert_eq!(cfg.runs_per_size, 1);
+        assert_eq!(cfg.warmup_runs, 0);
+        assert_eq!(cfg.operations, vec!["upload", "download"]);
+    }
+
+    #[test]
+    fn benchmark_resolve_config_standard_defaults() {
+        let cfg =
+            resolve_benchmark_config(BenchmarkLevel::Standard, None, None, None).unwrap();
+        assert_eq!(cfg.sizes_bytes.len(), 3);
+        assert_eq!(cfg.runs_per_size, 3);
+        assert_eq!(cfg.warmup_runs, 1);
+        assert!(cfg.operations.contains(&"upload"));
+        assert!(cfg.operations.contains(&"download"));
+        assert!(cfg.operations.contains(&"list"));
+    }
+
+    #[test]
+    fn benchmark_resolve_config_rejects_invalid_operations() {
+        let err = resolve_benchmark_config(
+            BenchmarkLevel::Standard,
+            None,
+            None,
+            Some("upload,nope"),
+        )
+        .unwrap_err();
+        assert!(err.contains("unknown operation"));
+    }
+
+    #[test]
+    fn benchmark_resolve_config_rejects_oversized_payload() {
+        // 10 GiB > 5 GiB cap
+        let err = resolve_benchmark_config(
+            BenchmarkLevel::Custom,
+            Some("10G"),
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.contains("5 GiB"));
+    }
+
+    #[test]
+    fn benchmark_resolve_config_rejects_zero_size() {
+        let err = resolve_benchmark_config(
+            BenchmarkLevel::Custom,
+            Some("0"),
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_lowercase().contains("zero"));
+    }
+
+    #[test]
+    fn benchmark_resolve_config_clamps_runs() {
+        let cfg = resolve_benchmark_config(
+            BenchmarkLevel::Standard,
+            None,
+            Some(99),
+            None,
+        )
+        .unwrap();
+        assert_eq!(cfg.runs_per_size, 20);
+    }
+
+    #[test]
+    fn benchmark_sanitization_sweep_passes_clean_payload() {
+        let clean = r#"{"protocol":"s3","provider_hint":"amazon-s3-eu-west-1","level":"standard"}"#;
+        assert!(benchmark_sanitization_sweep(clean).is_ok());
+    }
+
+    #[test]
+    fn benchmark_sanitization_sweep_blocks_aws_key() {
+        let dirty = r#"{"note":"AKIAIOSFODNN7EXAMPLE oops"}"#;
+        let err = benchmark_sanitization_sweep(dirty).unwrap_err();
+        assert!(err.contains("AWS"));
+    }
+
+    #[test]
+    fn benchmark_sanitization_sweep_blocks_email() {
+        let dirty = r#"{"submitter":"user@example.com"}"#;
+        let err = benchmark_sanitization_sweep(dirty).unwrap_err();
+        assert!(err.to_lowercase().contains("email"));
+    }
+
+    #[test]
+    fn benchmark_sanitization_sweep_blocks_ipv4() {
+        let dirty = r#"{"host":"192.168.1.1"}"#;
+        let err = benchmark_sanitization_sweep(dirty).unwrap_err();
+        assert!(err.to_lowercase().contains("ipv4"));
+    }
+
+    #[test]
+    fn benchmark_sanitization_sweep_blocks_linux_home_path() {
+        let dirty = r#"{"path":"/home/alice/secret"}"#;
+        let err = benchmark_sanitization_sweep(dirty).unwrap_err();
+        assert!(err.contains("Linux"));
+    }
+
+    #[test]
+    fn benchmark_provider_hint_anonymize_extra_emits_hash_only() {
+        let (hint, hash) = benchmark_provider_hint("s3", true, "report-id-123");
+        assert!(hint.is_none());
+        let h = hash.expect("hash present");
+        assert_eq!(h.len(), 16, "hash truncated to 16 hex chars");
+        assert!(h.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn benchmark_provider_hint_normal_emits_hint_only() {
+        let (hint, hash) = benchmark_provider_hint("webdav", false, "rid");
+        assert_eq!(hint.as_deref(), Some("webdav"));
+        assert!(hash.is_none());
+    }
+
+    #[test]
+    fn benchmark_remote_roots_respect_profile_initial_path() {
+        let (base, root) = benchmark_remote_roots("/workdir", "rid");
+        assert_eq!(base, "/workdir/.aeroftp-bench");
+        assert_eq!(root, "/workdir/.aeroftp-bench/rid");
+    }
+
+    #[test]
+    fn benchmark_remote_roots_stay_relative_without_initial_path() {
+        let (base, root) = benchmark_remote_roots("", "rid");
+        assert_eq!(base, ".aeroftp-bench");
+        assert_eq!(root, ".aeroftp-bench/rid");
+    }
+
+    #[test]
+    fn benchmark_rounded_hour_utc_omits_subhour_precision() {
+        let stamp = benchmark_rounded_hour_utc();
+        assert!(stamp.ends_with(":00:00Z"), "got {}", stamp);
+        assert_eq!(stamp.len(), 20);
+    }
+
+    #[test]
+    fn benchmark_tod_bucket_returns_known_label() {
+        let label = benchmark_tod_bucket();
+        assert!(matches!(
+            label,
+            "night" | "morning" | "afternoon" | "evening"
+        ));
+    }
+
+    #[test]
+    fn benchmark_report_serializes_to_schema_v1() {
+        let report = BenchmarkReport {
+            schema_version: 1,
+            report_id: "11111111-2222-3333-4444-555555555555".into(),
+            generated_at: "2026-05-06T15:00:00Z".into(),
+            cli: BenchmarkCliMeta {
+                version: "3.8.0".into(),
+                build_target: "x86_64-unknown-linux-gnu".into(),
+                rustc: "1.75.0".into(),
+            },
+            level: BenchmarkLevel::Quick,
+            environment: BenchmarkEnvironment {
+                asn_bucket: None,
+                country_bucket: None,
+                tod_bucket: "afternoon".into(),
+                os_family: "linux".into(),
+                os_arch: "x86_64".into(),
+                cpu_class: "x64-modern".into(),
+            },
+            consent: BenchmarkConsent {
+                publish: false,
+                anonymize_extra: false,
+            },
+            results: vec![],
+            summary: BenchmarkSummary {
+                total_runs: 0,
+                total_bytes_transferred: 0,
+                total_duration_ms: 0,
+                errors: vec![],
+            },
+        };
+        let v: serde_json::Value = serde_json::to_value(&report).unwrap();
+        assert_eq!(v["schema_version"], 1);
+        assert_eq!(v["level"], "quick");
+        assert!(v["environment"].get("asn_bucket").is_none());
+        assert_eq!(v["consent"]["publish"], false);
+        // Pass through sanitization sweep on a real serialized payload.
+        let pretty = serde_json::to_string_pretty(&report).unwrap();
+        assert!(benchmark_sanitization_sweep(&pretty).is_ok());
     }
 }

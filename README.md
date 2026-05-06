@@ -53,6 +53,7 @@
   <a href="https://launchpad.net/aeroftp"><img src="https://img.shields.io/badge/Launchpad-aeroftp-F8C300?logo=launchpad&logoColor=black" alt="Launchpad" /></a>
   <a href="https://winstall.app/apps/axpnet.AeroFTP"><img src="https://img.shields.io/badge/winget-axpnet.AeroFTP-0078D4?logo=windows&logoColor=white" alt="Winget" /></a>
   <a href="https://sourceforge.net/projects/aeroftp/"><img src="https://img.shields.io/badge/SourceForge-AeroFTP-FF6600?logo=sourceforge&logoColor=white" alt="SourceForge" /></a>
+  <a href="docs/COMMUNITY-BENCHMARK.md"><img src="https://img.shields.io/badge/community-benchmark-10B981" alt="Community Benchmark" /></a>
 </p>
 
 <!-- Row 3: Community & Listings -->

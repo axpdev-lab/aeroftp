@@ -1,0 +1,62 @@
+name: Community Benchmark Report
+description: Submit a sanitized aeroftp-cli benchmark report
+title: "[benchmark] Report from <country/region>"
+labels: ["benchmark-data", "community"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing! Paste the JSON block produced by
+        `aeroftp-cli --profile "Profile Name" benchmark <level> --consent-publish`
+        below.
+
+        Do not edit the JSON. The CLI sanitized it before printing. If anything
+        looks wrong, open a regular bug report instead.
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Sanitized JSON report
+      description: Paste the block between BEGIN BENCHMARK REPORT and END BENCHMARK REPORT.
+      render: json
+    validations:
+      required: true
+
+  - type: dropdown
+    id: country
+    attributes:
+      label: Country / region (coarse)
+      description: Choose a broad region. Do not include city, ISP, or exact location.
+      options:
+        - Western Europe
+        - Eastern Europe
+        - North America
+        - South America
+        - Asia
+        - Africa
+        - Oceania
+        - Other / prefer not to say
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection type
+      description: Pick the closest match. Approximate is fine.
+      options:
+        - Fiber (>= 100 Mbps)
+        - Cable / DSL (10-100 Mbps)
+        - Mobile / 4G/5G
+        - Slow / metered (< 10 Mbps)
+        - Other / corporate / proxy
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else worth noting
+      description: Optional. ISP throttling, peak hours, provider rate limits, anomalies.
+    validations:
+      required: false

@@ -246,13 +246,18 @@ jobs:
     # server and the native prototype's live probe is covered by the
     # aerorsync-protocol.yml lane against the Linux fixture.
     name: Windows cross-OS build + native unit tests
-    runs-on: windows-latest
-    # `windows-latest` is slower than ubuntu-latest by ~2x for MSVC
-    # link steps on the large lib target; the single-config run used
-    # to fit in 20 min but the v3.6.1 default-feature change doubled
-    # the amount of code the test binary pulls in. 40 min is the new
-    # comfortable ceiling; will be tightened again after pipeline
-    # caching stabilises across a few more runs.
+    # Pin to windows-2022 while cmake-rs (crate `cmake` 0.1.58 used
+    # transitively by whisper-rs-sys 0.15.0) hardcodes the generator
+    # string `Visual Studio 18 2026` whenever it detects MSVC v18 on
+    # the runner, but CMake itself does not yet know that generator.
+    # Same root cause that hit cli-smoke and was patched in v3.7.2.
+    # windows-2022 still ships VS 17 2022, which both cmake-rs and
+    # CMake support.
+    runs-on: windows-2022
+    # MSVC links roughly 2x slower than ubuntu-latest on the large
+    # lib target; the single-config run used to fit in 20 min but the
+    # v3.6.1 default-feature change doubled the amount of code the
+    # test binary pulls in. 40 min is the comfortable ceiling.
     timeout-minutes: 40
 
     steps:
@@ -270,26 +275,38 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           shared-key: delta-sync-windows
+          # Mirror the prefix bumped in build.yml / cli-smoke.yml on
+          # 2026-05-06 to invalidate any cached whisper-rs-sys
+          # CMakeCache.txt referencing Visual Studio 17 2022 after the
+          # windows-latest image rolled to VS 18 2026. windows-2022 is
+          # also pinned above as belt-and-suspenders, but if the pin is
+          # ever lifted we still want the cache invalidation in place.
+          prefix-key: 'v2-whisper-vs18'
 
-      # See build.yml for context: drop the CMake out/ dir of whisper-rs-sys
-      # so cmake-rs reconfigures against whatever Visual Studio version is
-      # installed on this runner. Survives any future windows-latest upgrade.
-      # Both target dirs are checked because cargo check runs in debug profile.
+      # whisper-rs-sys vendors whisper.cpp and runs CMake at build time.
+      # The generator picked by cmake-rs is whichever Visual Studio
+      # CMake finds on the runner. When GitHub rolls the image to a
+      # newer VS, the rust-cache restored CMakeCache.txt still
+      # references the previous generator and CMake aborts. Belt-and-
+      # suspenders: drop the whole `whisper-rs-sys-*` tree (debug and
+      # release) so cmake-rs reconfigures cleanly. Removing only `out/`
+      # used to leave `out/build/CMakeCache.txt` behind on some runners
+      # depending on cmake-rs internal layout.
       - name: Drop stale whisper-rs-sys CMake artifacts (Windows)
         shell: pwsh
         run: |
           foreach ($profile in @('debug', 'release')) {
             $base = "src-tauri/target/$profile/build"
+            $purged = 0
             if (Test-Path $base) {
               Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
                 Where-Object { $_.Name -like 'whisper-rs-sys-*' } |
                 ForEach-Object {
-                  $out = Join-Path $_.FullName 'out'
-                  if (Test-Path $out) {
-                    Write-Host "Removing stale CMake build dir: $out"
-                    Remove-Item -Recurse -Force $out
-                  }
+                  Write-Host "Removing whole whisper-rs-sys build dir: $($_.FullName)"
+                  Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
+                  $purged++
                 }
+              Write-Host "[$profile] Purged $purged whisper-rs-sys build dir(s)"
             }
           }
 

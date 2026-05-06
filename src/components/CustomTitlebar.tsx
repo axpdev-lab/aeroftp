@@ -269,8 +269,16 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const activityCls = hasActivity ? 'animate-pulse' : '';
 
     return (
+        // The outer container intentionally does NOT carry
+        // `data-tauri-drag-region`: on Windows the runtime intercepts
+        // the mousedown geometrically over any drag region before the
+        // DOM event is dispatched, which (combined with the 36px h-9
+        // height of this bar) was eating clicks on top-right modal X
+        // buttons and other overlay controls that fell within those
+        // 36px. The drag affordance is preserved by the two explicit
+        // child drag regions below (the logo+name cluster on the left
+        // and the spacer between the menu and the right cluster).
         <div
-            data-tauri-drag-region
             className="flex items-center h-9 px-2 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] select-none shrink-0"
         >
             {/* Left: Logo + App name */}
