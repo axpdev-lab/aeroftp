@@ -205,19 +205,11 @@ jobs:
           NEW_SIZE=$(du -m "$APPIMAGE" | cut -f1)
           echo "AppImage re-packaged: ${ORIG_SIZE}MB -> ${NEW_SIZE}MB (system libs only)"
 
-      # Build Snap package using Snapcraft (Tauri doesn't generate .snap)
-      # NOTE 2026-04-28: snapcore/action-build@3bdaa03e is currently dying
-      # silently during LXD setup on ubuntu-22.04 runners (3 reruns of v3.6.9
-      # all silent-OOM at the same point). Marked continue-on-error so the
-      # rest of the Linux release pipeline (deb/rpm/AppImage signing and
-      # upload) does not get blocked. The Snap Store stays on the previous
-      # release until we either pin a newer action ref or move the Snap
-      # build to its own job. Tracked for v3.7.0 cleanup.
-      - name: Build Snap package
-        if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
-        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
-        id: snap-build
-        continue-on-error: true
+      # Snap build moved to dedicated `build-snap` job below (issue #164).
+      # The Snap Store stayed frozen at 3.6.10 because the inline step kept
+      # silent-OOM-ing during LXD setup on the ubuntu-22.04 matrix runner.
+      # Splitting it onto its own ubuntu-24.04 runner with native LXD 5.21+
+      # gives Snap headroom and lets us drop continue-on-error once stable.
 
       # Create portable ZIP for Windows (no installer needed)
       - name: Create Windows portable ZIP
@@ -290,8 +282,7 @@ jobs:
               ARTIFACTS+=(src-tauri/target/release/bundle/deb/*.deb)
               ARTIFACTS+=(src-tauri/target/release/bundle/rpm/*.rpm)
               ARTIFACTS+=(src-tauri/target/release/bundle/appimage/*.AppImage)
-              SNAP="${{ steps.snap-build.outputs.snap }}"
-              [ -n "$SNAP" ] && [ -f "$SNAP" ] && ARTIFACTS+=("$SNAP")
+              # .snap is signed in the dedicated build-snap job (issue #164)
               ;;
             windows)
               ARTIFACTS+=(src-tauri/target/release/bundle/msi/*.msi)
@@ -350,25 +341,9 @@ jobs:
             src-tauri/target/release/bundle/rpm/*.rpm.sigstore.json
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/appimage/*.AppImage.sigstore.json
-            ${{ steps.snap-build.outputs.snap }}
-            ${{ steps.snap-build.outputs.snap }}.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to Snap Store
-        if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'linux'
-        continue-on-error: true
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-        run: |
-          SNAP_FILE="${{ steps.snap-build.outputs.snap }}"
-          if [ -n "$SNAP_FILE" ] && [ -f "$SNAP_FILE" ]; then
-            echo "Uploading $SNAP_FILE to Snap Store..."
-            snapcraft upload --release=stable "$SNAP_FILE"
-          else
-            echo "Warning: Snap file not found, skipping Snap Store upload"
-            echo "This is non-fatal - other packages will still be released"
-          fi
+        # .snap upload is handled in the dedicated build-snap job (issue #164)
 
       - name: Upload Windows binaries to Release
         if: startsWith(github.ref, 'refs/tags/') && matrix.target == 'windows'
@@ -407,6 +382,115 @@ jobs:
             src-tauri/target/release/bundle/dmg/*-beta.dmg.sigstore.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build the Snap package on a dedicated runner. Issue #164 background:
+  # the inline Snap step in `build-and-release` was silent-OOM-ing during
+  # LXD setup on the ubuntu-22.04 matrix runner, freezing the Snap Store
+  # at 3.6.10 since v3.6.9. Splitting it out gives Snap a fresh runner
+  # with native LXD 5.21+ headroom (ubuntu-24.04) and lets us drop
+  # continue-on-error once a tag run produces a real .snap.
+  #
+  # Triggers:
+  # - Tag pushes: full pipeline (build + sign + release upload + Snap Store)
+  # - workflow_dispatch: build only (validation runs without cutting a tag)
+  build-snap:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # required for softprops/action-gh-release
+      id-token: write   # required for Sigstore keyless signing via OIDC
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # snapcore/action-build@3bdaa03e is the latest pin (no v2 exists, see
+      # issue #164 for the analysis). On ubuntu-24.04 the native LXD is 5.21+
+      # which clears the silent OOM observed on the 22.04 image.
+      # `continue-on-error: true` is kept here for the first deploy as a
+      # transitional safety net: a follow-up PR will remove it once v3.7.2
+      # produces a real .snap on this job.
+      - name: Build Snap package
+        id: snap-build
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
+        continue-on-error: true
+
+      - name: Confirm Snap was built
+        id: snap-check
+        shell: bash
+        run: |
+          SNAP="${{ steps.snap-build.outputs.snap }}"
+          if [ -z "$SNAP" ] || [ ! -f "$SNAP" ]; then
+            echo "::warning::Snap file not produced by snapcore/action-build"
+            echo "produced=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Snap produced: $SNAP ($(du -h "$SNAP" | cut -f1))"
+          echo "produced=true" >> "$GITHUB_OUTPUT"
+          echo "snap=$SNAP" >> "$GITHUB_OUTPUT"
+
+      # Persist the .snap as a workflow artifact so workflow_dispatch
+      # validation runs (no tag) leave behind something downloadable.
+      - name: Upload Snap as workflow artifact (validation runs)
+        if: steps.snap-check.outputs.produced == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aeroftp-snap-${{ github.sha }}
+          path: ${{ steps.snap-check.outputs.snap }}
+          if-no-files-found: error
+          retention-days: 14
+
+      # Sigstore keyless signing of the .snap: only on tags.
+      - name: Install Cosign
+        if: startsWith(github.ref, 'refs/tags/') && steps.snap-check.outputs.produced == 'true'
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Sign Snap artifact with Sigstore
+        if: startsWith(github.ref, 'refs/tags/') && steps.snap-check.outputs.produced == 'true'
+        shell: bash
+        run: |
+          SNAP="${{ steps.snap-check.outputs.snap }}"
+          echo "Signing: $(basename "$SNAP")"
+          cosign sign-blob \
+            --bundle "${SNAP}.sigstore.json" \
+            --new-bundle-format \
+            --yes \
+            "$SNAP"
+          echo "Signed: $(basename "$SNAP").sigstore.json"
+
+      # Upload .snap (and Sigstore bundle) to the GitHub Release additively.
+      # This runs after build-and-release has already created the release with
+      # deb/rpm/AppImage; softprops/action-gh-release with the same tag and
+      # `name` simply appends the new files.
+      - name: Upload Snap to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') && steps.snap-check.outputs.produced == 'true'
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        with:
+          name: 'AeroFTP ${{ github.ref_name }}'
+          draft: false
+          prerelease: false
+          files: |
+            ${{ steps.snap-check.outputs.snap }}
+            ${{ steps.snap-check.outputs.snap }}.sigstore.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish to Snap Store (stable channel). Kept on continue-on-error
+      # for now: a transient Snap Store outage should not retroactively
+      # fail the GitHub Release we already published above.
+      - name: Publish to Snap Store
+        if: startsWith(github.ref, 'refs/tags/') && steps.snap-check.outputs.produced == 'true'
+        continue-on-error: true
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          SNAP="${{ steps.snap-check.outputs.snap }}"
+          # snapcraft was installed by snapcore/action-build via LXD; we need
+          # the plain CLI here for `upload --release`.
+          if ! command -v snapcraft >/dev/null 2>&1; then
+            sudo snap install snapcraft --classic
+          fi
+          echo "Uploading $SNAP to Snap Store stable..."
+          snapcraft upload --release=stable "$SNAP"
 
   # Publish to Windows Package Manager (winget) on tag pushes
   publish-winget:
