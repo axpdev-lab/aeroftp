@@ -52,7 +52,7 @@ const createStatusConfig = (t: (key: string) => string): Record<SessionStatus, {
 
 // Check if protocol is a provider (not standard FTP)
 const isProviderProtocol = (protocol: ProviderType | undefined): boolean => {
-    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab', 'immich', 'backblaze'].includes(protocol);
+    return protocol !== undefined && ['s3', 'webdav', 'googledrive', 'dropbox', 'onedrive', 'mega', 'sftp', 'box', 'pcloud', 'azure', 'filen', 'fourshared', 'zohoworkdrive', 'internxt', 'kdrive', 'jottacloud', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab', 'immich', 'imagekit', 'uploadcare', 'backblaze'].includes(protocol);
 };
 
 // Provider-specific icons with status awareness
@@ -77,6 +77,10 @@ const ProviderIcon: React.FC<{
     if (providerId) {
         const LogoComponent = PROVIDER_LOGOS[providerId];
         if (LogoComponent) return <span className={opacityClass}><LogoComponent size={size} /></span>;
+    }
+    if (protocol && PROVIDER_LOGOS[protocol]) {
+        const LogoComponent = PROVIDER_LOGOS[protocol];
+        return <span className={opacityClass}><LogoComponent size={size} /></span>;
     }
 
     switch (protocol) {
@@ -569,4 +573,3 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
 };
 
 export default SessionTabs;
-

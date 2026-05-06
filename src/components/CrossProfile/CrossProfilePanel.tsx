@@ -806,4 +806,6 @@ const PROTOCOL_COLORS: Record<string, string> = {
     github: 'from-gray-700 to-gray-500',
     googlephotos: 'from-amber-500 to-amber-400',
     immich: 'from-indigo-500 to-purple-400',
+    imagekit: 'from-blue-500 to-cyan-400',
+    uploadcare: 'from-emerald-500 to-green-400',
 };
