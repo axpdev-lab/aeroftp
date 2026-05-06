@@ -38,6 +38,7 @@ pub mod google_drive;
 pub mod google_photos;
 pub mod http_retry;
 pub mod immich;
+pub mod imagekit;
 pub mod internxt;
 pub mod jottacloud;
 pub mod kdrive;
@@ -54,6 +55,7 @@ pub mod s3;
 pub mod sftp;
 pub mod swift;
 pub mod types;
+pub mod uploadcare;
 pub mod webdav;
 pub mod xml_text;
 pub mod yandex_disk;
@@ -81,6 +83,7 @@ pub use google_photos::GooglePhotosProvider;
 #[allow(unused_imports)]
 pub use http_retry::{send_with_retry, HttpRetryConfig};
 pub use immich::ImmichProvider;
+pub use imagekit::ImageKitProvider;
 pub use internxt::InternxtProvider;
 pub use jottacloud::JottacloudProvider;
 pub use kdrive::KDriveProvider;
@@ -94,6 +97,7 @@ pub use pcloud::PCloudProvider;
 pub use s3::S3Provider;
 pub use sftp::SftpProvider;
 pub use swift::SwiftProvider;
+pub use uploadcare::UploadcareProvider;
 pub use webdav::WebDavProvider;
 pub use yandex_disk::YandexDiskProvider;
 pub use zoho_workdrive::ZohoWorkdriveProvider;
@@ -763,6 +767,14 @@ impl ProviderFactory {
                 let immich_config = immich::ImmichConfig::from_provider_config(config)?;
                 Ok(Box::new(ImmichProvider::new(immich_config)))
             }
+            ProviderType::ImageKit => {
+                let imagekit_config = imagekit::ImageKitConfig::from_provider_config(config)?;
+                Ok(Box::new(ImageKitProvider::new(imagekit_config)))
+            }
+            ProviderType::Uploadcare => {
+                let uploadcare_config = uploadcare::UploadcareConfig::from_provider_config(config)?;
+                Ok(Box::new(UploadcareProvider::new(uploadcare_config)))
+            }
             ProviderType::Backblaze => {
                 let b2_config = b2::B2Config::from_provider_config(config)?;
                 Ok(Box::new(B2Provider::new(b2_config)))
@@ -803,6 +815,8 @@ impl ProviderFactory {
             ProviderType::Swift,
             ProviderType::GooglePhotos,
             ProviderType::Immich,
+            ProviderType::ImageKit,
+            ProviderType::Uploadcare,
             ProviderType::Backblaze,
         ]
     }

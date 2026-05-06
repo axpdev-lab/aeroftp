@@ -725,7 +725,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
         if (!protocol) return;
 
-        const normalizedParams = protocol === 'filelu'
+        const normalizedParams = protocol === 'uploadcare'
+            ? {
+                ...connectionParams,
+                server: connectionParams.server || 'api.uploadcare.com',
+                port: connectionParams.port || 443,
+                providerId: connectionParams.providerId || 'uploadcare',
+            }
+            : protocol === 'imagekit'
+            ? {
+                ...connectionParams,
+                server: connectionParams.server || 'api.imagekit.io',
+                port: connectionParams.port || 443,
+                providerId: connectionParams.providerId || 'imagekit',
+            }
+            : protocol === 'filelu'
             ? {
                 ...connectionParams,
                 server: connectionParams.server || 'filelu.com',
@@ -1023,7 +1037,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             ? `${newName} (${t('common.copy')})`
             : newName;
 
-        const normalizedParams = protocol === 'filelu'
+        const normalizedParams = protocol === 'uploadcare'
+            ? { ...connectionParams, server: connectionParams.server || 'api.uploadcare.com', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'uploadcare' }
+            : protocol === 'imagekit'
+            ? { ...connectionParams, server: connectionParams.server || 'api.imagekit.io', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'imagekit' }
+            : protocol === 'filelu'
             ? { ...connectionParams, server: connectionParams.server || 'filelu.com', username: connectionParams.username || 'api-key', port: connectionParams.port || 443 }
             : protocol === 'opendrive'
                 ? { ...connectionParams, server: connectionParams.server || 'dev.opendrive.com', port: connectionParams.port || 443 }
@@ -1273,7 +1291,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
         }
 
-        const protocolDefaults: Partial<ConnectionParams> = newProtocol === 'filelu'
+        const protocolDefaults: Partial<ConnectionParams> = newProtocol === 'uploadcare'
+            ? { server: 'api.uploadcare.com', port: 443, providerId: 'uploadcare' }
+            : newProtocol === 'imagekit'
+            ? { server: 'api.imagekit.io', port: 443, providerId: 'imagekit' }
+            : newProtocol === 'filelu'
             ? { server: 'filelu.com', username: 'api-key', port: 443 }
             : newProtocol === 'opendrive'
                 ? { server: 'dev.opendrive.com', port: 443 }
@@ -1288,6 +1310,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             password: '',
             protocol: newProtocol,
             port: protocolDefaults.port || getDefaultPort(newProtocol),
+            providerId: protocolDefaults.providerId,
             options: protocolDefaults.options || {},
         });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
@@ -1605,7 +1628,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'filelu', 'drime', 'jottacloud', 'backblaze'];
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'filelu', 'drime', 'jottacloud', 'backblaze'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
@@ -1975,7 +1998,125 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 )}
 
                                 {/* Connection Fields Area */}
-                                {protocol === 'filelu' ? (
+                                {protocol === 'uploadcare' ? (
+                                    /* Uploadcare Specific Form: public key + secret key */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">Public API Key</label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.username}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        username: e.target.value,
+                                                        server: 'api.uploadcare.com',
+                                                        port: 443,
+                                                        providerId: connectionParams.providerId || selectedProviderId || 'uploadcare',
+                                                    })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                    placeholder="demopublickey..."
+                                                    autoFocus
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Dashboard - API Keys - Public key.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                {renderPasswordLabel('Secret API Key')}
+                                                <div className="relative">
+                                                    <input
+                                                        type={showPassword ? 'text' : 'password'}
+                                                        value={connectionParams.password}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            password: e.target.value,
+                                                            server: 'api.uploadcare.com',
+                                                            port: 443,
+                                                            providerId: connectionParams.providerId || selectedProviderId || 'uploadcare',
+                                                        })}
+                                                        className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                        placeholder="secret_..."
+                                                    />
+                                                    <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Used only for REST file management via Uploadcare.Simple auth.
+                                                </p>
+                                            </div>
+                                            <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">
+                                                <p className="font-medium mb-1">Flat media library</p>
+                                                <p className="opacity-80">
+                                                    Uploadcare does not expose native folders; project files are listed at root by UUID.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {renderRightColumn({
+                                            disabled: !connectionParams.username || !connectionParams.password,
+                                            buttonColorClass: 'bg-emerald-600 hover:bg-emerald-700',
+                                            connectionNameKey: getSuggestedConnectionName()
+                                        })}
+                                    </div>
+                                ) : protocol === 'imagekit' ? (
+                                    /* ImageKit Specific Form: URL endpoint ID + private API key */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">URL Endpoint ID</label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.username}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        username: e.target.value,
+                                                        server: 'api.imagekit.io',
+                                                        port: 443,
+                                                        providerId: connectionParams.providerId || selectedProviderId || 'imagekit',
+                                                    })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="your_imagekit_id"
+                                                    autoFocus
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Dashboard - Developer Options - URL endpoint.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                {renderPasswordLabel('Private API Key')}
+                                                <div className="relative">
+                                                    <input
+                                                        type={showPassword ? 'text' : 'password'}
+                                                        value={connectionParams.password}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            password: e.target.value,
+                                                            server: 'api.imagekit.io',
+                                                            port: 443,
+                                                            providerId: connectionParams.providerId || selectedProviderId || 'imagekit',
+                                                        })}
+                                                        className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                        placeholder="private_..."
+                                                    />
+                                                    <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Stored in the local vault and sent only to ImageKit via Basic Auth.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {renderRightColumn({
+                                            disabled: !connectionParams.username || !connectionParams.password,
+                                            buttonColorClass: 'bg-blue-600 hover:bg-blue-700',
+                                            connectionNameKey: getSuggestedConnectionName()
+                                        })}
+                                    </div>
+                                ) : protocol === 'filelu' ? (
                                     /* FileLu Specific Form: API Key */
                                     <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
                                         <div className="space-y-4">

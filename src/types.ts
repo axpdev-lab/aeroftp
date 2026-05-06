@@ -48,6 +48,8 @@ export type ProviderType =
   | "gitlab"
   | "swift"
   | "immich"
+  | "imagekit"
+  | "uploadcare"
   | "backblaze";
 
 // Check if a provider type requires OAuth2 authentication
@@ -127,6 +129,8 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "gitlab",
     "swift",
     "immich",
+    "imagekit",
+    "uploadcare",
     "backblaze",
   ].includes(type);
 };
@@ -186,6 +190,8 @@ export const supportsNativeShareLink = (type: ProviderType): boolean => {
     "kdrive",
     "drime",
     "immich",
+    "imagekit",
+    "uploadcare",
   ].includes(type);
 };
 

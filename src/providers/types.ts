@@ -12,7 +12,7 @@
 // Protocol Types
 // ============================================================================
 
-export type BaseProtocol = 'ftp' | 'ftps' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared' | 'filelu' | 'swift' | 'backblaze';
+export type BaseProtocol = 'ftp' | 'ftps' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared' | 'filelu' | 'swift' | 'imagekit' | 'uploadcare' | 'backblaze';
 
 export type ProviderCategory = 'ftp' | 'oauth' | 's3' | 'webdav' | 'mega' | 'swift' | 'object';
 

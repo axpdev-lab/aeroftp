@@ -109,6 +109,8 @@ pub async fn create_cloud_provider(
         "filelu" => create_via_factory(config, ProviderType::FileLu).await,
         "opendrive" => create_via_factory(config, ProviderType::OpenDrive).await,
         "yandexdisk" => create_via_factory(config, ProviderType::YandexDisk).await,
+        "imagekit" => create_via_factory(config, ProviderType::ImageKit).await,
+        "uploadcare" => create_via_factory(config, ProviderType::Uploadcare).await,
         "backblaze" | "b2" | "backblazeb2" => {
             create_via_factory(config, ProviderType::Backblaze).await
         }

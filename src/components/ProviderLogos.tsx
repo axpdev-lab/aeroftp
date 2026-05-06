@@ -456,6 +456,14 @@ export const ASPnixLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/aspnix.png" alt="ASPnix" width={size} height={size} style={{ objectFit: 'contain' }} />
 );
 
+export const ImageKitLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/imagekit.png" alt="ImageKit" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
+export const UploadcareLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/uploadcare.png" alt="Uploadcare" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
@@ -521,4 +529,6 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'aspnix': ASPnixLogo,
     'immich': ImmichLogo,
     'pixelunion': PixelUnionLogo,
+    'imagekit': ImageKitLogo,
+    'uploadcare': UploadcareLogo,
 };

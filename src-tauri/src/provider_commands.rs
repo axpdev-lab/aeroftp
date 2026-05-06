@@ -264,6 +264,8 @@ impl ProviderConnectionParams {
             "swift" => ProviderType::Swift,
             "googlephotos" | "google_photos" => ProviderType::GooglePhotos,
             "immich" => ProviderType::Immich,
+            "imagekit" | "image_kit" => ProviderType::ImageKit,
+            "uploadcare" | "upload_care" => ProviderType::Uploadcare,
             "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
@@ -312,6 +314,20 @@ impl ProviderConnectionParams {
             } else {
                 return Err("Backblaze B2 requires a bucket name".to_string());
             }
+        }
+
+        if provider_type == ProviderType::ImageKit {
+            if self.username.trim().is_empty() {
+                return Err("ImageKit requires the URL endpoint ID".to_string());
+            }
+            extra.insert("imagekit_id".to_string(), self.username.trim().to_string());
+        }
+
+        if provider_type == ProviderType::Uploadcare {
+            if self.username.trim().is_empty() {
+                return Err("Uploadcare requires the public API key".to_string());
+            }
+            extra.insert("public_key".to_string(), self.username.trim().to_string());
         }
 
         if provider_type == ProviderType::WebDav && self.anonymous.unwrap_or(false) {
@@ -489,6 +505,10 @@ impl ProviderConnectionParams {
             "dev.opendrive.com".to_string()
         } else if provider_type == ProviderType::YandexDisk {
             "cloud-api.yandex.net".to_string()
+        } else if provider_type == ProviderType::ImageKit {
+            "api.imagekit.io".to_string()
+        } else if provider_type == ProviderType::Uploadcare {
+            "api.uploadcare.com".to_string()
         } else if provider_type == ProviderType::Azure {
             // Azure constructs endpoint from account_name if server is empty
             if self.server.is_empty() {

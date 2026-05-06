@@ -66,6 +66,8 @@ const CLOUD_SERVICES: DiscoverItem[] = [
 const MEDIA_SERVICES: DiscoverItem[] = [
     { id: 'immich', name: 'Immich', description: 'Self-hosted photo management (open source)', protocol: 'immich' as ProviderType, badge: 'API', isGeneric: true, signupUrl: 'https://immich.app', helpUrl: 'https://immich.app/docs/overview/introduction', source: 'protocol' },
     { id: 'pixelunion', name: 'PixelUnion', description: 'EU-hosted Immich photo cloud', protocol: 'immich' as ProviderType, providerId: 'pixelunion', badge: 'EU', signupUrl: 'https://pixelunion.eu', healthCheckUrl: 'https://pixelunion.eu', source: 'protocol' },
+    { id: 'imagekit', name: 'ImageKit', description: 'Media CDN + storage with native folders (20 GB free)', protocol: 'imagekit' as ProviderType, providerId: 'imagekit', badge: 'API', signupUrl: 'https://imagekit.io/registration', helpUrl: 'https://imagekit.io/docs/api-overview', healthCheckUrl: 'https://api.imagekit.io', source: 'protocol' },
+    { id: 'uploadcare', name: 'Uploadcare', description: 'EU media management with CDN (3 GB free)', protocol: 'uploadcare' as ProviderType, providerId: 'uploadcare', badge: 'EU', signupUrl: 'https://uploadcare.com/accounts/signup/', helpUrl: 'https://uploadcare.com/docs/start/settings/', healthCheckUrl: 'https://api.uploadcare.com', source: 'protocol' },
     // Google Photos: STANDBY: photoslibrary.readonly scope removed by Google on 2025-03-31.
     // { id: 'googlephotos', name: 'Google Photos', ... },
 ];
@@ -112,6 +114,8 @@ export const PROVIDER_HEALTH_URLS: Partial<Record<ProviderType, string>> = {
     github: 'https://api.github.com',
     gitlab: 'https://gitlab.com',
     immich: 'https://immich.app',
+    imagekit: 'https://api.imagekit.io',
+    uploadcare: 'https://api.uploadcare.com',
 };
 
 /** Maps provider/item IDs to i18n keys for translated descriptions */
@@ -184,6 +188,8 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'googlephotos': 'protocol.discoverGooglePhotos',
     'immich': 'protocol.discoverImmich',
     'pixelunion': 'protocol.discoverPixelUnion',
+    'imagekit': 'protocol.discoverImageKit',
+    'uploadcare': 'protocol.discoverUploadcare',
 };
 
 /** Badge overrides for registry providers with distinctive features */

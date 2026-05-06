@@ -72,6 +72,10 @@ pub enum ProviderType {
     GooglePhotos,
     /// Immich (Self-hosted photo/video management, API key auth)
     Immich,
+    /// ImageKit (media CDN + DAM filesystem API, private key auth)
+    ImageKit,
+    /// Uploadcare (EU media management, public key + secret key auth)
+    Uploadcare,
     /// Backblaze B2 Cloud Storage (native API, applicationKeyId + applicationKey)
     Backblaze,
 }
@@ -108,6 +112,8 @@ impl fmt::Display for ProviderType {
             ProviderType::Swift => write!(f, "Swift"),
             ProviderType::GooglePhotos => write!(f, "Google Photos"),
             ProviderType::Immich => write!(f, "Immich"),
+            ProviderType::ImageKit => write!(f, "ImageKit"),
+            ProviderType::Uploadcare => write!(f, "Uploadcare"),
             ProviderType::Backblaze => write!(f, "Backblaze B2"),
         }
     }
@@ -146,6 +152,8 @@ impl ProviderType {
             ProviderType::Swift => 443,
             ProviderType::GooglePhotos => 443,
             ProviderType::Immich => 2283,
+            ProviderType::ImageKit => 443,
+            ProviderType::Uploadcare => 443,
             ProviderType::Backblaze => 443,
         }
     }
@@ -183,6 +191,8 @@ impl ProviderType {
             ProviderType::Swift |
             ProviderType::GooglePhotos |
             ProviderType::Immich |
+            ProviderType::ImageKit |
+            ProviderType::Uploadcare |
             ProviderType::Backblaze
         )
     }
