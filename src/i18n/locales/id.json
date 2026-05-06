@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Sampah Internxt",
             "azureTrashTitle": "Sampah Azure Blob",
             "lockRcloneCrypt": "Kunci overlay Rclone Crypt",
-            "unlockRcloneCrypt": "Dekripsi sebagai overlay Rclone Crypt…"
+            "unlockRcloneCrypt": "Dekripsi sebagai overlay Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Kelola ikon yang diunggah yang digunakan kembali di seluruh profil. Seret untuk mengatur ulang, klik dua kali nama untuk mengganti nama.",
             "customIconsEmpty": "Belum ada ikon khusus. Unggah file SVG, PNG, JPG, WEBP, atau ICO untuk membangun pustaka Anda.",
             "customIconsUpload": "Unggah",
-            "customIconsRenameHint": "Klik dua kali untuk mengganti nama"
+            "customIconsRenameHint": "Klik dua kali untuk mengganti nama",
+            "aerovaultOverlayTimeoutTitle": "Batas Waktu AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Sesi AeroVault Overlay terkunci secara otomatis setelah periode tidak aktif ini. Nilai yang lebih rendah lebih aman tetapi memerlukan pembukaan kunci lebih sering."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Siapkan {provider} terlebih dahulu",
             "openProviderDocs": "Buka dokumentasi {provider}",
             "discoverImageKit": "CDN media dan penyimpanan dengan folder native (20 GB gratis)",
-            "discoverUploadcare": "Manajemen media EU dengan CDN dan API file (3 GB gratis)"
+            "discoverUploadcare": "Manajemen media EU dengan CDN dan API file (3 GB gratis)",
+            "discoverCloudinary": "CDN untuk manajemen media dengan REST API (25 kredit/bulan gratis)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Buka remote rclone-crypt (atau buat baru) sebagai lapisan transparan.",
             "aerocryptImportTitle": "Lapisan Rclone Crypt terdeteksi",
             "aerocryptImportDesc": "Profil diimpor dari rclone.conf untuk {name}: buka lapisan sekarang?",
-            "aerocryptImportOpen": "Buka lapisan"
+            "aerocryptImportOpen": "Buka lapisan",
+            "aerovaultOverlayExpired": "AeroVault Overlay terkunci karena tidak aktif. Buka kembali brankas untuk melanjutkan."
         },
         "ai.agentMode.title": "Mode Agen",
         "ai.agentMode.description": "Mengontrol perilaku persetujuan alat, batas langkah, dan tingkat otonomi.",
@@ -3641,7 +3646,9 @@
                 "tools": "Alat"
             },
             "noResults": "Tidak ada perintah yang cocok dengan pencarian Anda",
-            "placeholder": "Ketik perintah..."
+            "placeholder": "Ketik perintah...",
+            "aerovaultOverlayOpen": "Buka AeroVault Overlay",
+            "aerovaultOverlayLock": "Kunci AeroVault Overlay"
         },
         "plugins": {
             "browser": {

@@ -78,6 +78,10 @@ pub enum ProviderType {
     Uploadcare,
     /// Backblaze B2 Cloud Storage (native API, applicationKeyId + applicationKey)
     Backblaze,
+    /// Cloudinary (media management CDN, REST API, api_key + api_secret)
+    /// Free tier: 25 monthly credits (1 credit = 1 GB storage OR 1 GB bandwidth
+    /// OR 1000 transformations).
+    Cloudinary,
 }
 
 impl fmt::Display for ProviderType {
@@ -115,6 +119,7 @@ impl fmt::Display for ProviderType {
             ProviderType::ImageKit => write!(f, "ImageKit"),
             ProviderType::Uploadcare => write!(f, "Uploadcare"),
             ProviderType::Backblaze => write!(f, "Backblaze B2"),
+            ProviderType::Cloudinary => write!(f, "Cloudinary"),
         }
     }
 }
@@ -155,6 +160,7 @@ impl ProviderType {
             ProviderType::ImageKit => 443,
             ProviderType::Uploadcare => 443,
             ProviderType::Backblaze => 443,
+            ProviderType::Cloudinary => 443,
         }
     }
 
@@ -193,7 +199,8 @@ impl ProviderType {
             ProviderType::Immich |
             ProviderType::ImageKit |
             ProviderType::Uploadcare |
-            ProviderType::Backblaze
+            ProviderType::Backblaze |
+            ProviderType::Cloudinary
         )
     }
 

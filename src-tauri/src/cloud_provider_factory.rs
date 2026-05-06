@@ -111,6 +111,7 @@ pub async fn create_cloud_provider(
         "yandexdisk" => create_via_factory(config, ProviderType::YandexDisk).await,
         "imagekit" => create_via_factory(config, ProviderType::ImageKit).await,
         "uploadcare" => create_via_factory(config, ProviderType::Uploadcare).await,
+        "cloudinary" => create_via_factory(config, ProviderType::Cloudinary).await,
         "backblaze" | "b2" | "backblazeb2" => {
             create_via_factory(config, ProviderType::Backblaze).await
         }

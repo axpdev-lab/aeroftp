@@ -1017,7 +1017,7 @@ html[dir="rtl"] .file-grid-item {
   direction: rtl;
 }
 
-/* Modal open — hide all background scrollbars (WebKitGTK paints them above CSS z-index overlays) */
+/* Modal open: hide all background scrollbars (WebKitGTK paints them above CSS z-index overlays) */
 html.modal-open *:not(.sync-panel):not(.sync-panel *)::-webkit-scrollbar {
   display: none !important;
 }
@@ -1400,7 +1400,7 @@ html.cyber .dark\:to-gray-800 {
 }
 
 /* =========================================================
-   Tool Approval — Theme-aware button
+   Tool Approval: Theme-aware button
    ========================================================= */
 
 /* Default dark: purple accent (matches AI Settings) */
@@ -1462,13 +1462,13 @@ html.cyber::-webkit-scrollbar-thumb:hover {
 }
 
 /* =========================================================
-   MARKDOWN RENDERER — LIGHT MODE
+   MARKDOWN RENDERER: LIGHT MODE
    Chat messages use hardcoded dark classes; override for light.
    Code blocks keep dark background (industry convention).
    ========================================================= */
 
 :root:not(.dark) .markdown-renderer {
-  color: #374151 !important; /* gray-700 — main body text */
+  color: #374151 !important; /* gray-700: main body text */
 }
 
 :root:not(.dark) .markdown-renderer h1,
@@ -1495,7 +1495,7 @@ html.cyber::-webkit-scrollbar-thumb:hover {
 }
 
 :root:not(.dark) .markdown-renderer a {
-  color: #7c3aed !important; /* purple-600 — more visible on light bg */
+  color: #7c3aed !important; /* purple-600: more visible on light bg */
 }
 
 :root:not(.dark) .markdown-renderer a:hover {
@@ -1521,7 +1521,7 @@ html.cyber::-webkit-scrollbar-thumb:hover {
   border-color: #d1d5db !important;
 }
 
-/* Light: inline code — purple on soft violet bg */
+/* Light: inline code: purple on soft violet bg */
 :root:not(.dark) .markdown-renderer .bg-gray-700 {
   background-color: #ede9fe !important; /* violet-100 */
 }

@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Coș de gunoi",
             "azureTrashTitle": "Azure Blob Coș de gunoi",
             "lockRcloneCrypt": "Blochează suprapunerea Rclone Crypt",
-            "unlockRcloneCrypt": "Decriptează ca suprapunere Rclone Crypt…"
+            "unlockRcloneCrypt": "Decriptează ca suprapunere Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Deschide ca AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Gestionați pictogramele încărcate reutilizate în toate profilurile. Trageți pentru a reordona, faceți dublu clic pe nume pentru a redenumi.",
             "customIconsEmpty": "Încă nu există pictograme personalizate. Încărcați fișiere SVG, PNG, JPG, WEBP sau ICO pentru a vă construi biblioteca.",
             "customIconsUpload": "Încarcă",
-            "customIconsRenameHint": "Faceți dublu clic pentru a redenumi"
+            "customIconsRenameHint": "Faceți dublu clic pentru a redenumi",
+            "aerovaultOverlayTimeoutTitle": "Timp de expirare AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Sesiunile AeroVault Overlay se blochează automat după această perioadă de inactivitate. Valorile mai mici sunt mai sigure, dar necesită deblocări mai frecvente."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Configurați mai întâi {provider}",
             "openProviderDocs": "Deschide documentația {provider}",
             "discoverImageKit": "CDN media și stocare cu foldere native (20 GB gratuit)",
-            "discoverUploadcare": "Gestionare media EU cu CDN și API-uri de fișiere (3 GB gratuit)"
+            "discoverUploadcare": "Gestionare media EU cu CDN și API-uri de fișiere (3 GB gratuit)",
+            "discoverCloudinary": "CDN pentru gestionarea media cu REST API (25 credite/lună gratuit)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Deschide un remote rclone-crypt (sau creează unul nou) ca suprapunere transparentă.",
             "aerocryptImportTitle": "Suprapunere Rclone Crypt detectată",
             "aerocryptImportDesc": "Profil importat din rclone.conf pentru {name}: deschizi suprapunerea acum?",
-            "aerocryptImportOpen": "Deschide suprapunerea"
+            "aerocryptImportOpen": "Deschide suprapunerea",
+            "aerovaultOverlayExpired": "AeroVault Overlay blocat din cauza inactivității. Redeschideți seiful pentru a continua."
         },
         "security": {
             "totp": {
@@ -3631,7 +3636,9 @@
                 "tools": "Instrumente"
             },
             "noResults": "Nicio comandă nu corespunde căutării",
-            "placeholder": "Tastați o comandă..."
+            "placeholder": "Tastați o comandă...",
+            "aerovaultOverlayOpen": "Deschide AeroVault Overlay",
+            "aerovaultOverlayLock": "Blochează AeroVault Overlay"
         },
         "plugins": {
             "browser": {

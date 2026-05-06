@@ -190,18 +190,23 @@ struct AeroVaultOverlaySessionRuntime {
 }
 
 struct AeroVaultOverlayState {
-    sessions: Mutex<HashMap<String, AeroVaultOverlaySessionRuntime>>,
+    sessions: Arc<Mutex<HashMap<String, AeroVaultOverlaySessionRuntime>>>,
 }
 
 const OVERLAY_IDLE_TIMEOUT_DEFAULT_SECS: u64 = 30 * 60;
 const OVERLAY_IDLE_TIMEOUT_MIN_SECS: u64 = 30;
 const OVERLAY_IDLE_TIMEOUT_MAX_SECS: u64 = 24 * 60 * 60;
+const OVERLAY_SWEEPER_INTERVAL_SECS: u64 = 15;
 
 impl AeroVaultOverlayState {
     fn new() -> Self {
         Self {
-            sessions: Mutex::new(HashMap::new()),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    fn sessions_handle(&self) -> Arc<Mutex<HashMap<String, AeroVaultOverlaySessionRuntime>>> {
+        Arc::clone(&self.sessions)
     }
 }
 
@@ -277,10 +282,66 @@ fn resolve_overlay_target(current: &str, target: &str) -> Result<String, String>
     normalize_overlay_relative_path(&next)
 }
 
+fn persist_overlay_idle_timeout(seconds: u64) -> Result<(), String> {
+    let config_dir = dirs::config_dir()
+        .ok_or("Cannot find config directory")?
+        .join("aeroftp");
+    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    std::fs::write(
+        config_dir.join("aerovault_overlay_idle_timeout"),
+        seconds.to_string(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn load_persisted_overlay_idle_timeout() -> Option<u64> {
+    dirs::config_dir()
+        .map(|d| d.join("aeroftp").join("aerovault_overlay_idle_timeout"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map(|v| v.clamp(OVERLAY_IDLE_TIMEOUT_MIN_SECS, OVERLAY_IDLE_TIMEOUT_MAX_SECS))
+}
+
 fn normalize_overlay_idle_timeout_secs(input: Option<u64>) -> u64 {
     input
+        .or_else(load_persisted_overlay_idle_timeout)
         .unwrap_or(OVERLAY_IDLE_TIMEOUT_DEFAULT_SECS)
         .clamp(OVERLAY_IDLE_TIMEOUT_MIN_SECS, OVERLAY_IDLE_TIMEOUT_MAX_SECS)
+}
+
+/// Sweep step: drain sessions whose `last_activity` is older than their idle
+/// timeout. Returns the evicted (`session_id`, `source`) tuples so the caller
+/// can emit notifications. Pure over the HashMap so it can be unit-tested
+/// without touching the Tauri runtime.
+fn drain_expired_overlay_sessions(
+    sessions: &mut HashMap<String, AeroVaultOverlaySessionRuntime>,
+    now: Instant,
+) -> Vec<(String, String)> {
+    if sessions.is_empty() {
+        return Vec::new();
+    }
+    let to_evict: Vec<String> = sessions
+        .iter()
+        .filter(|(_, s)| now.duration_since(s.last_activity).as_secs() > s.idle_timeout_secs)
+        .map(|(id, _)| id.clone())
+        .collect();
+    to_evict
+        .into_iter()
+        .filter_map(|id| sessions.remove(&id).map(|s| (id, s.source.clone())))
+        .collect()
+}
+
+#[tauri::command]
+async fn aerovault_overlay_get_idle_timeout() -> Result<u64, String> {
+    Ok(load_persisted_overlay_idle_timeout().unwrap_or(OVERLAY_IDLE_TIMEOUT_DEFAULT_SECS))
+}
+
+#[tauri::command]
+async fn aerovault_overlay_set_idle_timeout(seconds: u64) -> Result<u64, String> {
+    let clamped =
+        seconds.clamp(OVERLAY_IDLE_TIMEOUT_MIN_SECS, OVERLAY_IDLE_TIMEOUT_MAX_SECS);
+    persist_overlay_idle_timeout(clamped)?;
+    Ok(clamped)
 }
 
 #[tauri::command]
@@ -13302,6 +13363,40 @@ pub fn run() {
             // Start mount watcher: emits 'volumes-changed' events instead of 5s polling
             filesystem::start_mount_watcher(app.handle().clone());
 
+            // Proactive AeroVault overlay sweeper: polls every OVERLAY_SWEEPER_INTERVAL_SECS,
+            // evicts sessions past their idle timeout and emits `aerovault-overlay-expired`
+            // so the frontend can drop overlay state without waiting for the next user action.
+            {
+                let overlay_sessions = app
+                    .state::<AeroVaultOverlayState>()
+                    .sessions_handle();
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(
+                        OVERLAY_SWEEPER_INTERVAL_SECS,
+                    ));
+                    ticker.set_missed_tick_behavior(
+                        tokio::time::MissedTickBehavior::Delay,
+                    );
+                    loop {
+                        ticker.tick().await;
+                        let expired = {
+                            let mut sessions = overlay_sessions.lock().await;
+                            drain_expired_overlay_sessions(&mut sessions, Instant::now())
+                        };
+                        for (session_id, source) in expired {
+                            let _ = app_handle.emit(
+                                "aerovault-overlay-expired",
+                                serde_json::json!({
+                                    "session_id": session_id,
+                                    "source": source,
+                                }),
+                            );
+                        }
+                    }
+                });
+            }
+
             // Local panel filesystem watcher state (one watcher slot, swapped on path change)
             app.manage(local_panel_watcher::LocalPanelWatcherState::default());
 
@@ -14021,6 +14116,8 @@ pub fn run() {
             aerovault_overlay_move_entry,
             aerovault_overlay_rename_entry,
             aerovault_overlay_copy_entry,
+            aerovault_overlay_get_idle_timeout,
+            aerovault_overlay_set_idle_timeout,
             // Cross-profile transfer commands
             cross_profile_commands::cross_profile_plan,
             cross_profile_commands::cross_profile_execute,
@@ -14430,4 +14527,204 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod overlay_helpers_tests {
+    use super::*;
+    use secrecy::SecretString;
+    use std::time::Duration;
+
+    fn make_session(
+        idle_timeout_secs: u64,
+        last_activity: Instant,
+        source: &str,
+    ) -> AeroVaultOverlaySessionRuntime {
+        AeroVaultOverlaySessionRuntime {
+            vault_path: "/tmp/x.aerovault".to_string(),
+            password: SecretString::new("pw".to_string().into_boxed_str()),
+            source: source.to_string(),
+            remote_vault_path: None,
+            remote_local_path: None,
+            current_dir: String::new(),
+            idle_timeout_secs,
+            last_activity,
+        }
+    }
+
+    // --- normalize_overlay_relative_path ---
+
+    #[test]
+    fn normalize_strips_outer_slashes_and_keeps_inner() {
+        assert_eq!(normalize_overlay_relative_path("/a/b/").unwrap(), "a/b");
+        assert_eq!(normalize_overlay_relative_path("a/b").unwrap(), "a/b");
+    }
+
+    #[test]
+    fn normalize_rejects_traversal_and_null() {
+        assert!(normalize_overlay_relative_path("a/../b").is_err());
+        assert!(normalize_overlay_relative_path("a/./b").is_err());
+        assert!(normalize_overlay_relative_path("a/\0/b").is_err());
+        assert!(normalize_overlay_relative_path("a//b").is_err());
+    }
+
+    #[test]
+    fn normalize_handles_empty_and_root() {
+        assert_eq!(normalize_overlay_relative_path("").unwrap(), "");
+        assert_eq!(normalize_overlay_relative_path("/").unwrap(), "");
+        assert_eq!(normalize_overlay_relative_path("///").unwrap(), "");
+    }
+
+    #[test]
+    fn normalize_normalizes_backslashes() {
+        assert_eq!(normalize_overlay_relative_path("a\\b\\c").unwrap(), "a/b/c");
+    }
+
+    // --- overlay_display_path ---
+
+    #[test]
+    fn display_path_root_and_nested() {
+        assert_eq!(overlay_display_path(""), "/");
+        assert_eq!(overlay_display_path("a/b"), "/a/b");
+    }
+
+    // --- overlay_join ---
+
+    #[test]
+    fn join_handles_root_and_nested() {
+        assert_eq!(overlay_join("", "x"), "x");
+        assert_eq!(overlay_join("a", "x"), "a/x");
+        assert_eq!(overlay_join("a/b", "x"), "a/b/x");
+    }
+
+    // --- resolve_overlay_target ---
+
+    #[test]
+    fn resolve_target_dot_keeps_current() {
+        assert_eq!(resolve_overlay_target("a/b", ".").unwrap(), "a/b");
+        assert_eq!(resolve_overlay_target("a/b", "").unwrap(), "a/b");
+    }
+
+    #[test]
+    fn resolve_target_dot_dot_goes_up() {
+        assert_eq!(resolve_overlay_target("a/b", "..").unwrap(), "a");
+        assert_eq!(resolve_overlay_target("a", "..").unwrap(), "");
+        assert_eq!(resolve_overlay_target("", "..").unwrap(), "");
+    }
+
+    #[test]
+    fn resolve_target_absolute_resets_to_root() {
+        assert_eq!(resolve_overlay_target("a/b", "/x/y").unwrap(), "x/y");
+        assert_eq!(resolve_overlay_target("a/b", "/").unwrap(), "");
+    }
+
+    #[test]
+    fn resolve_target_relative_appends() {
+        assert_eq!(resolve_overlay_target("", "x").unwrap(), "x");
+        assert_eq!(resolve_overlay_target("a", "x").unwrap(), "a/x");
+        assert_eq!(resolve_overlay_target("a/b", "x/y").unwrap(), "a/b/x/y");
+    }
+
+    #[test]
+    fn resolve_target_rejects_relative_traversal() {
+        assert!(resolve_overlay_target("a", "../b").is_err());
+    }
+
+    // --- normalize_overlay_idle_timeout_secs ---
+
+    #[test]
+    fn normalize_timeout_uses_default_on_none_when_no_persist() {
+        // best-effort: persisted file may or may not exist in dev env, but the
+        // value is always clamped into the allowed range.
+        let v = normalize_overlay_idle_timeout_secs(None);
+        assert!((OVERLAY_IDLE_TIMEOUT_MIN_SECS..=OVERLAY_IDLE_TIMEOUT_MAX_SECS).contains(&v));
+    }
+
+    #[test]
+    fn normalize_timeout_clamps_low_input() {
+        assert_eq!(
+            normalize_overlay_idle_timeout_secs(Some(0)),
+            OVERLAY_IDLE_TIMEOUT_MIN_SECS
+        );
+        assert_eq!(
+            normalize_overlay_idle_timeout_secs(Some(5)),
+            OVERLAY_IDLE_TIMEOUT_MIN_SECS
+        );
+    }
+
+    #[test]
+    fn normalize_timeout_clamps_high_input() {
+        assert_eq!(
+            normalize_overlay_idle_timeout_secs(Some(u64::MAX)),
+            OVERLAY_IDLE_TIMEOUT_MAX_SECS
+        );
+    }
+
+    #[test]
+    fn normalize_timeout_passes_in_range() {
+        assert_eq!(normalize_overlay_idle_timeout_secs(Some(900)), 900);
+    }
+
+    // --- drain_expired_overlay_sessions ---
+
+    #[test]
+    fn drain_empty_map_returns_empty() {
+        let mut sessions: HashMap<String, AeroVaultOverlaySessionRuntime> = HashMap::new();
+        let evicted = drain_expired_overlay_sessions(&mut sessions, Instant::now());
+        assert!(evicted.is_empty());
+    }
+
+    #[test]
+    fn drain_evicts_only_expired_sessions() {
+        let now = Instant::now();
+        let mut sessions: HashMap<String, AeroVaultOverlaySessionRuntime> = HashMap::new();
+        // Fresh: last_activity = now - 5s, idle_timeout = 60s -> NOT expired.
+        sessions.insert(
+            "fresh".to_string(),
+            make_session(60, now - Duration::from_secs(5), "local"),
+        );
+        // Stale: last_activity = now - 90s, idle_timeout = 60s -> expired.
+        sessions.insert(
+            "stale".to_string(),
+            make_session(60, now - Duration::from_secs(90), "remote"),
+        );
+        let mut evicted = drain_expired_overlay_sessions(&mut sessions, now);
+        evicted.sort();
+        assert_eq!(evicted.len(), 1);
+        assert_eq!(evicted[0].0, "stale");
+        assert_eq!(evicted[0].1, "remote");
+        assert!(sessions.contains_key("fresh"));
+        assert!(!sessions.contains_key("stale"));
+    }
+
+    #[test]
+    fn drain_evicts_all_when_all_expired() {
+        let now = Instant::now();
+        let mut sessions: HashMap<String, AeroVaultOverlaySessionRuntime> = HashMap::new();
+        sessions.insert(
+            "a".to_string(),
+            make_session(30, now - Duration::from_secs(120), "local"),
+        );
+        sessions.insert(
+            "b".to_string(),
+            make_session(30, now - Duration::from_secs(60), "local"),
+        );
+        let evicted = drain_expired_overlay_sessions(&mut sessions, now);
+        assert_eq!(evicted.len(), 2);
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn drain_keeps_session_at_exact_boundary() {
+        // duration_since().as_secs() floors, so 60s with idle=60 is NOT > 60.
+        let now = Instant::now();
+        let mut sessions: HashMap<String, AeroVaultOverlaySessionRuntime> = HashMap::new();
+        sessions.insert(
+            "edge".to_string(),
+            make_session(60, now - Duration::from_secs(60), "local"),
+        );
+        let evicted = drain_expired_overlay_sessions(&mut sessions, now);
+        assert!(evicted.is_empty());
+        assert!(sessions.contains_key("edge"));
+    }
 }

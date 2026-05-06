@@ -34,7 +34,11 @@ function StorageUsageBar({
     thresholds: StorageThresholds;
 }) {
     const t = useTranslation();
-    if (!quota || !quota.total || quota.total <= 0) {
+    // No quota cached at all: provider supports quota but we haven't fetched
+    // yet (or the fetch failed transiently): show the placeholder so the user
+    // knows the slot exists. Provider that doesn't support quota: render
+    // nothing.
+    if (!quota) {
         if (!supported) return null;
         const title = t('introHub.storageQuotaUnavailable');
         return (
@@ -45,6 +49,12 @@ function StorageUsageBar({
                 <div className="h-1 mt-1 rounded-full bg-gray-200/70 dark:bg-gray-700/70 overflow-hidden" />
             </div>
         );
+    }
+    // Fetched but provider doesn't expose a byte-based cap (e.g. Cloudinary
+    // free, credit-based plans). Hide the slot: rendering "Quota" with an empty
+    // bar is misleading on providers that genuinely don't have one.
+    if (!quota.total || quota.total <= 0) {
+        return null;
     }
     const { used, total } = quota;
     const { tone, pct } = getStorageTone(used, total, thresholds);

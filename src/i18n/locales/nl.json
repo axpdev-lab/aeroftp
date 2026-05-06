@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt prullenbak",
             "azureTrashTitle": "Azure Blob prullenbak",
             "lockRcloneCrypt": "Rclone Crypt-overlay vergrendelen",
-            "unlockRcloneCrypt": "Ontsleutelen als Rclone Crypt-overlay…"
+            "unlockRcloneCrypt": "Ontsleutelen als Rclone Crypt-overlay…",
+            "openAsAeroVaultOverlay": "Openen als AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Beheer geüploade pictogrammen die hergebruikt worden tussen profielen. Sleep om te herschikken, dubbelklik op de naam om te hernoemen.",
             "customIconsEmpty": "Nog geen aangepaste pictogrammen. Upload SVG-, PNG-, JPG-, WEBP- of ICO-bestanden om uw bibliotheek op te bouwen.",
             "customIconsUpload": "Uploaden",
-            "customIconsRenameHint": "Dubbelklik om te hernoemen"
+            "customIconsRenameHint": "Dubbelklik om te hernoemen",
+            "aerovaultOverlayTimeoutTitle": "Time-out AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-sessies worden na deze inactieve periode automatisch vergrendeld. Lagere waarden zijn veiliger, maar vereisen vaker ontgrendelen."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Stel eerst {provider} in",
             "openProviderDocs": "Open {provider}-documentatie",
             "discoverImageKit": "Media-CDN en opslag met native mappen (20 GB gratis)",
-            "discoverUploadcare": "EU mediabeheer met CDN en bestand-API's (3 GB gratis)"
+            "discoverUploadcare": "EU mediabeheer met CDN en bestand-API's (3 GB gratis)",
+            "discoverCloudinary": "CDN voor mediabeheer met REST API (25 credits/maand gratis)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Open een rclone-crypt externe opslag (of maak een nieuwe) als transparante laag.",
             "aerocryptImportTitle": "Rclone Crypt-laag gedetecteerd",
             "aerocryptImportDesc": "Profiel geïmporteerd uit rclone.conf voor {name}: nu de laag openen?",
-            "aerocryptImportOpen": "Laag openen"
+            "aerocryptImportOpen": "Laag openen",
+            "aerovaultOverlayExpired": "AeroVault Overlay vergrendeld wegens inactiviteit. Open de kluis opnieuw om door te gaan."
         },
         "security": {
             "totp": {
@@ -3631,7 +3636,9 @@
                 "tools": "Hulpmiddelen"
             },
             "noResults": "Geen opdrachten komen overeen met uw zoekopdracht",
-            "placeholder": "Typ een opdracht..."
+            "placeholder": "Typ een opdracht...",
+            "aerovaultOverlayOpen": "AeroVault Overlay openen",
+            "aerovaultOverlayLock": "AeroVault Overlay vergrendelen"
         },
         "plugins": {
             "browser": {

@@ -1244,7 +1244,9 @@
         "tools": "Tools"
       },
       "noResults": "No commands match your search",
-      "placeholder": "Type a command..."
+      "placeholder": "Type a command...",
+      "aerovaultOverlayOpen": "Open AeroVault Overlay",
+      "aerovaultOverlayLock": "Lock AeroVault Overlay"
     },
     "contextMenu": {
       "askAeroAgent": "Ask AeroAgent...",
@@ -1269,6 +1271,7 @@
       "createAeroVault": "Create AeroVault...",
       "encryptFolderAsVault": "Encrypt Folder as AeroVault...",
       "openWithAeroVault": "Open with AeroVault",
+      "openAsAeroVaultOverlay": "Open as AeroVault Overlay",
       "createCryptomator": "Create Cryptomator Vault...",
       "creatingShareLink": "Creating share link...",
       "cut": "Cut",
@@ -2377,6 +2380,7 @@
       "discoverPixelUnion": "EU-hosted Immich photo cloud (16 GB free)",
       "discoverImageKit": "Media CDN and storage with native folders (20 GB free)",
       "discoverUploadcare": "EU media management with CDN and file APIs (3 GB free)",
+      "discoverCloudinary": "Media management CDN with REST API (25 credits/month free)",
       "discoverOneDrive": "Microsoft cloud storage (5 GB free)",
       "discoverDropbox": "File sync and sharing (2 GB free)",
       "discoverMega": "Secure cloud with client-side encryption (20 GB free)",
@@ -2486,6 +2490,8 @@
       "autoLockDisabled": "Disabled",
       "autoLockEnabled": "Auto-lock: {minutes} min",
       "autoLockTimeout": "Auto-lock Timeout",
+      "aerovaultOverlayTimeoutTitle": "AeroVault Overlay Timeout",
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay sessions auto-lock after this period of inactivity. Lower values are safer but require more frequent unlocks.",
       "autoTheme": "Auto (System)",
       "autoThemeDesc": "Automatically switch between Light and Dark based on your system preference",
       "backup": "Backup",
@@ -3470,6 +3476,7 @@
     "toolbar": {
       "aerovaultOverlayActive": "AeroVault container overlay active — click to detach",
       "aerovaultOverlayInactive": "Open an .aerovault container as a virtual remote panel. For rclone-crypt overlay use right-click on a remote folder.",
+      "aerovaultOverlayExpired": "AeroVault Overlay locked due to inactivity. Reopen the vault to continue.",
       "aerocryptOverlayActive": "AeroCrypt overlay active: uploads and downloads in this panel are encrypted. Click to detach.",
       "aerocryptOverlayInactive": "Open a rclone-crypt remote (or create a new one) as a transparent overlay.",
       "aerocryptImportTitle": "Rclone Crypt overlay detected",

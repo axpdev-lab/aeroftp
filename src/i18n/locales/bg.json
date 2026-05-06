@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Кошче Internxt",
             "azureTrashTitle": "Кошче Azure Blob",
             "lockRcloneCrypt": "Заключи наслагване Rclone Crypt",
-            "unlockRcloneCrypt": "Дешифрирай като наслагване Rclone Crypt…"
+            "unlockRcloneCrypt": "Дешифрирай като наслагване Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Отвори като AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Прехвърляне...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Управлявайте качените икони за повторна употреба в профилите. Плъзнете за пренареждане, двойно щракване върху името за преименуване.",
             "customIconsEmpty": "Все още няма персонализирани икони. Качете файлове SVG, PNG, JPG, WEBP или ICO, за да изградите библиотеката си.",
             "customIconsUpload": "Качване",
-            "customIconsRenameHint": "Двойно щракване за преименуване"
+            "customIconsRenameHint": "Двойно щракване за преименуване",
+            "aerovaultOverlayTimeoutTitle": "Изтичане на AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Сесиите на AeroVault Overlay се заключват автоматично след този период на неактивност. По-ниските стойности са по-сигурни, но изискват по-чести отключвания."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Първо настройте {provider}",
             "openProviderDocs": "Отваряне на документацията на {provider}",
             "discoverImageKit": "Медийна CDN и съхранение с естествени папки (20 GB безплатно)",
-            "discoverUploadcare": "EU управление на медия с CDN и файлови API (3 GB безплатно)"
+            "discoverUploadcare": "EU управление на медия с CDN и файлови API (3 GB безплатно)",
+            "discoverCloudinary": "CDN за управление на медии с REST API (25 кредита/месец безплатно)"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Отворете rclone-crypt отдалечено хранилище (или създайте ново) като прозрачно наслагване.",
             "aerocryptImportTitle": "Открито е наслагване Rclone Crypt",
             "aerocryptImportDesc": "Профил, импортиран от rclone.conf за {name}: да се отвори ли наслагването сега?",
-            "aerocryptImportOpen": "Отвори наслагването"
+            "aerocryptImportOpen": "Отвори наслагването",
+            "aerovaultOverlayExpired": "AeroVault Overlay е заключен поради неактивност. Отворете отново трезора, за да продължите."
         },
         "ai.agentMode.title": "Режим на агента",
         "ai.agentMode.description": "Контролира поведението при одобрение на инструменти, ограниченията на стъпките и нивото на автономност.",
@@ -3641,7 +3646,9 @@
                 "tools": "Инструменти"
             },
             "noResults": "Няма команди, съответстващи на търсенето ви",
-            "placeholder": "Въведете команда..."
+            "placeholder": "Въведете команда...",
+            "aerovaultOverlayOpen": "Отвори AeroVault Overlay",
+            "aerovaultOverlayLock": "Заключи AeroVault Overlay"
         },
         "plugins": {
             "browser": {

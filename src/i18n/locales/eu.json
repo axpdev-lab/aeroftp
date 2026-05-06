@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt zakarrontzia",
             "azureTrashTitle": "Azure Blob zakarrontzia",
             "lockRcloneCrypt": "Blokeatu Rclone Crypt gainjartzea",
-            "unlockRcloneCrypt": "Deszifratu Rclone Crypt gainjartze gisa…"
+            "unlockRcloneCrypt": "Deszifratu Rclone Crypt gainjartze gisa…",
+            "openAsAeroVaultOverlay": "Ireki AeroVault Overlay gisa"
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Kudeatu profiletan zehar berrerabilitako kargatutako ikonoak. Arrastatu berrantolatzeko, klik bikoitza izenean berrizendatzeko.",
             "customIconsEmpty": "Oraindik ez dago ikono pertsonalizaturik. Kargatu SVG, PNG, JPG, WEBP edo ICO fitxategiak zure liburutegia eraikitzeko.",
             "customIconsUpload": "Kargatu",
-            "customIconsRenameHint": "Klik bikoitza berrizendatzeko"
+            "customIconsRenameHint": "Klik bikoitza berrizendatzeko",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay-en denbora-muga",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay saioak automatikoki blokeatzen dira jardunik gabeko aldi honen ondoren. Balio txikiagoak seguruagoak dira, baina maizago desblokeatu behar dira."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Konfiguratu {provider} lehenik",
             "openProviderDocs": "Ireki {provider} dokumentazioa",
             "discoverImageKit": "Multimedia CDN eta biltegiratzea karpeta natiboekin (20 GB doan)",
-            "discoverUploadcare": "EU multimedia-kudeaketa CDN eta fitxategi APIekin (3 GB doan)"
+            "discoverUploadcare": "EU multimedia-kudeaketa CDN eta fitxategi APIekin (3 GB doan)",
+            "discoverCloudinary": "Multimedia kudeatzeko CDNa REST APIarekin (25 kreditu/hilean doan)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Ireki rclone-crypt urruneko bat (edo sortu berri bat) gardena geruza gisa.",
             "aerocryptImportTitle": "Rclone Crypt geruza detektatu da",
             "aerocryptImportDesc": "{name}(r)entzat rclone.conf-etik inportatutako profila: orain ireki geruza?",
-            "aerocryptImportOpen": "Ireki geruza"
+            "aerocryptImportOpen": "Ireki geruza",
+            "aerovaultOverlayExpired": "AeroVault Overlay jardunik ezagatik blokeatu da. Ireki berriro kutxa gotorra jarraitzeko."
         },
         "ai.agentMode.title": "Agente modua",
         "ai.agentMode.description": "Tresnen onarpen portaera, urratsen mugak eta autonomia maila kontrolatzen ditu.",
@@ -3641,7 +3646,9 @@
                 "tools": "Tresnak"
             },
             "noResults": "Ez dago zure bilaketarekin bat datorren komandorik",
-            "placeholder": "Idatzi komando bat..."
+            "placeholder": "Idatzi komando bat...",
+            "aerovaultOverlayOpen": "Ireki AeroVault Overlay",
+            "aerovaultOverlayLock": "Blokeatu AeroVault Overlay"
         },
         "plugins": {
             "browser": {

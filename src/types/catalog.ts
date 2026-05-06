@@ -100,6 +100,7 @@ export const PROTOCOL_CATEGORY_MAP: Record<string, CatalogCategoryId> = {
     immich: 'media-services',
     imagekit: 'media-services',
     uploadcare: 'media-services',
+    cloudinary: 'media-services',
 
     // Cloud (ex-Enterprise)
     zohoworkdrive: 'cloud-storage',
@@ -122,7 +123,7 @@ const DEV_PROTOCOLS = ['github', 'gitlab'];
 /** Provider IDs that are developer services even though they use a base protocol (e.g. SFTP) */
 const DEV_PROVIDER_IDS = ['sourceforge'];
 
-const MEDIA_PROTOCOLS = ['immich', 'googlephotos', 'imagekit', 'uploadcare'];
+const MEDIA_PROTOCOLS = ['immich', 'googlephotos', 'imagekit', 'uploadcare', 'cloudinary'];
 
 const isDevService = (protocol: string, providerId?: string): boolean =>
     DEV_PROTOCOLS.includes(protocol) || DEV_PROVIDER_IDS.includes(providerId || '');

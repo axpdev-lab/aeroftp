@@ -739,6 +739,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 port: connectionParams.port || 443,
                 providerId: connectionParams.providerId || 'imagekit',
             }
+            : protocol === 'cloudinary'
+            ? {
+                ...connectionParams,
+                server: connectionParams.server || 'api.cloudinary.com',
+                port: connectionParams.port || 443,
+                providerId: connectionParams.providerId || 'cloudinary',
+            }
             : protocol === 'filelu'
             ? {
                 ...connectionParams,
@@ -1041,6 +1048,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             ? { ...connectionParams, server: connectionParams.server || 'api.uploadcare.com', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'uploadcare' }
             : protocol === 'imagekit'
             ? { ...connectionParams, server: connectionParams.server || 'api.imagekit.io', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'imagekit' }
+            : protocol === 'cloudinary'
+            ? { ...connectionParams, server: connectionParams.server || 'api.cloudinary.com', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'cloudinary' }
             : protocol === 'filelu'
             ? { ...connectionParams, server: connectionParams.server || 'filelu.com', username: connectionParams.username || 'api-key', port: connectionParams.port || 443 }
             : protocol === 'opendrive'
@@ -1295,6 +1304,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             ? { server: 'api.uploadcare.com', port: 443, providerId: 'uploadcare' }
             : newProtocol === 'imagekit'
             ? { server: 'api.imagekit.io', port: 443, providerId: 'imagekit' }
+            : newProtocol === 'cloudinary'
+            ? { server: 'api.cloudinary.com', port: 443, providerId: 'cloudinary' }
             : newProtocol === 'filelu'
             ? { server: 'filelu.com', username: 'api-key', port: 443 }
             : newProtocol === 'opendrive'
@@ -1628,7 +1639,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'filelu', 'drime', 'jottacloud', 'backblaze'];
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
@@ -2113,6 +2124,84 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {renderRightColumn({
                                             disabled: !connectionParams.username || !connectionParams.password,
                                             buttonColorClass: 'bg-blue-600 hover:bg-blue-700',
+                                            connectionNameKey: getSuggestedConnectionName()
+                                        })}
+                                    </div>
+                                ) : protocol === 'cloudinary' ? (
+                                    /* Cloudinary Specific Form: cloud_name + api_key + api_secret */
+                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">Cloud Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.options?.bucket || ''}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        server: 'api.cloudinary.com',
+                                                        port: 443,
+                                                        providerId: connectionParams.providerId || selectedProviderId || 'cloudinary',
+                                                        options: {
+                                                            ...connectionParams.options,
+                                                            bucket: e.target.value.trim(),
+                                                        },
+                                                    })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                    placeholder="dxz9abc12"
+                                                    autoFocus
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Found in your Cloudinary Dashboard - Account Details.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1.5">API Key</label>
+                                                <input
+                                                    type="text"
+                                                    value={connectionParams.username}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        username: e.target.value,
+                                                        server: 'api.cloudinary.com',
+                                                        port: 443,
+                                                        providerId: connectionParams.providerId || selectedProviderId || 'cloudinary',
+                                                    })}
+                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                    placeholder="API key"
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Dashboard - API Keys - API Key.
+                                                </p>
+                                            </div>
+                                            <div>
+                                                {renderPasswordLabel('API Secret')}
+                                                <div className="relative">
+                                                    <input
+                                                        type={showPassword ? 'text' : 'password'}
+                                                        value={connectionParams.password}
+                                                        onChange={(e) => onConnectionParamsChange({
+                                                            ...connectionParams,
+                                                            password: e.target.value,
+                                                            server: 'api.cloudinary.com',
+                                                            port: 443,
+                                                            providerId: connectionParams.providerId || selectedProviderId || 'cloudinary',
+                                                        })}
+                                                        className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                        placeholder="API secret"
+                                                    />
+                                                    <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Stored in the local vault and sent only to Cloudinary via Basic Auth.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {renderRightColumn({
+                                            disabled: !connectionParams.username || !connectionParams.password || !connectionParams.options?.bucket,
+                                            buttonColorClass: 'bg-indigo-600 hover:bg-indigo-700',
                                             connectionNameKey: getSuggestedConnectionName()
                                         })}
                                     </div>

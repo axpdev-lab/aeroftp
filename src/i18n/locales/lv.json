@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt atkritne",
             "azureTrashTitle": "Azure Blob atkritne",
             "lockRcloneCrypt": "Bloķēt Rclone Crypt pārklājumu",
-            "unlockRcloneCrypt": "Atšifrēt kā Rclone Crypt pārklājumu…"
+            "unlockRcloneCrypt": "Atšifrēt kā Rclone Crypt pārklājumu…",
+            "openAsAeroVaultOverlay": "Atvērt kā AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Pārvaldiet augšupielādētās ikonas, kas atkārtoti izmantotas visos profilos. Velciet, lai pārkārtotu, veiciet dubultklikšķi uz nosaukuma, lai pārdēvētu.",
             "customIconsEmpty": "Vēl nav pielāgotu ikonu. Augšupielādējiet SVG, PNG, JPG, WEBP vai ICO failus, lai izveidotu savu bibliotēku.",
             "customIconsUpload": "Augšupielādēt",
-            "customIconsRenameHint": "Veiciet dubultklikšķi, lai pārdēvētu"
+            "customIconsRenameHint": "Veiciet dubultklikšķi, lai pārdēvētu",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay noildze",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay sesijas automātiski tiek bloķētas pēc šī neaktivitātes perioda. Zemākas vērtības ir drošākas, bet prasa biežāku atbloķēšanu."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Vispirms iestatiet {provider}",
             "openProviderDocs": "Atvērt {provider} dokumentāciju",
             "discoverImageKit": "Mediju CDN un krātuve ar dzimtajām mapēm (20 GB bez maksas)",
-            "discoverUploadcare": "EU mediju pārvaldība ar CDN un failu API (3 GB bez maksas)"
+            "discoverUploadcare": "EU mediju pārvaldība ar CDN un failu API (3 GB bez maksas)",
+            "discoverCloudinary": "CDN mediju pārvaldībai ar REST API (25 kredīti/mēnesī bez maksas)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Atveriet rclone-crypt attālo krātuvi (vai izveidojiet jaunu) kā caurspīdīgu slāni.",
             "aerocryptImportTitle": "Atklāts Rclone Crypt slānis",
             "aerocryptImportDesc": "Profils importēts no rclone.conf priekš {name}: atvērt slāni tagad?",
-            "aerocryptImportOpen": "Atvērt slāni"
+            "aerocryptImportOpen": "Atvērt slāni",
+            "aerovaultOverlayExpired": "AeroVault Overlay ir bloķēts neaktivitātes dēļ. Lai turpinātu, atveriet seifu vēlreiz."
         },
         "ai.agentMode.title": "Agenta rezims",
         "ai.agentMode.description": "Kontrole riku apstiprinasanas uzvedibui, solu ierobezojumiem un autonomijas limeni.",
@@ -3641,7 +3646,9 @@
                 "tools": "Rīki"
             },
             "noResults": "Neviena komanda neatbilst jūsu meklējumam",
-            "placeholder": "Ievadiet komandu..."
+            "placeholder": "Ievadiet komandu...",
+            "aerovaultOverlayOpen": "Atvērt AeroVault Overlay",
+            "aerovaultOverlayLock": "Bloķēt AeroVault Overlay"
         },
         "plugins": {
             "browser": {

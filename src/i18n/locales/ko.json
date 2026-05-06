@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt 휴지통",
             "azureTrashTitle": "Azure Blob 휴지통",
             "lockRcloneCrypt": "Rclone Crypt 오버레이 잠금",
-            "unlockRcloneCrypt": "Rclone Crypt 오버레이로 복호화…"
+            "unlockRcloneCrypt": "Rclone Crypt 오버레이로 복호화…",
+            "openAsAeroVaultOverlay": "AeroVault Overlay로 열기"
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "프로필 전체에서 재사용되는 업로드된 아이콘을 관리합니다. 드래그하여 순서를 변경하고, 이름을 두 번 클릭하여 이름을 바꿉니다.",
             "customIconsEmpty": "아직 사용자 지정 아이콘이 없습니다. SVG, PNG, JPG, WEBP 또는 ICO 파일을 업로드하여 라이브러리를 구축하세요.",
             "customIconsUpload": "업로드",
-            "customIconsRenameHint": "두 번 클릭하여 이름 변경"
+            "customIconsRenameHint": "두 번 클릭하여 이름 변경",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay 시간 제한",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay 세션은 이 비활성 기간이 지나면 자동으로 잠깁니다. 낮은 값은 더 안전하지만 더 자주 잠금을 해제해야 합니다."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "먼저 {provider} 설정",
             "openProviderDocs": "{provider} 문서 열기",
             "discoverImageKit": "네이티브 폴더를 지원하는 미디어 CDN 및 저장소 (20 GB 무료)",
-            "discoverUploadcare": "CDN 및 파일 API를 갖춘 EU 미디어 관리 (3 GB 무료)"
+            "discoverUploadcare": "CDN 및 파일 API를 갖춘 EU 미디어 관리 (3 GB 무료)",
+            "discoverCloudinary": "REST API를 갖춘 미디어 관리 CDN (월 25 크레딧 무료)"
         },
         "shortcuts": {
             "title": "단축키",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "rclone-crypt 원격 저장소를 열거나 새로 만들어 투명 오버레이로 사용하세요.",
             "aerocryptImportTitle": "Rclone Crypt 오버레이 감지됨",
             "aerocryptImportDesc": "{name}의 프로필이 rclone.conf에서 가져왔습니다: 지금 오버레이를 열까요?",
-            "aerocryptImportOpen": "오버레이 열기"
+            "aerocryptImportOpen": "오버레이 열기",
+            "aerovaultOverlayExpired": "비활성으로 인해 AeroVault Overlay가 잠겼습니다. 계속하려면 보관소를 다시 여세요."
         },
         "security": {
             "totp": {
@@ -3631,7 +3636,9 @@
                 "tools": "도구"
             },
             "noResults": "검색과 일치하는 명령이 없습니다",
-            "placeholder": "명령어 입력..."
+            "placeholder": "명령어 입력...",
+            "aerovaultOverlayOpen": "AeroVault Overlay 열기",
+            "aerovaultOverlayLock": "AeroVault Overlay 잠금"
         },
         "plugins": {
             "browser": {

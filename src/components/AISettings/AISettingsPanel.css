@@ -1,5 +1,5 @@
 /*
- * AISettingsPanel — Theme overrides
+ * AISettingsPanel: Theme overrides
  *
  * Scoped to .ai-settings-panel to avoid affecting other components.
  * Covers classes NOT handled by the global styles.css dark: prefix remapping:

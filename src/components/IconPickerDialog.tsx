@@ -34,7 +34,7 @@ const POPULARITY_PRIORITY: Record<string, number> = {
     // Developer
     'github': 0, 'gitlab': 1, 'sourceforge': 2,
     // Media
-    'immich': 0, 'pixelunion': 1, 'imagekit': 2, 'uploadcare': 3,
+    'immich': 0, 'pixelunion': 1, 'imagekit': 2, 'uploadcare': 3, 'cloudinary': 4,
 };
 
 const CUSTOM_ICONS_KEY = 'aeroftp-custom-icons';

@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Κάδος Internxt",
             "azureTrashTitle": "Κάδος Azure Blob",
             "lockRcloneCrypt": "Κλείδωμα επικάλυψης Rclone Crypt",
-            "unlockRcloneCrypt": "Αποκρυπτογράφηση ως επικάλυψη Rclone Crypt…"
+            "unlockRcloneCrypt": "Αποκρυπτογράφηση ως επικάλυψη Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Άνοιγμα ως AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Μεταφορά...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Διαχειριστείτε μεταφορτωμένα εικονίδια που επαναχρησιμοποιούνται σε όλα τα προφίλ. Σύρετε για αναδιάταξη, διπλό κλικ στο όνομα για μετονομασία.",
             "customIconsEmpty": "Δεν υπάρχουν ακόμη προσαρμοσμένα εικονίδια. Μεταφορτώστε αρχεία SVG, PNG, JPG, WEBP ή ICO για να δημιουργήσετε τη βιβλιοθήκη σας.",
             "customIconsUpload": "Μεταφόρτωση",
-            "customIconsRenameHint": "Διπλό κλικ για μετονομασία"
+            "customIconsRenameHint": "Διπλό κλικ για μετονομασία",
+            "aerovaultOverlayTimeoutTitle": "Λήξη χρόνου AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Οι συνεδρίες AeroVault Overlay κλειδώνουν αυτόματα μετά από αυτήν την περίοδο αδράνειας. Οι χαμηλότερες τιμές είναι πιο ασφαλείς αλλά απαιτούν συχνότερα ξεκλειδώματα."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Διαμορφώστε πρώτα το {provider}",
             "openProviderDocs": "Άνοιγμα τεκμηρίωσης {provider}",
             "discoverImageKit": "CDN πολυμέσων και αποθήκευση με εγγενείς φακέλους (20 GB δωρεάν)",
-            "discoverUploadcare": "EU διαχείριση πολυμέσων με CDN και API αρχείων (3 GB δωρεάν)"
+            "discoverUploadcare": "EU διαχείριση πολυμέσων με CDN και API αρχείων (3 GB δωρεάν)",
+            "discoverCloudinary": "CDN για διαχείριση πολυμέσων με REST API (25 πιστώσεις/μήνα δωρεάν)"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Ανοίξτε μια απομακρυσμένη αποθήκευση rclone-crypt (ή δημιουργήστε μια νέα) ως διαφανή επικάλυψη.",
             "aerocryptImportTitle": "Εντοπίστηκε επικάλυψη Rclone Crypt",
             "aerocryptImportDesc": "Εισήχθη προφίλ από το rclone.conf για το {name}: άνοιγμα της επικάλυψης τώρα;",
-            "aerocryptImportOpen": "Άνοιγμα επικάλυψης"
+            "aerocryptImportOpen": "Άνοιγμα επικάλυψης",
+            "aerovaultOverlayExpired": "Το AeroVault Overlay κλειδώθηκε λόγω αδράνειας. Ανοίξτε ξανά το θησαυροφυλάκιο για να συνεχίσετε."
         },
         "ai.agentMode.title": "Λειτουργία πράκτορα",
         "ai.agentMode.description": "Ελέγχει τη συμπεριφορά έγκρισης εργαλείων, τα όρια βημάτων και το επίπεδο αυτονομίας.",
@@ -3641,7 +3646,9 @@
                 "tools": "Εργαλεία"
             },
             "noResults": "Καμία εντολή δεν ταιριάζει με την αναζήτησή σας",
-            "placeholder": "Πληκτρολογήστε μια εντολή..."
+            "placeholder": "Πληκτρολογήστε μια εντολή...",
+            "aerovaultOverlayOpen": "Άνοιγμα AeroVault Overlay",
+            "aerovaultOverlayLock": "Κλείδωμα AeroVault Overlay"
         },
         "plugins": {
             "browser": {

@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt ნაგავი",
             "azureTrashTitle": "Azure Blob ნაგავი",
             "lockRcloneCrypt": "Rclone Crypt გადაფარვის დაბლოკვა",
-            "unlockRcloneCrypt": "Rclone Crypt გადაფარვად გაშიფვრა…"
+            "unlockRcloneCrypt": "Rclone Crypt გადაფარვად გაშიფვრა…",
+            "openAsAeroVaultOverlay": "გახსნა როგორც AeroVault Overlay"
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "მართეთ ატვირთული ხატულები, რომლებიც გამოყენებულია პროფილებში. გადაათრიეთ რიგის შესაცვლელად, ორმაგად დააწკაპუნეთ სახელზე გადარქმევისთვის.",
             "customIconsEmpty": "მორგებული ხატულები ჯერ არ არის. ატვირთეთ SVG, PNG, JPG, WEBP ან ICO ფაილები თქვენი ბიბლიოთეკის ასაგებად.",
             "customIconsUpload": "ატვირთვა",
-            "customIconsRenameHint": "ორმაგი დაწკაპუნება გადარქმევისთვის"
+            "customIconsRenameHint": "ორმაგი დაწკაპუნება გადარქმევისთვის",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay-ის ლოდინის დრო",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-ის სესიები ავტომატურად იბლოკება უმოქმედობის ამ პერიოდის შემდეგ. დაბალი მნიშვნელობები უფრო უსაფრთხოა, მაგრამ უფრო ხშირ განბლოკვას მოითხოვს."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "ჯერ დააყენეთ {provider}",
             "openProviderDocs": "გახსენით {provider}-ის დოკუმენტაცია",
             "discoverImageKit": "მედია CDN და საცავი მშობლიური საქაღალდეებით (20 GB უფასო)",
-            "discoverUploadcare": "EU მედიის მართვა CDN-ით და ფაილების API-ებით (3 GB უფასო)"
+            "discoverUploadcare": "EU მედიის მართვა CDN-ით და ფაილების API-ებით (3 GB უფასო)",
+            "discoverCloudinary": "CDN მედიის მართვისთვის REST API-ით (25 კრედიტი/თვეში უფასოდ)"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "გახსენით rclone-crypt დისტანციური საცავი (ან შექმენით ახალი) როგორც გამჭვირვალე გადაფარვა.",
             "aerocryptImportTitle": "აღმოჩენილია Rclone Crypt გადაფარვა",
             "aerocryptImportDesc": "პროფილი იმპორტირებულია rclone.conf-დან {name}-სთვის: გავხსნათ გადაფარვა ახლა?",
-            "aerocryptImportOpen": "გადაფარვის გახსნა"
+            "aerocryptImportOpen": "გადაფარვის გახსნა",
+            "aerovaultOverlayExpired": "AeroVault Overlay დაბლოკილია უმოქმედობის გამო. გასაგრძელებლად ხელახლა გახსენით სეიფი."
         },
         "ai.agentMode.title": "აგენტის რეჟიმი",
         "ai.agentMode.description": "აკონტროლებს ხელსაწყოების დამტკიცების ქცევას, ნაბიჯების ლიმიტს და ავტონომიის დონეს.",
@@ -3641,7 +3646,9 @@
                 "tools": "ხელსაწყოები"
             },
             "noResults": "არცერთი ბრძანება არ შეესაბამება თქვენს ძიებას",
-            "placeholder": "შეიყვანეთ ბრძანება..."
+            "placeholder": "შეიყვანეთ ბრძანება...",
+            "aerovaultOverlayOpen": "AeroVault Overlay-ის გახსნა",
+            "aerovaultOverlayLock": "AeroVault Overlay-ის დაბლოკვა"
         },
         "plugins": {
             "browser": {

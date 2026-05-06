@@ -506,6 +506,7 @@
             "discoverPixelUnion": "Cloud foto Immich in UE (16 GB gratis)",
             "discoverImageKit": "Media CDN e storage con cartelle native (20 GB gratis)",
             "discoverUploadcare": "Media management UE con CDN e API file (3 GB gratis)",
+            "discoverCloudinary": "CDN per gestione media con API REST (25 crediti/mese gratis)",
             "infinicloudConnectionMode": "Modalità di connessione",
             "infinicloudModeWebdav": "WebDAV",
             "infinicloudModeWebdavDesc": "Configurazione manuale - inserisci URL e porta WebDAV",
@@ -570,7 +571,9 @@
                 "tools": "Strumenti"
             },
             "noResults": "Nessun comando corrisponde alla ricerca",
-            "placeholder": "Digita un comando..."
+            "placeholder": "Digita un comando...",
+            "aerovaultOverlayOpen": "Apri AeroVault Overlay",
+            "aerovaultOverlayLock": "Blocca AeroVault Overlay"
         },
         "contextMenu": {
             "askAeroAgent": "Chiedi ad AeroAgent...",
@@ -674,7 +677,8 @@
             "internxtTrashTitle": "Cestino Internxt",
             "azureTrashTitle": "Cestino Azure Blob",
             "lockRcloneCrypt": "Blocca overlay Rclone Crypt",
-            "unlockRcloneCrypt": "Decifra come overlay Rclone Crypt…"
+            "unlockRcloneCrypt": "Decifra come overlay Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Apri come AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -1230,7 +1234,9 @@
             "customIconsLibraryDesc": "Gestisci le icone caricate riutilizzabili nei profili. Trascina per riordinare, doppio click sul nome per rinominare.",
             "customIconsEmpty": "Nessuna icona personalizzata. Carica file SVG, PNG, JPG, WEBP o ICO per costruire la tua libreria.",
             "customIconsUpload": "Carica",
-            "customIconsRenameHint": "Doppio click per rinominare"
+            "customIconsRenameHint": "Doppio click per rinominare",
+            "aerovaultOverlayTimeoutTitle": "Timeout AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Le sessioni AeroVault Overlay si bloccano automaticamente dopo questo periodo di inattività. Valori più bassi sono più sicuri ma richiedono di sbloccare più spesso."
         },
         "appearance": {
             "patternCross": "Croce",
@@ -3666,7 +3672,8 @@
             "aerocryptOverlayInactive": "Apri un remote rclone-crypt (o creane uno nuovo) come overlay trasparente.",
             "aerocryptImportTitle": "Overlay Rclone Crypt rilevato",
             "aerocryptImportDesc": "Profilo importato da rclone.conf per {name}: aprire l'overlay ora?",
-            "aerocryptImportOpen": "Apri overlay"
+            "aerocryptImportOpen": "Apri overlay",
+            "aerovaultOverlayExpired": "AeroVault Overlay bloccato per inattività. Riapri il vault per continuare."
         },
         "security": {
             "totp": {

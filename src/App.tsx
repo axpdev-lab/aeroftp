@@ -548,6 +548,17 @@ const App: React.FC = () => {
       setRcloneCryptImportBanner(null);
     }
   }, [isConnected]);
+  // Auto-leave IntroHub on the connect transition (false -> true). The render
+  // condition allows IntroHub even when isConnected=true (Home button browse
+  // without dropping the live session), so we only fire on the rising edge:
+  // staying connected and pressing Home must NOT auto-close the hub.
+  const wasConnectedRef = React.useRef(false);
+  useEffect(() => {
+    if (isConnected && !wasConnectedRef.current && showConnectionScreen) {
+      setShowConnectionScreen(false);
+    }
+    wasConnectedRef.current = isConnected;
+  }, [isConnected, showConnectionScreen, setShowConnectionScreen]);
   // false → closed; object → open with optional pre-selection (sourceId/destId/sourcePath/destPath).
   // An empty object {} opens the panel with no overrides (active connection seeds source if connected).
   const [showCrossProfilePanel, setShowCrossProfilePanel] = useState<false | {
@@ -1844,7 +1855,18 @@ interface UpdateVerificationInfo {
     { id: 'tools-terminal', label: t('devtools.sshTerminal'), category: 'tools' as CommandCategory, icon: <Terminal size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' })), keywords: ['ssh', 'shell', 'console'] },
     // Sync
     { id: 'sync-panel', label: t('syncPanel.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowSyncPanel(true), keywords: ['synchronize', 'aerosync'] },
-  ], [t, activePanel, currentLocalPath]);
+    // AeroVault overlay
+    {
+      id: 'tools-aerovault-overlay',
+      label: aeroVaultOverlaySession
+        ? (t('commandPalette.aerovaultOverlayLock') || 'Lock AeroVault Overlay')
+        : (t('commandPalette.aerovaultOverlayOpen') || 'Open AeroVault Overlay'),
+      category: 'tools' as CommandCategory,
+      icon: aeroVaultOverlaySession ? <Lock size={14} /> : <Shield size={14} />,
+      action: () => window.dispatchEvent(new CustomEvent('aerovault-overlay-toggle')),
+      keywords: ['vault', 'aerovault', 'overlay', 'crypt', 'lock', 'unlock', 'encrypt'],
+    },
+  ], [t, activePanel, currentLocalPath, aeroVaultOverlaySession]);
 
   // Sync active tab path when navigating: only in AeroFile mode
   useEffect(() => {
@@ -3462,8 +3484,8 @@ interface UpdateVerificationInfo {
       // Close DevTools panel and clear preview
       setDevToolsOpen(false);
       setDevToolsPreviewFile(null);
-      // Go to AeroFile mode instead of ConnectionScreen
-      setShowConnectionScreen(false);
+      // Issue #175: return to IntroHub (My Servers) after disconnect, not AeroFile mode
+      setShowConnectionScreen(true);
       setShowRemotePanel(false);
       humanLog.logSuccess('DISCONNECT', {}, logId);
       if (showToastNotifications) {
@@ -3935,6 +3957,42 @@ interface UpdateVerificationInfo {
     setShowVaultPanel({ mode: 'home' });
     notify.info('AeroVault Overlay', 'Apri un vault in browse per attivare overlay nella sessione corrente');
   }, [aeroVaultOverlaySession, clearAeroVaultOverlaySession, notify]);
+
+  // N3: CommandPalette voice dispatches a window event so it can sit in a useMemo
+  // declared above toggleAeroVaultOverlay (would otherwise be a TDZ reference).
+  useEffect(() => {
+    const onToggle = () => toggleAeroVaultOverlay();
+    window.addEventListener('aerovault-overlay-toggle', onToggle);
+    return () => window.removeEventListener('aerovault-overlay-toggle', onToggle);
+  }, [toggleAeroVaultOverlay]);
+
+  // N1.3: backend sweeper emits `aerovault-overlay-expired` when an overlay session
+  // crosses its idle timeout. Drop the matching session from the active state and
+  // any background tab that still references it, then notify the user.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<{ session_id: string; source?: string }>('aerovault-overlay-expired', (event) => {
+      const expiredId = event.payload?.session_id;
+      if (!expiredId) return;
+      setAeroVaultOverlaySession((prev) => (prev?.sessionId === expiredId ? null : prev));
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.aeroVaultOverlaySession?.sessionId === expiredId
+            ? { ...s, aeroVaultOverlaySession: null }
+            : s
+        )
+      );
+      notify.warning(
+        'AeroVault Overlay',
+        t('toolbar.aerovaultOverlayExpired') || 'Overlay locked due to inactivity'
+      );
+    }).then((un) => {
+      unlisten = un;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [notify, t]);
 
   // Handle click on Cloud Tab - auto-connect to cloud server profile
   // Supports all protocols: FTP, FTPS, SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.
@@ -7594,6 +7652,12 @@ interface UpdateVerificationInfo {
         icon: <VaultIcon size={14} />,
         action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
       }] : []),
+      // .aerovault: Open as AeroVault Overlay (N3 onboarding shortcut)
+      ...(isAeroVaultFile ? [{
+        label: t('contextMenu.openAsAeroVaultOverlay') || 'Open as AeroVault Overlay',
+        icon: <Shield size={14} />,
+        action: () => { setShowVaultPanel({ mode: 'open', path: file.path }); },
+      }] : []),
       // .aerovault: Extract Here / Extract to Folder
       ...(isAeroVaultFile ? [{
         label: t('contextMenu.extractSubmenu'),
@@ -8301,7 +8365,7 @@ interface UpdateVerificationInfo {
           setTheme={setTheme}
           isConnected={isConnected}
           onDisconnect={() => disconnectFromFtp('button')}
-          onShowConnectionScreen={() => setShowConnectionScreen(true)}
+          onShowConnectionScreen={handleNewTabFromSavedServer}
           showConnectionScreen={showConnectionScreen}
           onOpenSettings={() => setShowSettingsPanel(true)}
           onShowSupport={() => setShowSupportDialog(true)}
@@ -9301,7 +9365,7 @@ interface UpdateVerificationInfo {
 
 
         <main className={`flex-1 min-h-0 p-6 overflow-auto flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
-          {!isConnected && showConnectionScreen ? (
+          {showConnectionScreen ? (
             <IntroHub
               connectionParams={connectionParams}
               quickConnectDirs={quickConnectDirs}
@@ -9714,16 +9778,16 @@ interface UpdateVerificationInfo {
                     <>
                       <button
                         onClick={toggleAeroVaultOverlay}
-                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${aeroVaultOverlaySession
+                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center justify-center transition-colors ${aeroVaultOverlaySession
                           ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
                           : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                           }`}
                         title={aeroVaultOverlaySession
-                          ? t('toolbar.aerovaultOverlayActive') || 'AeroVault container overlay active: click to detach'
-                          : t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel.'}
+                          ? `AeroVault ON: ${t('toolbar.aerovaultOverlayActive') || 'AeroVault container overlay active. Click to detach.'}`
+                          : `AeroVault: ${t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel.'}`}
+                        aria-label={aeroVaultOverlaySession ? 'AeroVault ON' : 'AeroVault'}
                       >
                         <VaultIcon size={16} className={aeroVaultOverlaySession ? 'text-white' : 'text-emerald-400'} />
-                        {aeroVaultOverlaySession ? 'AeroVault ON' : 'AeroVault'}
                       </button>
                       {usesProviderApi(getActiveProviderProtocol()) && (
                         <button
@@ -9737,16 +9801,16 @@ interface UpdateVerificationInfo {
                               setShowRcloneCryptUnlock(true);
                             }
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${rcloneCryptVaultId
+                          className={`px-3 py-1.5 rounded-lg text-sm flex items-center justify-center transition-colors ${rcloneCryptVaultId
                             ? 'bg-blue-500 hover:bg-blue-600 text-white'
                             : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                             }`}
                           title={rcloneCryptVaultId
-                            ? t('toolbar.aerocryptOverlayActive')
-                            : t('toolbar.aerocryptOverlayInactive')}
+                            ? `AeroCrypt ON: ${t('toolbar.aerocryptOverlayActive')}`
+                            : `AeroCrypt: ${t('toolbar.aerocryptOverlayInactive')}`}
+                          aria-label={rcloneCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
                         >
                           <Shield size={16} className={rcloneCryptVaultId ? 'text-white' : 'text-blue-400'} />
-                          {rcloneCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
                         </button>
                       )}
                       <button

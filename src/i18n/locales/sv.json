@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Papperskorgen",
             "azureTrashTitle": "Azure Blob Papperskorgen",
             "lockRcloneCrypt": "Lås Rclone Crypt-överlägg",
-            "unlockRcloneCrypt": "Dekryptera som Rclone Crypt-överlägg…"
+            "unlockRcloneCrypt": "Dekryptera som Rclone Crypt-överlägg…",
+            "openAsAeroVaultOverlay": "Öppna som AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Överför...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Hantera uppladdade ikoner som återanvänds mellan profiler. Dra för att ordna om, dubbelklicka på namnet för att byta namn.",
             "customIconsEmpty": "Inga anpassade ikoner ännu. Ladda upp SVG-, PNG-, JPG-, WEBP- eller ICO-filer för att bygga ditt bibliotek.",
             "customIconsUpload": "Ladda upp",
-            "customIconsRenameHint": "Dubbelklicka för att byta namn"
+            "customIconsRenameHint": "Dubbelklicka för att byta namn",
+            "aerovaultOverlayTimeoutTitle": "Tidsgräns för AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-sessioner låses automatiskt efter denna period av inaktivitet. Lägre värden är säkrare men kräver mer frekventa upplåsningar."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Konfigurera {provider} först",
             "openProviderDocs": "Öppna {provider}-dokumentation",
             "discoverImageKit": "Medie-CDN och lagring med nativa mappar (20 GB gratis)",
-            "discoverUploadcare": "EU mediahantering med CDN och fil-API:er (3 GB gratis)"
+            "discoverUploadcare": "EU mediahantering med CDN och fil-API:er (3 GB gratis)",
+            "discoverCloudinary": "CDN för mediahantering med REST API (25 krediter/månad gratis)"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Öppna en rclone-crypt-fjärr (eller skapa en ny) som transparent överlägg.",
             "aerocryptImportTitle": "Rclone Crypt-överlägg upptäckt",
             "aerocryptImportDesc": "Profil importerad från rclone.conf för {name}: öppna överlägget nu?",
-            "aerocryptImportOpen": "Öppna överlägg"
+            "aerocryptImportOpen": "Öppna överlägg",
+            "aerovaultOverlayExpired": "AeroVault Overlay låst på grund av inaktivitet. Öppna valvet igen för att fortsätta."
         },
         "ai.agentMode.title": "Agentlage",
         "ai.agentMode.description": "Styr godkannandebeteende for verktyg, steggranser och autonominiva.",
@@ -3641,7 +3646,9 @@
                 "tools": "Verktyg"
             },
             "noResults": "Inga kommandon matchar din sökning",
-            "placeholder": "Skriv ett kommando..."
+            "placeholder": "Skriv ett kommando...",
+            "aerovaultOverlayOpen": "Öppna AeroVault Overlay",
+            "aerovaultOverlayLock": "Lås AeroVault Overlay"
         },
         "plugins": {
             "browser": {

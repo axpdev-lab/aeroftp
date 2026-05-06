@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt ট্র্যাশ",
             "azureTrashTitle": "Azure Blob ট্র্যাশ",
             "lockRcloneCrypt": "Rclone Crypt ওভারলে লক করুন",
-            "unlockRcloneCrypt": "Rclone Crypt ওভারলে হিসাবে ডিক্রিপ্ট করুন…"
+            "unlockRcloneCrypt": "Rclone Crypt ওভারলে হিসাবে ডিক্রিপ্ট করুন…",
+            "openAsAeroVaultOverlay": "AeroVault Overlay হিসেবে খুলুন"
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "প্রোফাইল জুড়ে পুনরায় ব্যবহার করা আপলোড করা আইকনগুলি পরিচালনা করুন। পুনর্বিন্যাস করতে টেনে আনুন, নাম পরিবর্তন করতে নামের উপর ডাবল-ক্লিক করুন।",
             "customIconsEmpty": "এখনও কোনো কাস্টম আইকন নেই। আপনার লাইব্রেরি তৈরি করতে SVG, PNG, JPG, WEBP, বা ICO ফাইল আপলোড করুন।",
             "customIconsUpload": "আপলোড",
-            "customIconsRenameHint": "নাম পরিবর্তন করতে ডাবল-ক্লিক করুন"
+            "customIconsRenameHint": "নাম পরিবর্তন করতে ডাবল-ক্লিক করুন",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay টাইমআউট",
+            "aerovaultOverlayTimeoutDesc": "নিষ্ক্রিয়তার এই সময়ের পরে AeroVault Overlay সেশনগুলি স্বয়ংক্রিয়ভাবে লক হয়ে যায়। কম মান বেশি নিরাপদ কিন্তু আরও ঘন ঘন আনলক করা প্রয়োজন।"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "প্রথমে {provider} সেটআপ করুন",
             "openProviderDocs": "{provider} ডকুমেন্টেশন খুলুন",
             "discoverImageKit": "নেটিভ ফোল্ডার সহ মিডিয়া CDN এবং স্টোরেজ (20 GB ফ্রি)",
-            "discoverUploadcare": "CDN এবং ফাইল API সহ EU মিডিয়া ম্যানেজমেন্ট (3 GB ফ্রি)"
+            "discoverUploadcare": "CDN এবং ফাইল API সহ EU মিডিয়া ম্যানেজমেন্ট (3 GB ফ্রি)",
+            "discoverCloudinary": "REST API সহ মিডিয়া ব্যবস্থাপনার CDN (প্রতি মাসে 25 ক্রেডিট ফ্রি)"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "একটি rclone-crypt রিমোট খুলুন (বা একটি নতুন তৈরি করুন) স্বচ্ছ ওভারলে হিসাবে।",
             "aerocryptImportTitle": "Rclone Crypt ওভারলে সনাক্ত হয়েছে",
             "aerocryptImportDesc": "{name} এর জন্য rclone.conf থেকে প্রোফাইল আমদানি করা হয়েছে: এখন ওভারলে খুলবেন?",
-            "aerocryptImportOpen": "ওভারলে খুলুন"
+            "aerocryptImportOpen": "ওভারলে খুলুন",
+            "aerovaultOverlayExpired": "নিষ্ক্রিয়তার কারণে AeroVault Overlay লক হয়েছে। চালিয়ে যেতে ভল্ট আবার খুলুন।"
         },
         "ai.agentMode.title": "এজেন্ট মোড",
         "ai.agentMode.description": "টুল অনুমোদনের আচরণ, ধাপের সীমা এবং স্বায়ত্তশাসনের স্তর নিয়ন্ত্রণ করে।",
@@ -3641,7 +3646,9 @@
                 "tools": "টুলস"
             },
             "noResults": "আপনার অনুসন্ধানের সাথে কোনো কমান্ড মেলেনি",
-            "placeholder": "একটি কমান্ড লিখুন..."
+            "placeholder": "একটি কমান্ড লিখুন...",
+            "aerovaultOverlayOpen": "AeroVault Overlay খুলুন",
+            "aerovaultOverlayLock": "AeroVault Overlay লক করুন"
         },
         "plugins": {
             "browser": {

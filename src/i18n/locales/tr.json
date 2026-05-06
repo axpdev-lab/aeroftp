@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Çöp Kutusu",
             "azureTrashTitle": "Azure Blob Çöp Kutusu",
             "lockRcloneCrypt": "Rclone Crypt katmanını kilitle",
-            "unlockRcloneCrypt": "Rclone Crypt katmanı olarak çöz…"
+            "unlockRcloneCrypt": "Rclone Crypt katmanı olarak çöz…",
+            "openAsAeroVaultOverlay": "AeroVault Overlay olarak aç"
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Profiller arasında yeniden kullanılan yüklenen simgeleri yönetin. Yeniden sıralamak için sürükleyin, yeniden adlandırmak için ada çift tıklayın.",
             "customIconsEmpty": "Henüz özel simge yok. Kitaplığınızı oluşturmak için SVG, PNG, JPG, WEBP veya ICO dosyalarını yükleyin.",
             "customIconsUpload": "Yükle",
-            "customIconsRenameHint": "Yeniden adlandırmak için çift tıklayın"
+            "customIconsRenameHint": "Yeniden adlandırmak için çift tıklayın",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay Zaman Aşımı",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay oturumları, bu hareketsizlik süresinin ardından otomatik olarak kilitlenir. Daha düşük değerler daha güvenlidir ancak daha sık kilit açma gerektirir."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Önce {provider} kurulumunu yapın",
             "openProviderDocs": "{provider} belgelerini aç",
             "discoverImageKit": "Yerel klasörlerle medya CDN ve depolama (20 GB ücretsiz)",
-            "discoverUploadcare": "CDN ve dosya API'leri ile EU medya yönetimi (3 GB ücretsiz)"
+            "discoverUploadcare": "CDN ve dosya API'leri ile EU medya yönetimi (3 GB ücretsiz)",
+            "discoverCloudinary": "REST API ile medya yönetimi için CDN (25 kredi/ay ücretsiz)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Bir rclone-crypt uzak hizmeti açın (veya yeni bir tane oluşturun) ve şeffaf katman olarak kullanın.",
             "aerocryptImportTitle": "Rclone Crypt katmanı algılandı",
             "aerocryptImportDesc": "{name} için rclone.conf dosyasından profil içe aktarıldı: katmanı şimdi açmak ister misiniz?",
-            "aerocryptImportOpen": "Katmanı aç"
+            "aerocryptImportOpen": "Katmanı aç",
+            "aerovaultOverlayExpired": "AeroVault Overlay hareketsizlik nedeniyle kilitlendi. Devam etmek için kasayı yeniden açın."
         },
         "ai.agentMode.title": "Ajan Modu",
         "ai.agentMode.description": "Arac onay davranisini, adim limitlerini ve otonomi seviyesini kontrol eder.",
@@ -3641,7 +3646,9 @@
                 "tools": "Araçlar"
             },
             "noResults": "Aramanızla eşleşen komut bulunamadı",
-            "placeholder": "Bir komut yazın..."
+            "placeholder": "Bir komut yazın...",
+            "aerovaultOverlayOpen": "AeroVault Overlay'i Aç",
+            "aerovaultOverlayLock": "AeroVault Overlay'i Kilitle"
         },
         "plugins": {
             "browser": {

@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt ถังขยะ",
             "azureTrashTitle": "Azure Blob ถังขยะ",
             "lockRcloneCrypt": "ล็อกการซ้อนทับ Rclone Crypt",
-            "unlockRcloneCrypt": "ถอดรหัสเป็นการซ้อนทับ Rclone Crypt…"
+            "unlockRcloneCrypt": "ถอดรหัสเป็นการซ้อนทับ Rclone Crypt…",
+            "openAsAeroVaultOverlay": "เปิดเป็น AeroVault Overlay"
         },
         "transfer": {
             "transferring": "กำลังถ่ายโอน...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "จัดการไอคอนที่อัปโหลดซึ่งนำกลับมาใช้ในโปรไฟล์ต่างๆ ลากเพื่อจัดลำดับใหม่ ดับเบิลคลิกที่ชื่อเพื่อเปลี่ยนชื่อ",
             "customIconsEmpty": "ยังไม่มีไอคอนที่กำหนดเอง อัปโหลดไฟล์ SVG, PNG, JPG, WEBP หรือ ICO เพื่อสร้างคลังของคุณ",
             "customIconsUpload": "อัปโหลด",
-            "customIconsRenameHint": "ดับเบิลคลิกเพื่อเปลี่ยนชื่อ"
+            "customIconsRenameHint": "ดับเบิลคลิกเพื่อเปลี่ยนชื่อ",
+            "aerovaultOverlayTimeoutTitle": "ระยะเวลาหมดอายุของ AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "เซสชัน AeroVault Overlay จะล็อกโดยอัตโนมัติหลังจากไม่มีการใช้งานเป็นระยะเวลานี้ ค่าที่ต่ำกว่าจะปลอดภัยกว่าแต่ต้องปลดล็อกบ่อยขึ้น"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "ตั้งค่า {provider} ก่อน",
             "openProviderDocs": "เปิดเอกสาร {provider}",
             "discoverImageKit": "CDN สื่อและพื้นที่จัดเก็บพร้อมโฟลเดอร์ดั้งเดิม (20 GB ฟรี)",
-            "discoverUploadcare": "การจัดการสื่อ EU ด้วย CDN และ API ไฟล์ (3 GB ฟรี)"
+            "discoverUploadcare": "การจัดการสื่อ EU ด้วย CDN และ API ไฟล์ (3 GB ฟรี)",
+            "discoverCloudinary": "CDN สำหรับจัดการสื่อด้วย REST API (25 เครดิต/เดือน ฟรี)"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "เปิดรีโมต rclone-crypt (หรือสร้างใหม่) เป็นเลเยอร์โปร่งใส",
             "aerocryptImportTitle": "ตรวจพบเลเยอร์ Rclone Crypt",
             "aerocryptImportDesc": "นำเข้าโปรไฟล์จาก rclone.conf สำหรับ {name}: เปิดเลเยอร์ตอนนี้หรือไม่?",
-            "aerocryptImportOpen": "เปิดเลเยอร์"
+            "aerocryptImportOpen": "เปิดเลเยอร์",
+            "aerovaultOverlayExpired": "AeroVault Overlay ถูกล็อกเนื่องจากไม่มีการใช้งาน เปิดห้องนิรภัยอีกครั้งเพื่อดำเนินการต่อ"
         },
         "ai.agentMode.title": "โหมดเอเจนต์",
         "ai.agentMode.description": "ควบคุมพฤติกรรมการอนุมัติเครื่องมือ ขีดจำกัดขั้นตอน และระดับความเป็นอิสระ",
@@ -3641,7 +3646,9 @@
                 "tools": "เครื่องมือ"
             },
             "noResults": "ไม่พบคำสั่งที่ตรงกับการค้นหาของคุณ",
-            "placeholder": "พิมพ์คำสั่ง..."
+            "placeholder": "พิมพ์คำสั่ง...",
+            "aerovaultOverlayOpen": "เปิด AeroVault Overlay",
+            "aerovaultOverlayLock": "ล็อก AeroVault Overlay"
         },
         "plugins": {
             "browser": {

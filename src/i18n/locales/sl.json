@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Koš",
             "azureTrashTitle": "Azure Blob Koš",
             "lockRcloneCrypt": "Zakleni prekrivanje Rclone Crypt",
-            "unlockRcloneCrypt": "Dešifriraj kot prekrivanje Rclone Crypt…"
+            "unlockRcloneCrypt": "Dešifriraj kot prekrivanje Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Odpri kot AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Prenašanje...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Upravljajte naložene ikone, ponovno uporabljene med profili. Povlecite za preureditev, dvokliknite ime za preimenovanje.",
             "customIconsEmpty": "Še ni ikon po meri. Naložite datoteke SVG, PNG, JPG, WEBP ali ICO, da zgradite svojo knjižnico.",
             "customIconsUpload": "Naloži",
-            "customIconsRenameHint": "Dvokliknite za preimenovanje"
+            "customIconsRenameHint": "Dvokliknite za preimenovanje",
+            "aerovaultOverlayTimeoutTitle": "Časovna omejitev AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Seje AeroVault Overlay se samodejno zaklenejo po tem obdobju nedejavnosti. Nižje vrednosti so varnejše, a zahtevajo pogostejše odklepanje."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Najprej nastavite {provider}",
             "openProviderDocs": "Odpri dokumentacijo {provider}",
             "discoverImageKit": "Medijski CDN in shramba z nativnimi mapami (20 GB brezplačno)",
-            "discoverUploadcare": "EU upravljanje medijev s CDN in datotečnimi API-ji (3 GB brezplačno)"
+            "discoverUploadcare": "EU upravljanje medijev s CDN in datotečnimi API-ji (3 GB brezplačno)",
+            "discoverCloudinary": "CDN za upravljanje medijev z REST API (25 kreditov/mesec brezplačno)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Odprite oddaljeni vir rclone-crypt (ali ustvarite novega) kot transparenten prekrivni sloj.",
             "aerocryptImportTitle": "Zaznan prekrivni sloj Rclone Crypt",
             "aerocryptImportDesc": "Profil uvožen iz rclone.conf za {name}: odpreti prekrivni sloj zdaj?",
-            "aerocryptImportOpen": "Odpri prekrivni sloj"
+            "aerocryptImportOpen": "Odpri prekrivni sloj",
+            "aerovaultOverlayExpired": "AeroVault Overlay je zaklenjen zaradi nedejavnosti. Za nadaljevanje znova odprite trezor."
         },
         "ai.agentMode.title": "Nacin agenta",
         "ai.agentMode.description": "Nadzoruje obnasanje odobritve orodij, omejitve korakov in raven avtonomije.",
@@ -3641,7 +3646,9 @@
                 "tools": "Orodja"
             },
             "noResults": "Noben ukaz ne ustreza vašemu iskanju",
-            "placeholder": "Vnesite ukaz..."
+            "placeholder": "Vnesite ukaz...",
+            "aerovaultOverlayOpen": "Odpri AeroVault Overlay",
+            "aerovaultOverlayLock": "Zakleni AeroVault Overlay"
         },
         "plugins": {
             "browser": {

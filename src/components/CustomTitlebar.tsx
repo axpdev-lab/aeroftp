@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Minus, Square, X, Maximize2, Heart, Settings, Lock, LockOpen, LogOut, Cloud } from 'lucide-react';
+import { Minus, Square, X, Maximize2, Heart, Settings, Lock, LockOpen, LogOut, Cloud, Home } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { ThemeToggle } from '../hooks/useTheme';
@@ -370,7 +370,17 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     shifts when the button label/visibility changes (Connect vs
                     Disconnect have different widths, and on the connection
                     screen neither button renders). */}
-                <div className="flex items-center justify-end min-w-[96px]">
+                <div className="flex items-center justify-end min-w-[96px] gap-1">
+                    {!showConnectionScreen && (
+                        <button
+                            onClick={onShowConnectionScreen}
+                            className="h-6 w-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
+                            title={t('introHub.tab.myServers')}
+                            aria-label={t('introHub.tab.myServers')}
+                        >
+                            <Home size={13} className="text-[var(--color-text-secondary)]" />
+                        </button>
+                    )}
                     {isConnected ? (
                         <button
                             onClick={onDisconnect}

@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt 回收站",
             "azureTrashTitle": "Azure Blob 回收站",
             "lockRcloneCrypt": "锁定 Rclone Crypt 覆盖层",
-            "unlockRcloneCrypt": "解密为 Rclone Crypt 覆盖层…"
+            "unlockRcloneCrypt": "解密为 Rclone Crypt 覆盖层…",
+            "openAsAeroVaultOverlay": "作为 AeroVault Overlay 打开"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "管理跨配置文件重复使用的已上传图标。拖动以重新排序，双击名称以重命名。",
             "customIconsEmpty": "尚无自定义图标。上传 SVG、PNG、JPG、WEBP 或 ICO 文件以构建您的图标库。",
             "customIconsUpload": "上传",
-            "customIconsRenameHint": "双击以重命名"
+            "customIconsRenameHint": "双击以重命名",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay 超时",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay 会话在此非活动期后自动锁定。较低的值更安全，但需要更频繁地解锁。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "请先设置 {provider}",
             "openProviderDocs": "打开 {provider} 文档",
             "discoverImageKit": "支持原生文件夹的媒体 CDN 与存储（20 GB 免费）",
-            "discoverUploadcare": "带 CDN 和文件 API 的 EU 媒体管理（3 GB 免费）"
+            "discoverUploadcare": "带 CDN 和文件 API 的 EU 媒体管理（3 GB 免费）",
+            "discoverCloudinary": "媒体管理 CDN，提供 REST API（每月 25 积分免费）"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "打开 rclone-crypt 远程(或创建新的)作为透明叠加层。",
             "aerocryptImportTitle": "检测到 Rclone Crypt 叠加层",
             "aerocryptImportDesc": "已从 rclone.conf 为 {name} 导入配置:现在打开叠加层吗?",
-            "aerocryptImportOpen": "打开叠加层"
+            "aerocryptImportOpen": "打开叠加层",
+            "aerovaultOverlayExpired": "AeroVault Overlay 因不活动已锁定。请重新打开保险库以继续。"
         },
         "security": {
             "totp": {
@@ -3631,7 +3636,9 @@
                 "tools": "工具"
             },
             "noResults": "没有与您的搜索匹配的命令",
-            "placeholder": "输入命令..."
+            "placeholder": "输入命令...",
+            "aerovaultOverlayOpen": "打开 AeroVault Overlay",
+            "aerovaultOverlayLock": "锁定 AeroVault Overlay"
         },
         "plugins": {
             "browser": {

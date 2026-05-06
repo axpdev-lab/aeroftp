@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Кошик",
             "azureTrashTitle": "Azure Blob Кошик",
             "lockRcloneCrypt": "Заблокувати накладання Rclone Crypt",
-            "unlockRcloneCrypt": "Розшифрувати як накладання Rclone Crypt…"
+            "unlockRcloneCrypt": "Розшифрувати як накладання Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Відкрити як AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Передача...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Керуйте завантаженими значками, які повторно використовуються в усіх профілях. Перетягніть для зміни порядку, двічі клацніть ім'я для перейменування.",
             "customIconsEmpty": "Поки що немає користувацьких значків. Завантажте файли SVG, PNG, JPG, WEBP або ICO, щоб створити свою бібліотеку.",
             "customIconsUpload": "Завантажити",
-            "customIconsRenameHint": "Двічі клацніть для перейменування"
+            "customIconsRenameHint": "Двічі клацніть для перейменування",
+            "aerovaultOverlayTimeoutTitle": "Тайм-аут AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Сеанси AeroVault Overlay автоматично блокуються після цього періоду неактивності. Менші значення безпечніші, але потребують частішого розблокування."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Спочатку налаштуйте {provider}",
             "openProviderDocs": "Відкрити документацію {provider}",
             "discoverImageKit": "Медіа CDN та сховище з нативними папками (20 GB безкоштовно)",
-            "discoverUploadcare": "EU керування медіа з CDN та файловими API (3 GB безкоштовно)"
+            "discoverUploadcare": "EU керування медіа з CDN та файловими API (3 GB безкоштовно)",
+            "discoverCloudinary": "CDN для керування медіа з REST API (25 кредитів/місяць безкоштовно)"
         },
         "shortcuts": {
             "title": "Грячі клавіші",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Відкрийте віддалене сховище rclone-crypt (або створіть нове) як прозору накладку.",
             "aerocryptImportTitle": "Виявлено накладку Rclone Crypt",
             "aerocryptImportDesc": "Профіль імпортовано з rclone.conf для {name}: відкрити накладку зараз?",
-            "aerocryptImportOpen": "Відкрити накладку"
+            "aerocryptImportOpen": "Відкрити накладку",
+            "aerovaultOverlayExpired": "AeroVault Overlay заблоковано через неактивність. Відкрийте сховище знову, щоб продовжити."
         },
         "security": {
             "totp": {
@@ -3631,7 +3636,9 @@
                 "tools": "Інструменти"
             },
             "noResults": "Жодна команда не відповідає вашому пошуку",
-            "placeholder": "Введіть команду..."
+            "placeholder": "Введіть команду...",
+            "aerovaultOverlayOpen": "Відкрити AeroVault Overlay",
+            "aerovaultOverlayLock": "Заблокувати AeroVault Overlay"
         },
         "plugins": {
             "browser": {

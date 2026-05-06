@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt rusl",
             "azureTrashTitle": "Azure Blob rusl",
             "lockRcloneCrypt": "Læsa Rclone Crypt yfirlag",
-            "unlockRcloneCrypt": "Afkóða sem Rclone Crypt yfirlag…"
+            "unlockRcloneCrypt": "Afkóða sem Rclone Crypt yfirlag…",
+            "openAsAeroVaultOverlay": "Opna sem AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Stjórnaðu hlöðnum táknum sem eru endurnýtt á sniðmátum. Dragðu til að endurraða, tvísmelltu á nafnið til að endurnefna.",
             "customIconsEmpty": "Engin sérsniðin tákn enn. Hlaðið upp SVG-, PNG-, JPG-, WEBP- eða ICO-skrám til að byggja upp safnið þitt.",
             "customIconsUpload": "Hlaða upp",
-            "customIconsRenameHint": "Tvísmelltu til að endurnefna"
+            "customIconsRenameHint": "Tvísmelltu til að endurnefna",
+            "aerovaultOverlayTimeoutTitle": "Tímamörk AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay lotur læsast sjálfkrafa eftir þetta tímabil án virkni. Lægri gildi eru öruggari en krefjast tíðari aflæsingar."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Settu {provider} upp fyrst",
             "openProviderDocs": "Opna {provider} skjölun",
             "discoverImageKit": "Margmiðlunar-CDN og geymsla með innfæddum möppum (20 GB ókeypis)",
-            "discoverUploadcare": "EU margmiðlunarstjórnun með CDN og skráa-API (3 GB ókeypis)"
+            "discoverUploadcare": "EU margmiðlunarstjórnun með CDN og skráa-API (3 GB ókeypis)",
+            "discoverCloudinary": "CDN fyrir miðlastjórnun með REST API (25 inneignir/mánuði ókeypis)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Opnaðu rclone-crypt fjarlæga geymslu (eða búðu til nýja) sem gegnsætt yfirlag.",
             "aerocryptImportTitle": "Rclone Crypt yfirlag fundið",
             "aerocryptImportDesc": "Snið flutt inn úr rclone.conf fyrir {name}: opna yfirlagið núna?",
-            "aerocryptImportOpen": "Opna yfirlag"
+            "aerocryptImportOpen": "Opna yfirlag",
+            "aerovaultOverlayExpired": "AeroVault Overlay læst vegna aðgerðaleysis. Opnaðu hvelfinguna aftur til að halda áfram."
         },
         "ai.agentMode.title": "Umbodshamur",
         "ai.agentMode.description": "Stjornar hegdun verkfaerasamthykkis, skrefatakmork og sjalfraedisstig.",
@@ -3641,7 +3646,9 @@
                 "tools": "Verkfæri"
             },
             "noResults": "Engin skipun passar við leitina þína",
-            "placeholder": "Sláðu inn skipun..."
+            "placeholder": "Sláðu inn skipun...",
+            "aerovaultOverlayOpen": "Opna AeroVault Overlay",
+            "aerovaultOverlayLock": "Læsa AeroVault Overlay"
         },
         "plugins": {
             "browser": {

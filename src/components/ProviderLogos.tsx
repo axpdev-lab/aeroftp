@@ -464,6 +464,10 @@ export const UploadcareLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/uploadcare.png" alt="Uploadcare" width={size} height={size} style={{ objectFit: 'contain' }} />
 );
 
+export const CloudinaryLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/cloudinary.png" alt="Cloudinary" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
@@ -531,4 +535,5 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'pixelunion': PixelUnionLogo,
     'imagekit': ImageKitLogo,
     'uploadcare': UploadcareLogo,
+    'cloudinary': CloudinaryLogo,
 };

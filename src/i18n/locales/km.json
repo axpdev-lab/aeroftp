@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt ធុងស្ដុបស្ដាំង",
             "azureTrashTitle": "Azure Blob ធុងស្ដុបស្ដាំង",
             "lockRcloneCrypt": "ចាក់សោការត្រួតលើ Rclone Crypt",
-            "unlockRcloneCrypt": "ឌិគ្រីបជាការត្រួតលើ Rclone Crypt…"
+            "unlockRcloneCrypt": "ឌិគ្រីបជាការត្រួតលើ Rclone Crypt…",
+            "openAsAeroVaultOverlay": "បើកជា AeroVault Overlay"
         },
         "transfer": {
             "transferring": "កំពុងផ្ទេរ...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "គ្រប់គ្រងរូបតំណាងដែលបានផ្ទុកឡើងដែលប្រើឡើងវិញនៅទូទាំងប្រវត្តិរូប។ អូសដើម្បីរៀបចំឡើងវិញ ចុចពីរដងលើឈ្មោះដើម្បីប្តូរឈ្មោះ។",
             "customIconsEmpty": "មិនទាន់មានរូបតំណាងផ្ទាល់ខ្លួននៅឡើយទេ។ ផ្ទុកឡើងឯកសារ SVG, PNG, JPG, WEBP ឬ ICO ដើម្បីកសាងបណ្ណាល័យរបស់អ្នក។",
             "customIconsUpload": "ផ្ទុកឡើង",
-            "customIconsRenameHint": "ចុចពីរដងដើម្បីប្តូរឈ្មោះ"
+            "customIconsRenameHint": "ចុចពីរដងដើម្បីប្តូរឈ្មោះ",
+            "aerovaultOverlayTimeoutTitle": "ការអស់ពេលនៃ AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "វគ្គ AeroVault Overlay នឹងចាក់សោដោយស្វ័យប្រវត្តិបន្ទាប់ពីអំឡុងពេលអសកម្មនេះ។ តម្លៃទាបជាងគឺមានសុវត្ថិភាពជាង ប៉ុន្តែតម្រូវឱ្យដោះសោញឹកញាប់ជាង។"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "រៀបចំ {provider} ជាមុនសិន",
             "openProviderDocs": "បើកឯកសារ {provider}",
             "discoverImageKit": "មេឌៀ CDN និងការផ្ទុកជាមួយថតដើម (20 GB ឥតគិតថ្លៃ)",
-            "discoverUploadcare": "ការគ្រប់គ្រងមេឌៀ EU ជាមួយ CDN និង API ឯកសារ (3 GB ឥតគិតថ្លៃ)"
+            "discoverUploadcare": "ការគ្រប់គ្រងមេឌៀ EU ជាមួយ CDN និង API ឯកសារ (3 GB ឥតគិតថ្លៃ)",
+            "discoverCloudinary": "CDN សម្រាប់​ការ​គ្រប់គ្រង​មេឌៀ​ជាមួយ REST API (25 ឥណទាន/ខែ ឥតគិតថ្លៃ)"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "បើកផ្ទុក rclone-crypt ពីចម្ងាយ (ឬបង្កើតថ្មី) ជាស្រទាប់ថ្លា។",
             "aerocryptImportTitle": "បានរកឃើញស្រទាប់ Rclone Crypt",
             "aerocryptImportDesc": "ប្រវត្តិរូបបាននាំចូលពី rclone.conf សម្រាប់ {name}៖ បើកស្រទាប់ឥឡូវនេះ?",
-            "aerocryptImportOpen": "បើកស្រទាប់"
+            "aerocryptImportOpen": "បើកស្រទាប់",
+            "aerovaultOverlayExpired": "AeroVault Overlay ត្រូវបានចាក់សោដោយសារតែអសកម្ម។ បើកធុងសុវត្ថិភាពម្តងទៀតដើម្បីបន្ត។"
         },
         "ai.agentMode.title": "ម៉ូដភ្នាក់ងារ",
         "ai.agentMode.description": "គ្រាន់គ្រងឥករណ៍វិនិច្ឆ័យឧបករណ៍ កំណត់កំណាត់ជំហាន និងកម្រិតជើងអាត់មានឥករណ៍។",
@@ -3641,7 +3646,9 @@
                 "tools": "ឧបករណ៍"
             },
             "noResults": "គ្មានពាក្យបញ្ជាដែលត្រូវនឹងការស្វែងរករបស់អ្នកទេ",
-            "placeholder": "វាយពាក្យបញ្ជា..."
+            "placeholder": "វាយពាក្យបញ្ជា...",
+            "aerovaultOverlayOpen": "បើក AeroVault Overlay",
+            "aerovaultOverlayLock": "ចាក់សោ AeroVault Overlay"
         },
         "plugins": {
             "browser": {

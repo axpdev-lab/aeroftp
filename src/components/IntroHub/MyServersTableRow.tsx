@@ -136,8 +136,15 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             return { used: '-', total: '-', pct: '-', toneText: TONE_TEXT_CLASS.unknown };
         }
         const q = server.lastQuota;
-        if (!q || !q.total || q.total <= 0) {
+        // Fetch hasn't completed yet: show ellipsis (loading state).
+        if (!q) {
             return { used: '…', total: '…', pct: '…', toneText: TONE_TEXT_CLASS.unknown };
+        }
+        // Provider supports quota but the response has no byte cap (e.g.
+        // Cloudinary free / credit-based plans): treat like an unsupported
+        // provider rather than a stuck loader.
+        if (!q.total || q.total <= 0) {
+            return { used: '-', total: '-', pct: '-', toneText: TONE_TEXT_CLASS.unknown };
         }
         const { tone, pct } = getStorageTone(q.used, q.total, thresholds);
         const pctText = pct === null

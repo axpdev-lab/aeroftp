@@ -111,7 +111,7 @@ export const getServerSubtitle = (
     // For S3 the `username` field IS the access key by design (Tencent, Mega S3,
     // Quotaless and Cloudflare R2 produce 32-56 char keys that the generic
     // opaque-token heuristic would otherwise discard, leaving the card with no
-    // identifier at all). Bypass the heuristic for S3 only — masking still
+    // identifier at all). Bypass the heuristic for S3 only: masking still
     // hides everything but the prefix.
     const usernameMeaningful = !!server.username && (
         proto === 's3' ? true : !looksLikeOpaqueToken(server.username)

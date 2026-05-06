@@ -1,5 +1,5 @@
 /* ============================================================
-   TransferProgressBar — Unified Transfer Progress Component
+   TransferProgressBar: Unified Transfer Progress Component
    ============================================================ */
 
 /* Container */
@@ -36,7 +36,7 @@
 .tpb-tokyo .tpb-track { background: #2d2250; }
 .tpb-cyber .tpb-track { background: #0d1520; }
 
-/* Fill — shimmer animation */
+/* Fill: shimmer animation */
 .tpb-fill {
     border-radius: 9999px;
     position: relative;
@@ -45,7 +45,7 @@
 .tpb-shimmer {
     background-size: 200% 100%;
     animation: tpb-shimmer 2s linear infinite;
-    /* Promote to GPU compositor layer — prevents repaint cascade to parent/sibling elements in WebKitGTK */
+    /* Promote to GPU compositor layer: prevents repaint cascade to parent/sibling elements in WebKitGTK */
     will-change: background-position;
     contain: layout style;
 }
@@ -221,7 +221,7 @@
     background: rgba(34, 211, 238, 0.08);
 }
 
-/* Graph wrapper — slide animation */
+/* Graph wrapper: slide animation */
 .tpb-graph-wrapper {
     overflow: hidden;
     transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),

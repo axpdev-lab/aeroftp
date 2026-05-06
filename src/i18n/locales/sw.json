@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Tupio",
             "azureTrashTitle": "Azure Blob Tupio",
             "lockRcloneCrypt": "Funga uwekeleaji wa Rclone Crypt",
-            "unlockRcloneCrypt": "Simbua kama uwekeleaji wa Rclone Crypt…"
+            "unlockRcloneCrypt": "Simbua kama uwekeleaji wa Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Fungua kama AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Dhibiti aikoni zilizopakiwa zinazotumika tena katika wasifu. Buruta kupanga upya, bofya mara mbili kwenye jina ili kubadilisha jina.",
             "customIconsEmpty": "Bado hakuna aikoni maalum. Pakia faili za SVG, PNG, JPG, WEBP, au ICO ili kujenga maktaba yako.",
             "customIconsUpload": "Pakia",
-            "customIconsRenameHint": "Bofya mara mbili kubadilisha jina"
+            "customIconsRenameHint": "Bofya mara mbili kubadilisha jina",
+            "aerovaultOverlayTimeoutTitle": "Muda wa Kuisha wa AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Vipindi vya AeroVault Overlay hujifunga kiotomatiki baada ya kipindi hiki cha kutotumika. Thamani za chini ni salama zaidi lakini zinahitaji kufungua mara nyingi zaidi."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Sanidi {provider} kwanza",
             "openProviderDocs": "Fungua nyaraka za {provider}",
             "discoverImageKit": "CDN ya midia na hifadhi yenye folda asili (20 GB bure)",
-            "discoverUploadcare": "Usimamizi wa midia EU wenye CDN na API za faili (3 GB bure)"
+            "discoverUploadcare": "Usimamizi wa midia EU wenye CDN na API za faili (3 GB bure)",
+            "discoverCloudinary": "CDN ya usimamizi wa midia ikiwa na REST API (krediti 25/mwezi bure)"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Fungua hifadhi ya mbali ya rclone-crypt (au unda mpya) kama tabaka inayoonekana wazi.",
             "aerocryptImportTitle": "Tabaka ya Rclone Crypt imegunduliwa",
             "aerocryptImportDesc": "Wasifu umeingizwa kutoka rclone.conf kwa {name}: fungua tabaka sasa?",
-            "aerocryptImportOpen": "Fungua tabaka"
+            "aerocryptImportOpen": "Fungua tabaka",
+            "aerovaultOverlayExpired": "AeroVault Overlay imefungwa kutokana na kutotumika. Fungua tena hifadhi ili kuendelea."
         },
         "ai.agentMode.title": "Hali ya Wakala",
         "ai.agentMode.description": "Inadhibiti tabia ya idhini ya zana, vikomo vya hatua na kiwango cha uhuru.",
@@ -3641,7 +3646,9 @@
                 "tools": "Zana"
             },
             "noResults": "Hakuna amri zinazolingana na utafutaji wako",
-            "placeholder": "Andika amri..."
+            "placeholder": "Andika amri...",
+            "aerovaultOverlayOpen": "Fungua AeroVault Overlay",
+            "aerovaultOverlayLock": "Funga AeroVault Overlay"
         },
         "plugins": {
             "browser": {

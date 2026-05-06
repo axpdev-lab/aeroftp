@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt papirkurv",
             "azureTrashTitle": "Azure Blob papirkurv",
             "lockRcloneCrypt": "Lås Rclone Crypt-overlay",
-            "unlockRcloneCrypt": "Dekrypter som Rclone Crypt-overlay…"
+            "unlockRcloneCrypt": "Dekrypter som Rclone Crypt-overlay…",
+            "openAsAeroVaultOverlay": "Åbn som AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Administrer uploadede ikoner, der genbruges på tværs af profiler. Træk for at omarrangere, dobbeltklik på navnet for at omdøbe.",
             "customIconsEmpty": "Ingen brugerdefinerede ikoner endnu. Upload SVG-, PNG-, JPG-, WEBP- eller ICO-filer for at opbygge dit bibliotek.",
             "customIconsUpload": "Upload",
-            "customIconsRenameHint": "Dobbeltklik for at omdøbe"
+            "customIconsRenameHint": "Dobbeltklik for at omdøbe",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay-timeout",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-sessioner låses automatisk efter denne periode med inaktivitet. Lavere værdier er sikrere, men kræver hyppigere oplåsninger."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Konfigurer {provider} først",
             "openProviderDocs": "Åbn {provider}-dokumentation",
             "discoverImageKit": "Medie-CDN og lagring med native mapper (20 GB gratis)",
-            "discoverUploadcare": "EU-mediehåndtering med CDN og fil-API'er (3 GB gratis)"
+            "discoverUploadcare": "EU-mediehåndtering med CDN og fil-API'er (3 GB gratis)",
+            "discoverCloudinary": "CDN til mediestyring med REST API (25 credits/måned gratis)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Åbn en rclone-crypt-fjernlagring (eller opret en ny) som transparent overlay.",
             "aerocryptImportTitle": "Rclone Crypt-overlay registreret",
             "aerocryptImportDesc": "Profil importeret fra rclone.conf for {name}: åbn overlayen nu?",
-            "aerocryptImportOpen": "Åbn overlay"
+            "aerocryptImportOpen": "Åbn overlay",
+            "aerovaultOverlayExpired": "AeroVault Overlay er låst på grund af inaktivitet. Åbn boksen igen for at fortsætte."
         },
         "ai.agentMode.title": "Agenttilstand",
         "ai.agentMode.description": "Styrer godkendelsesadfærd for værktøjer, trinbegrænsninger og autonominiveau.",
@@ -3641,7 +3646,9 @@
                 "tools": "Værktøjer"
             },
             "noResults": "Ingen kommandoer matcher din søgning",
-            "placeholder": "Skriv en kommando..."
+            "placeholder": "Skriv en kommando...",
+            "aerovaultOverlayOpen": "Åbn AeroVault Overlay",
+            "aerovaultOverlayLock": "Lås AeroVault Overlay"
         },
         "plugins": {
             "browser": {

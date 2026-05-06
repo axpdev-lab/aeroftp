@@ -193,7 +193,7 @@
   border-color: var(--accent-primary);
 }
 
-/* Editable input — now styled via Tailwind classes in JSX */
+/* Editable input: now styled via Tailwind classes in JSX */
 
 .browse-btn {
   display: flex;

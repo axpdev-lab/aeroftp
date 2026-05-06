@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Աղբաման",
             "azureTrashTitle": "Azure Blob Աղբաման",
             "lockRcloneCrypt": "Կողպել Rclone Crypt ծածկույթը",
-            "unlockRcloneCrypt": "Վերծանել որպես Rclone Crypt ծածկույթ…"
+            "unlockRcloneCrypt": "Վերծանել որպես Rclone Crypt ծածկույթ…",
+            "openAsAeroVaultOverlay": "Բացել որպես AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Փոխանցում...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Կառավարեք պրոֆիլների միջև կրկին օգտագործվող վերբեռնված պատկերակները: Քաշեք վերադասավորելու համար, կրկնակի սեղմեք անվան վրա վերանվանելու համար:",
             "customIconsEmpty": "Դեռ չկա հատուկ պատկերակներ: Վերբեռնեք SVG, PNG, JPG, WEBP կամ ICO ֆայլեր ձեր գրադարանը կառուցելու համար:",
             "customIconsUpload": "Վերբեռնել",
-            "customIconsRenameHint": "Կրկնակի սեղմեք վերանվանելու համար"
+            "customIconsRenameHint": "Կրկնակի սեղմեք վերանվանելու համար",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay-ի սպասման ժամանակը",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-ի աշխատաշրջանները ինքնաշխատ կողպվում են անգործության այս ժամանակահատվածից հետո։ Ցածր արժեքներն ավելի անվտանգ են, բայց պահանջում են ավելի հաճախակի ապակողպում։"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1598,7 +1601,8 @@
             "setupSteps": "Նախ կարգավորեք {provider}-ը",
             "openProviderDocs": "Բացել {provider}-ի փաստաթղթերը",
             "discoverImageKit": "Մեդիա CDN և պահոցում ներքին թղթապանակներով (20 GB անվճար)",
-            "discoverUploadcare": "EU մեդիայի կառավարում CDN-ով և ֆայլերի API-ներով (3 GB անվճար)"
+            "discoverUploadcare": "EU մեդիայի կառավարում CDN-ով և ֆայլերի API-ներով (3 GB անվճար)",
+            "discoverCloudinary": "CDN մեդիա կառավարման համար REST API-ով (25 կրեդիտ/ամսական անվճար)"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -3539,7 +3543,8 @@
             "aerocryptOverlayInactive": "Բացեք rclone-crypt հեռակա պահոց (կամ ստեղծեք նորը) որպես թափանցիկ շերտ:",
             "aerocryptImportTitle": "Հայտնաբերվել է Rclone Crypt շերտ",
             "aerocryptImportDesc": "Պրոֆիլը ներմուծված է rclone.conf-ից {name}-ի համար. բացե՞լ շերտը հիմա:",
-            "aerocryptImportOpen": "Բացել շերտը"
+            "aerocryptImportOpen": "Բացել շերտը",
+            "aerovaultOverlayExpired": "AeroVault Overlay-ը կողպված է անգործության պատճառով։ Շարունակելու համար նորից բացեք պահոցը։"
         },
         "dialogs": {
             "confirmTitle": "Հաստատել",
@@ -3641,7 +3646,9 @@
                 "tools": "Գործիքներ"
             },
             "noResults": "Ոչ մի հրաման չի համապատասխանում ձեր որոնմանին",
-            "placeholder": "Մուտքագրեք հրաման..."
+            "placeholder": "Մուտքագրեք հրաման...",
+            "aerovaultOverlayOpen": "Բացել AeroVault Overlay-ը",
+            "aerovaultOverlayLock": "Կողպել AeroVault Overlay-ը"
         },
         "plugins": {
             "browser": {

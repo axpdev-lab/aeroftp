@@ -488,6 +488,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [confirmMasterPassword, setConfirmMasterPassword] = useState('');
     const [currentMasterPassword, setCurrentMasterPassword] = useState('');
     const [autoLockTimeout, setAutoLockTimeout] = useState(0); // minutes (0 = disabled)
+    const [aeroVaultOverlayTimeoutMin, setAeroVaultOverlayTimeoutMin] = useState<number>(30);
     const { thresholds: storageThresholds, setThresholds: setStorageThresholds } = useStorageThresholds();
     const { density: myServersDensity, setDensity: setMyServersDensity } = useMyServersDensity();
     const [showMasterPassword, setShowMasterPassword] = useState(false);
@@ -635,6 +636,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             if (status.timeout_seconds > 0) {
                                 setAutoLockTimeout(Math.floor(Number(status.timeout_seconds) / 60));
                             }
+                            invoke<number>('aerovault_overlay_get_idle_timeout')
+                                .then((secs) => setAeroVaultOverlayTimeoutMin(Math.max(1, Math.round(secs / 60))))
+                                .catch(() => { /* keep default */ });
                             if (typeof status.accounts_count === 'number') {
                                 setVaultEntriesCount(status.accounts_count);
                             }
@@ -3932,6 +3936,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         onCancel={() => setRemovePasswordConfirm(false)}
                                                     />
                                                 )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* AeroVault Overlay Timeout */}
+                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                        <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                            <h4 className="font-medium flex items-center gap-2 text-sm">
+                                                <Lock size={14} className="text-gray-500" />
+                                                {t('settings.aerovaultOverlayTimeoutTitle')}
+                                            </h4>
+                                        </div>
+                                        <div className="p-4 space-y-3">
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.aerovaultOverlayTimeoutDesc')}</p>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="range"
+                                                    min={1}
+                                                    max={240}
+                                                    step={1}
+                                                    value={aeroVaultOverlayTimeoutMin}
+                                                    onChange={async (e) => {
+                                                        const mins = Math.max(1, parseInt(e.target.value) || 1);
+                                                        setAeroVaultOverlayTimeoutMin(mins);
+                                                        try {
+                                                            await invoke<number>('aerovault_overlay_set_idle_timeout', { seconds: mins * 60 });
+                                                        } catch {
+                                                            /* best-effort persist */
+                                                        }
+                                                    }}
+                                                    className="flex-1 accent-emerald-500"
+                                                />
+                                                <span className="w-20 text-sm font-medium text-gray-700 dark:text-gray-300 text-right">{`${aeroVaultOverlayTimeoutMin} min`}</span>
                                             </div>
                                         </div>
                                     </div>

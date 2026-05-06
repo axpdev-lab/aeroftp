@@ -1294,10 +1294,100 @@ enum Commands {
         #[command(subcommand)]
         command: RcloneCryptCommands,
     },
+    /// Run autonomous server audits across saved profiles (M3)
+    ///
+    /// Predefined check types perform deterministic, parallel audits over a
+    /// glob of vault-saved server profiles. Output is JSON or markdown, with
+    /// exit codes signalling severity (0=ok, 1=warning, 2=critical/error,
+    /// 3=audit configuration error). Designed for cron and monitoring
+    /// pipelines without exposing credentials.
+    Audit {
+        #[command(subcommand)]
+        command: AuditCommands,
+    },
     /// Import server profiles from external sources
     Import {
         #[command(subcommand)]
         command: ImportCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuditCommands {
+    /// Cloud storage quota: alert when used/total ratio exceeds threshold
+    #[command(name = "storage-quota")]
+    StorageQuota {
+        /// Server name glob (default "all")
+        #[arg(long, default_value = "all")]
+        servers: String,
+        /// Warning threshold as a percentage (0-100)
+        #[arg(long, default_value_t = 80.0)]
+        threshold: f64,
+        /// Per-server timeout in seconds
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+        /// Concurrent audits
+        #[arg(long, default_value_t = 4)]
+        parallel: usize,
+        /// Render report as markdown instead of JSON
+        #[arg(long)]
+        markdown: bool,
+        /// Exit 0 even if warnings/errors are present (still emits report)
+        #[arg(long)]
+        exit_code: bool,
+    },
+    /// Backup freshness: newest file in path must be younger than max-age
+    #[command(name = "backup-freshness")]
+    BackupFreshness {
+        /// Server name glob (default "all")
+        #[arg(long, default_value = "all")]
+        servers: String,
+        /// Remote directory containing backups
+        #[arg(long)]
+        path: String,
+        /// Maximum age of newest backup in hours
+        #[arg(long, default_value_t = 24.0)]
+        max_age_hours: f64,
+        /// Optional filename glob filter (e.g. "*.sql.gz")
+        #[arg(long)]
+        pattern: Option<String>,
+        /// Per-server timeout in seconds
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+        /// Concurrent audits
+        #[arg(long, default_value_t = 4)]
+        parallel: usize,
+        /// Render report as markdown instead of JSON
+        #[arg(long)]
+        markdown: bool,
+        /// Exit 0 even if warnings/errors are present (still emits report)
+        #[arg(long)]
+        exit_code: bool,
+    },
+    /// File presence: verify a file exists and meets minimum size
+    #[command(name = "file-exists")]
+    FileExists {
+        /// Server name glob (default "all")
+        #[arg(long, default_value = "all")]
+        servers: String,
+        /// Remote file path to check
+        #[arg(long)]
+        path: String,
+        /// Optional minimum size (e.g. 1K, 2M, 1G)
+        #[arg(long)]
+        min_size: Option<String>,
+        /// Per-server timeout in seconds
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+        /// Concurrent audits
+        #[arg(long, default_value_t = 4)]
+        parallel: usize,
+        /// Render report as markdown instead of JSON
+        #[arg(long)]
+        markdown: bool,
+        /// Exit 0 even if warnings/errors are present (still emits report)
+        #[arg(long)]
+        exit_code: bool,
     },
 }
 
@@ -6961,6 +7051,7 @@ fn profile_to_provider_config(
         "immich" => ProviderType::Immich,
         "imagekit" | "image_kit" => ProviderType::ImageKit,
         "uploadcare" | "upload_care" => ProviderType::Uploadcare,
+        "cloudinary" => ProviderType::Cloudinary,
         "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
         _ => {
             print_error(
@@ -7035,6 +7126,27 @@ fn profile_to_provider_config(
         extra.insert("public_key".to_string(), cred_user.clone());
         if host.trim().is_empty() {
             host = "api.uploadcare.com".to_string();
+        }
+    }
+
+    if provider_type == ProviderType::Cloudinary {
+        // cloud_name comes either from the profile's `bucket` field or from
+        // the host (when users key it into the server entry).
+        let stored_cloud_name = profile
+            .get("options")
+            .and_then(|o| o.as_object())
+            .and_then(|o| o.get("bucket"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        if let Some(name) = stored_cloud_name {
+            extra.insert("cloud_name".to_string(), name);
+        } else if !host.trim().is_empty() && host != "api.cloudinary.com" {
+            extra.insert("cloud_name".to_string(), host.trim().to_string());
+        }
+        if host.trim().is_empty() {
+            host = "api.cloudinary.com".to_string();
         }
     }
 
@@ -14667,9 +14779,12 @@ fn benchmark_provider_hint(
 }
 
 fn benchmark_remote_roots(initial_path: &str, report_id: &str) -> (String, String) {
-    let bench_base = resolve_cli_remote_path(initial_path, ".aeroftp-bench");
+    // Drop the leading dot: dot-prefixed folders (`.aeroftp-bench`) are rejected by
+    // some providers (Internxt, certain WebDAV servers) that treat them as hidden
+    // or invalid names. Plain `aeroftp-bench` is portable across all 22 backends.
+    let bench_base = resolve_cli_remote_path(initial_path, "aeroftp-bench");
     let test_root = if bench_base.trim_end_matches('/').is_empty() {
-        format!(".aeroftp-bench/{}", report_id)
+        format!("aeroftp-bench/{}", report_id)
     } else {
         format!("{}/{}", bench_base.trim_end_matches('/'), report_id)
     };
@@ -14762,10 +14877,30 @@ async fn cmd_benchmark(
 
     let report_id = uuid::Uuid::new_v4().to_string();
     let (bench_base, test_root) = benchmark_remote_roots(&initial_path, &report_id);
-    // Best-effort root creation: provider may auto-create on upload or may
-    // already have the directory. Failure here is handled by the upload path.
-    let _ = provider.mkdir(&bench_base).await;
-    let _ = provider.mkdir(&test_root).await;
+    // Create the scratch directory tree before any upload. `bench_base` may
+    // already exist from a prior run (`AlreadyExists` is fine), but `test_root`
+    // is unique per run: if its creation fails the upload will hit "parent not
+    // found" anyway, so we surface the mkdir error explicitly here.
+    if let Err(e) = provider.mkdir(&bench_base).await {
+        if !matches!(e, ProviderError::AlreadyExists(_)) && !cli.quiet
+            && matches!(format, OutputFormat::Text)
+        {
+            eprintln!("warning: could not create benchmark base dir: {}", e);
+        }
+    }
+    if let Err(e) = provider.mkdir(&test_root).await {
+        if !matches!(e, ProviderError::AlreadyExists(_)) {
+            print_error(
+                format,
+                &format!(
+                    "benchmark cannot create scratch dir '{}': {}. Provider may not allow folder creation in the configured root.",
+                    test_root, e
+                ),
+                4,
+            );
+            return 4;
+        }
+    }
 
     let total_start = Instant::now();
     let mut results: Vec<BenchmarkResult> = Vec::new();
@@ -23002,6 +23137,754 @@ async fn batch_connect_profile(
     Ok(provider)
 }
 
+// ── Audit subcommand (M3) ──────────────────────────────────────────
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum AuditStatus {
+    Ok,
+    Warning,
+    Critical,
+    Error,
+}
+
+#[derive(Serialize)]
+struct AuditResult {
+    server: String,
+    protocol: String,
+    host: String,
+    status: AuditStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    #[serde(flatten)]
+    details: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct AuditReport {
+    audit: String,
+    timestamp: String,
+    servers_checked: usize,
+    servers_ok: usize,
+    servers_warning: usize,
+    servers_critical: usize,
+    servers_error: usize,
+    results: Vec<AuditResult>,
+}
+
+/// Filter saved vault profiles by glob match against the `name` field.
+///
+/// `pattern` defaults to "all" (alias for "*"), in which case all profiles
+/// are returned. Patterns containing path traversal characters (`/`, `..`,
+/// or NUL) are rejected as a safety measure: profile names are simple
+/// identifiers, not paths.
+fn match_servers_glob(
+    profiles: &[serde_json::Value],
+    pattern: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let trimmed = pattern.trim();
+    if trimmed.is_empty() {
+        return Err("Empty server glob".to_string());
+    }
+    if trimmed.contains('/') || trimmed.contains("..") || trimmed.contains('\0') {
+        return Err(format!(
+            "Invalid characters in server glob '{}'. Profile names cannot contain '/', '..', or NUL.",
+            trimmed
+        ));
+    }
+    let effective = if trimmed.eq_ignore_ascii_case("all") {
+        "*"
+    } else {
+        trimmed
+    };
+    let matcher = globset::Glob::new(effective)
+        .map_err(|e| format!("Invalid server glob '{}': {}", trimmed, e))?
+        .compile_matcher();
+    Ok(profiles
+        .iter()
+        .filter(|p| {
+            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            matcher.is_match(name)
+        })
+        .cloned()
+        .collect())
+}
+
+/// Open the vault, read `config_server_profiles`, filter by glob.
+///
+/// Returns `Err(exit_code)` for vault errors, parse errors, or invalid glob.
+fn enumerate_audit_targets(
+    cli: &Cli,
+    glob: &str,
+    format: OutputFormat,
+) -> Result<Vec<serde_json::Value>, i32> {
+    let store = open_vault(cli).map_err(|e| {
+        print_error(format, &e, 5);
+        5
+    })?;
+    let profiles_json = match store.get("config_server_profiles") {
+        Ok(j) => j,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json).map_err(|e| {
+        print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+        5
+    })?;
+    match_servers_glob(&profiles, glob).map_err(|e| {
+        print_error(format, &e, 3);
+        3
+    })
+}
+
+/// Build an `AuditResult` for an Error outcome with no body details.
+fn audit_result_error(profile: &serde_json::Value, message: String) -> AuditResult {
+    AuditResult {
+        server: profile
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unnamed")
+            .to_string(),
+        protocol: profile
+            .get("protocol")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?")
+            .to_string(),
+        host: profile
+            .get("host")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        status: AuditStatus::Error,
+        message: Some(message),
+        details: serde_json::Value::Object(serde_json::Map::new()),
+    }
+}
+
+/// Profile name + protocol + host snapshot for AuditResult construction.
+struct AuditTargetMeta {
+    name: String,
+    protocol: String,
+    host: String,
+}
+
+impl AuditTargetMeta {
+    fn from_profile(profile: &serde_json::Value) -> Self {
+        Self {
+            name: profile
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed")
+                .to_string(),
+            protocol: profile
+                .get("protocol")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string(),
+            host: profile
+                .get("host")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        }
+    }
+}
+
+/// Aggregate `AuditResult` list into a final `AuditReport` with severity counts.
+fn aggregate_audit_report(audit: &str, results: Vec<AuditResult>) -> AuditReport {
+    let mut servers_ok = 0;
+    let mut servers_warning = 0;
+    let mut servers_critical = 0;
+    let mut servers_error = 0;
+    for r in &results {
+        match r.status {
+            AuditStatus::Ok => servers_ok += 1,
+            AuditStatus::Warning => servers_warning += 1,
+            AuditStatus::Critical => servers_critical += 1,
+            AuditStatus::Error => servers_error += 1,
+        }
+    }
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    AuditReport {
+        audit: audit.to_string(),
+        timestamp,
+        servers_checked: results.len(),
+        servers_ok,
+        servers_warning,
+        servers_critical,
+        servers_error,
+        results,
+    }
+}
+
+/// Compute the worst-severity exit code for an `AuditReport`.
+///
+/// 0 = all OK, 1 = at least one warning, 2 = at least one critical or error.
+/// `exit_code_flag` (when set) forces 0 regardless of severity.
+fn audit_report_exit_code(report: &AuditReport, exit_code_flag: bool) -> i32 {
+    if exit_code_flag {
+        return 0;
+    }
+    if report.servers_critical > 0 || report.servers_error > 0 {
+        2
+    } else if report.servers_warning > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// Print the audit report in JSON or markdown form, return the exit code.
+fn emit_audit_report(report: &AuditReport, markdown: bool, exit_code_flag: bool) -> i32 {
+    if markdown {
+        let mut out = String::new();
+        out.push_str(&format!("# Audit: {}\n\n", report.audit));
+        out.push_str(&format!("Timestamp: {}\n\n", report.timestamp));
+        out.push_str(&format!(
+            "Servers checked: {} (ok: {}, warning: {}, critical: {}, error: {})\n\n",
+            report.servers_checked,
+            report.servers_ok,
+            report.servers_warning,
+            report.servers_critical,
+            report.servers_error,
+        ));
+        out.push_str("| Server | Protocol | Host | Status | Message |\n");
+        out.push_str("|---|---|---|---|---|\n");
+        for r in &report.results {
+            let status = match r.status {
+                AuditStatus::Ok => "ok",
+                AuditStatus::Warning => "warning",
+                AuditStatus::Critical => "critical",
+                AuditStatus::Error => "error",
+            };
+            let msg = r.message.as_deref().unwrap_or("");
+            // Markdown table cells: escape `|` and newlines.
+            let safe_msg = msg.replace('|', "\\|").replace('\n', " ");
+            out.push_str(&format!(
+                "| {} | {} | {} | {} | {} |\n",
+                r.server, r.protocol, r.host, status, safe_msg,
+            ));
+        }
+        println!("{}", out);
+    } else {
+        match serde_json::to_string_pretty(report) {
+            Ok(s) => println!("{}", s),
+            Err(e) => {
+                eprintln!("Failed to serialize audit report: {}", e);
+                return 99;
+            }
+        }
+    }
+    audit_report_exit_code(report, exit_code_flag)
+}
+
+/// Resolve `min_size` shorthand into bytes, e.g. "1K" → 1024.
+fn parse_audit_min_size(s: &str) -> Result<u64, String> {
+    parse_size_filter(s)
+}
+
+/// Build a connected provider for a given audit profile, applying CLI overrides.
+async fn audit_connect_profile(
+    profile: &serde_json::Value,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<Box<dyn StorageProvider>, String> {
+    let name = profile
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed")
+        .to_string();
+    let (cfg, _) = profile_to_provider_config(&name, cli, format)
+        .map_err(|_code| "profile resolution failed".to_string())?;
+    let mut provider =
+        ProviderFactory::create(&cfg).map_err(|e| format!("provider creation failed: {}", e))?;
+    provider
+        .connect()
+        .await
+        .map_err(|e| format!("connection failed: {}", e))?;
+    Ok(provider)
+}
+
+/// Compute the percent (0-100) of a `(used, total)` quota, preserving fractions.
+fn quota_pct(used: u64, total: u64) -> Option<f64> {
+    if total == 0 {
+        None
+    } else {
+        Some((used as f64 / total as f64) * 100.0)
+    }
+}
+
+/// Parse an ISO 8601 / RFC 3339 timestamp into UNIX seconds. Falls back to
+/// `None` for unparseable input.
+fn parse_iso8601_to_unix(s: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.timestamp())
+        .or_else(|| {
+            // Tolerate trailing space or Z-less variants used by some providers.
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+                .ok()
+                .map(|ndt| ndt.and_utc().timestamp())
+        })
+}
+
+/// Convert UNIX seconds to RFC 3339 string for inclusion in audit details.
+fn unix_to_rfc3339(ts: i64) -> Option<String> {
+    chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0).map(|dt| dt.to_rfc3339())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_audit(command: &AuditCommands, cli: &Cli, format: OutputFormat) -> i32 {
+    match command {
+        AuditCommands::StorageQuota {
+            servers,
+            threshold,
+            timeout,
+            parallel,
+            markdown,
+            exit_code,
+        } => {
+            run_audit_storage_quota(
+                cli, format, servers, *threshold, *timeout, *parallel, *markdown, *exit_code,
+            )
+            .await
+        }
+        AuditCommands::BackupFreshness {
+            servers,
+            path,
+            max_age_hours,
+            pattern,
+            timeout,
+            parallel,
+            markdown,
+            exit_code,
+        } => {
+            run_audit_backup_freshness(
+                cli,
+                format,
+                servers,
+                path,
+                *max_age_hours,
+                pattern.as_deref(),
+                *timeout,
+                *parallel,
+                *markdown,
+                *exit_code,
+            )
+            .await
+        }
+        AuditCommands::FileExists {
+            servers,
+            path,
+            min_size,
+            timeout,
+            parallel,
+            markdown,
+            exit_code,
+        } => {
+            run_audit_file_exists(
+                cli,
+                format,
+                servers,
+                path,
+                min_size.as_deref(),
+                *timeout,
+                *parallel,
+                *markdown,
+                *exit_code,
+            )
+            .await
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_audit_storage_quota(
+    cli: &Cli,
+    format: OutputFormat,
+    servers: &str,
+    threshold: f64,
+    timeout: u64,
+    parallel: usize,
+    markdown: bool,
+    exit_code_flag: bool,
+) -> i32 {
+    if !(0.0..=100.0).contains(&threshold) {
+        print_error(format, "--threshold must be between 0 and 100", 3);
+        return 3;
+    }
+    let parallel = parallel.clamp(1, 16);
+    let targets = match enumerate_audit_targets(cli, servers, format) {
+        Ok(t) => t,
+        Err(code) => return code,
+    };
+    let timeout_dur = std::time::Duration::from_secs(timeout.max(1));
+
+    let futures = targets.into_iter().map(|profile| {
+        let cli_ref = cli;
+        async move {
+            let meta = AuditTargetMeta::from_profile(&profile);
+            let work = async {
+                let mut provider = match audit_connect_profile(&profile, cli_ref, format).await {
+                    Ok(p) => p,
+                    Err(e) => return audit_result_error(&profile, e),
+                };
+                let outcome = provider.storage_info().await;
+                let _ = provider.disconnect().await;
+                match outcome {
+                    Ok(info) => {
+                        let pct = quota_pct(info.used, info.total);
+                        let (status, msg) = match pct {
+                            None => (
+                                AuditStatus::Error,
+                                Some("storage quota not available (total = 0)".to_string()),
+                            ),
+                            Some(p) if p > threshold => (
+                                AuditStatus::Warning,
+                                Some(format!(
+                                    "{:.1}% used exceeds threshold {:.1}%",
+                                    p, threshold
+                                )),
+                            ),
+                            Some(p) => (
+                                AuditStatus::Ok,
+                                Some(format!("{:.1}% used (threshold {:.1}%)", p, threshold)),
+                            ),
+                        };
+                        AuditResult {
+                            server: meta.name.clone(),
+                            protocol: meta.protocol.clone(),
+                            host: meta.host.clone(),
+                            status,
+                            message: msg,
+                            details: serde_json::json!({
+                                "used": info.used,
+                                "total": info.total,
+                                "free": info.free,
+                                "percent": pct,
+                                "threshold": threshold,
+                            }),
+                        }
+                    }
+                    Err(ProviderError::NotSupported(_)) => AuditResult {
+                        server: meta.name.clone(),
+                        protocol: meta.protocol.clone(),
+                        host: meta.host.clone(),
+                        status: AuditStatus::Error,
+                        message: Some(format!(
+                            "storage quota not supported by protocol {}",
+                            meta.protocol
+                        )),
+                        details: serde_json::Value::Object(serde_json::Map::new()),
+                    },
+                    Err(e) => AuditResult {
+                        server: meta.name.clone(),
+                        protocol: meta.protocol.clone(),
+                        host: meta.host.clone(),
+                        status: AuditStatus::Error,
+                        message: Some(format!("quota query failed: {}", e)),
+                        details: serde_json::Value::Object(serde_json::Map::new()),
+                    },
+                }
+            };
+            match tokio::time::timeout(timeout_dur, work).await {
+                Ok(r) => r,
+                Err(_) => audit_result_error(
+                    &profile,
+                    format!("audit timed out after {}s", timeout_dur.as_secs()),
+                ),
+            }
+        }
+    });
+
+    let mut stream = futures_util::stream::iter(futures).buffer_unordered(parallel);
+    let mut results: Vec<AuditResult> = Vec::new();
+    while let Some(r) = futures_util::StreamExt::next(&mut stream).await {
+        results.push(r);
+    }
+    results.sort_by(|a, b| a.server.cmp(&b.server));
+    let report = aggregate_audit_report("storage-quota", results);
+    emit_audit_report(&report, markdown, exit_code_flag)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_audit_backup_freshness(
+    cli: &Cli,
+    format: OutputFormat,
+    servers: &str,
+    path: &str,
+    max_age_hours: f64,
+    pattern: Option<&str>,
+    timeout: u64,
+    parallel: usize,
+    markdown: bool,
+    exit_code_flag: bool,
+) -> i32 {
+    if max_age_hours <= 0.0 || !max_age_hours.is_finite() {
+        print_error(format, "--max-age-hours must be a positive finite number", 3);
+        return 3;
+    }
+    let parallel = parallel.clamp(1, 16);
+    let matcher: Option<globset::GlobMatcher> = match pattern {
+        Some(p) => match globset::Glob::new(p) {
+            Ok(g) => Some(g.compile_matcher()),
+            Err(e) => {
+                print_error(format, &format!("Invalid --pattern '{}': {}", p, e), 3);
+                return 3;
+            }
+        },
+        None => None,
+    };
+    let targets = match enumerate_audit_targets(cli, servers, format) {
+        Ok(t) => t,
+        Err(code) => return code,
+    };
+    let timeout_dur = std::time::Duration::from_secs(timeout.max(1));
+    let path_owned = path.to_string();
+    let pattern_owned = pattern.map(|s| s.to_string());
+
+    let futures = targets.into_iter().map(|profile| {
+        let cli_ref = cli;
+        let path_ref = path_owned.clone();
+        let pattern_ref = pattern_owned.clone();
+        let matcher_ref = matcher.clone();
+        async move {
+            let meta = AuditTargetMeta::from_profile(&profile);
+            let work = async {
+                let mut provider = match audit_connect_profile(&profile, cli_ref, format).await {
+                    Ok(p) => p,
+                    Err(e) => return audit_result_error(&profile, e),
+                };
+                let entries = provider.list(&path_ref).await;
+                let _ = provider.disconnect().await;
+                match entries {
+                    Ok(items) => {
+                        let filtered: Vec<&RemoteEntry> = items
+                            .iter()
+                            .filter(|e| !e.is_dir)
+                            .filter(|e| match &matcher_ref {
+                                Some(m) => m.is_match(&e.name),
+                                None => true,
+                            })
+                            .collect();
+                        if filtered.is_empty() {
+                            return AuditResult {
+                                server: meta.name.clone(),
+                                protocol: meta.protocol.clone(),
+                                host: meta.host.clone(),
+                                status: AuditStatus::Warning,
+                                message: Some(match &pattern_ref {
+                                    Some(p) => format!(
+                                        "no backups matching '{}' in {}",
+                                        p, path_ref
+                                    ),
+                                    None => format!("no backups found in {}", path_ref),
+                                }),
+                                details: serde_json::json!({
+                                    "path": path_ref,
+                                    "pattern": pattern_ref,
+                                    "max_age_hours": max_age_hours,
+                                    "files_listed": items.len(),
+                                    "files_matching": 0,
+                                }),
+                            };
+                        }
+                        let now_unix = chrono::Utc::now().timestamp();
+                        let mut newest_unix: Option<i64> = None;
+                        let mut newest_name: Option<String> = None;
+                        for e in &filtered {
+                            if let Some(m) = e.modified.as_deref().and_then(parse_iso8601_to_unix) {
+                                if newest_unix.map_or(true, |cur| m > cur) {
+                                    newest_unix = Some(m);
+                                    newest_name = Some(e.name.clone());
+                                }
+                            }
+                        }
+                        match newest_unix {
+                            None => AuditResult {
+                                server: meta.name.clone(),
+                                protocol: meta.protocol.clone(),
+                                host: meta.host.clone(),
+                                status: AuditStatus::Warning,
+                                message: Some(format!(
+                                    "no parsable mtimes among {} files in {}",
+                                    filtered.len(),
+                                    path_ref
+                                )),
+                                details: serde_json::json!({
+                                    "path": path_ref,
+                                    "pattern": pattern_ref,
+                                    "max_age_hours": max_age_hours,
+                                    "files_matching": filtered.len(),
+                                }),
+                            },
+                            Some(ts) => {
+                                let age_seconds = (now_unix - ts).max(0);
+                                let age_hours = age_seconds as f64 / 3600.0;
+                                let (status, msg) = if age_hours > max_age_hours {
+                                    (
+                                        AuditStatus::Warning,
+                                        Some(format!(
+                                            "newest backup is {:.1}h old (max {:.1}h)",
+                                            age_hours, max_age_hours
+                                        )),
+                                    )
+                                } else {
+                                    (
+                                        AuditStatus::Ok,
+                                        Some(format!(
+                                            "newest backup is {:.1}h old (within {:.1}h)",
+                                            age_hours, max_age_hours
+                                        )),
+                                    )
+                                };
+                                AuditResult {
+                                    server: meta.name.clone(),
+                                    protocol: meta.protocol.clone(),
+                                    host: meta.host.clone(),
+                                    status,
+                                    message: msg,
+                                    details: serde_json::json!({
+                                        "path": path_ref,
+                                        "pattern": pattern_ref,
+                                        "max_age_hours": max_age_hours,
+                                        "newest_file": newest_name,
+                                        "newest_mtime": unix_to_rfc3339(ts),
+                                        "age_hours": age_hours,
+                                        "files_matching": filtered.len(),
+                                    }),
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => audit_result_error(&profile, format!("list failed: {}", e)),
+                }
+            };
+            match tokio::time::timeout(timeout_dur, work).await {
+                Ok(r) => r,
+                Err(_) => audit_result_error(
+                    &profile,
+                    format!("audit timed out after {}s", timeout_dur.as_secs()),
+                ),
+            }
+        }
+    });
+
+    let mut stream = futures_util::stream::iter(futures).buffer_unordered(parallel);
+    let mut results: Vec<AuditResult> = Vec::new();
+    while let Some(r) = futures_util::StreamExt::next(&mut stream).await {
+        results.push(r);
+    }
+    results.sort_by(|a, b| a.server.cmp(&b.server));
+    let report = aggregate_audit_report("backup-freshness", results);
+    emit_audit_report(&report, markdown, exit_code_flag)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_audit_file_exists(
+    cli: &Cli,
+    format: OutputFormat,
+    servers: &str,
+    path: &str,
+    min_size: Option<&str>,
+    timeout: u64,
+    parallel: usize,
+    markdown: bool,
+    exit_code_flag: bool,
+) -> i32 {
+    let min_size_bytes: Option<u64> = match min_size {
+        Some(s) => match parse_audit_min_size(s) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                print_error(format, &format!("Invalid --min-size '{}': {}", s, e), 3);
+                return 3;
+            }
+        },
+        None => None,
+    };
+    let parallel = parallel.clamp(1, 16);
+    let targets = match enumerate_audit_targets(cli, servers, format) {
+        Ok(t) => t,
+        Err(code) => return code,
+    };
+    let timeout_dur = std::time::Duration::from_secs(timeout.max(1));
+    let path_owned = path.to_string();
+
+    let futures = targets.into_iter().map(|profile| {
+        let cli_ref = cli;
+        let path_ref = path_owned.clone();
+        async move {
+            let meta = AuditTargetMeta::from_profile(&profile);
+            let work = async {
+                let mut provider = match audit_connect_profile(&profile, cli_ref, format).await {
+                    Ok(p) => p,
+                    Err(e) => return audit_result_error(&profile, e),
+                };
+                let outcome = provider.stat(&path_ref).await;
+                let _ = provider.disconnect().await;
+                match outcome {
+                    Ok(entry) => {
+                        let (status, msg) = match min_size_bytes {
+                            Some(min) if entry.size < min => (
+                                AuditStatus::Warning,
+                                Some(format!(
+                                    "file is {} bytes, below min {} bytes",
+                                    entry.size, min
+                                )),
+                            ),
+                            _ => (
+                                AuditStatus::Ok,
+                                Some(format!("file present ({} bytes)", entry.size)),
+                            ),
+                        };
+                        AuditResult {
+                            server: meta.name.clone(),
+                            protocol: meta.protocol.clone(),
+                            host: meta.host.clone(),
+                            status,
+                            message: msg,
+                            details: serde_json::json!({
+                                "path": path_ref,
+                                "size": entry.size,
+                                "min_size": min_size_bytes,
+                                "modified": entry.modified,
+                                "is_dir": entry.is_dir,
+                            }),
+                        }
+                    }
+                    Err(ProviderError::NotFound(_)) => AuditResult {
+                        server: meta.name.clone(),
+                        protocol: meta.protocol.clone(),
+                        host: meta.host.clone(),
+                        status: AuditStatus::Critical,
+                        message: Some(format!("file not found: {}", path_ref)),
+                        details: serde_json::json!({
+                            "path": path_ref,
+                            "min_size": min_size_bytes,
+                        }),
+                    },
+                    Err(e) => audit_result_error(&profile, format!("stat failed: {}", e)),
+                }
+            };
+            match tokio::time::timeout(timeout_dur, work).await {
+                Ok(r) => r,
+                Err(_) => audit_result_error(
+                    &profile,
+                    format!("audit timed out after {}s", timeout_dur.as_secs()),
+                ),
+            }
+        }
+    });
+
+    let mut stream = futures_util::stream::iter(futures).buffer_unordered(parallel);
+    let mut results: Vec<AuditResult> = Vec::new();
+    while let Some(r) = futures_util::StreamExt::next(&mut stream).await {
+        results.push(r);
+    }
+    results.sort_by(|a, b| a.server.cmp(&b.server));
+    let report = aggregate_audit_report("file-exists", results);
+    emit_audit_report(&report, markdown, exit_code_flag)
+}
+
 async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<AtomicBool>) -> i32 {
     let content = if file == "-" {
         let mut stdin = String::new();
@@ -28141,6 +29024,7 @@ async fn main() {
                 json,
             } => cmd_import_rclone_filter(path.clone(), output.clone(), *force, *json).await,
         },
+        Commands::Audit { command } => cmd_audit(command, &cli, format).await,
         Commands::Transfer {
             source_profile,
             dest_profile,
@@ -29882,15 +30766,15 @@ mod tests {
     #[test]
     fn benchmark_remote_roots_respect_profile_initial_path() {
         let (base, root) = benchmark_remote_roots("/workdir", "rid");
-        assert_eq!(base, "/workdir/.aeroftp-bench");
-        assert_eq!(root, "/workdir/.aeroftp-bench/rid");
+        assert_eq!(base, "/workdir/aeroftp-bench");
+        assert_eq!(root, "/workdir/aeroftp-bench/rid");
     }
 
     #[test]
     fn benchmark_remote_roots_stay_relative_without_initial_path() {
         let (base, root) = benchmark_remote_roots("", "rid");
-        assert_eq!(base, ".aeroftp-bench");
-        assert_eq!(root, ".aeroftp-bench/rid");
+        assert_eq!(base, "aeroftp-bench");
+        assert_eq!(root, "aeroftp-bench/rid");
     }
 
     #[test]
@@ -29949,5 +30833,185 @@ mod tests {
         // Pass through sanitization sweep on a real serialized payload.
         let pretty = serde_json::to_string_pretty(&report).unwrap();
         assert!(benchmark_sanitization_sweep(&pretty).is_ok());
+    }
+
+    // ── Audit subcommand (M3) ──────────────────────────────────────
+
+    fn make_profile(name: &str) -> serde_json::Value {
+        json!({
+            "name": name,
+            "protocol": "ftp",
+            "host": "example.com",
+        })
+    }
+
+    #[test]
+    fn audit_status_severity_ordering() {
+        assert!(AuditStatus::Error > AuditStatus::Critical);
+        assert!(AuditStatus::Critical > AuditStatus::Warning);
+        assert!(AuditStatus::Warning > AuditStatus::Ok);
+    }
+
+    #[test]
+    fn match_servers_glob_default_all_matches_all() {
+        let profiles = vec![
+            make_profile("prod-web-1"),
+            make_profile("prod-db"),
+            make_profile("staging-1"),
+        ];
+        let r = match_servers_glob(&profiles, "all").unwrap();
+        assert_eq!(r.len(), 3);
+        let r = match_servers_glob(&profiles, "ALL").unwrap();
+        assert_eq!(r.len(), 3, "'all' alias is case-insensitive");
+        let r = match_servers_glob(&profiles, "*").unwrap();
+        assert_eq!(r.len(), 3);
+    }
+
+    #[test]
+    fn match_servers_glob_supports_wildcards() {
+        let profiles = vec![
+            make_profile("prod-web-1"),
+            make_profile("prod-db"),
+            make_profile("staging-1"),
+        ];
+        let r = match_servers_glob(&profiles, "prod-*").unwrap();
+        let names: Vec<&str> = r
+            .iter()
+            .map(|p| p.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+            .collect();
+        assert_eq!(names, vec!["prod-web-1", "prod-db"]);
+    }
+
+    #[test]
+    fn match_servers_glob_rejects_traversal() {
+        let profiles = vec![make_profile("prod-1")];
+        assert!(match_servers_glob(&profiles, "../etc/passwd").is_err());
+        assert!(match_servers_glob(&profiles, "prod/sub").is_err());
+        assert!(match_servers_glob(&profiles, "..").is_err());
+        assert!(match_servers_glob(&profiles, "").is_err());
+    }
+
+    #[test]
+    fn match_servers_glob_invalid_pattern_returns_err() {
+        let profiles = vec![make_profile("prod-1")];
+        // Unclosed bracket is rejected by globset.
+        assert!(match_servers_glob(&profiles, "prod-[1").is_err());
+    }
+
+    #[test]
+    fn quota_pct_basic() {
+        assert!((quota_pct(800, 1000).unwrap() - 80.0).abs() < 1e-9);
+        assert!((quota_pct(0, 1000).unwrap() - 0.0).abs() < 1e-9);
+        assert!((quota_pct(1000, 1000).unwrap() - 100.0).abs() < 1e-9);
+        assert!(quota_pct(123, 0).is_none(), "total=0 returns None");
+    }
+
+    #[test]
+    fn aggregate_audit_report_counts_severity_correctly() {
+        let mk = |name: &str, status| AuditResult {
+            server: name.to_string(),
+            protocol: "ftp".to_string(),
+            host: "h".to_string(),
+            status,
+            message: None,
+            details: serde_json::Value::Object(serde_json::Map::new()),
+        };
+        let results = vec![
+            mk("a", AuditStatus::Ok),
+            mk("b", AuditStatus::Ok),
+            mk("c", AuditStatus::Warning),
+            mk("d", AuditStatus::Critical),
+            mk("e", AuditStatus::Error),
+        ];
+        let r = aggregate_audit_report("storage-quota", results);
+        assert_eq!(r.audit, "storage-quota");
+        assert_eq!(r.servers_checked, 5);
+        assert_eq!(r.servers_ok, 2);
+        assert_eq!(r.servers_warning, 1);
+        assert_eq!(r.servers_critical, 1);
+        assert_eq!(r.servers_error, 1);
+    }
+
+    #[test]
+    fn audit_report_exit_code_severity() {
+        let mk = |status, n: usize| -> AuditReport {
+            AuditReport {
+                audit: "x".into(),
+                timestamp: "now".into(),
+                servers_checked: n,
+                servers_ok: if matches!(status, AuditStatus::Ok) { n } else { 0 },
+                servers_warning: if matches!(status, AuditStatus::Warning) {
+                    n
+                } else {
+                    0
+                },
+                servers_critical: if matches!(status, AuditStatus::Critical) {
+                    n
+                } else {
+                    0
+                },
+                servers_error: if matches!(status, AuditStatus::Error) { n } else { 0 },
+                results: vec![],
+            }
+        };
+        // 0 errors, 0 warnings → 0
+        assert_eq!(audit_report_exit_code(&mk(AuditStatus::Ok, 3), false), 0);
+        // 0 errors, 1 warning → 1
+        assert_eq!(
+            audit_report_exit_code(&mk(AuditStatus::Warning, 1), false),
+            1
+        );
+        // 1 critical → 2
+        assert_eq!(
+            audit_report_exit_code(&mk(AuditStatus::Critical, 1), false),
+            2
+        );
+        // 1 error → 2
+        assert_eq!(audit_report_exit_code(&mk(AuditStatus::Error, 1), false), 2);
+        // exit_code_flag forces 0 even on errors
+        assert_eq!(audit_report_exit_code(&mk(AuditStatus::Error, 1), true), 0);
+    }
+
+    #[test]
+    fn parse_audit_min_size_suffixes() {
+        assert_eq!(parse_audit_min_size("1024").unwrap(), 1024);
+        assert_eq!(parse_audit_min_size("1K").unwrap(), 1024);
+        assert_eq!(parse_audit_min_size("1k").unwrap(), 1024);
+        assert_eq!(parse_audit_min_size("1M").unwrap(), 1_048_576);
+        assert_eq!(parse_audit_min_size("1G").unwrap(), 1_073_741_824);
+        assert!(parse_audit_min_size("not-a-size").is_err());
+    }
+
+    #[test]
+    fn parse_iso8601_to_unix_handles_rfc3339_and_naive() {
+        // Z-suffix RFC 3339
+        let ts = parse_iso8601_to_unix("2025-01-01T00:00:00Z").unwrap();
+        assert_eq!(ts, 1735689600);
+        // With timezone offset
+        let ts = parse_iso8601_to_unix("2025-01-01T01:00:00+01:00").unwrap();
+        assert_eq!(ts, 1735689600);
+        // Naive variant (no tz, no Z)
+        let ts = parse_iso8601_to_unix("2025-01-01T00:00:00").unwrap();
+        assert_eq!(ts, 1735689600);
+        // Garbage returns None
+        assert!(parse_iso8601_to_unix("not-a-date").is_none());
+    }
+
+    #[test]
+    fn audit_report_serializes_status_lowercase_and_flattens_details() {
+        let r = AuditResult {
+            server: "s1".into(),
+            protocol: "ftp".into(),
+            host: "h".into(),
+            status: AuditStatus::Warning,
+            message: Some("over threshold".into()),
+            details: json!({ "percent": 87.5, "threshold": 80.0 }),
+        };
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["status"], "warning");
+        assert_eq!(v["server"], "s1");
+        // flattened details
+        assert!((v["percent"].as_f64().unwrap() - 87.5).abs() < 1e-9);
+        assert!((v["threshold"].as_f64().unwrap() - 80.0).abs() < 1e-9);
     }
 }

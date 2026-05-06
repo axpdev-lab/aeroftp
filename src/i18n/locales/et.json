@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt prügikast",
             "azureTrashTitle": "Azure Blob prügikast",
             "lockRcloneCrypt": "Lukusta Rclone Crypt kate",
-            "unlockRcloneCrypt": "Dekrüpteeri Rclone Crypt kattena…"
+            "unlockRcloneCrypt": "Dekrüpteeri Rclone Crypt kattena…",
+            "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na"
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Halda profiilide vahel taaskasutatavaid üleslaaditud ikoone. Lohista ümberjärjestamiseks, topeltklõpsa nimel ümbernimetamiseks.",
             "customIconsEmpty": "Kohandatud ikoone pole veel. Laadige üles SVG-, PNG-, JPG-, WEBP- või ICO-faile, et luua oma teek.",
             "customIconsUpload": "Laadi üles",
-            "customIconsRenameHint": "Topeltklõps ümbernimetamiseks"
+            "customIconsRenameHint": "Topeltklõps ümbernimetamiseks",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay ajalõpp",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay seansid lukustuvad automaatselt pärast seda mitteaktiivsuse perioodi. Madalamad väärtused on turvalisemad, kuid nõuavad sagedamini avamist."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Seadistage kõigepealt {provider}",
             "openProviderDocs": "Ava {provider} dokumentatsioon",
             "discoverImageKit": "Meedia CDN ja salvestus loomulike kaustadega (20 GB tasuta)",
-            "discoverUploadcare": "EU meediahaldus CDN-i ja faili-API-dega (3 GB tasuta)"
+            "discoverUploadcare": "EU meediahaldus CDN-i ja faili-API-dega (3 GB tasuta)",
+            "discoverCloudinary": "CDN meediahalduseks REST API-ga (25 krediiti/kuus tasuta)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Ava rclone-crypti kaughoidla (või loo uus) läbipaistva kihina.",
             "aerocryptImportTitle": "Tuvastati Rclone Crypti kiht",
             "aerocryptImportDesc": "Profiil imporditud rclone.conf-ist {name} jaoks: kas avada kiht nüüd?",
-            "aerocryptImportOpen": "Ava kiht"
+            "aerocryptImportOpen": "Ava kiht",
+            "aerovaultOverlayExpired": "AeroVault Overlay on mitteaktiivsuse tõttu lukustatud. Jätkamiseks ava varahoidla uuesti."
         },
         "ai.agentMode.title": "Agendi režiim",
         "ai.agentMode.description": "Juhib tööriistade kinnitamise käitumist, sammupiiranguid ja autonoomia taset.",
@@ -3641,7 +3646,9 @@
                 "tools": "Tööriistad"
             },
             "noResults": "Ükski käsk ei vasta teie otsingule",
-            "placeholder": "Sisestage käsk..."
+            "placeholder": "Sisestage käsk...",
+            "aerovaultOverlayOpen": "Ava AeroVault Overlay",
+            "aerovaultOverlayLock": "Lukusta AeroVault Overlay"
         },
         "plugins": {
             "browser": {

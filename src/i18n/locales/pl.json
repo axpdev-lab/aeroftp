@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Kosz",
             "azureTrashTitle": "Azure Blob Kosz",
             "lockRcloneCrypt": "Zablokuj nakładkę Rclone Crypt",
-            "unlockRcloneCrypt": "Odszyfruj jako nakładkę Rclone Crypt…"
+            "unlockRcloneCrypt": "Odszyfruj jako nakładkę Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Otwórz jako AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Przesyłanie...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Zarządzaj przesłanymi ikonami używanymi ponownie w profilach. Przeciągnij, aby zmienić kolejność, kliknij dwukrotnie nazwę, aby zmienić nazwę.",
             "customIconsEmpty": "Brak jeszcze niestandardowych ikon. Prześlij pliki SVG, PNG, JPG, WEBP lub ICO, aby zbudować bibliotekę.",
             "customIconsUpload": "Prześlij",
-            "customIconsRenameHint": "Kliknij dwukrotnie, aby zmienić nazwę"
+            "customIconsRenameHint": "Kliknij dwukrotnie, aby zmienić nazwę",
+            "aerovaultOverlayTimeoutTitle": "Limit czasu AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Sesje AeroVault Overlay są automatycznie blokowane po tym okresie nieaktywności. Niższe wartości są bezpieczniejsze, ale wymagają częstszego odblokowywania."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Najpierw skonfiguruj {provider}",
             "openProviderDocs": "Otwórz dokumentację {provider}",
             "discoverImageKit": "CDN multimediów i pamięć z natywnymi folderami (20 GB za darmo)",
-            "discoverUploadcare": "Zarządzanie mediami EU z CDN i API plików (3 GB za darmo)"
+            "discoverUploadcare": "Zarządzanie mediami EU z CDN i API plików (3 GB za darmo)",
+            "discoverCloudinary": "CDN do zarządzania mediami z REST API (25 kredytów/miesiąc za darmo)"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Otwórz zdalny zasób rclone-crypt (lub utwórz nowy) jako przezroczystą nakładkę.",
             "aerocryptImportTitle": "Wykryto nakładkę Rclone Crypt",
             "aerocryptImportDesc": "Profil zaimportowany z rclone.conf dla {name}: otworzyć nakładkę teraz?",
-            "aerocryptImportOpen": "Otwórz nakładkę"
+            "aerocryptImportOpen": "Otwórz nakładkę",
+            "aerovaultOverlayExpired": "AeroVault Overlay zablokowany z powodu nieaktywności. Otwórz ponownie sejf, aby kontynuować."
         },
         "security": {
             "totp": {
@@ -3631,7 +3636,9 @@
                 "tools": "Narzędzia"
             },
             "noResults": "Brak poleceń pasujących do wyszukiwania",
-            "placeholder": "Wpisz polecenie..."
+            "placeholder": "Wpisz polecenie...",
+            "aerovaultOverlayOpen": "Otwórz AeroVault Overlay",
+            "aerovaultOverlayLock": "Zablokuj AeroVault Overlay"
         },
         "plugins": {
             "browser": {

@@ -26,6 +26,7 @@ pub mod atomic_write;
 pub mod azure;
 pub mod b2;
 pub mod box_provider;
+pub mod cloudinary;
 pub mod drime_cloud;
 pub mod dropbox;
 pub mod filelu;
@@ -70,6 +71,7 @@ pub use types::*;
 pub use azure::AzureProvider;
 pub use b2::B2Provider;
 pub use box_provider::BoxProvider;
+pub use cloudinary::CloudinaryProvider;
 pub use drime_cloud::DrimeCloudProvider;
 pub use dropbox::DropboxProvider;
 pub use filelu::FileLuProvider;
@@ -779,6 +781,10 @@ impl ProviderFactory {
                 let b2_config = b2::B2Config::from_provider_config(config)?;
                 Ok(Box::new(B2Provider::new(b2_config)))
             }
+            ProviderType::Cloudinary => {
+                let cloudinary_config = cloudinary::CloudinaryConfig::from_provider_config(config)?;
+                Ok(Box::new(CloudinaryProvider::new(cloudinary_config)))
+            }
         }
     }
 
@@ -818,6 +824,7 @@ impl ProviderFactory {
             ProviderType::ImageKit,
             ProviderType::Uploadcare,
             ProviderType::Backblaze,
+            ProviderType::Cloudinary,
         ]
     }
 }

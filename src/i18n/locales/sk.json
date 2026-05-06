@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Kôš",
             "azureTrashTitle": "Azure Blob Kôš",
             "lockRcloneCrypt": "Zamknúť prekrytie Rclone Crypt",
-            "unlockRcloneCrypt": "Dešifrovať ako prekrytie Rclone Crypt…"
+            "unlockRcloneCrypt": "Dešifrovať ako prekrytie Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Otvoriť ako AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Spravujte nahrané ikony znovu použité v rámci profilov. Potiahnutím zmeníte poradie, dvojklikom na názov premenujete.",
             "customIconsEmpty": "Zatiaľ žiadne vlastné ikony. Nahrajte súbory SVG, PNG, JPG, WEBP alebo ICO na vytvorenie knižnice.",
             "customIconsUpload": "Nahrať",
-            "customIconsRenameHint": "Dvojklikom premenujete"
+            "customIconsRenameHint": "Dvojklikom premenujete",
+            "aerovaultOverlayTimeoutTitle": "Časový limit AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Relácie AeroVault Overlay sa automaticky uzamknú po tomto období nečinnosti. Nižšie hodnoty sú bezpečnejšie, ale vyžadujú častejšie odomykanie."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Najprv nastavte {provider}",
             "openProviderDocs": "Otvoriť dokumentáciu {provider}",
             "discoverImageKit": "Mediálne CDN a úložisko s natívnymi priečinkami (20 GB zdarma)",
-            "discoverUploadcare": "EU správa médií s CDN a súborovými API (3 GB zdarma)"
+            "discoverUploadcare": "EU správa médií s CDN a súborovými API (3 GB zdarma)",
+            "discoverCloudinary": "CDN na správu médií s REST API (25 kreditov/mesiac zadarmo)"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Otvorte vzdialené úložisko rclone-crypt (alebo vytvorte nové) ako priehľadné prekrytie.",
             "aerocryptImportTitle": "Zistené prekrytie Rclone Crypt",
             "aerocryptImportDesc": "Profil importovaný z rclone.conf pre {name}: otvoriť prekrytie teraz?",
-            "aerocryptImportOpen": "Otvoriť prekrytie"
+            "aerocryptImportOpen": "Otvoriť prekrytie",
+            "aerovaultOverlayExpired": "AeroVault Overlay je uzamknutý kvôli nečinnosti. Pre pokračovanie znovu otvorte trezor."
         },
         "ai.agentMode.title": "Rezim agenta",
         "ai.agentMode.description": "Ovlada spravanie schvalovania nastrojov, limity krokov a uroven autonomie.",
@@ -3641,7 +3646,9 @@
                 "tools": "Nástroje"
             },
             "noResults": "Žiadne príkazy nezodpovedajú vášmu vyhľadávaniu",
-            "placeholder": "Zadajte príkaz..."
+            "placeholder": "Zadajte príkaz...",
+            "aerovaultOverlayOpen": "Otvoriť AeroVault Overlay",
+            "aerovaultOverlayLock": "Uzamknúť AeroVault Overlay"
         },
         "plugins": {
             "browser": {

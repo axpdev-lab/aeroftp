@@ -50,7 +50,8 @@ export type ProviderType =
   | "immich"
   | "imagekit"
   | "uploadcare"
-  | "backblaze";
+  | "backblaze"
+  | "cloudinary";
 
 // Check if a provider type requires OAuth2 authentication
 export const isOAuthProvider = (type: ProviderType): boolean => {
@@ -132,6 +133,7 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "imagekit",
     "uploadcare",
     "backblaze",
+    "cloudinary",
   ].includes(type);
 };
 
@@ -165,6 +167,8 @@ export const supportsStorageQuota = (type: ProviderType): boolean => {
     "github",
     "gitlab",
     "swift",
+    "cloudinary",
+    "backblaze",
   ].includes(type);
 };
 
@@ -192,6 +196,7 @@ export const supportsNativeShareLink = (type: ProviderType): boolean => {
     "immich",
     "imagekit",
     "uploadcare",
+    "cloudinary",
   ].includes(type);
 };
 

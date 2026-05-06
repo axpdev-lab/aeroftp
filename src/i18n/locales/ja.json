@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt ゴミ箱",
             "azureTrashTitle": "Azure Blob ゴミ箱",
             "lockRcloneCrypt": "Rclone Crypt オーバーレイをロック",
-            "unlockRcloneCrypt": "Rclone Crypt オーバーレイとして復号…"
+            "unlockRcloneCrypt": "Rclone Crypt オーバーレイとして復号…",
+            "openAsAeroVaultOverlay": "AeroVault Overlay として開く"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "プロファイル間で再利用するアップロード済みアイコンを管理します。ドラッグして並べ替え、名前をダブルクリックして名前を変更します。",
             "customIconsEmpty": "カスタムアイコンはまだありません。SVG、PNG、JPG、WEBP、またはICOファイルをアップロードしてライブラリを構築します。",
             "customIconsUpload": "アップロード",
-            "customIconsRenameHint": "ダブルクリックで名前を変更"
+            "customIconsRenameHint": "ダブルクリックで名前を変更",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay のタイムアウト",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay のセッションは、この非アクティブ期間が経過すると自動的にロックされます。値を小さくすると安全性は高まりますが、より頻繁にロック解除する必要があります。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "最初に {provider} をセットアップ",
             "openProviderDocs": "{provider} のドキュメントを開く",
             "discoverImageKit": "ネイティブフォルダ対応のメディア CDN とストレージ (20 GB 無料)",
-            "discoverUploadcare": "CDN とファイル API による EU メディア管理 (3 GB 無料)"
+            "discoverUploadcare": "CDN とファイル API による EU メディア管理 (3 GB 無料)",
+            "discoverCloudinary": "REST APIを備えたメディア管理CDN（毎月25クレジット無料）"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -3511,7 +3515,8 @@
             "aerocryptOverlayInactive": "rclone-crypt リモートを開く（または新規作成する）と透過オーバーレイになります。",
             "aerocryptImportTitle": "Rclone Crypt オーバーレイが検出されました",
             "aerocryptImportDesc": "{name} 用のプロファイルが rclone.conf からインポートされました: オーバーレイを今開きますか？",
-            "aerocryptImportOpen": "オーバーレイを開く"
+            "aerocryptImportOpen": "オーバーレイを開く",
+            "aerovaultOverlayExpired": "非アクティブのため AeroVault Overlay がロックされました。続行するにはボルトを再度開いてください。"
         },
         "masterPassword": {
             "autoLockTimeout": "自動ロックタイムアウト",
@@ -3631,7 +3636,9 @@
                 "tools": "ツール"
             },
             "noResults": "検索に一致するコマンドがありません",
-            "placeholder": "コマンドを入力..."
+            "placeholder": "コマンドを入力...",
+            "aerovaultOverlayOpen": "AeroVault Overlay を開く",
+            "aerovaultOverlayLock": "AeroVault Overlay をロック"
         },
         "plugins": {
             "browser": {

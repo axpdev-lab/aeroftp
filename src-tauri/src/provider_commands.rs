@@ -266,6 +266,7 @@ impl ProviderConnectionParams {
             "immich" => ProviderType::Immich,
             "imagekit" | "image_kit" => ProviderType::ImageKit,
             "uploadcare" | "upload_care" => ProviderType::Uploadcare,
+            "cloudinary" => ProviderType::Cloudinary,
             "b2" | "backblaze" | "backblazeb2" => ProviderType::Backblaze,
             other => return Err(format!("Unknown protocol: {}", other)),
         };
@@ -328,6 +329,31 @@ impl ProviderConnectionParams {
                 return Err("Uploadcare requires the public API key".to_string());
             }
             extra.insert("public_key".to_string(), self.username.trim().to_string());
+        }
+
+        if provider_type == ProviderType::Cloudinary {
+            // Cloudinary requires cloud_name (account identifier) + api_key
+            // (username) + api_secret (password). The cloud_name is shipped
+            // either via the dedicated `cloud_name` extra or via the host
+            // field as a courtesy fallback.
+            if self.username.trim().is_empty() {
+                return Err("Cloudinary requires the API key".to_string());
+            }
+            let cloud_name = self
+                .bucket
+                .as_ref()
+                .map(|b| b.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    let h = self.server.trim();
+                    if h.is_empty() || h == "api.cloudinary.com" {
+                        None
+                    } else {
+                        Some(h.to_string())
+                    }
+                })
+                .ok_or_else(|| "Cloudinary requires the cloud name".to_string())?;
+            extra.insert("cloud_name".to_string(), cloud_name);
         }
 
         if provider_type == ProviderType::WebDav && self.anonymous.unwrap_or(false) {
@@ -509,6 +535,8 @@ impl ProviderConnectionParams {
             "api.imagekit.io".to_string()
         } else if provider_type == ProviderType::Uploadcare {
             "api.uploadcare.com".to_string()
+        } else if provider_type == ProviderType::Cloudinary {
+            "api.cloudinary.com".to_string()
         } else if provider_type == ProviderType::Azure {
             // Azure constructs endpoint from account_name if server is empty
             if self.server.is_empty() {

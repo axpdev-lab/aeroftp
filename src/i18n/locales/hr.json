@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt smece",
             "azureTrashTitle": "Azure Blob smece",
             "lockRcloneCrypt": "Zaključaj prekrivač Rclone Crypt",
-            "unlockRcloneCrypt": "Dešifriraj kao prekrivač Rclone Crypt…"
+            "unlockRcloneCrypt": "Dešifriraj kao prekrivač Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Otvori kao AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Upravljajte učitanim ikonama koje se ponovno koriste u profilima. Povucite za promjenu redoslijeda, dvostruki klik na naziv za preimenovanje.",
             "customIconsEmpty": "Još nema prilagođenih ikona. Učitajte SVG, PNG, JPG, WEBP ili ICO datoteke da biste izgradili svoju biblioteku.",
             "customIconsUpload": "Učitaj",
-            "customIconsRenameHint": "Dvostruki klik za preimenovanje"
+            "customIconsRenameHint": "Dvostruki klik za preimenovanje",
+            "aerovaultOverlayTimeoutTitle": "Istek vremena AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Sesije AeroVault Overlay automatski se zaključavaju nakon ovog razdoblja neaktivnosti. Niže vrijednosti su sigurnije, ali zahtijevaju češće otključavanje."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Najprije postavite {provider}",
             "openProviderDocs": "Otvori dokumentaciju za {provider}",
             "discoverImageKit": "Medijski CDN i pohrana s nativnim mapama (20 GB besplatno)",
-            "discoverUploadcare": "EU upravljanje medijima s CDN-om i API-jima za datoteke (3 GB besplatno)"
+            "discoverUploadcare": "EU upravljanje medijima s CDN-om i API-jima za datoteke (3 GB besplatno)",
+            "discoverCloudinary": "CDN za upravljanje medijima s REST API-jem (25 kredita/mjesec besplatno)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Otvorite rclone-crypt udaljeni sustav (ili stvorite novi) kao transparentan sloj.",
             "aerocryptImportTitle": "Otkriven Rclone Crypt sloj",
             "aerocryptImportDesc": "Profil uvezen iz rclone.conf za {name}: otvoriti sloj sada?",
-            "aerocryptImportOpen": "Otvori sloj"
+            "aerocryptImportOpen": "Otvori sloj",
+            "aerovaultOverlayExpired": "AeroVault Overlay zaključan zbog neaktivnosti. Ponovno otvorite trezor za nastavak."
         },
         "ai.agentMode.title": "Agentski nacin",
         "ai.agentMode.description": "Kontrolira ponasanje odobravanja alata, ogranicenja koraka i razinu autonomije.",
@@ -3641,7 +3646,9 @@
                 "tools": "Alati"
             },
             "noResults": "Nijedna naredba ne odgovara vašem pretraživanju",
-            "placeholder": "Unesite naredbu..."
+            "placeholder": "Unesite naredbu...",
+            "aerovaultOverlayOpen": "Otvori AeroVault Overlay",
+            "aerovaultOverlayLock": "Zaključaj AeroVault Overlay"
         },
         "plugins": {
             "browser": {

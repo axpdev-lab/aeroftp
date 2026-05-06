@@ -1,6 +1,6 @@
 //! Out-of-band rsync mux event layer (Sinergia 8h).
 //!
-//! After Sinergie 8b–8c the demuxer surfaces every non-`MSG_DATA` frame as
+//! After Sinergie 8b-8c the demuxer surfaces every non-`MSG_DATA` frame as
 //! a `(MuxTag, payload)` pair through `real_wire::ReassemblyReport`.
 //! Sinergia 8h turns those pairs into a typed, classified
 //! `AerorsyncEvent` enum that downstream consumers (the future S8i

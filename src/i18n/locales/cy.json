@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Sbwriel Internxt",
             "azureTrashTitle": "Sbwriel Azure Blob",
             "lockRcloneCrypt": "Cloi troshaen Rclone Crypt",
-            "unlockRcloneCrypt": "Dadgryptio fel troshaen Rclone Crypt…"
+            "unlockRcloneCrypt": "Dadgryptio fel troshaen Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Agor fel AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Rheoli eiconau wedi'u huwchlwytho a ailddefnyddir ar draws proffiliau. Llusgo i aildrefnu, clic dwbl ar yr enw i ailenwi.",
             "customIconsEmpty": "Dim eiconau personol eto. Uwchlwythwch ffeiliau SVG, PNG, JPG, WEBP, neu ICO i adeiladu eich llyfrgell.",
             "customIconsUpload": "Uwchlwytho",
-            "customIconsRenameHint": "Clic dwbl i ailenwi"
+            "customIconsRenameHint": "Clic dwbl i ailenwi",
+            "aerovaultOverlayTimeoutTitle": "Goramser AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Mae sesiynau AeroVault Overlay yn cloi'n awtomatig ar ôl y cyfnod hwn o anweithgarwch. Mae gwerthoedd is yn fwy diogel ond mae angen datgloi'n amlach."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Sefydlu {provider} yn gyntaf",
             "openProviderDocs": "Agor dogfennaeth {provider}",
             "discoverImageKit": "CDN cyfryngau a storfa gyda ffolderi brodorol (20 GB am ddim)",
-            "discoverUploadcare": "Rheoli cyfryngau EU gyda CDN ac API ffeiliau (3 GB am ddim)"
+            "discoverUploadcare": "Rheoli cyfryngau EU gyda CDN ac API ffeiliau (3 GB am ddim)",
+            "discoverCloudinary": "CDN ar gyfer rheoli cyfryngau gyda REST API (25 credyd/mis am ddim)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Agorwch anghysbell rclone-crypt (neu creu un newydd) fel haen dryloyw.",
             "aerocryptImportTitle": "Canfuwyd haen Rclone Crypt",
             "aerocryptImportDesc": "Proffil wedi'i fewnforio o rclone.conf ar gyfer {name}: agor yr haen nawr?",
-            "aerocryptImportOpen": "Agor yr haen"
+            "aerocryptImportOpen": "Agor yr haen",
+            "aerovaultOverlayExpired": "Mae AeroVault Overlay wedi'i gloi oherwydd anweithgarwch. Ailagor y gladdgell i barhau."
         },
         "ai.agentMode.title": "Modd Asiant",
         "ai.agentMode.description": "Yn rheoli ymddygiad cymeradwyo offer, terfynau camau, a lefel ymreolaeth.",
@@ -3641,7 +3646,9 @@
                 "tools": "Offer"
             },
             "noResults": "Nid oes unrhyw orchmynion yn cyfateb i'ch chwiliad",
-            "placeholder": "Teipiwch orchymyn..."
+            "placeholder": "Teipiwch orchymyn...",
+            "aerovaultOverlayOpen": "Agor AeroVault Overlay",
+            "aerovaultOverlayLock": "Cloi AeroVault Overlay"
         },
         "plugins": {
             "browser": {

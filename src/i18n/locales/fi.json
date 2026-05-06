@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt roskakori",
             "azureTrashTitle": "Azure Blob roskakori",
             "lockRcloneCrypt": "Lukitse Rclone Crypt -peittokerros",
-            "unlockRcloneCrypt": "Pura salaus Rclone Crypt -peittokerroksena…"
+            "unlockRcloneCrypt": "Pura salaus Rclone Crypt -peittokerroksena…",
+            "openAsAeroVaultOverlay": "Avaa AeroVault Overlayna"
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Hallinnoi profiilien välillä uudelleenkäytettyjä ladattuja kuvakkeita. Vedä järjestääksesi uudelleen, kaksoisnapsauta nimeä nimetäksesi uudelleen.",
             "customIconsEmpty": "Ei vielä mukautettuja kuvakkeita. Lataa SVG-, PNG-, JPG-, WEBP- tai ICO-tiedostoja kirjastosi luomiseksi.",
             "customIconsUpload": "Lataa",
-            "customIconsRenameHint": "Kaksoisnapsauta nimetäksesi uudelleen"
+            "customIconsRenameHint": "Kaksoisnapsauta nimetäksesi uudelleen",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlayn aikakatkaisu",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-istunnot lukittuvat automaattisesti tämän käyttämättömyysajan jälkeen. Pienemmät arvot ovat turvallisempia, mutta vaativat tiheämpiä avaamisia."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Määritä {provider} ensin",
             "openProviderDocs": "Avaa {provider}-dokumentaatio",
             "discoverImageKit": "Media-CDN ja tallennus natiivikansioilla (20 GB ilmaiseksi)",
-            "discoverUploadcare": "EU-mediahallinta CDN:llä ja tiedostorajapinnoilla (3 GB ilmaiseksi)"
+            "discoverUploadcare": "EU-mediahallinta CDN:llä ja tiedostorajapinnoilla (3 GB ilmaiseksi)",
+            "discoverCloudinary": "Median hallinnan CDN REST API:lla (25 krediittiä/kk ilmaiseksi)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Avaa rclone-crypt-etäpaikka (tai luo uusi) läpinäkyvänä peittokerroksena.",
             "aerocryptImportTitle": "Rclone Crypt -peittokerros havaittu",
             "aerocryptImportDesc": "Profiili tuotu rclone.conf-tiedostosta nimelle {name}: avataanko peittokerros nyt?",
-            "aerocryptImportOpen": "Avaa peittokerros"
+            "aerocryptImportOpen": "Avaa peittokerros",
+            "aerovaultOverlayExpired": "AeroVault Overlay on lukittu käyttämättömyyden vuoksi. Avaa holvi uudelleen jatkaaksesi."
         },
         "ai.agentMode.title": "Agenttitila",
         "ai.agentMode.description": "Hallitsee työkalujen hyväksymiskäyttäytymistä, vaiheiden rajoja ja autonomian tasoa.",
@@ -3641,7 +3646,9 @@
                 "tools": "Työkalut"
             },
             "noResults": "Yksikään komento ei vastaa hakuasi",
-            "placeholder": "Kirjoita komento..."
+            "placeholder": "Kirjoita komento...",
+            "aerovaultOverlayOpen": "Avaa AeroVault Overlay",
+            "aerovaultOverlayLock": "Lukitse AeroVault Overlay"
         },
         "plugins": {
             "browser": {

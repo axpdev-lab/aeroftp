@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt lomtar",
             "azureTrashTitle": "Azure Blob lomtar",
             "lockRcloneCrypt": "Rclone Crypt fedőréteg zárolása",
-            "unlockRcloneCrypt": "Visszafejtés Rclone Crypt fedőrétegként…"
+            "unlockRcloneCrypt": "Visszafejtés Rclone Crypt fedőrétegként…",
+            "openAsAeroVaultOverlay": "Megnyitás AeroVault Overlay-ként"
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Kezelje a profilok között újrahasznált feltöltött ikonokat. Húzza az átrendezéshez, kattintson duplán a névre az átnevezéshez.",
             "customIconsEmpty": "Még nincsenek egyéni ikonok. Töltsön fel SVG-, PNG-, JPG-, WEBP- vagy ICO-fájlokat a könyvtár felépítéséhez.",
             "customIconsUpload": "Feltöltés",
-            "customIconsRenameHint": "Kattintson duplán az átnevezéshez"
+            "customIconsRenameHint": "Kattintson duplán az átnevezéshez",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay időtúllépés",
+            "aerovaultOverlayTimeoutDesc": "Az AeroVault Overlay munkamenetek ezen inaktivitási idő után automatikusan zárolódnak. Az alacsonyabb értékek biztonságosabbak, de gyakoribb feloldást igényelnek."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Először állítsa be a következőt: {provider}",
             "openProviderDocs": "{provider} dokumentáció megnyitása",
             "discoverImageKit": "Média CDN és tárhely natív mappákkal (20 GB ingyenes)",
-            "discoverUploadcare": "EU médiakezelés CDN-nel és fájl API-kkal (3 GB ingyenes)"
+            "discoverUploadcare": "EU médiakezelés CDN-nel és fájl API-kkal (3 GB ingyenes)",
+            "discoverCloudinary": "Médiakezelő CDN REST API-val (25 kredit/hónap ingyenes)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Nyisson meg egy rclone-crypt távoli tárolót (vagy hozzon létre újat) átlátszó rétegként.",
             "aerocryptImportTitle": "Rclone Crypt réteg észlelve",
             "aerocryptImportDesc": "Profil importálva a rclone.conf fájlból ehhez: {name}: megnyitja most a réteget?",
-            "aerocryptImportOpen": "Réteg megnyitása"
+            "aerocryptImportOpen": "Réteg megnyitása",
+            "aerovaultOverlayExpired": "Az AeroVault Overlay inaktivitás miatt zárolva. A folytatáshoz nyissa meg újra a széfet."
         },
         "ai.agentMode.title": "Agens mod",
         "ai.agentMode.description": "Az eszkoz-jovahagyas viselkedeset, a lepeskorlatokat es az autonomia szintjet szabalyozza.",
@@ -3641,7 +3646,9 @@
                 "tools": "Eszközök"
             },
             "noResults": "Nincs a keresésnek megfelelő parancs",
-            "placeholder": "Írjon be egy parancsot..."
+            "placeholder": "Írjon be egy parancsot...",
+            "aerovaultOverlayOpen": "AeroVault Overlay megnyitása",
+            "aerovaultOverlayLock": "AeroVault Overlay zárolása"
         },
         "plugins": {
             "browser": {

@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Basurahan",
             "azureTrashTitle": "Azure Blob Basurahan",
             "lockRcloneCrypt": "I-lock ang Rclone Crypt overlay",
-            "unlockRcloneCrypt": "I-decrypt bilang Rclone Crypt overlay…"
+            "unlockRcloneCrypt": "I-decrypt bilang Rclone Crypt overlay…",
+            "openAsAeroVaultOverlay": "Buksan bilang AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Naglilipat...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Pamahalaan ang mga na-upload na icon na ginagamit muli sa lahat ng profile. I-drag upang muling ayusin, mag-double-click sa pangalan upang palitan ang pangalan.",
             "customIconsEmpty": "Wala pang custom na icon. Mag-upload ng SVG, PNG, JPG, WEBP, o ICO files upang buuin ang iyong library.",
             "customIconsUpload": "I-upload",
-            "customIconsRenameHint": "Mag-double-click upang palitan ang pangalan"
+            "customIconsRenameHint": "Mag-double-click upang palitan ang pangalan",
+            "aerovaultOverlayTimeoutTitle": "Timeout ng AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Ang mga session ng AeroVault Overlay ay awtomatikong nila-lock pagkatapos ng panahong ito ng kawalan ng aktibidad. Mas ligtas ang mas mababang halaga ngunit nangangailangan ng mas madalas na pag-unlock."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "I-setup muna ang {provider}",
             "openProviderDocs": "Buksan ang dokumentasyon ng {provider}",
             "discoverImageKit": "Media CDN at imbakan na may native na mga folder (20 GB libre)",
-            "discoverUploadcare": "Pamamahala ng EU media na may CDN at file API (3 GB libre)"
+            "discoverUploadcare": "Pamamahala ng EU media na may CDN at file API (3 GB libre)",
+            "discoverCloudinary": "CDN para sa pamamahala ng media na may REST API (25 credits/buwan libre)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Magbukas ng remote ng rclone-crypt (o gumawa ng bago) bilang transparent na overlay.",
             "aerocryptImportTitle": "Natukoy ang overlay ng Rclone Crypt",
             "aerocryptImportDesc": "Na-import ang profile mula sa rclone.conf para sa {name}: buksan ang overlay ngayon?",
-            "aerocryptImportOpen": "Buksan ang overlay"
+            "aerocryptImportOpen": "Buksan ang overlay",
+            "aerovaultOverlayExpired": "Naka-lock ang AeroVault Overlay dahil sa kawalan ng aktibidad. Buksan muli ang vault upang magpatuloy."
         },
         "ai.agentMode.title": "Mode ng Ahente",
         "ai.agentMode.description": "Kinokontrol ang gawi ng pag-apruba ng mga kasangkapan, limitasyon ng mga hakbang at antas ng awtonomiya.",
@@ -3641,7 +3646,9 @@
                 "tools": "Mga Kasangkapan"
             },
             "noResults": "Walang mga utos na tumutugma sa iyong paghahanap",
-            "placeholder": "Mag-type ng utos..."
+            "placeholder": "Mag-type ng utos...",
+            "aerovaultOverlayOpen": "Buksan ang AeroVault Overlay",
+            "aerovaultOverlayLock": "I-lock ang AeroVault Overlay"
         },
         "plugins": {
             "browser": {

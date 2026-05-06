@@ -89,6 +89,7 @@ impl B2Config {
 // ─── Auth state ───
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AuthorizeResponse {
     account_id: String,
     authorization_token: String,

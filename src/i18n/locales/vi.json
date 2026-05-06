@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt Thùng rác",
             "azureTrashTitle": "Azure Blob Thùng rác",
             "lockRcloneCrypt": "Khóa lớp phủ Rclone Crypt",
-            "unlockRcloneCrypt": "Giải mã làm lớp phủ Rclone Crypt…"
+            "unlockRcloneCrypt": "Giải mã làm lớp phủ Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Mở dưới dạng AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Quản lý các biểu tượng đã tải lên được sử dụng lại trên các hồ sơ. Kéo để sắp xếp lại, nhấp đúp vào tên để đổi tên.",
             "customIconsEmpty": "Chưa có biểu tượng tùy chỉnh. Tải lên các tệp SVG, PNG, JPG, WEBP hoặc ICO để xây dựng thư viện của bạn.",
             "customIconsUpload": "Tải lên",
-            "customIconsRenameHint": "Nhấp đúp để đổi tên"
+            "customIconsRenameHint": "Nhấp đúp để đổi tên",
+            "aerovaultOverlayTimeoutTitle": "Thời gian chờ AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Các phiên AeroVault Overlay sẽ tự động khóa sau khoảng thời gian không hoạt động này. Giá trị thấp hơn an toàn hơn nhưng yêu cầu mở khóa thường xuyên hơn."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Thiết lập {provider} trước",
             "openProviderDocs": "Mở tài liệu {provider}",
             "discoverImageKit": "CDN phương tiện và lưu trữ với thư mục gốc (20 GB miễn phí)",
-            "discoverUploadcare": "Quản lý phương tiện EU với CDN và API tệp (3 GB miễn phí)"
+            "discoverUploadcare": "Quản lý phương tiện EU với CDN và API tệp (3 GB miễn phí)",
+            "discoverCloudinary": "CDN quản lý media với REST API (25 tín dụng/tháng miễn phí)"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Mở một remote rclone-crypt (hoặc tạo mới) làm lớp phủ trong suốt.",
             "aerocryptImportTitle": "Đã phát hiện lớp phủ Rclone Crypt",
             "aerocryptImportDesc": "Đã nhập hồ sơ từ rclone.conf cho {name}: mở lớp phủ ngay bây giờ?",
-            "aerocryptImportOpen": "Mở lớp phủ"
+            "aerocryptImportOpen": "Mở lớp phủ",
+            "aerovaultOverlayExpired": "AeroVault Overlay đã bị khóa do không hoạt động. Mở lại kho để tiếp tục."
         },
         "ai.agentMode.title": "Che do Agent",
         "ai.agentMode.description": "Kiem soat hanh vi phe duyet cong cu, gioi han buoc va muc do tu chu.",
@@ -3641,7 +3646,9 @@
                 "tools": "Công cụ"
             },
             "noResults": "Không có lệnh nào khớp với tìm kiếm của bạn",
-            "placeholder": "Nhập lệnh..."
+            "placeholder": "Nhập lệnh...",
+            "aerovaultOverlayOpen": "Mở AeroVault Overlay",
+            "aerovaultOverlayLock": "Khóa AeroVault Overlay"
         },
         "plugins": {
             "browser": {

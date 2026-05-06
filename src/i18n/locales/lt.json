@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Internxt šiukšliadėžė",
             "azureTrashTitle": "Azure Blob šiukšliadėžė",
             "lockRcloneCrypt": "Užrakinti Rclone Crypt sluoksnį",
-            "unlockRcloneCrypt": "Iššifruoti kaip Rclone Crypt sluoksnį…"
+            "unlockRcloneCrypt": "Iššifruoti kaip Rclone Crypt sluoksnį…",
+            "openAsAeroVaultOverlay": "Atidaryti kaip AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Tvarkykite įkeltas piktogramas, naudojamas pakartotinai visuose profiliuose. Vilkite, kad pertvarkytumėte, dukart spustelėkite pavadinimą, kad pervadintumėte.",
             "customIconsEmpty": "Pasirinktinių piktogramų dar nėra. Įkelkite SVG, PNG, JPG, WEBP arba ICO failus, kad sukurtumėte savo biblioteką.",
             "customIconsUpload": "Įkelti",
-            "customIconsRenameHint": "Dukart spustelėkite pervadinti"
+            "customIconsRenameHint": "Dukart spustelėkite pervadinti",
+            "aerovaultOverlayTimeoutTitle": "AeroVault Overlay laiko limitas",
+            "aerovaultOverlayTimeoutDesc": "AeroVault Overlay seansai automatiškai užrakinami po šio neveiklumo laikotarpio. Mažesnės reikšmės yra saugesnės, tačiau reikalauja dažnesnio atrakinimo."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Pirmiausia nustatykite {provider}",
             "openProviderDocs": "Atidaryti {provider} dokumentaciją",
             "discoverImageKit": "Medijos CDN ir saugykla su gimtaisiais aplankais (20 GB nemokamai)",
-            "discoverUploadcare": "EU medijos valdymas su CDN ir failų API (3 GB nemokamai)"
+            "discoverUploadcare": "EU medijos valdymas su CDN ir failų API (3 GB nemokamai)",
+            "discoverCloudinary": "CDN medijų valdymui su REST API (25 kreditai per mėnesį nemokamai)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Atidarykite rclone-crypt nuotolinę saugyklą (arba sukurkite naują) kaip skaidrų sluoksnį.",
             "aerocryptImportTitle": "Aptiktas Rclone Crypt sluoksnis",
             "aerocryptImportDesc": "Profilis importuotas iš rclone.conf: {name}: atidaryti sluoksnį dabar?",
-            "aerocryptImportOpen": "Atidaryti sluoksnį"
+            "aerocryptImportOpen": "Atidaryti sluoksnį",
+            "aerovaultOverlayExpired": "AeroVault Overlay užrakintas dėl neveiklumo. Norėdami tęsti, atidarykite seifą iš naujo."
         },
         "ai.agentMode.title": "Agento rezimas",
         "ai.agentMode.description": "Valdo irankiu patvirtinimo elgsena, zingsniu limitus ir autonomijos lygi.",
@@ -3641,7 +3646,9 @@
                 "tools": "Įrankiai"
             },
             "noResults": "Jokia komanda neatitinka jūsų paieškos",
-            "placeholder": "Įveskite komandą..."
+            "placeholder": "Įveskite komandą...",
+            "aerovaultOverlayOpen": "Atidaryti AeroVault Overlay",
+            "aerovaultOverlayLock": "Užrakinti AeroVault Overlay"
         },
         "plugins": {
             "browser": {

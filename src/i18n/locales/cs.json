@@ -395,7 +395,8 @@
             "internxtTrashTitle": "Koš Internxt",
             "azureTrashTitle": "Koš Azure Blob",
             "lockRcloneCrypt": "Zamknout překryv Rclone Crypt",
-            "unlockRcloneCrypt": "Dešifrovat jako překryv Rclone Crypt…"
+            "unlockRcloneCrypt": "Dešifrovat jako překryv Rclone Crypt…",
+            "openAsAeroVaultOverlay": "Otevřít jako AeroVault Overlay"
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -945,7 +946,9 @@
             "customIconsLibraryDesc": "Spravujte nahrané ikony znovu použité napříč profily. Přetažením změníte pořadí, dvojitým kliknutím na název přejmenujete.",
             "customIconsEmpty": "Zatím žádné vlastní ikony. Nahrajte soubory SVG, PNG, JPG, WEBP nebo ICO pro vytvoření knihovny.",
             "customIconsUpload": "Nahrát",
-            "customIconsRenameHint": "Dvojitým kliknutím přejmenujete"
+            "customIconsRenameHint": "Dvojitým kliknutím přejmenujete",
+            "aerovaultOverlayTimeoutTitle": "Časový limit AeroVault Overlay",
+            "aerovaultOverlayTimeoutDesc": "Relace AeroVault Overlay se po této době nečinnosti automaticky uzamknou. Nižší hodnoty jsou bezpečnější, ale vyžadují častější odemykání."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1605,7 +1608,8 @@
             "setupSteps": "Nejprve nastavte {provider}",
             "openProviderDocs": "Otevřít dokumentaci {provider}",
             "discoverImageKit": "Mediální CDN a úložiště s nativními složkami (20 GB zdarma)",
-            "discoverUploadcare": "EU správa médií s CDN a souborovým API (3 GB zdarma)"
+            "discoverUploadcare": "EU správa médií s CDN a souborovým API (3 GB zdarma)",
+            "discoverCloudinary": "CDN pro správu médií s REST API (25 kreditů/měsíc zdarma)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",
@@ -3546,7 +3550,8 @@
             "aerocryptOverlayInactive": "Otevřete vzdálené úložiště rclone-crypt (nebo vytvořte nové) jako transparentní vrstvu.",
             "aerocryptImportTitle": "Detekována vrstva Rclone Crypt",
             "aerocryptImportDesc": "Profil importován z rclone.conf pro {name}: otevřít vrstvu nyní?",
-            "aerocryptImportOpen": "Otevřít vrstvu"
+            "aerocryptImportOpen": "Otevřít vrstvu",
+            "aerovaultOverlayExpired": "AeroVault Overlay byl uzamčen kvůli nečinnosti. Pro pokračování trezor znovu otevřete."
         },
         "ai.agentMode.title": "Režim agenta",
         "ai.agentMode.description": "Ovládá chování schvalování nástrojů, limity kroků a úroveň autonomie.",
@@ -3641,7 +3646,9 @@
                 "tools": "Nástroje"
             },
             "noResults": "Žádné příkazy neodpovídají vašemu hledání",
-            "placeholder": "Zadejte příkaz..."
+            "placeholder": "Zadejte příkaz...",
+            "aerovaultOverlayOpen": "Otevřít AeroVault Overlay",
+            "aerovaultOverlayLock": "Uzamknout AeroVault Overlay"
         },
         "plugins": {
             "browser": {

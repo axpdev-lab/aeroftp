@@ -651,7 +651,7 @@ html.cyber .sync-panel {
     color: var(--sync-accent);
 }
 
-/* Preset cards — grid 3 columns */
+/* Preset cards: grid 3 columns */
 .sync-preset-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -682,7 +682,7 @@ html.cyber .sync-panel {
     cursor: not-allowed;
 }
 
-/* Speed mode pills — flex row */
+/* Speed mode pills: flex row */
 .sync-speed-pills {
     display: flex;
     gap: 6px;
@@ -719,7 +719,7 @@ html.cyber .sync-panel {
     cursor: not-allowed;
 }
 
-/* Maniac — Cyber theme only (hidden by default) */
+/* Maniac: Cyber theme only (hidden by default) */
 .sync-speed-pill.maniac {
     display: none;
 }
