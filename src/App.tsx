@@ -1209,11 +1209,18 @@ interface UpdateVerificationInfo {
     fileTags.getTagsForFile,
   ]);
 
+  // Theme cycle (shared between Ctrl+T shortcut and titlebar onToggleTheme)
+  const cycleTheme = useCallback(() => {
+    const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
+    setTheme(order[(order.indexOf(theme) + 1) % order.length]);
+  }, [theme, setTheme]);
+
   // Keyboard Shortcuts
   useKeyboardShortcuts({
     'F1': () => setShowShortcutsDialog(v => !v),
     'Ctrl+,': () => setShowSettingsPanel(true),
     'Ctrl+Shift+P': () => setShowCommandPalette(v => !v),
+    'Ctrl+T': cycleTheme,
 
     // Delete: delete selected files
     'Delete': () => {
@@ -8312,10 +8319,7 @@ interface UpdateVerificationInfo {
           onRefresh={() => { if (isConnected) loadRemoteFiles(); loadLocalFiles(currentLocalPath); }}
           onNewFolder={() => { if (isConnected) createFolder(true); }}
           onToggleDevTools={() => setDevToolsOpen(prev => !prev)}
-          onToggleTheme={() => {
-            const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
-            setTheme(order[(order.indexOf(theme) + 1) % order.length]);
-          }}
+          onToggleTheme={cycleTheme}
           onToggleDebugMode={() => setDebugMode(!debugMode)}
           onRename={() => {
             if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {

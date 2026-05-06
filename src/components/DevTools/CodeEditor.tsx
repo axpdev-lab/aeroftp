@@ -121,6 +121,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const onAskAgentRef = useRef(onAskAgent);
     const fileRef = useRef(file);
+    const handleSaveRef = useRef<() => Promise<void>>(async () => { /* set after declaration */ });
     // Monaco IDisposable handles: every `addAction`, `defineTheme`, and
     // `onDidChangeX` returns one. Previously these were discarded and the
     // theme registry plus action closures leaked on every remount; on
@@ -171,6 +172,22 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         });
         if (askAction) {
             disposablesRef.current.push(askAction);
+        }
+
+        // Ctrl+S: save the current file. Registered as a Monaco action so the
+        // global keyboard-shortcuts hook (which guards .monaco-editor focus by
+        // design) does not need to relay it. Reads handleSaveRef so the closure
+        // always sees the latest props (onSave, originalContent).
+        const saveAction = editor.addAction({
+            id: 'aeroftp-save',
+            label: 'Save',
+            keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+            run: () => {
+                void handleSaveRef.current();
+            },
+        });
+        if (saveAction) {
+            disposablesRef.current.push(saveAction);
         }
 
         // Force layout update after mount to fix rendering issues
@@ -311,6 +328,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             setIsSaving(false);
         }
     };
+
+    // Keep the ref in sync so the Monaco Ctrl+S addAction closure always
+    // sees the latest handleSave (which closes over the latest onSave prop
+    // and originalContent).
+    useEffect(() => {
+        handleSaveRef.current = handleSave;
+    });
 
     const handleReset = () => {
         if (editorRef.current && originalContent) {
