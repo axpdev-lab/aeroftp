@@ -23693,7 +23693,7 @@ async fn run_audit_backup_freshness(
                         let mut newest_name: Option<String> = None;
                         for e in &filtered {
                             if let Some(m) = e.modified.as_deref().and_then(parse_iso8601_to_unix) {
-                                if newest_unix.map_or(true, |cur| m > cur) {
+                                if newest_unix.is_none_or(|cur| m > cur) {
                                     newest_unix = Some(m);
                                     newest_name = Some(e.name.clone());
                                 }
