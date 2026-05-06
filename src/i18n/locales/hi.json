@@ -983,7 +983,7 @@
                 "stop": "रोकें",
                 "stopShell": "शेल रोकें",
                 "closed": "टर्मिनल बंद हो गया।",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Terminal में कमांड डाला गया। चलाने के लिए Enter दबाएं।"
             },
             "editorPanel": {
                 "emptyState": "किसी फ़ाइल पर राइट-क्लिक करें और \"संपादित करें\" चुनें",
@@ -992,7 +992,7 @@
                 "saving": "सहेजा जा रहा है...",
                 "noFileSelected": "संपादन के लिए कोई फ़ाइल चयनित नहीं है",
                 "loading": "संपादक लोड हो रहा है...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "रन कमांड डालने के लिए Terminal पर खींचें"
             },
             "previewPanel": {
                 "emptyState": "किसी फ़ाइल पर राइट-क्लिक करें और \"पूर्वावलोकन\" चुनें"
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "नेटिव B2 v4 API: बड़ी फ़ाइल वर्कफ़्लो, सर्वर-साइड कॉपी, संस्करण इतिहास (10 GB मुफ़्त)",
             "setupSteps": "पहले {provider} सेटअप करें",
             "openProviderDocs": "{provider} दस्तावेज़ खोलें",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "नेटिव फ़ोल्डर के साथ मीडिया CDN और स्टोरेज (20 GB मुफ़्त)",
+            "discoverUploadcare": "CDN और फ़ाइल API के साथ EU मीडिया प्रबंधन (3 GB मुफ़्त)"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",
@@ -3541,7 +3541,12 @@
             "showRemote": "रिमोट दिखाएं",
             "showSystemMenu": "सिस्टम मेनू बार दिखाएं",
             "aerovaultOverlayActive": "AeroVault कंटेनर ओवरले सक्रिय — अलग करने के लिए क्लिक करें",
-            "aerovaultOverlayInactive": ".aerovault कंटेनर को वर्चुअल रिमोट पैनल के रूप में खोलें। rclone-crypt ओवरले के लिए रिमोट फ़ोल्डर पर राइट-क्लिक का उपयोग करें।"
+            "aerovaultOverlayInactive": ".aerovault कंटेनर को वर्चुअल रिमोट पैनल के रूप में खोलें। rclone-crypt ओवरले के लिए रिमोट फ़ोल्डर पर राइट-क्लिक का उपयोग करें।",
+            "aerocryptOverlayActive": "AeroCrypt ओवरले सक्रिय: इस पैनल में अपलोड और डाउनलोड एन्क्रिप्टेड हैं। अलग करने के लिए क्लिक करें।",
+            "aerocryptOverlayInactive": "एक rclone-crypt रिमोट खोलें (या नया बनाएं) पारदर्शी ओवरले के रूप में।",
+            "aerocryptImportTitle": "Rclone Crypt ओवरले का पता चला",
+            "aerocryptImportDesc": "{name} के लिए rclone.conf से प्रोफ़ाइल आयात किया गया: अभी ओवरले खोलें?",
+            "aerocryptImportOpen": "ओवरले खोलें"
         },
         "ai.agentMode.title": "एजेंट मोड",
         "ai.agentMode.description": "टूल अनुमोदन व्यवहार, चरण सीमाओं और स्वायत्तता स्तर को नियंत्रित करता है।",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} प्रोफ़ाइल · {unique} अद्वितीय क्लाउड ड्राइव",
                 "footerDedupExplained": "वे प्रोफ़ाइल जो एक ही भौतिक डिस्क साझा करती हैं (Koofr WebDAV + REST, OpenDrive WebDAV + REST, समान access key के अंतर्गत Wasabi बकेट) एक ही ड्राइव में संयोजित हो जाती हैं ताकि कोटा केवल एक बार गिना जाए।",
-                "dragToReorder": "पुनः क्रमित करने के लिए खींचें"
+                "dragToReorder": "पुनः क्रमित करने के लिए खींचें",
+                "footerUniqueCount": "{count} अद्वितीय"
             },
             "breakdown": {
                 "title": "प्रोटोकॉल के अनुसार स्टोरेज",
@@ -4319,6 +4325,53 @@
             "reconnecting": "सत्र समाप्त, पुनः कनेक्ट हो रहा है...",
             "reconnected": "सर्वर से पुनः कनेक्ट हो गया",
             "reconnectFailed": "पुनः कनेक्शन विफल। कृपया मैन्युअल रूप से पुनः कनेक्ट करें।"
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt ओवरले",
+            "intro": {
+                "heading": "यह ओवरले क्या करता है",
+                "p1": "सर्वर पर भेजने से पहले फ़ाइल नामों और सामग्री को <strong>तुरंत</strong> एन्क्रिप्ट करता है, और जब आप डाउनलोड करते हैं तो उन्हें डिक्रिप्ट करता है। सर्वर केवल base32 नामों वाले blobs देखता है। आप मूल नाम देखते हैं।",
+                "p2": "जब तक ओवरले सक्रिय है: आपका रिमोट सत्र सामग्री को स्पष्ट रूप से दिखाता है, प्रत्येक अपलोड एन्क्रिप्ट किया जाता है, प्रत्येक डाउनलोड डिक्रिप्ट किया जाता है। पथ बार में <em>AEROCRYPT</em> बैज देखें।",
+                "p3": "AeroVault से अंतर: AeroVault एक एकल स्वतंत्र <code>.aerovault</code> फ़ाइल है (AeroFTP प्रारूप)। AeroCrypt सार्वजनिक rclone crypt प्रारूप का उपयोग करते हुए मौजूदा रिमोट (S3/SFTP/WebDAV/...) के ऊपर एक परत है। उसी पासवर्ड से अनलॉक करें जो आप <code>rclone</code> में उपयोग करेंगे।"
+            },
+            "openExisting": "मौजूदा खोलें",
+            "createNew": "नया बनाएं",
+            "password": "पासवर्ड",
+            "passwordPlaceholder": "Rclone crypt पासवर्ड",
+            "salt": "साल्ट (password2, वैकल्पिक)",
+            "saltPlaceholder": "वैकल्पिक साल्ट पासवर्ड",
+            "filenameEncryption": "फ़ाइल नाम एन्क्रिप्शन",
+            "filenameEncOption": {
+                "standard": "मानक (EME)",
+                "obfuscate": "अस्पष्ट करें",
+                "off": "बंद"
+            },
+            "directoryNameEncryption": "निर्देशिका नाम एन्क्रिप्शन",
+            "targetSubpath": "लक्षित उप-पथ (वैकल्पिक)",
+            "targetSubpathPlaceholder": "वर्तमान रिमोट निर्देशिका में आरंभ करने के लिए खाली छोड़ें",
+            "targetSubpathHint": "लक्षित निर्देशिका में एक नया dirIV आरंभ करता है, फिर इसे ओवरले के रूप में अनलॉक करता है।",
+            "unlock": "अनलॉक करें",
+            "createAndUnlock": "बनाएं और अनलॉक करें",
+            "lock": "लॉक करें",
+            "unlocked": "Rclone crypt रिमोट अनलॉक हो गया",
+            "initialised": "Rclone crypt रिमोट आरंभ हो गया",
+            "remoteUnlocked": "रिमोट अनलॉक हो गया (ID: {id}...)",
+            "decryptFilename": "फ़ाइल नाम डिक्रिप्ट करें",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "एन्क्रिप्टेड फ़ाइल नाम (Base32hex)",
+            "decryptName": "नाम डिक्रिप्ट करें",
+            "decryptFileFromDisk": "डिस्क से फ़ाइल डिक्रिप्ट करें",
+            "fileDecryptedTo": "फ़ाइल {path} पर डिक्रिप्ट की गई",
+            "encryptedUploadCompleted": "एन्क्रिप्टेड अपलोड पूर्ण: {path}",
+            "remoteBrowser": "रिमोट ब्राउज़र (पारदर्शी)",
+            "upload": "अपलोड",
+            "up": "ऊपर",
+            "path": "पथ: {path}",
+            "dirIvNotFound": "वर्तमान फ़ोल्डर में dirIV नहीं मिला: नाम एन्क्रिप्टेड रह सकते हैं।",
+            "loading": "लोड हो रहा है...",
+            "emptyFolder": "खाली फ़ोल्डर",
+            "nameNotDecrypted": "नाम डिक्रिप्ट नहीं हुआ",
+            "download": "डाउनलोड"
         }
     }
 }

@@ -983,7 +983,7 @@
                 "stop": "Berhenti",
                 "stopShell": "Hentikan shell",
                 "closed": "Terminal ditutup.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Arahan dimasukkan ke dalam Terminal. Tekan Enter untuk menjalankan."
             },
             "editorPanel": {
                 "emptyState": "Klik kanan pada fail dan pilih \"Edit\"",
@@ -992,7 +992,7 @@
                 "saving": "Menyimpan...",
                 "noFileSelected": "Tiada fail dipilih untuk diedit",
                 "loading": "Memuatkan editor...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Seret ke Terminal untuk memasukkan arahan jalankan"
             },
             "previewPanel": {
                 "emptyState": "Klik kanan pada fail dan pilih \"Pratonton\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "API B2 v4 asli: aliran kerja fail besar, salinan sisi pelayan, sejarah versi (10 GB percuma)",
             "setupSteps": "Sediakan {provider} dahulu",
             "openProviderDocs": "Buka dokumentasi {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN media dan storan dengan folder asli (20 GB percuma)",
+            "discoverUploadcare": "Pengurusan media EU dengan CDN dan API fail (3 GB percuma)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -3541,7 +3541,12 @@
             "showRemote": "Tunjukkan jauh",
             "showSystemMenu": "Tunjukkan bar menu sistem",
             "aerovaultOverlayActive": "Tindihan bekas AeroVault aktif — klik untuk tanggalkan",
-            "aerovaultOverlayInactive": "Buka bekas .aerovault sebagai panel jauh maya. Untuk tindihan rclone-crypt, gunakan klik kanan pada folder jauh."
+            "aerovaultOverlayInactive": "Buka bekas .aerovault sebagai panel jauh maya. Untuk tindihan rclone-crypt, gunakan klik kanan pada folder jauh.",
+            "aerocryptOverlayActive": "Lapisan AeroCrypt aktif: muat naik dan muat turun dalam panel ini disulitkan. Klik untuk menanggalkan.",
+            "aerocryptOverlayInactive": "Buka jauh rclone-crypt (atau cipta baharu) sebagai lapisan telus.",
+            "aerocryptImportTitle": "Lapisan Rclone Crypt dikesan",
+            "aerocryptImportDesc": "Profil diimport daripada rclone.conf untuk {name}: buka lapisan sekarang?",
+            "aerocryptImportOpen": "Buka lapisan"
         },
         "ai.agentMode.title": "Mod Ejen",
         "ai.agentMode.description": "Mengawal tingkah laku kelulusan alat, had langkah dan tahap autonomi.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} pemacu awan unik",
                 "footerDedupExplained": "Profil yang berkongsi cakera fizikal yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, baldi Wasabi dengan kunci akses yang sama) digabungkan menjadi satu pemacu supaya kuota dikira sekali sahaja.",
-                "dragToReorder": "Seret untuk menyusun semula"
+                "dragToReorder": "Seret untuk menyusun semula",
+                "footerUniqueCount": "{count} unik"
             },
             "breakdown": {
                 "title": "Storan mengikut protokol",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Sesi tamat tempoh, menyambung semula...",
             "reconnected": "Disambung semula ke pelayan",
             "reconnectFailed": "Penyambungan semula gagal. Sila sambung semula secara manual."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Lapisan Rclone Crypt",
+            "intro": {
+                "heading": "Apa yang dilakukan lapisan ini",
+                "p1": "Menyulitkan nama fail dan kandungan <strong>secara langsung</strong>, sebelum menghantarnya ke pelayan, dan menyahsulitnya semasa anda muat turun. Pelayan hanya melihat blob dengan nama base32. Anda melihat nama asal.",
+                "p2": "Semasa lapisan aktif: sesi jauh anda memaparkan kandungan secara terang, setiap muat naik disulitkan, setiap muat turun dinyahsulitkan. Cari lencana <em>AEROCRYPT</em> di bar laluan.",
+                "p3": "Perbezaan dengan AeroVault: AeroVault ialah satu fail <code>.aerovault</code> berdiri sendiri (format AeroFTP). AeroCrypt ialah lapisan di atas jauh sedia ada (S3/SFTP/WebDAV/...) menggunakan format rclone crypt awam. Buka kunci dengan kata laluan yang sama yang akan anda gunakan dalam <code>rclone</code>."
+            },
+            "openExisting": "Buka sedia ada",
+            "createNew": "Cipta baharu",
+            "password": "Kata laluan",
+            "passwordPlaceholder": "Kata laluan rclone crypt",
+            "salt": "Garam (password2, pilihan)",
+            "saltPlaceholder": "Kata laluan garam pilihan",
+            "filenameEncryption": "Penyulitan nama fail",
+            "filenameEncOption": {
+                "standard": "Standard (EME)",
+                "obfuscate": "Kaburkan",
+                "off": "Mati"
+            },
+            "directoryNameEncryption": "Penyulitan nama direktori",
+            "targetSubpath": "Sublaluan sasaran (pilihan)",
+            "targetSubpathPlaceholder": "biarkan kosong untuk memulakan dalam direktori jauh semasa",
+            "targetSubpathHint": "Memulakan dirIV baharu dalam direktori sasaran, kemudian membuka kuncinya sebagai lapisan.",
+            "unlock": "Buka kunci",
+            "createAndUnlock": "Cipta & Buka kunci",
+            "lock": "Kunci",
+            "unlocked": "Jauh rclone crypt dibuka kuncinya",
+            "initialised": "Jauh rclone crypt dimulakan",
+            "remoteUnlocked": "Jauh dibuka kuncinya (ID: {id}...)",
+            "decryptFilename": "Nyahsulit nama fail",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Nama fail tersulit (Base32hex)",
+            "decryptName": "Nyahsulit nama",
+            "decryptFileFromDisk": "Nyahsulit fail daripada cakera",
+            "fileDecryptedTo": "Fail dinyahsulitkan ke {path}",
+            "encryptedUploadCompleted": "Muat naik tersulit selesai: {path}",
+            "remoteBrowser": "Pelayar jauh (telus)",
+            "upload": "Muat naik",
+            "up": "Atas",
+            "path": "Laluan: {path}",
+            "dirIvNotFound": "dirIV tidak dijumpai dalam folder semasa: nama mungkin kekal tersulit.",
+            "loading": "Memuatkan...",
+            "emptyFolder": "Folder kosong",
+            "nameNotDecrypted": "nama tidak dinyahsulitkan",
+            "download": "Muat turun"
         }
     }
 }

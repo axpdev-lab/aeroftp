@@ -983,7 +983,7 @@
                 "stop": "Спри",
                 "stopShell": "Спри обвивка",
                 "closed": "Терминалът е затворен.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Командата е въведена в Terminal. Натиснете Enter за изпълнение."
             },
             "editorPanel": {
                 "emptyState": "Натиснете с десен бутон върху файл и изберете \"Редактирай\"",
@@ -992,7 +992,7 @@
                 "saving": "Запазване...",
                 "noFileSelected": "Не е избран файл за редактиране",
                 "loading": "Зареждане на редактор...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Плъзнете към Terminal, за да вмъкнете команда за изпълнение"
             },
             "previewPanel": {
                 "emptyState": "Натиснете с десен бутон върху файл и изберете \"Преглед\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Нативно B2 v4 API: работен поток за големи файлове, копиране от страна на сървъра, история на версиите (10 GB безплатно)",
             "setupSteps": "Първо настройте {provider}",
             "openProviderDocs": "Отваряне на документацията на {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Медийна CDN и съхранение с естествени папки (20 GB безплатно)",
+            "discoverUploadcare": "EU управление на медия с CDN и файлови API (3 GB безплатно)"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",
@@ -3541,7 +3541,12 @@
             "showRemote": "Покажи отдалечено",
             "showSystemMenu": "Покажи системно меню",
             "aerovaultOverlayActive": "Наслагване на контейнер AeroVault активно — щракнете за откачане",
-            "aerovaultOverlayInactive": "Отворете .aerovault контейнер като виртуален отдалечен панел. За наслагване rclone-crypt използвайте десен бутон върху отдалечена папка."
+            "aerovaultOverlayInactive": "Отворете .aerovault контейнер като виртуален отдалечен панел. За наслагване rclone-crypt използвайте десен бутон върху отдалечена папка.",
+            "aerocryptOverlayActive": "Наслагването AeroCrypt е активно: качванията и изтеглянията в този панел са криптирани. Щракнете, за да го откачите.",
+            "aerocryptOverlayInactive": "Отворете rclone-crypt отдалечено хранилище (или създайте ново) като прозрачно наслагване.",
+            "aerocryptImportTitle": "Открито е наслагване Rclone Crypt",
+            "aerocryptImportDesc": "Профил, импортиран от rclone.conf за {name}: да се отвори ли наслагването сега?",
+            "aerocryptImportOpen": "Отвори наслагването"
         },
         "ai.agentMode.title": "Режим на агента",
         "ai.agentMode.description": "Контролира поведението при одобрение на инструменти, ограниченията на стъпките и нивото на автономност.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} профила · {unique} уникални облачни диска",
                 "footerDedupExplained": "Профилите, които споделят един и същ физически диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi бъкети с един и същ access key), се обединяват в един диск, така че квотите се броят само веднъж.",
-                "dragToReorder": "Плъзнете за пренареждане"
+                "dragToReorder": "Плъзнете за пренареждане",
+                "footerUniqueCount": "{count} уникални"
             },
             "breakdown": {
                 "title": "Хранилище по протокол",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Сесията изтече, повторно свързване...",
             "reconnected": "Повторно свързване със сървъра",
             "reconnectFailed": "Повторното свързване не успя. Моля, свържете се отново ръчно."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt наслагване",
+            "intro": {
+                "heading": "Какво прави това наслагване",
+                "p1": "Криптира имената и съдържанието на файловете <strong>в движение</strong>, преди да ги изпрати на сървъра, и ги декриптира при изтегляне. Сървърът вижда само blob-ове с base32 имена. Вие виждате оригиналните имена.",
+                "p2": "Докато наслагването е активно: вашата отдалечена сесия показва съдържанието в чист вид, всяко качване се криптира, всяко изтегляне се декриптира. Потърсете значката <em>AEROCRYPT</em> в адресната лента.",
+                "p3": "Разлика спрямо AeroVault: AeroVault е единичен самостоятелен <code>.aerovault</code> файл (формат на AeroFTP). AeroCrypt е слой върху съществуващо отдалечено хранилище (S3/SFTP/WebDAV/...), използващ публичния формат rclone crypt. Отключете със същата парола, която бихте използвали в <code>rclone</code>."
+            },
+            "openExisting": "Отвори съществуващо",
+            "createNew": "Създай ново",
+            "password": "Парола",
+            "passwordPlaceholder": "Парола за rclone crypt",
+            "salt": "Сол (password2, по избор)",
+            "saltPlaceholder": "Парола за сол (по избор)",
+            "filenameEncryption": "Криптиране на имена на файлове",
+            "filenameEncOption": {
+                "standard": "Стандартно (EME)",
+                "obfuscate": "Замаскиране",
+                "off": "Изключено"
+            },
+            "directoryNameEncryption": "Криптиране на имена на директории",
+            "targetSubpath": "Целеви под-път (по избор)",
+            "targetSubpathPlaceholder": "оставете празно за инициализация в текущата отдалечена директория",
+            "targetSubpathHint": "Инициализира нов dirIV в целевата директория, след което я отключва като наслагване.",
+            "unlock": "Отключи",
+            "createAndUnlock": "Създай и отключи",
+            "lock": "Заключи",
+            "unlocked": "Rclone crypt отдалеченото хранилище е отключено",
+            "initialised": "Rclone crypt отдалеченото хранилище е инициализирано",
+            "remoteUnlocked": "Отдалеченото хранилище е отключено (ID: {id}...)",
+            "decryptFilename": "Декриптирай име на файл",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Криптирано име на файл (Base32hex)",
+            "decryptName": "Декриптирай името",
+            "decryptFileFromDisk": "Декриптирай файл от диска",
+            "fileDecryptedTo": "Файлът е декриптиран в {path}",
+            "encryptedUploadCompleted": "Криптираното качване завърши: {path}",
+            "remoteBrowser": "Отдалечен браузър (прозрачен)",
+            "upload": "Качване",
+            "up": "Нагоре",
+            "path": "Път: {path}",
+            "dirIvNotFound": "dirIV не е намерен в текущата папка: имената може да останат криптирани.",
+            "loading": "Зареждане...",
+            "emptyFolder": "Празна папка",
+            "nameNotDecrypted": "името не е декриптирано",
+            "download": "Изтегляне"
         }
     }
 }

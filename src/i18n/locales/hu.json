@@ -983,7 +983,7 @@
                 "stop": "Leállítás",
                 "stopShell": "Shell leállítása",
                 "closed": "Terminál bezárva.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Parancs beillesztve a Terminálba. Nyomjon Enter-t a futtatáshoz."
             },
             "editorPanel": {
                 "emptyState": "Kattintson jobb gombbal egy fájlra, és válassza a \"Szerkesztés\" lehetőséget",
@@ -992,7 +992,7 @@
                 "saving": "Mentés...",
                 "noFileSelected": "Nincs fájl kiválasztva szerkesztésre",
                 "loading": "Szerkesztő betöltése...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Húzza a Terminálba a futtatási parancs beillesztéséhez"
             },
             "previewPanel": {
                 "emptyState": "Kattintson jobb gombbal egy fájlra, és válassza az \"Előnézet\" lehetőséget"
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Natív B2 v4 API: nagy fájlok munkafolyamata, szerveroldali másolás, verzióelőzmények (10 GB ingyen)",
             "setupSteps": "Először állítsa be a következőt: {provider}",
             "openProviderDocs": "{provider} dokumentáció megnyitása",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Média CDN és tárhely natív mappákkal (20 GB ingyenes)",
+            "discoverUploadcare": "EU médiakezelés CDN-nel és fájl API-kkal (3 GB ingyenes)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -3541,7 +3541,12 @@
             "showRemote": "Távoli megjelenítése",
             "showSystemMenu": "Rendszer menüsor megjelenítése",
             "aerovaultOverlayActive": "AeroVault konténer fedőréteg aktív — kattintson a leválasztáshoz",
-            "aerovaultOverlayInactive": "Nyisson meg egy .aerovault konténert virtuális távoli panelként. Az rclone-crypt fedőréteghez kattintson a jobb gombbal egy távoli mappára."
+            "aerovaultOverlayInactive": "Nyisson meg egy .aerovault konténert virtuális távoli panelként. Az rclone-crypt fedőréteghez kattintson a jobb gombbal egy távoli mappára.",
+            "aerocryptOverlayActive": "AeroCrypt réteg aktív: a feltöltések és letöltések ezen a panelen titkosítottak. Kattintson a leválasztáshoz.",
+            "aerocryptOverlayInactive": "Nyisson meg egy rclone-crypt távoli tárolót (vagy hozzon létre újat) átlátszó rétegként.",
+            "aerocryptImportTitle": "Rclone Crypt réteg észlelve",
+            "aerocryptImportDesc": "Profil importálva a rclone.conf fájlból ehhez: {name}: megnyitja most a réteget?",
+            "aerocryptImportOpen": "Réteg megnyitása"
         },
         "ai.agentMode.title": "Agens mod",
         "ai.agentMode.description": "Az eszkoz-jovahagyas viselkedeset, a lepeskorlatokat es az autonomia szintjet szabalyozza.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} egyedi felhőmeghajtó",
                 "footerDedupExplained": "Az azonos fizikai lemezt használó profilok (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ugyanazon hozzáférési kulcs alatti Wasabi tárolók) egyetlen meghajtóvá olvadnak össze, így a kvóták csak egyszer számítanak.",
-                "dragToReorder": "Húzza az átrendezéshez"
+                "dragToReorder": "Húzza az átrendezéshez",
+                "footerUniqueCount": "{count} egyedi"
             },
             "breakdown": {
                 "title": "Tárhely protokoll szerint",
@@ -4319,6 +4325,53 @@
             "reconnecting": "A munkamenet lejárt, újracsatlakozás...",
             "reconnected": "Újra csatlakozva a kiszolgálóhoz",
             "reconnectFailed": "Az újracsatlakozás nem sikerült. Csatlakozzon újra manuálisan."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt réteg",
+            "intro": {
+                "heading": "Mit csinál ez a réteg",
+                "p1": "Titkosítja a fájlneveket és a tartalmakat <strong>menet közben</strong>, mielőtt a szerverre küldené, és visszafejti letöltéskor. A szerver csak base32 nevű blobokat lát. Ön az eredeti neveket látja.",
+                "p2": "Amíg a réteg aktív: a távoli munkamenet tisztán jeleníti meg a tartalmat, minden feltöltés titkosított, minden letöltés visszafejtett. Keresse az <em>AEROCRYPT</em> jelvényt az útvonalsávban.",
+                "p3": "Eltérés az AeroVaulttól: az AeroVault egy önálló <code>.aerovault</code> fájl (AeroFTP formátum). Az AeroCrypt egy réteg a meglévő távoli tároló (S3/SFTP/WebDAV/...) tetején, a nyilvános rclone crypt formátumot használva. Ugyanazzal a jelszóval oldja fel, amit a <code>rclone</code>-ban is használna."
+            },
+            "openExisting": "Meglévő megnyitása",
+            "createNew": "Új létrehozása",
+            "password": "Jelszó",
+            "passwordPlaceholder": "Rclone crypt jelszó",
+            "salt": "Só (password2, opcionális)",
+            "saltPlaceholder": "Opcionális só jelszó",
+            "filenameEncryption": "Fájlnév titkosítás",
+            "filenameEncOption": {
+                "standard": "Szabványos (EME)",
+                "obfuscate": "Elhomályosítás",
+                "off": "Ki"
+            },
+            "directoryNameEncryption": "Könyvtárnév titkosítás",
+            "targetSubpath": "Cél alútvonal (opcionális)",
+            "targetSubpathPlaceholder": "hagyja üresen az aktuális távoli könyvtárban való inicializáláshoz",
+            "targetSubpathHint": "Új dirIV-t inicializál a célkönyvtárban, majd rétegként feloldja.",
+            "unlock": "Feloldás",
+            "createAndUnlock": "Létrehozás és feloldás",
+            "lock": "Zárolás",
+            "unlocked": "Rclone crypt távoli tároló feloldva",
+            "initialised": "Rclone crypt távoli tároló inicializálva",
+            "remoteUnlocked": "Távoli tároló feloldva (ID: {id}...)",
+            "decryptFilename": "Fájlnév visszafejtése",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Titkosított fájlnév (Base32hex)",
+            "decryptName": "Név visszafejtése",
+            "decryptFileFromDisk": "Fájl visszafejtése lemezről",
+            "fileDecryptedTo": "Fájl visszafejtve ide: {path}",
+            "encryptedUploadCompleted": "Titkosított feltöltés kész: {path}",
+            "remoteBrowser": "Távoli böngésző (átlátszó)",
+            "upload": "Feltöltés",
+            "up": "Fel",
+            "path": "Útvonal: {path}",
+            "dirIvNotFound": "dirIV nem található az aktuális mappában: a nevek titkosítva maradhatnak.",
+            "loading": "Betöltés...",
+            "emptyFolder": "Üres mappa",
+            "nameNotDecrypted": "név nincs visszafejtve",
+            "download": "Letöltés"
         }
     }
 }

@@ -983,7 +983,7 @@
                 "stop": "Gelditu",
                 "stopShell": "Gelditu shell-a",
                 "closed": "Terminala itxita.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Komandoa Terminalean txertatuta. Sakatu Enter exekutatzeko."
             },
             "editorPanel": {
                 "emptyState": "Egin eskuin-klika fitxategi batean eta aukeratu \"Editatu\"",
@@ -992,7 +992,7 @@
                 "saving": "Gordetzen...",
                 "noFileSelected": "Ez da fitxategirik hautatu editatzeko",
                 "loading": "Editorea kargatzen...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Arrastatu Terminalera exekutatzeko komandoa txertatzeko"
             },
             "previewPanel": {
                 "emptyState": "Egin eskuin-klika fitxategi batean eta aukeratu \"Aurrebista\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Jatorrizko B2 v4 APIa: fitxategi handien lan-fluxua, zerbitzariko kopia, bertsio-historia (10 GB doan)",
             "setupSteps": "Konfiguratu {provider} lehenik",
             "openProviderDocs": "Ireki {provider} dokumentazioa",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Multimedia CDN eta biltegiratzea karpeta natiboekin (20 GB doan)",
+            "discoverUploadcare": "EU multimedia-kudeaketa CDN eta fitxategi APIekin (3 GB doan)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -3541,7 +3541,12 @@
             "showRemote": "Erakutsi urrunekoa",
             "showSystemMenu": "Erakutsi sistemaren menu-barra",
             "aerovaultOverlayActive": "AeroVault edukiontziaren gainjartzea aktibo — egin klik askatzeko",
-            "aerovaultOverlayInactive": "Ireki .aerovault edukiontzi bat urruneko panel birtual gisa. rclone-crypt gainjartzerako, egin klik eskuineko botoiarekin urruneko karpeta batean."
+            "aerovaultOverlayInactive": "Ireki .aerovault edukiontzi bat urruneko panel birtual gisa. rclone-crypt gainjartzerako, egin klik eskuineko botoiarekin urruneko karpeta batean.",
+            "aerocryptOverlayActive": "AeroCrypt geruza aktibo: panel honetako kargak eta deskargak zifratuta daude. Egin klik deskonektatzeko.",
+            "aerocryptOverlayInactive": "Ireki rclone-crypt urruneko bat (edo sortu berri bat) gardena geruza gisa.",
+            "aerocryptImportTitle": "Rclone Crypt geruza detektatu da",
+            "aerocryptImportDesc": "{name}(r)entzat rclone.conf-etik inportatutako profila: orain ireki geruza?",
+            "aerocryptImportOpen": "Ireki geruza"
         },
         "ai.agentMode.title": "Agente modua",
         "ai.agentMode.description": "Tresnen onarpen portaera, urratsen mugak eta autonomia maila kontrolatzen ditu.",
@@ -4197,7 +4202,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} hodeiko unitate esklusibo",
                 "footerDedupExplained": "Disko fisiko bera partekatzen duten profilak (Koofr WebDAV + REST, OpenDrive WebDAV + REST, access key bera duten Wasabi bucket-ak) unitate bakarrean batzen dira, kuotak behin bakarrik zenbatu daitezen.",
-                "dragToReorder": "Arrastatu berrantolatzeko"
+                "dragToReorder": "Arrastatu berrantolatzeko",
+                "footerUniqueCount": "{count} bakar"
             },
             "breakdown": {
                 "title": "Biltegiratzea protokoloka",
@@ -4338,6 +4344,53 @@
             "reconnecting": "Saioa iraungi da, berriro konektatzen...",
             "reconnected": "Berriro zerbitzariarekin konektatuta",
             "reconnectFailed": "Birkonexioak huts egin du. Mesedez, eskuz berriro konektatu."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt geruza",
+            "intro": {
+                "heading": "Geruza honek zer egiten duen",
+                "p1": "Fitxategi-izenak eta edukiak <strong>bidean</strong> zifratzen ditu, zerbitzarira bidali aurretik, eta deszifratu egiten ditu deskargatzean. Zerbitzariak base32 izenak dituzten blob-ak baino ez ditu ikusten. Zuk jatorrizko izenak ikusten dituzu.",
+                "p2": "Geruza aktibo dagoen bitartean: zure urruneko saioak edukia argi erakusten du, kargatze guztiak zifratu egiten dira, deskarga guztiak deszifratu egiten dira. Bilatu <em>AEROCRYPT</em> bereizgarria bide-barran.",
+                "p3": "AeroVaultekiko aldea: AeroVault fitxategi bakar autoeraman bat da <code>.aerovault</code> (AeroFTP formatua). AeroCrypt urruneko sistema baten gainean dagoen geruza bat da (S3/SFTP/WebDAV/...) rclone crypt formatu publikoa erabiliz. Desblokeatu <code>rclone</code>-n erabiliko zenukeen pasahitz berarekin."
+            },
+            "openExisting": "Ireki dagoena",
+            "createNew": "Sortu berria",
+            "password": "Pasahitza",
+            "passwordPlaceholder": "Rclone crypt pasahitza",
+            "salt": "Gatza (password2, aukerakoa)",
+            "saltPlaceholder": "Aukerako gatz pasahitza",
+            "filenameEncryption": "Fitxategi-izenen zifratzea",
+            "filenameEncOption": {
+                "standard": "Estandarra (EME)",
+                "obfuscate": "Iluntzea",
+                "off": "Desaktibatuta"
+            },
+            "directoryNameEncryption": "Direktorio-izenen zifratzea",
+            "targetSubpath": "Helburuko azpibidea (aukerakoa)",
+            "targetSubpathPlaceholder": "utzi hutsik uneko urruneko direktorioan hasieratzeko",
+            "targetSubpathHint": "Helburuko direktorioan dirIV berri bat hasieratzen du eta gero geruza gisa desblokeatzen du.",
+            "unlock": "Desblokeatu",
+            "createAndUnlock": "Sortu eta desblokeatu",
+            "lock": "Blokeatu",
+            "unlocked": "Rclone crypt urruneko desblokeatua",
+            "initialised": "Rclone crypt urruneko hasieratua",
+            "remoteUnlocked": "Urrunekoa desblokeatua (ID: {id}...)",
+            "decryptFilename": "Deszifratu fitxategi-izena",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Zifratutako fitxategi-izena (Base32hex)",
+            "decryptName": "Deszifratu izena",
+            "decryptFileFromDisk": "Deszifratu fitxategia diskotik",
+            "fileDecryptedTo": "Fitxategia hemen deszifratuta: {path}",
+            "encryptedUploadCompleted": "Zifratutako kargatzea osatuta: {path}",
+            "remoteBrowser": "Urruneko nabigatzailea (gardena)",
+            "upload": "Kargatu",
+            "up": "Gora",
+            "path": "Bidea: {path}",
+            "dirIvNotFound": "dirIV ez da aurkitu uneko karpetan: izenak zifratuta gera daitezke.",
+            "loading": "Kargatzen...",
+            "emptyFolder": "Karpeta hutsa",
+            "nameNotDecrypted": "izena ez da deszifratu",
+            "download": "Deskargatu"
         }
     }
 }

@@ -983,7 +983,7 @@
                 "stop": "Apturēt",
                 "stopShell": "Apturēt čaulu",
                 "closed": "Terminālis aizvērts.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Komanda ievietota Terminal. Nospiediet Enter, lai palaistu."
             },
             "editorPanel": {
                 "emptyState": "Ar peles labo pogu noklikšķiniet uz faila un izvēlieties \"Rediģēt\"",
@@ -992,7 +992,7 @@
                 "saving": "Saglabā...",
                 "noFileSelected": "Nav izvēlēts fails rediģēšanai",
                 "loading": "Tiek ielādēts redaktors...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Velciet uz Terminal, lai ievietotu palaišanas komandu"
             },
             "previewPanel": {
                 "emptyState": "Ar peles labo pogu noklikšķiniet uz faila un izvēlieties \"Priekšskatījums\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Vietējā B2 v4 API: lielu failu darbplūsma, kopēšana serverī, versiju vēsture (10 GB bez maksas)",
             "setupSteps": "Vispirms iestatiet {provider}",
             "openProviderDocs": "Atvērt {provider} dokumentāciju",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Mediju CDN un krātuve ar dzimtajām mapēm (20 GB bez maksas)",
+            "discoverUploadcare": "EU mediju pārvaldība ar CDN un failu API (3 GB bez maksas)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -3541,7 +3541,12 @@
             "showRemote": "Rādīt attālināto",
             "showSystemMenu": "Rādīt sistēmas izvēlnes joslu",
             "aerovaultOverlayActive": "AeroVault konteinera pārklājums aktīvs — klikšķiniet, lai atvienotu",
-            "aerovaultOverlayInactive": "Atveriet .aerovault konteineru kā virtuālu attālo paneli. rclone-crypt pārklājumam izmantojiet labo klikšķi uz attālās mapes."
+            "aerovaultOverlayInactive": "Atveriet .aerovault konteineru kā virtuālu attālo paneli. rclone-crypt pārklājumam izmantojiet labo klikšķi uz attālās mapes.",
+            "aerocryptOverlayActive": "AeroCrypt slānis aktīvs: augšupielādes un lejupielādes šajā panelī tiek šifrētas. Noklikšķiniet, lai atvienotu.",
+            "aerocryptOverlayInactive": "Atveriet rclone-crypt attālo krātuvi (vai izveidojiet jaunu) kā caurspīdīgu slāni.",
+            "aerocryptImportTitle": "Atklāts Rclone Crypt slānis",
+            "aerocryptImportDesc": "Profils importēts no rclone.conf priekš {name}: atvērt slāni tagad?",
+            "aerocryptImportOpen": "Atvērt slāni"
         },
         "ai.agentMode.title": "Agenta rezims",
         "ai.agentMode.description": "Kontrole riku apstiprinasanas uzvedibui, solu ierobezojumiem un autonomijas limeni.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profili · {unique} unikāli mākoņdiski",
                 "footerDedupExplained": "Profili, kas izmanto vienu un to pašu fizisko disku (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi grozi ar vienu piekļuves atslēgu), tiek apvienoti vienā diskā, lai kvotas tiktu skaitītas tikai vienreiz.",
-                "dragToReorder": "Velciet, lai pārkārtotu"
+                "dragToReorder": "Velciet, lai pārkārtotu",
+                "footerUniqueCount": "{count} unikāli"
             },
             "breakdown": {
                 "title": "Krātuve pēc protokola",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Sesijas laiks beidzies, atkārtoti savienojas...",
             "reconnected": "Atkārtoti savienots ar serveri",
             "reconnectFailed": "Atkārtota savienošana neizdevās. Lūdzu, atkārtoti savienojieties manuāli."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt slānis",
+            "intro": {
+                "heading": "Ko dara šis slānis",
+                "p1": "Šifrē failu nosaukumus un saturu <strong>uzreiz</strong>, pirms tos nosūtīt uz serveri, un atšifrē, kad lejupielādējat. Serveris redz tikai blobus ar base32 nosaukumiem. Jūs redzat oriģinālos nosaukumus.",
+                "p2": "Kamēr slānis ir aktīvs: jūsu attālā sesija parāda saturu skaidrā tekstā, katra augšupielāde tiek šifrēta, katra lejupielāde tiek atšifrēta. Meklējiet <em>AEROCRYPT</em> emblēmu ceļa joslā.",
+                "p3": "Atšķirība no AeroVault: AeroVault ir viens patstāvīgs <code>.aerovault</code> fails (AeroFTP formāts). AeroCrypt ir slānis virs esošas attālās krātuves (S3/SFTP/WebDAV/...), izmantojot publisko rclone crypt formātu. Atbloķējiet ar to pašu paroli, kuru izmantotu <code>rclone</code>."
+            },
+            "openExisting": "Atvērt esošu",
+            "createNew": "Izveidot jaunu",
+            "password": "Parole",
+            "passwordPlaceholder": "Rclone crypt parole",
+            "salt": "Sāls (password2, izvēles)",
+            "saltPlaceholder": "Izvēles sāls parole",
+            "filenameEncryption": "Faila nosaukuma šifrēšana",
+            "filenameEncOption": {
+                "standard": "Standarta (EME)",
+                "obfuscate": "Maskēt",
+                "off": "Izslēgts"
+            },
+            "directoryNameEncryption": "Direktorijas nosaukuma šifrēšana",
+            "targetSubpath": "Mērķa apakšceļš (izvēles)",
+            "targetSubpathPlaceholder": "atstājiet tukšu, lai inicializētu pašreizējā attālajā direktorijā",
+            "targetSubpathHint": "Inicializē jaunu dirIV mērķa direktorijā, pēc tam atbloķē to kā slāni.",
+            "unlock": "Atbloķēt",
+            "createAndUnlock": "Izveidot un atbloķēt",
+            "lock": "Bloķēt",
+            "unlocked": "Rclone crypt attālā krātuve atbloķēta",
+            "initialised": "Rclone crypt attālā krātuve inicializēta",
+            "remoteUnlocked": "Attālā krātuve atbloķēta (ID: {id}...)",
+            "decryptFilename": "Atšifrēt faila nosaukumu",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Šifrēts faila nosaukums (Base32hex)",
+            "decryptName": "Atšifrēt nosaukumu",
+            "decryptFileFromDisk": "Atšifrēt failu no diska",
+            "fileDecryptedTo": "Fails atšifrēts uz {path}",
+            "encryptedUploadCompleted": "Šifrēta augšupielāde pabeigta: {path}",
+            "remoteBrowser": "Attālais pārlūks (caurspīdīgs)",
+            "upload": "Augšupielādēt",
+            "up": "Augšup",
+            "path": "Ceļš: {path}",
+            "dirIvNotFound": "dirIV nav atrasts pašreizējā mapē: nosaukumi var palikt šifrēti.",
+            "loading": "Ielādē...",
+            "emptyFolder": "Tukša mape",
+            "nameNotDecrypted": "nosaukums nav atšifrēts",
+            "download": "Lejupielādēt"
         }
     }
 }

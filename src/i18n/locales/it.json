@@ -2947,6 +2947,53 @@
             "v2Advanced": "AeroVault v2 (Sicurezza Avanzata)",
             "encryptFolderPreview": "{fileCount} file in {dirCount} cartelle ({totalSize})"
         },
+        "aerocrypt": {
+            "title": "AeroCrypt · Overlay Rclone Crypt",
+            "intro": {
+                "heading": "Cosa fa l'overlay",
+                "p1": "Cifra i nomi e i contenuti dei file <strong>al volo</strong>, prima di mandarli al server, e li decifra quando li scarichi. Il server vede solo blob con nomi base32. Tu vedi i nomi originali.",
+                "p2": "Mentre l'overlay è attivo: la tua sessione remota mostra i contenuti in chiaro, ogni upload viene cifrato, ogni download decifrato. Vedi il badge <em>AEROCRYPT</em> nella path bar.",
+                "p3": "Differenza rispetto ad AeroVault: AeroVault è un singolo file <code>.aerovault</code> autoportante (formato AeroFTP). AeroCrypt è un layer su un remote esistente (S3/SFTP/WebDAV/...) usando il formato pubblico rclone crypt. Sblocca con la stessa password che useresti in <code>rclone</code>."
+            },
+            "openExisting": "Apri esistente",
+            "createNew": "Crea nuovo",
+            "password": "Password",
+            "passwordPlaceholder": "Password rclone crypt",
+            "salt": "Salt (password2, opzionale)",
+            "saltPlaceholder": "Password salt opzionale",
+            "filenameEncryption": "Cifratura nomi file",
+            "filenameEncOption": {
+                "standard": "Standard (EME)",
+                "obfuscate": "Offuscata",
+                "off": "Disattivata"
+            },
+            "directoryNameEncryption": "Cifratura nomi cartelle",
+            "targetSubpath": "Sottopath di destinazione (opzionale)",
+            "targetSubpathPlaceholder": "lascia vuoto per inizializzare nella cartella remota corrente",
+            "targetSubpathHint": "Inizializza un dirIV nuovo nella directory di destinazione, poi la sblocca come overlay.",
+            "unlock": "Sblocca",
+            "createAndUnlock": "Crea e sblocca",
+            "lock": "Blocca",
+            "unlocked": "Remote rclone crypt sbloccato",
+            "initialised": "Remote rclone crypt inizializzato",
+            "remoteUnlocked": "Remote sbloccato (ID: {id}...)",
+            "decryptFilename": "Decifra nome file",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Nome file cifrato (Base32hex)",
+            "decryptName": "Decifra nome",
+            "decryptFileFromDisk": "Decifra file dal disco",
+            "fileDecryptedTo": "File decifrato in {path}",
+            "encryptedUploadCompleted": "Upload cifrato completato: {path}",
+            "remoteBrowser": "Browser remoto (trasparente)",
+            "upload": "Upload",
+            "up": "Su",
+            "path": "Percorso: {path}",
+            "dirIvNotFound": "dirIV non trovato nella cartella corrente: i nomi potrebbero restare cifrati.",
+            "loading": "Caricamento...",
+            "emptyFolder": "Cartella vuota",
+            "nameNotDecrypted": "nome non decifrato",
+            "download": "Scarica"
+        },
         "cryptomator": {
             "confirmPassword": "Conferma Password",
             "createVault": "Crea Vault Cryptomator",
@@ -3614,7 +3661,12 @@
             "showRemote": "Mostra remoto",
             "showSystemMenu": "Mostra barra menu di sistema",
             "aerovaultOverlayActive": "Overlay container AeroVault attivo — clicca per disattivare",
-            "aerovaultOverlayInactive": "Apri un container .aerovault come pannello remoto virtuale. Per l'overlay rclone-crypt usa il click destro su una cartella remota."
+            "aerovaultOverlayInactive": "Apri un container .aerovault come pannello remoto virtuale. Per l'overlay rclone-crypt usa il click destro su una cartella remota.",
+            "aerocryptOverlayActive": "Overlay AeroCrypt attivo: gli upload e download in questo pannello sono cifrati. Clicca per disattivare.",
+            "aerocryptOverlayInactive": "Apri un remote rclone-crypt (o creane uno nuovo) come overlay trasparente.",
+            "aerocryptImportTitle": "Overlay Rclone Crypt rilevato",
+            "aerocryptImportDesc": "Profilo importato da rclone.conf per {name}: aprire l'overlay ora?",
+            "aerocryptImportOpen": "Apri overlay"
         },
         "security": {
             "totp": {
@@ -4207,6 +4259,7 @@
                     "favorite": "Preferito"
                 },
                 "footerSummaryNoQuota": "{count} profili · {unique} drive cloud unici",
+                "footerUniqueCount": "{count} unici",
                 "footerDedupExplained": "I profili che condividono lo stesso disco fisico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket Wasabi con la stessa access key) vengono accorpati in un singolo drive così le quote sono contate una sola volta."
             },
             "breakdown": {

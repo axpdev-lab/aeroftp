@@ -983,7 +983,7 @@
                 "stop": "Zaustavi",
                 "stopShell": "Zaustavi ljusku",
                 "closed": "Terminal zatvoren.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Naredba umetnuta u Terminal. Pritisnite Enter za pokretanje."
             },
             "editorPanel": {
                 "emptyState": "Desnom tipkom kliknite na datoteku i odaberite \"Uredi\"",
@@ -992,7 +992,7 @@
                 "saving": "Spremanje...",
                 "noFileSelected": "Nije odabrana datoteka za uređivanje",
                 "loading": "Učitavanje editora...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Povucite u Terminal za umetanje naredbe za pokretanje"
             },
             "previewPanel": {
                 "emptyState": "Desnom tipkom kliknite na datoteku i odaberite \"Pregled\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Izvorni B2 v4 API: tijek rada za velike datoteke, kopiranje na poslužitelju, povijest verzija (10 GB besplatno)",
             "setupSteps": "Najprije postavite {provider}",
             "openProviderDocs": "Otvori dokumentaciju za {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Medijski CDN i pohrana s nativnim mapama (20 GB besplatno)",
+            "discoverUploadcare": "EU upravljanje medijima s CDN-om i API-jima za datoteke (3 GB besplatno)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -3541,7 +3541,12 @@
             "showRemote": "Prikaži udaljeno",
             "showSystemMenu": "Prikaži sistemski izbornik",
             "aerovaultOverlayActive": "Prekrivač AeroVault spremnika aktivan — kliknite za odvajanje",
-            "aerovaultOverlayInactive": "Otvori .aerovault spremnik kao virtualni udaljeni panel. Za prekrivač rclone-crypt koristite desni klik na udaljenu mapu."
+            "aerovaultOverlayInactive": "Otvori .aerovault spremnik kao virtualni udaljeni panel. Za prekrivač rclone-crypt koristite desni klik na udaljenu mapu.",
+            "aerocryptOverlayActive": "AeroCrypt sloj aktivan: uploadi i downloadi u ovom panelu su šifrirani. Kliknite za odvajanje.",
+            "aerocryptOverlayInactive": "Otvorite rclone-crypt udaljeni sustav (ili stvorite novi) kao transparentan sloj.",
+            "aerocryptImportTitle": "Otkriven Rclone Crypt sloj",
+            "aerocryptImportDesc": "Profil uvezen iz rclone.conf za {name}: otvoriti sloj sada?",
+            "aerocryptImportOpen": "Otvori sloj"
         },
         "ai.agentMode.title": "Agentski nacin",
         "ai.agentMode.description": "Kontrolira ponasanje odobravanja alata, ogranicenja koraka i razinu autonomije.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profila · {unique} jedinstvenih cloud diskova",
                 "footerDedupExplained": "Profili koji dijele isti fizički disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi spremnici pod istim ključem) spajaju se u jedan disk kako bi se kvote brojale samo jednom.",
-                "dragToReorder": "Povucite za promjenu redoslijeda"
+                "dragToReorder": "Povucite za promjenu redoslijeda",
+                "footerUniqueCount": "{count} jedinstvenih"
             },
             "breakdown": {
                 "title": "Pohrana po protokolu",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Sesija je istekla, ponovno povezivanje...",
             "reconnected": "Ponovno povezano s poslužiteljem",
             "reconnectFailed": "Ponovno povezivanje nije uspjelo. Ručno se ponovno povežite."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt sloj",
+            "intro": {
+                "heading": "Što ovaj sloj radi",
+                "p1": "Šifrira nazive datoteka i sadržaje <strong>u letu</strong>, prije slanja na poslužitelj, te ih dešifrira pri preuzimanju. Poslužitelj vidi samo binarne podatke s base32 nazivima. Vi vidite originalne nazive.",
+                "p2": "Dok je sloj aktivan: vaša udaljena sesija prikazuje sadržaj otvoreno, svaki upload je šifriran, svaki download je dešifriran. Tražite oznaku <em>AEROCRYPT</em> u traci puta.",
+                "p3": "Razlika u odnosu na AeroVault: AeroVault je jedna samostalna <code>.aerovault</code> datoteka (AeroFTP format). AeroCrypt je sloj povrh postojećeg udaljenog sustava (S3/SFTP/WebDAV/...) koji koristi javni rclone crypt format. Otključajte istom lozinkom koju biste koristili u <code>rclone</code>."
+            },
+            "openExisting": "Otvori postojeći",
+            "createNew": "Stvori novi",
+            "password": "Lozinka",
+            "passwordPlaceholder": "Rclone crypt lozinka",
+            "salt": "Sol (password2, neobavezno)",
+            "saltPlaceholder": "Neobavezna lozinka soli",
+            "filenameEncryption": "Šifriranje naziva datoteka",
+            "filenameEncOption": {
+                "standard": "Standardno (EME)",
+                "obfuscate": "Zamagli",
+                "off": "Isključeno"
+            },
+            "directoryNameEncryption": "Šifriranje naziva direktorija",
+            "targetSubpath": "Ciljni podput (neobavezno)",
+            "targetSubpathPlaceholder": "ostavite prazno za inicijalizaciju u trenutnom udaljenom direktoriju",
+            "targetSubpathHint": "Inicijalizira novi dirIV u ciljnom direktoriju, zatim ga otključava kao sloj.",
+            "unlock": "Otključaj",
+            "createAndUnlock": "Stvori i otključaj",
+            "lock": "Zaključaj",
+            "unlocked": "Rclone crypt udaljeni sustav otključan",
+            "initialised": "Rclone crypt udaljeni sustav inicijaliziran",
+            "remoteUnlocked": "Udaljeni sustav otključan (ID: {id}...)",
+            "decryptFilename": "Dešifriraj naziv datoteke",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Šifrirani naziv datoteke (Base32hex)",
+            "decryptName": "Dešifriraj naziv",
+            "decryptFileFromDisk": "Dešifriraj datoteku s diska",
+            "fileDecryptedTo": "Datoteka dešifrirana u {path}",
+            "encryptedUploadCompleted": "Šifrirani upload dovršen: {path}",
+            "remoteBrowser": "Udaljeni preglednik (transparentan)",
+            "upload": "Upload",
+            "up": "Gore",
+            "path": "Put: {path}",
+            "dirIvNotFound": "dirIV nije pronađen u trenutnoj mapi: nazivi mogu ostati šifrirani.",
+            "loading": "Učitavanje...",
+            "emptyFolder": "Prazna mapa",
+            "nameNotDecrypted": "naziv nije dešifriran",
+            "download": "Preuzmi"
         }
     }
 }

@@ -983,7 +983,7 @@
                 "stop": "Դադարեցնել",
                 "stopShell": "Դադարեցնել թերմինալը",
                 "closed": "Տերմինալը փակված է։",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Հրամանը զետեղված է Terminal-ում։ Սեղմեք Enter՝ գործարկելու համար։"
             },
             "editorPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Խմբագրել»",
@@ -992,7 +992,7 @@
                 "saving": "Պահպանվում է...",
                 "noFileSelected": "Ֆայլ ընտրված չէ խմբագրելու համար",
                 "loading": "Խմբագիր բեռնվում է...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "քաշեք դեպի Terminal՝ գործարկման հրամանը զետեղելու համար"
             },
             "previewPanel": {
                 "emptyState": "Աջ սեղմեք ֆայլի վրա և ընտրեք «Նախադիտում»"
@@ -1597,8 +1597,8 @@
             "discoverBackblazeNative": "Բնիկ B2 v4 API. մեծ ֆայլերի աշխատանքային հոսք, սերվերի կողմից պատճենում, տարբերակների պատմություն (10 ԳԲ անվճար)",
             "setupSteps": "Նախ կարգավորեք {provider}-ը",
             "openProviderDocs": "Բացել {provider}-ի փաստաթղթերը",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Մեդիա CDN և պահոցում ներքին թղթապանակներով (20 GB անվճար)",
+            "discoverUploadcare": "EU մեդիայի կառավարում CDN-ով և ֆայլերի API-ներով (3 GB անվճար)"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -3534,7 +3534,12 @@
             "showRemote": "Ցույց տալ հեռավորը",
             "showSystemMenu": "Ցույց տալ համակարգի մենյուի գոտին",
             "aerovaultOverlayActive": "AeroVault կոնտեյների ծածկույթը ակտիվ է — սեղմեք անջատելու համար",
-            "aerovaultOverlayInactive": "Բացեք .aerovault կոնտեյները որպես վիրտուալ հեռակառավարման վահանակ։ rclone-crypt ծածկույթի համար օգտագործեք աջ սեղմում հեռակառավարման թղթապանակի վրա։"
+            "aerovaultOverlayInactive": "Բացեք .aerovault կոնտեյները որպես վիրտուալ հեռակառավարման վահանակ։ rclone-crypt ծածկույթի համար օգտագործեք աջ սեղմում հեռակառավարման թղթապանակի վրա։",
+            "aerocryptOverlayActive": "AeroCrypt շերտը ակտիվ է. այս վահանակում վերբեռնումները և ներբեռնումները կոդավորված են: Սեղմեք անջատելու համար:",
+            "aerocryptOverlayInactive": "Բացեք rclone-crypt հեռակա պահոց (կամ ստեղծեք նորը) որպես թափանցիկ շերտ:",
+            "aerocryptImportTitle": "Հայտնաբերվել է Rclone Crypt շերտ",
+            "aerocryptImportDesc": "Պրոֆիլը ներմուծված է rclone.conf-ից {name}-ի համար. բացե՞լ շերտը հիմա:",
+            "aerocryptImportOpen": "Բացել շերտը"
         },
         "dialogs": {
             "confirmTitle": "Հաստատել",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} պրոֆիլ · {unique} ուրույն ամպային սկավառակներ",
                 "footerDedupExplained": "Նույն ֆիզիկական սկավառակն կիսող պրոֆիլները (Koofr WebDAV + REST, OpenDrive WebDAV + REST, նույն access key-ով Wasabi bucket-ներ) միավորվում են մեկ սկավառակի մեջ, որպեսզի քվոտաները հաշվարկվեն միայն մեկ անգամ։",
-                "dragToReorder": "Քաշեք վերադասավորելու համար"
+                "dragToReorder": "Քաշեք վերադասավորելու համար",
+                "footerUniqueCount": "{count} եզակի"
             },
             "breakdown": {
                 "title": "Պահպանում ըստ արձանագրության",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Նիստն ավարտվել է, վերամիացում...",
             "reconnected": "Վերամիացված է սերվերին",
             "reconnectFailed": "Վերամիացումը ձախողվեց: Խնդրում ենք միանալ ձեռքով:"
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt շերտ",
+            "intro": {
+                "heading": "Ի՞նչ է անում այս շերտը",
+                "p1": "Կոդավորում է ֆայլերի անունները և բովանդակությունները <strong>ընթացքում</strong>, նախքան դրանք սերվեր ուղարկելը, և վերծանում է ներբեռնելիս: Սերվերը տեսնում է միայն base32 անուններով տվյալներ: Դուք տեսնում եք բնօրինակ անունները:",
+                "p2": "Քանի դեռ շերտը ակտիվ է. ձեր հեռակառավարման սեսիան ցույց է տալիս բովանդակությունը պարզ տեսքով, յուրաքանչյուր վերբեռնում կոդավորված է, յուրաքանչյուր ներբեռնում վերծանված է: Փնտրեք <em>AEROCRYPT</em> նշանը ուղու տողում:",
+                "p3": "Տարբերությունը AeroVault-ից. AeroVault-ը մեկ ինքնաբավ <code>.aerovault</code> ֆայլ է (AeroFTP ձևաչափ): AeroCrypt-ը գոյություն ունեցող հեռակա պահոցի (S3/SFTP/WebDAV/...) վրա շերտ է, որն օգտագործում է հանրային rclone crypt ձևաչափը: Բացեք նույն գաղտնաբառով, որը կօգտագործեիք <code>rclone</code>-ում:"
+            },
+            "openExisting": "Բացել գոյություն ունեցողը",
+            "createNew": "Ստեղծել նորը",
+            "password": "Գաղտնաբառ",
+            "passwordPlaceholder": "Rclone crypt գաղտնաբառ",
+            "salt": "Աղ (password2, ոչ պարտադիր)",
+            "saltPlaceholder": "Ոչ պարտադիր աղի գաղտնաբառ",
+            "filenameEncryption": "Ֆայլի անվան կոդավորում",
+            "filenameEncOption": {
+                "standard": "Ստանդարտ (EME)",
+                "obfuscate": "Քողարկել",
+                "off": "Անջատված"
+            },
+            "directoryNameEncryption": "Թղթապանակի անվան կոդավորում",
+            "targetSubpath": "Թիրախային ենթաուղի (ոչ պարտադիր)",
+            "targetSubpathPlaceholder": "թողեք դատարկ՝ ընթացիկ հեռակա թղթապանակում սկզբնավորելու համար",
+            "targetSubpathHint": "Սկզբնավորում է նոր dirIV թիրախային թղթապանակում, ապա բացում է որպես շերտ:",
+            "unlock": "Բացել",
+            "createAndUnlock": "Ստեղծել և բացել",
+            "lock": "Կողպել",
+            "unlocked": "Rclone crypt հեռակա պահոցը բացված է",
+            "initialised": "Rclone crypt հեռակա պահոցը սկզբնավորված է",
+            "remoteUnlocked": "Հեռակա պահոցը բացված է (ID: {id}...)",
+            "decryptFilename": "Վերծանել ֆայլի անունը",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Կոդավորված ֆայլի անուն (Base32hex)",
+            "decryptName": "Վերծանել անունը",
+            "decryptFileFromDisk": "Վերծանել ֆայլը սկավառակից",
+            "fileDecryptedTo": "Ֆայլը վերծանված է {path}-ում",
+            "encryptedUploadCompleted": "Կոդավորված վերբեռնումն ավարտված է. {path}",
+            "remoteBrowser": "Հեռակա դիտարկիչ (թափանցիկ)",
+            "upload": "Վերբեռնել",
+            "up": "Վերև",
+            "path": "Ուղի. {path}",
+            "dirIvNotFound": "dirIV-ը չի գտնվել ընթացիկ թղթապանակում. անունները կարող են մնալ կոդավորված:",
+            "loading": "Բեռնվում է...",
+            "emptyFolder": "Դատարկ թղթապանակ",
+            "nameNotDecrypted": "անունը վերծանված չէ",
+            "download": "Ներբեռնել"
         }
     }
 }

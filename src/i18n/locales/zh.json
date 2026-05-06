@@ -983,7 +983,7 @@
                 "stop": "停止",
                 "stopShell": "停止终端",
                 "closed": "终端已关闭。",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "命令已插入 Terminal。按 Enter 运行。"
             },
             "editorPanel": {
                 "emptyState": "右键点击文件并选择\"编辑\"",
@@ -992,7 +992,7 @@
                 "saving": "保存中...",
                 "noFileSelected": "未选择要编辑的文件",
                 "loading": "加载编辑器中...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "拖到 Terminal 以插入运行命令"
             },
             "previewPanel": {
                 "emptyState": "右键点击文件并选择\"预览\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "原生 B2 v4 API：大文件工作流、服务器端复制、版本历史（10 GB 免费）",
             "setupSteps": "请先设置 {provider}",
             "openProviderDocs": "打开 {provider} 文档",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "支持原生文件夹的媒体 CDN 与存储（20 GB 免费）",
+            "discoverUploadcare": "带 CDN 和文件 API 的 EU 媒体管理（3 GB 免费）"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -3541,7 +3541,12 @@
             "showRemote": "显示远程",
             "showSystemMenu": "显示系统菜单栏",
             "aerovaultOverlayActive": "AeroVault 容器覆盖层已激活 — 点击以分离",
-            "aerovaultOverlayInactive": "将 .aerovault 容器作为虚拟远程面板打开。对于 rclone-crypt 覆盖层,请在远程文件夹上右键单击。"
+            "aerovaultOverlayInactive": "将 .aerovault 容器作为虚拟远程面板打开。对于 rclone-crypt 覆盖层,请在远程文件夹上右键单击。",
+            "aerocryptOverlayActive": "AeroCrypt 叠加层激活:此面板中的上传和下载已加密。点击以分离。",
+            "aerocryptOverlayInactive": "打开 rclone-crypt 远程(或创建新的)作为透明叠加层。",
+            "aerocryptImportTitle": "检测到 Rclone Crypt 叠加层",
+            "aerocryptImportDesc": "已从 rclone.conf 为 {name} 导入配置:现在打开叠加层吗?",
+            "aerocryptImportOpen": "打开叠加层"
         },
         "security": {
             "totp": {
@@ -4168,7 +4173,8 @@
                 },
                 "footerSummaryNoQuota": "{count} 个配置 · {unique} 个独立云盘",
                 "footerDedupExplained": "共享同一物理磁盘的配置(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同一访问密钥下的 Wasabi 存储桶)会合并为一个云盘,因此配额只计算一次。",
-                "dragToReorder": "拖动以重新排序"
+                "dragToReorder": "拖动以重新排序",
+                "footerUniqueCount": "{count} 个唯一项"
             },
             "breakdown": {
                 "title": "按协议存储",
@@ -4309,6 +4315,53 @@
             "reconnecting": "会话已过期，正在重新连接...",
             "reconnected": "已重新连接到服务器",
             "reconnectFailed": "重新连接失败。请手动重新连接。"
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt 叠加层",
+            "intro": {
+                "heading": "此叠加层的作用",
+                "p1": "在发送到服务器之前<strong>即时</strong>加密文件名和内容,并在下载时解密。服务器只看到带有 base32 名称的二进制块。您看到的是原始名称。",
+                "p2": "当叠加层激活时:您的远程会话以明文显示内容,每次上传都会被加密,每次下载都会被解密。请在路径栏中查找 <em>AEROCRYPT</em> 标识。",
+                "p3": "与 AeroVault 的区别:AeroVault 是一个独立完整的 <code>.aerovault</code> 文件(AeroFTP 格式)。AeroCrypt 是覆盖在现有远程(S3/SFTP/WebDAV/...)之上的一层,使用公开的 rclone crypt 格式。使用您在 <code>rclone</code> 中所用的相同密码即可解锁。"
+            },
+            "openExisting": "打开现有",
+            "createNew": "创建新的",
+            "password": "密码",
+            "passwordPlaceholder": "Rclone crypt 密码",
+            "salt": "盐值 (password2,可选)",
+            "saltPlaceholder": "可选的盐密码",
+            "filenameEncryption": "文件名加密",
+            "filenameEncOption": {
+                "standard": "标准 (EME)",
+                "obfuscate": "混淆",
+                "off": "关闭"
+            },
+            "directoryNameEncryption": "目录名加密",
+            "targetSubpath": "目标子路径(可选)",
+            "targetSubpathPlaceholder": "留空则在当前远程目录中初始化",
+            "targetSubpathHint": "在目标目录中初始化新的 dirIV,然后将其作为叠加层解锁。",
+            "unlock": "解锁",
+            "createAndUnlock": "创建并解锁",
+            "lock": "锁定",
+            "unlocked": "Rclone crypt 远程已解锁",
+            "initialised": "Rclone crypt 远程已初始化",
+            "remoteUnlocked": "远程已解锁 (ID: {id}...)",
+            "decryptFilename": "解密文件名",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "加密的文件名 (Base32hex)",
+            "decryptName": "解密名称",
+            "decryptFileFromDisk": "从磁盘解密文件",
+            "fileDecryptedTo": "文件已解密至 {path}",
+            "encryptedUploadCompleted": "加密上传完成:{path}",
+            "remoteBrowser": "远程浏览器(透明)",
+            "upload": "上传",
+            "up": "向上",
+            "path": "路径:{path}",
+            "dirIvNotFound": "在当前文件夹中未找到 dirIV:名称可能保持加密状态。",
+            "loading": "加载中...",
+            "emptyFolder": "空文件夹",
+            "nameNotDecrypted": "名称未解密",
+            "download": "下载"
         }
     }
 }

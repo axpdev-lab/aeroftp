@@ -8977,9 +8977,9 @@ interface UpdateVerificationInfo {
             <div className="flex items-start gap-2">
               <Shield size={18} className="text-blue-400 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-gray-800 dark:text-gray-100">
-                <div className="font-semibold mb-0.5">{t('toolbar.aerocryptImportTitle') || 'Rclone Crypt overlay rilevato'}</div>
+                <div className="font-semibold mb-0.5">{t('toolbar.aerocryptImportTitle')}</div>
                 <div className="text-xs opacity-80">
-                  {(t('toolbar.aerocryptImportDesc') || 'Profilo importato da rclone.conf per {{name}}: aprire l\'overlay ora?').replace('{{name}}', rcloneCryptImportBanner.serverName)}
+                  {t('toolbar.aerocryptImportDesc', { name: rcloneCryptImportBanner.serverName })}
                 </div>
               </div>
             </div>
@@ -9004,14 +9004,14 @@ interface UpdateVerificationInfo {
                     });
                     setRcloneCryptVaultId(info.vault_id);
                     void loadRemoteFiles(undefined, true);
-                    notify.success('AeroCrypt', t('toolbar.aerocryptOverlayActive') || 'Rclone Crypt overlay attivo');
+                    notify.success('AeroCrypt', t('toolbar.aerocryptOverlayActive'));
                   } catch (err) {
                     notify.error('AeroCrypt', String(err));
                   }
                 }}
                 className="px-3 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white font-semibold"
               >
-                {t('toolbar.aerocryptImportOpen') || 'Apri overlay'}
+                {t('toolbar.aerocryptImportOpen')}
               </button>
             </div>
           </div>
@@ -9738,8 +9738,8 @@ interface UpdateVerificationInfo {
                             : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'
                             }`}
                           title={rcloneCryptVaultId
-                            ? t('toolbar.aerocryptOverlayActive') || 'Rclone Crypt overlay active: click to detach'
-                            : t('toolbar.aerocryptOverlayInactive') || 'Open a rclone-crypt remote (or create a new one) as a transparent overlay'}
+                            ? t('toolbar.aerocryptOverlayActive')
+                            : t('toolbar.aerocryptOverlayInactive')}
                         >
                           <Shield size={16} className={rcloneCryptVaultId ? 'text-white' : 'text-blue-400'} />
                           {rcloneCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
@@ -9919,7 +9919,7 @@ interface UpdateVerificationInfo {
                     {rcloneCryptVaultId && (
                       <span
                         className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/20 text-blue-500 border border-blue-500/30"
-                        title={t('toolbar.aerocryptOverlayActive') || 'Rclone Crypt overlay attivo: gli upload e download in questo pannello sono cifrati'}
+                        title={t('toolbar.aerocryptOverlayActive')}
                       >
                         <Shield size={11} className="text-blue-400" />
                         AEROCRYPT

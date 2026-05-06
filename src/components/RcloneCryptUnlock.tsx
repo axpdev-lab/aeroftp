@@ -39,7 +39,7 @@ interface RcloneCryptBrowserListResponse {
 }
 
 export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, onUnlocked, onLocked, activeVaultId }) => {
-    useTranslation();
+    const t = useTranslation();
     const [mode, setMode] = useState<'open' | 'create'>('open');
     const [password, setPassword] = useState('');
     const [salt, setSalt] = useState('');
@@ -101,7 +101,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
             onUnlocked?.(info.vault_id);
             setPassword('');
             setSalt('');
-            setSuccess('Rclone crypt remote unlocked');
+            setSuccess(t('aerocrypt.unlocked'));
             setBrowserPath('.');
             setBrowserFiles([]);
             setBrowserDirIvFound(false);
@@ -129,7 +129,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
             setPassword('');
             setSalt('');
             setCreateSubpath('');
-            setSuccess('Rclone crypt remote initialised');
+            setSuccess(t('aerocrypt.initialised'));
             setBrowserPath('.');
             setBrowserFiles([]);
             setBrowserDirIvFound(false);
@@ -183,7 +183,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 encryptedFilePath: inputPath,
                 outputPath,
             });
-            setSuccess(`File decrypted to ${outputPath}`);
+            setSuccess(t('aerocrypt.fileDecryptedTo', { path: outputPath }));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -237,7 +237,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 remoteEncryptedPath: entry.path,
                 outputPath,
             });
-            setSuccess(`File decrypted to ${outputPath}`);
+            setSuccess(t('aerocrypt.fileDecryptedTo', { path: outputPath }));
         } catch (e) {
             setError(String(e));
         } finally {
@@ -262,7 +262,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 localPlaintextPath: inputPath,
                 remotePlainName: localName,
             });
-            setSuccess(`Encrypted upload completed: ${remotePath}`);
+            setSuccess(t('aerocrypt.encryptedUploadCompleted', { path: remotePath }));
             await loadBrowser('.');
         } catch (e) {
             setError(String(e));
@@ -278,7 +278,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                     <div className="flex items-center gap-2">
                         <Shield className="w-5 h-5 text-blue-500" />
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                            AeroCrypt &middot; Rclone Crypt overlay
+                            {t('aerocrypt.title')}
                         </h2>
                     </div>
                     <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
@@ -289,20 +289,10 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 <div className="p-4 space-y-4">
                     {!vaultInfo && (
                         <div className="text-xs leading-relaxed p-3 rounded border border-blue-400/30 bg-blue-500/10 text-gray-700 dark:text-gray-200">
-                            <div className="font-semibold mb-1 text-blue-500 dark:text-blue-300">Cosa fa l&apos;overlay</div>
-                            <p className="mb-1">
-                                Cifra i nomi e i contenuti dei file <strong>al volo</strong>, prima di mandarli al server, e li decifra
-                                quando li scarichi. Il server vede solo blob con nomi base32. Tu vedi i nomi originali.
-                            </p>
-                            <p className="mb-1">
-                                Mentre l&apos;overlay e&apos; attivo: la tua sessione remota mostra i contenuti in chiaro,
-                                ogni upload viene cifrato, ogni download decifrato. Vedi il badge <em>AEROCRYPT</em> nella path bar.
-                            </p>
-                            <p>
-                                Differenza rispetto ad AeroVault: AeroVault e&apos; un singolo file <code>.aerovault</code> autoportante
-                                (formato AeroFTP). AeroCrypt e&apos; un layer su un remote esistente (S3/SFTP/WebDAV/...) usando il
-                                formato pubblico rclone crypt. Sblocca con la stessa password che useresti in <code>rclone</code>.
-                            </p>
+                            <div className="font-semibold mb-1 text-blue-500 dark:text-blue-300">{t('aerocrypt.intro.heading')}</div>
+                            <p className="mb-1" dangerouslySetInnerHTML={{ __html: t('aerocrypt.intro.p1') }} />
+                            <p className="mb-1" dangerouslySetInnerHTML={{ __html: t('aerocrypt.intro.p2') }} />
+                            <p dangerouslySetInnerHTML={{ __html: t('aerocrypt.intro.p3') }} />
                         </div>
                     )}
                     {error && (
@@ -324,20 +314,20 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                     onClick={() => { setMode('open'); setError(null); }}
                                     className={`flex-1 px-3 py-1.5 rounded text-sm font-medium ${mode === 'open' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'}`}
                                 >
-                                    Open existing
+                                    {t('aerocrypt.openExisting')}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => { setMode('create'); setError(null); }}
                                     className={`flex-1 px-3 py-1.5 rounded text-sm font-medium ${mode === 'create' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'}`}
                                 >
-                                    Create new
+                                    {t('aerocrypt.createNew')}
                                 </button>
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Password
+                                    {t('aerocrypt.password')}
                                 </label>
                                 <div className="relative">
                                     <input
@@ -346,7 +336,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                         onChange={(e) => setPassword(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && (mode === 'open' ? handleUnlock() : handleCreate())}
                                         className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        placeholder="Rclone crypt password"
+                                        placeholder={t('aerocrypt.passwordPlaceholder')}
                                         autoFocus
                                     />
                                     <button
@@ -360,29 +350,29 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Salt (password2, optional)
+                                    {t('aerocrypt.salt')}
                                 </label>
                                 <input
                                     type="password"
                                     value={salt}
                                     onChange={(e) => setSalt(e.target.value)}
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="Optional salt password"
+                                    placeholder={t('aerocrypt.saltPlaceholder')}
                                 />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Filename encryption
+                                    {t('aerocrypt.filenameEncryption')}
                                 </label>
                                 <select
                                     value={filenameEncryption}
                                     onChange={(e) => setFilenameEncryption(e.target.value)}
                                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                                 >
-                                    <option value="standard">Standard (EME)</option>
-                                    <option value="obfuscate">Obfuscate</option>
-                                    <option value="off">Off</option>
+                                    <option value="standard">{t('aerocrypt.filenameEncOption.standard')}</option>
+                                    <option value="obfuscate">{t('aerocrypt.filenameEncOption.obfuscate')}</option>
+                                    <option value="off">{t('aerocrypt.filenameEncOption.off')}</option>
                                 </select>
                             </div>
 
@@ -395,24 +385,24 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                     className="rounded"
                                 />
                                 <label htmlFor="dir-name-enc" className="text-sm text-gray-700 dark:text-gray-300">
-                                    Directory name encryption
+                                    {t('aerocrypt.directoryNameEncryption')}
                                 </label>
                             </div>
 
                             {mode === 'create' && (
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Target subpath (optional)
+                                        {t('aerocrypt.targetSubpath')}
                                     </label>
                                     <input
                                         type="text"
                                         value={createSubpath}
                                         onChange={(e) => setCreateSubpath(e.target.value)}
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                        placeholder="leave empty to init in current remote dir"
+                                        placeholder={t('aerocrypt.targetSubpathPlaceholder')}
                                     />
                                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                        Initialises a fresh dirIV in the target directory, then unlocks it as overlay.
+                                        {t('aerocrypt.targetSubpathHint')}
                                     </p>
                                 </div>
                             )}
@@ -424,7 +414,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
-                                    Unlock
+                                    {t('aerocrypt.unlock')}
                                 </button>
                             ) : (
                                 <button
@@ -433,7 +423,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                                    Create &amp; Unlock
+                                    {t('aerocrypt.createAndUnlock')}
                                 </button>
                             )}
                         </>
@@ -442,35 +432,35 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                             <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/30 rounded">
                                 <Unlock className="w-5 h-5 text-green-600 dark:text-green-400" />
                                 <span className="text-sm text-green-700 dark:text-green-300">
-                                    Remote unlocked (ID: {vaultInfo.vault_id.slice(0, 8)}...)
+                                    {t('aerocrypt.remoteUnlocked', { id: vaultInfo.vault_id.slice(0, 8) })}
                                 </span>
                             </div>
 
                             <div className="border border-gray-200 dark:border-gray-700 rounded p-3 space-y-2">
                                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
                                     <FileText className="w-4 h-4" />
-                                    Decrypt filename
+                                    {t('aerocrypt.decryptFilename')}
                                 </h3>
                                 <input
                                     type="text"
                                     value={testDirIv}
                                     onChange={(e) => setTestDirIv(e.target.value)}
                                     className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="dirIV (base64)"
+                                    placeholder={t('aerocrypt.dirIvPlaceholder')}
                                 />
                                 <input
                                     type="text"
                                     value={testEncName}
                                     onChange={(e) => setTestEncName(e.target.value)}
                                     className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="Encrypted filename (Base32hex)"
+                                    placeholder={t('aerocrypt.encryptedNamePlaceholder')}
                                 />
                                 <button
                                     onClick={handleDecryptName}
                                     disabled={!testDirIv || !testEncName}
                                     className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
                                 >
-                                    Decrypt name
+                                    {t('aerocrypt.decryptName')}
                                 </button>
                                 {testDecName && (
                                     <div className="text-sm text-green-600 dark:text-green-400 font-mono">
@@ -485,14 +475,14 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-900 dark:text-white"
                             >
                                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                                Decrypt file from disk
+                                {t('aerocrypt.decryptFileFromDisk')}
                             </button>
 
                             <div className="border border-gray-200 dark:border-gray-700 rounded p-3 space-y-2">
                                 <div className="flex items-center justify-between gap-2">
                                     <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
                                         <Folder className="w-4 h-4" />
-                                        Remote browser (transparent)
+                                        {t('aerocrypt.remoteBrowser')}
                                     </h3>
                                     <div className="flex items-center gap-1">
                                         <button
@@ -500,34 +490,34 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                             disabled={loading || browserLoading}
                                             className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
                                         >
-                                            <span className="inline-flex items-center gap-1"><Upload className="w-3 h-3" /> Upload</span>
+                                            <span className="inline-flex items-center gap-1"><Upload className="w-3 h-3" /> {t('aerocrypt.upload')}</span>
                                         </button>
                                         <button
                                             onClick={() => void loadBrowser('..')}
                                             disabled={browserLoading}
                                             className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
                                         >
-                                            <span className="inline-flex items-center gap-1"><FolderUp className="w-3 h-3" /> Up</span>
+                                            <span className="inline-flex items-center gap-1"><FolderUp className="w-3 h-3" /> {t('aerocrypt.up')}</span>
                                         </button>
                                     </div>
                                 </div>
 
                                 <div className="text-xs text-gray-600 dark:text-gray-400 break-all">
-                                    Path: {browserPath}
+                                    {t('aerocrypt.path', { path: browserPath })}
                                 </div>
                                 {!browserDirIvFound && vaultInfo.filename_encryption === 'standard' && (
                                     <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 p-2 rounded">
-                                        dirIV non trovato nella cartella corrente: i nomi potrebbero restare cifrati.
+                                        {t('aerocrypt.dirIvNotFound')}
                                     </div>
                                 )}
 
                                 <div className="max-h-56 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded">
                                     {browserLoading ? (
                                         <div className="p-3 text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                                            <Loader2 className="w-4 h-4 animate-spin" /> Caricamento...
+                                            <Loader2 className="w-4 h-4 animate-spin" /> {t('aerocrypt.loading')}
                                         </div>
                                     ) : browserFiles.length === 0 ? (
-                                        <div className="p-3 text-sm text-gray-600 dark:text-gray-400">Cartella vuota</div>
+                                        <div className="p-3 text-sm text-gray-600 dark:text-gray-400">{t('aerocrypt.emptyFolder')}</div>
                                     ) : (
                                         browserFiles.map((entry) => (
                                             <div key={entry.path} className="flex items-center gap-2 px-2 py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-b-0">
@@ -539,7 +529,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                                 >
                                                     <span className="truncate block">{entry.decrypted_name || entry.name}</span>
                                                     {!entry.decrypt_ok && (
-                                                        <span className="text-[11px] text-amber-600 dark:text-amber-300">nome non decrittato</span>
+                                                        <span className="text-[11px] text-amber-600 dark:text-amber-300">{t('aerocrypt.nameNotDecrypted')}</span>
                                                     )}
                                                 </button>
                                                 {!entry.is_dir && (
@@ -547,7 +537,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                                         onClick={() => void handleDownloadRemoteFile(entry)}
                                                         className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
                                                     >
-                                                        Download
+                                                        {t('aerocrypt.download')}
                                                     </button>
                                                 )}
                                             </div>
@@ -561,7 +551,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                 className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/30"
                             >
                                 <Lock className="w-4 h-4" />
-                                Lock
+                                {t('aerocrypt.lock')}
                             </button>
                         </>
                     )}

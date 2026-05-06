@@ -983,7 +983,7 @@
                 "stop": "Stoppen",
                 "stopShell": "Shell stoppen",
                 "closed": "Terminal geschlossen.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Befehl im Terminal eingefügt. Enter drücken zum Ausführen."
             },
             "editorPanel": {
                 "emptyState": "Rechtsklick auf eine Datei und \"Bearbeiten\" wählen",
@@ -992,7 +992,7 @@
                 "saving": "Wird gespeichert...",
                 "noFileSelected": "Keine Datei zum Bearbeiten ausgewählt",
                 "loading": "Editor wird geladen...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "In das Terminal ziehen, um den Ausführungsbefehl einzufügen"
             },
             "previewPanel": {
                 "emptyState": "Rechtsklick auf eine Datei und \"Vorschau\" wählen"
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Native B2 v4 API: Workflow für große Dateien, serverseitige Kopie, Versionsverlauf (10 GB kostenlos)",
             "setupSteps": "Zuerst {provider} einrichten",
             "openProviderDocs": "{provider}-Dokumentation öffnen",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Medien-CDN und Speicher mit nativen Ordnern (20 GB kostenlos)",
+            "discoverUploadcare": "EU-Medienverwaltung mit CDN und Datei-APIs (3 GB kostenlos)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",
@@ -3541,7 +3541,12 @@
             "showRemote": "Remote anzeigen",
             "showSystemMenu": "Systemmenüleiste anzeigen",
             "aerovaultOverlayActive": "AeroVault-Container-Overlay aktiv — klicken zum Trennen",
-            "aerovaultOverlayInactive": "Einen .aerovault-Container als virtuelles Remote-Panel öffnen. Für Rclone-Crypt-Overlay Rechtsklick auf einen Remote-Ordner verwenden."
+            "aerovaultOverlayInactive": "Einen .aerovault-Container als virtuelles Remote-Panel öffnen. Für Rclone-Crypt-Overlay Rechtsklick auf einen Remote-Ordner verwenden.",
+            "aerocryptOverlayActive": "AeroCrypt-Overlay aktiv: Uploads und Downloads in diesem Bereich werden verschlüsselt. Zum Trennen klicken.",
+            "aerocryptOverlayInactive": "Öffnen Sie ein rclone-crypt-Remote (oder erstellen Sie ein neues) als transparentes Overlay.",
+            "aerocryptImportTitle": "Rclone-Crypt-Overlay erkannt",
+            "aerocryptImportDesc": "Profil aus rclone.conf für {name} importiert: Overlay jetzt öffnen?",
+            "aerocryptImportOpen": "Overlay öffnen"
         },
         "security": {
             "totp": {
@@ -4168,7 +4173,8 @@
                 },
                 "footerSummaryNoQuota": "{count} Profile · {unique} eindeutige Cloud-Laufwerke",
                 "footerDedupExplained": "Profile, die sich denselben physischen Speicher teilen (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-Buckets unter demselben Access Key), werden zu einem Laufwerk zusammengefasst, sodass Kontingente nur einmal gezählt werden.",
-                "dragToReorder": "Ziehen zum Sortieren"
+                "dragToReorder": "Ziehen zum Sortieren",
+                "footerUniqueCount": "{count} eindeutig"
             },
             "breakdown": {
                 "title": "Speicher nach Protokoll",
@@ -4309,6 +4315,53 @@
             "reconnecting": "Sitzung abgelaufen, Verbindung wird wiederhergestellt...",
             "reconnected": "Erneut mit Server verbunden",
             "reconnectFailed": "Wiederverbindung fehlgeschlagen. Bitte manuell erneut verbinden."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone-Crypt-Overlay",
+            "intro": {
+                "heading": "Was dieses Overlay tut",
+                "p1": "Verschlüsselt Dateinamen und Inhalte <strong>im laufenden Betrieb</strong>, bevor sie an den Server gesendet werden, und entschlüsselt sie beim Herunterladen. Der Server sieht nur Blobs mit base32-Namen. Sie sehen die Originalnamen.",
+                "p2": "Während das Overlay aktiv ist: Ihre Remote-Sitzung zeigt Inhalte im Klartext an, jeder Upload wird verschlüsselt, jeder Download wird entschlüsselt. Achten Sie auf das <em>AEROCRYPT</em>-Symbol in der Pfadleiste.",
+                "p3": "Unterschied zu AeroVault: AeroVault ist eine einzelne, eigenständige <code>.aerovault</code>-Datei (AeroFTP-Format). AeroCrypt ist eine Schicht über einem vorhandenen Remote (S3/SFTP/WebDAV/...) und verwendet das öffentliche rclone-crypt-Format. Entsperren Sie mit demselben Passwort, das Sie in <code>rclone</code> verwenden würden."
+            },
+            "openExisting": "Vorhandenes öffnen",
+            "createNew": "Neu erstellen",
+            "password": "Passwort",
+            "passwordPlaceholder": "Rclone-crypt-Passwort",
+            "salt": "Salt (password2, optional)",
+            "saltPlaceholder": "Optionales Salt-Passwort",
+            "filenameEncryption": "Dateinamenverschlüsselung",
+            "filenameEncOption": {
+                "standard": "Standard (EME)",
+                "obfuscate": "Verschleiern",
+                "off": "Aus"
+            },
+            "directoryNameEncryption": "Verzeichnisnamenverschlüsselung",
+            "targetSubpath": "Ziel-Unterpfad (optional)",
+            "targetSubpathPlaceholder": "leer lassen, um im aktuellen Remote-Verzeichnis zu initialisieren",
+            "targetSubpathHint": "Initialisiert eine neue dirIV im Zielverzeichnis und entsperrt es dann als Overlay.",
+            "unlock": "Entsperren",
+            "createAndUnlock": "Erstellen und entsperren",
+            "lock": "Sperren",
+            "unlocked": "Rclone-crypt-Remote entsperrt",
+            "initialised": "Rclone-crypt-Remote initialisiert",
+            "remoteUnlocked": "Remote entsperrt (ID: {id}...)",
+            "decryptFilename": "Dateinamen entschlüsseln",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Verschlüsselter Dateiname (Base32hex)",
+            "decryptName": "Namen entschlüsseln",
+            "decryptFileFromDisk": "Datei von der Festplatte entschlüsseln",
+            "fileDecryptedTo": "Datei entschlüsselt nach {path}",
+            "encryptedUploadCompleted": "Verschlüsselter Upload abgeschlossen: {path}",
+            "remoteBrowser": "Remote-Browser (transparent)",
+            "upload": "Hochladen",
+            "up": "Nach oben",
+            "path": "Pfad: {path}",
+            "dirIvNotFound": "dirIV im aktuellen Ordner nicht gefunden: Namen bleiben möglicherweise verschlüsselt.",
+            "loading": "Wird geladen...",
+            "emptyFolder": "Leerer Ordner",
+            "nameNotDecrypted": "Name nicht entschlüsselt",
+            "download": "Herunterladen"
         }
     }
 }

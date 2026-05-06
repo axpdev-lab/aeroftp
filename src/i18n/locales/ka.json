@@ -983,7 +983,7 @@
                 "stop": "გაჩერება",
                 "stopShell": "ტერმინალის გაჩერება",
                 "closed": "ტერმინალი დაიხურა.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "ბრძანება ჩასმულია Terminal-ში. დააჭირეთ Enter-ს გასაშვებად."
             },
             "editorPanel": {
                 "emptyState": "დააწკაპუნეთ მარჯვენა ღილაკით ფაილზე და აირჩიეთ \"რედაქტირება\"",
@@ -992,7 +992,7 @@
                 "saving": "ინახება...",
                 "noFileSelected": "ფაილი არ არის არჩეული რედაქტირებისთვის",
                 "loading": "რედაქტორის ჩატვირთვა...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "გადაიტანეთ Terminal-ში გასაშვები ბრძანების ჩასასმელად"
             },
             "previewPanel": {
                 "emptyState": "დააწკაპუნეთ მარჯვენა ღილაკით ფაილზე და აირჩიეთ \"გადახედვა\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "მშობლიური B2 v4 API: დიდი ფაილების სამუშაო პროცესი, სერვერის მხარეს კოპირება, ვერსიების ისტორია (10 GB უფასოდ)",
             "setupSteps": "ჯერ დააყენეთ {provider}",
             "openProviderDocs": "გახსენით {provider}-ის დოკუმენტაცია",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "მედია CDN და საცავი მშობლიური საქაღალდეებით (20 GB უფასო)",
+            "discoverUploadcare": "EU მედიის მართვა CDN-ით და ფაილების API-ებით (3 GB უფასო)"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -3541,7 +3541,12 @@
             "showRemote": "დისტანციურის ჩვენება",
             "showSystemMenu": "სისტემის მენიუს ზოლის ჩვენება",
             "aerovaultOverlayActive": "AeroVault კონტეინერის გადაფარვა აქტიურია — დააწკაპუნეთ გათიშვისთვის",
-            "aerovaultOverlayInactive": "გახსენით .aerovault კონტეინერი როგორც ვირტუალური დისტანციური პანელი. rclone-crypt გადაფარვისთვის გამოიყენეთ მარჯვენა დაწკაპება დისტანციურ საქაღალდეზე."
+            "aerovaultOverlayInactive": "გახსენით .aerovault კონტეინერი როგორც ვირტუალური დისტანციური პანელი. rclone-crypt გადაფარვისთვის გამოიყენეთ მარჯვენა დაწკაპება დისტანციურ საქაღალდეზე.",
+            "aerocryptOverlayActive": "AeroCrypt გადაფარვა აქტიურია: ამ პანელში ატვირთვები და ჩამოტვირთვები დაშიფრულია. დააწკაპუნეთ მოსახსნელად.",
+            "aerocryptOverlayInactive": "გახსენით rclone-crypt დისტანციური საცავი (ან შექმენით ახალი) როგორც გამჭვირვალე გადაფარვა.",
+            "aerocryptImportTitle": "აღმოჩენილია Rclone Crypt გადაფარვა",
+            "aerocryptImportDesc": "პროფილი იმპორტირებულია rclone.conf-დან {name}-სთვის: გავხსნათ გადაფარვა ახლა?",
+            "aerocryptImportOpen": "გადაფარვის გახსნა"
         },
         "ai.agentMode.title": "აგენტის რეჟიმი",
         "ai.agentMode.description": "აკონტროლებს ხელსაწყოების დამტკიცების ქცევას, ნაბიჯების ლიმიტს და ავტონომიის დონეს.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} პროფილი · {unique} უნიკალური ღრუბლოვანი დისკი",
                 "footerDedupExplained": "პროფილები, რომლებიც ერთსა და იმავე ფიზიკურ დისკს იყენებენ (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ერთი წვდომის გასაღების ქვეშ მყოფი Wasabi bucket-ები), გაერთიანდებიან ერთ დისკში, რათა კვოტები მხოლოდ ერთხელ დაითვალოს.",
-                "dragToReorder": "გადაიტანეთ თანმიმდევრობის შესაცვლელად"
+                "dragToReorder": "გადაიტანეთ თანმიმდევრობის შესაცვლელად",
+                "footerUniqueCount": "{count} უნიკალური"
             },
             "breakdown": {
                 "title": "საცავი პროტოკოლის მიხედვით",
@@ -4319,6 +4325,53 @@
             "reconnecting": "სესია ვადაგასულია, ხელახლა დაკავშირება...",
             "reconnected": "სერვერთან ხელახლა დაკავშირდა",
             "reconnectFailed": "ხელახლა დაკავშირება ვერ მოხერხდა. გთხოვთ, ხელით ხელახლა დაუკავშირდეთ."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt გადაფარვა",
+            "intro": {
+                "heading": "რას აკეთებს ეს გადაფარვა",
+                "p1": "შიფრავს ფაილების სახელებს და შინაარსს <strong>ფრენისას</strong>, სანამ მათ სერვერზე გაგზავნით, და შიფრავს ჩამოტვირთვისას. სერვერი ხედავს მხოლოდ ბლობებს base32 სახელებით. თქვენ ხედავთ ორიგინალურ სახელებს.",
+                "p2": "სანამ გადაფარვა აქტიურია: თქვენი დისტანციური სესია აჩვენებს შინაარსს გასაგებად, ყოველი ატვირთვა დაშიფრულია, ყოველი ჩამოტვირთვა გაშიფრულია. მოძებნეთ <em>AEROCRYPT</em> ნიშანი ბილიკის ზოლში.",
+                "p3": "განსხვავება AeroVault-ისგან: AeroVault არის ერთი დამოუკიდებელი <code>.aerovault</code> ფაილი (AeroFTP ფორმატი). AeroCrypt არის ფენა არსებული დისტანციური საცავის (S3/SFTP/WebDAV/...) თავზე, რომელიც იყენებს საჯარო rclone crypt ფორმატს. გახსენით იმავე პაროლით, რომელსაც გამოიყენებდით <code>rclone</code>-ში."
+            },
+            "openExisting": "გახსენით არსებული",
+            "createNew": "შექმნა ახლის",
+            "password": "პაროლი",
+            "passwordPlaceholder": "Rclone crypt პაროლი",
+            "salt": "მარილი (password2, არასავალდებულო)",
+            "saltPlaceholder": "არასავალდებულო მარილის პაროლი",
+            "filenameEncryption": "ფაილის სახელის დაშიფვრა",
+            "filenameEncOption": {
+                "standard": "სტანდარტული (EME)",
+                "obfuscate": "დაბუნდოვანება",
+                "off": "გამორთული"
+            },
+            "directoryNameEncryption": "დირექტორიის სახელის დაშიფვრა",
+            "targetSubpath": "სამიზნე ქვეგზა (არასავალდებულო)",
+            "targetSubpathPlaceholder": "დატოვეთ ცარიელი მიმდინარე დისტანციურ დირექტორიაში ინიციალიზაციისთვის",
+            "targetSubpathHint": "ინიციალიზებს ახალ dirIV-ს სამიზნე დირექტორიაში, შემდეგ ხსნის როგორც გადაფარვას.",
+            "unlock": "გახსნა",
+            "createAndUnlock": "შექმნა და გახსნა",
+            "lock": "ჩაკეტვა",
+            "unlocked": "Rclone crypt დისტანციური საცავი გახსნილია",
+            "initialised": "Rclone crypt დისტანციური საცავი ინიციალიზებულია",
+            "remoteUnlocked": "დისტანციური საცავი გახსნილია (ID: {id}...)",
+            "decryptFilename": "ფაილის სახელის გაშიფვრა",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "დაშიფრული ფაილის სახელი (Base32hex)",
+            "decryptName": "სახელის გაშიფვრა",
+            "decryptFileFromDisk": "ფაილის გაშიფვრა დისკიდან",
+            "fileDecryptedTo": "ფაილი გაშიფრულია: {path}",
+            "encryptedUploadCompleted": "დაშიფრული ატვირთვა დასრულდა: {path}",
+            "remoteBrowser": "დისტანციური ბრაუზერი (გამჭვირვალე)",
+            "upload": "ატვირთვა",
+            "up": "ზემოთ",
+            "path": "გზა: {path}",
+            "dirIvNotFound": "dirIV ვერ მოიძებნა მიმდინარე საქაღალდეში: სახელები შეიძლება დარჩეს დაშიფრული.",
+            "loading": "იტვირთება...",
+            "emptyFolder": "ცარიელი საქაღალდე",
+            "nameNotDecrypted": "სახელი არ არის გაშიფრული",
+            "download": "ჩამოტვირთვა"
         }
     }
 }

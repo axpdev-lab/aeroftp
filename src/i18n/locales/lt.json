@@ -983,7 +983,7 @@
                 "stop": "Sustabdyti",
                 "stopShell": "Sustabdyti apvalkalą",
                 "closed": "Terminalas uždarytas.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Komanda įterpta į Terminal. Paspauskite Enter, kad paleistumėte."
             },
             "editorPanel": {
                 "emptyState": "Spustelėkite dešiniuoju pelės mygtuku ant failo ir pasirinkite \"Redaguoti\"",
@@ -992,7 +992,7 @@
                 "saving": "Išsaugoma...",
                 "noFileSelected": "Nepasirinktas failas redagavimui",
                 "loading": "Redaktoriaus įkėlimas...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Vilkite į Terminal, kad įterptumėte paleidimo komandą"
             },
             "previewPanel": {
                 "emptyState": "Spustelėkite dešiniuoju pelės mygtuku ant failo ir pasirinkite \"Peržiūra\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Savoji B2 v4 API: didelių failų darbo eiga, kopijavimas serveryje, versijų istorija (10 GB nemokamai)",
             "setupSteps": "Pirmiausia nustatykite {provider}",
             "openProviderDocs": "Atidaryti {provider} dokumentaciją",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Medijos CDN ir saugykla su gimtaisiais aplankais (20 GB nemokamai)",
+            "discoverUploadcare": "EU medijos valdymas su CDN ir failų API (3 GB nemokamai)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -3541,7 +3541,12 @@
             "showRemote": "Rodyti nuotolinį",
             "showSystemMenu": "Rodyti sistemos meniu juostą",
             "aerovaultOverlayActive": "AeroVault konteinerio sluoksnis aktyvus — spustelėkite, kad atjungtumėte",
-            "aerovaultOverlayInactive": "Atidarykite .aerovault konteinerį kaip virtualų nuotolinį skydą. rclone-crypt sluoksniui naudokite dešinį pelės mygtuką nuotoliniame aplanke."
+            "aerovaultOverlayInactive": "Atidarykite .aerovault konteinerį kaip virtualų nuotolinį skydą. rclone-crypt sluoksniui naudokite dešinį pelės mygtuką nuotoliniame aplanke.",
+            "aerocryptOverlayActive": "AeroCrypt sluoksnis aktyvus: įkėlimai ir atsisiuntimai šiame skydelyje yra šifruojami. Spustelėkite, kad atsietumėte.",
+            "aerocryptOverlayInactive": "Atidarykite rclone-crypt nuotolinę saugyklą (arba sukurkite naują) kaip skaidrų sluoksnį.",
+            "aerocryptImportTitle": "Aptiktas Rclone Crypt sluoksnis",
+            "aerocryptImportDesc": "Profilis importuotas iš rclone.conf: {name}: atidaryti sluoksnį dabar?",
+            "aerocryptImportOpen": "Atidaryti sluoksnį"
         },
         "ai.agentMode.title": "Agento rezimas",
         "ai.agentMode.description": "Valdo irankiu patvirtinimo elgsena, zingsniu limitus ir autonomijos lygi.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profiliai · {unique} unikalūs debesų diskai",
                 "footerDedupExplained": "Profiliai, kurie naudoja tą patį fizinį diską (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi krepšiai su tuo pačiu prieigos raktu), sujungiami į vieną diską, kad kvotos būtų skaičiuojamos tik vieną kartą.",
-                "dragToReorder": "Vilkite, kad pertvarkytumėte"
+                "dragToReorder": "Vilkite, kad pertvarkytumėte",
+                "footerUniqueCount": "{count} unikalūs"
             },
             "breakdown": {
                 "title": "Saugykla pagal protokolą",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Seanso laikas baigėsi, jungiamasi iš naujo...",
             "reconnected": "Vėl prisijungta prie serverio",
             "reconnectFailed": "Nepavyko prisijungti iš naujo. Prisijunkite rankiniu būdu."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt sluoksnis",
+            "intro": {
+                "heading": "Ką daro šis sluoksnis",
+                "p1": "Šifruoja failų vardus ir turinį <strong>nedelsiant</strong> prieš juos siunčiant į serverį, ir iššifruoja atsisiuntimo metu. Serveris mato tik blobus su base32 vardais. Jūs matote originalius vardus.",
+                "p2": "Kol sluoksnis yra aktyvus: jūsų nuotolinė sesija rodo turinį atviru tekstu, kiekvienas įkėlimas yra šifruotas, kiekvienas atsisiuntimas yra iššifruotas. Ieškokite <em>AEROCRYPT</em> ženklelio kelio juostoje.",
+                "p3": "Skirtumas nuo AeroVault: AeroVault yra vienas savarankiškas <code>.aerovault</code> failas (AeroFTP formatas). AeroCrypt yra sluoksnis virš esamos nuotolinės saugyklos (S3/SFTP/WebDAV/...), naudojantis viešą rclone crypt formatą. Atrakinkite tuo pačiu slaptažodžiu, kurį naudotumėte <code>rclone</code>."
+            },
+            "openExisting": "Atidaryti esamą",
+            "createNew": "Sukurti naują",
+            "password": "Slaptažodis",
+            "passwordPlaceholder": "Rclone crypt slaptažodis",
+            "salt": "Druska (password2, neprivaloma)",
+            "saltPlaceholder": "Neprivalomas druskos slaptažodis",
+            "filenameEncryption": "Failo vardo šifravimas",
+            "filenameEncOption": {
+                "standard": "Standartinis (EME)",
+                "obfuscate": "Užmaskuoti",
+                "off": "Išjungta"
+            },
+            "directoryNameEncryption": "Katalogo vardo šifravimas",
+            "targetSubpath": "Tikslinis pokelis (neprivalomas)",
+            "targetSubpathPlaceholder": "palikite tuščią, kad inicijuotumėte dabartiniame nuotoliniame kataloge",
+            "targetSubpathHint": "Inicijuoja naują dirIV tiksliniame kataloge, tada jį atrakina kaip sluoksnį.",
+            "unlock": "Atrakinti",
+            "createAndUnlock": "Sukurti ir atrakinti",
+            "lock": "Užrakinti",
+            "unlocked": "Rclone crypt nuotolinė saugykla atrakinta",
+            "initialised": "Rclone crypt nuotolinė saugykla inicijuota",
+            "remoteUnlocked": "Nuotolinė saugykla atrakinta (ID: {id}...)",
+            "decryptFilename": "Iššifruoti failo vardą",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Šifruotas failo vardas (Base32hex)",
+            "decryptName": "Iššifruoti vardą",
+            "decryptFileFromDisk": "Iššifruoti failą iš disko",
+            "fileDecryptedTo": "Failas iššifruotas į {path}",
+            "encryptedUploadCompleted": "Šifruotas įkėlimas baigtas: {path}",
+            "remoteBrowser": "Nuotolinė naršyklė (skaidri)",
+            "upload": "Įkelti",
+            "up": "Aukštyn",
+            "path": "Kelias: {path}",
+            "dirIvNotFound": "dirIV nerastas dabartiniame aplanke: vardai gali likti šifruoti.",
+            "loading": "Įkeliama...",
+            "emptyFolder": "Tuščias aplankas",
+            "nameNotDecrypted": "vardas neiššifruotas",
+            "download": "Atsisiųsti"
         }
     }
 }

@@ -983,7 +983,7 @@
                 "stop": "중지",
                 "stopShell": "셸 중지",
                 "closed": "터미널이 닫혔습니다.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Terminal에 명령이 삽입되었습니다. 실행하려면 Enter를 누르세요."
             },
             "editorPanel": {
                 "emptyState": "파일을 우클릭하고 \"편집\"을 선택하세요",
@@ -992,7 +992,7 @@
                 "saving": "저장 중...",
                 "noFileSelected": "편집할 파일이 선택되지 않았습니다",
                 "loading": "편집기 로드 중...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "실행 명령을 삽입하려면 Terminal로 끌어다 놓으세요"
             },
             "previewPanel": {
                 "emptyState": "파일을 우클릭하고 \"미리보기\"를 선택하세요"
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "네이티브 B2 v4 API: 대용량 파일 워크플로, 서버 측 복사, 버전 기록 (10 GB 무료)",
             "setupSteps": "먼저 {provider} 설정",
             "openProviderDocs": "{provider} 문서 열기",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "네이티브 폴더를 지원하는 미디어 CDN 및 저장소 (20 GB 무료)",
+            "discoverUploadcare": "CDN 및 파일 API를 갖춘 EU 미디어 관리 (3 GB 무료)"
         },
         "shortcuts": {
             "title": "단축키",
@@ -3541,7 +3541,12 @@
             "showRemote": "원격 표시",
             "showSystemMenu": "시스템 메뉴바 표시",
             "aerovaultOverlayActive": "AeroVault 컨테이너 오버레이 활성 — 클릭하여 분리",
-            "aerovaultOverlayInactive": ".aerovault 컨테이너를 가상 원격 패널로 엽니다. rclone-crypt 오버레이는 원격 폴더에서 마우스 오른쪽 버튼 클릭을 사용하세요."
+            "aerovaultOverlayInactive": ".aerovault 컨테이너를 가상 원격 패널로 엽니다. rclone-crypt 오버레이는 원격 폴더에서 마우스 오른쪽 버튼 클릭을 사용하세요.",
+            "aerocryptOverlayActive": "AeroCrypt 오버레이 활성: 이 패널의 업로드와 다운로드는 암호화됩니다. 분리하려면 클릭하세요.",
+            "aerocryptOverlayInactive": "rclone-crypt 원격 저장소를 열거나 새로 만들어 투명 오버레이로 사용하세요.",
+            "aerocryptImportTitle": "Rclone Crypt 오버레이 감지됨",
+            "aerocryptImportDesc": "{name}의 프로필이 rclone.conf에서 가져왔습니다: 지금 오버레이를 열까요?",
+            "aerocryptImportOpen": "오버레이 열기"
         },
         "security": {
             "totp": {
@@ -4168,7 +4173,8 @@
                 },
                 "footerSummaryNoQuota": "프로필 {count}개 · 고유 클라우드 드라이브 {unique}개",
                 "footerDedupExplained": "동일한 물리 디스크를 공유하는 프로필(Koofr WebDAV + REST, OpenDrive WebDAV + REST, 동일한 액세스 키의 Wasabi 버킷)은 하나의 드라이브로 통합되어 할당량이 한 번만 계산됩니다.",
-                "dragToReorder": "드래그하여 순서 변경"
+                "dragToReorder": "드래그하여 순서 변경",
+                "footerUniqueCount": "{count}개 고유"
             },
             "breakdown": {
                 "title": "프로토콜별 스토리지",
@@ -4309,6 +4315,53 @@
             "reconnecting": "세션이 만료되었습니다. 다시 연결하는 중...",
             "reconnected": "서버에 다시 연결되었습니다",
             "reconnectFailed": "재연결에 실패했습니다. 수동으로 다시 연결하세요."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt 오버레이",
+            "intro": {
+                "heading": "이 오버레이의 역할",
+                "p1": "파일 이름과 내용을 서버로 전송하기 전에 <strong>실시간으로</strong> 암호화하고, 다운로드 시 복호화합니다. 서버는 base32 이름을 가진 블롭만 봅니다. 사용자는 원본 이름을 봅니다.",
+                "p2": "오버레이가 활성화된 동안: 원격 세션은 내용을 평문으로 표시하며, 모든 업로드는 암호화되고 모든 다운로드는 복호화됩니다. 경로 표시줄에서 <em>AEROCRYPT</em> 배지를 확인하세요.",
+                "p3": "AeroVault와의 차이점: AeroVault는 단일 자체 포함 <code>.aerovault</code> 파일(AeroFTP 형식)입니다. AeroCrypt는 기존 원격 저장소(S3/SFTP/WebDAV/...) 위에 공개 rclone crypt 형식을 사용하는 계층입니다. <code>rclone</code>에서 사용하는 것과 동일한 비밀번호로 잠금 해제합니다."
+            },
+            "openExisting": "기존 열기",
+            "createNew": "새로 만들기",
+            "password": "비밀번호",
+            "passwordPlaceholder": "Rclone crypt 비밀번호",
+            "salt": "솔트 (password2, 선택)",
+            "saltPlaceholder": "선택적 솔트 비밀번호",
+            "filenameEncryption": "파일 이름 암호화",
+            "filenameEncOption": {
+                "standard": "표준 (EME)",
+                "obfuscate": "난독화",
+                "off": "꺼짐"
+            },
+            "directoryNameEncryption": "디렉터리 이름 암호화",
+            "targetSubpath": "대상 하위 경로 (선택)",
+            "targetSubpathPlaceholder": "현재 원격 디렉터리에서 초기화하려면 비워 두세요",
+            "targetSubpathHint": "대상 디렉터리에 새 dirIV를 초기화한 다음 오버레이로 잠금 해제합니다.",
+            "unlock": "잠금 해제",
+            "createAndUnlock": "만들기 및 잠금 해제",
+            "lock": "잠금",
+            "unlocked": "Rclone crypt 원격 저장소 잠금 해제됨",
+            "initialised": "Rclone crypt 원격 저장소 초기화됨",
+            "remoteUnlocked": "원격 저장소 잠금 해제됨 (ID: {id}...)",
+            "decryptFilename": "파일 이름 복호화",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "암호화된 파일 이름 (Base32hex)",
+            "decryptName": "이름 복호화",
+            "decryptFileFromDisk": "디스크에서 파일 복호화",
+            "fileDecryptedTo": "파일이 {path}로 복호화되었습니다",
+            "encryptedUploadCompleted": "암호화된 업로드 완료: {path}",
+            "remoteBrowser": "원격 브라우저 (투명)",
+            "upload": "업로드",
+            "up": "위로",
+            "path": "경로: {path}",
+            "dirIvNotFound": "현재 폴더에서 dirIV를 찾을 수 없습니다: 이름이 암호화된 상태로 유지될 수 있습니다.",
+            "loading": "로딩 중...",
+            "emptyFolder": "빈 폴더",
+            "nameNotDecrypted": "이름이 복호화되지 않음",
+            "download": "다운로드"
         }
     }
 }

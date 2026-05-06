@@ -983,7 +983,7 @@
                 "stop": "Stopio",
                 "stopShell": "Stopio'r plisgyn",
                 "closed": "Terfynell wedi cau.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Gorchymyn wedi'i fewnosod yn y Terminal. Pwyswch Enter i redeg."
             },
             "editorPanel": {
                 "emptyState": "De-gliciwch ar ffeil a dewiswch \"Golygu\"",
@@ -992,7 +992,7 @@
                 "saving": "Yn cadw...",
                 "noFileSelected": "Dim ffeil wedi'i dewis i'w golygu",
                 "loading": "Yn llwytho'r golygydd...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Llusgwch i'r Terminal i fewnosod gorchymyn rhedeg"
             },
             "previewPanel": {
                 "emptyState": "De-gliciwch ar ffeil a dewiswch \"Rhagolwg\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "API B2 v4 brodorol: llif gwaith ffeiliau mawr, copio ochr y gweinydd, hanes fersiynau (10 GB am ddim)",
             "setupSteps": "Sefydlu {provider} yn gyntaf",
             "openProviderDocs": "Agor dogfennaeth {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN cyfryngau a storfa gyda ffolderi brodorol (20 GB am ddim)",
+            "discoverUploadcare": "Rheoli cyfryngau EU gyda CDN ac API ffeiliau (3 GB am ddim)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
@@ -3541,7 +3541,12 @@
             "showRemote": "Dangos pell",
             "showSystemMenu": "Dangos bar dewislen y system",
             "aerovaultOverlayActive": "Troshaen cynhwysydd AeroVault yn weithredol — cliciwch i ddatgysylltu",
-            "aerovaultOverlayInactive": "Agorwch gynhwysydd .aerovault fel panel pell rhithwir. Ar gyfer troshaen rclone-crypt, defnyddiwch glic dde ar ffolder pell."
+            "aerovaultOverlayInactive": "Agorwch gynhwysydd .aerovault fel panel pell rhithwir. Ar gyfer troshaen rclone-crypt, defnyddiwch glic dde ar ffolder pell.",
+            "aerocryptOverlayActive": "Haen AeroCrypt yn weithredol: mae lanlwythiadau a lawrlwythiadau yn y panel hwn wedi'u hamgryptio. Cliciwch i ddatgysylltu.",
+            "aerocryptOverlayInactive": "Agorwch anghysbell rclone-crypt (neu creu un newydd) fel haen dryloyw.",
+            "aerocryptImportTitle": "Canfuwyd haen Rclone Crypt",
+            "aerocryptImportDesc": "Proffil wedi'i fewnforio o rclone.conf ar gyfer {name}: agor yr haen nawr?",
+            "aerocryptImportOpen": "Agor yr haen"
         },
         "ai.agentMode.title": "Modd Asiant",
         "ai.agentMode.description": "Yn rheoli ymddygiad cymeradwyo offer, terfynau camau, a lefel ymreolaeth.",
@@ -4197,7 +4202,8 @@
                 },
                 "footerSummaryNoQuota": "{count} proffil · {unique} gyriant cwmwl unigryw",
                 "footerDedupExplained": "Mae proffiliau sy'n rhannu'r un disg ffisegol (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bwcedi Wasabi o dan yr un access key) yn cael eu cyfuno'n un gyriant fel bod cwotâu'n cael eu cyfrif unwaith yn unig.",
-                "dragToReorder": "Llusgwch i aildrefnu"
+                "dragToReorder": "Llusgwch i aildrefnu",
+                "footerUniqueCount": "{count} unigryw"
             },
             "breakdown": {
                 "title": "Storfa yn ôl protocol",
@@ -4338,6 +4344,53 @@
             "reconnecting": "Mae'r sesiwn wedi dod i ben, yn ailgysylltu...",
             "reconnected": "Wedi ailgysylltu â'r gweinydd",
             "reconnectFailed": "Methodd yr ailgysylltiad. Ailgysylltwch â llaw."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Haen Rclone Crypt",
+            "intro": {
+                "heading": "Beth mae'r haen hon yn ei wneud",
+                "p1": "Yn amgryptio enwau a chynnwys ffeiliau <strong>wrth fynd</strong>, cyn eu hanfon i'r gweinydd, ac yn eu dadgryptio pan fyddwch yn eu lawrlwytho. Dim ond blobiau ag enwau base32 mae'r gweinydd yn eu gweld. Rydych chi'n gweld yr enwau gwreiddiol.",
+                "p2": "Tra bo'r haen yn weithredol: mae eich sesiwn anghysbell yn dangos cynnwys yn glir, mae pob lanlwytho wedi'i amgryptio, mae pob lawrlwythiad wedi'i ddadgryptio. Chwiliwch am y bathodyn <em>AEROCRYPT</em> yn y bar llwybr.",
+                "p3": "Gwahaniaeth o'i gymharu ag AeroVault: mae AeroVault yn ffeil <code>.aerovault</code> hunangynhwysol unigol (fformat AeroFTP). Mae AeroCrypt yn haen ar ben anghysbell sy'n bodoli (S3/SFTP/WebDAV/...) gan ddefnyddio'r fformat rclone crypt cyhoeddus. Datgloiwch gyda'r un cyfrinair y byddech yn ei ddefnyddio yn <code>rclone</code>."
+            },
+            "openExisting": "Agor un sy'n bodoli",
+            "createNew": "Creu un newydd",
+            "password": "Cyfrinair",
+            "passwordPlaceholder": "Cyfrinair rclone crypt",
+            "salt": "Halen (password2, dewisol)",
+            "saltPlaceholder": "Cyfrinair halen dewisol",
+            "filenameEncryption": "Amgryptio enwau ffeiliau",
+            "filenameEncOption": {
+                "standard": "Safonol (EME)",
+                "obfuscate": "Cuddio",
+                "off": "I ffwrdd"
+            },
+            "directoryNameEncryption": "Amgryptio enwau cyfeiriaduron",
+            "targetSubpath": "Is-lwybr targed (dewisol)",
+            "targetSubpathPlaceholder": "gadewch yn wag i gychwyn yn y cyfeiriadur anghysbell cyfredol",
+            "targetSubpathHint": "Yn cychwyn dirIV newydd yn y cyfeiriadur targed, yna'n ei ddatgloi fel haen.",
+            "unlock": "Datgloi",
+            "createAndUnlock": "Creu a datgloi",
+            "lock": "Cloi",
+            "unlocked": "Anghysbell rclone crypt wedi'i ddatgloi",
+            "initialised": "Anghysbell rclone crypt wedi'i gychwyn",
+            "remoteUnlocked": "Anghysbell wedi'i ddatgloi (ID: {id}...)",
+            "decryptFilename": "Dadgryptio enw ffeil",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Enw ffeil wedi'i amgryptio (Base32hex)",
+            "decryptName": "Dadgryptio enw",
+            "decryptFileFromDisk": "Dadgryptio ffeil o'r ddisg",
+            "fileDecryptedTo": "Ffeil wedi'i dadgryptio i {path}",
+            "encryptedUploadCompleted": "Lanlwythiad wedi'i amgryptio wedi'i gwblhau: {path}",
+            "remoteBrowser": "Porwr anghysbell (tryloyw)",
+            "upload": "Lanlwytho",
+            "up": "I fyny",
+            "path": "Llwybr: {path}",
+            "dirIvNotFound": "Heb ddod o hyd i dirIV yn y ffolder cyfredol: gallai enwau aros wedi'u hamgryptio.",
+            "loading": "Yn llwytho...",
+            "emptyFolder": "Ffolder gwag",
+            "nameNotDecrypted": "enw heb ei ddadgryptio",
+            "download": "Lawrlwytho"
         }
     }
 }

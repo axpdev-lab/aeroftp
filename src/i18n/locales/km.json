@@ -983,7 +983,7 @@
                 "stop": "បញ្ឈប់",
                 "stopShell": "បញ្ឈប់សែល",
                 "closed": "Terminal បានបិទ។",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "បានបញ្ចូលពាក្យបញ្ជាទៅក្នុង Terminal។ ចុច Enter ដើម្បីដំណើរការ។"
             },
             "editorPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារហើយជ្រើសរើស \"កែសម្រួល\"",
@@ -992,7 +992,7 @@
                 "saving": "កំពុងរក្សាទុក...",
                 "noFileSelected": "មិនមានឯកសារដែលបានជ្រើសរើសដើម្បីកែសម្រួល",
                 "loading": "កំពុងផ្ទុកកម្មវិធីនិពន្ធ...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "អូសទៅ Terminal ដើម្បីបញ្ចូលពាក្យបញ្ជាដំណើរការ"
             },
             "previewPanel": {
                 "emptyState": "ចុចកណ្តុរស្តាំលើឯកសារហើយជ្រើសរើស \"មើលជាមុន\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "API B2 v4 ដើម៖ លំហូរការងារឯកសារធំ ការចម្លងផ្នែកម៉ាស៊ីនមេ ប្រវត្តិកំណែ (10 GB ឥតគិតថ្លៃ)",
             "setupSteps": "រៀបចំ {provider} ជាមុនសិន",
             "openProviderDocs": "បើកឯកសារ {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "មេឌៀ CDN និងការផ្ទុកជាមួយថតដើម (20 GB ឥតគិតថ្លៃ)",
+            "discoverUploadcare": "ការគ្រប់គ្រងមេឌៀ EU ជាមួយ CDN និង API ឯកសារ (3 GB ឥតគិតថ្លៃ)"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
@@ -3541,7 +3541,12 @@
             "showRemote": "បង្ហាញពីចម្ងាយ",
             "showSystemMenu": "បង្ហាញរបារម៉ឺនុយប្រព័ន្ធ",
             "aerovaultOverlayActive": "ការត្រួតលើធុង AeroVault សកម្ម — ចុចដើម្បីផ្តាច់",
-            "aerovaultOverlayInactive": "បើកធុង .aerovault ជាបន្ទះពីចម្ងាយនិម្មិត។ សម្រាប់ការត្រួតលើ rclone-crypt សូមប្រើការចុចស្តាំលើថតពីចម្ងាយ។"
+            "aerovaultOverlayInactive": "បើកធុង .aerovault ជាបន្ទះពីចម្ងាយនិម្មិត។ សម្រាប់ការត្រួតលើ rclone-crypt សូមប្រើការចុចស្តាំលើថតពីចម្ងាយ។",
+            "aerocryptOverlayActive": "ស្រទាប់ AeroCrypt សកម្ម៖ ការបញ្ជូនឡើង និងការទាញយកនៅក្នុងបន្ទះនេះត្រូវបានអ៊ិនគ្រីប។ ចុចដើម្បីផ្តាច់។",
+            "aerocryptOverlayInactive": "បើកផ្ទុក rclone-crypt ពីចម្ងាយ (ឬបង្កើតថ្មី) ជាស្រទាប់ថ្លា។",
+            "aerocryptImportTitle": "បានរកឃើញស្រទាប់ Rclone Crypt",
+            "aerocryptImportDesc": "ប្រវត្តិរូបបាននាំចូលពី rclone.conf សម្រាប់ {name}៖ បើកស្រទាប់ឥឡូវនេះ?",
+            "aerocryptImportOpen": "បើកស្រទាប់"
         },
         "ai.agentMode.title": "ម៉ូដភ្នាក់ងារ",
         "ai.agentMode.description": "គ្រាន់គ្រងឥករណ៍វិនិច្ឆ័យឧបករណ៍ កំណត់កំណាត់ជំហាន និងកម្រិតជើងអាត់មានឥករណ៍។",
@@ -4197,7 +4202,8 @@
                 },
                 "footerSummaryNoQuota": "{count} ប្រវត្តិរូប · {unique} ដ្រាយ Cloud តែមួយ",
                 "footerDedupExplained": "ប្រវត្តិរូបដែលប្រើថាសរូបវន្តដូចគ្នា (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ធុង Wasabi ដែលប្រើ access key ដូចគ្នា) ត្រូវបានបញ្ចូលគ្នាជាដ្រាយតែមួយ ដើម្បីឱ្យកូតាត្រូវបានរាប់តែម្តងគត់។",
-                "dragToReorder": "អូសដើម្បីរៀបចំឡើងវិញ"
+                "dragToReorder": "អូសដើម្បីរៀបចំឡើងវិញ",
+                "footerUniqueCount": "{count} ប្លែក"
             },
             "breakdown": {
                 "title": "ការផ្ទុកតាមពិធីការ",
@@ -4338,6 +4344,53 @@
             "reconnecting": "វគ្គបានផុតកំណត់ កំពុងតភ្ជាប់ឡើងវិញ...",
             "reconnected": "បានភ្ជាប់ឡើងវិញទៅម៉ាស៊ីនមេ",
             "reconnectFailed": "ការតភ្ជាប់ឡើងវិញបានបរាជ័យ។ សូមតភ្ជាប់ឡើងវិញដោយដៃ។"
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · ស្រទាប់ Rclone Crypt",
+            "intro": {
+                "heading": "តើស្រទាប់នេះធ្វើអ្វី",
+                "p1": "អ៊ិនគ្រីបឈ្មោះឯកសារ និងមាតិកា <strong>ភ្លាមៗ</strong> មុនពេលផ្ញើទៅម៉ាស៊ីនមេ ហើយឌិគ្រីបនៅពេលទាញយក។ ម៉ាស៊ីនមេឃើញតែប្លុបជាមួយឈ្មោះ base32 ប៉ុណ្ណោះ។ អ្នកឃើញឈ្មោះដើម។",
+                "p2": "ខណៈពេលដែលស្រទាប់សកម្ម៖ វគ្គពីចម្ងាយរបស់អ្នកបង្ហាញមាតិកាដោយច្បាស់ ការបញ្ជូនឡើងនីមួយៗត្រូវបានអ៊ិនគ្រីប ការទាញយកនីមួយៗត្រូវបានឌិគ្រីប។ រកមើលផ្លាក <em>AEROCRYPT</em> ក្នុងរបារផ្លូវ។",
+                "p3": "ភាពខុសគ្នាជាមួយ AeroVault៖ AeroVault គឺជាឯកសារ <code>.aerovault</code> តែមួយឯករាជ្យ (ទម្រង់ AeroFTP)។ AeroCrypt គឺជាស្រទាប់នៅលើផ្ទុកពីចម្ងាយដែលមានស្រាប់ (S3/SFTP/WebDAV/...) ដោយប្រើទម្រង់ rclone crypt ជាសាធារណៈ។ ដោះសោជាមួយពាក្យសម្ងាត់ដូចគ្នានឹងអ្វីដែលអ្នកនឹងប្រើក្នុង <code>rclone</code>។"
+            },
+            "openExisting": "បើកដែលមានស្រាប់",
+            "createNew": "បង្កើតថ្មី",
+            "password": "ពាក្យសម្ងាត់",
+            "passwordPlaceholder": "ពាក្យសម្ងាត់ Rclone crypt",
+            "salt": "អំបិល (password2, ស្រេចចិត្ត)",
+            "saltPlaceholder": "ពាក្យសម្ងាត់អំបិលជាជម្រើស",
+            "filenameEncryption": "ការអ៊ិនគ្រីបឈ្មោះឯកសារ",
+            "filenameEncOption": {
+                "standard": "ស្តង់ដារ (EME)",
+                "obfuscate": "បិទបាំង",
+                "off": "បិទ"
+            },
+            "directoryNameEncryption": "ការអ៊ិនគ្រីបឈ្មោះថត",
+            "targetSubpath": "ផ្លូវរងគោលដៅ (ស្រេចចិត្ត)",
+            "targetSubpathPlaceholder": "ទុកឱ្យទទេដើម្បីចាប់ផ្តើមនៅក្នុងថតពីចម្ងាយបច្ចុប្បន្ន",
+            "targetSubpathHint": "ចាប់ផ្តើម dirIV ថ្មីនៅក្នុងថតគោលដៅ បន្ទាប់មកដោះសោវាជាស្រទាប់។",
+            "unlock": "ដោះសោ",
+            "createAndUnlock": "បង្កើត និងដោះសោ",
+            "lock": "ចាក់សោ",
+            "unlocked": "ផ្ទុក Rclone crypt ពីចម្ងាយត្រូវបានដោះសោ",
+            "initialised": "ផ្ទុក Rclone crypt ពីចម្ងាយត្រូវបានចាប់ផ្តើម",
+            "remoteUnlocked": "ផ្ទុកពីចម្ងាយត្រូវបានដោះសោ (ID: {id}...)",
+            "decryptFilename": "ឌិគ្រីបឈ្មោះឯកសារ",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "ឈ្មោះឯកសារដែលបានអ៊ិនគ្រីប (Base32hex)",
+            "decryptName": "ឌិគ្រីបឈ្មោះ",
+            "decryptFileFromDisk": "ឌិគ្រីបឯកសារពីថាស",
+            "fileDecryptedTo": "ឯកសារត្រូវបានឌិគ្រីបទៅ {path}",
+            "encryptedUploadCompleted": "ការបញ្ជូនឡើងដែលបានអ៊ិនគ្រីបបានបញ្ចប់៖ {path}",
+            "remoteBrowser": "កម្មវិធីរុករកពីចម្ងាយ (ថ្លា)",
+            "upload": "បញ្ជូនឡើង",
+            "up": "ឡើង",
+            "path": "ផ្លូវ៖ {path}",
+            "dirIvNotFound": "រក dirIV មិនឃើញនៅក្នុងថតបច្ចុប្បន្ន៖ ឈ្មោះអាចនៅតែត្រូវបានអ៊ិនគ្រីប។",
+            "loading": "កំពុងផ្ទុក...",
+            "emptyFolder": "ថតទទេ",
+            "nameNotDecrypted": "ឈ្មោះមិនត្រូវបានឌិគ្រីប",
+            "download": "ទាញយក"
         }
     }
 }

@@ -983,7 +983,7 @@
                 "stop": "Pysäytä",
                 "stopShell": "Pysäytä komentotulkki",
                 "closed": "Terminaali suljettu.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Komento lisätty Terminaliin. Suorita painamalla Enter."
             },
             "editorPanel": {
                 "emptyState": "Napsauta tiedostoa hiiren oikealla painikkeella ja valitse \"Muokkaa\"",
@@ -992,7 +992,7 @@
                 "saving": "Tallennetaan...",
                 "noFileSelected": "Tiedostoa ei valittu muokattavaksi",
                 "loading": "Ladataan editoria...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Vedä Terminaliin lisätäksesi suorituskomennon"
             },
             "previewPanel": {
                 "emptyState": "Napsauta tiedostoa hiiren oikealla painikkeella ja valitse \"Esikatselu\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Natiivi B2 v4 API: suurten tiedostojen työnkulku, palvelinpuolen kopio, versiohistoria (10 Gt ilmaiseksi)",
             "setupSteps": "Määritä {provider} ensin",
             "openProviderDocs": "Avaa {provider}-dokumentaatio",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Media-CDN ja tallennus natiivikansioilla (20 GB ilmaiseksi)",
+            "discoverUploadcare": "EU-mediahallinta CDN:llä ja tiedostorajapinnoilla (3 GB ilmaiseksi)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -3541,7 +3541,12 @@
             "showRemote": "Näytä etä",
             "showSystemMenu": "Näytä järjestelmävalikkorivi",
             "aerovaultOverlayActive": "AeroVault-säilön peittokerros aktiivinen — irrota napsauttamalla",
-            "aerovaultOverlayInactive": "Avaa .aerovault-säilö virtuaalisena etäpaneelina. rclone-crypt-peittokerrokseen napsauta hiiren oikealla painikkeella etäkansiota."
+            "aerovaultOverlayInactive": "Avaa .aerovault-säilö virtuaalisena etäpaneelina. rclone-crypt-peittokerrokseen napsauta hiiren oikealla painikkeella etäkansiota.",
+            "aerocryptOverlayActive": "AeroCrypt-peittokerros aktiivinen: tämän paneelin lähetykset ja lataukset on salattu. Napsauta irrottaaksesi.",
+            "aerocryptOverlayInactive": "Avaa rclone-crypt-etäpaikka (tai luo uusi) läpinäkyvänä peittokerroksena.",
+            "aerocryptImportTitle": "Rclone Crypt -peittokerros havaittu",
+            "aerocryptImportDesc": "Profiili tuotu rclone.conf-tiedostosta nimelle {name}: avataanko peittokerros nyt?",
+            "aerocryptImportOpen": "Avaa peittokerros"
         },
         "ai.agentMode.title": "Agenttitila",
         "ai.agentMode.description": "Hallitsee työkalujen hyväksymiskäyttäytymistä, vaiheiden rajoja ja autonomian tasoa.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profiilia · {unique} ainutlaatuista pilvilevyä",
                 "footerDedupExplained": "Profiilit, jotka jakavat saman fyysisen levyn (Koofr WebDAV + REST, OpenDrive WebDAV + REST, samalla access keyllä toimivat Wasabi-bucketit), yhdistetään yhdeksi levyksi, jotta kiintiöt lasketaan vain kerran.",
-                "dragToReorder": "Vedä järjestääksesi"
+                "dragToReorder": "Vedä järjestääksesi",
+                "footerUniqueCount": "{count} yksilöllistä"
             },
             "breakdown": {
                 "title": "Tallennustila protokollan mukaan",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Istunto vanhentunut, yhdistetään uudelleen...",
             "reconnected": "Yhdistetty uudelleen palvelimeen",
             "reconnectFailed": "Uudelleenyhdistäminen epäonnistui. Yhdistä manuaalisesti."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt -peittokerros",
+            "intro": {
+                "heading": "Mitä tämä peittokerros tekee",
+                "p1": "Salaa tiedostonimet ja sisällön <strong>lennossa</strong>, ennen kuin ne lähetetään palvelimelle, ja purkaa salauksen lataamisen yhteydessä. Palvelin näkee vain blob-tiedostoja base32-nimillä. Sinä näet alkuperäiset nimet.",
+                "p2": "Kun peittokerros on aktiivinen: etäistuntosi näyttää sisällön selkeänä, jokainen lähetys salataan, jokainen lataus puretaan. Etsi <em>AEROCRYPT</em>-merkkiä polkupalkista.",
+                "p3": "Ero AeroVaultiin: AeroVault on yksittäinen itsenäinen <code>.aerovault</code>-tiedosto (AeroFTP-muoto). AeroCrypt on kerros olemassa olevan etäpaikan päällä (S3/SFTP/WebDAV/...), joka käyttää julkista rclone crypt -muotoa. Avaa lukitus samalla salasanalla, jota käyttäisit <code>rclone</code>-ohjelmassa."
+            },
+            "openExisting": "Avaa olemassa oleva",
+            "createNew": "Luo uusi",
+            "password": "Salasana",
+            "passwordPlaceholder": "Rclone crypt -salasana",
+            "salt": "Suola (password2, valinnainen)",
+            "saltPlaceholder": "Valinnainen suolasalasana",
+            "filenameEncryption": "Tiedostonimen salaus",
+            "filenameEncOption": {
+                "standard": "Vakio (EME)",
+                "obfuscate": "Hämärtää",
+                "off": "Pois"
+            },
+            "directoryNameEncryption": "Hakemistonimen salaus",
+            "targetSubpath": "Kohteen alipolku (valinnainen)",
+            "targetSubpathPlaceholder": "jätä tyhjäksi alustaaksesi nykyisen etähakemiston",
+            "targetSubpathHint": "Alustaa uuden dirIV:n kohdehakemistoon ja avaa sen sitten peittokerroksena.",
+            "unlock": "Avaa lukitus",
+            "createAndUnlock": "Luo ja avaa lukitus",
+            "lock": "Lukitse",
+            "unlocked": "Rclone crypt -etäpaikka avattu",
+            "initialised": "Rclone crypt -etäpaikka alustettu",
+            "remoteUnlocked": "Etäpaikka avattu (ID: {id}...)",
+            "decryptFilename": "Pura tiedostonimen salaus",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Salattu tiedostonimi (Base32hex)",
+            "decryptName": "Pura nimen salaus",
+            "decryptFileFromDisk": "Pura tiedoston salaus levyltä",
+            "fileDecryptedTo": "Tiedosto purettu kohteeseen {path}",
+            "encryptedUploadCompleted": "Salattu lähetys valmis: {path}",
+            "remoteBrowser": "Etäselain (läpinäkyvä)",
+            "upload": "Lähetä",
+            "up": "Ylös",
+            "path": "Polku: {path}",
+            "dirIvNotFound": "dirIV:tä ei löytynyt nykyisestä kansiosta: nimet voivat pysyä salattuina.",
+            "loading": "Ladataan...",
+            "emptyFolder": "Tyhjä kansio",
+            "nameNotDecrypted": "nimeä ei purettu",
+            "download": "Lataa"
         }
     }
 }

@@ -983,7 +983,7 @@
                 "stop": "Detener",
                 "stopShell": "Detener shell",
                 "closed": "Terminal cerrada.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Comando insertado en el Terminal. Pulsa Enter para ejecutar."
             },
             "editorPanel": {
                 "emptyState": "Haz clic derecho en un archivo y elige \"Editar\"",
@@ -992,7 +992,7 @@
                 "saving": "Guardando...",
                 "noFileSelected": "Ningún archivo seleccionado para editar",
                 "loading": "Cargando editor...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Arrastra al Terminal para insertar el comando de ejecución"
             },
             "previewPanel": {
                 "emptyState": "Haz clic derecho en un archivo y elige \"Vista previa\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "API B2 v4 nativa: flujo para archivos grandes, copia en servidor, historial de versiones (10 GB gratis)",
             "setupSteps": "Configura {provider} primero",
             "openProviderDocs": "Abrir documentación de {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN de medios y almacenamiento con carpetas nativas (20 GB gratis)",
+            "discoverUploadcare": "Gestión de medios EU con CDN y API de archivos (3 GB gratis)"
         },
         "shortcuts": {
             "title": "Atajos de Teclado",
@@ -3541,7 +3541,12 @@
             "showRemote": "Mostrar remoto",
             "showSystemMenu": "Mostrar barra de menú del sistema",
             "aerovaultOverlayActive": "Superposición de contenedor AeroVault activa — clic para desconectar",
-            "aerovaultOverlayInactive": "Abrir un contenedor .aerovault como panel remoto virtual. Para la superposición rclone-crypt, haz clic derecho en una carpeta remota."
+            "aerovaultOverlayInactive": "Abrir un contenedor .aerovault como panel remoto virtual. Para la superposición rclone-crypt, haz clic derecho en una carpeta remota.",
+            "aerocryptOverlayActive": "Capa AeroCrypt activa: las subidas y descargas en este panel se cifran. Haz clic para desconectar.",
+            "aerocryptOverlayInactive": "Abre un remoto rclone-crypt (o crea uno nuevo) como capa transparente.",
+            "aerocryptImportTitle": "Capa Rclone Crypt detectada",
+            "aerocryptImportDesc": "Perfil importado desde rclone.conf para {name}: ¿abrir la capa ahora?",
+            "aerocryptImportOpen": "Abrir capa"
         },
         "security": {
             "totp": {
@@ -4168,7 +4173,8 @@
                 },
                 "footerSummaryNoQuota": "{count} perfiles · {unique} unidades en la nube únicas",
                 "footerDedupExplained": "Los perfiles que comparten el mismo disco físico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets de Wasabi con la misma access key) se agrupan en una sola unidad para que las cuotas se cuenten una única vez.",
-                "dragToReorder": "Arrastra para reordenar"
+                "dragToReorder": "Arrastra para reordenar",
+                "footerUniqueCount": "{count} únicos"
             },
             "breakdown": {
                 "title": "Almacenamiento por protocolo",
@@ -4309,6 +4315,53 @@
             "reconnecting": "Sesión caducada, reconectando...",
             "reconnected": "Reconectado al servidor",
             "reconnectFailed": "La reconexión falló. Reconecta manualmente."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Capa Rclone Crypt",
+            "intro": {
+                "heading": "Qué hace esta capa",
+                "p1": "Cifra los nombres y el contenido de los archivos <strong>al vuelo</strong>, antes de enviarlos al servidor, y los descifra al descargarlos. El servidor solo ve blobs con nombres en base32. Tú ves los nombres originales.",
+                "p2": "Mientras la capa está activa: tu sesión remota muestra el contenido en claro, cada subida se cifra, cada descarga se descifra. Busca la insignia <em>AEROCRYPT</em> en la barra de ruta.",
+                "p3": "Diferencia respecto a AeroVault: AeroVault es un único archivo autocontenido <code>.aerovault</code> (formato AeroFTP). AeroCrypt es una capa sobre un remoto existente (S3/SFTP/WebDAV/...) que utiliza el formato público rclone crypt. Desbloquea con la misma contraseña que usarías en <code>rclone</code>."
+            },
+            "openExisting": "Abrir existente",
+            "createNew": "Crear nuevo",
+            "password": "Contraseña",
+            "passwordPlaceholder": "Contraseña de rclone crypt",
+            "salt": "Sal (password2, opcional)",
+            "saltPlaceholder": "Contraseña de sal opcional",
+            "filenameEncryption": "Cifrado de nombre de archivo",
+            "filenameEncOption": {
+                "standard": "Estándar (EME)",
+                "obfuscate": "Ofuscar",
+                "off": "Desactivado"
+            },
+            "directoryNameEncryption": "Cifrado de nombre de directorio",
+            "targetSubpath": "Subruta de destino (opcional)",
+            "targetSubpathPlaceholder": "déjalo vacío para inicializar en el directorio remoto actual",
+            "targetSubpathHint": "Inicializa un nuevo dirIV en el directorio de destino y luego lo desbloquea como capa.",
+            "unlock": "Desbloquear",
+            "createAndUnlock": "Crear y desbloquear",
+            "lock": "Bloquear",
+            "unlocked": "Remoto rclone crypt desbloqueado",
+            "initialised": "Remoto rclone crypt inicializado",
+            "remoteUnlocked": "Remoto desbloqueado (ID: {id}...)",
+            "decryptFilename": "Descifrar nombre de archivo",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Nombre de archivo cifrado (Base32hex)",
+            "decryptName": "Descifrar nombre",
+            "decryptFileFromDisk": "Descifrar archivo del disco",
+            "fileDecryptedTo": "Archivo descifrado en {path}",
+            "encryptedUploadCompleted": "Subida cifrada completada: {path}",
+            "remoteBrowser": "Navegador remoto (transparente)",
+            "upload": "Subir",
+            "up": "Arriba",
+            "path": "Ruta: {path}",
+            "dirIvNotFound": "dirIV no encontrado en la carpeta actual: los nombres pueden permanecer cifrados.",
+            "loading": "Cargando...",
+            "emptyFolder": "Carpeta vacía",
+            "nameNotDecrypted": "nombre no descifrado",
+            "download": "Descargar"
         }
     }
 }

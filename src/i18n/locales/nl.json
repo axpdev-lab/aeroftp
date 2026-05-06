@@ -983,7 +983,7 @@
                 "stop": "Stoppen",
                 "stopShell": "Shell stoppen",
                 "closed": "Terminal gesloten.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Opdracht ingevoegd in Terminal. Druk op Enter om uit te voeren."
             },
             "editorPanel": {
                 "emptyState": "Klik met de rechtermuisknop op een bestand en kies \"Bewerken\"",
@@ -992,7 +992,7 @@
                 "saving": "Opslaan...",
                 "noFileSelected": "Geen bestand geselecteerd om te bewerken",
                 "loading": "Editor laden...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Sleep naar Terminal om de uitvoeringsopdracht in te voegen"
             },
             "previewPanel": {
                 "emptyState": "Klik met de rechtermuisknop op een bestand en kies \"Voorbeeld\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Native B2 v4 API: workflow voor grote bestanden, server-side kopie, versiegeschiedenis (10 GB gratis)",
             "setupSteps": "Stel eerst {provider} in",
             "openProviderDocs": "Open {provider}-documentatie",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Media-CDN en opslag met native mappen (20 GB gratis)",
+            "discoverUploadcare": "EU mediabeheer met CDN en bestand-API's (3 GB gratis)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -3541,7 +3541,12 @@
             "showRemote": "Externe weergeven",
             "showSystemMenu": "Systeemmenubalk weergeven",
             "aerovaultOverlayActive": "AeroVault-container-overlay actief — klik om los te koppelen",
-            "aerovaultOverlayInactive": "Open een .aerovault-container als virtueel extern paneel. Gebruik voor rclone-crypt-overlay rechts klikken op een externe map."
+            "aerovaultOverlayInactive": "Open een .aerovault-container als virtueel extern paneel. Gebruik voor rclone-crypt-overlay rechts klikken op een externe map.",
+            "aerocryptOverlayActive": "AeroCrypt-laag actief: uploads en downloads in dit paneel zijn versleuteld. Klik om los te koppelen.",
+            "aerocryptOverlayInactive": "Open een rclone-crypt externe opslag (of maak een nieuwe) als transparante laag.",
+            "aerocryptImportTitle": "Rclone Crypt-laag gedetecteerd",
+            "aerocryptImportDesc": "Profiel geïmporteerd uit rclone.conf voor {name}: nu de laag openen?",
+            "aerocryptImportOpen": "Laag openen"
         },
         "security": {
             "totp": {
@@ -4168,7 +4173,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profielen · {unique} unieke cloudschijven",
                 "footerDedupExplained": "Profielen die dezelfde fysieke schijf delen (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-buckets onder dezelfde toegangssleutel) worden samengevoegd tot één schijf, zodat quota maar één keer worden geteld.",
-                "dragToReorder": "Sleep om te herschikken"
+                "dragToReorder": "Sleep om te herschikken",
+                "footerUniqueCount": "{count} uniek"
             },
             "breakdown": {
                 "title": "Opslag per protocol",
@@ -4309,6 +4315,53 @@
             "reconnecting": "Sessie verlopen, opnieuw verbinden...",
             "reconnected": "Opnieuw verbonden met server",
             "reconnectFailed": "Opnieuw verbinden mislukt. Verbind handmatig opnieuw."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt-laag",
+            "intro": {
+                "heading": "Wat deze laag doet",
+                "p1": "Versleutelt bestandsnamen en inhoud <strong>direct</strong>, voordat ze naar de server worden verzonden, en ontsleutelt ze bij downloaden. De server ziet alleen blobs met base32-namen. U ziet de originele namen.",
+                "p2": "Terwijl de laag actief is: uw externe sessie toont inhoud in leesbare vorm, elke upload wordt versleuteld, elke download wordt ontsleuteld. Zoek de <em>AEROCRYPT</em>-badge in de padbalk.",
+                "p3": "Verschil met AeroVault: AeroVault is één op zichzelf staand <code>.aerovault</code>-bestand (AeroFTP-formaat). AeroCrypt is een laag bovenop een bestaande externe opslag (S3/SFTP/WebDAV/...) die het publieke rclone crypt-formaat gebruikt. Ontgrendel met hetzelfde wachtwoord dat u in <code>rclone</code> zou gebruiken."
+            },
+            "openExisting": "Bestaande openen",
+            "createNew": "Nieuwe maken",
+            "password": "Wachtwoord",
+            "passwordPlaceholder": "Rclone crypt-wachtwoord",
+            "salt": "Salt (password2, optioneel)",
+            "saltPlaceholder": "Optioneel salt-wachtwoord",
+            "filenameEncryption": "Versleuteling van bestandsnaam",
+            "filenameEncOption": {
+                "standard": "Standaard (EME)",
+                "obfuscate": "Verhullen",
+                "off": "Uit"
+            },
+            "directoryNameEncryption": "Versleuteling van mapnaam",
+            "targetSubpath": "Doelsubpad (optioneel)",
+            "targetSubpathPlaceholder": "leeg laten om te initialiseren in huidige externe map",
+            "targetSubpathHint": "Initialiseert een nieuwe dirIV in de doelmap en ontgrendelt deze vervolgens als laag.",
+            "unlock": "Ontgrendelen",
+            "createAndUnlock": "Maken en ontgrendelen",
+            "lock": "Vergrendelen",
+            "unlocked": "Rclone crypt externe opslag ontgrendeld",
+            "initialised": "Rclone crypt externe opslag geïnitialiseerd",
+            "remoteUnlocked": "Externe opslag ontgrendeld (ID: {id}...)",
+            "decryptFilename": "Bestandsnaam ontsleutelen",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Versleutelde bestandsnaam (Base32hex)",
+            "decryptName": "Naam ontsleutelen",
+            "decryptFileFromDisk": "Bestand van schijf ontsleutelen",
+            "fileDecryptedTo": "Bestand ontsleuteld naar {path}",
+            "encryptedUploadCompleted": "Versleutelde upload voltooid: {path}",
+            "remoteBrowser": "Externe browser (transparant)",
+            "upload": "Uploaden",
+            "up": "Omhoog",
+            "path": "Pad: {path}",
+            "dirIvNotFound": "dirIV niet gevonden in huidige map: namen blijven mogelijk versleuteld.",
+            "loading": "Laden...",
+            "emptyFolder": "Lege map",
+            "nameNotDecrypted": "naam niet ontsleuteld",
+            "download": "Downloaden"
         }
     }
 }

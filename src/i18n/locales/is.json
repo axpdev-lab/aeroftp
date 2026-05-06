@@ -983,7 +983,7 @@
                 "stop": "Stöðva",
                 "stopShell": "Stöðva skel",
                 "closed": "Flugstöð lokuð.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Skipun sett inn í Terminal. Ýttu á Enter til að keyra."
             },
             "editorPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Breyta\"",
@@ -992,7 +992,7 @@
                 "saving": "Vistar...",
                 "noFileSelected": "Engin skrá valin til breytinga",
                 "loading": "Hleð ritli...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Dragðu í Terminal til að setja inn keyrsluskipun"
             },
             "previewPanel": {
                 "emptyState": "Hægrismelltu á skrá og veldu \"Forskoða\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Innfædd B2 v4 API: vinnuflæði fyrir stórar skrár, afrit á þjóni, útgáfusaga (10 GB ókeypis)",
             "setupSteps": "Settu {provider} upp fyrst",
             "openProviderDocs": "Opna {provider} skjölun",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Margmiðlunar-CDN og geymsla með innfæddum möppum (20 GB ókeypis)",
+            "discoverUploadcare": "EU margmiðlunarstjórnun með CDN og skráa-API (3 GB ókeypis)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3541,7 +3541,12 @@
             "showRemote": "Sýna fjartengd",
             "showSystemMenu": "Sýna valmyndarstiku kerfis",
             "aerovaultOverlayActive": "AeroVault gáms yfirlag virkt — smelltu til að aftengja",
-            "aerovaultOverlayInactive": "Opnaðu .aerovault gám sem sýndarfjarstýriborð. Fyrir rclone-crypt yfirlag notaðu hægrismell á fjartengda möppu."
+            "aerovaultOverlayInactive": "Opnaðu .aerovault gám sem sýndarfjarstýriborð. Fyrir rclone-crypt yfirlag notaðu hægrismell á fjartengda möppu.",
+            "aerocryptOverlayActive": "AeroCrypt yfirlag virkt: upphlóðsla og niðurhal í þessari spjaldtöku eru dulkóðuð. Smelltu til að aftengja.",
+            "aerocryptOverlayInactive": "Opnaðu rclone-crypt fjarlæga geymslu (eða búðu til nýja) sem gegnsætt yfirlag.",
+            "aerocryptImportTitle": "Rclone Crypt yfirlag fundið",
+            "aerocryptImportDesc": "Snið flutt inn úr rclone.conf fyrir {name}: opna yfirlagið núna?",
+            "aerocryptImportOpen": "Opna yfirlag"
         },
         "ai.agentMode.title": "Umbodshamur",
         "ai.agentMode.description": "Stjornar hegdun verkfaerasamthykkis, skrefatakmork og sjalfraedisstig.",
@@ -4197,7 +4202,8 @@
                 },
                 "footerSummaryNoQuota": "{count} snið · {unique} einstök skýjadrif",
                 "footerDedupExplained": "Snið sem deila sama eðlislæga diski (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-fötur undir sama aðgangslykli) eru sameinuð í eitt drif svo kvótar séu taldir aðeins einu sinni.",
-                "dragToReorder": "Dragðu til að endurraða"
+                "dragToReorder": "Dragðu til að endurraða",
+                "footerUniqueCount": "{count} einstök"
             },
             "breakdown": {
                 "title": "Geymsla eftir samskiptareglu",
@@ -4338,6 +4344,53 @@
             "reconnecting": "Lota rann út, tengist aftur...",
             "reconnected": "Tengt aftur við netþjón",
             "reconnectFailed": "Endurtenging mistókst. Vinsamlega tengstu handvirkt aftur."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt yfirlag",
+            "intro": {
+                "heading": "Hvað gerir þetta yfirlag",
+                "p1": "Dulkóðar skráarnöfn og innihald <strong>jafnóðum</strong>, áður en þeim er sent á þjóninn, og afkóðar þau þegar þú sækir. Þjónninn sér aðeins blokkir með base32 nöfnum. Þú sérð upprunalegu nöfnin.",
+                "p2": "Á meðan yfirlagið er virkt: fjarlæga lotan þín sýnir innihald á skýru formi, hver upphlóðsla er dulkóðuð, hver niðurhal er afkóðuð. Leitaðu að <em>AEROCRYPT</em> merkinu í slóðarstikunni.",
+                "p3": "Munur frá AeroVault: AeroVault er ein sjálfstæð <code>.aerovault</code> skrá (AeroFTP snið). AeroCrypt er lag ofan á núverandi fjarlægu geymslu (S3/SFTP/WebDAV/...) sem notar opna rclone crypt sniðið. Opnaðu með sama lykilorði og þú myndir nota í <code>rclone</code>."
+            },
+            "openExisting": "Opna núverandi",
+            "createNew": "Búa til nýtt",
+            "password": "Lykilorð",
+            "passwordPlaceholder": "Rclone crypt lykilorð",
+            "salt": "Salt (password2, valfrjálst)",
+            "saltPlaceholder": "Valfrjálst salt lykilorð",
+            "filenameEncryption": "Dulkóðun skráarnafns",
+            "filenameEncOption": {
+                "standard": "Staðlað (EME)",
+                "obfuscate": "Hylja",
+                "off": "Slökkt"
+            },
+            "directoryNameEncryption": "Dulkóðun möppunafns",
+            "targetSubpath": "Markundirslóð (valfrjálst)",
+            "targetSubpathPlaceholder": "skildu eftir autt til að frumstilla í núverandi fjarmöppu",
+            "targetSubpathHint": "Frumstillir nýtt dirIV í markmöppunni og opnar það síðan sem yfirlag.",
+            "unlock": "Opna",
+            "createAndUnlock": "Búa til og opna",
+            "lock": "Læsa",
+            "unlocked": "Rclone crypt fjarlæg geymsla opin",
+            "initialised": "Rclone crypt fjarlæg geymsla frumstillt",
+            "remoteUnlocked": "Fjarlæg geymsla opin (ID: {id}...)",
+            "decryptFilename": "Afkóða skráarnafn",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Dulkóðað skráarnafn (Base32hex)",
+            "decryptName": "Afkóða nafn",
+            "decryptFileFromDisk": "Afkóða skrá af diski",
+            "fileDecryptedTo": "Skrá afkóðuð í {path}",
+            "encryptedUploadCompleted": "Dulkóðaðri upphlóðslu lokið: {path}",
+            "remoteBrowser": "Fjarvafri (gegnsær)",
+            "upload": "Hlaða upp",
+            "up": "Upp",
+            "path": "Slóð: {path}",
+            "dirIvNotFound": "dirIV fannst ekki í núverandi möppu: nöfn gætu verið áfram dulkóðuð.",
+            "loading": "Hleður...",
+            "emptyFolder": "Tóm mappa",
+            "nameNotDecrypted": "nafn ekki afkóðað",
+            "download": "Sækja"
         }
     }
 }

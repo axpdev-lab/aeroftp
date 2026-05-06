@@ -983,7 +983,7 @@
                 "stop": "Dừng",
                 "stopShell": "Dừng terminal",
                 "closed": "Đã đóng terminal.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Đã chèn lệnh vào Terminal. Nhấn Enter để chạy."
             },
             "editorPanel": {
                 "emptyState": "Nhấn chuột phải vào tệp và chọn \"Chỉnh sửa\"",
@@ -992,7 +992,7 @@
                 "saving": "Đang lưu...",
                 "noFileSelected": "Chưa chọn tệp để chỉnh sửa",
                 "loading": "Đang tải trình chỉnh sửa...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Kéo vào Terminal để chèn lệnh chạy"
             },
             "previewPanel": {
                 "emptyState": "Nhấn chuột phải vào tệp và chọn \"Xem trước\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "API B2 v4 gốc: quy trình tệp lớn, sao chép phía máy chủ, lịch sử phiên bản (10 GB miễn phí)",
             "setupSteps": "Thiết lập {provider} trước",
             "openProviderDocs": "Mở tài liệu {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN phương tiện và lưu trữ với thư mục gốc (20 GB miễn phí)",
+            "discoverUploadcare": "Quản lý phương tiện EU với CDN và API tệp (3 GB miễn phí)"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -3541,7 +3541,12 @@
             "showRemote": "Hiện từ xa",
             "showSystemMenu": "Hiện thanh menu hệ thống",
             "aerovaultOverlayActive": "Lớp phủ container AeroVault đang hoạt động — bấm để tách",
-            "aerovaultOverlayInactive": "Mở container .aerovault làm bảng điều khiển từ xa ảo. Đối với lớp phủ rclone-crypt, dùng bấm chuột phải trên thư mục từ xa."
+            "aerovaultOverlayInactive": "Mở container .aerovault làm bảng điều khiển từ xa ảo. Đối với lớp phủ rclone-crypt, dùng bấm chuột phải trên thư mục từ xa.",
+            "aerocryptOverlayActive": "Lớp phủ AeroCrypt đang hoạt động: tải lên và tải xuống trong bảng này được mã hóa. Nhấp để gỡ.",
+            "aerocryptOverlayInactive": "Mở một remote rclone-crypt (hoặc tạo mới) làm lớp phủ trong suốt.",
+            "aerocryptImportTitle": "Đã phát hiện lớp phủ Rclone Crypt",
+            "aerocryptImportDesc": "Đã nhập hồ sơ từ rclone.conf cho {name}: mở lớp phủ ngay bây giờ?",
+            "aerocryptImportOpen": "Mở lớp phủ"
         },
         "ai.agentMode.title": "Che do Agent",
         "ai.agentMode.description": "Kiem soat hanh vi phe duyet cong cu, gioi han buoc va muc do tu chu.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} hồ sơ · {unique} ổ đám mây duy nhất",
                 "footerDedupExplained": "Các hồ sơ dùng chung một ổ đĩa vật lý (Koofr WebDAV + REST, OpenDrive WebDAV + REST, các bucket Wasabi dưới cùng một khóa truy cập) được gộp thành một ổ duy nhất để hạn mức chỉ được tính một lần.",
-                "dragToReorder": "Kéo để sắp xếp lại"
+                "dragToReorder": "Kéo để sắp xếp lại",
+                "footerUniqueCount": "{count} duy nhất"
             },
             "breakdown": {
                 "title": "Bộ nhớ theo giao thức",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Phiên đã hết hạn, đang kết nối lại...",
             "reconnected": "Đã kết nối lại với máy chủ",
             "reconnectFailed": "Kết nối lại thất bại. Vui lòng kết nối lại thủ công."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Lớp phủ Rclone Crypt",
+            "intro": {
+                "heading": "Lớp phủ này làm gì",
+                "p1": "Mã hóa tên tệp và nội dung <strong>tức thời</strong>, trước khi gửi đến máy chủ, và giải mã khi bạn tải xuống. Máy chủ chỉ thấy các blob với tên dạng base32. Bạn thấy các tên gốc.",
+                "p2": "Khi lớp phủ đang hoạt động: phiên từ xa của bạn hiển thị nội dung ở dạng rõ, mọi lần tải lên đều được mã hóa, mọi lần tải xuống đều được giải mã. Hãy tìm huy hiệu <em>AEROCRYPT</em> trong thanh đường dẫn.",
+                "p3": "Khác biệt so với AeroVault: AeroVault là một tệp <code>.aerovault</code> độc lập (định dạng AeroFTP). AeroCrypt là một lớp phủ trên một remote hiện có (S3/SFTP/WebDAV/...) sử dụng định dạng rclone crypt công khai. Mở khóa bằng cùng mật khẩu mà bạn sẽ dùng trong <code>rclone</code>."
+            },
+            "openExisting": "Mở cái hiện có",
+            "createNew": "Tạo mới",
+            "password": "Mật khẩu",
+            "passwordPlaceholder": "Mật khẩu rclone crypt",
+            "salt": "Salt (password2, tùy chọn)",
+            "saltPlaceholder": "Mật khẩu salt tùy chọn",
+            "filenameEncryption": "Mã hóa tên tệp",
+            "filenameEncOption": {
+                "standard": "Tiêu chuẩn (EME)",
+                "obfuscate": "Làm mờ",
+                "off": "Tắt"
+            },
+            "directoryNameEncryption": "Mã hóa tên thư mục",
+            "targetSubpath": "Đường dẫn con đích (tùy chọn)",
+            "targetSubpathPlaceholder": "để trống để khởi tạo trong thư mục từ xa hiện tại",
+            "targetSubpathHint": "Khởi tạo dirIV mới trong thư mục đích, sau đó mở khóa làm lớp phủ.",
+            "unlock": "Mở khóa",
+            "createAndUnlock": "Tạo và mở khóa",
+            "lock": "Khóa",
+            "unlocked": "Đã mở khóa remote rclone crypt",
+            "initialised": "Đã khởi tạo remote rclone crypt",
+            "remoteUnlocked": "Đã mở khóa remote (ID: {id}...)",
+            "decryptFilename": "Giải mã tên tệp",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Tên tệp đã mã hóa (Base32hex)",
+            "decryptName": "Giải mã tên",
+            "decryptFileFromDisk": "Giải mã tệp từ đĩa",
+            "fileDecryptedTo": "Đã giải mã tệp tới {path}",
+            "encryptedUploadCompleted": "Đã hoàn tất tải lên có mã hóa: {path}",
+            "remoteBrowser": "Trình duyệt từ xa (trong suốt)",
+            "upload": "Tải lên",
+            "up": "Lên",
+            "path": "Đường dẫn: {path}",
+            "dirIvNotFound": "Không tìm thấy dirIV trong thư mục hiện tại: tên có thể vẫn ở dạng mã hóa.",
+            "loading": "Đang tải...",
+            "emptyFolder": "Thư mục trống",
+            "nameNotDecrypted": "tên chưa giải mã",
+            "download": "Tải xuống"
         }
     }
 }

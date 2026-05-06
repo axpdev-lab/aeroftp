@@ -983,7 +983,7 @@
                 "stop": "Запри",
                 "stopShell": "Запри школка",
                 "closed": "Терминалот е затворен.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Командата е вметната во Terminal. Притиснете Enter за извршување."
             },
             "editorPanel": {
                 "emptyState": "Кликнете со десно копче на датотека и изберете \"Уреди\"",
@@ -992,7 +992,7 @@
                 "saving": "Зачувување...",
                 "noFileSelected": "Не е избрана датотека за уредување",
                 "loading": "Вчитување на уредувачот...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Повлечете во Terminal за да вметнете команда за извршување"
             },
             "previewPanel": {
                 "emptyState": "Кликнете со десно копче на датотека и изберете \"Преглед\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Изворно B2 v4 API: работен тек за големи датотеки, копија на серверот, историја на верзии (10 GB бесплатно)",
             "setupSteps": "Прво поставете {provider}",
             "openProviderDocs": "Отвори ја документацијата за {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Медиумски CDN и складиште со native папки (20 GB бесплатно)",
+            "discoverUploadcare": "EU управување со медиуми со CDN и API за датотеки (3 GB бесплатно)"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",
@@ -3541,7 +3541,12 @@
             "showRemote": "Прикажи оддалечено",
             "showSystemMenu": "Прикажи системско мени",
             "aerovaultOverlayActive": "Преклоп на AeroVault контејнер активен — кликнете за откачување",
-            "aerovaultOverlayInactive": "Отворете .aerovault контејнер како виртуелен далечински панел. За преклоп rclone-crypt користете десен клик на далечинска папка."
+            "aerovaultOverlayInactive": "Отворете .aerovault контејнер како виртуелен далечински панел. За преклоп rclone-crypt користете десен клик на далечинска папка.",
+            "aerocryptOverlayActive": "AeroCrypt преклоп активен: прикачувањата и преземањата во овој панел се шифрирани. Кликнете за да откачите.",
+            "aerocryptOverlayInactive": "Отворете rclone-crypt далечински складиш (или создајте нов) како транспарентен преклоп.",
+            "aerocryptImportTitle": "Откриен Rclone Crypt преклоп",
+            "aerocryptImportDesc": "Профилот е увезен од rclone.conf за {name}: да го отворам преклопот сега?",
+            "aerocryptImportOpen": "Отвори преклоп"
         },
         "ai.agentMode.title": "Режим на агент",
         "ai.agentMode.description": "Го контролира однесувањето на одобрување на алатки, ограничувањата на чекори и нивото на автономија.",
@@ -4197,7 +4202,8 @@
                 },
                 "footerSummaryNoQuota": "{count} профили · {unique} уникатни облак-дискови",
                 "footerDedupExplained": "Профилите што го делат истиот физички диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi сегменти со истиот пристапен клуч) се спојуваат во еден диск за квотите да се бројат само еднаш.",
-                "dragToReorder": "Влечете за прередување"
+                "dragToReorder": "Влечете за прередување",
+                "footerUniqueCount": "{count} уникатни"
             },
             "breakdown": {
                 "title": "Складирање по протокол",
@@ -4338,6 +4344,53 @@
             "reconnecting": "Сесијата истече, повторно поврзување...",
             "reconnected": "Повторно поврзан со серверот",
             "reconnectFailed": "Повторното поврзување не успеа. Поврзете се рачно."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt преклоп",
+            "intro": {
+                "heading": "Што прави овој преклоп",
+                "p1": "Ги шифрира имињата на датотеките и содржините <strong>во лет</strong>, пред да ги испрати на серверот, и ги дешифрира кога преземате. Серверот гледа само блобови со base32 имиња. Вие ги гледате оригиналните имиња.",
+                "p2": "Додека преклопот е активен: вашата далечинска сесија ги прикажува содржините во отворен текст, секое прикачување е шифрирано, секое преземање е дешифрирано. Барајте го <em>AEROCRYPT</em> значето во лентата на патеката.",
+                "p3": "Разлика од AeroVault: AeroVault е една самостојна <code>.aerovault</code> датотека (AeroFTP формат). AeroCrypt е слој над постојна далечинска складиш (S3/SFTP/WebDAV/...) користејќи го јавниот rclone crypt формат. Отклучете со истата лозинка што би ја користеле во <code>rclone</code>."
+            },
+            "openExisting": "Отвори постоечки",
+            "createNew": "Создај нов",
+            "password": "Лозинка",
+            "passwordPlaceholder": "Rclone crypt лозинка",
+            "salt": "Сол (password2, опционално)",
+            "saltPlaceholder": "Опционална лозинка за сол",
+            "filenameEncryption": "Шифрирање на име на датотека",
+            "filenameEncOption": {
+                "standard": "Стандардно (EME)",
+                "obfuscate": "Замаглување",
+                "off": "Исклучено"
+            },
+            "directoryNameEncryption": "Шифрирање на име на директориум",
+            "targetSubpath": "Целна потпатека (опционално)",
+            "targetSubpathPlaceholder": "оставете празно за иницијализација во тековниот далечински директориум",
+            "targetSubpathHint": "Иницијализира нов dirIV во целниот директориум, потоа го отклучува како преклоп.",
+            "unlock": "Отклучи",
+            "createAndUnlock": "Создај и отклучи",
+            "lock": "Заклучи",
+            "unlocked": "Rclone crypt далечински складиш отклучен",
+            "initialised": "Rclone crypt далечински складиш иницијализиран",
+            "remoteUnlocked": "Далечински складиш отклучен (ID: {id}...)",
+            "decryptFilename": "Дешифрирај име на датотека",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Шифрирано име на датотека (Base32hex)",
+            "decryptName": "Дешифрирај име",
+            "decryptFileFromDisk": "Дешифрирај датотека од диск",
+            "fileDecryptedTo": "Датотеката е дешифрирана во {path}",
+            "encryptedUploadCompleted": "Шифрираното прикачување е завршено: {path}",
+            "remoteBrowser": "Далечински прелистувач (транспарентен)",
+            "upload": "Прикачи",
+            "up": "Горе",
+            "path": "Патека: {path}",
+            "dirIvNotFound": "dirIV не е пронајден во тековната папка: имињата може да останат шифрирани.",
+            "loading": "Се вчитува...",
+            "emptyFolder": "Празна папка",
+            "nameNotDecrypted": "името не е дешифрирано",
+            "download": "Преземи"
         }
     }
 }

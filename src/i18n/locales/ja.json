@@ -983,7 +983,7 @@
                 "stop": "停止",
                 "stopShell": "シェルを停止",
                 "closed": "ターミナルが閉じました。",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "コマンドを Terminal に挿入しました。Enter を押して実行します。"
             },
             "editorPanel": {
                 "emptyState": "ファイルを右クリックして「編集」を選択",
@@ -992,7 +992,7 @@
                 "saving": "保存中...",
                 "noFileSelected": "編集するファイルが選択されていません",
                 "loading": "エディターを読み込み中...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Terminal にドラッグして実行コマンドを挿入"
             },
             "previewPanel": {
                 "emptyState": "ファイルを右クリックして「プレビュー」を選択"
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "ネイティブ B2 v4 API: 大容量ファイルのワークフロー、サーバー側コピー、バージョン履歴 (10 GB 無料)",
             "setupSteps": "最初に {provider} をセットアップ",
             "openProviderDocs": "{provider} のドキュメントを開く",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "ネイティブフォルダ対応のメディア CDN とストレージ (20 GB 無料)",
+            "discoverUploadcare": "CDN とファイル API による EU メディア管理 (3 GB 無料)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -3506,7 +3506,12 @@
             "showRemote": "リモートを表示",
             "showSystemMenu": "システムメニューバーを表示",
             "aerovaultOverlayActive": "AeroVault コンテナオーバーレイが有効 — クリックして切り離す",
-            "aerovaultOverlayInactive": ".aerovault コンテナを仮想リモートパネルとして開きます。rclone-crypt オーバーレイにはリモートフォルダで右クリックを使用してください。"
+            "aerovaultOverlayInactive": ".aerovault コンテナを仮想リモートパネルとして開きます。rclone-crypt オーバーレイにはリモートフォルダで右クリックを使用してください。",
+            "aerocryptOverlayActive": "AeroCrypt オーバーレイが有効: このパネル内のアップロードとダウンロードは暗号化されます。クリックして切り離します。",
+            "aerocryptOverlayInactive": "rclone-crypt リモートを開く（または新規作成する）と透過オーバーレイになります。",
+            "aerocryptImportTitle": "Rclone Crypt オーバーレイが検出されました",
+            "aerocryptImportDesc": "{name} 用のプロファイルが rclone.conf からインポートされました: オーバーレイを今開きますか？",
+            "aerocryptImportOpen": "オーバーレイを開く"
         },
         "masterPassword": {
             "autoLockTimeout": "自動ロックタイムアウト",
@@ -4168,7 +4173,8 @@
                 },
                 "footerSummaryNoQuota": "{count} 個のプロファイル · {unique} 個の固有クラウドドライブ",
                 "footerDedupExplained": "同じ物理ディスクを共有するプロファイル(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同じアクセスキーの Wasabi バケット)は 1 つのドライブにまとめられ、クォータは 1 回だけカウントされます。",
-                "dragToReorder": "ドラッグして並べ替え"
+                "dragToReorder": "ドラッグして並べ替え",
+                "footerUniqueCount": "{count} 件のユニーク"
             },
             "breakdown": {
                 "title": "プロトコル別ストレージ",
@@ -4309,6 +4315,53 @@
             "reconnecting": "セッションが期限切れです。再接続しています...",
             "reconnected": "サーバーに再接続しました",
             "reconnectFailed": "再接続に失敗しました。手動で再接続してください。"
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt オーバーレイ",
+            "intro": {
+                "heading": "このオーバーレイの機能",
+                "p1": "ファイル名と内容を<strong>オンザフライで</strong>暗号化してからサーバーに送信し、ダウンロード時に復号します。サーバーからは base32 名のブロブのみが見えます。あなたには元の名前が見えます。",
+                "p2": "オーバーレイが有効な間: リモートセッションでは内容が平文で表示され、すべてのアップロードは暗号化され、すべてのダウンロードは復号されます。パスバーの <em>AEROCRYPT</em> バッジを確認してください。",
+                "p3": "AeroVault との違い: AeroVault は単一の自己完結型 <code>.aerovault</code> ファイル（AeroFTP 形式）です。AeroCrypt は既存のリモート（S3/SFTP/WebDAV/...）の上に重ねるレイヤーで、公開されている rclone crypt 形式を使用します。<code>rclone</code> で使用するのと同じパスワードでロック解除します。"
+            },
+            "openExisting": "既存を開く",
+            "createNew": "新規作成",
+            "password": "パスワード",
+            "passwordPlaceholder": "Rclone crypt パスワード",
+            "salt": "ソルト（password2、任意）",
+            "saltPlaceholder": "任意のソルトパスワード",
+            "filenameEncryption": "ファイル名暗号化",
+            "filenameEncOption": {
+                "standard": "標準（EME）",
+                "obfuscate": "難読化",
+                "off": "オフ"
+            },
+            "directoryNameEncryption": "ディレクトリ名暗号化",
+            "targetSubpath": "対象サブパス（任意）",
+            "targetSubpathPlaceholder": "現在のリモートディレクトリで初期化する場合は空欄のまま",
+            "targetSubpathHint": "対象ディレクトリに新しい dirIV を初期化し、オーバーレイとしてロック解除します。",
+            "unlock": "ロック解除",
+            "createAndUnlock": "作成してロック解除",
+            "lock": "ロック",
+            "unlocked": "Rclone crypt リモートをロック解除しました",
+            "initialised": "Rclone crypt リモートを初期化しました",
+            "remoteUnlocked": "リモートをロック解除しました（ID: {id}...）",
+            "decryptFilename": "ファイル名を復号",
+            "dirIvPlaceholder": "dirIV（base64）",
+            "encryptedNamePlaceholder": "暗号化されたファイル名（Base32hex）",
+            "decryptName": "名前を復号",
+            "decryptFileFromDisk": "ディスクからファイルを復号",
+            "fileDecryptedTo": "ファイルを {path} に復号しました",
+            "encryptedUploadCompleted": "暗号化アップロードが完了しました: {path}",
+            "remoteBrowser": "リモートブラウザ（透過）",
+            "upload": "アップロード",
+            "up": "上へ",
+            "path": "パス: {path}",
+            "dirIvNotFound": "現在のフォルダに dirIV が見つかりません: 名前が暗号化されたままになる可能性があります。",
+            "loading": "読み込み中...",
+            "emptyFolder": "空のフォルダ",
+            "nameNotDecrypted": "名前は復号されていません",
+            "download": "ダウンロード"
         }
     }
 }

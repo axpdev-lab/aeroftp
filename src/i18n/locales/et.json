@@ -983,7 +983,7 @@
                 "stop": "Peata",
                 "stopShell": "Peata shell",
                 "closed": "Terminal suletud.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Käsk sisestatud Terminali. Käivitamiseks vajutage Enter."
             },
             "editorPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Muuda\"",
@@ -992,7 +992,7 @@
                 "saving": "Salvestamine...",
                 "noFileSelected": "Redigeerimiseks pole faili valitud",
                 "loading": "Redaktori laadimine...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Lohistage Terminali, et sisestada käivituskäsk"
             },
             "previewPanel": {
                 "emptyState": "Tehke failil paremklõps ja valige \"Eelvaade\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Natiivne B2 v4 API: suurte failide töövoog, serveripoolne kopeerimine, versiooniajalugu (10 GB tasuta)",
             "setupSteps": "Seadistage kõigepealt {provider}",
             "openProviderDocs": "Ava {provider} dokumentatsioon",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Meedia CDN ja salvestus loomulike kaustadega (20 GB tasuta)",
+            "discoverUploadcare": "EU meediahaldus CDN-i ja faili-API-dega (3 GB tasuta)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -3541,7 +3541,12 @@
             "showRemote": "Näita kauget",
             "showSystemMenu": "Näita süsteemi menüüriba",
             "aerovaultOverlayActive": "AeroVault konteineri kate aktiivne — klõpsake lahti ühendamiseks",
-            "aerovaultOverlayInactive": "Avage .aerovault konteiner virtuaalse kaugpaneelina. rclone-crypt katte jaoks kasutage paremklõpsu kaugkaustal."
+            "aerovaultOverlayInactive": "Avage .aerovault konteiner virtuaalse kaugpaneelina. rclone-crypt katte jaoks kasutage paremklõpsu kaugkaustal.",
+            "aerocryptOverlayActive": "AeroCrypti kiht aktiivne: üleslaadimised ja allalaadimised selles paneelis on krüpteeritud. Klõpsa lahti ühendamiseks.",
+            "aerocryptOverlayInactive": "Ava rclone-crypti kaughoidla (või loo uus) läbipaistva kihina.",
+            "aerocryptImportTitle": "Tuvastati Rclone Crypti kiht",
+            "aerocryptImportDesc": "Profiil imporditud rclone.conf-ist {name} jaoks: kas avada kiht nüüd?",
+            "aerocryptImportOpen": "Ava kiht"
         },
         "ai.agentMode.title": "Agendi režiim",
         "ai.agentMode.description": "Juhib tööriistade kinnitamise käitumist, sammupiiranguid ja autonoomia taset.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profiili · {unique} unikaalset pilvedraivi",
                 "footerDedupExplained": "Profiilid, mis jagavad sama füüsilist ketast (Koofr WebDAV + REST, OpenDrive WebDAV + REST, sama access key alla kuuluvad Wasabi ämbrid), liidetakse üheks draiviks, et kvoote loetaks ainult üks kord.",
-                "dragToReorder": "Lohista ümberjärjestamiseks"
+                "dragToReorder": "Lohista ümberjärjestamiseks",
+                "footerUniqueCount": "{count} unikaalset"
             },
             "breakdown": {
                 "title": "Salvestusruum protokolli järgi",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Seanss aegus, ühendatakse uuesti...",
             "reconnected": "Uuesti serveriga ühendatud",
             "reconnectFailed": "Uuestiühendamine ebaõnnestus. Palun ühenda käsitsi uuesti."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypti kiht",
+            "intro": {
+                "heading": "Mida see kiht teeb",
+                "p1": "Krüpteerib failinimed ja sisu <strong>lennult</strong>, enne kui need serverisse saadetakse, ning dekrüpteerib need allalaadimisel. Server näeb ainult base32-nimedega blobisid. Sina näed algseid nimesid.",
+                "p2": "Kuni kiht on aktiivne: sinu kaugseanss kuvab sisu loetavalt, iga üleslaadimine krüpteeritakse, iga allalaadimine dekrüpteeritakse. Otsi tee-ribalt märki <em>AEROCRYPT</em>.",
+                "p3": "Erinevus AeroVaultist: AeroVault on üks iseseisev fail <code>.aerovault</code> (AeroFTP vorming). AeroCrypt on kiht olemasoleva kaughoidla peal (S3/SFTP/WebDAV/...), mis kasutab avalikku rclone crypti vormingut. Ava sama parooliga, mida kasutaksid <code>rclone</code>'is."
+            },
+            "openExisting": "Ava olemasolev",
+            "createNew": "Loo uus",
+            "password": "Parool",
+            "passwordPlaceholder": "Rclone crypti parool",
+            "salt": "Sool (password2, valikuline)",
+            "saltPlaceholder": "Valikuline soola parool",
+            "filenameEncryption": "Failinime krüptimine",
+            "filenameEncOption": {
+                "standard": "Standard (EME)",
+                "obfuscate": "Varja",
+                "off": "Väljas"
+            },
+            "directoryNameEncryption": "Kataloogi nime krüptimine",
+            "targetSubpath": "Sihtkoha alamtee (valikuline)",
+            "targetSubpathPlaceholder": "jäta tühjaks, et lähtestada praeguses kaugkataloogis",
+            "targetSubpathHint": "Lähtestab uue dirIV sihtkataloogis ja seejärel avab selle kihina.",
+            "unlock": "Ava lukk",
+            "createAndUnlock": "Loo ja ava",
+            "lock": "Lukusta",
+            "unlocked": "Rclone crypti kaughoidla avatud",
+            "initialised": "Rclone crypti kaughoidla lähtestatud",
+            "remoteUnlocked": "Kaughoidla avatud (ID: {id}...)",
+            "decryptFilename": "Dekrüpteeri failinimi",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Krüpteeritud failinimi (Base32hex)",
+            "decryptName": "Dekrüpteeri nimi",
+            "decryptFileFromDisk": "Dekrüpteeri fail kettalt",
+            "fileDecryptedTo": "Fail dekrüpteeritud asukohta {path}",
+            "encryptedUploadCompleted": "Krüpteeritud üleslaadimine lõpetatud: {path}",
+            "remoteBrowser": "Kaugbrauser (läbipaistev)",
+            "upload": "Lae üles",
+            "up": "Üles",
+            "path": "Tee: {path}",
+            "dirIvNotFound": "dirIV-d ei leitud praegusest kaustast: nimed võivad jääda krüpteerituks.",
+            "loading": "Laadimine...",
+            "emptyFolder": "Tühi kaust",
+            "nameNotDecrypted": "nime ei dekrüpteeritud",
+            "download": "Lae alla"
         }
     }
 }

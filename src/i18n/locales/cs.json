@@ -983,7 +983,7 @@
                 "stop": "Zastavit",
                 "stopShell": "Zastavit shell",
                 "closed": "Terminál uzavřen.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Příkaz vložen do Terminalu. Stiskněte Enter pro spuštění."
             },
             "editorPanel": {
                 "emptyState": "Klikněte pravým tlačítkem na soubor a zvolte \"Upravit\"",
@@ -992,7 +992,7 @@
                 "saving": "Ukládání...",
                 "noFileSelected": "Nebyl vybrán soubor k úpravě",
                 "loading": "Načítání editoru...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Přetáhněte do Terminalu pro vložení příkazu ke spuštění"
             },
             "previewPanel": {
                 "emptyState": "Klikněte pravým tlačítkem na soubor a zvolte \"Náhled\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Nativní B2 v4 API: pracovní postup pro velké soubory, kopie na straně serveru, historie verzí (10 GB zdarma)",
             "setupSteps": "Nejprve nastavte {provider}",
             "openProviderDocs": "Otevřít dokumentaci {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Mediální CDN a úložiště s nativními složkami (20 GB zdarma)",
+            "discoverUploadcare": "EU správa médií s CDN a souborovým API (3 GB zdarma)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",
@@ -3541,7 +3541,12 @@
             "showRemote": "Zobrazit vzdálené",
             "showSystemMenu": "Zobrazit systémové menu",
             "aerovaultOverlayActive": "Překryv kontejneru AeroVault aktivní — kliknutím odpojte",
-            "aerovaultOverlayInactive": "Otevřít kontejner .aerovault jako virtuální vzdálený panel. Pro překryv rclone-crypt použijte pravé tlačítko na vzdálené složce."
+            "aerovaultOverlayInactive": "Otevřít kontejner .aerovault jako virtuální vzdálený panel. Pro překryv rclone-crypt použijte pravé tlačítko na vzdálené složce.",
+            "aerocryptOverlayActive": "Vrstva AeroCrypt aktivní: nahrávání a stahování v tomto panelu jsou šifrovaná. Kliknutím odpojíte.",
+            "aerocryptOverlayInactive": "Otevřete vzdálené úložiště rclone-crypt (nebo vytvořte nové) jako transparentní vrstvu.",
+            "aerocryptImportTitle": "Detekována vrstva Rclone Crypt",
+            "aerocryptImportDesc": "Profil importován z rclone.conf pro {name}: otevřít vrstvu nyní?",
+            "aerocryptImportOpen": "Otevřít vrstvu"
         },
         "ai.agentMode.title": "Režim agenta",
         "ai.agentMode.description": "Ovládá chování schvalování nástrojů, limity kroků a úroveň autonomie.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profilů · {unique} unikátních cloudových disků",
                 "footerDedupExplained": "Profily, které sdílejí stejný fyzický disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckety pod stejným access key), se sloučí do jednoho disku, aby se kvóty počítaly jen jednou.",
-                "dragToReorder": "Přetáhněte pro řazení"
+                "dragToReorder": "Přetáhněte pro řazení",
+                "footerUniqueCount": "{count} jedinečných"
             },
             "breakdown": {
                 "title": "Úložiště podle protokolu",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Relace vypršela, opakované připojení...",
             "reconnected": "Znovu připojeno k serveru",
             "reconnectFailed": "Opakované připojení se nezdařilo. Připojte se prosím znovu ručně."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Vrstva Rclone Crypt",
+            "intro": {
+                "heading": "Co tato vrstva dělá",
+                "p1": "Šifruje názvy a obsah souborů <strong>za běhu</strong>, než je odešle na server, a dešifruje je při stahování. Server vidí pouze bloby s názvy v base32. Vy vidíte původní názvy.",
+                "p2": "Když je vrstva aktivní: vaše vzdálená relace zobrazuje obsah v čitelné podobě, každé nahrání je šifrované, každé stažení dešifrované. Hledejte odznak <em>AEROCRYPT</em> v adresním řádku.",
+                "p3": "Rozdíl oproti AeroVault: AeroVault je samostatný soubor <code>.aerovault</code> (formát AeroFTP). AeroCrypt je vrstva nad existujícím vzdáleným úložištěm (S3/SFTP/WebDAV/...) využívající veřejný formát rclone crypt. Odemykejte stejným heslem, jaké byste použili v <code>rclone</code>."
+            },
+            "openExisting": "Otevřít existující",
+            "createNew": "Vytvořit nový",
+            "password": "Heslo",
+            "passwordPlaceholder": "Heslo pro rclone crypt",
+            "salt": "Sůl (password2, volitelné)",
+            "saltPlaceholder": "Volitelné heslo pro sůl",
+            "filenameEncryption": "Šifrování názvů souborů",
+            "filenameEncOption": {
+                "standard": "Standardní (EME)",
+                "obfuscate": "Zatemnit",
+                "off": "Vypnuto"
+            },
+            "directoryNameEncryption": "Šifrování názvů adresářů",
+            "targetSubpath": "Cílová podcesta (volitelné)",
+            "targetSubpathPlaceholder": "ponechte prázdné pro inicializaci v aktuálním vzdáleném adresáři",
+            "targetSubpathHint": "Inicializuje nový dirIV v cílovém adresáři a poté jej odemkne jako vrstvu.",
+            "unlock": "Odemknout",
+            "createAndUnlock": "Vytvořit a odemknout",
+            "lock": "Zamknout",
+            "unlocked": "Vzdálené úložiště rclone crypt odemčeno",
+            "initialised": "Vzdálené úložiště rclone crypt inicializováno",
+            "remoteUnlocked": "Vzdálené úložiště odemčeno (ID: {id}...)",
+            "decryptFilename": "Dešifrovat název souboru",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Šifrovaný název souboru (Base32hex)",
+            "decryptName": "Dešifrovat název",
+            "decryptFileFromDisk": "Dešifrovat soubor z disku",
+            "fileDecryptedTo": "Soubor dešifrován do {path}",
+            "encryptedUploadCompleted": "Šifrované nahrání dokončeno: {path}",
+            "remoteBrowser": "Vzdálený prohlížeč (transparentní)",
+            "upload": "Nahrát",
+            "up": "Nahoru",
+            "path": "Cesta: {path}",
+            "dirIvNotFound": "dirIV nenalezen v aktuální složce: názvy mohou zůstat šifrované.",
+            "loading": "Načítání...",
+            "emptyFolder": "Prázdná složka",
+            "nameNotDecrypted": "název nedešifrován",
+            "download": "Stáhnout"
         }
     }
 }

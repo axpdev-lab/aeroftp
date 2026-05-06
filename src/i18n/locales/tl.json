@@ -983,7 +983,7 @@
                 "stop": "Ihinto",
                 "stopShell": "Ihinto ang shell",
                 "closed": "Nakasara ang terminal.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Naipasok ang utos sa Terminal. Pindutin ang Enter upang patakbuhin."
             },
             "editorPanel": {
                 "emptyState": "Mag-right-click sa isang file at piliin ang \"Edit\"",
@@ -992,7 +992,7 @@
                 "saving": "Nagse-save...",
                 "noFileSelected": "Walang napiling file para i-edit",
                 "loading": "Naglo-load ng editor...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "I-drag sa Terminal upang ipasok ang utos na patakbuhin"
             },
             "previewPanel": {
                 "emptyState": "Mag-right-click sa isang file at piliin ang \"Preview\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Katutubong B2 v4 API: workflow para sa malalaking file, kopya sa server, kasaysayan ng bersyon (10 GB libre)",
             "setupSteps": "I-setup muna ang {provider}",
             "openProviderDocs": "Buksan ang dokumentasyon ng {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Media CDN at imbakan na may native na mga folder (20 GB libre)",
+            "discoverUploadcare": "Pamamahala ng EU media na may CDN at file API (3 GB libre)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3541,7 +3541,12 @@
             "showRemote": "Ipakita ang remote",
             "showSystemMenu": "Ipakita ang system menu bar",
             "aerovaultOverlayActive": "Aktibo ang AeroVault container overlay — mag-click upang ihiwalay",
-            "aerovaultOverlayInactive": "Buksan ang .aerovault container bilang virtual remote panel. Para sa rclone-crypt overlay, gumamit ng right-click sa remote folder."
+            "aerovaultOverlayInactive": "Buksan ang .aerovault container bilang virtual remote panel. Para sa rclone-crypt overlay, gumamit ng right-click sa remote folder.",
+            "aerocryptOverlayActive": "Aktibo ang overlay ng AeroCrypt: ang mga upload at download sa panel na ito ay encrypted. I-click upang i-detach.",
+            "aerocryptOverlayInactive": "Magbukas ng remote ng rclone-crypt (o gumawa ng bago) bilang transparent na overlay.",
+            "aerocryptImportTitle": "Natukoy ang overlay ng Rclone Crypt",
+            "aerocryptImportDesc": "Na-import ang profile mula sa rclone.conf para sa {name}: buksan ang overlay ngayon?",
+            "aerocryptImportOpen": "Buksan ang overlay"
         },
         "ai.agentMode.title": "Mode ng Ahente",
         "ai.agentMode.description": "Kinokontrol ang gawi ng pag-apruba ng mga kasangkapan, limitasyon ng mga hakbang at antas ng awtonomiya.",
@@ -4197,7 +4202,8 @@
                 },
                 "footerSummaryNoQuota": "{count} na profile · {unique} na natatanging cloud drive",
                 "footerDedupExplained": "Ang mga profile na nagbabahagi ng parehong pisikal na disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets sa ilalim ng parehong access key) ay pinagsasama sa isang drive upang ang quota ay mabilang minsan lamang.",
-                "dragToReorder": "I-drag para isaayos"
+                "dragToReorder": "I-drag para isaayos",
+                "footerUniqueCount": "{count} natatangi"
             },
             "breakdown": {
                 "title": "Imbakan ayon sa protocol",
@@ -4338,6 +4344,53 @@
             "reconnecting": "Nag-expire ang session, muling kumokonekta...",
             "reconnected": "Muling nakakonekta sa server",
             "reconnectFailed": "Nabigo ang muling pagkonekta. Mangyaring muling kumonekta nang manu-mano."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Overlay ng Rclone Crypt",
+            "intro": {
+                "heading": "Ano ang ginagawa ng overlay na ito",
+                "p1": "Ineencrypt ang mga pangalan ng file at nilalaman <strong>habang ginagawa</strong>, bago ipadala sa server, at dineencrypt kapag dina-download. Ang server ay nakikita lamang ang mga blob na may mga pangalan sa base32. Nakikita mo ang mga orihinal na pangalan.",
+                "p2": "Habang aktibo ang overlay: ang iyong remote session ay nagpapakita ng nilalaman nang maliwanag, ang bawat upload ay encrypted, ang bawat download ay decrypted. Hanapin ang badge ng <em>AEROCRYPT</em> sa path bar.",
+                "p3": "Pagkakaiba sa AeroVault: Ang AeroVault ay isang nag-iisang self-contained na file na <code>.aerovault</code> (format ng AeroFTP). Ang AeroCrypt ay isang layer sa ibabaw ng umiiral nang remote (S3/SFTP/WebDAV/...) na gumagamit ng pampublikong format ng rclone crypt. I-unlock gamit ang parehong password na gagamitin mo sa <code>rclone</code>."
+            },
+            "openExisting": "Buksan ang umiiral",
+            "createNew": "Gumawa ng bago",
+            "password": "Password",
+            "passwordPlaceholder": "Password ng rclone crypt",
+            "salt": "Salt (password2, opsyonal)",
+            "saltPlaceholder": "Opsyonal na salt password",
+            "filenameEncryption": "Pag-encrypt ng pangalan ng file",
+            "filenameEncOption": {
+                "standard": "Standard (EME)",
+                "obfuscate": "Obfuscate",
+                "off": "Naka-off"
+            },
+            "directoryNameEncryption": "Pag-encrypt ng pangalan ng direktoryo",
+            "targetSubpath": "Target na subpath (opsyonal)",
+            "targetSubpathPlaceholder": "iwanang blanko upang i-initialize sa kasalukuyang remote dir",
+            "targetSubpathHint": "Nag-iinitialize ng bagong dirIV sa target na direktoryo, pagkatapos ay ina-unlock ito bilang overlay.",
+            "unlock": "I-unlock",
+            "createAndUnlock": "Gumawa at i-unlock",
+            "lock": "I-lock",
+            "unlocked": "Naka-unlock ang remote ng rclone crypt",
+            "initialised": "Na-initialize ang remote ng rclone crypt",
+            "remoteUnlocked": "Naka-unlock ang remote (ID: {id}...)",
+            "decryptFilename": "I-decrypt ang pangalan ng file",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Encrypted na pangalan ng file (Base32hex)",
+            "decryptName": "I-decrypt ang pangalan",
+            "decryptFileFromDisk": "I-decrypt ang file mula sa disk",
+            "fileDecryptedTo": "Na-decrypt ang file sa {path}",
+            "encryptedUploadCompleted": "Nakumpleto ang encrypted na upload: {path}",
+            "remoteBrowser": "Remote browser (transparent)",
+            "upload": "I-upload",
+            "up": "Pataas",
+            "path": "Path: {path}",
+            "dirIvNotFound": "Hindi nahanap ang dirIV sa kasalukuyang folder: maaaring manatiling encrypted ang mga pangalan.",
+            "loading": "Naglo-load...",
+            "emptyFolder": "Walang laman na folder",
+            "nameNotDecrypted": "hindi na-decrypt ang pangalan",
+            "download": "I-download"
         }
     }
 }

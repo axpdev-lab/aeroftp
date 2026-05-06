@@ -983,7 +983,7 @@
                 "stop": "Simamisha",
                 "stopShell": "Simamisha ganda",
                 "closed": "Terminali imefungwa.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Amri imeingizwa katika Terminal. Bonyeza Enter ili kuendesha."
             },
             "editorPanel": {
                 "emptyState": "Bofya kulia kwenye faili na uchague \"Hariri\"",
@@ -992,7 +992,7 @@
                 "saving": "Inahifadhi...",
                 "noFileSelected": "Hakuna faili iliyochaguliwa kuhariri",
                 "loading": "Kupakia mhariri...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Buruta hadi Terminal ili kuingiza amri ya kuendesha"
             },
             "previewPanel": {
                 "emptyState": "Bofya kulia kwenye faili na uchague \"Onyesho la Awali\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "API ya asili ya B2 v4: mtiririko wa faili kubwa, nakala upande wa seva, historia ya matoleo (10 GB bure)",
             "setupSteps": "Sanidi {provider} kwanza",
             "openProviderDocs": "Fungua nyaraka za {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN ya midia na hifadhi yenye folda asili (20 GB bure)",
+            "discoverUploadcare": "Usimamizi wa midia EU wenye CDN na API za faili (3 GB bure)"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -3541,7 +3541,12 @@
             "showRemote": "Onyesha mbali",
             "showSystemMenu": "Onyesha upau wa menyu ya mfumo",
             "aerovaultOverlayActive": "Uwekeleaji wa kontena la AeroVault unaendelea — bofya kutenganisha",
-            "aerovaultOverlayInactive": "Fungua kontena la .aerovault kama paneli pepe ya mbali. Kwa uwekeleaji wa rclone-crypt tumia mbofyo wa kulia kwenye folda ya mbali."
+            "aerovaultOverlayInactive": "Fungua kontena la .aerovault kama paneli pepe ya mbali. Kwa uwekeleaji wa rclone-crypt tumia mbofyo wa kulia kwenye folda ya mbali.",
+            "aerocryptOverlayActive": "Tabaka ya AeroCrypt iko hai: upakiaji na upakuaji katika paneli hii vimesimbwa. Bofya ili kutenganisha.",
+            "aerocryptOverlayInactive": "Fungua hifadhi ya mbali ya rclone-crypt (au unda mpya) kama tabaka inayoonekana wazi.",
+            "aerocryptImportTitle": "Tabaka ya Rclone Crypt imegunduliwa",
+            "aerocryptImportDesc": "Wasifu umeingizwa kutoka rclone.conf kwa {name}: fungua tabaka sasa?",
+            "aerocryptImportOpen": "Fungua tabaka"
         },
         "ai.agentMode.title": "Hali ya Wakala",
         "ai.agentMode.description": "Inadhibiti tabia ya idhini ya zana, vikomo vya hatua na kiwango cha uhuru.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "Wasifu {count} · diski za wingu {unique} za kipekee",
                 "footerDedupExplained": "Wasifu unaoshiriki diski moja ya kimwili (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ndoo za Wasabi chini ya ufunguo mmoja wa ufikiaji) huunganishwa kuwa diski moja ili kiasi kihesabiwe mara moja tu.",
-                "dragToReorder": "Buruta ili kupanga upya"
+                "dragToReorder": "Buruta ili kupanga upya",
+                "footerUniqueCount": "{count} za kipekee"
             },
             "breakdown": {
                 "title": "Hifadhi kwa itifaki",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Kipindi kimekwisha, kinaunganisha tena...",
             "reconnected": "Imeunganishwa tena kwa seva",
             "reconnectFailed": "Kuunganisha tena kumeshindwa. Tafadhali unganisha tena mwenyewe."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Tabaka ya Rclone Crypt",
+            "intro": {
+                "heading": "Tabaka hii hufanya nini",
+                "p1": "Husimba majina ya faili na maudhui <strong>papo hapo</strong>, kabla ya kuyatuma kwenye seva, na kuyafichua wakati wa kupakua. Seva inaona tu vipande vyenye majina ya base32. Wewe unaona majina halisi.",
+                "p2": "Wakati tabaka iko hai: kikao chako cha mbali huonyesha maudhui kwa wazi, kila upakiaji husimbwa, kila upakuaji hufichuliwa. Tafuta beji ya <em>AEROCRYPT</em> kwenye upau wa njia.",
+                "p3": "Tofauti dhidi ya AeroVault: AeroVault ni faili moja inayojitegemea <code>.aerovault</code> (umbizo la AeroFTP). AeroCrypt ni tabaka juu ya hifadhi ya mbali iliyopo (S3/SFTP/WebDAV/...) inayotumia umbizo la umma la rclone crypt. Fungua kwa nenosiri lile lile ungelilitumia kwenye <code>rclone</code>."
+            },
+            "openExisting": "Fungua iliyopo",
+            "createNew": "Unda mpya",
+            "password": "Nenosiri",
+            "passwordPlaceholder": "Nenosiri la rclone crypt",
+            "salt": "Chumvi (password2, hiari)",
+            "saltPlaceholder": "Nenosiri la chumvi la hiari",
+            "filenameEncryption": "Usimbaji wa jina la faili",
+            "filenameEncOption": {
+                "standard": "Kawaida (EME)",
+                "obfuscate": "Ficha",
+                "off": "Imezimwa"
+            },
+            "directoryNameEncryption": "Usimbaji wa jina la saraka",
+            "targetSubpath": "Njia ndogo lengwa (hiari)",
+            "targetSubpathPlaceholder": "acha tupu kuanzisha katika saraka ya sasa ya mbali",
+            "targetSubpathHint": "Huanzisha dirIV mpya katika saraka lengwa, kisha kuifungua kama tabaka.",
+            "unlock": "Fungua",
+            "createAndUnlock": "Unda na ufungue",
+            "lock": "Funga",
+            "unlocked": "Hifadhi ya mbali ya rclone crypt imefunguliwa",
+            "initialised": "Hifadhi ya mbali ya rclone crypt imeanzishwa",
+            "remoteUnlocked": "Hifadhi ya mbali imefunguliwa (ID: {id}...)",
+            "decryptFilename": "Fichua jina la faili",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Jina la faili lililosimbwa (Base32hex)",
+            "decryptName": "Fichua jina",
+            "decryptFileFromDisk": "Fichua faili kutoka kwenye diski",
+            "fileDecryptedTo": "Faili imefichuliwa hadi {path}",
+            "encryptedUploadCompleted": "Upakiaji uliosimbwa umekamilika: {path}",
+            "remoteBrowser": "Kivinjari cha mbali (kinachoonekana wazi)",
+            "upload": "Pakia",
+            "up": "Juu",
+            "path": "Njia: {path}",
+            "dirIvNotFound": "dirIV haikupatikana katika folda ya sasa: majina yanaweza kubaki yamesimbwa.",
+            "loading": "Inapakia...",
+            "emptyFolder": "Folda tupu",
+            "nameNotDecrypted": "jina halijafichuliwa",
+            "download": "Pakua"
         }
     }
 }

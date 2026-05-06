@@ -983,7 +983,7 @@
                 "stop": "Berhenti",
                 "stopShell": "Hentikan shell",
                 "closed": "Terminal ditutup.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Perintah disisipkan di Terminal. Tekan Enter untuk menjalankan."
             },
             "editorPanel": {
                 "emptyState": "Klik kanan pada file dan pilih \"Edit\"",
@@ -992,7 +992,7 @@
                 "saving": "Menyimpan...",
                 "noFileSelected": "Tidak ada file yang dipilih untuk diedit",
                 "loading": "Memuat editor...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Seret ke Terminal untuk menyisipkan perintah jalankan"
             },
             "previewPanel": {
                 "emptyState": "Klik kanan pada file dan pilih \"Pratinjau\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "API B2 v4 native: alur kerja file besar, salin sisi server, riwayat versi (10 GB gratis)",
             "setupSteps": "Siapkan {provider} terlebih dahulu",
             "openProviderDocs": "Buka dokumentasi {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN media dan penyimpanan dengan folder native (20 GB gratis)",
+            "discoverUploadcare": "Manajemen media EU dengan CDN dan API file (3 GB gratis)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -3541,7 +3541,12 @@
             "showRemote": "Tampilkan jarak jauh",
             "showSystemMenu": "Tampilkan bilah menu sistem",
             "aerovaultOverlayActive": "Overlay kontainer AeroVault aktif — klik untuk melepaskan",
-            "aerovaultOverlayInactive": "Buka kontainer .aerovault sebagai panel jarak jauh virtual. Untuk overlay rclone-crypt, gunakan klik kanan pada folder jarak jauh."
+            "aerovaultOverlayInactive": "Buka kontainer .aerovault sebagai panel jarak jauh virtual. Untuk overlay rclone-crypt, gunakan klik kanan pada folder jarak jauh.",
+            "aerocryptOverlayActive": "Lapisan AeroCrypt aktif: unggahan dan unduhan di panel ini terenkripsi. Klik untuk melepas.",
+            "aerocryptOverlayInactive": "Buka remote rclone-crypt (atau buat baru) sebagai lapisan transparan.",
+            "aerocryptImportTitle": "Lapisan Rclone Crypt terdeteksi",
+            "aerocryptImportDesc": "Profil diimpor dari rclone.conf untuk {name}: buka lapisan sekarang?",
+            "aerocryptImportOpen": "Buka lapisan"
         },
         "ai.agentMode.title": "Mode Agen",
         "ai.agentMode.description": "Mengontrol perilaku persetujuan alat, batas langkah, dan tingkat otonomi.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} drive cloud unik",
                 "footerDedupExplained": "Profil yang berbagi disk fisik yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket Wasabi dengan access key yang sama) digabungkan menjadi satu drive sehingga kuota dihitung hanya sekali.",
-                "dragToReorder": "Seret untuk menyusun ulang"
+                "dragToReorder": "Seret untuk menyusun ulang",
+                "footerUniqueCount": "{count} unik"
             },
             "breakdown": {
                 "title": "Penyimpanan menurut protokol",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Sesi kedaluwarsa, menghubungkan kembali...",
             "reconnected": "Terhubung kembali ke server",
             "reconnectFailed": "Penghubungan kembali gagal. Silakan hubungkan kembali secara manual."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Lapisan Rclone Crypt",
+            "intro": {
+                "heading": "Apa yang dilakukan lapisan ini",
+                "p1": "Mengenkripsi nama file dan konten <strong>secara langsung</strong>, sebelum mengirimnya ke server, dan mendekripsi saat Anda mengunduh. Server hanya melihat blob dengan nama base32. Anda melihat nama asli.",
+                "p2": "Saat lapisan aktif: sesi remote Anda menampilkan konten secara terbuka, setiap unggahan dienkripsi, setiap unduhan didekripsi. Cari lencana <em>AEROCRYPT</em> di bilah path.",
+                "p3": "Perbedaan dengan AeroVault: AeroVault adalah satu file <code>.aerovault</code> mandiri (format AeroFTP). AeroCrypt adalah lapisan di atas remote yang sudah ada (S3/SFTP/WebDAV/...) menggunakan format publik rclone crypt. Buka kunci dengan kata sandi yang sama seperti yang akan Anda gunakan di <code>rclone</code>."
+            },
+            "openExisting": "Buka yang sudah ada",
+            "createNew": "Buat baru",
+            "password": "Kata sandi",
+            "passwordPlaceholder": "Kata sandi rclone crypt",
+            "salt": "Salt (password2, opsional)",
+            "saltPlaceholder": "Kata sandi salt opsional",
+            "filenameEncryption": "Enkripsi nama file",
+            "filenameEncOption": {
+                "standard": "Standar (EME)",
+                "obfuscate": "Samarkan",
+                "off": "Mati"
+            },
+            "directoryNameEncryption": "Enkripsi nama direktori",
+            "targetSubpath": "Sub-path target (opsional)",
+            "targetSubpathPlaceholder": "biarkan kosong untuk inisialisasi di direktori remote saat ini",
+            "targetSubpathHint": "Menginisialisasi dirIV baru di direktori target, lalu membukanya sebagai lapisan.",
+            "unlock": "Buka kunci",
+            "createAndUnlock": "Buat & Buka kunci",
+            "lock": "Kunci",
+            "unlocked": "Remote rclone crypt terbuka",
+            "initialised": "Remote rclone crypt diinisialisasi",
+            "remoteUnlocked": "Remote terbuka (ID: {id}...)",
+            "decryptFilename": "Dekripsi nama file",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Nama file terenkripsi (Base32hex)",
+            "decryptName": "Dekripsi nama",
+            "decryptFileFromDisk": "Dekripsi file dari disk",
+            "fileDecryptedTo": "File didekripsi ke {path}",
+            "encryptedUploadCompleted": "Unggahan terenkripsi selesai: {path}",
+            "remoteBrowser": "Peramban remote (transparan)",
+            "upload": "Unggah",
+            "up": "Naik",
+            "path": "Path: {path}",
+            "dirIvNotFound": "dirIV tidak ditemukan di folder saat ini: nama mungkin tetap terenkripsi.",
+            "loading": "Memuat...",
+            "emptyFolder": "Folder kosong",
+            "nameNotDecrypted": "nama tidak didekripsi",
+            "download": "Unduh"
         }
     }
 }

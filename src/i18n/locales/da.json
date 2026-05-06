@@ -983,7 +983,7 @@
                 "stop": "Stop",
                 "stopShell": "Stop shell",
                 "closed": "Terminal lukket.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Kommando indsat i Terminal. Tryk Enter for at køre."
             },
             "editorPanel": {
                 "emptyState": "Højreklik på en fil og vælg \"Rediger\"",
@@ -992,7 +992,7 @@
                 "saving": "Gemmer...",
                 "noFileSelected": "Ingen fil valgt til redigering",
                 "loading": "Indlæser editor...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Træk til Terminal for at indsætte kørselskommando"
             },
             "previewPanel": {
                 "emptyState": "Højreklik på en fil og vælg \"Forhåndsvisning\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Native B2 v4 API: arbejdsgang for store filer, serverside-kopi, versionshistorik (10 GB gratis)",
             "setupSteps": "Konfigurer {provider} først",
             "openProviderDocs": "Åbn {provider}-dokumentation",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Medie-CDN og lagring med native mapper (20 GB gratis)",
+            "discoverUploadcare": "EU-mediehåndtering med CDN og fil-API'er (3 GB gratis)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",
@@ -3541,7 +3541,12 @@
             "showRemote": "Vis fjern",
             "showSystemMenu": "Vis systemmenulinje",
             "aerovaultOverlayActive": "AeroVault-container-overlay aktiv — klik for at frakoble",
-            "aerovaultOverlayInactive": "Åbn en .aerovault-container som virtuelt fjernpanel. Brug højreklik på en fjernmappe for rclone-crypt-overlay."
+            "aerovaultOverlayInactive": "Åbn en .aerovault-container som virtuelt fjernpanel. Brug højreklik på en fjernmappe for rclone-crypt-overlay.",
+            "aerocryptOverlayActive": "AeroCrypt-overlay aktiv: uploads og downloads i dette panel er krypterede. Klik for at frakoble.",
+            "aerocryptOverlayInactive": "Åbn en rclone-crypt-fjernlagring (eller opret en ny) som transparent overlay.",
+            "aerocryptImportTitle": "Rclone Crypt-overlay registreret",
+            "aerocryptImportDesc": "Profil importeret fra rclone.conf for {name}: åbn overlayen nu?",
+            "aerocryptImportOpen": "Åbn overlay"
         },
         "ai.agentMode.title": "Agenttilstand",
         "ai.agentMode.description": "Styrer godkendelsesadfærd for værktøjer, trinbegrænsninger og autonominiveau.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profiler · {unique} unikke cloud-drev",
                 "footerDedupExplained": "Profiler, der deler den samme fysiske disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets under samme access key), samles til ét drev, så kvoter kun tælles én gang.",
-                "dragToReorder": "Træk for at omarrangere"
+                "dragToReorder": "Træk for at omarrangere",
+                "footerUniqueCount": "{count} unikke"
             },
             "breakdown": {
                 "title": "Lager efter protokol",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Session udløbet, opretter forbindelse igen...",
             "reconnected": "Forbundet til serveren igen",
             "reconnectFailed": "Genoprettelse af forbindelse mislykkedes. Opret forbindelse manuelt igen."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt-overlay",
+            "intro": {
+                "heading": "Hvad denne overlay gør",
+                "p1": "Krypterer filnavne og indhold <strong>i farten</strong>, før de sendes til serveren, og dekrypterer dem, når du downloader. Serveren ser kun blobs med base32-navne. Du ser de oprindelige navne.",
+                "p2": "Mens overlayen er aktiv: din fjernsession viser indholdet i klartekst, hver upload krypteres, hver download dekrypteres. Se efter <em>AEROCRYPT</em>-mærket i stilinjen.",
+                "p3": "Forskel sammenlignet med AeroVault: AeroVault er en enkelt selvstændig <code>.aerovault</code>-fil (AeroFTP-format). AeroCrypt er et lag oven på en eksisterende fjernlagring (S3/SFTP/WebDAV/...) ved hjælp af det offentlige rclone crypt-format. Lås op med samme adgangskode, som du ville bruge i <code>rclone</code>."
+            },
+            "openExisting": "Åbn eksisterende",
+            "createNew": "Opret ny",
+            "password": "Adgangskode",
+            "passwordPlaceholder": "Rclone crypt-adgangskode",
+            "salt": "Salt (password2, valgfrit)",
+            "saltPlaceholder": "Valgfri salt-adgangskode",
+            "filenameEncryption": "Kryptering af filnavn",
+            "filenameEncOption": {
+                "standard": "Standard (EME)",
+                "obfuscate": "Slør",
+                "off": "Fra"
+            },
+            "directoryNameEncryption": "Kryptering af mappenavne",
+            "targetSubpath": "Mål-understi (valgfri)",
+            "targetSubpathPlaceholder": "lad være tom for at initialisere i den aktuelle fjernmappe",
+            "targetSubpathHint": "Initialiserer en ny dirIV i målmappen og låser den derefter op som overlay.",
+            "unlock": "Lås op",
+            "createAndUnlock": "Opret og lås op",
+            "lock": "Lås",
+            "unlocked": "Rclone crypt-fjernlagring låst op",
+            "initialised": "Rclone crypt-fjernlagring initialiseret",
+            "remoteUnlocked": "Fjernlagring låst op (ID: {id}...)",
+            "decryptFilename": "Dekrypter filnavn",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Krypteret filnavn (Base32hex)",
+            "decryptName": "Dekrypter navn",
+            "decryptFileFromDisk": "Dekrypter fil fra disk",
+            "fileDecryptedTo": "Fil dekrypteret til {path}",
+            "encryptedUploadCompleted": "Krypteret upload fuldført: {path}",
+            "remoteBrowser": "Fjernbrowser (transparent)",
+            "upload": "Upload",
+            "up": "Op",
+            "path": "Sti: {path}",
+            "dirIvNotFound": "dirIV ikke fundet i den aktuelle mappe: navne kan forblive krypterede.",
+            "loading": "Indlæser...",
+            "emptyFolder": "Tom mappe",
+            "nameNotDecrypted": "navn ikke dekrypteret",
+            "download": "Download"
         }
     }
 }

@@ -983,7 +983,7 @@
                 "stop": "Durdur",
                 "stopShell": "Kabuğu durdur",
                 "closed": "Terminal kapatıldı.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Komut Terminal'a eklendi. Çalıştırmak için Enter'a basın."
             },
             "editorPanel": {
                 "emptyState": "Bir dosyaya sağ tıklayın ve \"Düzenle\" seçeneğini seçin",
@@ -992,7 +992,7 @@
                 "saving": "Kaydediliyor...",
                 "noFileSelected": "Düzenleme için dosya seçilmedi",
                 "loading": "Düzenleyici yükleniyor...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Çalıştırma komutunu eklemek için Terminal'a sürükleyin"
             },
             "previewPanel": {
                 "emptyState": "Bir dosyaya sağ tıklayın ve \"Önizle\" seçeneğini seçin"
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Yerel B2 v4 API: büyük dosya iş akışı, sunucu taraflı kopya, sürüm geçmişi (10 GB ücretsiz)",
             "setupSteps": "Önce {provider} kurulumunu yapın",
             "openProviderDocs": "{provider} belgelerini aç",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Yerel klasörlerle medya CDN ve depolama (20 GB ücretsiz)",
+            "discoverUploadcare": "CDN ve dosya API'leri ile EU medya yönetimi (3 GB ücretsiz)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -3541,7 +3541,12 @@
             "showRemote": "Uzak göster",
             "showSystemMenu": "Sistem menü çubuğunu göster",
             "aerovaultOverlayActive": "AeroVault konteyner katmanı etkin — ayırmak için tıklayın",
-            "aerovaultOverlayInactive": "Bir .aerovault konteynerini sanal uzak panel olarak açın. rclone-crypt katmanı için uzak bir klasöre sağ tıklayın."
+            "aerovaultOverlayInactive": "Bir .aerovault konteynerini sanal uzak panel olarak açın. rclone-crypt katmanı için uzak bir klasöre sağ tıklayın.",
+            "aerocryptOverlayActive": "AeroCrypt katmanı aktif: bu paneldeki yüklemeler ve indirmeler şifrelidir. Ayırmak için tıklayın.",
+            "aerocryptOverlayInactive": "Bir rclone-crypt uzak hizmeti açın (veya yeni bir tane oluşturun) ve şeffaf katman olarak kullanın.",
+            "aerocryptImportTitle": "Rclone Crypt katmanı algılandı",
+            "aerocryptImportDesc": "{name} için rclone.conf dosyasından profil içe aktarıldı: katmanı şimdi açmak ister misiniz?",
+            "aerocryptImportOpen": "Katmanı aç"
         },
         "ai.agentMode.title": "Ajan Modu",
         "ai.agentMode.description": "Arac onay davranisini, adim limitlerini ve otonomi seviyesini kontrol eder.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} profil · {unique} benzersiz bulut sürücü",
                 "footerDedupExplained": "Aynı fiziksel diski paylaşan profiller (Koofr WebDAV + REST, OpenDrive WebDAV + REST, aynı erişim anahtarı altındaki Wasabi kovaları) tek bir sürücüde birleştirilir, böylece kotalar yalnızca bir kez sayılır.",
-                "dragToReorder": "Yeniden sıralamak için sürükleyin"
+                "dragToReorder": "Yeniden sıralamak için sürükleyin",
+                "footerUniqueCount": "{count} benzersiz"
             },
             "breakdown": {
                 "title": "Protokole göre depolama",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Oturum süresi doldu, yeniden bağlanılıyor...",
             "reconnected": "Sunucuya yeniden bağlanıldı",
             "reconnectFailed": "Yeniden bağlantı başarısız. Lütfen elle yeniden bağlanın."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Rclone Crypt katmanı",
+            "intro": {
+                "heading": "Bu katman ne yapar",
+                "p1": "Dosya adlarını ve içerikleri sunucuya göndermeden önce <strong>anlık olarak</strong> şifreler ve indirdiğinizde şifresini çözer. Sunucu yalnızca base32 adlı blobları görür. Siz orijinal adları görürsünüz.",
+                "p2": "Katman aktifken: uzak oturumunuz içerikleri açık şekilde gösterir, her yükleme şifrelenir, her indirme şifresi çözülür. Yol çubuğunda <em>AEROCRYPT</em> rozetini arayın.",
+                "p3": "AeroVault'tan farkı: AeroVault tek başına yeten bir <code>.aerovault</code> dosyasıdır (AeroFTP biçimi). AeroCrypt ise mevcut bir uzak hizmetin (S3/SFTP/WebDAV/...) üzerine, herkese açık rclone crypt biçimini kullanan bir katmandır. <code>rclone</code>'da kullanacağınız aynı parolayla kilidi açın."
+            },
+            "openExisting": "Mevcut olanı aç",
+            "createNew": "Yeni oluştur",
+            "password": "Parola",
+            "passwordPlaceholder": "Rclone crypt parolası",
+            "salt": "Tuz (password2, isteğe bağlı)",
+            "saltPlaceholder": "İsteğe bağlı tuz parolası",
+            "filenameEncryption": "Dosya adı şifrelemesi",
+            "filenameEncOption": {
+                "standard": "Standart (EME)",
+                "obfuscate": "Gizle",
+                "off": "Kapalı"
+            },
+            "directoryNameEncryption": "Dizin adı şifrelemesi",
+            "targetSubpath": "Hedef alt yol (isteğe bağlı)",
+            "targetSubpathPlaceholder": "geçerli uzak dizinde başlatmak için boş bırakın",
+            "targetSubpathHint": "Hedef dizinde yeni bir dirIV başlatır ve ardından katman olarak kilidini açar.",
+            "unlock": "Kilidi aç",
+            "createAndUnlock": "Oluştur ve kilidi aç",
+            "lock": "Kilitle",
+            "unlocked": "Rclone crypt uzak hizmeti açıldı",
+            "initialised": "Rclone crypt uzak hizmeti başlatıldı",
+            "remoteUnlocked": "Uzak hizmet açıldı (ID: {id}...)",
+            "decryptFilename": "Dosya adının şifresini çöz",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Şifrelenmiş dosya adı (Base32hex)",
+            "decryptName": "Adın şifresini çöz",
+            "decryptFileFromDisk": "Diskteki dosyanın şifresini çöz",
+            "fileDecryptedTo": "Dosyanın şifresi şu konuma çözüldü: {path}",
+            "encryptedUploadCompleted": "Şifreli yükleme tamamlandı: {path}",
+            "remoteBrowser": "Uzak tarayıcı (şeffaf)",
+            "upload": "Yükle",
+            "up": "Yukarı",
+            "path": "Yol: {path}",
+            "dirIvNotFound": "dirIV geçerli klasörde bulunamadı: adlar şifreli kalabilir.",
+            "loading": "Yükleniyor...",
+            "emptyFolder": "Boş klasör",
+            "nameNotDecrypted": "ad şifresi çözülmedi",
+            "download": "İndir"
         }
     }
 }

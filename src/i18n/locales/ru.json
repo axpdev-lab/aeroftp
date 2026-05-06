@@ -983,7 +983,7 @@
                 "stop": "Остановить",
                 "stopShell": "Остановить оболочку",
                 "closed": "Терминал закрыт.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Команда вставлена в Terminal. Нажмите Enter для запуска."
             },
             "editorPanel": {
                 "emptyState": "Щелкните правой кнопкой на файле и выберите \"Редактировать\"",
@@ -992,7 +992,7 @@
                 "saving": "Сохранение...",
                 "noFileSelected": "Файл для редактирования не выбран",
                 "loading": "Загрузка редактора...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Перетащите в Terminal, чтобы вставить команду запуска"
             },
             "previewPanel": {
                 "emptyState": "Щелкните правой кнопкой на файле и выберите \"Предпросмотр\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Нативный B2 v4 API: работа с большими файлами, серверная копия, история версий (10 ГБ бесплатно)",
             "setupSteps": "Сначала настройте {provider}",
             "openProviderDocs": "Открыть документацию {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "Медиа CDN и хранилище с нативными папками (20 GB бесплатно)",
+            "discoverUploadcare": "EU управление медиа с CDN и файловыми API (3 GB бесплатно)"
         },
         "shortcuts": {
             "title": "Горячие клавиши",
@@ -3541,7 +3541,12 @@
             "showRemote": "Показать удаленное",
             "showSystemMenu": "Показать системное меню",
             "aerovaultOverlayActive": "Наложение контейнера AeroVault активно — нажмите, чтобы отключить",
-            "aerovaultOverlayInactive": "Открыть контейнер .aerovault как виртуальную удалённую панель. Для наложения rclone-crypt используйте правый клик по удалённой папке."
+            "aerovaultOverlayInactive": "Открыть контейнер .aerovault как виртуальную удалённую панель. Для наложения rclone-crypt используйте правый клик по удалённой папке.",
+            "aerocryptOverlayActive": "Наложение AeroCrypt активно: загрузки и скачивания на этой панели шифруются. Нажмите, чтобы отсоединить.",
+            "aerocryptOverlayInactive": "Откройте удалённое хранилище rclone-crypt (или создайте новое) как прозрачное наложение.",
+            "aerocryptImportTitle": "Обнаружено наложение Rclone Crypt",
+            "aerocryptImportDesc": "Профиль импортирован из rclone.conf для {name}: открыть наложение сейчас?",
+            "aerocryptImportOpen": "Открыть наложение"
         },
         "security": {
             "totp": {
@@ -4168,7 +4173,8 @@
                 },
                 "footerSummaryNoQuota": "{count} профилей · {unique} уникальных облачных дисков",
                 "footerDedupExplained": "Профили, использующие один и тот же физический диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, бакеты Wasabi под одним ключом доступа), объединяются в один диск, чтобы квоты учитывались только один раз.",
-                "dragToReorder": "Перетащите для изменения порядка"
+                "dragToReorder": "Перетащите для изменения порядка",
+                "footerUniqueCount": "{count} уникальных"
             },
             "breakdown": {
                 "title": "Хранилище по протоколу",
@@ -4309,6 +4315,53 @@
             "reconnecting": "Сеанс истёк, повторное подключение...",
             "reconnected": "Повторно подключено к серверу",
             "reconnectFailed": "Повторное подключение не удалось. Подключитесь вручную."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Наложение Rclone Crypt",
+            "intro": {
+                "heading": "Что делает это наложение",
+                "p1": "Шифрует имена файлов и содержимое <strong>на лету</strong>, перед отправкой на сервер, и расшифровывает их при загрузке. Сервер видит только большие двоичные объекты с именами в base32. Вы видите оригинальные имена.",
+                "p2": "Пока наложение активно: ваша удалённая сессия отображает содержимое в открытом виде, каждая загрузка шифруется, каждое скачивание расшифровывается. Ищите значок <em>AEROCRYPT</em> в строке пути.",
+                "p3": "Отличие от AeroVault: AeroVault это единый автономный файл <code>.aerovault</code> (формат AeroFTP). AeroCrypt это слой поверх существующего удалённого хранилища (S3/SFTP/WebDAV/...), использующий публичный формат rclone crypt. Разблокируйте тем же паролем, который вы использовали бы в <code>rclone</code>."
+            },
+            "openExisting": "Открыть существующий",
+            "createNew": "Создать новый",
+            "password": "Пароль",
+            "passwordPlaceholder": "Пароль rclone crypt",
+            "salt": "Соль (password2, необязательно)",
+            "saltPlaceholder": "Необязательный пароль-соль",
+            "filenameEncryption": "Шифрование имён файлов",
+            "filenameEncOption": {
+                "standard": "Стандартное (EME)",
+                "obfuscate": "Маскировка",
+                "off": "Выключено"
+            },
+            "directoryNameEncryption": "Шифрование имён каталогов",
+            "targetSubpath": "Целевой подпуть (необязательно)",
+            "targetSubpathPlaceholder": "оставьте пустым для инициализации в текущем удалённом каталоге",
+            "targetSubpathHint": "Инициализирует новый dirIV в целевом каталоге, затем разблокирует его как наложение.",
+            "unlock": "Разблокировать",
+            "createAndUnlock": "Создать и разблокировать",
+            "lock": "Заблокировать",
+            "unlocked": "Удалённое хранилище rclone crypt разблокировано",
+            "initialised": "Удалённое хранилище rclone crypt инициализировано",
+            "remoteUnlocked": "Удалённое хранилище разблокировано (ID: {id}...)",
+            "decryptFilename": "Расшифровать имя файла",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Зашифрованное имя файла (Base32hex)",
+            "decryptName": "Расшифровать имя",
+            "decryptFileFromDisk": "Расшифровать файл с диска",
+            "fileDecryptedTo": "Файл расшифрован в {path}",
+            "encryptedUploadCompleted": "Зашифрованная загрузка завершена: {path}",
+            "remoteBrowser": "Удалённый браузер (прозрачный)",
+            "upload": "Загрузить",
+            "up": "Вверх",
+            "path": "Путь: {path}",
+            "dirIvNotFound": "dirIV не найден в текущей папке: имена могут остаться зашифрованными.",
+            "loading": "Загрузка...",
+            "emptyFolder": "Пустая папка",
+            "nameNotDecrypted": "имя не расшифровано",
+            "download": "Скачать"
         }
     }
 }

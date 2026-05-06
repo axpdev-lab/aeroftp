@@ -983,7 +983,7 @@
                 "stop": "Aturar",
                 "stopShell": "Aturar shell",
                 "closed": "Terminal tancat.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Ordre inserida al Terminal. Premeu Enter per executar."
             },
             "editorPanel": {
                 "emptyState": "Fes clic dret en un fitxer i tria \"Editar\"",
@@ -992,7 +992,7 @@
                 "saving": "Guardant...",
                 "noFileSelected": "Cap fitxer seleccionat per editar",
                 "loading": "Carregant editor...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Arrossegueu al Terminal per inserir l'ordre d'execució"
             },
             "previewPanel": {
                 "emptyState": "Fes clic dret en un fitxer i tria \"Vista prèvia\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "API B2 v4 nativa: flux per a fitxers grans, copia al servidor, historial de versions (10 GB gratis)",
             "setupSteps": "Configureu {provider} primer",
             "openProviderDocs": "Obre la documentació de {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN i emmagatzematge multimèdia amb carpetes natives (20 GB gratis)",
+            "discoverUploadcare": "Gestió de mèdia EU amb CDN i API de fitxers (3 GB gratis)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -3541,7 +3541,12 @@
             "showRemote": "Mostrar remot",
             "showSystemMenu": "Mostrar barra de menú del sistema",
             "aerovaultOverlayActive": "Superposició de contenidor AeroVault activa — feu clic per desconnectar",
-            "aerovaultOverlayInactive": "Obre un contenidor .aerovault com a panell remot virtual. Per a la superposició rclone-crypt, feu clic dret en una carpeta remota."
+            "aerovaultOverlayInactive": "Obre un contenidor .aerovault com a panell remot virtual. Per a la superposició rclone-crypt, feu clic dret en una carpeta remota.",
+            "aerocryptOverlayActive": "Capa AeroCrypt activa: les pujades i descàrregues d'aquest panell es xifren. Fes clic per separar.",
+            "aerocryptOverlayInactive": "Obre un remot rclone-crypt (o crea'n un de nou) com a capa transparent.",
+            "aerocryptImportTitle": "Capa Rclone Crypt detectada",
+            "aerocryptImportDesc": "Perfil importat des de rclone.conf per a {name}: vols obrir la capa ara?",
+            "aerocryptImportOpen": "Obre la capa"
         },
         "ai.agentMode.title": "Mode d'agent",
         "ai.agentMode.description": "Controla el comportament d'aprovació d'eines, els límits de passos i el nivell d'autonomia.",
@@ -4197,7 +4202,8 @@
                 },
                 "footerSummaryNoQuota": "{count} perfils · {unique} unitats al núvol úniques",
                 "footerDedupExplained": "Els perfils que comparteixen el mateix disc físic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, cubs de Wasabi amb la mateixa access key) s'agrupen en una sola unitat per comptar les quotes una única vegada.",
-                "dragToReorder": "Arrossega per reordenar"
+                "dragToReorder": "Arrossega per reordenar",
+                "footerUniqueCount": "{count} únics"
             },
             "breakdown": {
                 "title": "Emmagatzematge per protocol",
@@ -4338,6 +4344,53 @@
             "reconnecting": "La sessió ha caducat, tornant a connectar...",
             "reconnected": "Reconnectat al servidor",
             "reconnectFailed": "Ha fallat la reconnexió. Reconnecta manualment."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Capa Rclone Crypt",
+            "intro": {
+                "heading": "Què fa aquesta capa",
+                "p1": "Xifra els noms i continguts dels fitxers <strong>al vol</strong>, abans d'enviar-los al servidor, i els desxifra quan els descarregues. El servidor només veu blobs amb noms en base32. Tu veus els noms originals.",
+                "p2": "Mentre la capa està activa: la sessió remota mostra els continguts en clar, cada pujada es xifra, cada descàrrega es desxifra. Cerca la insígnia <em>AEROCRYPT</em> a la barra de ruta.",
+                "p3": "Diferència respecte a AeroVault: AeroVault és un únic fitxer autocontingut <code>.aerovault</code> (format AeroFTP). AeroCrypt és una capa sobre un remot existent (S3/SFTP/WebDAV/...) utilitzant el format públic rclone crypt. Desbloqueja amb la mateixa contrasenya que faries servir a <code>rclone</code>."
+            },
+            "openExisting": "Obre existent",
+            "createNew": "Crea nou",
+            "password": "Contrasenya",
+            "passwordPlaceholder": "Contrasenya rclone crypt",
+            "salt": "Sal (password2, opcional)",
+            "saltPlaceholder": "Contrasenya de sal opcional",
+            "filenameEncryption": "Xifratge de nom de fitxer",
+            "filenameEncOption": {
+                "standard": "Estàndard (EME)",
+                "obfuscate": "Ofuscar",
+                "off": "Desactivat"
+            },
+            "directoryNameEncryption": "Xifratge de nom de directori",
+            "targetSubpath": "Subruta de destinació (opcional)",
+            "targetSubpathPlaceholder": "deixa-ho buit per inicialitzar al directori remot actual",
+            "targetSubpathHint": "Inicialitza un nou dirIV al directori de destinació i, a continuació, el desbloqueja com a capa.",
+            "unlock": "Desbloqueja",
+            "createAndUnlock": "Crea i desbloqueja",
+            "lock": "Bloqueja",
+            "unlocked": "Remot rclone crypt desbloquejat",
+            "initialised": "Remot rclone crypt inicialitzat",
+            "remoteUnlocked": "Remot desbloquejat (ID: {id}...)",
+            "decryptFilename": "Desxifra nom de fitxer",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Nom de fitxer xifrat (Base32hex)",
+            "decryptName": "Desxifra nom",
+            "decryptFileFromDisk": "Desxifra fitxer del disc",
+            "fileDecryptedTo": "Fitxer desxifrat a {path}",
+            "encryptedUploadCompleted": "Pujada xifrada completada: {path}",
+            "remoteBrowser": "Navegador remot (transparent)",
+            "upload": "Puja",
+            "up": "Amunt",
+            "path": "Ruta: {path}",
+            "dirIvNotFound": "dirIV no trobat a la carpeta actual: els noms poden romandre xifrats.",
+            "loading": "Carregant...",
+            "emptyFolder": "Carpeta buida",
+            "nameNotDecrypted": "nom no desxifrat",
+            "download": "Descarrega"
         }
     }
 }

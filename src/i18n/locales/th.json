@@ -983,7 +983,7 @@
                 "stop": "หยุด",
                 "stopShell": "หยุดเชลล์",
                 "closed": "ปิดเทอร์มินัลแล้ว",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "แทรกคำสั่งใน Terminal แล้ว กด Enter เพื่อรัน"
             },
             "editorPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"แก้ไข\"",
@@ -992,7 +992,7 @@
                 "saving": "กำลังบันทึก...",
                 "noFileSelected": "ไม่ได้เลือกไฟล์สำหรับแก้ไข",
                 "loading": "กำลังโหลดตัวแก้ไข...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "ลากไปยัง Terminal เพื่อแทรกคำสั่งสำหรับรัน"
             },
             "previewPanel": {
                 "emptyState": "คลิกขวาที่ไฟล์แล้วเลือก \"ดูตัวอย่าง\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "B2 v4 API ดั้งเดิม: เวิร์กโฟลว์ไฟล์ขนาดใหญ่ สำเนาฝั่งเซิร์ฟเวอร์ ประวัติเวอร์ชัน (10 GB ฟรี)",
             "setupSteps": "ตั้งค่า {provider} ก่อน",
             "openProviderDocs": "เปิดเอกสาร {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN สื่อและพื้นที่จัดเก็บพร้อมโฟลเดอร์ดั้งเดิม (20 GB ฟรี)",
+            "discoverUploadcare": "การจัดการสื่อ EU ด้วย CDN และ API ไฟล์ (3 GB ฟรี)"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -3541,7 +3541,12 @@
             "showRemote": "แสดงระยะไกล",
             "showSystemMenu": "แสดงแถบเมนูระบบ",
             "aerovaultOverlayActive": "การซ้อนทับคอนเทนเนอร์ AeroVault ใช้งานอยู่ — คลิกเพื่อยกเลิก",
-            "aerovaultOverlayInactive": "เปิดคอนเทนเนอร์ .aerovault เป็นแผงรีโมตเสมือน สำหรับการซ้อนทับ rclone-crypt ให้ใช้คลิกขวาบนโฟลเดอร์รีโมต"
+            "aerovaultOverlayInactive": "เปิดคอนเทนเนอร์ .aerovault เป็นแผงรีโมตเสมือน สำหรับการซ้อนทับ rclone-crypt ให้ใช้คลิกขวาบนโฟลเดอร์รีโมต",
+            "aerocryptOverlayActive": "เลเยอร์ AeroCrypt ทำงานอยู่: การอัปโหลดและดาวน์โหลดในแผงนี้ถูกเข้ารหัส คลิกเพื่อถอด",
+            "aerocryptOverlayInactive": "เปิดรีโมต rclone-crypt (หรือสร้างใหม่) เป็นเลเยอร์โปร่งใส",
+            "aerocryptImportTitle": "ตรวจพบเลเยอร์ Rclone Crypt",
+            "aerocryptImportDesc": "นำเข้าโปรไฟล์จาก rclone.conf สำหรับ {name}: เปิดเลเยอร์ตอนนี้หรือไม่?",
+            "aerocryptImportOpen": "เปิดเลเยอร์"
         },
         "ai.agentMode.title": "โหมดเอเจนต์",
         "ai.agentMode.description": "ควบคุมพฤติกรรมการอนุมัติเครื่องมือ ขีดจำกัดขั้นตอน และระดับความเป็นอิสระ",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} โปรไฟล์ · {unique} ไดรฟ์คลาวด์ที่ไม่ซ้ำกัน",
                 "footerDedupExplained": "โปรไฟล์ที่ใช้ดิสก์ทางกายภาพเดียวกัน (Koofr WebDAV + REST, OpenDrive WebDAV + REST, บัคเก็ต Wasabi ภายใต้คีย์การเข้าถึงเดียวกัน) จะรวมเป็นไดรฟ์เดียว เพื่อให้นับโควตาเพียงครั้งเดียว",
-                "dragToReorder": "ลากเพื่อจัดเรียงใหม่"
+                "dragToReorder": "ลากเพื่อจัดเรียงใหม่",
+                "footerUniqueCount": "{count} รายการที่ไม่ซ้ำ"
             },
             "breakdown": {
                 "title": "พื้นที่จัดเก็บตามโปรโตคอล",
@@ -4319,6 +4325,53 @@
             "reconnecting": "เซสชันหมดอายุ กำลังเชื่อมต่อใหม่...",
             "reconnected": "เชื่อมต่อกับเซิร์ฟเวอร์อีกครั้ง",
             "reconnectFailed": "การเชื่อมต่อใหม่ล้มเหลว โปรดเชื่อมต่อใหม่ด้วยตนเอง"
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · เลเยอร์ Rclone Crypt",
+            "intro": {
+                "heading": "เลเยอร์นี้ทำอะไร",
+                "p1": "เข้ารหัสชื่อไฟล์และเนื้อหา<strong>แบบทันที</strong>ก่อนส่งไปยังเซิร์ฟเวอร์ และถอดรหัสเมื่อคุณดาวน์โหลด เซิร์ฟเวอร์จะเห็นเฉพาะ blob ที่มีชื่อแบบ base32 คุณจะเห็นชื่อต้นฉบับ",
+                "p2": "ขณะที่เลเยอร์ทำงาน: เซสชันรีโมตของคุณจะแสดงเนื้อหาแบบเปิดเผย ทุกการอัปโหลดจะถูกเข้ารหัส ทุกการดาวน์โหลดจะถูกถอดรหัส ให้มองหาป้าย <em>AEROCRYPT</em> ในแถบเส้นทาง",
+                "p3": "ความแตกต่างจาก AeroVault: AeroVault เป็นไฟล์ <code>.aerovault</code> เดี่ยวแบบสมบูรณ์ในตัว (รูปแบบ AeroFTP) ส่วน AeroCrypt เป็นเลเยอร์ที่อยู่บนรีโมตที่มีอยู่ (S3/SFTP/WebDAV/...) โดยใช้รูปแบบสาธารณะ rclone crypt ปลดล็อกด้วยรหัสผ่านเดียวกับที่คุณใช้ใน <code>rclone</code>"
+            },
+            "openExisting": "เปิดที่มีอยู่",
+            "createNew": "สร้างใหม่",
+            "password": "รหัสผ่าน",
+            "passwordPlaceholder": "รหัสผ่าน rclone crypt",
+            "salt": "Salt (password2, เลือกได้)",
+            "saltPlaceholder": "รหัสผ่าน salt เลือกได้",
+            "filenameEncryption": "การเข้ารหัสชื่อไฟล์",
+            "filenameEncOption": {
+                "standard": "มาตรฐาน (EME)",
+                "obfuscate": "ปกปิด",
+                "off": "ปิด"
+            },
+            "directoryNameEncryption": "การเข้ารหัสชื่อไดเรกทอรี",
+            "targetSubpath": "เส้นทางย่อยปลายทาง (เลือกได้)",
+            "targetSubpathPlaceholder": "ปล่อยว่างเพื่อเริ่มในไดเรกทอรีรีโมตปัจจุบัน",
+            "targetSubpathHint": "เริ่มต้น dirIV ใหม่ในไดเรกทอรีปลายทาง แล้วปลดล็อกเป็นเลเยอร์",
+            "unlock": "ปลดล็อก",
+            "createAndUnlock": "สร้างและปลดล็อก",
+            "lock": "ล็อก",
+            "unlocked": "รีโมต rclone crypt ปลดล็อกแล้ว",
+            "initialised": "รีโมต rclone crypt เริ่มต้นแล้ว",
+            "remoteUnlocked": "รีโมตปลดล็อกแล้ว (ID: {id}...)",
+            "decryptFilename": "ถอดรหัสชื่อไฟล์",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "ชื่อไฟล์ที่เข้ารหัส (Base32hex)",
+            "decryptName": "ถอดรหัสชื่อ",
+            "decryptFileFromDisk": "ถอดรหัสไฟล์จากดิสก์",
+            "fileDecryptedTo": "ถอดรหัสไฟล์ไปยัง {path}",
+            "encryptedUploadCompleted": "การอัปโหลดที่เข้ารหัสเสร็จสมบูรณ์: {path}",
+            "remoteBrowser": "เบราว์เซอร์รีโมต (โปร่งใส)",
+            "upload": "อัปโหลด",
+            "up": "ขึ้น",
+            "path": "เส้นทาง: {path}",
+            "dirIvNotFound": "ไม่พบ dirIV ในโฟลเดอร์ปัจจุบัน: ชื่ออาจยังคงถูกเข้ารหัสอยู่",
+            "loading": "กำลังโหลด...",
+            "emptyFolder": "โฟลเดอร์ว่าง",
+            "nameNotDecrypted": "ชื่อไม่ได้ถอดรหัส",
+            "download": "ดาวน์โหลด"
         }
     }
 }

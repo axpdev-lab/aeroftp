@@ -983,7 +983,7 @@
                 "stop": "Διακοπή",
                 "stopShell": "Διακοπή κελύφους",
                 "closed": "Το τερματικό έκλεισε.",
-                "commandInsertedReview": "[NEEDS TRANSLATION] Command inserted in terminal. Press Enter to run."
+                "commandInsertedReview": "Η εντολή εισήχθη στο Terminal. Πατήστε Enter για εκτέλεση."
             },
             "editorPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Επεξεργασία\"",
@@ -992,7 +992,7 @@
                 "saving": "Αποθήκευση...",
                 "noFileSelected": "Δεν έχει επιλεγεί αρχείο για επεξεργασία",
                 "loading": "Φόρτωση επεξεργαστή...",
-                "dragToTerminalRun": "[NEEDS TRANSLATION] Drag to Terminal to insert run command"
+                "dragToTerminalRun": "Σύρετε στο Terminal για να εισαγάγετε εντολή εκτέλεσης"
             },
             "previewPanel": {
                 "emptyState": "Κάντε δεξί κλικ σε ένα αρχείο και επιλέξτε \"Προεπισκόπηση\""
@@ -1604,8 +1604,8 @@
             "discoverBackblazeNative": "Εγγενές B2 v4 API: ροή εργασίας για μεγάλα αρχεία, αντιγραφή στον διακομιστή, ιστορικό εκδόσεων (10 GB δωρεάν)",
             "setupSteps": "Διαμορφώστε πρώτα το {provider}",
             "openProviderDocs": "Άνοιγμα τεκμηρίωσης {provider}",
-            "discoverImageKit": "[NEEDS TRANSLATION] Media CDN and storage with native folders (20 GB free)",
-            "discoverUploadcare": "[NEEDS TRANSLATION] EU media management with CDN and file APIs (3 GB free)"
+            "discoverImageKit": "CDN πολυμέσων και αποθήκευση με εγγενείς φακέλους (20 GB δωρεάν)",
+            "discoverUploadcare": "EU διαχείριση πολυμέσων με CDN και API αρχείων (3 GB δωρεάν)"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -3541,7 +3541,12 @@
             "showRemote": "Εμφάνιση απομακρυσμένου",
             "showSystemMenu": "Εμφάνιση γραμμής μενού συστήματος",
             "aerovaultOverlayActive": "Επικάλυψη κοντέινερ AeroVault ενεργή — κάντε κλικ για αποσύνδεση",
-            "aerovaultOverlayInactive": "Ανοίξτε ένα κοντέινερ .aerovault ως εικονικό απομακρυσμένο πάνελ. Για την επικάλυψη rclone-crypt χρησιμοποιήστε δεξί κλικ σε απομακρυσμένο φάκελο."
+            "aerovaultOverlayInactive": "Ανοίξτε ένα κοντέινερ .aerovault ως εικονικό απομακρυσμένο πάνελ. Για την επικάλυψη rclone-crypt χρησιμοποιήστε δεξί κλικ σε απομακρυσμένο φάκελο.",
+            "aerocryptOverlayActive": "Η επικάλυψη AeroCrypt είναι ενεργή: οι μεταφορτώσεις και οι λήψεις σε αυτό το παράθυρο είναι κρυπτογραφημένες. Κάντε κλικ για αποσύνδεση.",
+            "aerocryptOverlayInactive": "Ανοίξτε μια απομακρυσμένη αποθήκευση rclone-crypt (ή δημιουργήστε μια νέα) ως διαφανή επικάλυψη.",
+            "aerocryptImportTitle": "Εντοπίστηκε επικάλυψη Rclone Crypt",
+            "aerocryptImportDesc": "Εισήχθη προφίλ από το rclone.conf για το {name}: άνοιγμα της επικάλυψης τώρα;",
+            "aerocryptImportOpen": "Άνοιγμα επικάλυψης"
         },
         "ai.agentMode.title": "Λειτουργία πράκτορα",
         "ai.agentMode.description": "Ελέγχει τη συμπεριφορά έγκρισης εργαλείων, τα όρια βημάτων και το επίπεδο αυτονομίας.",
@@ -4178,7 +4183,8 @@
                 },
                 "footerSummaryNoQuota": "{count} προφίλ · {unique} μοναδικοί δίσκοι cloud",
                 "footerDedupExplained": "Τα προφίλ που μοιράζονται τον ίδιο φυσικό δίσκο (Koofr WebDAV + REST, OpenDrive WebDAV + REST, κάδοι Wasabi με το ίδιο access key) συγχωνεύονται σε έναν δίσκο, ώστε τα όρια να μετρώνται μόνο μία φορά.",
-                "dragToReorder": "Σύρετε για αναδιάταξη"
+                "dragToReorder": "Σύρετε για αναδιάταξη",
+                "footerUniqueCount": "{count} μοναδικά"
             },
             "breakdown": {
                 "title": "Αποθήκευση ανά πρωτόκολλο",
@@ -4319,6 +4325,53 @@
             "reconnecting": "Η συνεδρία έληξε, επανασύνδεση...",
             "reconnected": "Επανασυνδέθηκε στον διακομιστή",
             "reconnectFailed": "Η επανασύνδεση απέτυχε. Επανασυνδεθείτε χειροκίνητα."
+        },
+        "aerocrypt": {
+            "title": "AeroCrypt · Επικάλυψη Rclone Crypt",
+            "intro": {
+                "heading": "Τι κάνει αυτή η επικάλυψη",
+                "p1": "Κρυπτογραφεί ονόματα και περιεχόμενα αρχείων <strong>σε πραγματικό χρόνο</strong>, πριν τα στείλει στον διακομιστή, και τα αποκρυπτογραφεί όταν τα κατεβάζετε. Ο διακομιστής βλέπει μόνο blobs με ονόματα base32. Εσείς βλέπετε τα αρχικά ονόματα.",
+                "p2": "Όσο η επικάλυψη είναι ενεργή: η απομακρυσμένη συνεδρία σας εμφανίζει το περιεχόμενο σε καθαρή μορφή, κάθε μεταφόρτωση κρυπτογραφείται, κάθε λήψη αποκρυπτογραφείται. Αναζητήστε το διακριτικό <em>AEROCRYPT</em> στη γραμμή διαδρομής.",
+                "p3": "Διαφορά σε σχέση με το AeroVault: το AeroVault είναι ένα μεμονωμένο αυτόνομο αρχείο <code>.aerovault</code> (μορφή AeroFTP). Το AeroCrypt είναι ένα στρώμα πάνω από μια υπάρχουσα απομακρυσμένη αποθήκευση (S3/SFTP/WebDAV/...) που χρησιμοποιεί τη δημόσια μορφή rclone crypt. Ξεκλειδώστε με τον ίδιο κωδικό που θα χρησιμοποιούσατε στο <code>rclone</code>."
+            },
+            "openExisting": "Άνοιγμα υπάρχοντος",
+            "createNew": "Δημιουργία νέου",
+            "password": "Κωδικός πρόσβασης",
+            "passwordPlaceholder": "Κωδικός rclone crypt",
+            "salt": "Salt (password2, προαιρετικό)",
+            "saltPlaceholder": "Προαιρετικός κωδικός salt",
+            "filenameEncryption": "Κρυπτογράφηση ονομάτων αρχείων",
+            "filenameEncOption": {
+                "standard": "Τυπική (EME)",
+                "obfuscate": "Συσκότιση",
+                "off": "Απενεργοποιημένο"
+            },
+            "directoryNameEncryption": "Κρυπτογράφηση ονομάτων καταλόγων",
+            "targetSubpath": "Υπο-διαδρομή προορισμού (προαιρετικό)",
+            "targetSubpathPlaceholder": "αφήστε κενό για αρχικοποίηση στον τρέχοντα απομακρυσμένο κατάλογο",
+            "targetSubpathHint": "Αρχικοποιεί ένα νέο dirIV στον κατάλογο προορισμού και στη συνέχεια το ξεκλειδώνει ως επικάλυψη.",
+            "unlock": "Ξεκλείδωμα",
+            "createAndUnlock": "Δημιουργία και ξεκλείδωμα",
+            "lock": "Κλείδωμα",
+            "unlocked": "Η απομακρυσμένη αποθήκευση rclone crypt ξεκλειδώθηκε",
+            "initialised": "Η απομακρυσμένη αποθήκευση rclone crypt αρχικοποιήθηκε",
+            "remoteUnlocked": "Απομακρυσμένη αποθήκευση ξεκλειδώθηκε (ID: {id}...)",
+            "decryptFilename": "Αποκρυπτογράφηση ονόματος αρχείου",
+            "dirIvPlaceholder": "dirIV (base64)",
+            "encryptedNamePlaceholder": "Κρυπτογραφημένο όνομα αρχείου (Base32hex)",
+            "decryptName": "Αποκρυπτογράφηση ονόματος",
+            "decryptFileFromDisk": "Αποκρυπτογράφηση αρχείου από δίσκο",
+            "fileDecryptedTo": "Το αρχείο αποκρυπτογραφήθηκε στο {path}",
+            "encryptedUploadCompleted": "Η κρυπτογραφημένη μεταφόρτωση ολοκληρώθηκε: {path}",
+            "remoteBrowser": "Απομακρυσμένος περιηγητής (διαφανής)",
+            "upload": "Μεταφόρτωση",
+            "up": "Επάνω",
+            "path": "Διαδρομή: {path}",
+            "dirIvNotFound": "Το dirIV δεν βρέθηκε στον τρέχοντα φάκελο: τα ονόματα ενδέχεται να παραμείνουν κρυπτογραφημένα.",
+            "loading": "Φόρτωση...",
+            "emptyFolder": "Κενός φάκελος",
+            "nameNotDecrypted": "το όνομα δεν αποκρυπτογραφήθηκε",
+            "download": "Λήψη"
         }
     }
 }
