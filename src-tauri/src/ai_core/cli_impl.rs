@@ -350,21 +350,18 @@ impl RemoteBackend for CliRemoteBackend {
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let tmp = std::env::temp_dir().join(format!(
-            "aeroftp_cli_upload_{}_{}",
-            std::process::id(),
-            nonce
-        ));
-        std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+        use std::io::Write;
+
+        let mut tmp = tempfile::Builder::new()
+            .prefix("aeroftp_cli_upload_")
+            .tempfile()
+            .map_err(|e| e.to_string())?;
+        tmp.write_all(data).map_err(|e| e.to_string())?;
+        tmp.flush().map_err(|e| e.to_string())?;
         let result = p
-            .upload(tmp.to_str().unwrap_or(""), path, None)
+            .upload(tmp.path().to_str().unwrap_or(""), path, None)
             .await
             .map_err(|e| e.to_string());
-        let _ = std::fs::remove_file(&tmp);
         result
     }
 

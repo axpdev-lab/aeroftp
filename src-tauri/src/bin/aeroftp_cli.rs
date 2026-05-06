@@ -121,7 +121,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     about = "AeroFTP CLI - Multi-protocol file transfer client",
     version,
     long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\nAI agents: run 'aeroftp agent-bootstrap --json' for canonical task workflows and 'aeroftp agent-info --json' for full capability discovery.",
-    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli agent-bootstrap                                AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial   99  Unknown error"
+    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli agent-bootstrap                                AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)"
 )]
 struct Cli {
     /// Output format
@@ -2323,6 +2323,10 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::IoError(_) => 11,
         ProviderError::Unknown(_) | ProviderError::Other(_) => 99,
     }
+}
+
+fn is_valid_sync_direction(direction: &str) -> bool {
+    matches!(direction, "upload" | "download" | "both")
 }
 
 fn format_size(bytes: u64) -> String {
@@ -5704,9 +5708,10 @@ fn truncate_str(s: &str, max: usize) -> String {
 
 fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
     let store = open_vault(cli)?;
-    let profiles_json = store
-        .get("config_server_profiles")
-        .map_err(|e| format!("Failed to read saved profiles: {}", e))?;
+    let profiles_json = match store.get("config_server_profiles") {
+        Ok(json) => json,
+        Err(_) => return Ok(vec![]),
+    };
     let profiles = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json)
         .map_err(|e| format!("Failed to parse saved profiles: {}", e))?;
 
@@ -5745,9 +5750,10 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
 fn safe_vault_profiles_for_agent() -> Result<Vec<serde_json::Value>, String> {
     let store = ftp_client_gui_lib::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot list server profiles.".to_string())?;
-    let profiles_json = store
-        .get("config_server_profiles")
-        .map_err(|e| format!("Failed to read profiles: {}", e))?;
+    let profiles_json = match store.get("config_server_profiles") {
+        Ok(json) => json,
+        Err(_) => return Ok(vec![]),
+    };
     let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
         .map_err(|e| format!("Failed to parse profiles: {}", e))?;
 
@@ -9423,6 +9429,7 @@ mod serve_sftp {
     const SSH_FXP_DATA: u8 = 103;
     const SSH_FXP_NAME: u8 = 104;
     const SSH_FXP_ATTRS: u8 = 105;
+    const MAX_SFTP_PACKET_LEN: usize = 16 * 1024 * 1024;
 
     const SSH_FX_OK: u32 = 0;
     const SSH_FX_EOF: u32 = 1;
@@ -9431,23 +9438,36 @@ mod serve_sftp {
     const SSH_FX_PERMISSION_DENIED: u32 = 3;
     const SSH_FX_FAILURE: u32 = 4;
 
-    fn read_u32(data: &[u8], pos: &mut usize) -> u32 {
-        let val = u32::from_be_bytes(data[*pos..*pos + 4].try_into().unwrap_or([0; 4]));
-        *pos += 4;
-        val
+    fn read_u32(data: &[u8], pos: &mut usize) -> Option<u32> {
+        let end = pos.checked_add(4)?;
+        let bytes: [u8; 4] = data.get(*pos..end)?.try_into().ok()?;
+        *pos = end;
+        Some(u32::from_be_bytes(bytes))
     }
 
-    fn read_u64(data: &[u8], pos: &mut usize) -> u64 {
-        let val = u64::from_be_bytes(data[*pos..*pos + 8].try_into().unwrap_or([0; 8]));
-        *pos += 8;
-        val
+    fn read_u64(data: &[u8], pos: &mut usize) -> Option<u64> {
+        let end = pos.checked_add(8)?;
+        let bytes: [u8; 8] = data.get(*pos..end)?.try_into().ok()?;
+        *pos = end;
+        Some(u64::from_be_bytes(bytes))
     }
 
-    fn read_string(data: &[u8], pos: &mut usize) -> String {
-        let len = read_u32(data, pos) as usize;
-        let s = String::from_utf8_lossy(&data[*pos..*pos + len]).to_string();
-        *pos += len;
-        s
+    fn read_string(data: &[u8], pos: &mut usize) -> Option<String> {
+        const MAX_SFTP_STRING: usize = 1024 * 1024;
+        let len = read_u32(data, pos)? as usize;
+        if len > MAX_SFTP_STRING {
+            return None;
+        }
+        let end = pos.checked_add(len)?;
+        let s = String::from_utf8_lossy(data.get(*pos..end)?).to_string();
+        *pos = end;
+        Some(s)
+    }
+
+    fn malformed_status(data: &[u8]) -> Vec<u8> {
+        let mut pos = 1usize;
+        let id = read_u32(data, &mut pos).unwrap_or(0);
+        make_status(id, SSH_FX_FAILURE, "malformed packet")
     }
 
     fn write_u32(buf: &mut Vec<u8>, val: u32) {
@@ -9555,7 +9575,8 @@ mod serve_sftp {
                         });
                         let _ = tx.send(r);
                     });
-                    rx.recv().unwrap()
+                    rx.recv()
+                        .unwrap_or_else(|_| Err(ProviderError::Other("provider worker failed".into())))
                 }};
             }
             if data.is_empty() {
@@ -9563,18 +9584,42 @@ mod serve_sftp {
             }
             let ptype = data[0];
             let mut pos = 1usize;
+            macro_rules! parse_u32 {
+                () => {
+                    match read_u32(data, &mut pos) {
+                        Some(value) => value,
+                        None => return malformed_status(data),
+                    }
+                };
+            }
+            macro_rules! parse_u64 {
+                () => {
+                    match read_u64(data, &mut pos) {
+                        Some(value) => value,
+                        None => return malformed_status(data),
+                    }
+                };
+            }
+            macro_rules! parse_string {
+                () => {
+                    match read_string(data, &mut pos) {
+                        Some(value) => value,
+                        None => return malformed_status(data),
+                    }
+                };
+            }
 
             match ptype {
                 SSH_FXP_INIT => {
-                    let _version = read_u32(data, &mut pos);
+                    let _version = parse_u32!();
                     let mut reply = Vec::new();
                     reply.push(SSH_FXP_VERSION);
                     write_u32(&mut reply, 3); // SFTP v3
                     reply
                 }
                 SSH_FXP_REALPATH => {
-                    let id = read_u32(data, &mut pos);
-                    let path = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let path = parse_string!();
                     let resolved = if path == "." { "/".to_string() } else { path };
                     let mut reply = Vec::new();
                     reply.push(SSH_FXP_NAME);
@@ -9586,8 +9631,8 @@ mod serve_sftp {
                     reply
                 }
                 SSH_FXP_STAT | SSH_FXP_LSTAT => {
-                    let id = read_u32(data, &mut pos);
-                    let path = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let path = parse_string!();
                     let remote = match self.resolve_path(&path) {
                         Ok(remote) => remote,
                         Err(_) => {
@@ -9611,8 +9656,8 @@ mod serve_sftp {
                     }
                 }
                 SSH_FXP_FSTAT => {
-                    let id = read_u32(data, &mut pos);
-                    let handle = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let handle = parse_string!();
                     let Some(path) = self.handles.get(&handle).cloned() else {
                         return make_status(id, SSH_FX_FAILURE, "invalid handle");
                     };
@@ -9632,8 +9677,8 @@ mod serve_sftp {
                     }
                 }
                 SSH_FXP_OPENDIR => {
-                    let id = read_u32(data, &mut pos);
-                    let path = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let path = parse_string!();
                     let remote = match self.resolve_path(&path) {
                         Ok(remote) => remote,
                         Err(_) => {
@@ -9648,8 +9693,8 @@ mod serve_sftp {
                     make_handle(id, &handle)
                 }
                 SSH_FXP_READDIR => {
-                    let id = read_u32(data, &mut pos);
-                    let handle = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let handle = parse_string!();
                     // Return EOF if already read
                     if self.dir_read.contains(&handle) {
                         return make_status(id, SSH_FX_EOF, "");
@@ -9682,9 +9727,9 @@ mod serve_sftp {
                     }
                 }
                 SSH_FXP_OPEN => {
-                    let id = read_u32(data, &mut pos);
-                    let path = read_string(data, &mut pos);
-                    let _flags = read_u32(data, &mut pos);
+                    let id = parse_u32!();
+                    let path = parse_string!();
+                    let _flags = parse_u32!();
                     let remote = match self.resolve_path(&path) {
                         Ok(remote) => remote,
                         Err(_) => {
@@ -9699,10 +9744,10 @@ mod serve_sftp {
                     make_handle(id, &handle)
                 }
                 SSH_FXP_READ => {
-                    let id = read_u32(data, &mut pos);
-                    let handle = read_string(data, &mut pos);
-                    let offset = read_u64(data, &mut pos);
-                    let len = read_u32(data, &mut pos);
+                    let id = parse_u32!();
+                    let handle = parse_string!();
+                    let offset = parse_u64!();
+                    let len = parse_u32!();
                     let Some(path) = self.handles.get(&handle).cloned() else {
                         return make_status(id, SSH_FX_FAILURE, "invalid handle");
                     };
@@ -9743,23 +9788,23 @@ mod serve_sftp {
                     }
                 }
                 SSH_FXP_WRITE => {
-                    let id = read_u32(data, &mut pos);
-                    let _handle = read_string(data, &mut pos);
-                    let _offset = read_u64(data, &mut pos);
-                    let _data_len = read_u32(data, &mut pos);
+                    let id = parse_u32!();
+                    let _handle = parse_string!();
+                    let _offset = parse_u64!();
+                    let _data_len = parse_u32!();
                     // Write support: simplified - upload on close
                     make_status(id, SSH_FX_OK, "")
                 }
                 SSH_FXP_CLOSE => {
-                    let id = read_u32(data, &mut pos);
-                    let handle = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let handle = parse_string!();
                     self.handles.remove(&handle);
                     self.dir_read.remove(&handle);
                     make_status(id, SSH_FX_OK, "")
                 }
                 SSH_FXP_REMOVE => {
-                    let id = read_u32(data, &mut pos);
-                    let path = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let path = parse_string!();
                     let remote = match self.resolve_path(&path) {
                         Ok(remote) => remote,
                         Err(_) => {
@@ -9777,8 +9822,8 @@ mod serve_sftp {
                     }
                 }
                 SSH_FXP_MKDIR => {
-                    let id = read_u32(data, &mut pos);
-                    let path = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let path = parse_string!();
                     let remote = match self.resolve_path(&path) {
                         Ok(remote) => remote,
                         Err(_) => {
@@ -9796,8 +9841,8 @@ mod serve_sftp {
                     }
                 }
                 SSH_FXP_RMDIR => {
-                    let id = read_u32(data, &mut pos);
-                    let path = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let path = parse_string!();
                     let remote = match self.resolve_path(&path) {
                         Ok(remote) => remote,
                         Err(_) => {
@@ -9815,9 +9860,9 @@ mod serve_sftp {
                     }
                 }
                 SSH_FXP_RENAME => {
-                    let id = read_u32(data, &mut pos);
-                    let from = read_string(data, &mut pos);
-                    let to = read_string(data, &mut pos);
+                    let id = parse_u32!();
+                    let from = parse_string!();
+                    let to = parse_string!();
                     let from_remote = match self.resolve_path(&from) {
                         Ok(remote) => remote,
                         Err(_) => {
@@ -9847,7 +9892,8 @@ mod serve_sftp {
                 }
                 _ => {
                     if data.len() >= 5 {
-                        let id = read_u32(data, &mut 1);
+                        let mut pos = 1usize;
+                        let id = read_u32(data, &mut pos).unwrap_or(0);
                         make_status(id, SSH_FX_FAILURE, "unsupported")
                     } else {
                         Vec::new()
@@ -9949,11 +9995,19 @@ mod serve_sftp {
             // Process complete packets
             while self.sftp_buf.len() >= 4 {
                 let pkt_len = u32::from_be_bytes(self.sftp_buf[0..4].try_into().unwrap()) as usize;
-                if self.sftp_buf.len() < 4 + pkt_len {
+                if pkt_len > MAX_SFTP_PACKET_LEN {
+                    self.sftp_buf.clear();
                     break;
                 }
-                let pkt_data = self.sftp_buf[4..4 + pkt_len].to_vec();
-                self.sftp_buf.drain(..4 + pkt_len);
+                let Some(packet_end) = 4usize.checked_add(pkt_len) else {
+                    self.sftp_buf.clear();
+                    break;
+                };
+                if self.sftp_buf.len() < packet_end {
+                    break;
+                }
+                let pkt_data = self.sftp_buf[4..packet_end].to_vec();
+                self.sftp_buf.drain(..packet_end);
 
                 let reply = self.process_sftp(&pkt_data);
                 if !reply.is_empty() {
@@ -15129,6 +15183,18 @@ async fn cmd_sync(
     cancelled: Arc<AtomicBool>,
     precomputed_local: Option<Vec<(String, u64, Option<String>)>>,
 ) -> SyncCycleStats {
+    if !is_valid_sync_direction(direction) {
+        print_error(
+            format,
+            &format!(
+                "Invalid sync direction '{}'. Expected one of: upload, download, both",
+                direction
+            ),
+            5,
+        );
+        return 5.into();
+    }
+
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code.into(),
@@ -18144,6 +18210,11 @@ fn daemon_config_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join("aeroftp");
     let _ = std::fs::create_dir_all(&dir);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    }
     dir
 }
 
@@ -18204,13 +18275,33 @@ fn daemon_auth_token() -> Option<String> {
 }
 
 fn write_daemon_auth_token(token: &str) -> Result<(), String> {
-    std::fs::write(daemon_token_path(), token)
-        .map_err(|e| format!("Cannot write daemon auth token: {}", e))?;
+    let path = daemon_token_path();
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&path)
+            .map_err(|e| format!("Cannot open daemon auth token: {}", e))?;
+        file.write_all(token.as_bytes())
+            .map_err(|e| format!("Cannot write daemon auth token: {}", e))?;
+        file.sync_all()
+            .map_err(|e| format!("Cannot flush daemon auth token: {}", e))?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(&path, token).map_err(|e| format!("Cannot write daemon auth token: {}", e))?;
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ =
-            std::fs::set_permissions(daemon_token_path(), std::fs::Permissions::from_mode(0o600));
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
     }
     Ok(())
 }
@@ -20228,6 +20319,18 @@ async fn cmd_sync_doctor(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    if !is_valid_sync_direction(direction) {
+        print_error(
+            format,
+            &format!(
+                "Invalid sync direction '{}'. Expected one of: upload, download, both",
+                direction
+            ),
+            5,
+        );
+        return 5;
+    }
+
     let doctor_cfg = if let Some(profile_name) = cli.profile.as_deref() {
         match profile_to_provider_config(profile_name, cli, format) {
             Ok((cfg, _)) => Some(cfg),
@@ -20237,10 +20340,11 @@ async fn cmd_sync_doctor(
         None
     };
 
-    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
+    let remote = resolve_cli_remote_path(&initial_path, remote);
 
     let local_dir = Path::new(local);
     if !local_dir.is_dir() {
@@ -20289,7 +20393,7 @@ async fn cmd_sync_doctor(
         local_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
     }
 
-    let remote_root_ok = provider.list(remote).await.is_ok();
+    let remote_root_ok = provider.list(&remote).await.is_ok();
     let mut remote_files = 0usize;
     let mut remote_bytes = 0u64;
     if remote_root_ok {
@@ -20305,7 +20409,7 @@ async fn cmd_sync_doctor(
                     } else {
                         let relative = e
                             .path
-                            .strip_prefix(remote)
+                            .strip_prefix(&remote)
                             .unwrap_or(&e.path)
                             .trim_start_matches('/')
                             .to_string();
@@ -20365,15 +20469,14 @@ async fn cmd_sync_doctor(
 
     let suggested_next_command =
         format!(
-        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}{}",
+        "aeroftp-cli sync --profile \"{}\" \"{}\" \"{}\" --direction {} --dry-run --json{}{}{}{}",
         profile_or_placeholder(cli),
         shell_double_quote(local),
-        shell_double_quote(remote),
+        shell_double_quote(&remote),
         shell_double_quote(direction),
         if delete { " --delete" } else { "" },
         if track_renames { " --track-renames" } else { "" },
         if resync { " --resync" } else { "" },
-        if checksum { " --checksum" } else { "" },
         if exclude.is_empty() {
             String::new()
         } else {
@@ -21650,6 +21753,15 @@ async fn cmd_transfer_profiles(
         }
     };
 
+    if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+        if !quiet {
+            eprintln!("Transfer cancelled.");
+        }
+        let _ = source.disconnect().await;
+        let _ = dest.disconnect().await;
+        return 130;
+    }
+
     if plan.entries.is_empty() {
         if !quiet {
             eprintln!("Nothing to transfer.");
@@ -21721,7 +21833,7 @@ async fn cmd_transfer_profiles(
         skip_existing,
         cli,
         quiet,
-        cancelled,
+        cancelled.clone(),
     )
     .await;
 
@@ -21760,6 +21872,10 @@ async fn cmd_transfer_profiles(
 
     let _ = source.disconnect().await;
     let _ = dest.disconnect().await;
+
+    if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+        return 130;
+    }
 
     if summary.failed_files > 0 {
         4

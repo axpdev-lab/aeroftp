@@ -295,7 +295,52 @@ async fn disconnect_outside_lock(entry: PooledConnection) {
     }
 }
 
-/// Resolve a server query (name, ID, or substring) to a profile ID.
+fn find_unique_profile<'a>(
+    profiles: &'a [serde_json::Value],
+    server_query: &str,
+) -> Result<&'a serde_json::Value, String> {
+    let query_lower = server_query.to_lowercase();
+    if let Some(profile) = profiles.iter().find(|p| {
+        let name = p
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        name == query_lower || id == server_query
+    }) {
+        return Ok(profile);
+    }
+
+    let matches: Vec<&serde_json::Value> = profiles
+        .iter()
+        .filter(|p| {
+            p.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_lowercase()
+                .contains(&query_lower)
+        })
+        .collect();
+
+    match matches.as_slice() {
+        [single] => Ok(*single),
+        [] => Err(format!("Server '{}' not found in saved profiles", server_query)),
+        many => {
+            let names = many
+                .iter()
+                .filter_map(|p| p.get("name").and_then(|v| v.as_str()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(format!(
+                "Server '{}' is ambiguous. Use an exact profile name or ID. Matches: {}",
+                server_query, names
+            ))
+        }
+    }
+}
+
+/// Resolve a server query (name, ID, or unique substring) to a profile ID.
 fn resolve_profile_id(server_query: &str) -> Result<String, String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
@@ -305,29 +350,7 @@ fn resolve_profile_id(server_query: &str) -> Result<String, String> {
     let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
         .map_err(|e| format!("Failed to parse profiles: {}", e))?;
 
-    let query_lower = server_query.to_lowercase();
-    let matched = profiles
-        .iter()
-        .find(|p| {
-            let name = p
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            name == query_lower || id == server_query
-        })
-        .or_else(|| {
-            profiles.iter().find(|p| {
-                let name = p
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                name.contains(&query_lower)
-            })
-        })
-        .ok_or_else(|| format!("Server '{}' not found in saved profiles", server_query))?;
+    let matched = find_unique_profile(&profiles, server_query)?;
 
     Ok(matched
         .get("id")
@@ -352,29 +375,7 @@ fn create_provider_from_vault(
     let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
         .map_err(|e| format!("Failed to parse profiles: {}", e))?;
 
-    let query_lower = server_query.to_lowercase();
-    let matched = profiles
-        .iter()
-        .find(|p| {
-            let name = p
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            name == query_lower || id == server_query
-        })
-        .or_else(|| {
-            profiles.iter().find(|p| {
-                let name = p
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                name.contains(&query_lower)
-            })
-        })
-        .ok_or_else(|| format!("Server '{}' not found in saved profiles", server_query))?;
+    let matched = find_unique_profile(&profiles, server_query)?;
 
     let profile_id = matched.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let profile_name = matched

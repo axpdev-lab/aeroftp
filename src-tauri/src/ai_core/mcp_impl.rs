@@ -186,17 +186,15 @@ impl RemoteBackend for McpRemoteBackend {
     }
 
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let tmp = std::env::temp_dir().join(format!(
-            "aeroftp_mcp_upload_{}_{}",
-            std::process::id(),
-            nonce
-        ));
-        std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-        let tmp_str = tmp.to_string_lossy().to_string();
+        use std::io::Write;
+
+        let mut tmp = tempfile::Builder::new()
+            .prefix("aeroftp_mcp_upload_")
+            .tempfile()
+            .map_err(|e| e.to_string())?;
+        tmp.write_all(data).map_err(|e| e.to_string())?;
+        tmp.flush().map_err(|e| e.to_string())?;
+        let tmp_str = tmp.path().to_string_lossy().to_string();
         let path = path.to_string();
         let result = self
             .with_provider(move |p| {
@@ -204,7 +202,6 @@ impl RemoteBackend for McpRemoteBackend {
                 Box::pin(async move { p.upload(&local, &path, None).await })
             })
             .await;
-        let _ = std::fs::remove_file(&tmp);
         result
     }
 

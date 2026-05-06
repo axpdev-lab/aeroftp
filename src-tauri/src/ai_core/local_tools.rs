@@ -111,6 +111,19 @@ pub(crate) fn validate_path(path: &str, param: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn ensure_not_symlink(path: &std::path::Path, param: &str) -> Result<(), String> {
+    let meta = std::fs::symlink_metadata(path)
+        .map_err(|e| format!("{}: failed to inspect {}: {}", param, path.display(), e))?;
+    if meta.file_type().is_symlink() {
+        return Err(format!(
+            "{}: refusing to follow symlink: {}",
+            param,
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn get_str(args: &Value, key: &str) -> Result<String, ToolError> {
     args.get(key)
         .and_then(|v| v.as_str())
@@ -576,6 +589,8 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
     let dest_path = std::path::Path::new(&destination);
     if paths.len() == 1 && dest_path.extension().is_some() && !dest_path.is_dir() {
         let source = &paths[0];
+        validate_path(source, "path").map_err(map_str_err)?;
+        ensure_not_symlink(std::path::Path::new(source), "path").map_err(map_str_err)?;
         std::fs::copy(source, &destination).map_err(|e| {
             ToolError::Exec(format!(
                 "Failed to copy {} to {}: {}",
@@ -599,6 +614,7 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         .map_err(|e| ToolError::Exec(format!("Failed to create destination directory: {}", e)))?;
 
     fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<u64, String> {
+        ensure_not_symlink(src, "path")?;
         std::fs::create_dir_all(dst)
             .map_err(|e| format!("Failed to create dir {}: {}", dst.display(), e))?;
         let mut count = 0u64;
@@ -608,6 +624,8 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             let entry = entry.map_err(|e| e.to_string())?;
             let src_path = entry.path();
             let dst_path = dst.join(entry.file_name());
+            ensure_not_symlink(&src_path, "path")?;
+            validate_path(&src_path.to_string_lossy(), "path")?;
             if src_path.is_dir() {
                 count += copy_dir_recursive(&src_path, &dst_path)?;
             } else {
@@ -629,6 +647,10 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             continue;
         }
         let src_path = std::path::Path::new(source);
+        if let Err(e) = ensure_not_symlink(src_path, "path") {
+            errors.push(json!({ "file": source, "error": e }));
+            continue;
+        }
         let filename = src_path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -1221,6 +1243,14 @@ pub async fn local_stat_batch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
 
     for p in paths.iter().filter_map(|v| v.as_str()) {
         let resolved = resolve_local_path(p, base);
+        if let Err(err) = validate_path(&resolved, "path") {
+            files.push(json!({
+                "path": resolved,
+                "exists": false,
+                "error": err,
+            }));
+            continue;
+        }
         let path = std::path::Path::new(&resolved);
         if let Ok(meta) = std::fs::metadata(path) {
             let size = meta.len();

@@ -1640,14 +1640,35 @@ pub async fn execute_ai_tool(
     // Tauri State<'_, ...> parameters are still required by the IPC
     // signature so the frontend can keep the same invoke contract; the
     // unified dispatcher (ai_core::tools) does not use them directly.
-    _state: tauri::State<'_, crate::provider_commands::ProviderState>,
-    _app_state: tauri::State<'_, crate::AppState>,
+    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    app_state: tauri::State<'_, crate::AppState>,
     tool_name: String,
     args: serde_json::Value,
     context_local_path: Option<String>,
-    _session_id: Option<String>,
+    session_id: Option<String>,
     approval_grant_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    if !ALLOWED_TOOLS.contains(&tool_name.as_str()) {
+        return Err(format!("Unknown or disallowed tool: {}", tool_name));
+    }
+
+    if requires_backend_write_approval(&tool_name, &args) {
+        let remote_context = build_remote_cache_context(&state, &app_state).await;
+        let scope_key = build_tool_cache_key(
+            &tool_name,
+            &args,
+            context_local_path.as_deref(),
+            remote_context.as_deref(),
+        )?;
+        ensure_ai_tool_approval(
+            session_id.as_deref(),
+            &tool_name,
+            &scope_key,
+            approval_grant_id.as_deref(),
+        )
+        .await?;
+    }
+
     let ctx = crate::ai_core::tauri_impl::TauriToolCtx {
         app: app.clone(),
         sink: crate::ai_core::tauri_impl::TauriEventSink::new(app.clone()),

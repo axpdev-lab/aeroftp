@@ -53,7 +53,20 @@ impl AtomicFile {
             fs::create_dir_all(parent).await?;
         }
 
-        let file = fs::File::create(&temp_path).await?;
+        let file = if inplace {
+            fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&temp_path)
+                .await?
+        } else {
+            fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&temp_path)
+                .await?
+        };
 
         Ok(Self {
             temp_path,
@@ -140,14 +153,40 @@ impl ResumableFile {
         }
 
         let (file, offset) = if temp_path.exists() {
+            let symlink_meta = fs::symlink_metadata(&temp_path).await?;
+            if symlink_meta.file_type().is_symlink() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "refusing to resume through symlinked .aerotmp file",
+                ));
+            }
             // Resume: open existing file in append mode
             let meta = fs::metadata(&temp_path).await?;
+            if !meta.is_file() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "resume target is not a regular file",
+                ));
+            }
             let offset = meta.len();
             let file = fs::OpenOptions::new().append(true).open(&temp_path).await?;
             (file, offset)
         } else {
             // Fresh: create new file
-            let file = fs::File::create(&temp_path).await?;
+            let file = if inplace {
+                fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(&temp_path)
+                    .await?
+            } else {
+                fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(&temp_path)
+                    .await?
+            };
             (file, 0)
         };
 
@@ -175,7 +214,20 @@ impl ResumableFile {
             fs::create_dir_all(parent).await?;
         }
 
-        let file = fs::File::create(&temp_path).await?;
+        let file = if inplace {
+            fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&temp_path)
+                .await?
+        } else {
+            fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&temp_path)
+                .await?
+        };
 
         Ok(Self {
             temp_path,

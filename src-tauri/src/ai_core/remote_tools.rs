@@ -33,13 +33,47 @@ fn get_bool_opt(args: &Value, key: &str) -> Option<bool> {
 }
 
 fn validate_remote_path(path: &str, label: &str) -> Result<(), ToolError> {
+    if path.len() > 4096 {
+        return Err(ToolError::InvalidArgs {
+            tool: "remote".to_string(),
+            reason: format!("{label} exceeds 4096 characters"),
+        });
+    }
     if path.contains('\0') {
         return Err(ToolError::InvalidArgs {
             tool: "remote".to_string(),
             reason: format!("{label} contains null bytes"),
         });
     }
+    if path.starts_with('-') {
+        return Err(ToolError::InvalidArgs {
+            tool: "remote".to_string(),
+            reason: format!("{label} must not start with '-'"),
+        });
+    }
+    let normalized = path.replace('\\', "/");
+    if normalized.split('/').any(|component| component == "..") {
+        return Err(ToolError::InvalidArgs {
+            tool: "remote".to_string(),
+            reason: format!("{label} must not contain '..' traversal components"),
+        });
+    }
+    if path.chars().any(|c| c.is_control() && c != '\t') {
+        return Err(ToolError::InvalidArgs {
+            tool: "remote".to_string(),
+            reason: format!("{label} contains control characters"),
+        });
+    }
     Ok(())
+}
+
+fn validate_local_path(path: &str, label: &str) -> Result<(), ToolError> {
+    crate::ai_core::local_tools::validate_path(path, label).map_err(|reason| {
+        ToolError::InvalidArgs {
+            tool: "remote".to_string(),
+            reason,
+        }
+    })
 }
 
 fn backend_error(e: String) -> ToolError {
@@ -557,6 +591,7 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         ensure_remote_parents(ctx, &server, &remote_path).await?;
     }
     if let Some(local_path) = get_str_opt(args, "local_path") {
+        validate_local_path(&local_path, "local_path")?;
         backend
             .upload(&local_path, &remote_path)
             .await
@@ -655,6 +690,7 @@ async fn download_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     let remote_path = get_str(args, "remote_path")?;
     let local_path = get_str(args, "local_path")?;
     validate_remote_path(&remote_path, "remote_path")?;
+    validate_local_path(&local_path, "local_path")?;
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     if let Some(parent) = std::path::Path::new(&local_path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| ToolError::Exec(e.to_string()))?;
@@ -1110,33 +1146,13 @@ async fn server_exec(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             .await?
         }
         "df" => storage_quota(ctx, &json!({"server": server})).await?,
-        "get" => {
-            let local_path =
-                get_str(args, "local_path").or_else(|_| get_str(args, "destination"))?;
-            download_file(
-                ctx,
-                &json!({"server": server, "remote_path": path, "local_path": local_path}),
-            )
-            .await?
-        }
-        "put" => {
-            let local_path = get_str(args, "local_path")?;
-            let remote_path = get_str_opt(args, "remote_path").unwrap_or(path);
-            upload_file(
-                ctx,
-                &json!({"server": server, "remote_path": remote_path, "local_path": local_path}),
-            )
-            .await?
-        }
-        "mkdir" => create_directory(ctx, &json!({"server": server, "path": path})).await?,
-        "rm" => delete(ctx, &json!({"server": server, "path": path})).await?,
-        "mv" => {
-            let destination = get_str(args, "destination")?;
-            rename(
-                ctx,
-                &json!({"server": server, "from": path, "to": destination}),
-            )
-            .await?
+        "get" | "put" | "mkdir" | "rm" | "mv" => {
+            return Err(ToolError::InvalidArgs {
+                tool: "server_exec".to_string(),
+                reason: format!(
+                    "Operation '{operation}' is mutative; use the dedicated AeroFTP tool with explicit approval"
+                ),
+            });
         }
         _ => {
             return Err(ToolError::InvalidArgs {
