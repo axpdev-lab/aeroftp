@@ -115,7 +115,6 @@ ring = "0.17.14"
 
 # Box, pCloud, Azure, Filen providers (v1.4.1)
 pbkdf2 = "0.12"
-rsa = "0.9"
 num-bigint-dig = "0.8"
 uuid = { version = "1", features = ["v4"] }
 mime_guess = "2"
@@ -143,7 +142,7 @@ scrypt = "0.11"                                                        # Cryptom
 aes-kw = "0.2"                                                         # AES Key Wrap (RFC 3394)
 aes-siv = "0.7"                                                        # AES-SIV filename encryption
 data-encoding = "2"                                                    # Base32/Base64 encoding
-jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }         # JWT parsing for vault.cryptomator (CVE-2026-25537 fix)
+jsonwebtoken = { version = "10.3", default-features = false, features = ["aws-lc-rs", "hmac", "use_pem"] } # JWT HS256 + GitHub App RS256 without RustCrypto rsa
 
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
 aerovault = "0.3.5"                                                    # AeroVault v2 standalone crate (crates.io)
