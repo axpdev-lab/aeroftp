@@ -4119,7 +4119,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Nire zerbitzariak",
-                "discover": "Zerbitzuak aurkitu"
+                "discover": "Gehitu zerbitzua"
             },
             "quickConnect": "Konexio azkarra",
             "search": "Bilatu...",
@@ -4163,7 +4163,6 @@
             "crossProfileDestinationSelected": "Cross-Profile helburu gisa hautatua",
             "crossProfileOpenWithSource": "Ireki Cross-Profile Transfer (iturburua prest)",
             "crossProfileOpenWithPair": "Ireki Cross-Profile Transfer (iturburua + helburua prest)",
-            "newConnection": "Berria",
             "getStarted": "Hasi",
             "addFirstServer": "Gehitu zure lehen zerbitzaria",
             "browseCategory": "Edo arakatu kategoriaka",

@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Sunucularım",
-                "discover": "Hizmetleri Keşfet"
+                "discover": "Hizmet ekle"
             },
             "quickConnect": "Hızlı Bağlantı",
             "search": "Ara...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Cross-Profile hedefi olarak secildi",
             "crossProfileOpenWithSource": "Cross-Profile Transfer'i ac (kaynak hazir)",
             "crossProfileOpenWithPair": "Cross-Profile Transfer'i ac (kaynak + hedef hazir)",
-            "newConnection": "Yeni",
             "getStarted": "Başla",
             "addFirstServer": "İlk sunucunuzu ekleyin",
             "browseCategory": "Veya kategoriye göre göz atın",

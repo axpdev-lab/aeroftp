@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "मेरे सर्वर",
-                "discover": "सेवाएं खोजें"
+                "discover": "सेवा जोड़ें"
             },
             "quickConnect": "त्वरित कनेक्ट",
             "search": "खोजें...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Cross-Profile गंतव्य के रूप में चयनित",
             "crossProfileOpenWithSource": "Cross-Profile Transfer खोलें (स्रोत तैयार)",
             "crossProfileOpenWithPair": "Cross-Profile Transfer खोलें (स्रोत + गंतव्य तैयार)",
-            "newConnection": "नया",
             "getStarted": "शुरू करें",
             "addFirstServer": "अपना पहला सर्वर जोड़ें",
             "browseCategory": "या श्रेणी के अनुसार ब्राउज़ करें",

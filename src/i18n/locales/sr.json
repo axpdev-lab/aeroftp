@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Моји сервери",
-                "discover": "Откријте сервисе"
+                "discover": "Додај услугу"
             },
             "quickConnect": "Брзо повезивање",
             "search": "Претрага...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Изабрано као одредиште Cross-Profile",
             "crossProfileOpenWithSource": "Отвори Cross-Profile Transfer (извор спреман)",
             "crossProfileOpenWithPair": "Отвори Cross-Profile Transfer (извор + одредиште спремни)",
-            "newConnection": "Ново",
             "getStarted": "Почни",
             "addFirstServer": "Додајте свој први сервер",
             "browseCategory": "Или прегледајте по категорији",

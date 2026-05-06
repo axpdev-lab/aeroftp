@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { Server, Compass, Plus, Cloud, FolderOpen, Search, X } from 'lucide-react';
+import { Server, PlusCircle, Cloud, FolderOpen, Search, X } from 'lucide-react';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { useTranslation } from '../../i18n';
@@ -19,7 +19,6 @@ export interface FormTab {
 interface IntroHubHeaderProps {
     activeTab: string; // IntroHubTab | FormTab.id
     onTabChange: (tab: string) => void;
-    onNewConnection: () => void;
     onCommandPalette: () => void;
     formTabs: FormTab[];
     onCloseFormTab: (tabId: string) => void;
@@ -37,7 +36,7 @@ interface IntroHubHeaderProps {
 
 const staticTabs: { id: IntroHubTab; labelKey: string; icon: React.ReactNode }[] = [
     { id: 'my-servers', labelKey: 'introHub.tab.myServers', icon: <Server size={15} /> },
-    { id: 'discover', labelKey: 'introHub.tab.discover', icon: <Compass size={15} /> },
+    { id: 'discover', labelKey: 'introHub.tab.discover', icon: <PlusCircle size={15} /> },
 ];
 
 function FormTabIcon({ tab }: { tab: FormTab }) {
@@ -51,7 +50,6 @@ function FormTabIcon({ tab }: { tab: FormTab }) {
 export function IntroHubHeader({
     activeTab,
     onTabChange,
-    onNewConnection,
     onCommandPalette,
     formTabs,
     onCloseFormTab,
@@ -107,16 +105,6 @@ export function IntroHubHeader({
                     </button>
                 );
             })}
-
-            {/* + New button (opens Discover) */}
-            <button
-                onClick={onNewConnection}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 ml-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:text-gray-700 dark:hover:text-gray-200 transition-colors border border-dashed border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 shrink-0"
-                title="Ctrl+N"
-            >
-                <Plus size={13} />
-                <span>{t('introHub.newConnection')}</span>
-            </button>
 
             {/* Dynamic form tabs */}
             {formTabs.length > 0 && (

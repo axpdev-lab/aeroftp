@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Máy chủ của tôi",
-                "discover": "Khám phá dịch vụ"
+                "discover": "Thêm dịch vụ"
             },
             "quickConnect": "Kết nối nhanh",
             "search": "Tìm kiếm...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Da chon lam dich Cross-Profile",
             "crossProfileOpenWithSource": "Mo Cross-Profile Transfer (nguon san sang)",
             "crossProfileOpenWithPair": "Mo Cross-Profile Transfer (nguon + dich san sang)",
-            "newConnection": "Mới",
             "getStarted": "Bắt đầu",
             "addFirstServer": "Thêm máy chủ đầu tiên",
             "browseCategory": "Hoặc duyệt theo danh mục",

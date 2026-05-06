@@ -4119,7 +4119,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Aking mga Server",
-                "discover": "Tuklasin ang mga Serbisyo"
+                "discover": "Magdagdag ng serbisyo"
             },
             "quickConnect": "Mabilis na Koneksyon",
             "search": "Maghanap...",
@@ -4163,7 +4163,6 @@
             "crossProfileDestinationSelected": "Napili bilang patutunguhan ng Cross-Profile",
             "crossProfileOpenWithSource": "Buksan ang Cross-Profile Transfer (handa na ang pinagmulan)",
             "crossProfileOpenWithPair": "Buksan ang Cross-Profile Transfer (handa na ang pinagmulan + patutunguhan)",
-            "newConnection": "Bago",
             "getStarted": "Magsimula",
             "addFirstServer": "Idagdag ang iyong unang server",
             "browseCategory": "O mag-browse ayon sa kategorya",

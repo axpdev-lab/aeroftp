@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Pelayan Saya",
-                "discover": "Terokai Perkhidmatan"
+                "discover": "Tambah perkhidmatan"
             },
             "quickConnect": "Sambungan Pantas",
             "search": "Cari...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Dipilih sebagai destinasi Cross-Profile",
             "crossProfileOpenWithSource": "Buka Cross-Profile Transfer (sumber sedia)",
             "crossProfileOpenWithPair": "Buka Cross-Profile Transfer (sumber + destinasi sedia)",
-            "newConnection": "Baru",
             "getStarted": "Mula",
             "addFirstServer": "Tambah pelayan pertama anda",
             "browseCategory": "Atau layari mengikut kategori",

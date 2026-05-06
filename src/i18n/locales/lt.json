@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Mano serveriai",
-                "discover": "Atraskite paslaugas"
+                "discover": "Pridėti paslaugą"
             },
             "quickConnect": "Greitas prisijungimas",
             "search": "Ieškoti...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Pasirinkta kaip Cross-Profile paskirties vieta",
             "crossProfileOpenWithSource": "Atidaryti Cross-Profile Transfer (šaltinis paruoštas)",
             "crossProfileOpenWithPair": "Atidaryti Cross-Profile Transfer (šaltinis + paskirties vieta paruošti)",
-            "newConnection": "Naujas",
             "getStarted": "Pradėti",
             "addFirstServer": "Pridėti pirmąjį serverį",
             "browseCategory": "Arba naršykite pagal kategoriją",

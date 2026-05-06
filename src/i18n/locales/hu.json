@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Saját szerverek",
-                "discover": "Szolgáltatások felfedezése"
+                "discover": "Szolgáltatás hozzáadása"
             },
             "quickConnect": "Gyors csatlakozás",
             "search": "Keresés...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Kiválasztva Cross-Profile célként",
             "crossProfileOpenWithSource": "Cross-Profile Transfer megnyitása (forrás kész)",
             "crossProfileOpenWithPair": "Cross-Profile Transfer megnyitása (forrás + cél kész)",
-            "newConnection": "Új",
             "getStarted": "Kezdés",
             "addFirstServer": "Első kiszolgáló hozzáadása",
             "browseCategory": "Vagy böngészés kategória szerint",

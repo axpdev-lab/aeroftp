@@ -4090,7 +4090,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Mijn servers",
-                "discover": "Diensten ontdekken"
+                "discover": "Service toevoegen"
             },
             "quickConnect": "Snel verbinden",
             "search": "Zoeken...",
@@ -4134,7 +4134,6 @@
             "crossProfileDestinationSelected": "Geselecteerd als Cross-Profile bestemming",
             "crossProfileOpenWithSource": "Cross-Profile Transfer openen (bron gereed)",
             "crossProfileOpenWithPair": "Cross-Profile Transfer openen (bron + bestemming gereed)",
-            "newConnection": "Nieuw",
             "getStarted": "Aan de slag",
             "addFirstServer": "Voeg je eerste server toe",
             "browseCategory": "Of blader per categorie",

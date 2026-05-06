@@ -4141,10 +4141,9 @@
     "introHub": {
       "tab": {
         "myServers": "My Servers",
-        "discover": "Discover Services"
+        "discover": "Add Service"
       },
       "quickConnect": "Quick Connect",
-      "newConnection": "New",
       "getStarted": "Get started",
       "addFirstServer": "Add your first server",
       "browseCategory": "Or browse by category",

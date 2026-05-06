@@ -4119,7 +4119,7 @@
         "introHub": {
             "tab": {
                 "myServers": "ម៉ាស៊ីនមេរបស់ខ្ញុំ",
-                "discover": "ស្វែងរកសេវាកម្ម"
+                "discover": "បន្ថែមសេវាកម្ម"
             },
             "quickConnect": "តភ្ជាប់រហ័ស",
             "search": "ស្វែងរក...",
@@ -4163,7 +4163,6 @@
             "crossProfileDestinationSelected": "បានជ្រើសរើសជាគោលដៅ Cross-Profile",
             "crossProfileOpenWithSource": "បើក Cross-Profile Transfer (ប្រភពរួចរាល់)",
             "crossProfileOpenWithPair": "បើក Cross-Profile Transfer (ប្រភព + គោលដៅរួចរាល់)",
-            "newConnection": "ថ្មី",
             "getStarted": "ចាប់ផ្ដើម",
             "addFirstServer": "បន្ថែមម៉ាស៊ីនមេដំបូងរបស់អ្នក",
             "browseCategory": "ឬរុករកតាមប្រភេទ",

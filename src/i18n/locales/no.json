@@ -4119,7 +4119,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Mine servere",
-                "discover": "Utforsk tjenester"
+                "discover": "Legg til tjeneste"
             },
             "quickConnect": "Hurtigtilkobling",
             "search": "Søk...",
@@ -4163,7 +4163,6 @@
             "crossProfileDestinationSelected": "Valgt som Cross-Profile-mål",
             "crossProfileOpenWithSource": "Åpne Cross-Profile Transfer (kilde klar)",
             "crossProfileOpenWithPair": "Åpne Cross-Profile Transfer (kilde + mål klare)",
-            "newConnection": "Ny",
             "getStarted": "Kom i gang",
             "addFirstServer": "Legg til din første server",
             "browseCategory": "Eller bla etter kategori",

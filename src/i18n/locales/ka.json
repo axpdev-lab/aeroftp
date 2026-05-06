@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "ჩემი სერვერები",
-                "discover": "სერვისების აღმოჩენა"
+                "discover": "სერვისის დამატება"
             },
             "quickConnect": "სწრაფი დაკავშირება",
             "search": "ძიება...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "არჩეულია Cross-Profile-ის დანიშნულებად",
             "crossProfileOpenWithSource": "Cross-Profile Transfer-ის გახსნა (წყარო მზადაა)",
             "crossProfileOpenWithPair": "Cross-Profile Transfer-ის გახსნა (წყარო + დანიშნულება მზადაა)",
-            "newConnection": "ახალი",
             "getStarted": "დაიწყეთ",
             "addFirstServer": "დაამატეთ თქვენი პირველი სერვერი",
             "browseCategory": "ან დაათვალიერეთ კატეგორიების მიხედვით",

@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Moje servery",
-                "discover": "Objaviť služby"
+                "discover": "Pridať službu"
             },
             "quickConnect": "Rýchle pripojenie",
             "search": "Hľadať...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Vybrane ako ciel Cross-Profile",
             "crossProfileOpenWithSource": "Otvorit Cross-Profile Transfer (zdroj pripraveny)",
             "crossProfileOpenWithPair": "Otvorit Cross-Profile Transfer (zdroj + ciel pripravene)",
-            "newConnection": "Nový",
             "getStarted": "Začať",
             "addFirstServer": "Pridať prvý server",
             "browseCategory": "Alebo prehliadať podľa kategórie",

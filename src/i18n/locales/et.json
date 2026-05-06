@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Minu serverid",
-                "discover": "Avasta teenused"
+                "discover": "Lisa teenus"
             },
             "quickConnect": "Kiirühendus",
             "search": "Otsi...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Valitud Cross-Profile sihtkohaks",
             "crossProfileOpenWithSource": "Ava Cross-Profile Transfer (allikas valmis)",
             "crossProfileOpenWithPair": "Ava Cross-Profile Transfer (allikas + sihtkoht valmis)",
-            "newConnection": "Uus",
             "getStarted": "Alusta",
             "addFirstServer": "Lisa oma esimene server",
             "browseCategory": "Või sirvi kategooriate kaupa",

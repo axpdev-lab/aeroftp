@@ -4119,7 +4119,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Fy Ngweinyddion",
-                "discover": "Darganfod Gwasanaethau"
+                "discover": "Ychwanegu gwasanaeth"
             },
             "quickConnect": "Cysylltiad Cyflym",
             "search": "Chwilio...",
@@ -4163,7 +4163,6 @@
             "crossProfileDestinationSelected": "Wedi'i ddewis fel cyrchfan Cross-Profile",
             "crossProfileOpenWithSource": "Agor Cross-Profile Transfer (ffynhonnell yn barod)",
             "crossProfileOpenWithPair": "Agor Cross-Profile Transfer (ffynhonnell + cyrchfan yn barod)",
-            "newConnection": "Newydd",
             "getStarted": "Dechrau",
             "addFirstServer": "Ychwanegwch eich gweinydd cyntaf",
             "browseCategory": "Neu pori yn ôl categori",

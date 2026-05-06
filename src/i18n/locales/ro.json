@@ -4090,7 +4090,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Serverele mele",
-                "discover": "Descoperă servicii"
+                "discover": "Adaugă serviciu"
             },
             "quickConnect": "Conectare rapidă",
             "search": "Caută...",
@@ -4134,7 +4134,6 @@
             "crossProfileDestinationSelected": "Selectat ca destinatie Cross-Profile",
             "crossProfileOpenWithSource": "Deschide Cross-Profile Transfer (sursa gata)",
             "crossProfileOpenWithPair": "Deschide Cross-Profile Transfer (sursa + destinatie gata)",
-            "newConnection": "Nou",
             "getStarted": "Începe",
             "addFirstServer": "Adaugă primul server",
             "browseCategory": "Sau navighează pe categorii",

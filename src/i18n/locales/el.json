@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Οι διακομιστές μου",
-                "discover": "Ανακαλύψτε υπηρεσίες"
+                "discover": "Προσθήκη υπηρεσίας"
             },
             "quickConnect": "Γρήγορη σύνδεση",
             "search": "Αναζήτηση...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Επιλέχθηκε ως προορισμός Cross-Profile",
             "crossProfileOpenWithSource": "Άνοιγμα Cross-Profile Transfer (η πηγή είναι έτοιμη)",
             "crossProfileOpenWithPair": "Άνοιγμα Cross-Profile Transfer (πηγή + προορισμός έτοιμα)",
-            "newConnection": "Νέο",
             "getStarted": "Ξεκινήστε",
             "addFirstServer": "Προσθέστε τον πρώτο σας διακομιστή",
             "browseCategory": "Ή περιήγηση ανά κατηγορία",

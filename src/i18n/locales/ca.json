@@ -4119,7 +4119,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Els meus servidors",
-                "discover": "Descobreix serveis"
+                "discover": "Afegeix un servei"
             },
             "quickConnect": "Connexió ràpida",
             "search": "Cerca...",
@@ -4163,7 +4163,6 @@
             "crossProfileDestinationSelected": "Seleccionat com a destinació Cross-Profile",
             "crossProfileOpenWithSource": "Obre Cross-Profile Transfer (origen llest)",
             "crossProfileOpenWithPair": "Obre Cross-Profile Transfer (origen + destinació llestos)",
-            "newConnection": "Nou",
             "getStarted": "Comença",
             "addFirstServer": "Afegeix el teu primer servidor",
             "browseCategory": "O navega per categoria",

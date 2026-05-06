@@ -4090,7 +4090,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Мои серверы",
-                "discover": "Обзор сервисов"
+                "discover": "Добавить сервис"
             },
             "quickConnect": "Быстрое подключение",
             "search": "Поиск...",
@@ -4134,7 +4134,6 @@
             "crossProfileDestinationSelected": "Выбрано как назначение Cross-Profile",
             "crossProfileOpenWithSource": "Открыть Cross-Profile Transfer (источник готов)",
             "crossProfileOpenWithPair": "Открыть Cross-Profile Transfer (источник + назначение готовы)",
-            "newConnection": "Новый",
             "getStarted": "Начать",
             "addFirstServer": "Добавьте первый сервер",
             "browseCategory": "Или просмотрите по категории",

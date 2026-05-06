@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Seva zangu",
-                "discover": "Gundua huduma"
+                "discover": "Ongeza huduma"
             },
             "quickConnect": "Unganisho wa haraka",
             "search": "Tafuta...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Imechaguliwa kama lengo la Cross-Profile",
             "crossProfileOpenWithSource": "Fungua Cross-Profile Transfer (chanzo tayari)",
             "crossProfileOpenWithPair": "Fungua Cross-Profile Transfer (chanzo + lengo tayari)",
-            "newConnection": "Mpya",
             "getStarted": "Anza",
             "addFirstServer": "Ongeza seva yako ya kwanza",
             "browseCategory": "Au vinjari kwa kategoria",

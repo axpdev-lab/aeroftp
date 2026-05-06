@@ -329,7 +329,6 @@ export function IntroHub(props: IntroHubProps) {
             <IntroHubHeader
                 activeTab={activeTab}
                 onTabChange={handleTabChange}
-                onNewConnection={handleNewConnection}
                 onCommandPalette={handleCommandPalette}
                 formTabs={formTabs}
                 onCloseFormTab={handleCloseFormTab}

@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Omat palvelimet",
-                "discover": "Löydä palvelut"
+                "discover": "Lisää palvelu"
             },
             "quickConnect": "Pikayhteys",
             "search": "Hae...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Valittu Cross-Profile-kohteeksi",
             "crossProfileOpenWithSource": "Avaa Cross-Profile Transfer (lähde valmis)",
             "crossProfileOpenWithPair": "Avaa Cross-Profile Transfer (lähde + kohde valmiina)",
-            "newConnection": "Uusi",
             "getStarted": "Aloita",
             "addFirstServer": "Lisää ensimmäinen palvelin",
             "browseCategory": "Tai selaa kategorian mukaan",

@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "เซิร์ฟเวอร์ของฉัน",
-                "discover": "สำรวจบริการ"
+                "discover": "เพิ่มบริการ"
             },
             "quickConnect": "เชื่อมต่อด่วน",
             "search": "ค้นหา...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "เลือกเป็นปลายทาง Cross-Profile แล้ว",
             "crossProfileOpenWithSource": "เปิด Cross-Profile Transfer (ต้นทางพร้อม)",
             "crossProfileOpenWithPair": "เปิด Cross-Profile Transfer (ต้นทาง + ปลายทางพร้อม)",
-            "newConnection": "ใหม่",
             "getStarted": "เริ่มต้น",
             "addFirstServer": "เพิ่มเซิร์ฟเวอร์แรกของคุณ",
             "browseCategory": "หรือเรียกดูตามหมวดหมู่",

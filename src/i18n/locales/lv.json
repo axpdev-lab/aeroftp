@@ -4100,7 +4100,7 @@
         "introHub": {
             "tab": {
                 "myServers": "Mani serveri",
-                "discover": "Atklāt pakalpojumus"
+                "discover": "Pievienot pakalpojumu"
             },
             "quickConnect": "Ātrais savienojums",
             "search": "Meklēt...",
@@ -4144,7 +4144,6 @@
             "crossProfileDestinationSelected": "Atlasīts kā Cross-Profile mērķis",
             "crossProfileOpenWithSource": "Atvērt Cross-Profile Transfer (avots gatavs)",
             "crossProfileOpenWithPair": "Atvērt Cross-Profile Transfer (avots + mērķis gatavi)",
-            "newConnection": "Jauns",
             "getStarted": "Sākt",
             "addFirstServer": "Pievienot pirmo serveri",
             "browseCategory": "Vai pārlūkot pēc kategorijas",

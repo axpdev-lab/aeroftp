@@ -4090,7 +4090,7 @@
         "introHub": {
             "tab": {
                 "myServers": "내 서버",
-                "discover": "서비스 탐색"
+                "discover": "서비스 추가"
             },
             "quickConnect": "빠른 연결",
             "search": "검색...",
@@ -4134,7 +4134,6 @@
             "crossProfileDestinationSelected": "Cross-Profile 대상으로 선택됨",
             "crossProfileOpenWithSource": "Cross-Profile Transfer 열기 (소스 준비됨)",
             "crossProfileOpenWithPair": "Cross-Profile Transfer 열기 (소스 + 대상 준비됨)",
-            "newConnection": "새로 만들기",
             "getStarted": "시작하기",
             "addFirstServer": "첫 번째 서버 추가",
             "browseCategory": "또는 카테고리별로 찾아보기",
