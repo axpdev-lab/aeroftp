@@ -58,6 +58,12 @@ jobs:
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
           workspaces: './src-tauri -> target'
+          # Cache prefix bumped 2026-05-06 to invalidate any cached
+          # whisper-rs-sys CMakeCache.txt referencing Visual Studio 17 2022
+          # after the windows-latest runner image rolled to VS 18 2026.
+          # See "Drop stale whisper-rs-sys CMake artifacts" below for the
+          # belt-and-suspenders runtime cleanup.
+          prefix-key: 'v2-whisper-vs18'
 
       # whisper-rs-sys vendors whisper.cpp and runs CMake at build time. The
       # generator picked by `cmake-rs` is whichever Visual Studio CMake finds
@@ -65,9 +71,12 @@ jobs:
       # VS (e.g. VS 17 2022 -> VS 18 2026 preview), the rust-cache restored
       # CMakeCache.txt still references the previous generator and CMake
       # aborts: "generator does not match the generator used previously".
-      # Drop just the CMake out/ dir of whisper-rs-sys so cmake-rs reconfigures
-      # against whatever VS exists on this runner, while keeping every other
-      # cached cargo artifact intact (compile time stays warm).
+      # Belt-and-suspenders: even with the prefix-key bump we drop the
+      # whole whisper-rs-sys-* tree on Windows to force a clean reconfigure,
+      # in case a future cache key collision restores stale artifacts.
+      # Removing only `out/` previously left `out/build/CMakeCache.txt`
+      # behind on some runners depending on cmake-rs internal layout, so we
+      # nuke the entire crate build dir.
       - name: Drop stale whisper-rs-sys CMake artifacts (Windows)
         if: matrix.target == 'windows'
         shell: pwsh
@@ -78,14 +87,11 @@ jobs:
             Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
               Where-Object { $_.Name -like 'whisper-rs-sys-*' } |
               ForEach-Object {
-                $out = Join-Path $_.FullName 'out'
-                if (Test-Path $out) {
-                  Write-Host "Removing stale CMake build dir: $out"
-                  Remove-Item -Recurse -Force $out
-                  $purged++
-                }
+                Write-Host "Removing whole whisper-rs-sys build dir: $($_.FullName)"
+                Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
+                $purged++
               }
-            Write-Host "Purged $purged whisper-rs-sys CMake build dir(s)"
+            Write-Host "Purged $purged whisper-rs-sys build dir(s)"
           } else {
             Write-Host "No prior build dir, nothing to purge"
           }
