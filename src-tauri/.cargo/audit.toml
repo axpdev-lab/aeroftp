@@ -1,0 +1,136 @@
+# cargo-audit configuration for AeroFTP
+#
+# Each ignore below carries a written justification. Reviewers (NLnet, OpenSSF,
+# OSSSign, supply-chain auditors) should read these inline and either accept
+# them or push back with a specific objection. We do NOT ignore advisories
+# without a tracked rationale.
+#
+# Companion documents:
+#   - docs/THREAT-MODEL.md                          (the matching threat model)
+#   - docs/dev/roadmap/APPENDIX-RUSSH_RSA-Decommission-Plan.md   (russh path)
+#   - docs/dev/roadmap/APPENDIX-SIGSTORE_*.md       (sigstore path, planned)
+#   - docs/security-evidence/AEROFTP-CLI-AUDIT-2026-05-06.md     (origin audit)
+#
+# Reviewed: 2026-05-06 (release v3.7.2)
+
+[advisories]
+ignore = [
+    # ----------------------------------------------------------------
+    # RUSTSEC-2023-0071 - Marvin Attack on RSA decryption
+    # ----------------------------------------------------------------
+    # Marvin is a timing side-channel observable when an attacker can request
+    # repeated RSA *decrypt* operations and measure response time. AeroFTP's
+    # two transitive paths to the `rsa` crate never expose a decrypt oracle:
+    #
+    #   Path A (rsa 0.9.10):
+    #     rsa <- openidconnect 4.0.1 <- sigstore 0.13.0 <- aeroftp
+    #   Used by `verify_sigstore_bundle` in src-tauri/src/lib.rs to verify
+    #   GitHub Actions Sigstore bundles attached to release artifacts.
+    #   Fulcio signs short-lived certificates with ECDSA P-256, not RSA.
+    #   The `rsa` crate is dormant in this call graph.
+    #   Verification path is also explicitly NON-BLOCKING (see lib.rs ~2300):
+    #   any verification error degrades to `VerificationMode::Unavailable`
+    #   instead of refusing the update; SHA-256 of the artifact is the
+    #   primary integrity check.
+    #
+    #   Path B (rsa 0.10.0-rc.17):
+    #     rsa <- internal-russh-forked-ssh-key 0.6.18 <- russh 0.60.1 <- aeroftp
+    #   Used to parse user SSH private keys (id_rsa, etc.) and sign SSH auth
+    #   challenges in providers/sftp.rs and aerorsync/russh_session_transport.rs.
+    #   AeroFTP only ever SIGNS with the user's RSA private key (RFC 4252 +
+    #   RFC 8332 client publickey auth flow); the server VERIFIES. We never
+    #   decrypt RSA ciphertext. The Marvin precondition (attacker-observable
+    #   RSA decrypt) is not reachable through our SSH client surface.
+    #
+    # Both paths await upstream resolution (see APPENDIX-RUSSH and the
+    # planned APPENDIX-SIGSTORE for the deferred decommission playbooks).
+    # russh `main` has introduced a `rsa` feature flag that will allow
+    # opt-out, but it has not landed in a published release as of 2026-05-06.
+    # `rsa 0.10` itself is still RC since 2023.
+    "RUSTSEC-2023-0071",
+
+    # ----------------------------------------------------------------
+    # GTK3 unmaintained (transitive via Tauri / wry)
+    # ----------------------------------------------------------------
+    # `atk`, `atk-sys`, `gdk`, `gdk-sys`, `gdkx11`, `gdkx11-sys`, `gtk`,
+    # `gtk-sys`, `gdk-pixbuf`, `gdk-pixbuf-sys`, `gio`, `gio-sys`, `glib`,
+    # `glib-sys`, `gobject-sys`, `pango`, `pango-sys`, `cairo-rs`, `cairo-sys-rs`
+    # all flagged as unmaintained because gtk-rs upstream paused GTK3
+    # bindings in favour of GTK4. Pulled in by `wry 0.54` <- `tauri-runtime-wry`
+    # <- `tauri 2.x` for the WebKitGTK Linux WebView. AeroFTP cannot
+    # unilaterally migrate to GTK4 — it is a Tauri-stack-wide decision.
+    # Tracked upstream by Tauri team; expected to land with the next
+    # minor (Tauri 2.11+ already in flight, see PR #168).
+    "RUSTSEC-2024-0412",  # gdk
+    "RUSTSEC-2024-0413",  # atk
+    "RUSTSEC-2024-0416",  # atk-sys
+    "RUSTSEC-2024-0418",  # gdk-sys
+    "RUSTSEC-2024-0420",  # gdkx11
+    "RUSTSEC-2024-0421",  # gdkx11-sys
+    "RUSTSEC-2024-0414",  # gtk
+    "RUSTSEC-2024-0415",  # gtk-sys
+    "RUSTSEC-2024-0419",  # gdk-pixbuf
+    "RUSTSEC-2024-0411",  # gdkwayland-sys (via tao)
+    "RUSTSEC-2024-0417",  # gdkx11 (separate ID)
+
+    # ----------------------------------------------------------------
+    # proc-macro-error unmaintained (transitive via Tauri / tray-icon)
+    # ----------------------------------------------------------------
+    # `proc-macro-error 1.0.4` <- `glib-macros 0.18.5` <- `glib 0.18.5` <-
+    # `gtk 0.18.2` <- `tray-icon 0.21.3` <- `tauri 2.10.3`. Same gtk-rs
+    # paused-bindings situation. Will clear when Tauri ships GTK4 wry.
+    "RUSTSEC-2024-0370",  # proc-macro-error
+
+    # ----------------------------------------------------------------
+    # unic-* unmaintained (build-dep only via tauri-utils / urlpattern)
+    # ----------------------------------------------------------------
+    # `unic-char-property`, `unic-char-range`, `unic-common`, `unic-ucd-ident`,
+    # `unic-ucd-version` are all pulled by `urlpattern 0.3.0` <- `tauri-utils`
+    # <- `tauri-build` (build-dependency) <- aeroftp. Used at build-time for
+    # URL pattern matching in Tauri's CSP / asset scope code generation.
+    # Not in runtime binary. Tauri tracks the urlpattern bump upstream.
+    "RUSTSEC-2025-0075",  # unic-char-range
+    "RUSTSEC-2025-0080",  # unic-common
+    "RUSTSEC-2025-0081",  # unic-char-property
+    "RUSTSEC-2025-0098",  # unic-ucd-version
+    "RUSTSEC-2025-0100",  # unic-ucd-ident
+
+    # ----------------------------------------------------------------
+    # glib 0.18 unsound (transitive via Tauri / wry)
+    # ----------------------------------------------------------------
+    # `glib 0.18.5` carries a soundness advisory for unsafe code in
+    # `gobject-sys::g_object_get`. Same supply-chain situation as the
+    # GTK3 unmaintained set above (Tauri 2.x stack). Cannot be dropped
+    # without dropping Tauri Linux support entirely. Will be cleared
+    # automatically when Tauri ships GTK4-based wry.
+    "RUSTSEC-2024-0429",  # glib
+
+    # ----------------------------------------------------------------
+    # rand 0.7.3 unsound (build-dep only via Tauri stack)
+    # ----------------------------------------------------------------
+    # `rand 0.7.3` is a *build-dependency* via:
+    #   rand 0.7.3 <- phf_generator 0.8.0 <- phf_codegen 0.8.0 <-
+    #   selectors 0.24.0 <- kuchikiki 0.8.8-speedreader <- tauri-utils 2.8.3
+    #   <- tauri-build 2.5.6 <- aeroftp (build-deps)
+    # Used at build-time to generate perfect-hash maps for the HTML parser
+    # used by Tauri's CSP injection. NOT included in the runtime binary.
+    # No exploitation surface in shipped artifacts.
+    "RUSTSEC-2026-0097",  # rand 0.7.3
+
+    # ----------------------------------------------------------------
+    # fxhash unmaintained (build-dep only via Tauri stack)
+    # ----------------------------------------------------------------
+    # `fxhash 0.2.1` <- `selectors 0.24.0` <- `kuchikiki` <- `tauri-utils`.
+    # Build-dependency, not in runtime binary. Same Tauri stack situation.
+    "RUSTSEC-2025-0057",  # fxhash
+]
+
+# We do NOT ignore "informational" advisories blanket-style. Each ignore is
+# a specific RUSTSEC ID with a paragraph explaining the threat-model gap.
+# Severity: do not blanket-ignore "low" or "informational" — review them.
+
+[output]
+deny = ["unmaintained", "unsound", "yanked"]
+quiet = false
+# `vulnerability` is implicitly always denied (advisories[ignore] is the only
+# escape hatch and every ignored ID is justified above).
