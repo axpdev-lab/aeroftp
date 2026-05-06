@@ -1,6 +1,6 @@
 # Universal Credential Vault - Technical Documentation
 
-> AeroFTP v3.7.0 - May 2026
+> AeroFTP v3.7.2 - May 2026
 
 ---
 

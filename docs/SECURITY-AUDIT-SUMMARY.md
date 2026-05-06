@@ -410,8 +410,8 @@ The audit identified **86 findings** across all severity levels (9 Critical, 17 
 | Version | 2.5.0 |
 | License | GPL-3.0-or-later (OSI-approved) |
 | Architecture | Tauri 2 (Rust backend) + React 18 (TypeScript frontend) |
-| Protocols | 16 (FTP, FTPS, SFTP, WebDAV, S3, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, 4shared, Filen, Zoho WorkDrive, CloudMe) |
-| AI Integration | 15 providers, 45 tools, SSE streaming |
+| Protocols | 24 (FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift + 17 cloud-API providers including Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Zoho WorkDrive, Filen, Internxt, kDrive, Jottacloud, FileLu, Yandex Disk, OpenDrive, Backblaze B2, Koofr, ImageKit, Uploadcare; v3.7.2) |
+| AI Integration | 24 providers, 39 native AeroAgent tools + 15+ MCP server tools, SSE streaming |
 | Cryptography | AES-256-GCM-SIV, Argon2id, AES-KW, AES-SIV, HMAC-SHA512, ChaCha20-Poly1305 |
 | Internationalization | 47 languages at 100% coverage |
 | Backend LOC | ~35,000 (60 Rust source files) |

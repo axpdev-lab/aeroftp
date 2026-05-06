@@ -244,7 +244,7 @@ The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-serv
 | Mutative | 30/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection`, `aeroftp_transfer`, `aeroftp_transfer_tree`, `aeroftp_touch`, `aeroftp_speed` |
 | Destructive | 10/min | `aeroftp_delete`, `aeroftp_delete_many`, `aeroftp_cleanup` |
 
-### Available Tools (39 canonical, v3.7.0)
+### Available Tools (39 canonical, v3.7.2)
 
 The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a matching `remote_*` alias for callers that prefer the cross-profile naming convention.
 

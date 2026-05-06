@@ -4,10 +4,10 @@
 
 | Version | Supported           |
 | ------- | ------------------- |
-| 3.5.x   | Yes (current)       |
-| 3.4.x   | Security fixes only |
-| 3.1.x   | End of Life         |
-| < 3.0   | No                  |
+| 3.7.x   | Yes (current)       |
+| 3.6.x   | Security fixes only |
+| 3.5.x   | End of Life         |
+| < 3.5   | No                  |
 
 ## Security Architecture
 
@@ -72,7 +72,7 @@ Plain FTP connections display a prominent insecure warning badge. WebDAV support
 
 ### AI Tool Security
 
-AeroAgent (43 tools) operates under backend-enforced security controls:
+AeroAgent (39 tools) operates under backend-enforced security controls:
 
 - **Grant system**: Mutative tools require a cryptographic grant verified by the Rust backend
 - **Native OS confirmation**: Grant approval triggers an operating system dialog that cannot be bypassed by web frontend compromise or prompt injection
@@ -159,4 +159,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v3.7.0 - 2 May 2026*
+*AeroFTP v3.7.2 - 6 May 2026*

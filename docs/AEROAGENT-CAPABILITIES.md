@@ -1,6 +1,6 @@
 # AeroAgent - AI-Powered File Management
 
-AeroAgent is AeroFTP's integrated AI assistant with **43 tools** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
+AeroAgent is AeroFTP's integrated AI assistant with **39 tools** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
 
 > Full test results, prompt examples, and provider compatibility matrix available at [docs.aeroftp.app/aeroagent](https://docs.aeroftp.app/aeroagent)
 
@@ -178,7 +178,7 @@ Validated with real-world file operations (create, read, edit, upload, server co
 
 > Full provider compatibility matrix and test results: [docs.aeroftp.app/aeroagent/providers](https://docs.aeroftp.app/aeroagent/providers)
 
-## Complete Tool List (43 tools)
+## Complete Tool List (39 tools)
 
 <details>
 <summary>Click to expand</summary>

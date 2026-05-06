@@ -1,7 +1,7 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v3.7.1 (May 2026) - last reviewed 4 May 2026
+> **Version reference**: v3.7.2 (May 2026) - last reviewed 6 May 2026
 > **License**: GPL-3.0
 
 ---
@@ -1501,6 +1501,7 @@ The following providers have been tested live via CLI with `--profile`:
 
 ## Recent Highlights
 
+- **v3.7.2 - CLI security hardening + community polish**: Codex CLI external audit closes 17 paired findings (CLI-AUDIT-01..17). Highlights: GUI tool execution now enforces backend approval, MCP / AI core remote dispatcher path validation (null bytes, traversal, control chars, option-like forms, length cap), `server_exec` strictly read-only (rejects get/put/mkdir/rm/mv with explicit-use error), MCP profile lookup requires exact id/name or unique substring (no silent first-match), `local_copy_files` and `local_stat_batch` validate every path including symlink rejection, SFTP packet parser bounds-checked end to end, `.aerotmp` writes use `create_new` and refuse symlinked temp paths, inline upload temp files use `tempfile::Builder::tempfile()`, daemon auth token created with `O_NOFOLLOW` + mode 0600, `sync --direction <invalid>` fails before connecting with exit code 5, `sync-doctor` resolves remote paths the same way `sync` does, `sync-doctor --checksum` no longer suggests the non-existent flag, `transfer` checks cancellation between plan and execution returning exit code 130, `agent-info --json` treats missing profile list as empty, CLI help footer documents the extended exit-code contract (9, 10, 11, 130). CLI `profiles` dynamic terminal-width-aware layout (Ehud, #161), unified `--breakdown` table folding TOTAL into the breakdown rows, `--hide=fav` / `favorite` / `favourite` / `favs` alias surface documented. Direct `rsa = "0.9"` dependency dropped, `jsonwebtoken` switched to `aws-lc-rs`. `audit.toml` documents the two remaining transitive RSA paths (sigstore, russh) with written threat-model justifications.
 - **v3.7.1 - Mount Manager + community polish**: GUI Mount Manager dialog wraps `aeroftp-cli mount` with persistent configs, sidecar JSON or vault-backed storage, cross-platform autostart (systemd-user / Task Scheduler ONLOGON), and an "Open mount in file manager" shortcut. CLI `profiles -i` interactive prompt loop with compact `1l` / `2t` / `3d` tokens. Filen Desktop local WebDAV / S3 bridges connect on the first try thanks to the layered WebDAV scheme detection rewrite.
 - **v3.7.0 - AeroRsync session-cached batch + crypto overlay**: new `AerorsyncBatch` trait amortizes one SSH session across many delta transfers; `SyncReport` exposes `delta_files[]` and `bytes_on_wire`. Cross-profile transfer (`aeroftp_transfer`, `aeroftp_transfer_tree`) and six new ops tools (`aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile`) bring MCP to 39 tools. rclone crypt becomes full read/write through transparent overlay session; AeroVault gets matching overlay-session model.
 - **v3.6.1 - Windows first-class delta sync**: native rsync protocol 31 in pure Rust (`aerorsync`), no `rsync.exe` bundle, no WSL requirement. The Windows binary now performs delta uploads byte-identical to stock rsync 3.4.1 in CI.

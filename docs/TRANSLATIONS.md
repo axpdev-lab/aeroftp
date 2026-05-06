@@ -1,7 +1,7 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 2 May 2026
-> Version: v3.7.0
+> Last Updated: 6 May 2026
+> Version: v3.7.2
 > Languages: 47 | Coverage: 100%
 
 ---
@@ -392,5 +392,5 @@ const { t, language, setLanguage } = useI18n();
 
 ---
 
-**Maintainer**: axpdev
-**Last Updated**: 22 February 2026
+**Maintainer**: axpnet
+**Last Updated**: 6 May 2026

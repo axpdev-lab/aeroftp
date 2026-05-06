@@ -332,7 +332,7 @@ External MCP clients can now connect directly through AeroFTP without wrapping C
 aeroftp-cli agent --mcp
 ```
 
-Current MCP mode (v3.7.0) exposes:
+Current MCP mode (v3.7.2) exposes:
 - 39 curated tools across safe / medium / destructive tiers: file ops, batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree`), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`)
 - resources for saved profiles, status, capabilities, and pooled connections
 - prompt templates for deploy, backup, sync, and clean workflows
@@ -361,4 +361,4 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 ---
 
-*AeroFTP CLI v3.7.0 - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v3.7.2 - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
