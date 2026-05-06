@@ -1,0 +1,74 @@
+name: smoke-upload-artifact-v7
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/smoke-upload-artifact-v7.yml'
+  workflow_dispatch:
+
+jobs:
+  upload:
+    name: upload (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Generate dummy payload
+        shell: bash
+        run: |
+          mkdir -p out
+          echo "smoke test for upload-artifact@v7 on ${{ matrix.os }}" > out/dummy.txt
+          python -c "open('out/binary.bin', 'wb').write(b'X' * 1024 * 1024)"
+          ls -la out/
+
+      - name: Upload artifact (v7)
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-${{ matrix.os }}
+          path: out/
+          retention-days: 1
+          if-no-files-found: error
+
+  verify:
+    name: download + verify
+    needs: upload
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./downloaded
+
+      - name: Verify each artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          for d in downloaded/smoke-*; do
+            echo "=== $d ==="
+            ls -la "$d"
+            if [ ! -f "$d/dummy.txt" ]; then
+              echo "FAIL: dummy.txt missing in $d"
+              fail=1
+              continue
+            fi
+            if [ ! -f "$d/binary.bin" ]; then
+              echo "FAIL: binary.bin missing in $d"
+              fail=1
+              continue
+            fi
+            size=$(stat -c%s "$d/binary.bin" 2>/dev/null || stat -f%z "$d/binary.bin")
+            if [ "$size" != "1048576" ]; then
+              echo "FAIL: binary.bin size is $size, expected 1048576"
+              fail=1
+              continue
+            fi
+            echo "PASS: $d"
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "Smoke test FAILED"
+            exit 1
+          fi
+          echo "Smoke test PASSED on all matrix runners"
