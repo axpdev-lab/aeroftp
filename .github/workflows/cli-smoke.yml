@@ -31,7 +31,19 @@ jobs:
             cli_bin: ./target/release/aeroftp-cli
           - os: macos-latest
             cli_bin: ./target/release/aeroftp-cli
-          - os: windows-latest
+          # Pin to windows-2022 while cmake-rs (crate `cmake` 0.1.58 used
+          # transitively by whisper-rs-sys 0.15.0) hardcodes the generator
+          # string `Visual Studio 18 2026` whenever it detects MSVC v18 on
+          # the runner, but CMake itself does not yet know that generator.
+          # Symptom on windows-latest after the GitHub-hosted image
+          # picked up VS 18 preview:
+          #   CMake Error: Could not create named generator Visual Studio 18 2026
+          # windows-2022 still ships VS 17 2022, which both cmake-rs and
+          # CMake support. Revisit when cmake-rs upstream ships VS 18 +
+          # CMake adds the generator. The cache prefix-key bump above
+          # remains as defence in depth against the related stale
+          # CMakeCache class of failure.
+          - os: windows-2022
             cli_bin: ./target/release/aeroftp-cli.exe
 
     steps:
