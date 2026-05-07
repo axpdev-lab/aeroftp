@@ -3208,7 +3208,8 @@
             "website": "Site web",
             "documentation": "Documentatie",
             "mcp": "MCP Server...",
-            "mountManager": "Manager de montări..."
+            "mountManager": "Manager de montări...",
+            "activityLog": "Jurnal activitate"
         },
         "activityPanel": {
             "awaitingCommands": "Se asteapta comenzi...",

@@ -3208,7 +3208,8 @@
             "website": "ვებსაიტი",
             "documentation": "დოკუმენტაცია",
             "mcp": "MCP Server...",
-            "mountManager": "მონტირების მენეჯერი..."
+            "mountManager": "მონტირების მენეჯერი...",
+            "activityLog": "აქტივობის ჟურნალი"
         },
         "activityPanel": {
             "awaitingCommands": "ბრძანებების მოლოდინში...",

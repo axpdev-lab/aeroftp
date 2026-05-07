@@ -3208,7 +3208,8 @@
             "website": "Nettsted",
             "documentation": "Dokumentasjon",
             "mcp": "MCP Server...",
-            "mountManager": "Monteringsbehandler..."
+            "mountManager": "Monteringsbehandler...",
+            "activityLog": "Aktivitetslogg"
         },
         "activityPanel": {
             "awaitingCommands": "Venter på kommandoer...",

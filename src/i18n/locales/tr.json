@@ -3208,7 +3208,8 @@
             "website": "Web sitesi",
             "documentation": "Belgelendirme",
             "mcp": "MCP Server...",
-            "mountManager": "Bağlama Yöneticisi..."
+            "mountManager": "Bağlama Yöneticisi...",
+            "activityLog": "Etkinlik Günlüğü"
         },
         "activityPanel": {
             "awaitingCommands": "Komut bekleniyor...",

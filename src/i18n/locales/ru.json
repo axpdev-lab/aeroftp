@@ -3208,7 +3208,8 @@
             "website": "Веб-сайт",
             "documentation": "Документация",
             "mcp": "MCP Server...",
-            "mountManager": "Менеджер монтирования..."
+            "mountManager": "Менеджер монтирования...",
+            "activityLog": "Журнал активности"
         },
         "activityPanel": {
             "awaitingCommands": "Ожидание команд...",

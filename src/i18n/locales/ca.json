@@ -3208,7 +3208,8 @@
             "website": "Lloc web",
             "documentation": "Documentació",
             "mcp": "MCP Server...",
-            "mountManager": "Gestor de muntatges..."
+            "mountManager": "Gestor de muntatges...",
+            "activityLog": "Registre d'Activitat"
         },
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",

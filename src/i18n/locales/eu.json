@@ -3208,7 +3208,8 @@
             "website": "Webgunea",
             "documentation": "Dokumentazioa",
             "mcp": "MCP Server...",
-            "mountManager": "Muntaketa-kudeatzailea..."
+            "mountManager": "Muntaketa-kudeatzailea...",
+            "activityLog": "Jarduera erregistroa"
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",

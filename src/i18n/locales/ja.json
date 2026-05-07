@@ -3173,7 +3173,8 @@
             "website": "ウェブサイト",
             "documentation": "ドキュメント",
             "mcp": "MCP Server...",
-            "mountManager": "マウントマネージャー..."
+            "mountManager": "マウントマネージャー...",
+            "activityLog": "アクティビティログ"
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",

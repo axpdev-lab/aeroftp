@@ -3208,7 +3208,8 @@
             "website": "Web stranica",
             "documentation": "Dokumentacija",
             "mcp": "MCP Server...",
-            "mountManager": "Upravitelj montiranja..."
+            "mountManager": "Upravitelj montiranja...",
+            "activityLog": "Dnevnik aktivnosti"
         },
         "activityPanel": {
             "awaitingCommands": "Čekanje naredbi...",

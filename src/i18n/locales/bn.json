@@ -3208,7 +3208,8 @@
             "website": "ওয়েবসাইট",
             "documentation": "ডকুমেন্টেশন",
             "mcp": "MCP Server...",
-            "mountManager": "মাউন্ট ম্যানেজার..."
+            "mountManager": "মাউন্ট ম্যানেজার...",
+            "activityLog": "অ্যাক্টিভিটি লগ"
         },
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",

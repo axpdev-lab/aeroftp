@@ -3208,7 +3208,8 @@
             "website": "Website",
             "documentation": "Documentatie",
             "mcp": "MCP Server...",
-            "mountManager": "Koppelingsbeheer..."
+            "mountManager": "Koppelingsbeheer...",
+            "activityLog": "Activiteitenlog"
         },
         "activityPanel": {
             "awaitingCommands": "Wacht op opdrachten...",

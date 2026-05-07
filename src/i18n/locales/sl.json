@@ -3208,7 +3208,8 @@
             "website": "Spletna stran",
             "documentation": "Dokumentacija",
             "mcp": "MCP Server...",
-            "mountManager": "Upravitelj priklopov..."
+            "mountManager": "Upravitelj priklopov...",
+            "activityLog": "Dnevnik dejavnosti"
         },
         "activityPanel": {
             "awaitingCommands": "Čakanje na ukaze...",

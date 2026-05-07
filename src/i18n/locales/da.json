@@ -3208,7 +3208,8 @@
             "website": "Hjemmeside",
             "documentation": "Dokumentation",
             "mcp": "MCP Server...",
-            "mountManager": "Mount-håndtering..."
+            "mountManager": "Mount-håndtering...",
+            "activityLog": "Aktivitetslog"
         },
         "activityPanel": {
             "awaitingCommands": "Afventer kommandoer...",

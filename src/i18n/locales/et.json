@@ -3208,7 +3208,8 @@
             "website": "Veebileht",
             "documentation": "Dokumentatsioon",
             "mcp": "MCP Server...",
-            "mountManager": "Ühenduste haldur..."
+            "mountManager": "Ühenduste haldur...",
+            "activityLog": "Tegevuslogi"
         },
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",

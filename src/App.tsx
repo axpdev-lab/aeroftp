@@ -1299,6 +1299,7 @@ interface UpdateVerificationInfo {
     'F1': () => setShowShortcutsDialog(v => !v),
     'Ctrl+,': () => setShowSettingsPanel(true),
     'Ctrl+Shift+P': () => setShowCommandPalette(v => !v),
+    'Ctrl+Shift+L': () => setShowActivityLog(v => !v),
     'Ctrl+T': cycleTheme,
 
     // Delete: delete selected files
@@ -8530,6 +8531,7 @@ interface UpdateVerificationInfo {
           onToggleEditor={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'editor' })); }}
           onToggleTerminal={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'terminal' })); }}
           onToggleAgent={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'agent' })); }}
+          onToggleActivityLog={() => setShowActivityLog(v => !v)}
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}

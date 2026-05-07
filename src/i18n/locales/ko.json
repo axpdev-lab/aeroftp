@@ -3208,7 +3208,8 @@
             "website": "웹사이트",
             "documentation": "문서",
             "mcp": "MCP Server...",
-            "mountManager": "마운트 관리자..."
+            "mountManager": "마운트 관리자...",
+            "activityLog": "활동 로그"
         },
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",

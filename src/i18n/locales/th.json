@@ -3208,7 +3208,8 @@
             "website": "เว็บไซต์",
             "documentation": "เอกสารประกอบ",
             "mcp": "MCP Server...",
-            "mountManager": "ตัวจัดการการเมาท์..."
+            "mountManager": "ตัวจัดการการเมาท์...",
+            "activityLog": "บันทึกกิจกรรม"
         },
         "activityPanel": {
             "awaitingCommands": "รอคำสั่ง...",

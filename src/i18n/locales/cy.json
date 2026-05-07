@@ -3208,7 +3208,8 @@
             "website": "Gwefan",
             "documentation": "Dogfennaeth",
             "mcp": "MCP Server...",
-            "mountManager": "Rheolwr Mowntio..."
+            "mountManager": "Rheolwr Mowntio...",
+            "activityLog": "Log Gweithgaredd"
         },
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",

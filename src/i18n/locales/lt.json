@@ -3208,7 +3208,8 @@
             "website": "Svetainė",
             "documentation": "Dokumentacija",
             "mcp": "MCP Server...",
-            "mountManager": "Prijungimo tvarkyklė..."
+            "mountManager": "Prijungimo tvarkyklė...",
+            "activityLog": "Veiklos zurnalas"
         },
         "activityPanel": {
             "awaitingCommands": "Laukiama komandų...",

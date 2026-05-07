@@ -3208,7 +3208,8 @@
             "website": "គេហទំព័រ",
             "documentation": "ឯកសារកម្ម",
             "mcp": "MCP Server...",
-            "mountManager": "កម្មវិធីគ្រប់គ្រងការភ្ជាប់..."
+            "mountManager": "កម្មវិធីគ្រប់គ្រងការភ្ជាប់...",
+            "activityLog": "កំណត់ហេតុសកម្មភាព"
         },
         "activityPanel": {
             "awaitingCommands": "កំពុងរង់ចាំពាក្យបញ្ជា...",
