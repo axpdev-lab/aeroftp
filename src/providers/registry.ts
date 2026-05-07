@@ -1656,13 +1656,26 @@ export const PROVIDERS: ProviderConfig[] = [
         defaults: {
             // Default to the fie.nl region (EU continental). Users on other
             // regional shards (DE, IT, SE, LV per the Tab.digital data-centre
-            // map) open Advanced and edit the subdomain once. The full URL
-            // resolves {username} via WebDavConfig::from_provider_config.
+            // map) open Advanced and edit the subdomain once. The {username}
+            // template in `server` IS resolved at connect time by
+            // WebDavConfig::from_provider_config.
+            //
+            // basePath is intentionally omitted: ConnectionScreen copies it
+            // verbatim into quickConnectDirs.remoteDir BEFORE the user fills
+            // in their username, so the {username} placeholder would reach
+            // the backend unresolved and the first PROPFIND would 404 on
+            // "/remote.php/dav/files/{username}/" (literal). The WebDAV
+            // auto-detect (PROPFIND / => 405 => well-known wk_path probe,
+            // fixed in 2a21e2c6 for issue #175) finds the correct path on
+            // its own and populates current_path, which the URL bar then
+            // shows immediately.
             server: 'https://fie.nl.tab.digital/remote.php/dav/files/{username}/',
             port: 443,
-            basePath: '/remote.php/dav/files/{username}/',
         },
         endpoints: {
+            // webdavPath is informational-only (used by some sharing/health
+            // helpers). The {username} template here is fine because no
+            // current code path forwards it to the WebDAV connect flow.
             webdavPath: '/remote.php/dav/files/{username}/',
             shareLink: '/ocs/v2.php/apps/files_sharing/api/v1/shares',
         },
