@@ -50,7 +50,7 @@ impl GitHubHttpClient {
     pub fn new(token: SecretString) -> Result<Self, GitHubError> {
         let client = Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(300))
+            .read_timeout(std::time::Duration::from_secs(1800))
             .user_agent(USER_AGENT)
             .build()
             .map_err(|e| {

@@ -102,7 +102,7 @@ impl S3Provider {
         let mut client_builder = Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(300))
+            .read_timeout(std::time::Duration::from_secs(1800))
             .http1_only();
         if accept_invalid_certs {
             eprintln!("[S3] accepting invalid TLS certificates (self-signed / loopback)");

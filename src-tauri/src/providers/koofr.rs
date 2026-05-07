@@ -289,7 +289,10 @@ impl KoofrProvider {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(300))
+            // 1800s (30 min): see webdav.rs rationale. The Koofr 1 GiB
+            // benchmark on a residential connection consistently exceeded
+            // 5 minutes wall-clock per run.
+            .read_timeout(Duration::from_secs(1800))
             .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
