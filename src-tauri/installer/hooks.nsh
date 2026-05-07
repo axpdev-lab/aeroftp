@@ -152,8 +152,30 @@ Var AeroFTPHadDesktopShortcut
     WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault\shell\open" "" "Open with AeroFTP"
     WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
 
-    ; Register MIME type in Windows MIME database
+    ; Register .aeroftp file association (server profile export)
+    WriteRegStr HKLM "Software\Classes\.aeroftp" "" "AeroFTP.Profile"
+    WriteRegStr HKLM "Software\Classes\.aeroftp" "Content Type" "application/x-aeroftp"
+    WriteRegStr HKLM "Software\Classes\.aeroftp" "PerceivedType" "document"
+
+    WriteRegStr HKLM "Software\Classes\AeroFTP.Profile" "" "AeroFTP Server Profile"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.Profile\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp.ico,0"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.Profile\shell\open" "" "Open with AeroFTP"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.Profile\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+
+    ; Register .aeroftp-keystore file association (encrypted keystore backup)
+    WriteRegStr HKLM "Software\Classes\.aeroftp-keystore" "" "AeroFTP.Keystore"
+    WriteRegStr HKLM "Software\Classes\.aeroftp-keystore" "Content Type" "application/x-aeroftp-keystore"
+    WriteRegStr HKLM "Software\Classes\.aeroftp-keystore" "PerceivedType" "document"
+
+    WriteRegStr HKLM "Software\Classes\AeroFTP.Keystore" "" "AeroFTP Keystore Backup"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.Keystore\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-keystore.ico,0"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.Keystore\shell\open" "" "Open with AeroFTP"
+    WriteRegStr HKLM "Software\Classes\AeroFTP.Keystore\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+
+    ; Register MIME types in Windows MIME database
     WriteRegStr HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerovault" "Extension" ".aerovault"
+    WriteRegStr HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp" "Extension" ".aeroftp"
+    WriteRegStr HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore" "Extension" ".aeroftp-keystore"
 
     ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
@@ -194,10 +216,16 @@ _aeroftp_unpath_finish:
         System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
 _aeroftp_unpath_done:
 
-    ; Remove .aerovault file association and class registration
+    ; Remove file associations and class registrations for all 3 AeroFTP MIME types
     DeleteRegKey HKLM "Software\Classes\.aerovault"
     DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroVault"
     DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerovault"
+    DeleteRegKey HKLM "Software\Classes\.aeroftp"
+    DeleteRegKey HKLM "Software\Classes\AeroFTP.Profile"
+    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp"
+    DeleteRegKey HKLM "Software\Classes\.aeroftp-keystore"
+    DeleteRegKey HKLM "Software\Classes\AeroFTP.Keystore"
+    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore"
 
     ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'

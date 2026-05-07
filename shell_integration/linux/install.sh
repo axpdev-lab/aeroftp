@@ -76,37 +76,39 @@ install_nemo_extension() {
 }
 
 install_mime_icon() {
-    print_info "Installing AeroVault MIME type icon..."
+    print_info "Installing AeroFTP MIME type icons (AeroVault, profile, keystore)..."
 
     local icon_src="$SCRIPT_DIR/../../src-tauri/icons/mimetypes"
     local icon_base="$HOME/.local/share/icons/hicolor"
     local installed=0
 
-    for size in 16 24 32 48 64 128 256 512; do
-        local src="$icon_src/application-x-aerovault-${size}.png"
-        local dest="$icon_base/${size}x${size}/mimetypes"
-        if [[ -f "$src" ]]; then
-            mkdir -p "$dest"
-            cp "$src" "$dest/application-x-aerovault.png"
+    for icon in application-x-aerovault application-x-aeroftp application-x-aeroftp-keystore; do
+        for size in 16 24 32 48 64 128 256 512; do
+            local src="$icon_src/${icon}-${size}.png"
+            local dest="$icon_base/${size}x${size}/mimetypes"
+            if [[ -f "$src" ]]; then
+                mkdir -p "$dest"
+                cp "$src" "$dest/${icon}.png"
+                installed=$((installed + 1))
+            fi
+        done
+
+        # Scalable SVG
+        local svg_src="$icon_src/${icon}.svg"
+        if [[ -f "$svg_src" ]]; then
+            mkdir -p "$icon_base/scalable/mimetypes"
+            cp "$svg_src" "$icon_base/scalable/mimetypes/${icon}.svg"
             installed=$((installed + 1))
         fi
     done
-
-    # Scalable SVG
-    local svg_src="$icon_src/application-x-aerovault.svg"
-    if [[ -f "$svg_src" ]]; then
-        mkdir -p "$icon_base/scalable/mimetypes"
-        cp "$svg_src" "$icon_base/scalable/mimetypes/application-x-aerovault.svg"
-        installed=$((installed + 1))
-    fi
 
     if [[ $installed -gt 0 ]]; then
         if command -v gtk-update-icon-cache &> /dev/null; then
             gtk-update-icon-cache -f -t "$icon_base" 2>/dev/null || true
         fi
-        print_success "Installed AeroVault MIME icon ($installed sizes)"
+        print_success "Installed AeroFTP MIME icons ($installed files for 3 types)"
     else
-        print_warning "AeroVault MIME icon source files not found"
+        print_warning "AeroFTP MIME icon source files not found"
     fi
 }
 
@@ -194,24 +196,26 @@ uninstall_extensions() {
         uninstalled=$((uninstalled + 1))
     fi
 
-    # Remove AeroVault MIME type icons
+    # Remove AeroFTP MIME type icons (AeroVault, profile, keystore)
     local mime_icon_count=0
     local icon_base="$HOME/.local/share/icons/hicolor"
-    for size in 16 24 32 48 64 128 256 512; do
-        local icon="$icon_base/${size}x${size}/mimetypes/application-x-aerovault.png"
-        if [[ -f "$icon" ]]; then
-            rm -f "$icon"
+    for icon_name in application-x-aerovault application-x-aeroftp application-x-aeroftp-keystore; do
+        for size in 16 24 32 48 64 128 256 512; do
+            local icon="$icon_base/${size}x${size}/mimetypes/${icon_name}.png"
+            if [[ -f "$icon" ]]; then
+                rm -f "$icon"
+                mime_icon_count=$((mime_icon_count + 1))
+            fi
+        done
+        local svg_icon="$icon_base/scalable/mimetypes/${icon_name}.svg"
+        if [[ -f "$svg_icon" ]]; then
+            rm -f "$svg_icon"
             mime_icon_count=$((mime_icon_count + 1))
         fi
     done
-    local svg_icon="$icon_base/scalable/mimetypes/application-x-aerovault.svg"
-    if [[ -f "$svg_icon" ]]; then
-        rm -f "$svg_icon"
-        mime_icon_count=$((mime_icon_count + 1))
-    fi
 
     if [[ $mime_icon_count -gt 0 ]]; then
-        print_success "Removed $mime_icon_count AeroVault MIME icons"
+        print_success "Removed $mime_icon_count AeroFTP MIME icons"
         uninstalled=$((uninstalled + 1))
     fi
 

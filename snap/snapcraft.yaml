@@ -155,25 +155,27 @@ parts:
       Type=Application
       Categories=Network;FileTransfer;Development;
       Keywords=ftp;sftp;file;transfer;upload;download;
-      MimeType=x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;application/x-aerovault;
+      MimeType=x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;
       StartupWMClass=AeroFTP
       DESKTOP
       # Remove leading whitespace from desktop file
       sed -i 's/^      //' $SNAPCRAFT_PART_INSTALL/usr/share/applications/aeroftp.desktop
 
-      # Install AeroVault MIME type definition
+      # Install AeroFTP MIME type definitions (AeroVault, AeroFTP profile, AeroFTP keystore)
       mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/mime/packages
       cp com.aeroftp.AeroVault.xml $SNAPCRAFT_PART_INSTALL/usr/share/mime/packages/ || \
         { echo "ERROR: MIME XML not found"; exit 1; }
 
-      # Install AeroVault MIME type icons (8 PNG sizes + scalable SVG)
-      for size in 16 24 32 48 64 128 256 512; do
-        mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}x${size}/mimetypes
-        cp src-tauri/icons/mimetypes/application-x-aerovault-${size}.png \
-          $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}x${size}/mimetypes/application-x-aerovault.png || \
-          { echo "ERROR: Missing icon ${size}px"; exit 1; }
-      done
+      # Install AeroFTP MIME type icons (8 PNG sizes + scalable SVG, 3 mime types)
       mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/mimetypes
-      cp src-tauri/icons/mimetypes/application-x-aerovault.svg \
-        $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/mimetypes/application-x-aerovault.svg || \
-        { echo "ERROR: Missing SVG icon"; exit 1; }
+      for icon in application-x-aerovault application-x-aeroftp application-x-aeroftp-keystore; do
+        for size in 16 24 32 48 64 128 256 512; do
+          mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}x${size}/mimetypes
+          cp src-tauri/icons/mimetypes/${icon}-${size}.png \
+            $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/${size}x${size}/mimetypes/${icon}.png || \
+            { echo "ERROR: Missing icon ${icon} ${size}px"; exit 1; }
+        done
+        cp src-tauri/icons/mimetypes/${icon}.svg \
+          $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/mimetypes/${icon}.svg || \
+          { echo "ERROR: Missing SVG icon ${icon}"; exit 1; }
+      done
