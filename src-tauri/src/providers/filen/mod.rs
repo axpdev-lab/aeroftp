@@ -57,6 +57,15 @@ const FILEN_PARALLEL_CHUNK_UPLOADS: usize = 4;
 /// times over).
 const FILEN_MAX_UPLOAD_SIZE: u64 = 256 * 1024 * 1024 * 1024;
 
+/// Number of retry attempts for a single chunk download from `egest.filen.io`.
+/// Filen's egest CDN occasionally returns a truncated response body or closes
+/// the TCP connection mid-response on long sequential download sessions
+/// (observed reliably on 1024-chunk sequences = 1 GiB files). Aborting the
+/// whole download on the first transient body-decode error means losing every
+/// chunk that already succeeded, so we retry just the offending chunk a few
+/// times with exponential backoff before propagating the failure upwards.
+const FILEN_DOWNLOAD_CHUNK_RETRIES: u32 = 4;
+
 /// Filen auth info response
 #[derive(Debug, Deserialize)]
 struct AuthInfoResponse {
@@ -1140,28 +1149,32 @@ impl StorageProvider for FilenProvider {
                 region, bucket, uuid, chunk_idx
             );
 
-            let request = self
-                .client
-                .get(&download_url)
-                .build()
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            let resp = self.send_retry(request).await?;
-
-            if !resp.status().is_success() {
-                return Err(ProviderError::TransferFailed(format!(
-                    "Download chunk {} failed: {}",
-                    chunk_idx,
-                    resp.status()
-                )));
-            }
-
-            // Stream response bytes into buffer for AES-GCM decryption
-            let mut encrypted = Vec::new();
-            let mut stream = resp.bytes_stream();
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                encrypted.extend_from_slice(&chunk);
-            }
+            // Per-chunk retry. Filen's egest CDN occasionally returns a
+            // truncated body or closes the TCP connection mid-response on
+            // long sequential downloads (manifests as `error decoding
+            // response body` from reqwest after hundreds of consecutive
+            // GETs). Aborting the whole download on the first such error
+            // throws away all the chunks that already landed and leaves
+            // the user with no path forward, so we retry the offending
+            // chunk up to FILEN_DOWNLOAD_CHUNK_RETRIES times with
+            // exponential backoff before giving up. The retry is on the
+            // chunk only; chunks that already succeeded are not refetched.
+            let encrypted = match download_filen_chunk(
+                &self.client,
+                &download_url,
+                chunk_idx,
+                FILEN_DOWNLOAD_CHUNK_RETRIES,
+            )
+            .await
+            {
+                Ok(buf) => buf,
+                Err(e) => {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "Download chunk {}/{} failed after {} retries: {}",
+                        chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
+                    )))
+                }
+            };
 
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             atomic
@@ -1234,28 +1247,22 @@ impl StorageProvider for FilenProvider {
                 region, bucket, uuid, chunk_idx
             );
 
-            let request = self
-                .client
-                .get(&download_url)
-                .build()
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            let resp = self.send_retry(request).await?;
-
-            if !resp.status().is_success() {
-                return Err(ProviderError::TransferFailed(format!(
-                    "Download chunk {} failed: {}",
-                    chunk_idx,
-                    resp.status()
-                )));
-            }
-
-            // Stream response bytes into buffer for AES-GCM decryption
-            let mut encrypted = Vec::new();
-            let mut stream = resp.bytes_stream();
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                encrypted.extend_from_slice(&chunk);
-            }
+            let encrypted = match download_filen_chunk(
+                &self.client,
+                &download_url,
+                chunk_idx,
+                FILEN_DOWNLOAD_CHUNK_RETRIES,
+            )
+            .await
+            {
+                Ok(buf) => buf,
+                Err(e) => {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "Download chunk {}/{} failed after {} retries: {}",
+                        chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
+                    )))
+                }
+            };
 
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             all_data.extend_from_slice(&decrypted);
@@ -2192,6 +2199,103 @@ async fn upload_filen_chunk(
     }
 
     Ok(())
+}
+
+/// Fetch a single encrypted chunk from Filen's egest CDN, retrying transient
+/// failures up to `max_retries` times.
+///
+/// Two failure classes are treated as transient and trigger a retry:
+///
+/// 1. HTTP status codes 5xx, 408, and 429 (server errors and rate limits).
+/// 2. Body-decode errors raised while consuming `bytes_stream()`. These come
+///    from reqwest when the underlying TCP connection is closed mid-response
+///    or when the chunked-encoding framing is broken. On long sequential
+///    download sessions (hundreds of consecutive GETs against
+///    `egest.filen.io`) we observed these reliably around the 200th chunk.
+///
+/// Each retry uses exponential backoff: 250 ms, 500 ms, 1 s, 2 s, capped at
+/// 4 s. 4xx errors other than 408/429 are not retried (the caller will get a
+/// 404 or 403 immediately rather than waiting four full backoff cycles for an
+/// authoritative non-recoverable response).
+async fn download_filen_chunk(
+    client: &reqwest::Client,
+    url: &str,
+    chunk_idx: u32,
+    max_retries: u32,
+) -> Result<Vec<u8>, String> {
+    let mut last_err: Option<String> = None;
+    for attempt in 0..=max_retries {
+        if attempt > 0 {
+            // Exponential backoff: 250 ms * 2^(attempt-1), capped at 4 s.
+            let delay_ms = (250u64 << (attempt - 1).min(4)).min(4_000);
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            filen_log(&format!(
+                "download chunk {} retry {}/{} after {} ms",
+                chunk_idx, attempt, max_retries, delay_ms
+            ));
+        }
+
+        let request = match client.get(url).build() {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = Some(format!("request build: {}", e));
+                continue;
+            }
+        };
+
+        let resp = match client.execute(request).await {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = Some(format!("send: {}", e));
+                continue;
+            }
+        };
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body_preview = resp
+                .text()
+                .await
+                .unwrap_or_default()
+                .chars()
+                .take(160)
+                .collect::<String>();
+            // Retry only on classes that may recover. 4xx (except 408/429)
+            // are authoritative, so we surface them immediately.
+            let retryable = status.is_server_error()
+                || status.as_u16() == 408
+                || status.as_u16() == 429;
+            let err = format!("status {}: {}", status, body_preview);
+            if !retryable {
+                return Err(err);
+            }
+            last_err = Some(err);
+            continue;
+        }
+
+        let mut encrypted = Vec::new();
+        let mut stream = resp.bytes_stream();
+        let mut body_failed = false;
+        while let Some(part) = stream.next().await {
+            match part {
+                Ok(bytes) => encrypted.extend_from_slice(&bytes),
+                Err(e) => {
+                    last_err = Some(format!(
+                        "body decode after {} bytes: {}",
+                        encrypted.len(),
+                        e
+                    ));
+                    body_failed = true;
+                    break;
+                }
+            }
+        }
+        if body_failed {
+            continue;
+        }
+        return Ok(encrypted);
+    }
+    Err(last_err.unwrap_or_else(|| "exhausted retries with no error".to_string()))
 }
 
 #[cfg(test)]
