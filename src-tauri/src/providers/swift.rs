@@ -125,7 +125,7 @@ impl SwiftProvider {
         let client = Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(300))
+            .read_timeout(Duration::from_secs(1800))
             .danger_accept_invalid_certs(!config.verify_cert)
             .build()
             .unwrap_or_else(|_| Client::new());

@@ -245,7 +245,7 @@ pub async fn download_release_asset(
     let resp = if asset_name.starts_with("Source code") {
         reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(300))
+            .read_timeout(std::time::Duration::from_secs(1800))
             .build()
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
             .get(&download_url)

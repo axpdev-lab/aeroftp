@@ -123,7 +123,7 @@ impl OneDriveProvider {
             client: reqwest::Client::builder()
                 .user_agent(crate::providers::AEROFTP_USER_AGENT)
                 .connect_timeout(std::time::Duration::from_secs(30))
-                .read_timeout(std::time::Duration::from_secs(300))
+                .read_timeout(std::time::Duration::from_secs(1800))
                 .build()
                 .unwrap_or_default(),
             connected: false,
@@ -833,6 +833,11 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        // OneDrive (Graph API) rejects item names containing '/'. We must split
+        // the path so `folder_name` is a single component and `parent_path`
+        // points at an existing directory. This applies to both absolute paths
+        // ("/a/b/c") and relative paths ("a/b/c"): in both cases we keep only
+        // the leaf as the new folder name.
         let (parent_path, folder_name) = if path.starts_with('/') {
             let p = path.trim_matches('/');
             if let Some(pos) = p.rfind('/') {
@@ -840,6 +845,19 @@ impl StorageProvider for OneDriveProvider {
             } else {
                 ("/".to_string(), p)
             }
+        } else if let Some(pos) = path.rfind('/') {
+            // Relative path with embedded '/': split into parent + leaf and
+            // anchor the parent against current_path. Without this branch,
+            // mkdir("aeroftp-bench/<uuid>") would have been forwarded to the
+            // OneDrive API as a single name with '/', which the API rejects
+            // with "The item name cannot contain a '/'".
+            let base = self.current_path.trim_end_matches('/');
+            let parent = if base.is_empty() || base == "/" {
+                format!("/{}", &path[..pos])
+            } else {
+                format!("{}/{}", base, &path[..pos])
+            };
+            (parent, &path[pos + 1..])
         } else {
             (self.current_path.clone(), path)
         };

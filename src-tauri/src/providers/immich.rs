@@ -210,7 +210,7 @@ impl ImmichProvider {
             .default_headers(headers)
             .connect_timeout(std::time::Duration::from_secs(15))
             .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(300))
+            .read_timeout(std::time::Duration::from_secs(1800))
             .build()
             .unwrap_or_default();
 

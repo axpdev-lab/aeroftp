@@ -518,7 +518,7 @@ impl ZohoWorkdriveProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .default_headers(default_headers)
             .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(300))
+            .read_timeout(std::time::Duration::from_secs(1800))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 

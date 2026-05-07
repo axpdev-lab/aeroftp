@@ -253,7 +253,11 @@ impl WebDavProvider {
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .danger_accept_invalid_certs(!config.verify_cert)
             .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(300))
+            // 1800s (30 min) accommodates large body uploads on slow links and
+            // server-side post-processing (md5, replication). 300s previously
+            // killed 1 GiB uploads on jianguoyun, InfiniCloud, DriveHQ, and
+            // Koofr WebDAV when sustained throughput dropped below ~27 Mbps.
+            .read_timeout(std::time::Duration::from_secs(1800))
             .build()
             .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))

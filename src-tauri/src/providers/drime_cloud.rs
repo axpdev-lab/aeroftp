@@ -223,7 +223,7 @@ impl DrimeCloudProvider {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(300))
+            .read_timeout(std::time::Duration::from_secs(1800))
             .default_headers(default_headers)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
@@ -1061,9 +1061,17 @@ impl StorageProvider for DrimeCloudProvider {
             page += 1;
         }
 
-        // Update current position
-        self.current_path = resolved;
-        self.current_folder_id = folder_id;
+        // list() is intentionally read-only: it must NOT mutate current_path
+        // or current_folder_id. The benchmark CLI (and any caller mixing
+        // list() with subsequent relative-path operations) relies on
+        // current_path remaining stable. Mutating it here previously caused
+        // a path-concatenation bug where stat()/delete() right after list()
+        // resolved "aeroftp-bench/<id>/payload" against current_path
+        // "/aeroftp-bench/<id>" and produced the doubled path
+        // "/aeroftp-bench/<id>/aeroftp-bench/<id>/payload".
+        // current_folder_id was write-only here (no readers), so dropping
+        // both is safe. Use cd()/cd_up() to move the working directory.
+        let _ = folder_id; // kept resolved for clarity, no longer assigned
 
         Ok(entries)
     }
