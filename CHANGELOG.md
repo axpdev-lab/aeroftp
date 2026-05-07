@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.4] - 2026-05-07
+
+### Filen reliability, provider polish and Windows Auto-Update parity
+
+#### Added
+
+- **Activity Log is reachable from the View menu**: the Activity Log panel is now exposed through the desktop menu, making authentication, transfer and provider diagnostics easier to inspect without hunting through secondary surfaces.
+- **Media providers are first-class in the UI**: media-oriented services added across the recent provider wave are surfaced consistently in provider discovery and navigation so ImageKit, Uploadcare, Cloudinary and related integrations are no longer hidden behind generic cloud categories.
+- **Cloudinary provider integration**: Cloudinary joins the media-provider set alongside ImageKit and Uploadcare, keeping the Home / Add Service flow consistent for image-CDN and media-storage backends.
+- **Tab.digital provider preset**: Tab.digital is available as a Nextcloud-as-a-service preset with EU / GDPR positioning, first-run health metadata and provider-card polish.
+- **Backblaze B2 usability upgrades**: bucket-level quota, share-link UI and a clearer hide-vs-permanent-delete model are exposed so users can recover soft-deleted files instead of treating every delete as final.
+- **AeroFTP file icons and associations**: `.aeroftp` and `.aeroftp-keystore` receive dedicated mimetype icons and bundle wiring, matching the existing AeroVault document treatment.
+
+#### Changed
+
+- **Filen Desktop local bridges are first-class**: local WebDAV and S3 bridge profiles are treated as intended local integrations instead of fragile custom endpoints.
+- **Provider HTTP transfers share a 30 minute read timeout**: long-running cloud reads now use a unified timeout policy, reducing false failures on large downloads and slow links.
+- **OneDrive nested mkdir and Drime listing behavior are more predictable**: nested folder creation and listing code paths now avoid provider-specific side effects that could surprise users during sync or browse operations.
+
+#### Fixed
+
+- **Filen v3 upload reliability**: uploads now use the required 1 MiB AES-GCM chunking model, retry individual chunks when response-body decoding flakes, and open the dedicated 2FA prompt on Filen TOTP challenges.
+- **CLI / MCP WebDAV profile mapping**: saved `webdavScheme` values now map to `tls_mode`, so CLI and MCP connections honor the same HTTP/HTTPS behavior as the GUI.
+- **Nextcloud / ownCloud WebDAV navigation**: drill-down and URL-bar population are fixed for WebDAV providers that expose Nextcloud / ownCloud style paths.
+- **Benchmark privacy and shell behavior**: `aeroftp-cli benchmark` sanitizes PII before assertions and ignores SIGPIPE during sweeps, preventing noisy failures when output is piped.
+- **Provider preset polish**: Tab.digital no longer carries stale `basePath` / `contactVerified` defaults, the IntroHub card detects its WebDAV variant correctly, and related OCS badge colors are aligned.
+
 ### Windows Auto-Update parity (MSI silent, NSIS silent, Portable in-place)
 
 #### Added
