@@ -181,6 +181,34 @@ import {
   MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft
 } from 'lucide-react';
 
+/**
+ * Resolve a `{username}` placeholder inside a connection path against the
+ * actual credentials. Some Nextcloud-based provider presets ship with
+ * `defaults.basePath = '/remote.php/dav/files/{username}/'` (Felicloud,
+ * generic Nextcloud, Tab.digital before the basePath was dropped). The
+ * placeholder reaches `quickConnectDirs.remoteDir` at protocol-selection
+ * time, BEFORE the user has typed the username, so it cannot be resolved
+ * upstream. Resolving here at connect time covers every path that flows
+ * into `provider_list_files` / `change_directory` for the first listing.
+ *
+ * Symmetric helper in the Rust backend lives at
+ * `src-tauri/src/providers/types.rs` `WebDavConfig::from_provider_config`,
+ * which already substitutes `{username}` in the URL string itself.
+ *
+ * Returns the original path when there is no placeholder or no username
+ * (e.g. anonymous WebDAV endpoints), so callers don't have to pre-check.
+ */
+const resolveUsernameTemplate = (
+  path: string | null | undefined,
+  username: string | null | undefined,
+): string | null => {
+  if (!path) return null;
+  if (!path.includes('{username}')) return path;
+  const u = (username || '').trim();
+  if (!u) return path;
+  return path.replace(/\{username\}/g, u);
+};
+
 const Github = ({ size = 24, className = '' }: { size?: number; className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
     <path fillRule="evenodd" clipRule="evenodd" d="M12.026 2c-5.509 0-9.974 4.465-9.974 9.974 0 4.406 2.857 8.145 6.821 9.465.499.09.679-.217.679-.481 0-.237-.008-.865-.011-1.696-2.775.602-3.361-1.338-3.361-1.338-.452-1.152-1.107-1.459-1.107-1.459-.905-.619.069-.605.069-.605 1.002.07 1.527 1.028 1.527 1.028.89 1.524 2.336 1.084 2.902.829.091-.645.351-1.085.635-1.334-2.214-.251-4.542-1.107-4.542-4.93 0-1.087.389-1.979 1.024-2.675-.101-.253-.446-1.268.099-2.64 0 0 .837-.269 2.742 1.021a9.582 9.582 0 0 1 2.496-.336 9.554 9.554 0 0 1 2.496.336c1.906-1.291 2.742-1.021 2.742-1.021.545 1.372.203 2.387.099 2.64.64.696 1.024 1.587 1.024 2.675 0 3.833-2.33 4.675-4.552 4.922.355.308.675.916.675 1.846 0 1.334-.012 2.41-.012 2.737 0 .267.178.577.687.479C19.146 20.115 22 16.379 22 11.974 22 6.465 17.535 2 12.026 2z"/>
@@ -3316,7 +3344,12 @@ interface UpdateVerificationInfo {
           // Ignore if not connected
         }
 
-        const providerPayload = await buildProviderParams(effectiveParams, quickConnectDirs.remoteDir || null);
+        // Resolve any `{username}` placeholder against the actual username
+        // before the path enters the connect flow. See resolveUsernameTemplate
+        // doc comment: covers Nextcloud-based presets that ship with
+        // `defaults.basePath = '/remote.php/dav/files/{username}/'`.
+        const resolvedRemoteDir = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
+        const providerPayload = await buildProviderParams(effectiveParams, resolvedRemoteDir);
         effectiveParams = providerPayload.effectiveParams;
         setConnectionParams(effectiveParams);
         const providerParams = providerPayload.providerParams;
@@ -3347,10 +3380,13 @@ interface UpdateVerificationInfo {
         humanLog.logSuccess('CONNECT', { server: maskedProviderName, protocol: protocolLabel }, logId);
         notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
-        // Load files using provider API
+        // Load files using provider API. Re-use the {username}-resolved
+        // path computed above so a Nextcloud-based preset's basePath like
+        // `/remote.php/dav/files/{username}/` doesn't reach the backend
+        // with the placeholder unresolved (would 404 on the literal path).
         logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);
         const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
-          path: quickConnectDirs.remoteDir || null
+          path: resolvedRemoteDir || null
         });
         logger.debug('[connectToFtp] provider_list_files response:', {
           fileCount: response.files?.length ?? 0,
@@ -3442,11 +3478,14 @@ interface UpdateVerificationInfo {
       const protocol = (effectiveParams.protocol || 'FTP').toUpperCase();
       humanLog.logSuccess('CONNECT', { server: effectiveParams.server, protocol }, logId);
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: effectiveParams.server }));
-      // Navigate to initial remote directory if specified
+      // Navigate to initial remote directory if specified. {username} template
+      // resolution (Nextcloud-based presets) happens here too, mirroring the
+      // provider-API path above.
       let ftpResponse: FileListResponse | null = null;
-      if (quickConnectDirs.remoteDir) {
+      const ftpResolvedRemoteDir = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
+      if (ftpResolvedRemoteDir) {
         // Pass protocol explicitly to avoid stale state from previous provider session
-        await changeRemoteDirectory(quickConnectDirs.remoteDir, effectiveParams.protocol || 'ftp');
+        await changeRemoteDirectory(ftpResolvedRemoteDir, effectiveParams.protocol || 'ftp');
       } else {
         ftpResponse = await loadRemoteFiles();
       }
@@ -9514,7 +9553,10 @@ interface UpdateVerificationInfo {
                     try { await invoke('provider_disconnect'); } catch { }
                     try { await invoke('disconnect_ftp'); } catch { }
 
-                    const providerPayload = await buildProviderParams(normalizedParams, initialPath || null);
+                    // Resolve {username} placeholder before any path enters
+                    // the connect flow. See resolveUsernameTemplate doc comment.
+                    const resolvedSavedInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username);
+                    const providerPayload = await buildProviderParams(normalizedParams, resolvedSavedInitialPath);
                     const connectedParams = providerPayload.effectiveParams;
                     const providerParams = providerPayload.providerParams;
 
@@ -9557,9 +9599,12 @@ interface UpdateVerificationInfo {
                     humanLog.logSuccess('CONNECT', { server: maskedProviderName, protocol: protocolLabel }, logId);
                     notify.success(t('toast.connected'), t('toast.connectedTo', { server: providerName }));
 
-                    // Load files using provider API
+                    // Load files using provider API. Re-use the {username}-resolved
+                    // path computed above so a Nextcloud-based saved profile's
+                    // initialPath (e.g. `/remote.php/dav/files/{username}/`) does
+                    // not reach the backend with the placeholder unresolved.
                     const response = await invoke<{ files: any[]; current_path: string }>('provider_list_files', {
-                      path: initialPath || null
+                      path: resolvedSavedInitialPath || null
                     });
 
                     const files = response.files.map(f => ({
@@ -9628,11 +9673,13 @@ interface UpdateVerificationInfo {
                   humanLog.logSuccess('CONNECT', { server: params.server, protocol: protocolLabel }, logId);
                   notify.success(t('toast.connected'), t('toast.connectedTo', { server: params.server }));
 
-                  // Get the actual remote path after connection
+                  // Get the actual remote path after connection. {username}
+                  // template resolution mirrors the provider-API branch above.
                   let savedFtpResponse: FileListResponse | null = null;
-                  if (initialPath) {
+                  const ftpResolvedInitialPath = resolveUsernameTemplate(initialPath, params.username);
+                  if (ftpResolvedInitialPath) {
                     // Pass the protocol explicitly to avoid using stale state from previous session
-                    await changeRemoteDirectory(initialPath, params.protocol || 'ftp');
+                    await changeRemoteDirectory(ftpResolvedInitialPath, params.protocol || 'ftp');
                   } else {
                     savedFtpResponse = await loadRemoteFiles();
                   }
