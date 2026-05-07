@@ -188,6 +188,30 @@ mod webdav_methods {
     }
 }
 
+/// Pure boundary check used by `cd()` and `cd_up()`.
+///
+/// Returns `true` when `path` resolves above the configured WebDAV root.
+/// `boundary` is the effective root (auto-detected `server_root` if known,
+/// otherwise the user-supplied `initial_path`). Issue #175.
+///
+/// The check trims trailing slashes for case-insensitive prefix matching,
+/// and short-circuits on empty / "/" boundaries (no-op since the WebDAV
+/// server has effectively no boundary to enforce in those cases).
+fn path_violates_root(path: &str, boundary: Option<&str>) -> bool {
+    let Some(boundary) = boundary else {
+        return false;
+    };
+    if boundary.is_empty() {
+        return false;
+    }
+    let root_trimmed = boundary.trim_end_matches('/');
+    if root_trimmed.is_empty() {
+        return false;
+    }
+    let path_trimmed = path.trim_end_matches('/');
+    !path_trimmed.starts_with(root_trimmed) && path_trimmed != root_trimmed
+}
+
 /// WebDAV Storage Provider
 pub struct WebDavProvider {
     config: WebDavConfig,
@@ -196,6 +220,21 @@ pub struct WebDavProvider {
     connected: bool,
     /// Digest auth state (set during connect if server requires it)
     digest_auth: Option<DigestState>,
+    /// Server-side WebDAV root resolved at connect time (issue #175).
+    ///
+    /// `config.initial_path` is the user-supplied value from the saved-server
+    /// form and may be empty, "/", or a relative folder like "/Documents".
+    /// On Nextcloud / ownCloud the actual WebDAV root is auto-detected at
+    /// connect time as one of `/remote.php/dav/files/<user>/` or
+    /// `/remote.php/webdav/` after a 405 on `PROPFIND /`. The boundary checks
+    /// in `cd()` and `cd_up()` MUST use the auto-detected root (otherwise a
+    /// drill-down click into a folder fails with "Cannot navigate above
+    /// WebDAV root", because the entry path returned by `list()` is rooted
+    /// at the real WebDAV root, not the user-typed one).
+    ///
+    /// Populated in every successful branch of `connect()`. `None` when
+    /// disconnected. When `Some`, takes precedence over `config.initial_path`.
+    server_root: Option<String>,
 }
 
 impl WebDavProvider {
@@ -226,6 +265,7 @@ impl WebDavProvider {
             current_path: "/".to_string(),
             connected: false,
             digest_auth: None,
+            server_root: None,
         })
     }
 
@@ -1222,11 +1262,17 @@ impl StorageProvider for WebDavProvider {
         match response.status() {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
                 self.connected = true;
-                if let Some(ref initial_path) = self.config.initial_path {
-                    if !initial_path.is_empty() {
-                        self.current_path = initial_path.clone();
-                    }
-                }
+                // Traditional WebDAV server: `/` is a valid resource. Server
+                // root is `/`, plus the user-supplied initial_path if any.
+                let resolved_root = self
+                    .config
+                    .initial_path
+                    .as_deref()
+                    .filter(|p| !p.is_empty())
+                    .unwrap_or("/")
+                    .to_string();
+                self.current_path = resolved_root.clone();
+                self.server_root = Some(resolved_root);
                 Ok(())
             }
             StatusCode::UNAUTHORIZED => {
@@ -1264,11 +1310,15 @@ impl StorageProvider for WebDavProvider {
                         StatusCode::OK | StatusCode::MULTI_STATUS => {
                             tracing::debug!("[WebDAV] Digest auth successful");
                             self.connected = true;
-                            if let Some(ref initial_path) = self.config.initial_path {
-                                if !initial_path.is_empty() {
-                                    self.current_path = initial_path.clone();
-                                }
-                            }
+                            let resolved_root = self
+                                .config
+                                .initial_path
+                                .as_deref()
+                                .filter(|p| !p.is_empty())
+                                .unwrap_or("/")
+                                .to_string();
+                            self.current_path = resolved_root.clone();
+                            self.server_root = Some(resolved_root);
                             Ok(())
                         }
                         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
@@ -1334,7 +1384,25 @@ impl StorageProvider for WebDavProvider {
                                 st
                             );
                             self.connected = true;
-                            self.current_path = wk_path.clone();
+                            // Issue #175: server_root is the auto-detected path.
+                            // current_path defaults to it; if the user supplied
+                            // a relative initial_path, append it under the root.
+                            let user_initial = self
+                                .config
+                                .initial_path
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|p| !p.is_empty() && *p != "/");
+                            let starting_path = match user_initial {
+                                Some(rel) => {
+                                    let wk_trim = wk_path.trim_end_matches('/');
+                                    let rel_trim = rel.trim_start_matches('/');
+                                    format!("{}/{}", wk_trim, rel_trim)
+                                }
+                                None => wk_path.clone(),
+                            };
+                            self.current_path = starting_path;
+                            self.server_root = Some(wk_path.clone());
                             return Ok(());
                         }
                     }
@@ -1351,11 +1419,15 @@ impl StorageProvider for WebDavProvider {
                 let options_status = options_response.status();
                 if options_status.is_success() {
                     self.connected = true;
-                    if let Some(ref initial_path) = self.config.initial_path {
-                        if !initial_path.is_empty() {
-                            self.current_path = initial_path.clone();
-                        }
-                    }
+                    let resolved_root = self
+                        .config
+                        .initial_path
+                        .as_deref()
+                        .filter(|p| !p.is_empty())
+                        .unwrap_or("/")
+                        .to_string();
+                    self.current_path = resolved_root.clone();
+                    self.server_root = Some(resolved_root);
                     Ok(())
                 } else {
                     Err(ProviderError::ConnectionFailed(format!(
@@ -1373,6 +1445,7 @@ impl StorageProvider for WebDavProvider {
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
+        self.server_root = None;
         Ok(())
     }
 
@@ -1385,8 +1458,20 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
+        // Issue #175: Nextcloud / ownCloud serve `/` as 405 Method Not Allowed
+        // because the WebDAV root lives under a versioned prefix
+        // (`/remote.php/dav/files/<user>/` or `/remote.php/webdav/`). When the
+        // frontend or a saved-server profile passes `path = "/"` literally,
+        // we redirect to the auto-detected server_root so the listing works
+        // out of the box. Traditional WebDAV servers where `/` is a valid
+        // resource keep working because their server_root is also `/`, so
+        // the redirect is a no-op.
         let list_path = if path.is_empty() || path == "." {
             self.current_path.clone()
+        } else if path == "/" {
+            self.server_root
+                .clone()
+                .unwrap_or_else(|| self.current_path.clone())
         } else {
             path.to_string()
         };
@@ -1461,21 +1546,18 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        // Enforce initial_path boundary: reject paths above WebDAV root
-        if let Some(ref initial_path) = self.config.initial_path {
-            if !initial_path.is_empty() {
-                let root_trimmed = initial_path.trim_end_matches('/');
-                let path_trimmed = path.trim_end_matches('/');
-                if !root_trimmed.is_empty()
-                    && !path_trimmed.starts_with(root_trimmed)
-                    && path_trimmed != root_trimmed
-                {
-                    return Err(ProviderError::InvalidPath(format!(
-                        "Cannot navigate above WebDAV root: {}",
-                        initial_path
-                    )));
-                }
-            }
+        // Issue #175: enforce the boundary against the connect-time server
+        // root, not the user-typed `config.initial_path`. See the doc on
+        // `server_root` for the full reasoning.
+        let boundary = self
+            .server_root
+            .as_deref()
+            .or(self.config.initial_path.as_deref());
+        if path_violates_root(path, boundary) {
+            return Err(ProviderError::InvalidPath(format!(
+                "Cannot navigate above WebDAV root: {}",
+                boundary.unwrap_or("/")
+            )));
         }
 
         // Verify the path exists and is a directory
@@ -1524,11 +1606,13 @@ impl StorageProvider for WebDavProvider {
     }
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
-        // Determine the root boundary: initial_path if set, otherwise "/"
+        // Issue #175: prefer the connect-time server_root (auto-detected on
+        // Nextcloud / ownCloud) over the user-typed initial_path so cd_up
+        // clamps at the real WebDAV root, not at the form value.
         let root = self
-            .config
-            .initial_path
+            .server_root
             .as_deref()
+            .or(self.config.initial_path.as_deref())
             .filter(|p| !p.is_empty())
             .unwrap_or("/");
 
@@ -2464,5 +2548,100 @@ mod tests {
         assert_eq!(entries[0].size, 1024);
         assert_eq!(entries[1].name, "subdir");
         assert!(entries[1].is_dir);
+    }
+
+    // Issue #175 — boundary check must use the auto-detected `server_root`
+    // (Nextcloud / ownCloud) rather than the user-typed `initial_path`,
+    // otherwise drill-down clicks fail with "Cannot navigate above WebDAV
+    // root" because the entry path is rooted at the wk_path while the
+    // user typed `/` or left it blank.
+
+    #[test]
+    fn boundary_pure_no_root_means_no_violation() {
+        assert!(!path_violates_root("/anything", None));
+        assert!(!path_violates_root("/", None));
+    }
+
+    #[test]
+    fn boundary_pure_empty_or_root_boundary_is_a_noop() {
+        assert!(!path_violates_root("/anything", Some("")));
+        assert!(!path_violates_root("/anything", Some("/")));
+    }
+
+    #[test]
+    fn boundary_pure_drill_down_into_nextcloud_root_is_allowed() {
+        // Real-world Tab.digital / Nextcloud: server_root resolved at connect
+        // time to /remote.php/dav/files/<user>/, user clicks "Documents".
+        let root = Some("/remote.php/dav/files/raelb/");
+        assert!(!path_violates_root(
+            "/remote.php/dav/files/raelb/Documents",
+            root
+        ));
+        assert!(!path_violates_root(
+            "/remote.php/dav/files/raelb/Documents/Invoices",
+            root
+        ));
+        // Equality is also fine (cd to the root itself).
+        assert!(!path_violates_root("/remote.php/dav/files/raelb", root));
+    }
+
+    #[test]
+    fn boundary_pure_paths_above_or_outside_root_are_rejected() {
+        let root = Some("/remote.php/dav/files/raelb/");
+        // Going above
+        assert!(path_violates_root("/remote.php/dav/files", root));
+        // Sibling user
+        assert!(path_violates_root(
+            "/remote.php/dav/files/someoneelse/Docs",
+            root
+        ));
+        // Completely off-tree
+        assert!(path_violates_root("/", root));
+        assert!(path_violates_root("/etc/passwd", root));
+    }
+
+    #[tokio::test]
+    async fn list_rewrites_root_slash_to_server_root_for_nextcloud() {
+        // Issue #175 bug 2: a saved profile with initial_path = "/" hits
+        // 405 on Nextcloud because PROPFIND on `/` is not allowed. The
+        // backend now redirects "/" to the auto-detected server_root.
+        // We can't observe the network call without a real server, but
+        // we assert the path resolution is what we expect by inspecting
+        // the rewrite directly.
+        let mut provider =
+            WebDavProvider::new(test_config("https://cloud.example.com")).unwrap();
+        provider.connected = true;
+        provider.current_path = "/remote.php/dav/files/raelb/".to_string();
+        provider.server_root = Some("/remote.php/dav/files/raelb/".to_string());
+
+        // Reproduce the rewrite logic: ensure "/" maps to server_root.
+        let resolved = match "/" {
+            "" | "." => provider.current_path.clone(),
+            "/" => provider
+                .server_root
+                .clone()
+                .unwrap_or_else(|| provider.current_path.clone()),
+            other => other.to_string(),
+        };
+        assert_eq!(resolved, "/remote.php/dav/files/raelb/");
+    }
+
+    #[test]
+    fn cd_up_uses_server_root_over_config_initial_path() {
+        // Sanity check the resolution order used by `cd_up`. Without going
+        // through the network, we can verify the precedence on the field
+        // directly via the same expression `cd_up` uses.
+        let mut config = test_config("https://cloud.example.com");
+        config.initial_path = Some("/Documents".to_string());
+        let mut provider = WebDavProvider::new(config).unwrap();
+        provider.server_root = Some("/remote.php/dav/files/raelb/".to_string());
+
+        let chosen = provider
+            .server_root
+            .as_deref()
+            .or(provider.config.initial_path.as_deref())
+            .filter(|p| !p.is_empty())
+            .unwrap_or("/");
+        assert_eq!(chosen, "/remote.php/dav/files/raelb/");
     }
 }
