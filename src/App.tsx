@@ -3161,7 +3161,8 @@ interface UpdateVerificationInfo {
     const msg = String(error);
     // Match the messages produced by the backend's map_mega_error_code
     // (E_MFAREQUIRED, ENOTOKEN) and the equivalent Filen / Internxt strings.
-    const matches2fa = /two-factor authentication enabled|already-used 2FA code|Wrong Two Factor|EMFAREQUIRED|two.factor.code|MFA required/i.test(msg);
+    // Filen v3 returns: "Please enter your Two Factor Authentication code."
+    const matches2fa = /two[\s-]?factor|2fa|EMFAREQUIRED|MFA required|enter_2fa|wrong_2fa/i.test(msg);
     if (!matches2fa) return false;
     setTwoFactorPrompt({
       open: true,
@@ -3395,13 +3396,17 @@ interface UpdateVerificationInfo {
         );
         fetchStorageQuota(protocol, sessionParams);
       } catch (error) {
-        humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
         // Issue #128: if the server is asking for a 2FA TOTP, surface the
         // dedicated prompt instead of a generic "connection failed" toast.
+        // Replace the "Check credentials" log line with a 2FA-specific one
+        // so the activity log doesn't mislead the user into thinking the
+        // password is wrong when the server is just asking for a TOTP.
         if (tryShowTwoFactorPrompt(error, effectiveParams, maskedProviderName)) {
+          humanLog.updateEntry(logId, { status: 'error', message: t('auth.enter2FAHint') });
           setLoading(false);
           return;
         }
+        humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
         notify.error(t('connection.connectionFailed'), String(error));
       }
       finally { setLoading(false); }

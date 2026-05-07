@@ -1049,7 +1049,11 @@ impl FilenConfig {
         let password = config.password.clone().ok_or_else(|| {
             ProviderError::InvalidConfig("Password required for Filen".to_string())
         })?;
-        let two_factor_code = config.extra.get("two_factor_code").cloned();
+        let two_factor_code = config
+            .extra
+            .get("two_factor_code")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         Ok(Self {
             email,
             password: password.into(),
@@ -1077,7 +1081,11 @@ impl InternxtConfig {
         let password = config.password.clone().ok_or_else(|| {
             ProviderError::InvalidConfig("Password required for Internxt".to_string())
         })?;
-        let two_factor_code = config.extra.get("two_factor_code").cloned();
+        let two_factor_code = config
+            .extra
+            .get("two_factor_code")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         Ok(Self {
             email,
             password: password.into(),
