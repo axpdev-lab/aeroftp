@@ -43,7 +43,7 @@ interface UseAutoUpdateProps {
 
 const THIRTY_MINUTES = 30 * 60 * 1000;
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-const RETRYABLE_UPDATE_FORMATS = new Set(['deb', 'rpm', 'appimage', 'msi', 'exe', 'dmg']);
+const RETRYABLE_UPDATE_FORMATS = new Set(['deb', 'rpm', 'appimage', 'msi', 'exe', 'portable', 'dmg']);
 
 export const useAutoUpdate = ({ activityLog, disabled = false }: UseAutoUpdateProps) => {
   const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null);

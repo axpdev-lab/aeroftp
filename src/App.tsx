@@ -8542,7 +8542,12 @@ interface UpdateVerificationInfo {
                   </div>
                 )}
 
-                {/* Install & Restart: platform-aware, block if VerificationFailed */}
+                {/* Install & Restart: platform-aware, block if VerificationFailed.
+                    Linux (appimage/deb/rpm): per-format install command + auto-restart.
+                    Windows (msi/exe/portable): single install_windows_update command
+                      that dispatches on the format inside the helper script:
+                      MSI silent upgrade, NSIS silent install, portable in-place swap.
+                    macOS (dmg): falls through to "Open in file manager" until Phase 4. */}
                 {updateDownload.verification?.mode !== 'VerificationFailed' && (
                   ['appimage', 'deb', 'rpm'].includes(updateAvailable.install_format) ? (
                     <button
@@ -8555,6 +8560,23 @@ interface UpdateVerificationInfo {
                         setUpdateDownload(prev => prev ? { ...prev, installing: true } : null);
                         try {
                           await invoke(cmd, { downloadedPath: updateDownload.completedPath, verificationMode: updateDownload.verification?.mode ?? 'VerificationUnavailable' });
+                        } catch (e) {
+                          setUpdateDownload(prev => prev ? { ...prev, installing: false, error: String(e) } : null);
+                        }
+                      }}
+                      className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw size={13} /> {t('update.installRestart')}
+                    </button>
+                  ) : ['msi', 'exe', 'portable'].includes(updateAvailable.install_format) ? (
+                    <button
+                      onClick={async () => {
+                        setUpdateDownload(prev => prev ? { ...prev, installing: true } : null);
+                        try {
+                          await invoke('install_windows_update', {
+                            downloadedPath: updateDownload.completedPath,
+                            verificationMode: updateDownload.verification?.mode ?? 'VerificationUnavailable',
+                          });
                         } catch (e) {
                           setUpdateDownload(prev => prev ? { ...prev, installing: false, error: String(e) } : null);
                         }

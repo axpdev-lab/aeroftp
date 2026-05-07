@@ -198,6 +198,11 @@ windows = { version = "0.58", features = [
     "Win32_Security",
     "Win32_UI_Shell",
 ] }
+# Windows Registry access for auto-update install-format detection.
+# Walks HKLM/HKCU `Software\Microsoft\Windows\CurrentVersion\Uninstall`
+# to distinguish MSI from NSIS installs deterministically. Pinned for
+# reproducibility; version 0.55 supports the Win10/11 RegistryView APIs.
+winreg = "0.55"
 
 # Linux-only dependencies
 # - tauri-plugin-localhost: WebKitGTK workaround (Monaco ESM, xterm.js, canvas, iframe CSS)

@@ -17,7 +17,6 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::process::Stdio;
-use tauri::Manager;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{timeout, Duration};
 use tracing::{info, warn};
@@ -108,11 +107,7 @@ fn default_true() -> bool {
 
 /// Get the plugins directory path
 fn plugins_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("Failed to resolve app config dir: {e}"))?
-        .join("plugins"))
+    Ok(crate::portable::app_config_dir(app)?.join("plugins"))
 }
 
 /// List all installed plugins by scanning the plugins directory

@@ -1,0 +1,17 @@
+AeroFTP Portable
+================
+
+This file marks the AeroFTP installation as a portable build.
+
+Do not delete this file. It is required for:
+  - in-place updates (the auto-updater detects portable mode via this marker)
+  - portable data storage (config, cache, and logs are written next to the
+    executable rather than in %APPDATA%)
+
+If you delete this file by mistake, AeroFTP will fall back to standard
+Windows data directories on the next launch and your in-place update
+mechanism will revert to launching the NSIS installer.
+
+To convert a portable install into a regular install, uninstall the portable
+folder and run the official installer (.msi or setup.exe) from
+https://github.com/axpdev-lab/aeroftp/releases.

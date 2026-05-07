@@ -926,15 +926,23 @@ impl CredentialStore {
 // fsync_file_and_parent removed: fsync logic is now inline in write_vault/VaultKeyFile::write
 // with platform-specific handling (Windows can't open directories as files)
 
-/// Get aeroftp config directory, creating it with secure permissions if needed
+/// Get aeroftp config directory, creating it with secure permissions if needed.
+///
+/// Resolution order:
+///   1. Portable mode: `<exe-dir>/data/aeroftp` (when `portable.marker` is
+///      present alongside the executable). This keeps the vault, master
+///      passphrase reference, and per-app secrets self-contained inside the
+///      portable folder, so users can copy the folder between machines.
+///   2. Standard install: `dirs::config_dir().join("aeroftp")` — the
+///      historical location, preserved for backwards compatibility with
+///      existing installs.
 fn config_dir() -> Result<PathBuf, CredentialError> {
-    let base = dirs::config_dir().or_else(dirs::home_dir).ok_or_else(|| {
+    let dir = crate::portable::credential_store_dir().ok_or_else(|| {
         CredentialError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "No config directory",
         ))
     })?;
-    let dir = base.join("aeroftp");
     if !dir.exists() {
         std::fs::create_dir_all(&dir)?;
         ensure_secure_permissions(&dir)?;

@@ -211,21 +211,47 @@ jobs:
       # Splitting it onto its own ubuntu-24.04 runner with native LXD 5.21+
       # gives Snap headroom and lets us drop continue-on-error once stable.
 
-      # Create portable ZIP for Windows (no installer needed)
+      # Create portable ZIP for Windows (no installer needed).
+      # Includes:
+      #   - AeroFTP.exe          (the app)
+      #   - portable.marker      (detection key for the in-place auto-updater;
+      #                          presence triggers portable-mode behaviour:
+      #                          data dir next to .exe, in-place .exe swap on
+      #                          update instead of NSIS installer launch)
+      #   - README.txt           (user-facing quick-start + uninstall + updates)
+      #   - LICENSE.txt          (GPLv3, copied from the repo root)
       - name: Create Windows portable ZIP
         if: matrix.target == 'windows'
         shell: pwsh
         run: |
           $exe = "src-tauri/target/release/AeroFTP.exe"
-          if (Test-Path $exe) {
-            $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
-            $zipName = "AeroFTP-${version}-portable-windows-x64.zip"
-            Compress-Archive -Path $exe -DestinationPath "src-tauri/target/release/bundle/$zipName"
-            Write-Host "Created portable ZIP: $zipName"
-          } else {
+          if (-not (Test-Path $exe)) {
             Write-Host "::error::AeroFTP.exe not found at $exe"
             exit 1
           }
+
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $zipName = "AeroFTP-${version}-portable-windows-x64.zip"
+          $stage = "src-tauri/target/release/bundle/portable-stage"
+
+          # Stage the portable layout in a clean temp dir so Compress-Archive
+          # captures the structure exactly as the user will see it after extraction.
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+          New-Item -ItemType Directory -Path $stage | Out-Null
+
+          Copy-Item $exe                                              "$stage\AeroFTP.exe"
+          Copy-Item "src-tauri/installer/portable/portable.marker"    "$stage\portable.marker"
+          Copy-Item "src-tauri/installer/portable/README.txt"         "$stage\README.txt"
+          Copy-Item "LICENSE"                                         "$stage\LICENSE.txt"
+
+          $dest = "src-tauri/target/release/bundle/$zipName"
+          if (Test-Path $dest) { Remove-Item -Force $dest }
+          Compress-Archive -Path "$stage\*" -DestinationPath $dest
+
+          $size = (Get-Item $dest).Length
+          Write-Host "Created portable ZIP: $zipName ($size bytes)"
+          Write-Host "Contents:"
+          Get-ChildItem $stage | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
 
       # On-demand artifact upload (NOT release builds). Lets us download
       # platform-native installers from the Actions run page without cutting

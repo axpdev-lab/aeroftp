@@ -107,10 +107,7 @@ pub struct ChatStats {
 pub struct ChatHistoryDb(pub Mutex<Connection>);
 
 fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "Cannot resolve app config dir".to_string())?;
+    let config_dir = crate::portable::app_config_dir(app)?;
     Ok(config_dir.join("ai_chat.db"))
 }
 
@@ -391,10 +388,7 @@ fn iso_to_epoch_ms(iso: &str) -> i64 {
 }
 
 pub fn migrate_from_json(conn: &Connection, app: &AppHandle) -> Result<usize, String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "Cannot resolve config dir".to_string())?;
+    let config_dir = crate::portable::app_config_dir(app)?;
     let json_path = config_dir.join("ai_history.json");
 
     if !json_path.exists() {

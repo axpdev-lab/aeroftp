@@ -39,10 +39,7 @@ fn now_ts() -> i64 {
 }
 
 fn db_path_from_app(app: &AppHandle) -> Result<PathBuf, String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "Cannot resolve app config dir".to_string())?;
+    let config_dir = crate::portable::app_config_dir(app)?;
     Ok(config_dir.join("agent_memory.db"))
 }
 

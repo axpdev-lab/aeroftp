@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Windows Auto-Update parity (MSI silent, NSIS silent, Portable in-place)
+
+#### Added
+
+- **Portable Windows ZIP becomes a complete portable build** ([#176](https://github.com/axpdev-lab/aeroftp/issues/176)): the `AeroFTP-X.Y.Z-portable-windows-x64.zip` artifact previously contained only `AeroFTP.exe`. It now ships with `portable.marker`, `README.txt`, and `LICENSE.txt` alongside the executable. The marker file is the canonical detection signal for portable mode and survives any folder the user picks (USB drive, network share, custom path).
+- **Portable data directory honesty**: when `portable.marker` is present next to `AeroFTP.exe`, all per-app data (config, cache, AeroAgent SQLite databases, file tags, vault credentials, plugins, speech models, agent memory, chat history) is written to `<exe-dir>\data\` instead of `%APPDATA%`. Copy the portable folder to another machine and your saved servers, AeroVault, and AeroAgent state come with it. Standard MSI / NSIS installs continue to use `%APPDATA%` exactly as before, no migration, no behaviour change for existing users.
+
+#### Changed
+
+- **Windows auto-updater installs silently and restarts automatically across all three formats**: previously, even when an update was downloaded and Sigstore-verified, the user had to click "Open file manager" and run the installer manually. Now the updater dispatches through a transient `.cmd` helper in `%TEMP%` spawned with `CREATE_NO_WINDOW | DETACHED_PROCESS` that:
+  - **MSI**: runs `msiexec /i ... /qb /norestart REBOOT=ReallySuppress` (basic UI with progress dialog, no prompts), then relaunches AeroFTP.
+  - **NSIS** (`*-setup.exe`): runs `setup.exe /S` (silent install: Tauri's NSIS template + the existing `installer/hooks.nsh` already handle silent mode for PATH registration, `.aerovault` association, VC++ runtime check), then relaunches.
+  - **Portable**: extracts the new ZIP into `%TEMP%`, renames the running `AeroFTP.exe` to `*.old` (Windows allows rename of a running exe but not delete), moves the new exe into place, copies the new `portable.marker` / `README.txt` / `LICENSE.txt` over the old ones, relaunches with `--post-update-cleanup <old-exe-path>`. The new process retries delete-with-backoff for up to 30 s and falls back to `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)` as a last resort.
+
+  All three paths run with a 2 s parent-exit grace and 5-attempt move retry to survive transient locks from antivirus scanners.
+- **Windows install-format detection is now deterministic**: `detect_install_format()` for Windows replaces the old "in Program Files implies MSI, otherwise EXE" path heuristic with a three-stage cascade: marker file, registry scan of `HKLM` / `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\*` for an `AeroFTP` `DisplayName` whose `InstallLocation` matches the running exe (with `WindowsInstaller=1` distinguishing MSI from NSIS), path heuristic (logged as warning). MSI users no longer get accidentally classified as NSIS when they install to a non-default folder.
+
+#### Fixed
+
+- **Portable users were being pointed at the NSIS installer** ([#176](https://github.com/axpdev-lab/aeroftp/issues/176)): the asset matcher returned the `*-setup.exe` artifact for any non-Program-Files install. A user running the portable build who clicked "Update" got the NSIS wizard and ended up with two parallel copies of AeroFTP on disk. The matcher now anchors on `-setup.exe` for the NSIS format and on `portable*.zip` for the portable format, with no ambiguity.
+
+#### Security
+
+- **`portable.marker` cannot be forged into a privilege gain**: the marker only changes where data is written and which artifact is downloaded. It does not unlock any privileged operation, bypass any sandbox, or alter the Sigstore verification step (which still re-verifies the bundle before invoking the helper). The `portable.zip` Sigstore bundle (`AeroFTP-X.Y.Z-portable-windows-x64.zip.sigstore.json`) has been published since v3.6.x and the updater consumes it on the same code path as MSI/NSIS bundles.
+- **The `.cmd` helper is staged in per-user `%TEMP%` and rejects ZIP path-traversal**: extraction validates entry names against `..`, absolute paths, and drive prefixes before writing anywhere on disk.
+
 ## [3.7.3] - 2026-05-06
 
 ### Community Benchmark (Phase 1) + CI / UX fixes

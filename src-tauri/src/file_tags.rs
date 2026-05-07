@@ -52,10 +52,7 @@ pub struct LabelCount {
 pub struct FileTagsDb(pub Mutex<Connection>);
 
 fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "Cannot resolve app config dir".to_string())?;
+    let config_dir = crate::portable::app_config_dir(app)?;
     Ok(config_dir.join("file_tags.db"))
 }
 

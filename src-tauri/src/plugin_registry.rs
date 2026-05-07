@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::Manager;
 
 #[allow(dead_code)]
 const REGISTRY_URL: &str =
@@ -82,11 +81,7 @@ pub async fn fetch_plugin_registry() -> Result<Vec<RegistryEntry>, String> {
 /// Get the plugins directory path
 #[allow(dead_code)]
 fn plugins_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("Failed to resolve app config dir: {e}"))?
-        .join("plugins"))
+    Ok(crate::portable::app_config_dir(app)?.join("plugins"))
 }
 
 /// Install a plugin from the registry by its ID

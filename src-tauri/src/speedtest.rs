@@ -1013,7 +1013,6 @@ mod score_tests {
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::sync::Mutex as StdMutex;
-use tauri::Manager;
 
 const HISTORY_RETENTION: i64 = 1000;
 
@@ -1027,10 +1026,7 @@ fn history_acquire(db: &SpeedTestHistoryDb) -> std::sync::MutexGuard<'_, Connect
 }
 
 fn history_db_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|_| "Cannot resolve app config dir".to_string())?;
+    let dir = crate::portable::app_config_dir(app)?;
     Ok(dir.join("speedtest_history.db"))
 }
 

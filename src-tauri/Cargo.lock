@@ -141,6 +141,7 @@ dependencies = [
  "webpki-roots",
  "whisper-rs",
  "windows 0.58.0",
+ "winreg 0.55.0",
  "xxhash-rust",
  "xz2",
  "zeroize",

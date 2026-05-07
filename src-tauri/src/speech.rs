@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::time::Instant;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 use tokio::sync::Mutex;
 use whisper_rs::{
     get_lang_id, get_lang_str, FullParams, SamplingStrategy, WhisperContext,
@@ -51,10 +51,7 @@ pub struct SpeechTranscriptionResult {
 }
 
 fn speech_model_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let base_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    let base_dir = crate::portable::app_data_dir(app)?;
     Ok(base_dir.join("speech").join(MODEL_FILE_NAME))
 }
 

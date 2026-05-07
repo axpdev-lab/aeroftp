@@ -56,7 +56,10 @@ mod delta_sync;
 pub mod delta_sync_rsync;
 pub mod delta_transport;
 mod number_parsing;
+pub mod portable;
 pub mod profile_loader;
+#[cfg(windows)]
+pub mod windows_update_helper;
 mod rsync_output;
 pub mod storage_dedup;
 // `pub` transitively so integration tests can construct `RsyncStats`
@@ -1989,7 +1992,7 @@ const SIGSTORE_WORKFLOW_IDENTITY_PREFIX: &str =
 fn update_download_supported(install_format: &str) -> bool {
     matches!(
         install_format,
-        "appimage" | "deb" | "rpm" | "msi" | "exe" | "dmg"
+        "appimage" | "deb" | "rpm" | "msi" | "exe" | "portable" | "dmg"
     )
 }
 
@@ -2000,7 +2003,13 @@ fn asset_matches_install_format(name: &str, install_format: &str) -> bool {
         "deb" => lower.ends_with(".deb"),
         "rpm" => lower.ends_with(".rpm"),
         "msi" => lower.ends_with(".msi"),
-        "exe" => lower.ends_with(".exe"),
+        // The NSIS installer is named `*_x64-setup.exe`. Anchor on
+        // `-setup.exe` so we don't accidentally match the portable
+        // .zip's inner name in any future pattern change.
+        "exe" => lower.ends_with("-setup.exe") || (lower.ends_with(".exe") && !lower.contains("portable")),
+        // Portable ships as `AeroFTP-<ver>-portable-windows-x64.zip`.
+        // The "portable" + ".zip" pair is unambiguous.
+        "portable" => lower.contains("portable") && lower.ends_with(".zip"),
         "dmg" => lower.ends_with(".dmg"),
         _ => false,
     }
@@ -2405,26 +2414,7 @@ fn detect_install_format() -> String {
             // Default to DEB for Debian/Ubuntu based
             "deb".to_string()
         }
-        "windows" => {
-            // Check if installed via MSI (in Program Files or Program Files (x86))
-            if let Ok(exe_path) = std::env::current_exe() {
-                let path_str = exe_path.to_string_lossy().to_lowercase();
-                // Check against env-provided Program Files paths (more reliable than hardcoded)
-                let pf = std::env::var("ProgramFiles")
-                    .unwrap_or_default()
-                    .to_lowercase();
-                let pf86 = std::env::var("ProgramFiles(x86)")
-                    .unwrap_or_default()
-                    .to_lowercase();
-                if (!pf.is_empty() && path_str.starts_with(&pf))
-                    || (!pf86.is_empty() && path_str.starts_with(&pf86))
-                    || path_str.contains("program files")
-                {
-                    return "msi".to_string();
-                }
-            }
-            "exe".to_string()
-        }
+        "windows" => portable::detect_windows_install_format(),
         "macos" => "dmg".to_string(),
         _ => "unknown".to_string(),
     }
@@ -2761,7 +2751,7 @@ fn write_update_marker(
 ) {
     let verified =
         verification_mode == "SigstoreVerified" || verification_mode == "VerificationUnavailable";
-    if let Ok(config_dir) = app.path().app_config_dir() {
+    if let Ok(config_dir) = portable::app_config_dir(app) {
         let marker = config_dir.join("last-update.json");
         let data = serde_json::json!({
             "updated_from": from,
@@ -2777,7 +2767,7 @@ fn write_update_marker(
 
 #[tauri::command]
 async fn read_update_marker(app: AppHandle) -> Result<Option<String>, String> {
-    if let Ok(config_dir) = app.path().app_config_dir() {
+    if let Ok(config_dir) = portable::app_config_dir(&app) {
         let marker = config_dir.join("last-update.json");
         if marker.exists() {
             return std::fs::read_to_string(&marker)
@@ -2790,7 +2780,7 @@ async fn read_update_marker(app: AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 async fn clear_update_marker(app: AppHandle) -> Result<(), String> {
-    if let Ok(config_dir) = app.path().app_config_dir() {
+    if let Ok(config_dir) = portable::app_config_dir(&app) {
         let marker = config_dir.join("last-update.json");
         if marker.exists() {
             let _ = std::fs::remove_file(marker);
@@ -2959,7 +2949,29 @@ async fn install_rpm_update(
     app.restart();
 }
 
-/// Launch Windows installer (.msi or .exe) and exit the app
+/// Install a Windows update artifact (.msi, .exe, or portable .zip) silently
+/// and restart AeroFTP from the updated location.
+///
+/// Dispatch is deterministic from the install_format detected at startup
+/// (see `portable::detect_windows_install_format`), but as a defensive
+/// guard we also classify by extension here. Three paths:
+///
+///   - .msi: silent upgrade via `msiexec /i ... /qb /norestart`. The
+///     install location is unchanged (MSI overwrites in place); the
+///     helper script relaunches the same exe path after install.
+///
+///   - .exe (NSIS setup): silent install via `setup.exe /S`. The Tauri
+///     NSIS template + our `installer/hooks.nsh` handle silent mode
+///     correctly (PATH registration, .aerovault association, VC++
+///     runtime check, no UAC re-prompts on per-user installs).
+///
+///   - .zip (portable): extract into `%TEMP%`, helper script renames
+///     the running exe to `*.old`, swaps in the new exe, copies the
+///     marker/README/LICENSE, relaunches with `--post-update-cleanup`.
+///
+/// All three paths use a transient `.cmd` helper in `%TEMP%` spawned
+/// detached (`CREATE_NO_WINDOW | DETACHED_PROCESS`); the helper waits
+/// 2s for AeroFTP to exit, runs the install, relaunches, and self-deletes.
 #[tauri::command]
 async fn install_windows_update(
     #[allow(unused_variables)] app: AppHandle,
@@ -2982,36 +2994,33 @@ async fn install_windows_update(
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
-            .to_lowercase();
+            .to_ascii_lowercase();
 
-        info!("Launching Windows installer: {} ({})", downloaded_path, ext);
+        let format = match ext.as_str() {
+            "msi" => "msi",
+            "exe" => "exe",
+            "zip" => "portable",
+            other => return Err(format!("Unknown Windows update format: .{other}")),
+        };
 
-        match ext.as_str() {
-            "msi" => {
-                std::process::Command::new("msiexec")
-                    .args(["/i", &downloaded_path])
-                    .spawn()
-                    .map_err(|e| format!("Failed to launch msiexec: {}", e))?;
-            }
-            "exe" => {
-                std::process::Command::new(&downloaded_path)
-                    .spawn()
-                    .map_err(|e| format!("Failed to launch installer: {}", e))?;
-            }
-            _ => return Err(format!("Unknown installer format: .{}", ext)),
-        }
+        info!(
+            "Installing Windows update: format={format}, path={downloaded_path}"
+        );
+
+        windows_update_helper::install_with_helper(&app, format, downloaded)?;
 
         let from_version = app.package_info().version.to_string();
         write_update_marker(
             &app,
             &from_version,
             "unknown",
-            ext.as_str(),
+            format,
             &verification_mode,
         );
-        let _ = app.emit("update_install_phase", "restart");
 
-        // Give installer a moment to start, then exit
+        // Give the helper script time to spawn before we exit. The script
+        // pings 127.0.0.1 -n 3 (~2s) before doing anything destructive, so
+        // 500ms here is comfortably ahead of it.
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         app.exit(0);
 
@@ -13268,8 +13277,10 @@ pub fn run() {
                 }
             }
 
-            // Ensure AppConfig directory exists with restricted permissions (0700)
-            if let Ok(config_dir) = app.path().app_config_dir() {
+            // Ensure AppConfig directory exists with restricted permissions (0700).
+            // In portable mode this resolves to <exe-dir>/data/config; otherwise
+            // to the OS-native app config dir.
+            if let Ok(config_dir) = portable::app_config_dir(app.handle()) {
                 let _ = std::fs::create_dir_all(&config_dir);
                 #[cfg(unix)]
                 {
@@ -13339,7 +13350,7 @@ pub fn run() {
 
             // Initialize Vault History SQLite database
             {
-                let config_dir = app.path().app_config_dir().unwrap_or_default();
+                let config_dir = portable::app_config_dir(app.handle()).unwrap_or_default();
                 let db_path = config_dir.join("vault_history.db");
                 match rusqlite::Connection::open(&db_path) {
                     Ok(conn) => {
