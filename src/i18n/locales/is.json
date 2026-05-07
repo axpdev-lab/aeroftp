@@ -1616,7 +1616,10 @@
             "openProviderDocs": "Opna {provider} skjölun",
             "discoverImageKit": "Margmiðlunar-CDN og geymsla með innfæddum möppum (20 GB ókeypis)",
             "discoverUploadcare": "EU margmiðlunarstjórnun með CDN og skráa-API (3 GB ókeypis)",
-            "discoverCloudinary": "CDN fyrir miðlastjórnun með REST API (25 inneignir/mánuði ókeypis)"
+            "discoverCloudinary": "CDN fyrir miðlastjórnun með REST API (25 inneignir/mánuði ókeypis)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

@@ -1616,7 +1616,10 @@
             "openProviderDocs": "გახსენით {provider}-ის დოკუმენტაცია",
             "discoverImageKit": "მედია CDN და საცავი მშობლიური საქაღალდეებით (20 GB უფასო)",
             "discoverUploadcare": "EU მედიის მართვა CDN-ით და ფაილების API-ებით (3 GB უფასო)",
-            "discoverCloudinary": "CDN მედიის მართვისთვის REST API-ით (25 კრედიტი/თვეში უფასოდ)"
+            "discoverCloudinary": "CDN მედიის მართვისთვის REST API-ით (25 კრედიტი/თვეში უფასოდ)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

@@ -80,6 +80,7 @@ function deriveProviderId(server: ServerProfile): string | undefined {
         if (host.includes('infini-cloud') || host.includes('teracloud')) return 'infinicloud';
         if (host.includes('filelu')) return 'filelu-webdav';
         if (host.includes('felicloud')) return 'felicloud-webdav';
+        if (host.includes('tab.digital')) return 'tabdigital-webdav';
     }
     return undefined;
 }

@@ -1616,7 +1616,10 @@
             "openProviderDocs": "Ava {provider} dokumentatsioon",
             "discoverImageKit": "Meedia CDN ja salvestus loomulike kaustadega (20 GB tasuta)",
             "discoverUploadcare": "EU meediahaldus CDN-i ja faili-API-dega (3 GB tasuta)",
-            "discoverCloudinary": "CDN meediahalduseks REST API-ga (25 krediiti/kuus tasuta)"
+            "discoverCloudinary": "CDN meediahalduseks REST API-ga (25 krediiti/kuus tasuta)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

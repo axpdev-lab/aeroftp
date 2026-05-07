@@ -1616,7 +1616,10 @@
             "openProviderDocs": "Abrir a documentación de {provider}",
             "discoverImageKit": "CDN multimedia e almacenamento con cartafoles nativos (20 GB gratis)",
             "discoverUploadcare": "Xestión de medios EU con CDN e API de ficheiros (3 GB gratis)",
-            "discoverCloudinary": "CDN para xestión de medios con REST API (25 créditos/mes gratis)"
+            "discoverCloudinary": "CDN para xestión de medios con REST API (25 créditos/mes gratis)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "Atallos de teclado",

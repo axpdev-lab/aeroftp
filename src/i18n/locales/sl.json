@@ -1616,7 +1616,10 @@
             "openProviderDocs": "Odpri dokumentacijo {provider}",
             "discoverImageKit": "Medijski CDN in shramba z nativnimi mapami (20 GB brezplačno)",
             "discoverUploadcare": "EU upravljanje medijev s CDN in datotečnimi API-ji (3 GB brezplačno)",
-            "discoverCloudinary": "CDN za upravljanje medijev z REST API (25 kreditov/mesec brezplačno)"
+            "discoverCloudinary": "CDN za upravljanje medijev z REST API (25 kreditov/mesec brezplačno)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

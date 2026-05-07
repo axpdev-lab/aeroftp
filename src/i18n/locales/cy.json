@@ -1616,7 +1616,10 @@
             "openProviderDocs": "Agor dogfennaeth {provider}",
             "discoverImageKit": "CDN cyfryngau a storfa gyda ffolderi brodorol (20 GB am ddim)",
             "discoverUploadcare": "Rheoli cyfryngau EU gyda CDN ac API ffeiliau (3 GB am ddim)",
-            "discoverCloudinary": "CDN ar gyfer rheoli cyfryngau gyda REST API (25 credyd/mis am ddim)"
+            "discoverCloudinary": "CDN ar gyfer rheoli cyfryngau gyda REST API (25 credyd/mis am ddim)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

@@ -1616,7 +1616,10 @@
             "openProviderDocs": "Obre la documentació de {provider}",
             "discoverImageKit": "CDN i emmagatzematge multimèdia amb carpetes natives (20 GB gratis)",
             "discoverUploadcare": "Gestió de mèdia EU amb CDN i API de fitxers (3 GB gratis)",
-            "discoverCloudinary": "CDN per a la gestió de mèdia amb REST API (25 crèdits/mes gratuïts)"
+            "discoverCloudinary": "CDN per a la gestió de mèdia amb REST API (25 crèdits/mes gratuïts)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",

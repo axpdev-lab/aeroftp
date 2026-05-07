@@ -1609,7 +1609,10 @@
             "openProviderDocs": "Բացել {provider}-ի փաստաթղթերը",
             "discoverImageKit": "Մեդիա CDN և պահոցում ներքին թղթապանակներով (20 GB անվճար)",
             "discoverUploadcare": "EU մեդիայի կառավարում CDN-ով և ֆայլերի API-ներով (3 GB անվճար)",
-            "discoverCloudinary": "CDN մեդիա կառավարման համար REST API-ով (25 կրեդիտ/ամսական անվճար)"
+            "discoverCloudinary": "CDN մեդիա կառավարման համար REST API-ով (25 կրեդիտ/ամսական անվճար)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

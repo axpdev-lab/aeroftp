@@ -330,6 +330,17 @@ export const FeliCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Tab.digital: blue arrow + "tab" wordmark (Nextcloud-based, EU/Italy, 8 GB free)
+export const TabDigitalLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/tabdigital.png"
+        alt="Tab.digital"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // S3Drive: Storj-backed S3 client, official logo
 export const S3DriveLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
@@ -525,6 +536,8 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'yandexdisk-webdav': YandexDiskLogo,
     'yandex-storage': YandexCloudLogo,
     'felicloud': FeliCloudLogo,
+    'tabdigital': TabDigitalLogo,
+    'tab-digital': TabDigitalLogo,
     'blomp': BlompLogo,
     'sourceforge': SourceForgeLogo,
     'quotaless-s3': QuotalessLogo,

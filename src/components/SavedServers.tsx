@@ -720,10 +720,16 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                         <span className="text-xs text-blue-500 animate-pulse">{t('connection.authenticating')}</span>
                                     )}
                                     <span
-                                        className={`text-xs px-1.5 py-0.5 rounded font-medium uppercase ${server.providerId === 'felicloud' ? '' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}
-                                        style={server.providerId === 'felicloud' ? { backgroundColor: '#0083ce22', color: '#0083ce' } : undefined}
+                                        className={`text-xs px-1.5 py-0.5 rounded font-medium uppercase ${(server.providerId === 'felicloud' || server.providerId === 'tabdigital') ? '' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}
+                                        style={
+                                            server.providerId === 'felicloud'
+                                                ? { backgroundColor: '#0083ce22', color: '#0083ce' }
+                                                : server.providerId === 'tabdigital'
+                                                    ? { backgroundColor: '#04bb7022', color: '#04bb70' }
+                                                    : undefined
+                                        }
                                     >
-                                        {server.providerId === 'felicloud' ? 'API OCS' : (server.protocol || 'ftp')}
+                                        {(server.providerId === 'felicloud' || server.providerId === 'tabdigital') ? 'API OCS' : (server.protocol || 'ftp')}
                                     </span>
                                     {gitHubBadge && (
                                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${gitHubBadge.className}`}>

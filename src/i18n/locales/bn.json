@@ -1616,7 +1616,10 @@
             "openProviderDocs": "{provider} ডকুমেন্টেশন খুলুন",
             "discoverImageKit": "নেটিভ ফোল্ডার সহ মিডিয়া CDN এবং স্টোরেজ (20 GB ফ্রি)",
             "discoverUploadcare": "CDN এবং ফাইল API সহ EU মিডিয়া ম্যানেজমেন্ট (3 GB ফ্রি)",
-            "discoverCloudinary": "REST API সহ মিডিয়া ব্যবস্থাপনার CDN (প্রতি মাসে 25 ক্রেডিট ফ্রি)"
+            "discoverCloudinary": "REST API সহ মিডিয়া ব্যবস্থাপনার CDN (প্রতি মাসে 25 ক্রেডিট ফ্রি)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

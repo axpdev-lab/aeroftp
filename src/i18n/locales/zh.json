@@ -1616,7 +1616,10 @@
             "openProviderDocs": "打开 {provider} 文档",
             "discoverImageKit": "支持原生文件夹的媒体 CDN 与存储（20 GB 免费）",
             "discoverUploadcare": "带 CDN 和文件 API 的 EU 媒体管理（3 GB 免费）",
-            "discoverCloudinary": "媒体管理 CDN，提供 REST API（每月 25 积分免费）"
+            "discoverCloudinary": "媒体管理 CDN，提供 REST API（每月 25 积分免费）",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "键盘快捷键",

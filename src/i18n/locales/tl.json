@@ -1616,7 +1616,10 @@
             "openProviderDocs": "Buksan ang dokumentasyon ng {provider}",
             "discoverImageKit": "Media CDN at imbakan na may native na mga folder (20 GB libre)",
             "discoverUploadcare": "Pamamahala ng EU media na may CDN at file API (3 GB libre)",
-            "discoverCloudinary": "CDN para sa pamamahala ng media na may REST API (25 credits/buwan libre)"
+            "discoverCloudinary": "CDN para sa pamamahala ng media na may REST API (25 credits/buwan libre)",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

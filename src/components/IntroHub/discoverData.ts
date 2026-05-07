@@ -146,6 +146,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'cloudme': 'protocol.discoverCloudMe',
     'drivehq': 'protocol.discoverDriveHQ',
     'felicloud': 'protocol.discoverFelicloud',
+    'tabdigital': 'protocol.discoverTabDigital',
     'jianguoyun': 'protocol.discoverJianguoyun',
     'infinicloud': 'protocol.discoverInfiniCloud',
     'seafile': 'protocol.discoverSeafile',
@@ -198,6 +199,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
 /** Badge overrides for registry providers with distinctive features */
 const BADGE_OVERRIDES: Record<string, string> = {
     'felicloud': 'API OCS',   // Nextcloud-based, OCS REST API for sharing
+    'tabdigital': 'API OCS',  // Tab.digital is also Nextcloud-as-a-service
     'megacmd-webdav': 'LOCAL',
     'filen-desktop-webdav': 'LOCAL',
     'filen-desktop-s3': 'LOCAL',
@@ -260,9 +262,10 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
                 'custom-webdav': 0,
                 'nextcloud': 1,
                 'felicloud': 2,
-                'koofr': 3,
-                'megacmd-webdav': 4,
-                'filen-desktop-webdav': 5,
+                'tabdigital': 3,
+                'koofr': 4,
+                'megacmd-webdav': 5,
+                'filen-desktop-webdav': 6,
                 'quotaless-webdav': 99,
             };
             const pa = priority[a.id] ?? 10;

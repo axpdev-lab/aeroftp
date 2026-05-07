@@ -26,7 +26,7 @@ import {
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint } from '../providers';
-import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
+import { BoxLogo, PCloudLogo, AzureLogo, FilenLogo, FourSharedLogo, ZohoWorkDriveLogo, InternxtLogo, KDriveLogo, JottacloudLogo, DrimeCloudLogo, FileLuLogo, KoofrLogo, OpenDriveLogo, YandexDiskLogo, GitHubLogo, BlompLogo, FeliCloudLogo, TabDigitalLogo, ImmichLogo, ImageKitLogo, UploadcareLogo, CloudinaryLogo } from './ProviderLogos';
 
 // Official brand logos as inline SVGs
 const GoogleDriveLogo: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = '' }) => (
@@ -380,6 +380,19 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         providerId: 'felicloud',
     },
     {
+        type: 'webdav',
+        name: 'Tab.digital',
+        icon: <TabDigitalLogo size={18} />,
+        description: t('protocol.tabdigitalDesc'),
+        defaultPort: 443,
+        badge: 'API OCS',
+        color: 'text-emerald-500',
+        isCloudStorage: true,
+        category: 'service',
+        tooltip: t('protocol.tabdigitalTooltip'),
+        providerId: 'tabdigital',
+    },
+    {
         type: 'opendrive',
         name: 'OpenDrive',
         icon: <OpenDriveLogo size={18} />,
@@ -467,6 +480,7 @@ const PROTOCOLS_FALLBACK: ProtocolInfo[] = [
     { type: 'internxt', name: 'Internxt', icon: <InternxtLogo size={18} />, description: 'Zero-Knowledge Cloud (1 GB free)', defaultPort: 443, badge: 'E2E 256-bit', color: 'text-blue-600', isCloudStorage: true, tooltip: 'Internxt zero-knowledge encryption' },
     { type: 'pcloud', name: 'pCloud', icon: <PCloudLogo size={18} />, description: 'pCloud (10 GB free)', defaultPort: 443, badge: 'OAuth', isOAuth: true, isCloudStorage: true, tooltip: 'pCloud OAuth2' },
     { type: 'webdav', name: 'Felicloud', icon: <FeliCloudLogo size={18} />, description: 'Felicloud (10 GB free, EU/GDPR)', defaultPort: 443, badge: 'API OCS', color: 'text-orange-500', isCloudStorage: true, tooltip: 'Felicloud: Nextcloud-based EU cloud, 10GB free, GDPR compliant', providerId: 'felicloud' },
+    { type: 'webdav', name: 'Tab.digital', icon: <TabDigitalLogo size={18} />, description: 'Tab.digital (8 GB free, Nextcloud-based, EU)', defaultPort: 443, badge: 'API OCS', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'Tab.digital: Nextcloud-as-a-service, 8GB free, regional subdomains (fie.nl, fie.de, ...)', providerId: 'tabdigital' },
     { type: 'immich', name: 'Immich', icon: <ImmichLogo size={18} />, description: 'Self-hosted photo management', defaultPort: 443, badge: 'API', color: 'text-indigo-500', isCloudStorage: true, tooltip: 'Immich: Self-hosted photo/video management, API key auth' },
     { type: 'imagekit', name: 'ImageKit', icon: <ImageKitLogo size={18} />, description: 'Media CDN + storage (20 GB free)', defaultPort: 443, badge: 'API', color: 'text-blue-500', isCloudStorage: true, tooltip: 'ImageKit: private key auth, filesystem-style media library' },
     { type: 'uploadcare', name: 'Uploadcare', icon: <UploadcareLogo size={18} />, description: 'EU media CDN (3 GB free)', defaultPort: 443, badge: 'EU', color: 'text-emerald-500', isCloudStorage: true, tooltip: 'Uploadcare: public + secret key, flat media library' },

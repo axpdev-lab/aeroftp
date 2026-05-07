@@ -1616,7 +1616,10 @@
             "openProviderDocs": "{provider} のドキュメントを開く",
             "discoverImageKit": "ネイティブフォルダ対応のメディア CDN とストレージ (20 GB 無料)",
             "discoverUploadcare": "CDN とファイル API による EU メディア管理 (3 GB 無料)",
-            "discoverCloudinary": "REST APIを備えたメディア管理CDN（毎月25クレジット無料）"
+            "discoverCloudinary": "REST APIを備えたメディア管理CDN（毎月25クレジット無料）",
+            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
+            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

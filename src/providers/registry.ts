@@ -1626,6 +1626,47 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://nextcloud.com/sign-up/',
     },
     {
+        id: 'tabdigital',
+        name: 'Tab.digital',
+        description: 'Tab.digital (8 GB free, Nextcloud-based, EU/GDPR)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#04bb70',
+        stable: true,
+        contactVerified: true,
+        fields: [
+            {
+                ...COMMON_FIELDS.server,
+                label: 'Tab.digital Endpoint',
+                placeholder: 'es. https://fie.nl.tab.digital',
+                helpText: 'Find your endpoint under Settings → Personal → WebDAV on tab.digital. The subdomain is regional (fie.nl, fie.de, ...).',
+            },
+            { ...COMMON_FIELDS.username },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'Password or App Token',
+                helpText: 'Use an App Token from Settings → Security → Devices for better security (required if 2FA is on).',
+            },
+        ],
+        defaults: {
+            port: 443,
+            basePath: '/remote.php/dav/files/{username}/',
+        },
+        endpoints: {
+            webdavPath: '/remote.php/dav/files/{username}/',
+            shareLink: '/ocs/v2.php/apps/files_sharing/api/v1/shares',
+        },
+        features: {
+            shareLink: true,
+            sync: true,
+            versioning: true,
+            trash: true,
+        },
+        helpUrl: 'https://tab.digital/',
+        signupUrl: 'https://tab.digital/',
+    },
+    {
         id: 'felicloud',
         name: 'Felicloud',
         description: 'Felicloud (10 GB free, Nextcloud-based, EU/GDPR)',

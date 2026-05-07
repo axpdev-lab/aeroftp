@@ -26,7 +26,7 @@ const POPULARITY_PRIORITY: Record<string, number> = {
     'minio': 4, 'storj': 5, 'backblaze': 6, 'wasabi': 7, 'idrive-e2': 8,
     'mega-s4': 9, 'digitalocean-spaces': 10,
     // WebDAV
-    'custom-webdav': 0, 'nextcloud': 1, 'koofr-webdav': 2, 'felicloud': 3, 'seafile': 4,
+    'custom-webdav': 0, 'nextcloud': 1, 'koofr-webdav': 2, 'felicloud': 3, 'tabdigital': 4, 'seafile': 5,
     // Cloud
     'googledrive': 0, 'dropbox': 1, 'onedrive': 2, 'mega': 3, 'box': 4,
     'pcloud': 5, 'koofr-cloud': 6, 'kdrive': 7, 'filen': 8, 'internxt': 9,

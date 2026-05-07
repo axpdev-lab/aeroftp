@@ -85,7 +85,7 @@ const badgeSortLabel = (server: ServerProfile) => {
     const proto = (server.protocol || 'ftp') as ProviderType;
     const protocolClass = getProtocolClass(proto);
     const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto) : null;
-    if (server.providerId === 'felicloud') return 'API OCS';
+    if (server.providerId === 'felicloud' || server.providerId === 'tabdigital') return 'API OCS';
     return [
         e2eBits ? `${protocolClass} ${e2eBits}-bit` : protocolClass,
         server.providerId || server.protocol || '',
