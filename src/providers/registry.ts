@@ -1658,13 +1658,18 @@ export const PROVIDERS: ProviderConfig[] = [
             // regional shards (DE, IT, SE, LV per the Tab.digital data-centre
             // map) open Advanced and edit the subdomain once. The {username}
             // template in `server` IS resolved at connect time by
-            // WebDavConfig::from_provider_config (Rust backend). The
-            // {username} template in `basePath` is resolved at connect time
-            // by resolveUsernameTemplate (App.tsx), so saved profiles +
-            // Quick Connect both land on the right WebDAV path.
+            // WebDavConfig::from_provider_config (Rust backend).
+            //
+            // basePath is intentionally omitted: confirmed empirically on
+            // fie.nl.tab.digital that PROPFIND /remote.php/dav/files/<u>/
+            // with Depth: 1 returns 404 in some Cloudflare-fronted edge
+            // configurations, while the WebDAV auto-detect during connect
+            // (which uses Depth: 0 on the same path) succeeds. Letting the
+            // auto-detect drive the initial listing avoids the discrepancy
+            // and is the path the connect screen takes when basePath is
+            // unset. See issue #175 + 32677df6.
             server: 'https://fie.nl.tab.digital/remote.php/dav/files/{username}/',
             port: 443,
-            basePath: '/remote.php/dav/files/{username}/',
         },
         endpoints: {
             webdavPath: '/remote.php/dav/files/{username}/',

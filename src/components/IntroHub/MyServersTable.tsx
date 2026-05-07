@@ -85,7 +85,11 @@ const badgeSortLabel = (server: ServerProfile) => {
     const proto = (server.protocol || 'ftp') as ProviderType;
     const protocolClass = getProtocolClass(proto);
     const e2eBits = protocolClass === 'E2E' ? getE2EBits(proto) : null;
-    if (server.providerId === 'felicloud' || server.providerId === 'tabdigital') return 'API OCS';
+    // Match both the bare provider id (saved from the Quick Connect form)
+    // and the `-webdav` suffix variant (assigned by MyServersPanel's host
+    // heuristic when the saved profile predates the preset).
+    const pid = server.providerId || '';
+    if (pid === 'felicloud' || pid === 'felicloud-webdav' || pid === 'tabdigital' || pid === 'tabdigital-webdav') return 'API OCS';
     return [
         e2eBits ? `${protocolClass} ${e2eBits}-bit` : protocolClass,
         server.providerId || server.protocol || '',

@@ -719,18 +719,28 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                     {oauthConnecting === server.id && (
                                         <span className="text-xs text-blue-500 animate-pulse">{t('connection.authenticating')}</span>
                                     )}
-                                    <span
-                                        className={`text-xs px-1.5 py-0.5 rounded font-medium uppercase ${(server.providerId === 'felicloud' || server.providerId === 'tabdigital') ? '' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}
-                                        style={
-                                            server.providerId === 'felicloud'
-                                                ? { backgroundColor: '#0083ce22', color: '#0083ce' }
-                                                : server.providerId === 'tabdigital'
-                                                    ? { backgroundColor: '#04bb7022', color: '#04bb70' }
-                                                    : undefined
-                                        }
-                                    >
-                                        {(server.providerId === 'felicloud' || server.providerId === 'tabdigital') ? 'API OCS' : (server.protocol || 'ftp')}
-                                    </span>
+                                    {(() => {
+                                        // Match both the bare provider id and the `-webdav`
+                                        // suffix variant set by MyServersPanel's host heuristic
+                                        // for legacy profiles saved before the preset existed.
+                                        const pid = server.providerId || '';
+                                        const isFelicloud = pid === 'felicloud' || pid === 'felicloud-webdav';
+                                        const isTabdigital = pid === 'tabdigital' || pid === 'tabdigital-webdav';
+                                        const isOcsBranded = isFelicloud || isTabdigital;
+                                        const brandedStyle = isFelicloud
+                                            ? { backgroundColor: '#0083ce22', color: '#0083ce' }
+                                            : isTabdigital
+                                                ? { backgroundColor: '#04bb7022', color: '#04bb70' }
+                                                : undefined;
+                                        return (
+                                            <span
+                                                className={`text-xs px-1.5 py-0.5 rounded font-medium uppercase ${isOcsBranded ? '' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}
+                                                style={brandedStyle}
+                                            >
+                                                {isOcsBranded ? 'API OCS' : (server.protocol || 'ftp')}
+                                            </span>
+                                        );
+                                    })()}
                                     {gitHubBadge && (
                                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${gitHubBadge.className}`}>
                                             {gitHubBadge.label}
