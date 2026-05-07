@@ -1634,7 +1634,9 @@ export const PROVIDERS: ProviderConfig[] = [
         icon: 'Cloud',
         color: '#04bb70',
         stable: true,
-        contactVerified: true,
+        // contactVerified intentionally NOT set: we are not in direct contact
+        // with Tab.digital. Felicloud is, hence its "In direct contact for
+        // priority support" footer; we should not claim the same here.
         // Felicloud-style minimal form: only username + password are visible.
         // The Tab.digital endpoint and port live under "Advanced" with the
         // pre-filled regional default (fie.nl), so non-NL users open Advanced
