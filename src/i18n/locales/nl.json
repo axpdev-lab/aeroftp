@@ -4378,6 +4378,16 @@
             "emptyFolder": "Lege map",
             "nameNotDecrypted": "naam niet ontsleuteld",
             "download": "Downloaden"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Verborgen bestanden",
+                "banner": "B2 'verwijderen' is een zachte verwijdering: bestanden worden onzichtbaar, maar een vorige versie blijft in de bucket. Herstellen brengt het bestand terug; permanent verwijderen wist elke versie (onomkeerbaar).",
+                "empty": "Geen verborgen bestanden in dit pad",
+                "openButton": "Verborgen bestanden",
+                "confirmDeleteTitle": "Elke versie permanent verwijderen",
+                "confirmDeleteBody": "Hiermee worden alle opgeslagen versies van {count} bestand(en) uit de bucket verwijderd. De gegevens kunnen niet worden hersteld."
+            }
         }
     }
 }

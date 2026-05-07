@@ -4407,6 +4407,16 @@
             "emptyFolder": "Tom mappe",
             "nameNotDecrypted": "navn ikke dekryptert",
             "download": "Last ned"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Skjulte filer",
+                "banner": "B2 'slett' er en myk sletting: filer blir usynlige, men en tidligere versjon forblir i bucket-en. Gjenoppretting bringer filen tilbake; permanent sletting fjerner hver versjon (kan ikke angres).",
+                "empty": "Ingen skjulte filer i denne stien",
+                "openButton": "Skjulte filer",
+                "confirmDeleteTitle": "Slett hver versjon permanent",
+                "confirmDeleteBody": "Dette vil fjerne alle lagrede versjoner av {count} fil(er) fra bucket-en. Dataene kan ikke gjenopprettes."
+            }
         }
     }
 }

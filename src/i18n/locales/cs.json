@@ -4388,6 +4388,16 @@
             "emptyFolder": "Prázdná složka",
             "nameNotDecrypted": "název nedešifrován",
             "download": "Stáhnout"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Skryté soubory",
+                "banner": "Mazání v B2 je soft-delete: soubory se stanou neviditelnými, ale předchozí verze zůstává v bucketu. Obnovení vrátí soubor zpět; trvalé smazání odstraní všechny verze (nevratné).",
+                "empty": "V této cestě nejsou žádné skryté soubory",
+                "openButton": "Skryté soubory",
+                "confirmDeleteTitle": "Trvale smazat všechny verze",
+                "confirmDeleteBody": "Tímto se z bucketu odstraní všechny uložené verze {count} souboru(ů). Data nelze obnovit."
+            }
         }
     }
 }

@@ -143,6 +143,7 @@ import { DropboxTrashManager } from './components/DropboxTrashManager';
 import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { KoofrTrashManager } from './components/KoofrTrashManager';
 import { InternxtTrashManager } from './components/InternxtTrashManager';
+import { B2HiddenManager } from './components/B2HiddenManager';
 import { NextcloudTrashManager } from './components/NextcloudTrashManager';
 import { OpenDriveTrashManager } from './components/OpenDriveTrashManager';
 import { YandexTrashManager } from './components/YandexTrashManager';
@@ -580,6 +581,7 @@ const App: React.FC = () => {
   const [showFileLuTrash, setShowFileLuTrash] = useState(false);
   const [showKoofrTrash, setShowKoofrTrash] = useState(false);
   const [showInternxtTrash, setShowInternxtTrash] = useState(false);
+  const [showB2Hidden, setShowB2Hidden] = useState(false);
   const [showOpenDriveTrash, setShowOpenDriveTrash] = useState(false);
   const [showYandexTrash, setShowYandexTrash] = useState(false);
   const [showPCloudTrash, setShowPCloudTrash] = useState(false);
@@ -9178,6 +9180,13 @@ interface UpdateVerificationInfo {
             currentPath={currentRemotePath}
           />
         )}
+        {showB2Hidden && (
+          <B2HiddenManager
+            onClose={() => setShowB2Hidden(false)}
+            onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+            currentPath={currentRemotePath}
+          />
+        )}
         {showOneDriveTrash && (
           <OneDriveTrashManager
             onClose={() => setShowOneDriveTrash(false)}
@@ -10100,6 +10109,7 @@ interface UpdateVerificationInfo {
                         kdrive: () => setShowKDriveTrash(true),
                         pcloud: () => setShowPCloudTrash(true),
                         onedrive: () => setShowOneDriveTrash(true),
+                        backblaze: () => setShowB2Hidden(true),
                       };
                       let handler = trashMap[proto || ''];
                       if (!handler && isAzure) {

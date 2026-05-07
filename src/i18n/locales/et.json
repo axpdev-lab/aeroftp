@@ -4388,6 +4388,16 @@
             "emptyFolder": "Tühi kaust",
             "nameNotDecrypted": "nime ei dekrüpteeritud",
             "download": "Lae alla"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Peidetud failid",
+                "banner": "B2 'delete' on soft-delete: failid muutuvad nähtamatuks, kuid eelmine versioon jääb bucketi alles. Taastamine toob faili tagasi; jäädav kustutamine eemaldab iga versiooni (pöördumatu).",
+                "empty": "Selles asukohas pole peidetud faile",
+                "openButton": "Peidetud failid",
+                "confirmDeleteTitle": "Kustuta jäädavalt kõik versioonid",
+                "confirmDeleteBody": "See eemaldab bucketist kõik salvestatud versioonid {count} failist. Andmeid ei saa taastada."
+            }
         }
     }
 }

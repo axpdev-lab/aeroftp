@@ -4388,6 +4388,16 @@
             "emptyFolder": "Tom mapp",
             "nameNotDecrypted": "namn ej dekrypterat",
             "download": "Ladda ner"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Dolda filer",
+                "banner": "B2:s 'delete'-operation är en mjuk borttagning: filer blir osynliga men en tidigare version stannar kvar i bucket. Återställning hämtar tillbaka filen; permanent borttagning rensar alla versioner (oåterkalleligt).",
+                "empty": "Inga dolda filer i denna sökväg",
+                "openButton": "Dolda filer",
+                "confirmDeleteTitle": "Ta bort alla versioner permanent",
+                "confirmDeleteBody": "Detta kommer att rensa alla lagrade versioner av {count} fil(er) från bucket. Datan kan inte återställas."
+            }
         }
     }
 }

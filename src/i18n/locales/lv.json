@@ -4388,6 +4388,16 @@
             "emptyFolder": "Tukša mape",
             "nameNotDecrypted": "nosaukums nav atšifrēts",
             "download": "Lejupielādēt"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Slēptie faili",
+                "banner": "B2 'dzēšana' ir mīkstā dzēšana: faili kļūst neredzami, bet iepriekšējā versija paliek bucket-ā. Atjaunošana atgriež failu; pilnīga dzēšana noņem katru versiju (neatgriezeniski).",
+                "empty": "Šajā ceļā nav slēptu failu",
+                "openButton": "Slēptie faili",
+                "confirmDeleteTitle": "Pilnībā dzēst katru versiju",
+                "confirmDeleteBody": "Tas no bucket-a noņems visas saglabātās {count} failu versijas. Datus nevarēs atjaunot."
+            }
         }
     }
 }

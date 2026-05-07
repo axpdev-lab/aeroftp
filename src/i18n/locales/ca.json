@@ -4407,6 +4407,16 @@
             "emptyFolder": "Carpeta buida",
             "nameNotDecrypted": "nom no desxifrat",
             "download": "Descarrega"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Fitxers ocults",
+                "banner": "L'eliminació a B2 és un soft-delete: els fitxers es tornen invisibles però una versió anterior es manté al bucket. La restauració recupera el fitxer; l'eliminació permanent purga totes les versions (irreversible).",
+                "empty": "No hi ha fitxers ocults en aquesta ruta",
+                "openButton": "Fitxers ocults",
+                "confirmDeleteTitle": "Eliminar permanentment totes les versions",
+                "confirmDeleteBody": "Això purgarà totes les versions emmagatzemades de {count} fitxer(s) del bucket. Les dades no es poden recuperar."
+            }
         }
     }
 }

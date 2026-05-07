@@ -4388,6 +4388,16 @@
             "emptyFolder": "Prazna mapa",
             "nameNotDecrypted": "ime ni dešifrirano",
             "download": "Prenesi"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Skrite datoteke",
+                "banner": "Operacija 'delete' v B2 je mehki izbris: datoteke postanejo nevidne, vendar prejšnja različica ostane v bucket. Obnovitev datoteko vrne; trajni izbris odstrani vse različice (nepovratno).",
+                "empty": "Na tej poti ni skritih datotek",
+                "openButton": "Skrite datoteke",
+                "confirmDeleteTitle": "Trajno izbriši vse različice",
+                "confirmDeleteBody": "To bo odstranilo vse shranjene različice {count} datotek(e) iz bucket. Podatkov ni mogoče obnoviti."
+            }
         }
     }
 }

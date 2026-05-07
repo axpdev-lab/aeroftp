@@ -14387,6 +14387,10 @@ pub fn run() {
             provider_commands::kdrive_restore_from_trash,
             provider_commands::kdrive_permanently_delete_trash,
             provider_commands::kdrive_empty_trash,
+            // Backblaze B2 native: hide / restore / permanent-delete
+            provider_commands::b2_list_hidden,
+            provider_commands::b2_restore_hidden,
+            provider_commands::b2_permanent_delete,
             // Permissions / Advanced sharing
             provider_commands::provider_supports_permissions,
             provider_commands::provider_list_permissions,

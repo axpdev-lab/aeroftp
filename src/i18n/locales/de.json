@@ -4378,6 +4378,16 @@
             "emptyFolder": "Leerer Ordner",
             "nameNotDecrypted": "Name nicht entschlüsselt",
             "download": "Herunterladen"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Versteckte Dateien",
+                "banner": "Das 'delete' in B2 ist ein Soft-Delete: Dateien werden unsichtbar, aber eine frühere Version bleibt im Bucket. Wiederherstellen holt die Datei zurück; permanentes Löschen entfernt jede Version (unwiderruflich).",
+                "empty": "Keine versteckten Dateien in diesem Pfad",
+                "openButton": "Versteckte Dateien",
+                "confirmDeleteTitle": "Alle Versionen dauerhaft löschen",
+                "confirmDeleteBody": "Hiermit werden alle gespeicherten Versionen von {count} Datei(en) aus dem Bucket entfernt. Die Daten können nicht wiederhergestellt werden."
+            }
         }
     }
 }

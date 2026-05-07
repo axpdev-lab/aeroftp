@@ -4388,6 +4388,16 @@
             "emptyFolder": "Folder kosong",
             "nameNotDecrypted": "nama tidak didekripsi",
             "download": "Unduh"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - File Tersembunyi",
+                "banner": "'Hapus' B2 adalah soft-delete: file menjadi tidak terlihat tetapi versi sebelumnya tetap ada di bucket. Pulihkan akan mengembalikan file; hapus permanen akan menghapus setiap versi (tidak dapat dibatalkan).",
+                "empty": "Tidak ada file tersembunyi di jalur ini",
+                "openButton": "File Tersembunyi",
+                "confirmDeleteTitle": "Hapus permanen setiap versi",
+                "confirmDeleteBody": "Ini akan menghapus setiap versi tersimpan dari {count} file dari bucket. Data tidak dapat dipulihkan."
+            }
         }
     }
 }

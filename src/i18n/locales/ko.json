@@ -4378,6 +4378,16 @@
             "emptyFolder": "빈 폴더",
             "nameNotDecrypted": "이름이 복호화되지 않음",
             "download": "다운로드"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - 숨겨진 파일",
+                "banner": "B2의 '삭제'는 소프트 삭제입니다: 파일은 보이지 않게 되지만 이전 버전은 bucket에 남아 있습니다. 복원하면 파일이 다시 나타납니다. 영구 삭제는 모든 버전을 제거합니다(되돌릴 수 없음).",
+                "empty": "이 경로에 숨겨진 파일이 없습니다",
+                "openButton": "숨겨진 파일",
+                "confirmDeleteTitle": "모든 버전 영구 삭제",
+                "confirmDeleteBody": "이 작업은 {count}개 파일의 저장된 모든 버전을 bucket에서 제거합니다. 데이터는 복구할 수 없습니다."
+            }
         }
     }
 }

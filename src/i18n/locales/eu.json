@@ -4407,6 +4407,16 @@
             "emptyFolder": "Karpeta hutsa",
             "nameNotDecrypted": "izena ez da deszifratu",
             "download": "Deskargatu"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Ezkutuko fitxategiak",
+                "banner": "B2-ko 'delete' soft-delete bat da: fitxategiak ikusezin bihurtzen dira baina aurreko bertsio bat bucket-ean geratzen da. Berreskuratzeak fitxategia itzultzen du; behin betiko ezabatzeak bertsio guztiak garbitzen ditu (atzeraezina).",
+                "empty": "Ez dago ezkutuko fitxategirik bide honetan",
+                "openButton": "Ezkutuko fitxategiak",
+                "confirmDeleteTitle": "Behin betiko ezabatu bertsio guztiak",
+                "confirmDeleteBody": "Honek bucket-etik {count} fitxategiren gordetako bertsio guztiak garbituko ditu. Datuak ezin dira berreskuratu."
+            }
         }
     }
 }

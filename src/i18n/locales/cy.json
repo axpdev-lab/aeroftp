@@ -4407,6 +4407,16 @@
             "emptyFolder": "Ffolder gwag",
             "nameNotDecrypted": "enw heb ei ddadgryptio",
             "download": "Lawrlwytho"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Ffeiliau cudd",
+                "banner": "Mae 'delete' B2 yn soft-delete: daw'r ffeiliau yn anweledig ond mae fersiwn flaenorol yn aros yn y bucket. Mae adfer yn dod â'r ffeil yn ôl; mae dileu parhaol yn clirio pob fersiwn (anwrthdroadwy).",
+                "empty": "Dim ffeiliau cudd yn y llwybr hwn",
+                "openButton": "Ffeiliau cudd",
+                "confirmDeleteTitle": "Dileu pob fersiwn yn barhaol",
+                "confirmDeleteBody": "Bydd hyn yn clirio pob fersiwn a storiwyd o {count} ffeil o'r bucket. Ni ellir adfer y data."
+            }
         }
     }
 }

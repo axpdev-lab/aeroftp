@@ -4388,6 +4388,16 @@
             "emptyFolder": "Prazna fascikla",
             "nameNotDecrypted": "naziv nije dešifrovan",
             "download": "Preuzmi"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Skriveni fajlovi",
+                "banner": "Operacija 'delete' u B2 je meko brisanje: fajlovi postaju nevidljivi, ali prethodna verzija ostaje u bucket. Vraćanje vraća fajl; trajno brisanje uklanja sve verzije (nepovratno).",
+                "empty": "Nema skrivenih fajlova na ovoj putanji",
+                "openButton": "Skriveni fajlovi",
+                "confirmDeleteTitle": "Trajno obriši sve verzije",
+                "confirmDeleteBody": "Ovo će ukloniti sve sačuvane verzije {count} fajl(ova) iz bucket. Podaci se neće moći povratiti."
+            }
         }
     }
 }

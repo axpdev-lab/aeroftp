@@ -4388,6 +4388,16 @@
             "emptyFolder": "Folder kosong",
             "nameNotDecrypted": "nama tidak dinyahsulitkan",
             "download": "Muat turun"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Fail Tersembunyi",
+                "banner": "'Padam' B2 adalah pemadaman lembut: fail menjadi tidak kelihatan tetapi versi sebelumnya kekal dalam bucket. Pulih akan mengembalikan fail; padam kekal akan membuang setiap versi (tidak boleh dibatalkan).",
+                "empty": "Tiada fail tersembunyi dalam laluan ini",
+                "openButton": "Fail Tersembunyi",
+                "confirmDeleteTitle": "Padam setiap versi secara kekal",
+                "confirmDeleteBody": "Ini akan membuang setiap versi tersimpan bagi {count} fail dari bucket. Data tidak boleh dipulihkan."
+            }
         }
     }
 }

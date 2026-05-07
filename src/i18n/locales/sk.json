@@ -4388,6 +4388,16 @@
             "emptyFolder": "Prázdny priečinok",
             "nameNotDecrypted": "názov nedešifrovaný",
             "download": "Stiahnuť"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Skryté súbory",
+                "banner": "Operácia 'delete' v B2 je mäkké odstránenie: súbory sa stanú neviditeľnými, ale predchádzajúca verzia zostane v bucket. Obnovenie vráti súbor; trvalé odstránenie vymaže všetky verzie (nezvratné).",
+                "empty": "V tejto ceste nie sú žiadne skryté súbory",
+                "openButton": "Skryté súbory",
+                "confirmDeleteTitle": "Trvalo odstrániť všetky verzie",
+                "confirmDeleteBody": "Toto odstráni všetky uložené verzie {count} súboru(ov) z bucket. Dáta nebude možné obnoviť."
+            }
         }
     }
 }

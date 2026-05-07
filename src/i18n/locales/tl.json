@@ -4407,6 +4407,16 @@
             "emptyFolder": "Walang laman na folder",
             "nameNotDecrypted": "hindi na-decrypt ang pangalan",
             "download": "I-download"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Mga Nakatagong File",
+                "banner": "Ang 'delete' ng B2 ay isang soft-delete: ang mga file ay nagiging invisible ngunit ang nakaraang bersyon ay nananatili sa bucket. Ibinabalik ng restore ang file; tinatanggal ng permanent delete ang bawat bersyon (hindi na maaaring bawiin).",
+                "empty": "Walang nakatagong file sa landas na ito",
+                "openButton": "Mga Nakatagong File",
+                "confirmDeleteTitle": "Permanenteng tanggalin ang lahat ng bersyon",
+                "confirmDeleteBody": "Tatanggalin nito ang lahat ng nakaimbak na bersyon ng {count} file mula sa bucket. Hindi na mababawi ang data."
+            }
         }
     }
 }

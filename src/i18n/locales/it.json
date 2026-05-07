@@ -4378,6 +4378,16 @@
             "reconnecting": "Sessione scaduta, riconnessione in corso...",
             "reconnected": "Riconnesso al server",
             "reconnectFailed": "Riconnessione fallita. Riconnetti manualmente."
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - File Nascosti",
+                "banner": "L'eliminazione su B2 è soft-delete: i file diventano invisibili ma una versione precedente resta nel bucket. Il ripristino riporta il file; l'eliminazione permanente cancella ogni versione (irreversibile).",
+                "empty": "Nessun file nascosto in questo percorso",
+                "openButton": "File Nascosti",
+                "confirmDeleteTitle": "Eliminazione permanente di tutte le versioni",
+                "confirmDeleteBody": "Verranno eliminate tutte le versioni archiviate di {count} file dal bucket. I dati non possono essere recuperati."
+            }
         }
     }
 }

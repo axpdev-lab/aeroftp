@@ -4388,6 +4388,16 @@
             "emptyFolder": "Tuščias aplankas",
             "nameNotDecrypted": "vardas neiššifruotas",
             "download": "Atsisiųsti"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Paslėpti failai",
+                "banner": "B2 'ištrynimas' yra minkštas ištrynimas: failai tampa nematomi, bet ankstesnė versija lieka bucket-e. Atkūrimas grąžina failą; visiškas ištrynimas pašalina visas versijas (neatšaukiama).",
+                "empty": "Šiame kelyje nėra paslėptų failų",
+                "openButton": "Paslėpti failai",
+                "confirmDeleteTitle": "Visam laikui ištrinti kiekvieną versiją",
+                "confirmDeleteBody": "Tai pašalins visas išsaugotas {count} failų versijas iš bucket-o. Duomenų atkurti nebus įmanoma."
+            }
         }
     }
 }

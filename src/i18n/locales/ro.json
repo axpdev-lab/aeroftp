@@ -4378,6 +4378,16 @@
             "emptyFolder": "Folder gol",
             "nameNotDecrypted": "nume nedecriptat",
             "download": "Descarcă"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Fișiere ascunse",
+                "banner": "Operațiunea 'delete' din B2 este o ștergere logică: fișierele devin invizibile, dar o versiune anterioară rămâne în bucket. Restaurarea readuce fișierul; ștergerea permanentă elimină toate versiunile (ireversibil).",
+                "empty": "Niciun fișier ascuns în această cale",
+                "openButton": "Fișiere ascunse",
+                "confirmDeleteTitle": "Șterge permanent toate versiunile",
+                "confirmDeleteBody": "Aceasta va elimina toate versiunile stocate ale {count} fișier(e) din bucket. Datele nu pot fi recuperate."
+            }
         }
     }
 }

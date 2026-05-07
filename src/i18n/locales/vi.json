@@ -4388,6 +4388,16 @@
             "emptyFolder": "Thư mục trống",
             "nameNotDecrypted": "tên chưa giải mã",
             "download": "Tải xuống"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Tệp ẩn",
+                "banner": "Thao tác 'delete' của B2 là xóa mềm: tệp trở nên vô hình nhưng phiên bản trước vẫn ở trong bucket. Khôi phục đưa tệp trở lại; xóa vĩnh viễn loại bỏ mọi phiên bản (không thể đảo ngược).",
+                "empty": "Không có tệp ẩn nào trong đường dẫn này",
+                "openButton": "Tệp ẩn",
+                "confirmDeleteTitle": "Xóa vĩnh viễn mọi phiên bản",
+                "confirmDeleteBody": "Thao tác này sẽ xóa mọi phiên bản đã lưu của {count} tệp khỏi bucket. Dữ liệu không thể khôi phục."
+            }
         }
     }
 }

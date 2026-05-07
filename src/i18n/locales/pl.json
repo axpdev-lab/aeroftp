@@ -4378,6 +4378,16 @@
             "emptyFolder": "Pusty folder",
             "nameNotDecrypted": "nazwa nieodszyfrowana",
             "download": "Pobierz"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Ukryte pliki",
+                "banner": "Operacja 'delete' w B2 to miękkie usunięcie: pliki stają się niewidoczne, ale poprzednia wersja pozostaje w bucket. Przywrócenie odzyskuje plik; trwałe usunięcie kasuje wszystkie wersje (nieodwracalne).",
+                "empty": "Brak ukrytych plików w tej ścieżce",
+                "openButton": "Ukryte pliki",
+                "confirmDeleteTitle": "Trwale usuń wszystkie wersje",
+                "confirmDeleteBody": "Spowoduje to usunięcie wszystkich zapisanych wersji {count} plików z bucket. Danych nie można odzyskać."
+            }
         }
     }
 }

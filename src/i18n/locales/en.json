@@ -4086,6 +4086,16 @@
       "manageNeverExpires": "Never",
       "managePasswordProtected": "Password protected"
     },
+    "b2": {
+      "hidden": {
+        "title": "Backblaze B2 - Hidden Files",
+        "banner": "B2 'delete' is a soft-delete: files become invisible but a previous version stays in the bucket. Restore brings the file back; permanent delete purges every version (irreversible).",
+        "empty": "No hidden files in this path",
+        "openButton": "Hidden Files",
+        "confirmDeleteTitle": "Permanently delete every version",
+        "confirmDeleteBody": "This will purge every stored version of {count} file(s) from the bucket. The data cannot be recovered."
+      }
+    },
     "filelu": {
       "setFilePassword": "Set File Password",
       "enterFilePassword": "Enter password (leave blank to remove):",

@@ -4388,6 +4388,16 @@
             "emptyFolder": "Tyhjä kansio",
             "nameNotDecrypted": "nimeä ei purettu",
             "download": "Lataa"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Piilotetut tiedostot",
+                "banner": "B2:n 'delete' on soft-delete: tiedostot muuttuvat näkymättömiksi, mutta aiempi versio säilyy bucketissa. Palautus tuo tiedoston takaisin; pysyvä poisto poistaa kaikki versiot (peruuttamaton).",
+                "empty": "Tässä polussa ei ole piilotettuja tiedostoja",
+                "openButton": "Piilotetut tiedostot",
+                "confirmDeleteTitle": "Poista kaikki versiot pysyvästi",
+                "confirmDeleteBody": "Tämä poistaa bucketista kaikki tallennetut versiot {count} tiedostosta. Tietoja ei voida palauttaa."
+            }
         }
     }
 }

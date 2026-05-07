@@ -4407,6 +4407,16 @@
             "emptyFolder": "Tóm mappa",
             "nameNotDecrypted": "nafn ekki afkóðað",
             "download": "Sækja"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Faldar skrár",
+                "banner": "B2 'eyðing' er mjúk eyðing: skrár verða ósýnilegar en fyrri útgáfa er áfram í bucket-inu. Endurheimt skilar skránni til baka; varanleg eyðing fjarlægir allar útgáfur (óafturkræft).",
+                "empty": "Engar faldar skrár á þessari slóð",
+                "openButton": "Faldar skrár",
+                "confirmDeleteTitle": "Eyða öllum útgáfum varanlega",
+                "confirmDeleteBody": "Þetta mun fjarlægja allar geymdar útgáfur af {count} skrá(m) úr bucket-inu. Ekki er hægt að endurheimta gögnin."
+            }
         }
     }
 }

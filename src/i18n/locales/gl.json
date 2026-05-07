@@ -4407,6 +4407,16 @@
             "emptyFolder": "Cartafol baleiro",
             "nameNotDecrypted": "nome non descifrado",
             "download": "Descargar"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Ficheiros ocultos",
+                "banner": "A eliminación en B2 é un soft-delete: os ficheiros vólvense invisibles pero unha versión anterior permanece no bucket. Restaurar recupera o ficheiro; a eliminación permanente purga todas as versións (irreversible).",
+                "empty": "Non hai ficheiros ocultos nesta ruta",
+                "openButton": "Ficheiros ocultos",
+                "confirmDeleteTitle": "Eliminar permanentemente todas as versións",
+                "confirmDeleteBody": "Isto purgará todas as versións almacenadas de {count} ficheiro(s) do bucket. Os datos non se poden recuperar."
+            }
         }
     }
 }

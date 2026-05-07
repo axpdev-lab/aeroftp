@@ -4378,6 +4378,16 @@
             "emptyFolder": "空のフォルダ",
             "nameNotDecrypted": "名前は復号されていません",
             "download": "ダウンロード"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - 非表示ファイル",
+                "banner": "B2の「削除」はソフト削除です: ファイルは見えなくなりますが、以前のバージョンはbucket内に残ります。復元するとファイルが戻ります。完全削除はすべてのバージョンを消去します(取り消し不可)。",
+                "empty": "このパスに非表示ファイルはありません",
+                "openButton": "非表示ファイル",
+                "confirmDeleteTitle": "すべてのバージョンを完全削除",
+                "confirmDeleteBody": "{count}個のファイルの保存済みバージョンをすべてbucketから削除します。データは復元できません。"
+            }
         }
     }
 }

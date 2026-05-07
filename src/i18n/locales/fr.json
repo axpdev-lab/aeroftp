@@ -4378,6 +4378,16 @@
             "emptyFolder": "Dossier vide",
             "nameNotDecrypted": "nom non déchiffré",
             "download": "Télécharger"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Fichiers cachés",
+                "banner": "La suppression dans B2 est un soft-delete : les fichiers deviennent invisibles mais une version précédente reste dans le bucket. La restauration ramène le fichier ; la suppression permanente purge toutes les versions (irréversible).",
+                "empty": "Aucun fichier caché dans ce chemin",
+                "openButton": "Fichiers cachés",
+                "confirmDeleteTitle": "Supprimer définitivement toutes les versions",
+                "confirmDeleteBody": "Cela purgera toutes les versions stockées de {count} fichier(s) du bucket. Les données ne peuvent pas être récupérées."
+            }
         }
     }
 }

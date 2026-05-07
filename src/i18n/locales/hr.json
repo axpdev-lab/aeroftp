@@ -4388,6 +4388,16 @@
             "emptyFolder": "Prazna mapa",
             "nameNotDecrypted": "naziv nije dešifriran",
             "download": "Preuzmi"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Skrivene datoteke",
+                "banner": "B2 'brisanje' je meko brisanje: datoteke postaju nevidljive, ali prethodna verzija ostaje u bucket-u. Vraćanje vraća datoteku natrag; trajno brisanje uklanja svaku verziju (nepovratno).",
+                "empty": "Nema skrivenih datoteka na ovoj putanji",
+                "openButton": "Skrivene datoteke",
+                "confirmDeleteTitle": "Trajno izbriši svaku verziju",
+                "confirmDeleteBody": "Ovo će ukloniti svaku spremljenu verziju od {count} datoteka iz bucket-a. Podaci se ne mogu oporaviti."
+            }
         }
     }
 }

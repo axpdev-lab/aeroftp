@@ -4388,6 +4388,16 @@
             "emptyFolder": "Üres mappa",
             "nameNotDecrypted": "név nincs visszafejtve",
             "download": "Letöltés"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Rejtett fájlok",
+                "banner": "A B2 'törlés' egy puha törlés: a fájlok láthatatlanná válnak, de egy korábbi verzió a bucket-ben marad. A visszaállítás visszahozza a fájlt; a végleges törlés minden verziót eltávolít (visszafordíthatatlan).",
+                "empty": "Nincsenek rejtett fájlok ezen az útvonalon",
+                "openButton": "Rejtett fájlok",
+                "confirmDeleteTitle": "Minden verzió végleges törlése",
+                "confirmDeleteBody": "Ez {count} fájl minden tárolt verzióját eltávolítja a bucket-ből. Az adatok nem állíthatók helyre."
+            }
         }
     }
 }

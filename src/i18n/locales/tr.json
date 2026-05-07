@@ -4388,6 +4388,16 @@
             "emptyFolder": "Boş klasör",
             "nameNotDecrypted": "ad şifresi çözülmedi",
             "download": "İndir"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Gizli Dosyalar",
+                "banner": "B2'nin 'delete' işlemi yumuşak bir silmedir: dosyalar görünmez olur ancak önceki bir sürüm bucket içinde kalır. Geri yükleme dosyayı geri getirir; kalıcı silme her sürümü temizler (geri alınamaz).",
+                "empty": "Bu yolda gizli dosya yok",
+                "openButton": "Gizli Dosyalar",
+                "confirmDeleteTitle": "Tüm sürümleri kalıcı olarak sil",
+                "confirmDeleteBody": "Bu işlem, {count} dosyanın bucket içindeki tüm depolanmış sürümlerini temizleyecek. Veriler kurtarılamaz."
+            }
         }
     }
 }

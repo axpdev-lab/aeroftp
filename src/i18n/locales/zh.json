@@ -4378,6 +4378,16 @@
             "emptyFolder": "空文件夹",
             "nameNotDecrypted": "名称未解密",
             "download": "下载"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - 隐藏文件",
+                "banner": "B2 的 'delete' 操作是软删除：文件变为不可见，但之前的版本仍保留在 bucket 中。还原会恢复文件；永久删除会清除每个版本（不可逆）。",
+                "empty": "此路径中没有隐藏文件",
+                "openButton": "隐藏文件",
+                "confirmDeleteTitle": "永久删除所有版本",
+                "confirmDeleteBody": "此操作将从 bucket 中清除 {count} 个文件的所有已存储版本。数据无法恢复。"
+            }
         }
     }
 }

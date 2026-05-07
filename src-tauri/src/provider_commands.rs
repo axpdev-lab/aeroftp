@@ -8763,6 +8763,77 @@ pub async fn kdrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
     kdrive.empty_trash().await.map_err(|e| e.to_string())
 }
 
+// ─── Backblaze B2 native: hide / restore / permanent-delete ────────────────
+//
+// `delete()` on B2 native creates a hide marker: the file is invisible in
+// listings but the previous version stays in the bucket. These three commands
+// expose the recovery path explicitly: `b2_list_hidden` enumerates the soft
+// deletes, `b2_restore_hidden` removes a single hide marker (file reappears),
+// and `b2_permanent_delete` purges every version of a path so it can no
+// longer be recovered.
+
+/// List soft-deleted (hidden) files in the connected B2 bucket under the
+/// given prefix. Returns the hide markers; the caller can call
+/// `b2_restore_hidden` on a `path` to bring the underlying version back.
+#[tauri::command]
+pub async fn b2_list_hidden(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Backblaze {
+        return Err("Only available for Backblaze B2".to_string());
+    }
+    let b2 = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::B2Provider>()
+        .ok_or_else(|| "B2 downcast failed".to_string())?;
+    b2.list_hidden_files(&path).await.map_err(|e| e.to_string())
+}
+
+/// Restore a soft-deleted B2 file by removing its hide marker. The previous
+/// content version reappears in normal listings. Returns an error if no hide
+/// marker exists for the path.
+#[tauri::command]
+pub async fn b2_restore_hidden(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<(), String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Backblaze {
+        return Err("Only available for Backblaze B2".to_string());
+    }
+    let b2 = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::B2Provider>()
+        .ok_or_else(|| "B2 downcast failed".to_string())?;
+    b2.restore_hidden_file(&path).await.map_err(|e| e.to_string())
+}
+
+/// Hard-delete every version of a B2 file (including hide markers and any
+/// historical content). This is unrecoverable: callers MUST confirm intent
+/// at the UI layer. Returns the number of versions purged.
+#[tauri::command]
+pub async fn b2_permanent_delete(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<u32, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
+    if provider.provider_type() != ProviderType::Backblaze {
+        return Err("Only available for Backblaze B2".to_string());
+    }
+    let b2 = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::B2Provider>()
+        .ok_or_else(|| "B2 downcast failed".to_string())?;
+    b2.permanent_delete_path(&path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{remote_matches_repo, ProviderConnectionParams};

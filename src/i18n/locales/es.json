@@ -4378,6 +4378,16 @@
             "emptyFolder": "Carpeta vacía",
             "nameNotDecrypted": "nombre no descifrado",
             "download": "Descargar"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Archivos ocultos",
+                "banner": "El 'delete' de B2 es un soft-delete: los archivos se vuelven invisibles pero una versión anterior permanece en el bucket. Restaurar recupera el archivo; el borrado permanente purga todas las versiones (irreversible).",
+                "empty": "No hay archivos ocultos en esta ruta",
+                "openButton": "Archivos ocultos",
+                "confirmDeleteTitle": "Eliminar permanentemente todas las versiones",
+                "confirmDeleteBody": "Esto purgará todas las versiones almacenadas de {count} archivo(s) del bucket. Los datos no se pueden recuperar."
+            }
         }
     }
 }

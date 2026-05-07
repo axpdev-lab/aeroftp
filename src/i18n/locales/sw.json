@@ -4388,6 +4388,16 @@
             "emptyFolder": "Folda tupu",
             "nameNotDecrypted": "jina halijafichuliwa",
             "download": "Pakua"
+        },
+        "b2": {
+            "hidden": {
+                "title": "Backblaze B2 - Faili Zilizofichwa",
+                "banner": "Operesheni ya 'delete' ya B2 ni ufutaji laini: faili huwa hazionekani lakini toleo la awali linabaki kwenye bucket. Kurejesha hurudisha faili; ufutaji wa kudumu huondoa matoleo yote (haiwezi kutenduliwa).",
+                "empty": "Hakuna faili zilizofichwa katika njia hii",
+                "openButton": "Faili Zilizofichwa",
+                "confirmDeleteTitle": "Futa kabisa matoleo yote",
+                "confirmDeleteBody": "Hii itaondoa matoleo yote yaliyohifadhiwa ya faili {count} kutoka kwa bucket. Data haitaweza kurejeshwa."
+            }
         }
     }
 }

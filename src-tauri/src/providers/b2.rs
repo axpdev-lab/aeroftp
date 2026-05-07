@@ -1277,6 +1277,225 @@ impl B2Provider {
             Err(e) => Err(e),
         }
     }
+
+    /// List every hide marker reachable under the given prefix. Each entry in
+    /// the result is a soft-deleted "tombstone": the underlying file's
+    /// previous versions still exist and can be restored by calling
+    /// `restore_hidden_file` on the same name.
+    ///
+    /// Caps at 25 pages of 10 000 entries (250 000 versions scanned) to keep
+    /// the call bounded on huge buckets.
+    pub async fn list_hidden_files(
+        &mut self,
+        prefix: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        const PAGE_SIZE: u32 = 10_000;
+        const MAX_PAGES: u32 = 25;
+        let resolved = self.resolved_path(prefix);
+        let key_prefix = self.b2_key(&resolved);
+        let mut out = Vec::new();
+        let mut start_name: Option<String> = None;
+        let mut start_id: Option<String> = None;
+        for _ in 0..MAX_PAGES {
+            let page = match self
+                .list_file_versions_page(
+                    &key_prefix,
+                    start_name.as_deref(),
+                    start_id.as_deref(),
+                    PAGE_SIZE,
+                )
+                .await
+            {
+                Ok(r) => r,
+                Err(e) if is_b2_token_failure(&e) => {
+                    if self.maybe_reauth(&e).await {
+                        self.list_file_versions_page(
+                            &key_prefix,
+                            start_name.as_deref(),
+                            start_id.as_deref(),
+                            PAGE_SIZE,
+                        )
+                        .await?
+                    } else {
+                        return Err(e);
+                    }
+                }
+                Err(e) => return Err(e),
+            };
+            for f in &page.files {
+                if f.action != "hide" {
+                    continue;
+                }
+                let modified = f
+                    .upload_timestamp
+                    .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms))
+                    .map(|dt| dt.to_rfc3339());
+                let display_name = f
+                    .file_name
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&f.file_name)
+                    .to_string();
+                out.push(RemoteEntry {
+                    name: display_name,
+                    path: format!("/{}", f.file_name),
+                    is_dir: false,
+                    size: 0,
+                    modified,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                    metadata: std::collections::HashMap::new(),
+                });
+            }
+            match (page.next_file_name, page.next_file_id) {
+                (Some(n), Some(i)) if !n.is_empty() => {
+                    start_name = Some(n);
+                    start_id = Some(i);
+                }
+                _ => break,
+            }
+        }
+        Ok(out)
+    }
+
+    /// Restore a soft-deleted file by removing the most recent hide marker
+    /// for the given path. The file's previous content version reappears in
+    /// listings. Returns `NotFound` when no hide marker exists for the path.
+    pub async fn restore_hidden_file(&mut self, path: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let resolved = self.resolved_path(path);
+        let key = self.b2_key(&resolved);
+        let page = match self
+            .list_file_versions_page(&key, Some(&key), None, 25)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) if is_b2_token_failure(&e) => {
+                if self.maybe_reauth(&e).await {
+                    self.list_file_versions_page(&key, Some(&key), None, 25)
+                        .await?
+                } else {
+                    return Err(e);
+                }
+            }
+            Err(e) => return Err(e),
+        };
+        let marker = page
+            .files
+            .into_iter()
+            .find(|f| f.file_name == key && f.action == "hide")
+            .ok_or_else(|| {
+                ProviderError::NotFound(format!("no hide marker for '{}'", key))
+            })?;
+        let file_id = marker.file_id.ok_or_else(|| {
+            ProviderError::ServerError("hide marker missing fileId".into())
+        })?;
+        match self.do_delete_file_version(&key, &file_id).await {
+            Ok(()) => Ok(()),
+            Err(e) if is_b2_token_failure(&e) => {
+                if self.maybe_reauth(&e).await {
+                    self.do_delete_file_version(&key, &file_id).await
+                } else {
+                    Err(e)
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Hard-delete every version of a path, including hide markers and any
+    /// historical content. The file becomes unrecoverable. Use this when the
+    /// caller really wants the data gone, not the soft-delete that the plain
+    /// `delete()` performs (which only adds a hide marker).
+    ///
+    /// Caps at 1 000 versions per object to bound the worst case.
+    pub async fn permanent_delete_path(&mut self, path: &str) -> Result<u32, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        const VERSION_CAP: u32 = 1_000;
+        let resolved = self.resolved_path(path);
+        let key = self.b2_key(&resolved);
+        let mut deleted: u32 = 0;
+        let mut start_name: Option<String> = Some(key.clone());
+        let mut start_id: Option<String> = None;
+        loop {
+            let page = match self
+                .list_file_versions_page(
+                    &key,
+                    start_name.as_deref(),
+                    start_id.as_deref(),
+                    100,
+                )
+                .await
+            {
+                Ok(r) => r,
+                Err(e) if is_b2_token_failure(&e) => {
+                    if self.maybe_reauth(&e).await {
+                        self.list_file_versions_page(
+                            &key,
+                            start_name.as_deref(),
+                            start_id.as_deref(),
+                            100,
+                        )
+                        .await?
+                    } else {
+                        return Err(e);
+                    }
+                }
+                Err(e) => return Err(e),
+            };
+            let versions: Vec<_> = page
+                .files
+                .into_iter()
+                .filter(|f| f.file_name == key)
+                .collect();
+            if versions.is_empty() {
+                break;
+            }
+            for f in versions {
+                let Some(file_id) = f.file_id else { continue };
+                match self.do_delete_file_version(&key, &file_id).await {
+                    Ok(()) => deleted += 1,
+                    Err(e) if is_b2_token_failure(&e) => {
+                        if self.maybe_reauth(&e).await {
+                            self.do_delete_file_version(&key, &file_id).await?;
+                            deleted += 1;
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                    Err(e) => return Err(e),
+                }
+                if deleted >= VERSION_CAP {
+                    return Ok(deleted);
+                }
+            }
+            match (page.next_file_name, page.next_file_id) {
+                (Some(n), Some(i)) if n == key && !i.is_empty() => {
+                    start_name = Some(n);
+                    start_id = Some(i);
+                }
+                _ => break,
+            }
+        }
+        if deleted == 0 {
+            return Err(ProviderError::NotFound(format!(
+                "no versions found for '{}'",
+                key
+            )));
+        }
+        Ok(deleted)
+    }
 }
 
 #[async_trait]
