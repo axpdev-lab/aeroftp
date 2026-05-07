@@ -20,6 +20,14 @@ pub const S3_PATH_STYLE_SOURCE_META_KEY: &str = "_aeroftp_s3_path_style_source";
 pub fn normalize_profile_option_key(key: &str) -> &str {
     match key {
         "tlsMode" => "tls_mode",
+        // WebDAV HTTP/HTTPS toggle introduced for local bridges (Filen Desktop,
+        // MEGAcmd). The GUI stores the user's choice as `options.webdavScheme`
+        // and maps it to `tls_mode` only inside `App.tsx` before calling
+        // `provider_connect`. Without this normalization, every other surface
+        // that reads a saved profile (CLI, MCP pool, future schedulers) would
+        // silently fall back to the auto-scheme heuristic in WebDavConfig and
+        // ignore the user's explicit HTTP/HTTPS pick.
+        "webdavScheme" => "tls_mode",
         "verifyCert" => "verify_cert",
         "pathStyle" => "path_style",
         "accountName" => "account_name",
@@ -219,4 +227,101 @@ pub fn apply_s3_profile_defaults(
         .to_string(),
     );
     Some(resolved_endpoint)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn normalize_known_camel_case_keys() {
+        assert_eq!(normalize_profile_option_key("tlsMode"), "tls_mode");
+        assert_eq!(normalize_profile_option_key("webdavScheme"), "tls_mode");
+        assert_eq!(normalize_profile_option_key("verifyCert"), "verify_cert");
+        assert_eq!(normalize_profile_option_key("pathStyle"), "path_style");
+        assert_eq!(normalize_profile_option_key("accountName"), "account_name");
+        assert_eq!(normalize_profile_option_key("accessKey"), "access_key");
+        assert_eq!(normalize_profile_option_key("sasToken"), "sas_token");
+        assert_eq!(normalize_profile_option_key("pcloudRegion"), "region");
+    }
+
+    #[test]
+    fn normalize_passes_through_unknown_keys() {
+        assert_eq!(normalize_profile_option_key("region"), "region");
+        assert_eq!(normalize_profile_option_key("endpoint"), "endpoint");
+        assert_eq!(normalize_profile_option_key("bucket"), "bucket");
+        assert_eq!(normalize_profile_option_key("private_key_path"), "private_key_path");
+    }
+
+    #[test]
+    fn webdav_local_bridge_https_profile_maps_to_tls_mode() {
+        // Reproduces the Filen Desktop (local WebDAV) profile shape saved by
+        // the GUI when the user picks HTTPS in the bridge toggle. Before this
+        // commit the CLI and MCP read `webdavScheme` as a literal key and the
+        // WebDavConfig auto-scheme picked HTTP for `local.webdav.filen.io`,
+        // breaking the connect.
+        let profile = json!({
+            "options": {
+                "webdavScheme": "https",
+                "verifyCert": false,
+                "anonymous": false,
+            }
+        });
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        assert_eq!(extra.get("tls_mode").map(String::as_str), Some("https"));
+        assert_eq!(extra.get("verify_cert").map(String::as_str), Some("false"));
+        assert_eq!(extra.get("anonymous").map(String::as_str), Some("false"));
+        assert!(
+            !extra.contains_key("webdavScheme"),
+            "raw camelCase key must not leak into provider config"
+        );
+    }
+
+    #[test]
+    fn ftp_tls_mode_still_normalizes() {
+        // Guard rail: the new webdavScheme branch must not regress the
+        // existing FTP/FTPS path that uses tlsMode (explicit/implicit/none).
+        let profile = json!({
+            "options": {
+                "tlsMode": "explicit",
+                "verifyCert": true,
+            }
+        });
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        assert_eq!(extra.get("tls_mode").map(String::as_str), Some("explicit"));
+        assert_eq!(extra.get("verify_cert").map(String::as_str), Some("true"));
+    }
+
+    #[test]
+    fn filen_desktop_s3_profile_keeps_endpoint_and_disables_cert_check() {
+        // Filen Desktop (local S3) preset shape. apply_profile_options must
+        // preserve the endpoint as-is (pass-through) and normalize verifyCert
+        // so S3Config.verify_cert is read correctly. apply_s3_profile_defaults
+        // must then keep the user-supplied endpoint untouched.
+        let profile = json!({
+            "providerId": "filen-desktop-s3",
+            "options": {
+                "endpoint": "https://local.s3.filen.io:1800",
+                "region": "filen",
+                "bucket": "filen",
+                "pathStyle": true,
+                "verifyCert": false,
+            }
+        });
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("filen-desktop-s3"));
+        assert_eq!(endpoint.as_deref(), Some("https://local.s3.filen.io:1800"));
+        assert_eq!(extra.get("region").map(String::as_str), Some("filen"));
+        assert_eq!(extra.get("bucket").map(String::as_str), Some("filen"));
+        assert_eq!(extra.get("path_style").map(String::as_str), Some("true"));
+        assert_eq!(extra.get("verify_cert").map(String::as_str), Some("false"));
+        assert_eq!(
+            extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(String::as_str),
+            Some("profile")
+        );
+    }
 }
