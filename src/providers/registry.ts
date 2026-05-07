@@ -1663,6 +1663,12 @@ export const PROVIDERS: ProviderConfig[] = [
             versioning: true,
             trash: true,
         },
+        // Health check hits the marketing homepage rather than a regional
+        // WebDAV endpoint: subdomains like fie.nl.tab.digital are per-user
+        // and we don't know which one the operator will pick. The apex
+        // domain is always reachable when the service is up, which is the
+        // right granularity for the connection-screen TLS badge.
+        healthCheckUrl: 'https://tab.digital',
         helpUrl: 'https://tab.digital/',
         signupUrl: 'https://tab.digital/',
     },
