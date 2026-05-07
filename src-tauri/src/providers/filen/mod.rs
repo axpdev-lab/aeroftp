@@ -37,6 +37,26 @@ use super::{
 /// Filen API gateway
 const GATEWAY: &str = "https://gateway.filen.io";
 
+/// Plaintext chunk size used by the Filen v3 upload pipeline. Matches the
+/// `CHUNK_SIZE` constant from the official `filen-sdk-rs` crate. The Filen
+/// ingest API rejects bodies larger than 1 MiB plus the AES-GCM overhead
+/// (12-byte nonce + 16-byte auth tag = 28 bytes) per request.
+const FILEN_CHUNK_SIZE: usize = 1024 * 1024;
+
+/// Cap on the number of in-flight chunk uploads. The official SDK uses 16;
+/// we deliberately stay lower to keep pressure off shared free-tier ingest
+/// nodes and to avoid 429 rate-limit responses on slow uplinks. 4 is plenty
+/// to saturate a residential connection while still leaving headroom for the
+/// rest of the application.
+const FILEN_PARALLEL_CHUNK_UPLOADS: usize = 4;
+
+/// Hard cap on the size of a single Filen upload. With chunked streaming the
+/// process holds at most a handful of 1 MiB buffers in memory regardless of
+/// file size, so the cap exists purely as a sanity guard against pathological
+/// inputs (a 256 GiB file already saturates Filen's per-account quota many
+/// times over).
+const FILEN_MAX_UPLOAD_SIZE: u64 = 256 * 1024 * 1024 * 1024;
+
 /// Filen auth info response
 #[derive(Debug, Deserialize)]
 struct AuthInfoResponse {
@@ -1255,7 +1275,7 @@ impl StorageProvider for FilenProvider {
         &mut self,
         local_path: &str,
         remote_path: &str,
-        _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let normalized = Self::normalize_path(remote_path);
         let (parent_path, file_name) = match normalized.rfind('/') {
@@ -1265,38 +1285,34 @@ impl StorageProvider for FilenProvider {
 
         let parent_uuid = self.resolve_folder_uuid(parent_path).await?;
 
-        // F-XFER-01: Read file size first, then read content for encryption.
-        // Note: AES-256-GCM requires all plaintext in memory to compute the auth tag,
-        // so we cannot avoid buffering the plaintext. However, after encryption we
-        // stream the encrypted bytes to the network via reqwest::Body::wrap_stream().
         let file_metadata = tokio::fs::metadata(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let file_size = file_metadata.len() as usize;
+        let file_size = file_metadata.len();
 
-        // H4: AES-GCM requires full plaintext in memory for auth tag computation,
-        // so streaming encryption is not possible. Cap at 2 GB to prevent OOM.
-        const MAX_UPLOAD_SIZE: u64 = 2 * 1024 * 1024 * 1024; // 2 GB
-        if file_metadata.len() > MAX_UPLOAD_SIZE {
+        // Filen rejects empty files with HTTP 400 ("Invalid request"). Match
+        // the official SDK behavior and surface a clear error before any I/O.
+        if file_size == 0 {
+            return Err(ProviderError::TransferFailed(
+                "Filen does not accept empty files".to_string(),
+            ));
+        }
+
+        // Hard cap. Each in-flight chunk only holds 1 MiB of plaintext + 1 MiB
+        // of ciphertext, so memory is no longer the constraint. The cap exists
+        // purely as a sanity guard against pathological inputs.
+        if file_size > FILEN_MAX_UPLOAD_SIZE {
             return Err(ProviderError::TransferFailed(format!(
-                "File too large for Filen encrypted upload ({:.1} GB). AES-GCM requires full file in memory; max {:.0} GB.",
-                file_metadata.len() as f64 / (1024.0 * 1024.0 * 1024.0),
-                MAX_UPLOAD_SIZE as f64 / (1024.0 * 1024.0 * 1024.0),
+                "File too large for Filen ({:.1} GiB). Max {:.0} GiB.",
+                file_size as f64 / (1024.0 * 1024.0 * 1024.0),
+                FILEN_MAX_UPLOAD_SIZE as f64 / (1024.0 * 1024.0 * 1024.0),
             )));
         }
 
-        // M9: Full file read into memory for encryption: Filen requires client-side AES-256-GCM
-        // encryption before upload, which currently buffers the entire file. For very large files
-        // (>1GB), this may cause high memory usage. Chunked encryption would require significant
-        // refactoring of the Filen encryption pipeline.
-        let data = tokio::fs::read(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
         let mime_type = mime_guess::from_path(file_name)
             .first_or_octet_stream()
             .to_string();
 
-        // Generate per-file encryption key and upload key
         let file_key: String = (0..32)
             .map(|_| format!("{:02x}", rand::random::<u8>()))
             .collect();
@@ -1305,17 +1321,99 @@ impl StorageProvider for FilenProvider {
             .collect();
         let file_uuid = uuid::Uuid::new_v4().to_string();
 
-        // Encrypt file content
-        let encrypted = Self::encrypt_file_content(&data, &file_key)?;
-        // Drop plaintext to free memory before upload
-        drop(data);
+        // ceil_div(file_size, CHUNK_SIZE), guaranteed >= 1 since size > 0.
+        let total_chunks: u64 =
+            file_size.div_ceil(FILEN_CHUNK_SIZE as u64);
 
-        // Hash of encrypted data (SHA-512)
-        let mut hash_hasher = Sha512::new();
-        hash_hasher.update(&encrypted);
-        let chunk_hash = hex::encode(hash_hasher.finalize());
+        filen_log(&format!(
+            "upload begin '{}' size={} chunks={} parallel={}",
+            file_name, file_size, total_chunks, FILEN_PARALLEL_CHUNK_UPLOADS,
+        ));
 
-        // Encrypt metadata
+        // Read sequentially from disk and dispatch encrypt+POST in parallel.
+        // The reader holds at most one plaintext buffer in memory at a time;
+        // the FuturesUnordered set holds up to FILEN_PARALLEL_CHUNK_UPLOADS
+        // in-flight encrypted chunks. Memory peak is bounded by the parallel
+        // limit, independent of file size.
+        use futures_util::stream::FuturesUnordered;
+        use tokio::io::AsyncReadExt;
+        let mut file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+
+        let mut in_flight: FuturesUnordered<_> = FuturesUnordered::new();
+        let mut next_index: u64 = 0;
+        let mut transferred: u64 = 0;
+        let mut eof = false;
+
+        loop {
+            // Top up in_flight up to the parallel cap, draining each plaintext
+            // chunk from disk just before we hand it to a worker.
+            while !eof
+                && in_flight.len() < FILEN_PARALLEL_CHUNK_UPLOADS
+                && next_index < total_chunks
+            {
+                let mut buf = vec![0u8; FILEN_CHUNK_SIZE];
+                let mut read_total = 0;
+                while read_total < FILEN_CHUNK_SIZE {
+                    match file.read(&mut buf[read_total..]).await {
+                        Ok(0) => break,
+                        Ok(n) => read_total += n,
+                        Err(e) => return Err(ProviderError::IoError(e)),
+                    }
+                }
+                buf.truncate(read_total);
+                if buf.is_empty() {
+                    eof = true;
+                    break;
+                }
+
+                let index = next_index;
+                next_index += 1;
+                let plaintext_len = buf.len() as u64;
+                let client = self.client.clone();
+                let api_key = self.api_key.clone();
+                let file_uuid = file_uuid.clone();
+                let parent_uuid = parent_uuid.clone();
+                let upload_key = upload_key.clone();
+                let file_key = file_key.clone();
+                in_flight.push(async move {
+                    upload_filen_chunk(
+                        &client,
+                        &api_key,
+                        &file_uuid,
+                        &parent_uuid,
+                        &upload_key,
+                        &file_key,
+                        index,
+                        buf,
+                    )
+                    .await?;
+                    Ok::<u64, ProviderError>(plaintext_len)
+                });
+            }
+
+            match in_flight.next().await {
+                Some(Ok(n)) => {
+                    transferred += n;
+                    if let Some(ref cb) = on_progress {
+                        cb(transferred, file_size);
+                    }
+                }
+                Some(Err(e)) => return Err(e),
+                None => break,
+            }
+        }
+
+        if next_index != total_chunks {
+            return Err(ProviderError::TransferFailed(format!(
+                "Filen upload chunked count mismatch: expected {} chunks, produced {}",
+                total_chunks, next_index,
+            )));
+        }
+
+        // Encrypt metadata using the file size in plaintext bytes (matches
+        // what the official SDK and the existing download path expect).
         let now = chrono::Utc::now().timestamp_millis();
         let metadata = serde_json::json!({
             "name": file_name,
@@ -1325,96 +1423,16 @@ impl StorageProvider for FilenProvider {
             "lastModified": now,
         });
         let encrypted_metadata = self.encrypt_metadata(&metadata.to_string())?;
-
-        // Encrypt name and size for upload/done
         let encrypted_name = self.encrypt_metadata(file_name)?;
         let encrypted_size = self.encrypt_metadata(&file_size.to_string())?;
-
-        // Hash of file name: SHA-1(SHA-512(name.toLowerCase()).hex()).hex()
         let name_hashed = Self::hash_name(file_name);
 
-        // Build URL params and checksum header (matching Filen SDK)
-        let url_params = format!(
-            "uuid={}&index=0&parent={}&uploadKey={}",
-            file_uuid, parent_uuid, upload_key
-        );
-        let upload_url = format!(
-            "https://ingest.filen.io/v3/upload?{}&hash={}",
-            url_params, chunk_hash
-        );
-
-        // Checksum header: SHA-512 of JSON stringified URL params (must match JS key order)
-        let checksum_input = format!(
-            r#"{{"uuid":"{}","index":"0","parent":"{}","uploadKey":"{}","hash":"{}"}}"#,
-            file_uuid, parent_uuid, upload_key, chunk_hash
-        );
-        let mut checksum_hasher = Sha512::new();
-        checksum_hasher.update(checksum_input.as_bytes());
-        let checksum = hex::encode(checksum_hasher.finalize());
-
-        // F-XFER-01: Stream encrypted data to network via ReaderStream to avoid
-        // reqwest copying the entire buffer again internally
-        let encrypted_len = encrypted.len();
-        filen_log(&format!("upload: {} bytes encrypted", encrypted_len));
-        let cursor = std::io::Cursor::new(encrypted);
-        let stream = tokio_util::io::ReaderStream::new(cursor);
-        let body = reqwest::Body::wrap_stream(stream);
-
-        let resp = self
-            .client
-            .post(&upload_url)
-            .header(
-                "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
-                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-            )
-            .header(
-                "Checksum",
-                HeaderValue::from_str(&checksum)
-                    .map_err(|e| ProviderError::Other(format!("Invalid checksum header: {}", e)))?,
-            )
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let status = resp.status();
-        let resp_text = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        // F-LOG-01: Reduce upload response logging to debug level with truncation
-        filen_log(&format!(
-            "upload response: status={}, body_len={}",
-            status,
-            resp_text.len()
-        ));
-
-        if !status.is_success() {
-            return Err(ProviderError::TransferFailed(format!(
-                "Upload chunk failed: {} - {}",
-                status,
-                &resp_text[..resp_text.len().min(200)]
-            )));
-        }
-
-        let upload_resp: serde_json::Value = serde_json::from_str(&resp_text)
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        if upload_resp["status"].as_bool() != Some(true) {
-            return Err(ProviderError::TransferFailed(format!(
-                "Upload rejected: {}",
-                upload_resp["message"].as_str().unwrap_or("unknown")
-            )));
-        }
-
-        // Generate random string for rm parameter
+        // Random rm parameter (matches official SDK; opaque token consumed by
+        // /v3/upload/done).
         let rm: String = (0..32)
             .map(|_| format!("{:02x}", rand::random::<u8>()))
             .collect();
 
-        // Mark upload as done (with retry)
         let done_request = self
             .client
             .post(format!("{}/v3/upload/done", GATEWAY))
@@ -1429,7 +1447,7 @@ impl StorageProvider for FilenProvider {
                 "name": encrypted_name,
                 "nameHashed": name_hashed,
                 "size": encrypted_size,
-                "chunks": 1,
+                "chunks": total_chunks,
                 "mime": mime_type,
                 "rm": rm,
                 "metadata": encrypted_metadata,
@@ -2101,5 +2119,145 @@ impl StorageProvider for FilenProvider {
         }
 
         Ok(results)
+    }
+}
+
+/// Encrypt a single plaintext chunk and POST it to `/v3/upload?index={index}`.
+///
+/// Mirrors the byte-exact wire format used by `filen-sdk-rs::api::v3::upload::
+/// upload_file_chunk` (commit on `main` 2026-05): each chunk is encrypted
+/// independently as `nonce(12) || ciphertext || tag(16)` and posted as the raw
+/// request body, with the URL carrying `&hash=<sha512_hex_lowercase>` over the
+/// encrypted bytes. No `Checksum` header is sent: the official Rust SDK omits
+/// it and the Filen ingest accepts uploads without it. Lifting the header
+/// removed a per-chunk JSON-string allocation and one SHA-512 pass.
+#[allow(clippy::too_many_arguments)]
+async fn upload_filen_chunk(
+    client: &reqwest::Client,
+    api_key: &SecretString,
+    file_uuid: &str,
+    parent_uuid: &str,
+    upload_key: &str,
+    file_key: &str,
+    index: u64,
+    plaintext: Vec<u8>,
+) -> Result<(), ProviderError> {
+    let encrypted = FilenProvider::encrypt_file_content(&plaintext, file_key)?;
+    drop(plaintext);
+
+    let mut hasher = Sha512::new();
+    hasher.update(&encrypted);
+    let chunk_hash = hex::encode(hasher.finalize());
+
+    let url = format!(
+        "https://ingest.filen.io/v3/upload?uuid={}&index={}&parent={}&uploadKey={}&hash={}",
+        file_uuid, index, parent_uuid, upload_key, chunk_hash,
+    );
+
+    let resp = client
+        .post(&url)
+        .header(
+            "Authorization",
+            HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret()))
+                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+        )
+        .body(encrypted)
+        .send()
+        .await
+        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+    let status = resp.status();
+    let resp_text = resp
+        .text()
+        .await
+        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+    if !status.is_success() {
+        return Err(ProviderError::TransferFailed(format!(
+            "Upload chunk {} failed: {} - {}",
+            index,
+            status,
+            &resp_text[..resp_text.len().min(200)],
+        )));
+    }
+
+    let upload_resp: serde_json::Value = serde_json::from_str(&resp_text)
+        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+    if upload_resp["status"].as_bool() != Some(true) {
+        return Err(ProviderError::TransferFailed(format!(
+            "Upload chunk {} rejected: {}",
+            index,
+            upload_resp["message"].as_str().unwrap_or("unknown"),
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify the chunk-count math used by `upload()`. Mirrors the boundary
+    /// cases that the Filen ingest is sensitive to: a one-byte file must be
+    /// one chunk, an exactly-CHUNK_SIZE file must be one chunk, and one byte
+    /// past the boundary must spill into a second chunk.
+    #[test]
+    fn total_chunks_math_matches_filen_sdk() {
+        let cs = FILEN_CHUNK_SIZE as u64;
+        assert_eq!(1u64.div_ceil(cs), 1);
+        assert_eq!(cs.div_ceil(cs), 1);
+        assert_eq!((cs + 1).div_ceil(cs), 2);
+        assert_eq!((cs * 10).div_ceil(cs), 10);
+        assert_eq!((cs * 10 + 1).div_ceil(cs), 11);
+    }
+
+    /// Confirm that the per-chunk wire format matches `nonce(12) ||
+    /// ciphertext || tag(16)` (28 bytes overhead) and that
+    /// `encrypt_file_content` paired with `decrypt_file_content` yields a
+    /// byte-exact round-trip for a non-empty plaintext. This is the contract
+    /// the chunked upload pipeline relies on.
+    #[test]
+    fn encrypt_decrypt_roundtrip_per_chunk_format() {
+        let file_key: String = (0..32)
+            .map(|i| format!("{:02x}", i as u8))
+            .collect();
+
+        let plaintext = (0..4096u32)
+            .flat_map(|i| i.to_le_bytes())
+            .collect::<Vec<u8>>();
+
+        let encrypted =
+            FilenProvider::encrypt_file_content(&plaintext, &file_key)
+                .expect("encrypt");
+        assert_eq!(
+            encrypted.len(),
+            plaintext.len() + 12 + 16,
+            "encrypted len must be plaintext + nonce(12) + tag(16)"
+        );
+        let decrypted =
+            FilenProvider::decrypt_file_content(&encrypted, &file_key)
+                .expect("decrypt");
+        assert_eq!(decrypted, plaintext, "round-trip must be byte-exact");
+    }
+
+    /// Two chunks encrypted with the same file_key must produce different
+    /// ciphertexts (proving each call uses a fresh random nonce). This is
+    /// what makes parallel chunk uploads safe under AES-GCM.
+    #[test]
+    fn each_chunk_uses_a_fresh_nonce() {
+        let file_key: String = (0..32)
+            .map(|i| format!("{:02x}", i as u8))
+            .collect();
+        let plaintext = vec![0xAB_u8; 1024];
+        let a = FilenProvider::encrypt_file_content(&plaintext, &file_key)
+            .expect("encrypt a");
+        let b = FilenProvider::encrypt_file_content(&plaintext, &file_key)
+            .expect("encrypt b");
+        assert_ne!(
+            a, b,
+            "two encryptions of the same plaintext must differ (random nonce)"
+        );
+        assert_ne!(&a[..12], &b[..12], "nonces must differ");
     }
 }
