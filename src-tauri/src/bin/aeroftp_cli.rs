@@ -14801,32 +14801,122 @@ fn benchmark_remote_roots(initial_path: &str, report_id: &str) -> (String, Strin
     (bench_base, test_root)
 }
 
-fn benchmark_sanitization_sweep(serialized: &str) -> Result<(), String> {
-    // Belt-and-suspenders: regex sweep for common credential prefixes,
-    // IPs, OS path prefixes, and email patterns. If any of these match,
-    // we refuse to write the report rather than risk leaking PII.
-    let patterns: &[(&str, &str)] = &[
-        (r"AKIA[0-9A-Z]{16}", "AWS access key"),
-        (r"xox[baprs]-[0-9a-zA-Z-]{10,}", "Slack token"),
-        (r"ghp_[A-Za-z0-9]{30,}", "GitHub PAT"),
-        (r"gho_[A-Za-z0-9]{30,}", "GitHub OAuth token"),
+/// Pattern table reused by both [`benchmark_sanitize`] (replacement pass) and
+/// [`benchmark_sanitization_sweep`] (assertion pass).
+fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static str)] {
+    // (pattern, replacement, label)
+    &[
+        (r"AKIA[0-9A-Z]{16}", "AKIA<redacted>", "AWS access key"),
+        (
+            r"xox[baprs]-[0-9a-zA-Z-]{10,}",
+            "xox<redacted>",
+            "Slack token",
+        ),
+        (r"ghp_[A-Za-z0-9]{30,}", "ghp_<redacted>", "GitHub PAT"),
+        (
+            r"gho_[A-Za-z0-9]{30,}",
+            "gho_<redacted>",
+            "GitHub OAuth token",
+        ),
         (
             r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+",
+            "<redacted-jwt>",
             "JWT",
         ),
         (
             r"\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b",
+            "<redacted-ip>",
             "IPv4 address",
         ),
-        (r"/home/[a-zA-Z0-9._-]+/", "Linux home path"),
-        (r"C:\\\\Users\\\\[a-zA-Z0-9._-]+", "Windows user path"),
-        (r"/Users/[a-zA-Z0-9._-]+/", "macOS user path"),
+        (r"/home/[a-zA-Z0-9._-]+/", "/home/<redacted>/", "Linux home path"),
+        (
+            r"C:\\\\Users\\\\[a-zA-Z0-9._-]+",
+            r"C:\\Users\\<redacted>",
+            "Windows user path",
+        ),
+        (
+            r"/Users/[a-zA-Z0-9._-]+/",
+            "/Users/<redacted>/",
+            "macOS user path",
+        ),
         (
             r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+            "<redacted>@<redacted>",
             "email",
         ),
-    ];
-    for (pat, label) in patterns {
+    ]
+}
+
+/// Replacement pass: substitutes any PII match with a fixed placeholder so
+/// the rest of the report (provider hint, error strings, summary) stays
+/// usable. Errors emitted by remote providers often contain the username
+/// (which is an email for most OAuth providers) or a server-side IP. Without
+/// this pass, those reports were silently rejected by the sweep on otherwise
+/// good runs (FeliCloud, Filen S3 in the 2026-05-07 community sweep).
+fn benchmark_sanitize(serialized: String) -> String {
+    let mut out = serialized;
+    for (pat, replacement, _label) in benchmark_pii_patterns() {
+        match regex::Regex::new(pat) {
+            Ok(re) => {
+                out = re.replace_all(&out, *replacement).into_owned();
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "benchmark_sanitize: bad regex {} ({}); pattern skipped",
+                    pat,
+                    e
+                );
+            }
+        }
+    }
+    out
+}
+
+/// RAII guard that switches SIGPIPE handling to `SIG_IGN` for the lifetime
+/// of the guard, restoring the previous handler on drop.
+///
+/// Why: the CLI default is `SIG_DFL` so that pipe-friendly invocations like
+/// `aeroftp ls | head` terminate quietly. The benchmark does not write to a
+/// user-facing pipe (its stdout/stderr go to a per-profile log file via
+/// shell redirection), and stray broken-pipe signals from inside reqwest /
+/// tokio during long multipart uploads (notably observed on S3 Backblaze
+/// during the 2026-05-07 community sweep, rc=141 mid-run) would kill the
+/// entire sweep. Ignoring SIGPIPE for the benchmark window converts those
+/// faults into ordinary `io::Error` that the upload path can surface.
+struct SigpipeIgnoreGuard {
+    #[cfg(unix)]
+    previous: libc::sighandler_t,
+}
+
+impl SigpipeIgnoreGuard {
+    fn new() -> Self {
+        #[cfg(unix)]
+        {
+            let previous = unsafe { libc::signal(libc::SIGPIPE, libc::SIG_IGN) };
+            Self { previous }
+        }
+        #[cfg(not(unix))]
+        {
+            Self {}
+        }
+    }
+}
+
+impl Drop for SigpipeIgnoreGuard {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        unsafe {
+            libc::signal(libc::SIGPIPE, self.previous);
+        }
+    }
+}
+
+/// Final assertion: after [`benchmark_sanitize`] has run, no PII pattern
+/// should remain. If any does, that means [`benchmark_sanitize`] missed a
+/// case (e.g. a new pattern was added to the table without a placeholder)
+/// and we still refuse to write the report rather than risk leaking PII.
+fn benchmark_sanitization_sweep(serialized: &str) -> Result<(), String> {
+    for (pat, _repl, label) in benchmark_pii_patterns() {
         let re = regex::Regex::new(pat)
             .map_err(|e| format!("internal: bad sweep regex {}: {}", pat, e))?;
         if re.is_match(serialized) {
@@ -14856,6 +14946,10 @@ async fn cmd_benchmark(
         );
         return 5;
     }
+
+    // Hold this for the entire benchmark lifetime: see SigpipeIgnoreGuard
+    // doc-comment for the rationale (Backblaze multipart SIGPIPE workaround).
+    let _sigpipe_guard = SigpipeIgnoreGuard::new();
 
     let cfg = match resolve_benchmark_config(
         level,
@@ -15300,12 +15394,19 @@ async fn cmd_benchmark(
         }
     };
 
+    // First pass: substitute any PII (emails, IPs, OS path prefixes, cloud
+    // tokens) with placeholders. Provider error strings frequently embed the
+    // account email or a server IP that has no place in a public benchmark
+    // report. Then run the assertion pass: if anything still matches, that
+    // means the substitution table missed a case and we refuse to write
+    // rather than leak.
+    let serialized = benchmark_sanitize(serialized);
     if let Err(e) = benchmark_sanitization_sweep(&serialized) {
         print_error(
             format,
             &format!(
-                "report failed sanitization sweep: {}. \
-                 Refusing to write or publish. This is a bug, please open an issue.",
+                "report failed sanitization sweep after substitution: {}. \
+                 This is a bug in benchmark_sanitize patterns: please open an issue.",
                 e
             ),
             99,
@@ -30730,24 +30831,42 @@ mod tests {
     }
 
     #[test]
-    fn benchmark_sanitization_sweep_blocks_aws_key() {
-        let dirty = r#"{"note":"AKIAIOSFODNN7EXAMPLE oops"}"#;
-        let err = benchmark_sanitization_sweep(dirty).unwrap_err();
-        assert!(err.contains("AWS"));
+    fn benchmark_sanitize_replaces_email() {
+        // Provider errors often embed the account email: must be substituted,
+        // not rejected.
+        let dirty = r#"{"errors":["upload failed for user@example.com"]}"#.to_string();
+        let cleaned = benchmark_sanitize(dirty);
+        assert!(!cleaned.contains("user@example.com"));
+        assert!(cleaned.contains("<redacted>@<redacted>"));
+        // After substitution the assertion sweep must pass.
+        assert!(benchmark_sanitization_sweep(&cleaned).is_ok());
     }
 
     #[test]
-    fn benchmark_sanitization_sweep_blocks_email() {
+    fn benchmark_sanitize_replaces_aws_key() {
+        let dirty = r#"{"note":"AKIAIOSFODNN7EXAMPLE oops"}"#.to_string();
+        let cleaned = benchmark_sanitize(dirty);
+        assert!(!cleaned.contains("AKIAIOSFODNN7EXAMPLE"));
+        assert!(cleaned.contains("AKIA<redacted>"));
+        assert!(benchmark_sanitization_sweep(&cleaned).is_ok());
+    }
+
+    #[test]
+    fn benchmark_sanitize_replaces_ipv4() {
+        let dirty = r#"{"host":"192.168.1.1"}"#.to_string();
+        let cleaned = benchmark_sanitize(dirty);
+        assert!(!cleaned.contains("192.168.1.1"));
+        assert!(cleaned.contains("<redacted-ip>"));
+        assert!(benchmark_sanitization_sweep(&cleaned).is_ok());
+    }
+
+    #[test]
+    fn benchmark_sanitization_sweep_blocks_unsanitized_email() {
+        // Belt-and-suspenders: if benchmark_sanitize is bypassed and PII
+        // slips through, the assertion sweep must still flag it.
         let dirty = r#"{"submitter":"user@example.com"}"#;
         let err = benchmark_sanitization_sweep(dirty).unwrap_err();
         assert!(err.to_lowercase().contains("email"));
-    }
-
-    #[test]
-    fn benchmark_sanitization_sweep_blocks_ipv4() {
-        let dirty = r#"{"host":"192.168.1.1"}"#;
-        let err = benchmark_sanitization_sweep(dirty).unwrap_err();
-        assert!(err.to_lowercase().contains("ipv4"));
     }
 
     #[test]
