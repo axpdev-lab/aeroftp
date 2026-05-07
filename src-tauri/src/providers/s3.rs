@@ -28,6 +28,34 @@ use super::{
     ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider,
 };
 
+/// Returns true when the S3 endpoint targets a loopback address or a known
+/// local-bridge hostname (Filen Desktop S3 at local.s3.filen.io, MEGAcmd, ...).
+/// Used to auto-trust self-signed TLS certificates in S3Provider::new without
+/// requiring the user to flip verify_cert manually for every loopback profile.
+fn is_local_s3_endpoint(endpoint: &str) -> bool {
+    let lower = endpoint.trim().to_ascii_lowercase();
+    let stripped = lower
+        .strip_prefix("http://")
+        .or_else(|| lower.strip_prefix("https://"))
+        .unwrap_or(&lower);
+    let host_only = stripped
+        .split('/')
+        .next()
+        .unwrap_or(stripped)
+        .split('@')
+        .next_back()
+        .unwrap_or(stripped);
+    let host = host_only
+        .rsplit_once(':')
+        .filter(|(_, p)| p.chars().all(|c| c.is_ascii_digit()))
+        .map(|(h, _)| h)
+        .unwrap_or(host_only);
+    matches!(host, "127.0.0.1" | "::1" | "[::1]" | "localhost")
+        || host.ends_with(".localhost")
+        || host.ends_with(".local")
+        || host == "local.s3.filen.io"
+}
+
 /// S3 Storage Provider
 #[derive(Clone)]
 pub struct S3Provider {
@@ -51,15 +79,38 @@ pub struct S3Provider {
 impl S3Provider {
     /// Create a new S3 provider with the given configuration
     pub fn new(config: S3Config) -> Result<Self, ProviderError> {
-        let client = Client::builder()
+        eprintln!(
+            "[S3] new(): endpoint={:?} bucket={} region={} path_style={} verify_cert={}",
+            config.endpoint, config.bucket, config.region, config.path_style, config.verify_cert,
+        );
+        // Auto-trust self-signed certs for loopback / local-bridge endpoints
+        // (Filen Desktop S3, MEGAcmd S3, MinIO localhost, ...). Reqwest 0.13 with
+        // rustls-platform-verifier rejects CA-as-end-entity certs even with
+        // danger_accept_invalid_certs in some paths, so we force the unsafe
+        // verifier when the host is loopback (127.0.0.1, ::1, localhost) or a
+        // known local-bridge hostname.
+        let endpoint_is_local = config
+            .endpoint
+            .as_deref()
+            .map(is_local_s3_endpoint)
+            .unwrap_or(false);
+        let accept_invalid_certs = !config.verify_cert || endpoint_is_local;
+        eprintln!(
+            "[S3] new(): endpoint_is_local={} accept_invalid_certs={}",
+            endpoint_is_local, accept_invalid_certs,
+        );
+        let mut client_builder = Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(300))
-            .http1_only()
-            .build()
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
-            })?;
+            .http1_only();
+        if accept_invalid_certs {
+            eprintln!("[S3] accepting invalid TLS certificates (self-signed / loopback)");
+            client_builder = client_builder.danger_accept_invalid_certs(true);
+        }
+        let client = client_builder.build().map_err(|e| {
+            ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
+        })?;
 
         Ok(Self {
             config,
@@ -100,8 +151,12 @@ impl S3Provider {
 
         if self.config.path_style {
             // Path-style: https://endpoint/bucket/key
+            // Filen Desktop S3 (strict) returns "BadRequest: Invalid prefix specified"
+            // when the bucket-only URL is sent without a trailing slash. AWS, MinIO,
+            // Wasabi all accept both forms, so adding the trailing slash for
+            // bucket-only requests is universally safe.
             if key.is_empty() {
-                format!("{}/{}", endpoint, self.config.bucket)
+                format!("{}/{}/", endpoint, self.config.bucket)
             } else {
                 format!("{}/{}/{}", endpoint, self.config.bucket, key)
             }
@@ -135,6 +190,24 @@ impl S3Provider {
             .map(|ep| {
                 let lower = ep.to_ascii_lowercase();
                 lower.contains("s5lu.com") || lower.contains("filelu")
+            })
+            .unwrap_or(false)
+    }
+
+    /// Detect Filen Desktop S3 endpoints. Per filen-s3 source, the server
+    /// implements a strict subset of the S3 API: ListObjects(V2) accepts
+    /// only `Prefix` and `Delimiter`, refusing `list-type`, `max-keys`,
+    /// and `continuation-token` with "BadRequest: Invalid prefix specified".
+    /// HeadBucket returns 404 in some paths, multipart uploads aren't
+    /// supported, ETags are UUIDs, and there are no presigned URLs.
+    fn is_filen_s3_endpoint(&self) -> bool {
+        self.config
+            .endpoint
+            .as_deref()
+            .map(|ep| {
+                let lower = ep.to_ascii_lowercase();
+                lower.contains("local.s3.filen.io")
+                    || (self.config.region == "filen" && is_local_s3_endpoint(ep))
             })
             .unwrap_or(false)
     }
@@ -458,6 +531,10 @@ impl S3Provider {
         debug!(
             "S3 Bucket: {}, Region: {}, Path-style: {}",
             self.config.bucket, self.config.region, self.config.path_style
+        );
+        eprintln!(
+            "[S3] {} {} (bucket={} region={} path_style={})",
+            method, url, self.config.bucket, self.config.region, self.config.path_style
         );
 
         let payload = body.as_deref().unwrap_or(&[]);
@@ -1402,13 +1479,16 @@ impl StorageProvider for S3Provider {
         // Reset clock offset for fresh connection
         self.clock_offset_secs = 0;
 
+        // Connection probe: GET on the bucket root with an explicit empty
+        // `prefix=` query parameter (legacy ListObjects v1).
+        // Per filen-s3 source (FilenCloudDienste/filen-s3 README), the Filen
+        // Desktop S3 server "only supports Prefix parameter" on ListObjects/V2
+        // and rejects list-type=2, max-keys, continuation tokens, and bare
+        // bucket-only requests with "BadRequest: Invalid prefix specified".
+        // Sending `?prefix=` explicitly is universally accepted by AWS, MinIO,
+        // Wasabi, B2, R2, and Filen, and is the most compatible probe.
         let response = self
-            .s3_request(
-                Method::GET,
-                "",
-                Some(&[("list-type", "2"), ("max-keys", "1")]),
-                None,
-            )
+            .s3_request(Method::GET, "", Some(&[("prefix", "")]), None)
             .await?;
 
         match response.status() {
@@ -1496,6 +1576,10 @@ impl StorageProvider for S3Provider {
             ))),
             status => {
                 let body = response.text().await.unwrap_or_default();
+                eprintln!(
+                    "[S3] connect() failed with status={} body={}",
+                    status, body
+                );
                 Err(ProviderError::ConnectionFailed(format!(
                     "S3 error ({}): {}",
                     status,
@@ -1533,20 +1617,31 @@ impl StorageProvider for S3Provider {
 
         let mut all_entries = Vec::new();
         let mut continuation_token: Option<String> = None;
+        let filen_dialect = self.is_filen_s3_endpoint();
 
-        // LIST-01: Pagination loop handles >1000 items via NextContinuationToken
+        // LIST-01: Pagination loop handles >1000 items via NextContinuationToken.
+        // Filen Desktop S3 dialect (filen-s3): ListObjects supports only `Prefix`
+        // (and implicit Delimiter); list-type, max-keys, continuation-token are
+        // rejected with "BadRequest: Invalid prefix specified". Filen always
+        // returns the full result set (no pagination), so the loop runs once.
         loop {
-            let mut params: Vec<(&str, &str)> =
-                vec![("list-type", "2"), ("delimiter", "/"), ("max-keys", "1000")];
+            let mut params: Vec<(&str, &str)> = if filen_dialect {
+                // Filen always returns all results in one shot, no pagination.
+                vec![("delimiter", "/"), ("prefix", &prefix_with_slash)]
+            } else {
+                vec![("list-type", "2"), ("delimiter", "/"), ("max-keys", "1000")]
+            };
 
-            if !prefix_with_slash.is_empty() {
+            if !filen_dialect && !prefix_with_slash.is_empty() {
                 params.push(("prefix", &prefix_with_slash));
             }
 
             let token_str: String;
-            if let Some(ref token) = continuation_token {
-                token_str = token.clone();
-                params.push(("continuation-token", &token_str));
+            if !filen_dialect {
+                if let Some(ref token) = continuation_token {
+                    token_str = token.clone();
+                    params.push(("continuation-token", &token_str));
+                }
             }
 
             let response = self
@@ -1582,6 +1677,10 @@ impl StorageProvider for S3Provider {
                     info!("S3 LIST parsed {} entries from response", entries.len());
                     all_entries.extend(entries);
 
+                    // Filen returns the full result set in one shot (no pagination).
+                    if filen_dialect {
+                        break;
+                    }
                     if let Some(token) = next_token {
                         continuation_token = Some(token);
                     } else {
@@ -1889,9 +1988,14 @@ impl StorageProvider for S3Provider {
         let total_size = file_meta.len();
         let key = remote_path.trim_start_matches('/');
 
-        // UPLOAD-02: Use streaming multipart upload for files larger than 5MB
-        // Reads chunks from disk instead of buffering entire file in RAM
-        if total_size > Self::MULTIPART_THRESHOLD as u64 {
+        // UPLOAD-02: Use streaming multipart upload for files larger than 5MB.
+        // Reads chunks from disk instead of buffering entire file in RAM.
+        // Filen Desktop S3 (filen-s3) returns 501 Not Implemented for
+        // CreateMultipartUpload, so we route every upload through the
+        // single-PUT path on that dialect (the server buffers the whole
+        // request body in memory by design, per filen-s3 README).
+        let force_single_put = self.is_filen_s3_endpoint();
+        if total_size > Self::MULTIPART_THRESHOLD as u64 && !force_single_put {
             return self
                 .upload_multipart_streaming(key, local_path, total_size, on_progress)
                 .await;
@@ -3516,6 +3620,7 @@ mod tests {
             storage_class: None,
             sse_mode: None,
             sse_kms_key_id: None,
+            verify_cert: true,
         })
         .expect("Failed to create S3Provider");
 
@@ -3538,6 +3643,7 @@ mod tests {
             storage_class: None,
             sse_mode: None,
             sse_kms_key_id: None,
+            verify_cert: true,
         })
         .expect("Failed to create S3Provider");
 
@@ -3560,6 +3666,7 @@ mod tests {
             storage_class: None,
             sse_mode: None,
             sse_kms_key_id: None,
+            verify_cert: true,
         })
         .expect("Failed to create S3Provider");
 
@@ -3672,6 +3779,7 @@ mod tests {
             storage_class: None,
             sse_mode: None,
             sse_kms_key_id: None,
+            verify_cert: true,
         })
         .expect("provider");
 

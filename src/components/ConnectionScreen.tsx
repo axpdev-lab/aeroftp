@@ -1290,6 +1290,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         // so the backend builds http://... instead of https://...
                         webdavScheme: provider.defaults?.webdavScheme,
                         bucket: provider.defaults?.bucket,
+                        // Local HTTPS bridges (Filen Desktop S3) use self-signed certs
+                        verifyCert: provider.defaults?.verifyCert,
                     },
                 });
                 onQuickConnectDirsChange({

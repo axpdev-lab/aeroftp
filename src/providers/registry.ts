@@ -1053,7 +1053,7 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'filen-desktop-s3',
         name: 'Filen Desktop (local S3)',
-        description: 'Local S3-compatible bridge to a logged-in Filen Desktop instance. Default port 1700, runs on 127.0.0.1 via local.s3.filen.io. Requires path-style addressing and bucket "filen".',
+        description: 'Local S3-compatible bridge to a logged-in Filen Desktop instance. Default port 1800, runs on 127.0.0.1 via local.s3.filen.io. Requires path-style addressing and bucket "filen".',
         protocol: 's3',
         category: 's3',
         icon: 'HardDrive',
@@ -1073,21 +1073,26 @@ export const PROVIDERS: ProviderConfig[] = [
             },
         ],
         defaults: {
-            endpoint: 'http://local.s3.filen.io:1700',
+            port: 1800,
+            endpoint: 'https://local.s3.filen.io:1800',
             region: 'filen',
             bucket: 'filen',
             pathStyle: true,
+            // Filen Desktop S3 in HTTPS uses a self-signed certificate
+            // (loopback). Disable cert verification by default for this preset.
+            verifyCert: false,
         },
         features: { shareLink: false, sync: true },
-        healthCheckUrl: 'http://local.s3.filen.io:1700',
+        healthCheckUrl: 'https://local.s3.filen.io:1800',
         helpUrl: 'https://docs.filen.io/docs/desktop/network-drive',
         signupUrl: 'https://filen.io',
         setupInstructions: [
             'Open Filen Desktop and sign in with your Filen account',
             'Go to Settings > Network Drive > S3',
             'Choose an access key and secret key (different from your account)',
-            'Toggle "Enabled" and pick port 1700 (default) or a custom one',
-            'Region must stay "filen" and bucket must stay "filen"',
+            'Toggle "Enabled" and pick port 1800 (default) or a custom one',
+            'Default in Filen Desktop is HTTPS with a self-signed certificate; this preset matches that. If you switched Filen Desktop to plain HTTP, open Edit and change the endpoint scheme to http://',
+            'Region stays "filen" and bucket is hardcoded to "filen" (handled automatically)',
             'Keep Filen Desktop running while you connect from AeroFTP',
         ],
     },
@@ -1250,6 +1255,7 @@ export const PROVIDERS: ProviderConfig[] = [
             port: 4443,
             basePath: '/',
             anonymous: true,
+            webdavScheme: 'http',
         },
         features: {
             shareLink: false,
@@ -1264,6 +1270,7 @@ export const PROVIDERS: ProviderConfig[] = [
             'Run: login your-email@example.com',
             'Run: webdav /',
             'Close the terminal; the WebDAV server keeps running in the background',
+            'If you enabled TLS in MEGAcmd (webdav -tls /), switch the Protocol field below to HTTPS',
         ],
     },
     {
@@ -1303,6 +1310,7 @@ export const PROVIDERS: ProviderConfig[] = [
             'Go to Settings > Network Drive > WebDAV',
             'Choose a username and password (different from your account)',
             'Toggle "Enabled" and pick port 1900 (default) or a custom one',
+            'Note the HTTP Protocol setting (HTTP or HTTPS) and pick the same value in the Protocol field below',
             'Keep Filen Desktop running while you connect from AeroFTP',
         ],
     },

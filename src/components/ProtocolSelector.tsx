@@ -707,6 +707,8 @@ interface ProtocolFieldsProps {
         // FTP/FTPS-specific
         tlsMode?: FtpTlsMode;
         verifyCert?: boolean;
+        // WebDAV local-bridge presets (Filen Desktop, MEGAcmd)
+        webdavScheme?: 'http' | 'https' | 'auto';
     };
     onChange: (options: ProtocolFieldsProps['options']) => void;
     disabled?: boolean;
@@ -892,29 +894,36 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             || (providerConfig?.defaults?.endpointTemplate ? `es. ${providerConfig.defaults.endpointTemplate.replace(/\{(\w+)\}/g, '<$1>')}` : null)
             || t('protocol.endpointPlaceholder');
 
+        // Hide bucket input for presets that hardcode the bucket (e.g. Filen Desktop S3
+        // exposes only a virtual bucket called "filen"). Keep the value in options.bucket
+        // so the connection logic still has it; just don't surface a confusing input.
+        const hasFixedBucket = !!providerConfig?.defaults?.bucket && !providerConfig?.isGeneric;
+
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <Database size={14} />
                     {providerConfig ? `${providerConfig.name}: ${t('protocol.s3Config')}` : t('protocol.s3Config')}
                 </div>
-                <div>
-                    <label className="block text-sm font-medium mb-1.5">
-                        {bucketField?.label || t('protocol.bucketNameRequired')}
-                    </label>
-                    <input
-                        type="text"
-                        value={options.bucket || ''}
-                        onChange={(e) => onChange({ ...options, bucket: e.target.value })}
-                        disabled={disabled}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                        placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
-                        required
-                    />
-                    {!isEditing && bucketField?.helpText && (
-                        <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
-                    )}
-                </div>
+                {!hasFixedBucket && (
+                    <div>
+                        <label className="block text-sm font-medium mb-1.5">
+                            {bucketField?.label || t('protocol.bucketNameRequired')}
+                        </label>
+                        <input
+                            type="text"
+                            value={options.bucket || ''}
+                            onChange={(e) => onChange({ ...options, bucket: e.target.value })}
+                            disabled={disabled}
+                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                            placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
+                            required
+                        />
+                        {!isEditing && bucketField?.helpText && (
+                            <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
+                        )}
+                    </div>
+                )}
 
                 {/* Account ID + fixed endpoint suffix (e.g. Cloudflare R2: [account_id].r2.cloudflarestorage.com) */}
                 {accountIdField && (
@@ -1178,9 +1187,44 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const isNextcloud = selectedProviderId === 'nextcloud';
         const isCustomOrGeneric = !selectedProviderId || selectedProviderId === 'custom-webdav';
         const showNextcloudHint = isNextcloud || isCustomOrGeneric;
+        // Local-bridge WebDAV presets (Filen Desktop, MEGAcmd, OpenDrive Desktop, ...)
+        // mark themselves with `defaults.webdavScheme`. The bridge server inside
+        // the host app can be flipped between HTTP and HTTPS by the user, and we
+        // need to mirror that choice here. HTTPS local bridges always use a
+        // self-signed certificate (loopback), so auto-disable cert verification.
+        const showWebdavSchemeToggle = !!providerConfig?.defaults?.webdavScheme;
+        const currentScheme = (options.webdavScheme as 'http' | 'https' | undefined) || 'http';
 
         return (
-            <div className="pt-2 border-t border-gray-200 dark:border-gray-700 mt-3 space-y-2">
+            <div className="pt-2 border-t border-gray-200 dark:border-gray-700 mt-3 space-y-3">
+                {showWebdavSchemeToggle && (
+                    <div>
+                        <label className="block text-sm font-medium mb-1.5">{t('protocol.webdavLocalScheme')}</label>
+                        <div className="flex gap-4">
+                            {(['http', 'https'] as const).map((value) => (
+                                <label key={value} className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="webdav-local-scheme"
+                                        checked={currentScheme === value}
+                                        onChange={() => onChange({
+                                            ...options,
+                                            webdavScheme: value,
+                                            // Loopback HTTPS bridges use self-signed certs
+                                            verifyCert: value === 'https' ? false : options.verifyCert,
+                                        })}
+                                        disabled={disabled}
+                                        className="text-blue-500 focus:ring-blue-500"
+                                    />
+                                    {value.toUpperCase()}
+                                </label>
+                            ))}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                            {t('protocol.webdavLocalSchemeHelp')}
+                        </p>
+                    </div>
+                )}
                 {showNextcloudHint && (
                     <>
                         <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">

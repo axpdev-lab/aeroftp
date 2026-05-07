@@ -158,6 +158,12 @@ export function IntroHub(props: IntroHubProps) {
                     region: provider?.defaults?.region,
                     endpoint: provider?.defaults?.endpoint,
                     anonymous: provider?.defaults?.anonymous,
+                    // Pre-populate bucket from preset (e.g. Filen Desktop S3 hardcodes "filen")
+                    bucket: provider?.defaults?.bucket,
+                    // Local-bridge WebDAV presets (Filen Desktop, MEGAcmd) carry their default scheme
+                    webdavScheme: provider?.defaults?.webdavScheme,
+                    // Local HTTPS bridges (Filen Desktop S3) use self-signed certs
+                    verifyCert: provider?.defaults?.verifyCert,
                 },
             },
             quickConnectDirs: { remoteDir: provider?.defaults?.basePath || '', localDir: '' },

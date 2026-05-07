@@ -386,6 +386,18 @@ impl ProviderConnectionParams {
             }
         }
 
+        // S3 self-signed cert opt-out for local-loopback bridges (Filen Desktop S3
+        // over HTTPS at local.s3.filen.io:1800 uses a self-signed certificate).
+        if provider_type == ProviderType::S3 {
+            tracing::info!(
+                "[S3] provider_commands: self.verify_cert={:?} self.endpoint={:?} self.bucket={:?}",
+                self.verify_cert, self.endpoint, self.bucket
+            );
+            if let Some(verify) = self.verify_cert {
+                extra.insert("verify_cert".to_string(), verify.to_string());
+            }
+        }
+
         // Add MEGA-specific options
         if provider_type == ProviderType::Mega {
             if self.save_session.unwrap_or(true) {

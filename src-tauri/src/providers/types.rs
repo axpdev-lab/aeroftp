@@ -588,6 +588,9 @@ pub struct S3Config {
     pub sse_mode: Option<String>,
     /// KMS key ID for SSE-KMS (optional, uses default AWS-managed key if absent)
     pub sse_kms_key_id: Option<String>,
+    /// Whether to verify TLS certificates (default: true). Set to false for self-signed
+    /// certs, e.g. local-loopback bridges like Filen Desktop S3 over HTTPS.
+    pub verify_cert: bool,
 }
 
 impl S3Config {
@@ -664,6 +667,12 @@ impl S3Config {
             .cloned()
             .filter(|s| !s.is_empty());
 
+        let verify_cert = config
+            .extra
+            .get("verify_cert")
+            .map(|v| v != "false")
+            .unwrap_or(true);
+
         Ok(Self {
             endpoint,
             region,
@@ -677,6 +686,7 @@ impl S3Config {
             storage_class,
             sse_mode,
             sse_kms_key_id,
+            verify_cert,
         })
     }
 }

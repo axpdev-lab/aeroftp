@@ -342,6 +342,8 @@
             "selectRegion": "Seleziona regione...",
             "providerDocumentation": "Documentazione {name}",
             "webdavExampleLabel": "Esempio:",
+            "webdavLocalScheme": "Protocollo",
+            "webdavLocalSchemeHelp": "Allinea l'impostazione HTTP/HTTPS al bridge WebDAV locale (Filen Desktop, MEGAcmd). HTTPS usa un certificato autofirmato, quindi la verifica del certificato viene disattivata automaticamente.",
             "connectVia": "Connetti a {name} tramite {protocol}",
             "webdavConnectVia": "Connetti a {name} via WebDAV",
             "s3Endpoint": "Endpoint",
