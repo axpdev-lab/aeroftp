@@ -247,7 +247,13 @@
             "saveAndConnect": "Kaydet ve Bağlan",
             "saveDisabledTotp": "TOTP kodları tek kullanımlıktır. Bu kodu şimdi uygulamak için Kaydet ve Bağlan'ı kullanın.",
             "generatePersonalLoginToken": "Kişisel giriş belirteci oluştur",
-            "endpointUrl": "Uç nokta URL'si"
+            "endpointUrl": "Uç nokta URL'si",
+            "b2NativeAdvantagesTitle": "Backblaze B2 yerel API: S3 uyumlu sürüme göre ek özellikler",
+            "b2NativeAdvLargeFiles": "Büyük dosyalar için ideal: 100 MB önerilen parça boyutu ile yerel parçalı yükleme",
+            "b2NativeAdvSoftDelete": "Yumuşak silme: silinen dosyalar sürüm geçmişinden kurtarılabilir",
+            "b2NativeAdvBucketUsage": "Bucket düzeyindeki depolama kullanımı durum çubuğunda gösterilir",
+            "b2NativeAdvShareLinks": "Özel sona erme süreli paylaşım bağlantıları (7 güne kadar)",
+            "b2NativeAdvVersions": "Her nesne için tam dosya sürüm geçmişi"
         },
         "browser": {
             "remote": "Uzak",
@@ -1112,7 +1118,8 @@
             "update": "Güncelleme",
             "insecureConnectionUnencrypted": "Bu bağlantı şifrelenmemiştir. Kimlik bilgileri düz metin olarak gönderilmektedir.",
             "secureConnection": "Güvenli",
-            "secureConnectionTitle": "{protocol} üzerinden şifreli bağlantı"
+            "secureConnectionTitle": "{protocol} üzerinden şifreli bağlantı",
+            "usedNoCap": "kullanılan (kota sınırı yok)"
         },
         "dialogs": {
             "confirmTitle": "Onayla",

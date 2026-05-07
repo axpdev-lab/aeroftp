@@ -247,7 +247,13 @@
             "saveAndConnect": "Opslaan en verbinden",
             "saveDisabledTotp": "TOTP-codes zijn eenmalig bruikbaar. Gebruik Opslaan en verbinden om deze code nu toe te passen.",
             "generatePersonalLoginToken": "Persoonlijk login-token genereren",
-            "endpointUrl": "Endpoint-URL"
+            "endpointUrl": "Endpoint-URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 native API: extra functies vergeleken met S3-compatibel",
+            "b2NativeAdvLargeFiles": "Ideaal voor grote bestanden: native chunked upload met aanbevolen onderdeelgrootte van 100 MB",
+            "b2NativeAdvSoftDelete": "Soft-delete: verwijderde bestanden zijn herstelbaar uit de versiegeschiedenis",
+            "b2NativeAdvBucketUsage": "Opslaggebruik op bucket-niveau wordt weergegeven in de statusbalk",
+            "b2NativeAdvShareLinks": "Deellinks met aangepaste vervaltijd (tot 7 dagen)",
+            "b2NativeAdvVersions": "Volledige bestandsversiegeschiedenis per object"
         },
         "browser": {
             "remote": "Extern",
@@ -1112,7 +1118,8 @@
             "update": "Update",
             "insecureConnectionUnencrypted": "Deze verbinding is niet versleuteld. Inloggegevens worden als platte tekst verzonden.",
             "secureConnection": "Beveiligd",
-            "secureConnectionTitle": "Versleutelde verbinding via {protocol}"
+            "secureConnectionTitle": "Versleutelde verbinding via {protocol}",
+            "usedNoCap": "gebruikt (geen quotalimiet)"
         },
         "dialogs": {
             "confirmTitle": "Bevestigen",

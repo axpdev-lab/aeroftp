@@ -247,7 +247,13 @@
             "saveAndConnect": "保存して接続",
             "saveDisabledTotp": "TOTPコードは1回限り有効です。このコードを今すぐ適用するには「保存して接続」を使用してください。",
             "generatePersonalLoginToken": "パーソナルログイントークンを生成",
-            "endpointUrl": "エンドポイントURL"
+            "endpointUrl": "エンドポイントURL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 ネイティブ API: S3 互換を超える追加機能",
+            "b2NativeAdvLargeFiles": "大きなファイルに最適: 推奨パートサイズ 100 MB のネイティブチャンクアップロード",
+            "b2NativeAdvSoftDelete": "ソフト削除: 削除されたファイルはバージョン履歴から復元可能",
+            "b2NativeAdvBucketUsage": "バケットレベルのストレージ使用量がステータスバーに表示されます",
+            "b2NativeAdvShareLinks": "カスタム有効期限付き共有リンク (最大 7 日間)",
+            "b2NativeAdvVersions": "オブジェクトごとの完全なファイルバージョン履歴"
         },
         "browser": {
             "remote": "リモート",
@@ -1112,7 +1118,8 @@
             "update": "アップデート",
             "insecureConnectionUnencrypted": "この接続は暗号化されていません。資格情報がプレーンテキストで送信されます。",
             "secureConnection": "安全",
-            "secureConnectionTitle": "{protocol} による暗号化接続"
+            "secureConnectionTitle": "{protocol} による暗号化接続",
+            "usedNoCap": "使用済み (クォータ上限なし)"
         },
         "dialogs": {
             "confirmTitle": "確認",

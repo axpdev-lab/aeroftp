@@ -247,7 +247,13 @@
             "saveAndConnect": "Gem og opret forbindelse",
             "saveDisabledTotp": "TOTP-koder er engangskoder. Brug Gem og opret forbindelse for at anvende denne kode nu.",
             "generatePersonalLoginToken": "Generer personligt login-token",
-            "endpointUrl": "Endpoint-URL"
+            "endpointUrl": "Endpoint-URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 native API: ekstra funktioner i forhold til S3-kompatibel",
+            "b2NativeAdvLargeFiles": "Bedst til store filer: native opdeling i bidder med anbefalet delstørrelse på 100 MB",
+            "b2NativeAdvSoftDelete": "Blød sletning: slettede filer kan gendannes fra versionshistorikken",
+            "b2NativeAdvBucketUsage": "Lagerforbrug på bucket-niveau vises i statuslinjen",
+            "b2NativeAdvShareLinks": "Delelinks med tilpasset udløb (op til 7 dage)",
+            "b2NativeAdvVersions": "Fuld filversionshistorik pr. objekt"
         },
         "browser": {
             "remote": "Ekstern",
@@ -1112,7 +1118,8 @@
             "update": "Opdatering",
             "insecureConnectionUnencrypted": "Denne forbindelse er ikke krypteret. Loginoplysninger sendes som almindelig tekst.",
             "secureConnection": "Sikker",
-            "secureConnectionTitle": "Krypteret forbindelse via {protocol}"
+            "secureConnectionTitle": "Krypteret forbindelse via {protocol}",
+            "usedNoCap": "brugt (ingen kvotegrænse)"
         },
         "dialogs": {
             "confirmTitle": "Bekræft",

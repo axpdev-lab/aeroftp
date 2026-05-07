@@ -247,7 +247,13 @@
             "saveAndConnect": "Tallenna ja yhdistä",
             "saveDisabledTotp": "TOTP-koodit ovat kertakäyttöisiä. Käytä Tallenna ja yhdistä -toimintoa ottaaksesi tämän koodin käyttöön nyt.",
             "generatePersonalLoginToken": "Luo henkilökohtainen kirjautumistunnus",
-            "endpointUrl": "Päätepisteen URL"
+            "endpointUrl": "Päätepisteen URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2:n natiivi API: lisäominaisuuksia S3-yhteensopivaan verrattuna",
+            "b2NativeAdvLargeFiles": "Paras suurille tiedostoille: natiivi paloiteltu lataus suositellulla 100 MB:n osakoolla",
+            "b2NativeAdvSoftDelete": "Pehmeä poisto: poistetut tiedostot voidaan palauttaa versiohistoriasta",
+            "b2NativeAdvBucketUsage": "Bucket-tason tallennustilan käyttö näytetään tilarivillä",
+            "b2NativeAdvShareLinks": "Jakolinkit mukautetulla vanhenemisajalla (enintään 7 päivää)",
+            "b2NativeAdvVersions": "Täysi tiedostoversiohistoria objektikohtaisesti"
         },
         "browser": {
             "remote": "Etä",
@@ -1112,7 +1118,8 @@
             "update": "Päivitys",
             "insecureConnectionUnencrypted": "Tämä yhteys ei ole salattu. Tunnistetiedot lähetetään selkokielisenä tekstinä.",
             "secureConnection": "Suojattu",
-            "secureConnectionTitle": "Salattu yhteys {protocol} kautta"
+            "secureConnectionTitle": "Salattu yhteys {protocol} kautta",
+            "usedNoCap": "käytetty (ei kiintiörajaa)"
         },
         "dialogs": {
             "confirmTitle": "Vahvista",

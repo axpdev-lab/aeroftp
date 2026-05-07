@@ -247,7 +247,13 @@
             "saveAndConnect": "Gardar e conectar",
             "saveDisabledTotp": "Os códigos TOTP son de un só uso. Usa Gardar e conectar para aplicar este código agora.",
             "generatePersonalLoginToken": "Xerar token de inicio de sesión persoal",
-            "endpointUrl": "URL do punto final"
+            "endpointUrl": "URL do punto final",
+            "b2NativeAdvantagesTitle": "API nativa de Backblaze B2: funcións adicionais sobre a compatible con S3",
+            "b2NativeAdvLargeFiles": "Mellor para ficheiros grandes: subida nativa por anacos co tamaño de parte recomendado de 100 MB",
+            "b2NativeAdvSoftDelete": "Eliminación suave: os ficheiros eliminados poden recuperarse desde o historial de versións",
+            "b2NativeAdvBucketUsage": "Uso de almacenamento a nivel de bucket mostrado na barra de estado",
+            "b2NativeAdvShareLinks": "Ligazóns de compartición con caducidade personalizada (ata 7 días)",
+            "b2NativeAdvVersions": "Historial completo de versións de ficheiro por obxecto"
         },
         "browser": {
             "remote": "Remoto",
@@ -1112,7 +1118,8 @@
             "update": "Actualización",
             "insecureConnectionUnencrypted": "Esta conexión non está cifrada. As credenciais envíanse en texto plano.",
             "secureConnection": "Segura",
-            "secureConnectionTitle": "Conexión cifrada vía {protocol}"
+            "secureConnectionTitle": "Conexión cifrada vía {protocol}",
+            "usedNoCap": "usado (sen límite de cota)"
         },
         "dialogs": {
             "confirmTitle": "Confirmar",

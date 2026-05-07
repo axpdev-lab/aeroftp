@@ -247,7 +247,13 @@
             "saveAndConnect": "Simpan & Sambung",
             "saveDisabledTotp": "Kod TOTP adalah untuk kegunaan sekali sahaja. Gunakan Simpan & Sambung untuk menggunakan kod ini sekarang.",
             "generatePersonalLoginToken": "Jana token log masuk peribadi",
-            "endpointUrl": "URL titik akhir"
+            "endpointUrl": "URL titik akhir",
+            "b2NativeAdvantagesTitle": "API asli Backblaze B2: ciri tambahan berbanding serasi S3",
+            "b2NativeAdvLargeFiles": "Terbaik untuk fail besar: muat naik berketul-ketul asli dengan saiz bahagian disyorkan 100 MB",
+            "b2NativeAdvSoftDelete": "Pemadaman lembut: fail yang dipadam boleh dipulihkan daripada sejarah versi",
+            "b2NativeAdvBucketUsage": "Penggunaan storan peringkat bucket dipaparkan dalam bar status",
+            "b2NativeAdvShareLinks": "Pautan kongsi dengan tempoh tamat tersuai (sehingga 7 hari)",
+            "b2NativeAdvVersions": "Sejarah versi fail penuh setiap objek"
         },
         "browser": {
             "remote": "Jauh",
@@ -1112,7 +1118,8 @@
             "update": "Kemas Kini",
             "insecureConnectionUnencrypted": "Sambungan ini tidak disulitkan. Kelayakan dihantar dalam teks biasa.",
             "secureConnection": "Selamat",
-            "secureConnectionTitle": "Sambungan disulitkan melalui {protocol}"
+            "secureConnectionTitle": "Sambungan disulitkan melalui {protocol}",
+            "usedNoCap": "digunakan (tiada had kuota)"
         },
         "dialogs": {
             "confirmTitle": "Sahkan",

@@ -247,7 +247,13 @@
             "saveAndConnect": "Enregistrer et connecter",
             "saveDisabledTotp": "Les codes TOTP sont à usage unique. Utilisez Enregistrer et connecter pour appliquer ce code maintenant.",
             "generatePersonalLoginToken": "Générer un jeton de connexion personnel",
-            "endpointUrl": "URL du point de terminaison"
+            "endpointUrl": "URL du point de terminaison",
+            "b2NativeAdvantagesTitle": "API native Backblaze B2 : fonctionnalités supplémentaires par rapport à la version compatible S3",
+            "b2NativeAdvLargeFiles": "Idéal pour les fichiers volumineux : téléversement par morceaux natif avec une taille de partie recommandée de 100 Mo",
+            "b2NativeAdvSoftDelete": "Suppression douce : les fichiers supprimés peuvent être récupérés depuis l'historique des versions",
+            "b2NativeAdvBucketUsage": "Utilisation du stockage au niveau du bucket affichée dans la barre d'état",
+            "b2NativeAdvShareLinks": "Liens de partage avec expiration personnalisée (jusqu'à 7 jours)",
+            "b2NativeAdvVersions": "Historique complet des versions de fichier par objet"
         },
         "browser": {
             "remote": "Distant",
@@ -1112,7 +1118,8 @@
             "update": "Mise à jour",
             "insecureConnectionUnencrypted": "Cette connexion n'est pas chiffrée. Les identifiants sont envoyés en clair.",
             "secureConnection": "Sécurisée",
-            "secureConnectionTitle": "Connexion chiffrée via {protocol}"
+            "secureConnectionTitle": "Connexion chiffrée via {protocol}",
+            "usedNoCap": "utilisé (sans limite de quota)"
         },
         "dialogs": {
             "confirmTitle": "Confirmer",

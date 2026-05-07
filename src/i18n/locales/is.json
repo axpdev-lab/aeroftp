@@ -247,7 +247,13 @@
             "saveAndConnect": "Vista og tengja",
             "saveDisabledTotp": "TOTP-kóðar eru einnota. Notaðu Vista og tengja til að beita þessum kóða núna.",
             "generatePersonalLoginToken": "Búa til persónulegt innskráningartóken",
-            "endpointUrl": "Slóð endapunkts"
+            "endpointUrl": "Slóð endapunkts",
+            "b2NativeAdvantagesTitle": "Backblaze B2 innfætt API: aukaeiginleikar umfram S3-samhæft",
+            "b2NativeAdvLargeFiles": "Best fyrir stórar skrár: innfædd hluti uppsetning með 100 MB ráðlagðri hlutastærð",
+            "b2NativeAdvSoftDelete": "Mjúk eyðing: eyddar skrár er hægt að endurheimta úr útgáfusögu",
+            "b2NativeAdvBucketUsage": "Geymslu notkun á bucket stigi birt á stöðustikunni",
+            "b2NativeAdvShareLinks": "Deilingartenglar með sérstilltum gildistíma (allt að 7 dagar)",
+            "b2NativeAdvVersions": "Heildarútgáfusaga skrár fyrir hvert hlutdeild"
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -1112,7 +1118,8 @@
             "update": "Uppfærsla",
             "insecureConnectionUnencrypted": "Þessi tenging er ekki dulkóðuð. Innskráningarupplýsingar eru sendar sem ódulkóðaður texti.",
             "secureConnection": "Örugg",
-            "secureConnectionTitle": "Dulkóðuð tenging í gegnum {protocol}"
+            "secureConnectionTitle": "Dulkóðuð tenging í gegnum {protocol}",
+            "usedNoCap": "notað (engin kvótatakmörkun)"
         },
         "dialogs": {
             "confirmTitle": "Staðfesta",

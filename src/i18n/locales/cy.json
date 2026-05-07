@@ -247,7 +247,13 @@
             "saveAndConnect": "Cadw a Chysylltu",
             "saveDisabledTotp": "Mae codau TOTP yn rhai un-defnydd. Defnyddiwch Cadw a Chysylltu i gymhwyso'r cod hwn nawr.",
             "generatePersonalLoginToken": "Cynhyrchu tocyn mewngofnodi personol",
-            "endpointUrl": "URL pwynt terfyn"
+            "endpointUrl": "URL pwynt terfyn",
+            "b2NativeAdvantagesTitle": "API brodorol Backblaze B2: nodweddion ychwanegol dros y fersiwn cydnaws ag S3",
+            "b2NativeAdvLargeFiles": "Gorau ar gyfer ffeiliau mawr: lanlwytho darnau brodorol gyda maint rhan a argymhellir o 100 MB",
+            "b2NativeAdvSoftDelete": "Dileu meddal: gellir adfer ffeiliau a ddilëwyd o hanes y fersiynau",
+            "b2NativeAdvBucketUsage": "Defnydd storfa ar lefel bucket yn cael ei ddangos yn y bar statws",
+            "b2NativeAdvShareLinks": "Dolenni rhannu gyda dyddiad dod i ben addasadwy (hyd at 7 diwrnod)",
+            "b2NativeAdvVersions": "Hanes fersiwn ffeil llawn fesul gwrthrych"
         },
         "browser": {
             "remote": "Pell",
@@ -1112,7 +1118,8 @@
             "update": "Diweddariad",
             "insecureConnectionUnencrypted": "Nid yw'r cysylltiad hwn wedi'i amgryptio. Mae manylion mewngofnodi yn cael eu hanfon fel testun plaen.",
             "secureConnection": "Diogel",
-            "secureConnectionTitle": "Cysylltiad wedi'i amgryptio trwy {protocol}"
+            "secureConnectionTitle": "Cysylltiad wedi'i amgryptio trwy {protocol}",
+            "usedNoCap": "wedi'i ddefnyddio (dim terfyn cwota)"
         },
         "dialogs": {
             "confirmTitle": "Cadarnhau",

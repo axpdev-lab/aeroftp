@@ -247,7 +247,13 @@
             "saveAndConnect": "Saglabāt un savienot",
             "saveDisabledTotp": "TOTP kodi ir vienreizēji. Izmantojiet Saglabāt un savienot, lai lietotu šo kodu tagad.",
             "generatePersonalLoginToken": "Ģenerēt personīgo pieteikšanās marķieri",
-            "endpointUrl": "Galapunkta URL"
+            "endpointUrl": "Galapunkta URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 vietējā API: papildu funkcijas salīdzinājumā ar S3 saderīgu",
+            "b2NativeAdvLargeFiles": "Labākais lieliem failiem: vietējā gabalu augšupielāde ar ieteicamo 100 MB daļas izmēru",
+            "b2NativeAdvSoftDelete": "Maigā dzēšana: dzēstos failus var atjaunot no versiju vēstures",
+            "b2NativeAdvBucketUsage": "Bucket līmeņa krātuves izmantošana tiek parādīta statusa joslā",
+            "b2NativeAdvShareLinks": "Koplietošanas saites ar pielāgotu termiņu (līdz 7 dienām)",
+            "b2NativeAdvVersions": "Pilna faila versiju vēsture katram objektam"
         },
         "browser": {
             "remote": "Attālināts",
@@ -1112,7 +1118,8 @@
             "update": "Atjauninājums",
             "insecureConnectionUnencrypted": "Šis savienojums nav šifrēts. Akreditācijas dati tiek sūtīti vienkāršā tekstā.",
             "secureConnection": "Droša",
-            "secureConnectionTitle": "Šifrēts savienojums caur {protocol}"
+            "secureConnectionTitle": "Šifrēts savienojums caur {protocol}",
+            "usedNoCap": "izmantots (bez kvotas ierobežojuma)"
         },
         "dialogs": {
             "confirmTitle": "Apstiprināt",

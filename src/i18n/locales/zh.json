@@ -247,7 +247,13 @@
             "saveAndConnect": "保存并连接",
             "saveDisabledTotp": "TOTP 验证码为一次性使用。请使用“保存并连接”立即应用此验证码。",
             "generatePersonalLoginToken": "生成个人登录令牌",
-            "endpointUrl": "端点 URL"
+            "endpointUrl": "端点 URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 原生 API：相比 S3 兼容模式的额外功能",
+            "b2NativeAdvLargeFiles": "最适合大文件：原生分块上传，推荐分片大小为 100 MB",
+            "b2NativeAdvSoftDelete": "软删除：已删除的文件可从版本历史中恢复",
+            "b2NativeAdvBucketUsage": "状态栏中显示 bucket 级别的存储使用情况",
+            "b2NativeAdvShareLinks": "支持自定义过期时间的分享链接（最长 7 天）",
+            "b2NativeAdvVersions": "每个对象的完整文件版本历史"
         },
         "browser": {
             "remote": "远程",
@@ -1112,7 +1118,8 @@
             "update": "更新",
             "insecureConnectionUnencrypted": "此连接未加密。凭据以纯文本形式发送。",
             "secureConnection": "安全",
-            "secureConnectionTitle": "通过 {protocol} 加密连接"
+            "secureConnectionTitle": "通过 {protocol} 加密连接",
+            "usedNoCap": "已使用（无配额上限）"
         },
         "dialogs": {
             "confirmTitle": "确认",

@@ -140,10 +140,19 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         if (!q) {
             return { used: '…', total: '…', pct: '…', toneText: TONE_TEXT_CLASS.unknown };
         }
-        // Provider supports quota but the response has no byte cap (e.g.
-        // Cloudinary free / credit-based plans): treat like an unsupported
-        // provider rather than a stuck loader.
+        // Provider supports quota but the response has no byte cap (B2 native,
+        // Cloudinary free / credit-based plans): show the usage figure and
+        // mark the totals as not applicable, instead of looking like a stuck
+        // loader or an unsupported provider.
         if (!q.total || q.total <= 0) {
+            if (q.used && q.used > 0) {
+                return {
+                    used: formatBytes(q.used),
+                    total: '∞',
+                    pct: '-',
+                    toneText: TONE_TEXT_CLASS.unknown,
+                };
+            }
             return { used: '-', total: '-', pct: '-', toneText: TONE_TEXT_CLASS.unknown };
         }
         const { tone, pct } = getStorageTone(q.used, q.total, thresholds);
@@ -164,7 +173,9 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             used: formatBytes(server.lastQuota.used),
             total: formatBytes(server.lastQuota.total),
         })
-        : t('introHub.storageQuotaUnavailable');
+        : quotaSupported && server.lastQuota && server.lastQuota.used > 0
+            ? `${formatBytes(server.lastQuota.used)} ${t('statusBar.usedNoCap')}`
+            : t('introHub.storageQuotaUnavailable');
     const cellClass = `px-3 ${rowPadY} align-middle border-b border-gray-100 dark:border-gray-700/50`;
 
     const alignTd = (id: MyServersTableColId, fallback: 'left' | 'center' | 'right'): string => {

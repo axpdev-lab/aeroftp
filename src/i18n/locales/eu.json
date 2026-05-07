@@ -247,7 +247,13 @@
             "saveAndConnect": "Gorde eta konektatu",
             "saveDisabledTotp": "TOTP kodeak erabilera bakarrekoak dira. Erabili Gorde eta konektatu kode hau orain aplikatzeko.",
             "generatePersonalLoginToken": "Sortu saio-hasierako token pertsonala",
-            "endpointUrl": "Amaiera-puntuaren URLa"
+            "endpointUrl": "Amaiera-puntuaren URLa",
+            "b2NativeAdvantagesTitle": "Backblaze B2 jatorrizko API: ezaugarri gehigarriak S3-rekin bateragarriaren gainetik",
+            "b2NativeAdvLargeFiles": "Egokiena fitxategi handietarako: jatorrizko zatikako kargatzea 100 MB gomendaturiko zati-tamainarekin",
+            "b2NativeAdvSoftDelete": "Ezabatze leuna: ezabatutako fitxategiak bertsio-historialetik berreskuratu daitezke",
+            "b2NativeAdvBucketUsage": "Bucket mailako biltegi-erabilera egoera-barran erakutsia",
+            "b2NativeAdvShareLinks": "Partekatze-estekak iraungitze pertsonalizatuarekin (7 egun arte)",
+            "b2NativeAdvVersions": "Fitxategien bertsio-historial osoa objektu bakoitzeko"
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -1112,7 +1118,8 @@
             "update": "Eguneraketa",
             "insecureConnectionUnencrypted": "Konexio hau ez dago enkriptatuta. Kredentzialak testu arrunt gisa bidaltzen dira.",
             "secureConnection": "Segurua",
-            "secureConnectionTitle": "Konexio enkriptatua {protocol} bidez"
+            "secureConnectionTitle": "Konexio enkriptatua {protocol} bidez",
+            "usedNoCap": "erabilita (kuota mugarik gabe)"
         },
         "dialogs": {
             "confirmTitle": "Berretsi",

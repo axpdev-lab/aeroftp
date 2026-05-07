@@ -247,7 +247,13 @@
             "saveAndConnect": "सहेजें और कनेक्ट करें",
             "saveDisabledTotp": "TOTP कोड एकल-उपयोग के लिए हैं। इस कोड को अभी लागू करने के लिए सहेजें और कनेक्ट करें का उपयोग करें।",
             "generatePersonalLoginToken": "व्यक्तिगत लॉगिन टोकन जनरेट करें",
-            "endpointUrl": "एंडपॉइंट URL"
+            "endpointUrl": "एंडपॉइंट URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 नेटिव API: S3-संगत की तुलना में अतिरिक्त सुविधाएँ",
+            "b2NativeAdvLargeFiles": "बड़ी फ़ाइलों के लिए सर्वश्रेष्ठ: 100 MB अनुशंसित भाग आकार के साथ नेटिव चंक्ड अपलोड",
+            "b2NativeAdvSoftDelete": "सॉफ़्ट-डिलीट: हटाई गई फ़ाइलें संस्करण इतिहास से पुनर्प्राप्त की जा सकती हैं",
+            "b2NativeAdvBucketUsage": "Bucket-स्तर का संग्रहण उपयोग स्थिति बार में दिखाया गया",
+            "b2NativeAdvShareLinks": "कस्टम समाप्ति के साथ साझाकरण लिंक (7 दिनों तक)",
+            "b2NativeAdvVersions": "प्रत्येक ऑब्जेक्ट के लिए पूर्ण फ़ाइल संस्करण इतिहास"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -1112,7 +1118,8 @@
             "update": "अपडेट",
             "insecureConnectionUnencrypted": "यह कनेक्शन एन्क्रिप्टेड नहीं है। प्रमाणपत्र सादे पाठ में भेजे जाते हैं।",
             "secureConnection": "सुरक्षित",
-            "secureConnectionTitle": "{protocol} के माध्यम से एन्क्रिप्टेड कनेक्शन"
+            "secureConnectionTitle": "{protocol} के माध्यम से एन्क्रिप्टेड कनेक्शन",
+            "usedNoCap": "उपयोग किया गया (कोटा सीमा नहीं)"
         },
         "dialogs": {
             "confirmTitle": "पुष्टिी करें",

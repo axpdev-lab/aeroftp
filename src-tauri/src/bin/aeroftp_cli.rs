@@ -13746,20 +13746,28 @@ async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             match format {
                 OutputFormat::Text => {
                     println!("Storage usage:");
-                    println!("  Used:  {} ({:.1}%)", format_size(info.used), pct);
-                    println!("  Free:  {}", format_size(info.free));
-                    println!("  Total: {}", format_size(info.total));
+                    if info.total > 0 {
+                        println!("  Used:  {} ({:.1}%)", format_size(info.used), pct);
+                        println!("  Free:  {}", format_size(info.free));
+                        println!("  Total: {}", format_size(info.total));
 
-                    // Visual bar
-                    let bar_width: usize = 40;
-                    let filled = (((pct.min(100.0)) / 100.0) * bar_width as f64) as usize;
-                    let empty = bar_width.saturating_sub(filled);
-                    println!(
-                        "  [{}{}] {:.1}%",
-                        "━".repeat(filled),
-                        "─".repeat(empty),
-                        pct
-                    );
+                        // Visual bar (only meaningful when there is a cap)
+                        let bar_width: usize = 40;
+                        let filled =
+                            (((pct.min(100.0)) / 100.0) * bar_width as f64) as usize;
+                        let empty = bar_width.saturating_sub(filled);
+                        println!(
+                            "  [{}{}] {:.1}%",
+                            "━".repeat(filled),
+                            "─".repeat(empty),
+                            pct
+                        );
+                    } else {
+                        // Provider exposes usage but no quota cap (e.g. B2, Cloudinary).
+                        // Print the figure and a hint instead of a misleading 0% bar.
+                        println!("  Used:  {}", format_size(info.used));
+                        println!("  Total: unmetered (no quota cap reported)");
+                    }
                 }
                 OutputFormat::Json => {
                     print_json(&CliStorageResult {
@@ -13804,14 +13812,16 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                 eprintln!("Server:    {}", server_info);
             }
             if let Some(ref info) = storage {
-                let pct = if info.total > 0 {
-                    (info.used as f64 / info.total as f64) * 100.0
-                } else {
-                    0.0
-                };
-                eprintln!("Used:      {} ({:.1}%)", format_size(info.used), pct);
-                eprintln!("Free:      {}", format_size(info.free));
-                eprintln!("Total:     {}", format_size(info.total));
+                if info.total > 0 {
+                    let pct = (info.used as f64 / info.total as f64) * 100.0;
+                    eprintln!("Used:      {} ({:.1}%)", format_size(info.used), pct);
+                    eprintln!("Free:      {}", format_size(info.free));
+                    eprintln!("Total:     {}", format_size(info.total));
+                } else if info.used > 0 {
+                    // Provider with usage but no quota cap (B2, Cloudinary, etc.)
+                    eprintln!("Used:      {}", format_size(info.used));
+                    eprintln!("Total:     unmetered (no quota cap reported)");
+                }
             }
         }
         OutputFormat::Json => {

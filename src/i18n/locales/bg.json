@@ -247,7 +247,13 @@
             "saveAndConnect": "Запази и свържи",
             "saveDisabledTotp": "TOTP кодовете са еднократни. Използвайте „Запази и свържи“, за да приложите този код сега.",
             "generatePersonalLoginToken": "Генериране на персонален токен за вход",
-            "endpointUrl": "URL на крайна точка"
+            "endpointUrl": "URL на крайна точка",
+            "b2NativeAdvantagesTitle": "Нативно API на Backblaze B2: допълнителни функции спрямо S3-съвместимото",
+            "b2NativeAdvLargeFiles": "Най-добро за големи файлове: нативно качване на части с препоръчителен размер от 100 MB",
+            "b2NativeAdvSoftDelete": "Меко изтриване: изтритите файлове могат да бъдат възстановени от историята на версиите",
+            "b2NativeAdvBucketUsage": "Използването на хранилището на ниво bucket се показва в лентата на състоянието",
+            "b2NativeAdvShareLinks": "Връзки за споделяне с персонализирано изтичане (до 7 дни)",
+            "b2NativeAdvVersions": "Пълна история на версиите на файловете за всеки обект"
         },
         "browser": {
             "remote": "Отдалечен",
@@ -1112,7 +1118,8 @@
             "update": "Актуализация",
             "insecureConnectionUnencrypted": "Тази връзка не е криптирана. Идентификационните данни се изпращат като обикновен текст.",
             "secureConnection": "Сигурна",
-            "secureConnectionTitle": "Криптирана връзка чрез {protocol}"
+            "secureConnectionTitle": "Криптирана връзка чрез {protocol}",
+            "usedNoCap": "използвано (без ограничение на квотата)"
         },
         "dialogs": {
             "confirmTitle": "Потвърждение",

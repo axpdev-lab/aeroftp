@@ -1085,6 +1085,12 @@
       "emailAccount": "Email Account",
       "endToEndAes": "End-to-end encrypted with AES-256-GCM",
       "endToEndEncrypted": "End-to-end encrypted connection",
+      "b2NativeAdvantagesTitle": "Backblaze B2 native API: extra features over S3-compatible",
+      "b2NativeAdvLargeFiles": "Best for large files: native chunked upload with 100 MB recommended part size",
+      "b2NativeAdvSoftDelete": "Soft-delete: deleted files are recoverable from version history",
+      "b2NativeAdvBucketUsage": "Bucket-level storage usage shown in the status bar",
+      "b2NativeAdvShareLinks": "Share links with custom expiration (up to 7 days)",
+      "b2NativeAdvVersions": "Full file version history per object",
       "filenEncryptionDesc": "All files are encrypted client-side with AES-256-GCM before upload. Filen cannot access your data. Your password never leaves this device.",
       "filenEncryptionTitle": "Zero-Knowledge Encryption",
       "filenPasswordPlaceholder": "Filen account password",
@@ -3011,7 +3017,8 @@
       "insecureConnectionTitle": "Certificate verification is disabled",
       "insecureConnectionUnencrypted": "This connection is not encrypted. Credentials are sent in plain text.",
       "secureConnection": "Secure",
-      "secureConnectionTitle": "Encrypted connection via {protocol}"
+      "secureConnectionTitle": "Encrypted connection via {protocol}",
+      "usedNoCap": "used (no quota cap)"
     },
     "support": {
       "buyMeACoffee": "Buy Me a Coffee",

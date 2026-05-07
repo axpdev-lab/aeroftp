@@ -247,7 +247,13 @@
             "saveAndConnect": "Spremi i poveži",
             "saveDisabledTotp": "TOTP kodovi su jednokratni. Koristite Spremi i poveži za primjenu ovog koda sada.",
             "generatePersonalLoginToken": "Generiraj osobni token za prijavu",
-            "endpointUrl": "URL krajnje točke"
+            "endpointUrl": "URL krajnje točke",
+            "b2NativeAdvantagesTitle": "Backblaze B2 izvorni API: dodatne značajke u odnosu na S3-kompatibilan",
+            "b2NativeAdvLargeFiles": "Najbolje za velike datoteke: izvorno učitavanje u dijelovima s preporučenom veličinom dijela od 100 MB",
+            "b2NativeAdvSoftDelete": "Meko brisanje: izbrisane datoteke mogu se vratiti iz povijesti verzija",
+            "b2NativeAdvBucketUsage": "Korištenje pohrane na razini bucketa prikazano u statusnoj traci",
+            "b2NativeAdvShareLinks": "Poveznice za dijeljenje s prilagođenim rokom isteka (do 7 dana)",
+            "b2NativeAdvVersions": "Potpuna povijest verzija datoteke po objektu"
         },
         "browser": {
             "remote": "Udaljeno",
@@ -1112,7 +1118,8 @@
             "update": "Ažuriranje",
             "insecureConnectionUnencrypted": "Ova veza nije šifrirana. Vjerodajnice se šalju kao obični tekst.",
             "secureConnection": "Sigurna",
-            "secureConnectionTitle": "Šifrirana veza putem {protocol}"
+            "secureConnectionTitle": "Šifrirana veza putem {protocol}",
+            "usedNoCap": "iskorišteno (bez ograničenja kvote)"
         },
         "dialogs": {
             "confirmTitle": "Potvrdi",

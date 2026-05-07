@@ -247,7 +247,13 @@
             "saveAndConnect": "Įrašyti ir prisijungti",
             "saveDisabledTotp": "TOTP kodai yra vienkartiniai. Naudokite Įrašyti ir prisijungti, kad pritaikytumėte šį kodą dabar.",
             "generatePersonalLoginToken": "Generuoti asmeninį prisijungimo žetoną",
-            "endpointUrl": "Galinio taško URL"
+            "endpointUrl": "Galinio taško URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 vietinė API: papildomos funkcijos, palyginti su S3 suderinama",
+            "b2NativeAdvLargeFiles": "Geriausia dideliems failams: vietinis dalimis įkėlimas su rekomenduojamu 100 MB dalies dydžiu",
+            "b2NativeAdvSoftDelete": "Švelnus ištrynimas: ištrintus failus galima atkurti iš versijų istorijos",
+            "b2NativeAdvBucketUsage": "Bucket lygio saugyklos naudojimas rodomas būsenos juostoje",
+            "b2NativeAdvShareLinks": "Bendrinimo nuorodos su pasirinktiniu galiojimo laiku (iki 7 dienų)",
+            "b2NativeAdvVersions": "Pilna failo versijų istorija kiekvienam objektui"
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -1112,7 +1118,8 @@
             "update": "Atnaujinimas",
             "insecureConnectionUnencrypted": "Šis ryšys nėra šifruotas. Prisijungimo duomenys siunčiami paprastu tekstu.",
             "secureConnection": "Saugi",
-            "secureConnectionTitle": "Šifruotas ryšys per {protocol}"
+            "secureConnectionTitle": "Šifruotas ryšys per {protocol}",
+            "usedNoCap": "panaudota (be kvotos limito)"
         },
         "dialogs": {
             "confirmTitle": "Patvirtinti",

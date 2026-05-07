@@ -247,7 +247,13 @@
             "saveAndConnect": "Spara och anslut",
             "saveDisabledTotp": "TOTP-koder är engångskoder. Använd Spara och anslut för att tillämpa denna kod nu.",
             "generatePersonalLoginToken": "Generera personlig inloggningstoken",
-            "endpointUrl": "Endpunkt-URL"
+            "endpointUrl": "Endpunkt-URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 native API: extra funktioner utöver S3-kompatibel",
+            "b2NativeAdvLargeFiles": "Bäst för stora filer: native uppladdning i delar med rekommenderad delstorlek på 100 MB",
+            "b2NativeAdvSoftDelete": "Mjuk borttagning: borttagna filer kan återställas från versionshistorik",
+            "b2NativeAdvBucketUsage": "Lagringsanvändning på bucket-nivå visas i statusfältet",
+            "b2NativeAdvShareLinks": "Delningslänkar med anpassad utgångstid (upp till 7 dagar)",
+            "b2NativeAdvVersions": "Fullständig filversionshistorik per objekt"
         },
         "browser": {
             "remote": "Fjärr",
@@ -1112,7 +1118,8 @@
             "update": "Uppdatering",
             "insecureConnectionUnencrypted": "Denna anslutning är inte krypterad. Inloggningsuppgifter skickas som vanlig text.",
             "secureConnection": "Säker",
-            "secureConnectionTitle": "Krypterad anslutning via {protocol}"
+            "secureConnectionTitle": "Krypterad anslutning via {protocol}",
+            "usedNoCap": "använt (ingen kvotgräns)"
         },
         "dialogs": {
             "confirmTitle": "Bekräfta",

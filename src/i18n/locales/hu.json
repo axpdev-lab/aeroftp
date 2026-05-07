@@ -247,7 +247,13 @@
             "saveAndConnect": "Mentés és csatlakozás",
             "saveDisabledTotp": "A TOTP kódok egyszer használatosak. Használja a Mentés és csatlakozás gombot a kód azonnali alkalmazásához.",
             "generatePersonalLoginToken": "Személyes bejelentkezési token létrehozása",
-            "endpointUrl": "Végpont URL"
+            "endpointUrl": "Végpont URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 natív API: extra funkciók az S3-kompatibilis verzióhoz képest",
+            "b2NativeAdvLargeFiles": "Ideális nagy fájlokhoz: natív darabolt feltöltés 100 MB-os ajánlott rész mérettel",
+            "b2NativeAdvSoftDelete": "Lágy törlés: a törölt fájlok visszaállíthatók a verzióelőzményekből",
+            "b2NativeAdvBucketUsage": "A bucket szintű tárhelyhasználat megjelenik az állapotsávban",
+            "b2NativeAdvShareLinks": "Megosztási hivatkozások egyéni lejárattal (legfeljebb 7 nap)",
+            "b2NativeAdvVersions": "Teljes fájlverzió-előzmény objektumonként"
         },
         "browser": {
             "remote": "Távoli",
@@ -1112,7 +1118,8 @@
             "update": "Frissítés",
             "insecureConnectionUnencrypted": "Ez a kapcsolat nem titkosított. A hitelesítő adatok egyszerű szövegként kerülnek elküldésre.",
             "secureConnection": "Biztonságos",
-            "secureConnectionTitle": "Titkosított kapcsolat {protocol} protokollon"
+            "secureConnectionTitle": "Titkosított kapcsolat {protocol} protokollon",
+            "usedNoCap": "használt (nincs kvótakorlát)"
         },
         "dialogs": {
             "confirmTitle": "Megerősítés",

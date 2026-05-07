@@ -247,7 +247,13 @@
             "saveAndConnect": "Lagre og koble til",
             "saveDisabledTotp": "TOTP-koder er engangskoder. Bruk Lagre og koble til for å bruke denne koden nå.",
             "generatePersonalLoginToken": "Generer personlig pålogginstoken",
-            "endpointUrl": "Endepunkt-URL"
+            "endpointUrl": "Endepunkt-URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 native API: ekstra funksjoner utover S3-kompatibel",
+            "b2NativeAdvLargeFiles": "Best for store filer: native delt opplasting med anbefalt delstørrelse på 100 MB",
+            "b2NativeAdvSoftDelete": "Myk sletting: slettede filer kan gjenopprettes fra versjonshistorikken",
+            "b2NativeAdvBucketUsage": "Lagringsbruk på bucket-nivå vises i statuslinjen",
+            "b2NativeAdvShareLinks": "Delingslenker med tilpasset utløpstid (opptil 7 dager)",
+            "b2NativeAdvVersions": "Komplett filversjonshistorikk per objekt"
         },
         "browser": {
             "remote": "Ekstern",
@@ -1112,7 +1118,8 @@
             "update": "Oppdatering",
             "insecureConnectionUnencrypted": "Denne tilkoblingen er ikke kryptert. Påloggingsopplysninger sendes som ren tekst.",
             "secureConnection": "Sikker",
-            "secureConnectionTitle": "Kryptert tilkobling via {protocol}"
+            "secureConnectionTitle": "Kryptert tilkobling via {protocol}",
+            "usedNoCap": "brukt (ingen kvotegrense)"
         },
         "dialogs": {
             "confirmTitle": "Bekreft",

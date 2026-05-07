@@ -216,6 +216,16 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     );
                 })()}
 
+                {isConnected && storageQuota && storageQuota.total === 0 && storageQuota.used > 0 && (
+                    <div className="flex items-center gap-1.5" title={`${formatBytes(storageQuota.used)} ${t('statusBar.usedNoCap')}`}>
+                        <HardDrive size={12} className="text-emerald-500" />
+                        <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
+                            <div className="h-full w-full rounded-full bg-emerald-500/60" />
+                        </div>
+                        <span className="text-[10px]">{formatBytes(storageQuota.used)}</span>
+                    </div>
+                )}
+
                 {swapPanels ? (
                     <>
                         <div className="flex items-center gap-1.5">

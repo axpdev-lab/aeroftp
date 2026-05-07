@@ -247,7 +247,13 @@
             "saveAndConnect": "I-save at Kumonekta",
             "saveDisabledTotp": "Ang mga TOTP code ay isang beses lang magagamit. Gamitin ang I-save at Kumonekta upang ilapat ang code na ito ngayon.",
             "generatePersonalLoginToken": "Gumawa ng personal na login token",
-            "endpointUrl": "Endpoint URL"
+            "endpointUrl": "Endpoint URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 native API: karagdagang feature kumpara sa S3-compatible",
+            "b2NativeAdvLargeFiles": "Pinakamainam para sa malalaking file: native chunked upload na may inirerekomendang laki ng bahagi na 100 MB",
+            "b2NativeAdvSoftDelete": "Soft-delete: maibabalik ang mga binurang file mula sa kasaysayan ng bersyon",
+            "b2NativeAdvBucketUsage": "Paggamit ng storage sa antas ng bucket ay ipinapakita sa status bar",
+            "b2NativeAdvShareLinks": "Mga share link na may pasadyang expiration (hanggang 7 araw)",
+            "b2NativeAdvVersions": "Kumpletong kasaysayan ng bersyon ng file kada bagay"
         },
         "browser": {
             "remote": "Remote",
@@ -1112,7 +1118,8 @@
             "update": "Update",
             "insecureConnectionUnencrypted": "Ang koneksyon na ito ay hindi naka-encrypt. Ang mga kredensyal ay ipinapadala bilang plain text.",
             "secureConnection": "Ligtas",
-            "secureConnectionTitle": "Naka-encrypt na koneksyon sa pamamagitan ng {protocol}"
+            "secureConnectionTitle": "Naka-encrypt na koneksyon sa pamamagitan ng {protocol}",
+            "usedNoCap": "ginamit (walang limitasyon ng quota)"
         },
         "dialogs": {
             "confirmTitle": "Kumpirmahin",

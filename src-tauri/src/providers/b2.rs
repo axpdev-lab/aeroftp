@@ -345,10 +345,20 @@ impl B2Provider {
             let body = resp.text().await.unwrap_or_default();
             return Err(map_b2_status(status, &body, "b2_authorize_account"));
         }
-        let parsed: AuthorizeResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("authorize parse: {}", e)))?;
+        let body_bytes = resp.bytes().await.map_err(|e| {
+            ProviderError::AuthenticationFailed(format!("authorize read body: {}", e))
+        })?;
+        let parsed: AuthorizeResponse = serde_json::from_slice(&body_bytes).map_err(|e| {
+            let preview = String::from_utf8_lossy(&body_bytes);
+            let masked = mask_authorize_secrets(&preview);
+            let truncated: String = masked.chars().take(800).collect();
+            ProviderError::AuthenticationFailed(format!(
+                "authorize parse: {} | body[{}B]: {}",
+                e,
+                body_bytes.len(),
+                truncated
+            ))
+        })?;
         self.account_id = parsed.account_id;
         self.api_url = parsed.api_info.storage_api.api_url;
         self.download_url = parsed.api_info.storage_api.download_url;
@@ -1872,11 +1882,51 @@ impl StorageProvider for B2Provider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        // B2 bills per stored byte; the API does not return a per-bucket quota.
-        // Return zeros: UI hides storage panels when total == 0, matching the
-        // behavior of other providers without quota.
+        // B2 bills per stored byte; the API has no per-account quota endpoint,
+        // so `total` stays at 0 (signals "unmetered" to the UI). For `used` we
+        // sum `contentLength` of every live `upload` in the configured bucket
+        // by paging through `b2_list_file_names`. We cap the scan at 25 pages
+        // (250k file entries) so worst-case latency stays bounded; bigger
+        // buckets fall through to a partial figure rather than blocking the UI.
+        const PAGE_SIZE: u32 = 10_000;
+        const MAX_PAGES: u32 = 25;
+        let mut used: u64 = 0;
+        let mut start_name: Option<String> = None;
+        for _ in 0..MAX_PAGES {
+            let page = match self
+                .list_file_names(
+                    "",
+                    None,
+                    start_name.as_deref(),
+                    PAGE_SIZE,
+                )
+                .await
+            {
+                Ok(p) => p,
+                Err(e) if is_b2_token_failure(&e) => {
+                    if self.maybe_reauth(&e).await {
+                        self.list_file_names("", None, start_name.as_deref(), PAGE_SIZE)
+                            .await?
+                    } else {
+                        return Err(e);
+                    }
+                }
+                Err(e) => return Err(e),
+            };
+            for f in &page.files {
+                // `action == "upload"` excludes hide markers and folder
+                // placeholders, both of which carry no real bytes.
+                if f.action == "upload" {
+                    used = used.saturating_add(f.content_length);
+                }
+            }
+            match page.next_file_name {
+                Some(next) if !next.is_empty() => start_name = Some(next),
+                _ => break,
+            }
+        }
         Ok(StorageInfo {
-            used: 0,
+            used,
             total: 0,
             free: 0,
         })
@@ -2038,6 +2088,10 @@ impl StorageProvider for B2Provider {
 
     // ─── Share links ───────────────────────────────────────────────────────
 
+    fn supports_share_links(&self) -> bool {
+        true
+    }
+
     fn share_link_capabilities(&self) -> ShareLinkCapabilities {
         ShareLinkCapabilities {
             supports_expiration: true,
@@ -2098,6 +2152,29 @@ impl StorageProvider for B2Provider {
 }
 
 // ─── Helpers ───
+
+/// Diagnostic helper: masks the `authorizationToken` value in a JSON body so
+/// the rest of the response can be safely included in error messages without
+/// leaking the bearer token. Keeps the first 6 chars for triage.
+fn mask_authorize_secrets(body: &str) -> String {
+    let needle = "\"authorizationToken\":\"";
+    let Some(start) = body.find(needle) else {
+        return body.to_string();
+    };
+    let value_start = start + needle.len();
+    let Some(end_offset) = body[value_start..].find('"') else {
+        return body.to_string();
+    };
+    let value_end = value_start + end_offset;
+    let value = &body[value_start..value_end];
+    let head_len = value.len().min(6);
+    let masked = format!("{}…<{}B redacted>", &value[..head_len], value.len() - head_len);
+    let mut out = String::with_capacity(body.len());
+    out.push_str(&body[..value_start]);
+    out.push_str(&masked);
+    out.push_str(&body[value_end..]);
+    out
+}
 
 fn short(s: &str) -> String {
     if s.len() <= 8 {

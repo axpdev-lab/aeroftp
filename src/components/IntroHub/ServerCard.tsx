@@ -50,11 +50,27 @@ function StorageUsageBar({
             </div>
         );
     }
-    // Fetched but provider doesn't expose a byte-based cap (e.g. Cloudinary
-    // free, credit-based plans). Hide the slot: rendering "Quota" with an empty
-    // bar is misleading on providers that genuinely don't have one.
+    // Fetched but provider doesn't expose a byte-based cap (B2 native,
+    // Cloudinary free / credit-based plans). When usage is non-zero we
+    // show "X" with a filled emerald bar as a presence indicator: hiding
+    // the slot would look like a fetch failure on providers that just
+    // don't have a cap. Zero-or-missing usage still hides the slot.
     if (!quota.total || quota.total <= 0) {
-        return null;
+        if (!quota.used || quota.used <= 0) {
+            return null;
+        }
+        const title = `${formatBytes(quota.used)} (no quota cap reported)`;
+        return (
+            <div className="leading-tight" title={title} aria-label={title}>
+                <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
+                    <span className="truncate">{formatBytes(quota.used)}</span>
+                    <span className="shrink-0 ml-1 tabular-nums text-gray-400">∞</span>
+                </div>
+                <div className="h-1 mt-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                    <div className="h-full w-full rounded-full bg-emerald-500/60" />
+                </div>
+            </div>
+        );
     }
     const { used, total } = quota;
     const { tone, pct } = getStorageTone(used, total, thresholds);

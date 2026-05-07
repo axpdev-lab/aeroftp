@@ -195,7 +195,9 @@ export function MyServersTable({
         const tone = getStorageTone(row.used, row.total, thresholds);
         const pct = row.total > 0 ? (row.used / row.total) * 100 : null;
         const pctText = pct === null ? '-' : `${pct.toFixed(1)}%`;
-        const usedText = row.total > 0 ? formatBytes(row.used) : '-';
+        // For uncapped providers (B2 native, Cloudinary) total = 0 but used > 0:
+        // surface the usage figure instead of a placeholder.
+        const usedText = row.total > 0 || row.used > 0 ? formatBytes(row.used) : '-';
         const totalText = row.total > 0 ? formatBytes(row.total) : '-';
         const cellClass = 'px-3 py-1.5 align-middle border-b border-gray-100 dark:border-gray-700/40 text-xs';
 

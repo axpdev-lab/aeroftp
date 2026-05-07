@@ -275,7 +275,13 @@
             "immichOps": "Sfoglia, carica, scarica, elimina, album, cerca, link di condivisione. Rinomina e sposta non supportati.",
             "generatePassword": "Genera password",
             "generatePersonalLoginToken": "Genera token di accesso personale",
-            "endpointUrl": "URL endpoint"
+            "endpointUrl": "URL endpoint",
+            "b2NativeAdvantagesTitle": "API native Backblaze B2: funzionalità extra rispetto a S3-compatibile",
+            "b2NativeAdvLargeFiles": "Ideale per file grandi: upload nativo a chunk con dimensione consigliata 100 MB",
+            "b2NativeAdvSoftDelete": "Soft-delete: i file eliminati sono recuperabili dalla cronologia versioni",
+            "b2NativeAdvBucketUsage": "Utilizzo storage del bucket mostrato nella barra di stato",
+            "b2NativeAdvShareLinks": "Link di condivisione con scadenza personalizzata (fino a 7 giorni)",
+            "b2NativeAdvVersions": "Cronologia versioni completa per ogni file"
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -1414,7 +1420,8 @@
             "update": "Aggiornamento",
             "secureConnection": "Sicura",
             "secureConnectionTitle": "Connessione cifrata via {protocol}",
-            "insecureConnectionUnencrypted": "Questa connessione non è cifrata. Le credenziali vengono inviate in chiaro."
+            "insecureConnectionUnencrypted": "Questa connessione non è cifrata. Le credenziali vengono inviate in chiaro.",
+            "usedNoCap": "utilizzati (provider senza quota)"
         },
         "shortcuts": {
             "title": "Scorciatoie da Tastiera",

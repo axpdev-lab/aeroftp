@@ -247,7 +247,13 @@
             "saveAndConnect": "저장 및 연결",
             "saveDisabledTotp": "TOTP 코드는 일회용입니다. 이 코드를 지금 적용하려면 저장 및 연결을 사용하세요.",
             "generatePersonalLoginToken": "개인 로그인 토큰 생성",
-            "endpointUrl": "엔드포인트 URL"
+            "endpointUrl": "엔드포인트 URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 네이티브 API: S3 호환을 넘어선 추가 기능",
+            "b2NativeAdvLargeFiles": "대용량 파일에 최적: 권장 파트 크기 100MB의 네이티브 청크 업로드",
+            "b2NativeAdvSoftDelete": "소프트 삭제: 삭제된 파일은 버전 기록에서 복구 가능",
+            "b2NativeAdvBucketUsage": "버킷 수준의 스토리지 사용량이 상태 표시줄에 표시됨",
+            "b2NativeAdvShareLinks": "사용자 지정 만료 기간이 있는 공유 링크 (최대 7일)",
+            "b2NativeAdvVersions": "오브젝트별 전체 파일 버전 기록"
         },
         "browser": {
             "remote": "원격",
@@ -1112,7 +1118,8 @@
             "update": "업데이트",
             "insecureConnectionUnencrypted": "이 연결은 암호화되지 않았습니다. 자격 증명이 일반 텍스트로 전송됩니다.",
             "secureConnection": "보안",
-            "secureConnectionTitle": "{protocol}을 통한 암호화 연결"
+            "secureConnectionTitle": "{protocol}을 통한 암호화 연결",
+            "usedNoCap": "사용됨 (할당량 제한 없음)"
         },
         "dialogs": {
             "confirmTitle": "확인",

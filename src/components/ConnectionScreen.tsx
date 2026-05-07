@@ -3428,6 +3428,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 />
                                                 <p className="text-xs text-gray-500 mt-1">Exact bucket name, case sensitive.</p>
                                             </div>
+
+                                            <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-900/30 text-xs text-red-800 dark:text-red-200">
+                                                <p className="font-medium mb-1 flex items-center gap-1.5">
+                                                    <Info size={12} className="shrink-0" />
+                                                    {t('connection.b2NativeAdvantagesTitle')}
+                                                </p>
+                                                <ul className="opacity-80 space-y-0.5 list-disc list-inside marker:text-red-400">
+                                                    <li>{t('connection.b2NativeAdvLargeFiles')}</li>
+                                                    <li>{t('connection.b2NativeAdvSoftDelete')}</li>
+                                                    <li>{t('connection.b2NativeAdvBucketUsage')}</li>
+                                                    <li>{t('connection.b2NativeAdvShareLinks')}</li>
+                                                    <li>{t('connection.b2NativeAdvVersions')}</li>
+                                                </ul>
+                                            </div>
                                         </div>
 
                                         {renderRightColumn({

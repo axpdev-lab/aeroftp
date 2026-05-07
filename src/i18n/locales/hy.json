@@ -247,7 +247,13 @@
             "saveAndConnect": "Պահպանել և միանալ",
             "saveDisabledTotp": "TOTP կոդերը մեկանգամյա օգտագործման են։ Օգտագործեք «Պահպանել և միանալ»՝ այս կոդն այժմ կիրառելու համար։",
             "generatePersonalLoginToken": "Անձնական մուտքի նշանի ստեղծում",
-            "endpointUrl": "Եզրակետի URL"
+            "endpointUrl": "Եզրակետի URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 բնիկ API՝ լրացուցիչ հնարավորություններ S3-համատեղի հետ համեմատած",
+            "b2NativeAdvLargeFiles": "Լավագույնն է մեծ ֆայլերի համար՝ բնիկ կտորական վերբեռնում 100 ՄԲ առաջարկվող մասի չափով",
+            "b2NativeAdvSoftDelete": "Փափուկ ջնջում՝ ջնջված ֆայլերը կարող են վերականգնվել վերսիաների պատմությունից",
+            "b2NativeAdvBucketUsage": "Bucket-ի մակարդակի պահոցման օգտագործումը ցուցադրվում է կարգավիճակի տողում",
+            "b2NativeAdvShareLinks": "Կիսված հղումներ՝ հատուկ լարտվող ժամկետով (մինչև 7 օր)",
+            "b2NativeAdvVersions": "Ֆայլի վերսիաների լիարժեք պատմություն՝ յուրաքանչյուր օբյեկտի համար"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -1112,7 +1118,8 @@
             "update": "Թարմացնել",
             "secureConnection": "Ապահով",
             "secureConnectionTitle": "Գաղտնագրված կապ {protocol}-ով",
-            "insecureConnectionUnencrypted": "Այս կապը գաղտնագրված չէ: Հավատարմագրերը ուղարկվում են բաց տեքստով:"
+            "insecureConnectionUnencrypted": "Այս կապը գաղտնագրված չէ: Հավատարմագրերը ուղարկվում են բաց տեքստով:",
+            "usedNoCap": "օգտագործված (առանց քվոտայի սահմանափակումի)"
         },
         "toast": {
             "connectionSuccess": "Միացված է՝ {server}",

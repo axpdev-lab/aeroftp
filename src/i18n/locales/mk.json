@@ -247,7 +247,13 @@
             "saveAndConnect": "Зачувај и поврзи",
             "saveDisabledTotp": "TOTP кодовите се за еднократна употреба. Користете Зачувај и поврзи за да го примените овој код сега.",
             "generatePersonalLoginToken": "Генерирај личен токен за најава",
-            "endpointUrl": "URL на крајна точка"
+            "endpointUrl": "URL на крајна точка",
+            "b2NativeAdvantagesTitle": "Backblaze B2 нативно API: дополнителни функции над S3-компатибилно",
+            "b2NativeAdvLargeFiles": "Најдобро за големи датотеки: нативно прикачување во делови со препорачана големина на дел од 100 MB",
+            "b2NativeAdvSoftDelete": "Меко бришење: избришаните датотеки може да се вратат од историјата на верзии",
+            "b2NativeAdvBucketUsage": "Користењето на просторот за складирање на ниво на bucket се прикажува во статусната лента",
+            "b2NativeAdvShareLinks": "Линкови за споделување со прилагодлив рок на важење (до 7 дена)",
+            "b2NativeAdvVersions": "Целосна историја на верзии на датотека по објект"
         },
         "browser": {
             "remote": "Далечински",
@@ -1112,7 +1118,8 @@
             "update": "Ажурирање",
             "insecureConnectionUnencrypted": "Оваа врска не е шифрирана. Акредитивите се испраќаат како обичен текст.",
             "secureConnection": "Сигурна",
-            "secureConnectionTitle": "Шифрирана врска преку {protocol}"
+            "secureConnectionTitle": "Шифрирана врска преку {protocol}",
+            "usedNoCap": "искористено (без ограничување на квота)"
         },
         "dialogs": {
             "confirmTitle": "Потврди",

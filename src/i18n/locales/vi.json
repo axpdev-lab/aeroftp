@@ -247,7 +247,13 @@
             "saveAndConnect": "Lưu và Kết nối",
             "saveDisabledTotp": "Mã TOTP chỉ dùng được một lần. Hãy dùng Lưu và Kết nối để áp dụng mã này ngay bây giờ.",
             "generatePersonalLoginToken": "Tạo mã đăng nhập cá nhân",
-            "endpointUrl": "URL điểm cuối"
+            "endpointUrl": "URL điểm cuối",
+            "b2NativeAdvantagesTitle": "API gốc Backblaze B2: tính năng bổ sung so với chế độ tương thích S3",
+            "b2NativeAdvLargeFiles": "Tốt nhất cho tệp lớn: tải lên phân đoạn gốc với kích thước phần khuyến nghị 100 MB",
+            "b2NativeAdvSoftDelete": "Xóa mềm: các tệp đã xóa có thể khôi phục từ lịch sử phiên bản",
+            "b2NativeAdvBucketUsage": "Mức sử dụng bộ nhớ ở cấp bucket hiển thị trên thanh trạng thái",
+            "b2NativeAdvShareLinks": "Liên kết chia sẻ với thời gian hết hạn tùy chỉnh (lên đến 7 ngày)",
+            "b2NativeAdvVersions": "Lịch sử phiên bản tệp đầy đủ cho mỗi đối tượng"
         },
         "browser": {
             "remote": "Từ xa",
@@ -1112,7 +1118,8 @@
             "update": "Cập nhật",
             "insecureConnectionUnencrypted": "Kết nối này không được mã hóa. Thông tin đăng nhập được gửi dưới dạng văn bản thuần.",
             "secureConnection": "Bảo mật",
-            "secureConnectionTitle": "Kết nối được mã hóa qua {protocol}"
+            "secureConnectionTitle": "Kết nối được mã hóa qua {protocol}",
+            "usedNoCap": "đã dùng (không có giới hạn quota)"
         },
         "dialogs": {
             "confirmTitle": "Xác nhận",

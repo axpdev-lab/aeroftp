@@ -247,7 +247,13 @@
             "saveAndConnect": "Uložit a připojit",
             "saveDisabledTotp": "Kódy TOTP jsou jednorázové. Použijte Uložit a připojit pro okamžité použití tohoto kódu.",
             "generatePersonalLoginToken": "Vygenerovat osobní přihlašovací token",
-            "endpointUrl": "URL koncového bodu"
+            "endpointUrl": "URL koncového bodu",
+            "b2NativeAdvantagesTitle": "Nativní API Backblaze B2: další funkce oproti S3-kompatibilní verzi",
+            "b2NativeAdvLargeFiles": "Nejlepší pro velké soubory: nativní nahrávání po částech s doporučenou velikostí 100 MB",
+            "b2NativeAdvSoftDelete": "Měkké mazání: smazané soubory lze obnovit z historie verzí",
+            "b2NativeAdvBucketUsage": "Využití úložiště na úrovni bucketu zobrazené ve stavovém řádku",
+            "b2NativeAdvShareLinks": "Sdílecí odkazy s vlastní dobou platnosti (až 7 dní)",
+            "b2NativeAdvVersions": "Úplná historie verzí souboru pro každý objekt"
         },
         "browser": {
             "remote": "Vzdálený",
@@ -1112,7 +1118,8 @@
             "update": "Aktualizace",
             "insecureConnectionUnencrypted": "Toto připojení není šifrované. Přihlašovací údaje jsou odesílány jako prostý text.",
             "secureConnection": "Zabezpečené",
-            "secureConnectionTitle": "Šifrované připojení přes {protocol}"
+            "secureConnectionTitle": "Šifrované připojení přes {protocol}",
+            "usedNoCap": "využito (bez limitu kvóty)"
         },
         "dialogs": {
             "confirmTitle": "Potvrdit",

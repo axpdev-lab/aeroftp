@@ -247,7 +247,13 @@
             "saveAndConnect": "შენახვა და დაკავშირება",
             "saveDisabledTotp": "TOTP კოდები ერთჯერადია. გამოიყენეთ „შენახვა და დაკავშირება“ ამ კოდის ახლავე გამოსაყენებლად.",
             "generatePersonalLoginToken": "პირადი შესვლის ტოკენის გენერაცია",
-            "endpointUrl": "საბოლოო წერტილის URL"
+            "endpointUrl": "საბოლოო წერტილის URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 ნატიური API: დამატებითი ფუნქციები S3-თან შედარებით",
+            "b2NativeAdvLargeFiles": "იდეალურია დიდი ფაილებისთვის: ნატიური ჩანკ-ატვირთვა 100 MB რეკომენდებული ნაწილის ზომით",
+            "b2NativeAdvSoftDelete": "რბილი წაშლა: წაშლილი ფაილები აღდგენადია ვერსიების ისტორიიდან",
+            "b2NativeAdvBucketUsage": "ბაკეტის დონის საცავის გამოყენება ნაჩვენებია სტატუს ბარში",
+            "b2NativeAdvShareLinks": "გაზიარების ლინკები მორგებული ვადით (7 დღემდე)",
+            "b2NativeAdvVersions": "ფაილის სრული ვერსიების ისტორია თითო ობიექტზე"
         },
         "browser": {
             "remote": "დისტანციური",
@@ -1112,7 +1118,8 @@
             "update": "განახლება",
             "insecureConnectionUnencrypted": "ეს კავშირი არ არის დაშიფრული. სერთიფიკატები იგზავნება უბრალო ტექსტით.",
             "secureConnection": "უსაფრთხო",
-            "secureConnectionTitle": "დაშიფრული კავშირი {protocol}-ის საშუალებით"
+            "secureConnectionTitle": "დაშიფრული კავშირი {protocol}-ის საშუალებით",
+            "usedNoCap": "გამოყენებული (კვოტის ლიმიტის გარეშე)"
         },
         "dialogs": {
             "confirmTitle": "დადასტურება",

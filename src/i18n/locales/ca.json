@@ -247,7 +247,13 @@
             "saveAndConnect": "Desa i connecta",
             "saveDisabledTotp": "Els codis TOTP són d'un sol ús. Utilitzeu Desa i connecta per aplicar aquest codi ara.",
             "generatePersonalLoginToken": "Genera un testimoni d'inici de sessió personal",
-            "endpointUrl": "URL del punt de connexió"
+            "endpointUrl": "URL del punt de connexió",
+            "b2NativeAdvantagesTitle": "API nativa de Backblaze B2: funcions addicionals respecte a la compatible amb S3",
+            "b2NativeAdvLargeFiles": "Millor per a fitxers grans: pujada nativa per parts amb mida recomanada de 100 MB",
+            "b2NativeAdvSoftDelete": "Eliminació suau: els fitxers eliminats es poden recuperar des de l'historial de versions",
+            "b2NativeAdvBucketUsage": "L'ús d'emmagatzematge a nivell de bucket es mostra a la barra d'estat",
+            "b2NativeAdvShareLinks": "Enllaços de compartició amb caducitat personalitzada (fins a 7 dies)",
+            "b2NativeAdvVersions": "Historial complet de versions per cada objecte"
         },
         "browser": {
             "remote": "Remot",
@@ -1112,7 +1118,8 @@
             "update": "Actualització",
             "insecureConnectionUnencrypted": "Aquesta connexió no està xifrada. Les credencials s'envien en text pla.",
             "secureConnection": "Segura",
-            "secureConnectionTitle": "Connexió xifrada via {protocol}"
+            "secureConnectionTitle": "Connexió xifrada via {protocol}",
+            "usedNoCap": "utilitzat (sense límit de quota)"
         },
         "dialogs": {
             "confirmTitle": "Confirmar",

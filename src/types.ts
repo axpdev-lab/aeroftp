@@ -197,6 +197,7 @@ export const supportsNativeShareLink = (type: ProviderType): boolean => {
     "imagekit",
     "uploadcare",
     "cloudinary",
+    "backblaze",
   ].includes(type);
 };
 

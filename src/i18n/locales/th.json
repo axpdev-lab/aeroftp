@@ -247,7 +247,13 @@
             "saveAndConnect": "บันทึกและเชื่อมต่อ",
             "saveDisabledTotp": "รหัส TOTP ใช้ได้ครั้งเดียว ใช้ บันทึกและเชื่อมต่อ เพื่อใช้รหัสนี้ตอนนี้",
             "generatePersonalLoginToken": "สร้างโทเค็นการเข้าสู่ระบบส่วนตัว",
-            "endpointUrl": "URL ปลายทาง"
+            "endpointUrl": "URL ปลายทาง",
+            "b2NativeAdvantagesTitle": "Backblaze B2 native API: ฟีเจอร์เพิ่มเติมเหนือกว่าโหมดที่เข้ากันได้กับ S3",
+            "b2NativeAdvLargeFiles": "เหมาะที่สุดสำหรับไฟล์ขนาดใหญ่: การอัปโหลดแบบแบ่งส่วนเนทีฟด้วยขนาดส่วนที่แนะนำ 100 MB",
+            "b2NativeAdvSoftDelete": "ลบแบบนุ่มนวล: ไฟล์ที่ถูกลบสามารถกู้คืนได้จากประวัติเวอร์ชัน",
+            "b2NativeAdvBucketUsage": "การใช้พื้นที่จัดเก็บระดับ bucket แสดงในแถบสถานะ",
+            "b2NativeAdvShareLinks": "ลิงก์แชร์พร้อมระยะเวลาหมดอายุที่กำหนดเอง (สูงสุด 7 วัน)",
+            "b2NativeAdvVersions": "ประวัติเวอร์ชันไฟล์ทั้งหมดต่อออบเจ็กต์"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -1112,7 +1118,8 @@
             "update": "อัปเดต",
             "insecureConnectionUnencrypted": "การเชื่อมต่อนี้ไม่ได้เข้ารหัส ข้อมูลรับรองจะถูกส่งเป็นข้อความธรรมดา",
             "secureConnection": "ปลอดภัย",
-            "secureConnectionTitle": "การเชื่อมต่อที่เข้ารหัสผ่าน {protocol}"
+            "secureConnectionTitle": "การเชื่อมต่อที่เข้ารหัสผ่าน {protocol}",
+            "usedNoCap": "ใช้ไป (ไม่มีขีดจำกัดโควต้า)"
         },
         "dialogs": {
             "confirmTitle": "ยืนยัน",

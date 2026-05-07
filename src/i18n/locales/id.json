@@ -247,7 +247,13 @@
             "saveAndConnect": "Simpan & Sambungkan",
             "saveDisabledTotp": "Kode TOTP hanya untuk sekali pakai. Gunakan Simpan & Sambungkan untuk menerapkan kode ini sekarang.",
             "generatePersonalLoginToken": "Buat token login pribadi",
-            "endpointUrl": "URL endpoint"
+            "endpointUrl": "URL endpoint",
+            "b2NativeAdvantagesTitle": "API native Backblaze B2: fitur tambahan dibandingkan kompatibel S3",
+            "b2NativeAdvLargeFiles": "Terbaik untuk file besar: unggah berbagi native dengan ukuran bagian yang direkomendasikan 100 MB",
+            "b2NativeAdvSoftDelete": "Penghapusan lunak: file yang dihapus dapat dipulihkan dari riwayat versi",
+            "b2NativeAdvBucketUsage": "Penggunaan penyimpanan tingkat bucket ditampilkan di bilah status",
+            "b2NativeAdvShareLinks": "Tautan berbagi dengan masa berlaku khusus (hingga 7 hari)",
+            "b2NativeAdvVersions": "Riwayat versi file lengkap per objek"
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -1112,7 +1118,8 @@
             "update": "Pembaruan",
             "insecureConnectionUnencrypted": "Koneksi ini tidak terenkripsi. Kredensial dikirim dalam teks biasa.",
             "secureConnection": "Aman",
-            "secureConnectionTitle": "Koneksi terenkripsi melalui {protocol}"
+            "secureConnectionTitle": "Koneksi terenkripsi melalui {protocol}",
+            "usedNoCap": "terpakai (tanpa batas kuota)"
         },
         "dialogs": {
             "confirmTitle": "Konfirmasi",

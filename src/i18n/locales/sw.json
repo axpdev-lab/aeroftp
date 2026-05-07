@@ -247,7 +247,13 @@
             "saveAndConnect": "Hifadhi na Unganisha",
             "saveDisabledTotp": "Misimbo ya TOTP ni ya matumizi ya mara moja. Tumia Hifadhi na Unganisha kutumia msimbo huu sasa.",
             "generatePersonalLoginToken": "Tengeneza tokeni ya kuingia ya kibinafsi",
-            "endpointUrl": "URL ya mwisho"
+            "endpointUrl": "URL ya mwisho",
+            "b2NativeAdvantagesTitle": "API asili ya Backblaze B2: vipengele vya ziada zaidi ya inayolingana na S3",
+            "b2NativeAdvLargeFiles": "Bora kwa faili kubwa: upakiaji wa vipande wa asili na ukubwa wa sehemu unaopendekezwa wa 100 MB",
+            "b2NativeAdvSoftDelete": "Kufuta laini: faili zilizofutwa zinaweza kurejeshwa kutoka kwa historia ya matoleo",
+            "b2NativeAdvBucketUsage": "Matumizi ya hifadhi katika kiwango cha bucket yanaonyeshwa kwenye upau wa hali",
+            "b2NativeAdvShareLinks": "Viungo vya kushiriki na muda maalum wa kuisha (hadi siku 7)",
+            "b2NativeAdvVersions": "Historia kamili ya matoleo ya faili kwa kila kitu"
         },
         "browser": {
             "remote": "Mbali",
@@ -1112,7 +1118,8 @@
             "update": "Sasisho",
             "insecureConnectionUnencrypted": "Muunganisho huu haujasimbwa. Vitambulisho vinatumwa kama maandishi wazi.",
             "secureConnection": "Salama",
-            "secureConnectionTitle": "Muunganisho uliosimbwa kupitia {protocol}"
+            "secureConnectionTitle": "Muunganisho uliosimbwa kupitia {protocol}",
+            "usedNoCap": "imetumika (bila kikomo cha quota)"
         },
         "dialogs": {
             "confirmTitle": "Thibitisha",

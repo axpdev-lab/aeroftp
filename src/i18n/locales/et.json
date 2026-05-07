@@ -247,7 +247,13 @@
             "saveAndConnect": "Salvesta ja ühenda",
             "saveDisabledTotp": "TOTP-koodid on ühekordsed. Kasuta Salvesta ja ühenda, et see kood kohe rakendada.",
             "generatePersonalLoginToken": "Genereeri isiklik sisselogimise tunnus",
-            "endpointUrl": "Lõpp-punkti URL"
+            "endpointUrl": "Lõpp-punkti URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 natiivne API: lisafunktsioonid võrreldes S3-ga ühilduvaga",
+            "b2NativeAdvLargeFiles": "Parim suurte failide jaoks: natiivne tükeldatud üleslaadimine soovitusliku 100 MB osa suurusega",
+            "b2NativeAdvSoftDelete": "Pehme kustutamine: kustutatud faile saab versiooniloost taastada",
+            "b2NativeAdvBucketUsage": "Bucket-tasandi salvestuskasutus kuvatakse olekuribal",
+            "b2NativeAdvShareLinks": "Jagamislingid kohandatud aegumisega (kuni 7 päeva)",
+            "b2NativeAdvVersions": "Täielik failiversioonide ajalugu objekti kohta"
         },
         "browser": {
             "remote": "Kaugserver",
@@ -1112,7 +1118,8 @@
             "update": "Uuendus",
             "insecureConnectionUnencrypted": "See ühendus ei ole krüpteeritud. Sisselogimisandmed saadetakse lihttekstina.",
             "secureConnection": "Turvaline",
-            "secureConnectionTitle": "Krüpteeritud ühendus {protocol} kaudu"
+            "secureConnectionTitle": "Krüpteeritud ühendus {protocol} kaudu",
+            "usedNoCap": "kasutatud (kvoodipiiranguta)"
         },
         "dialogs": {
             "confirmTitle": "Kinnita",

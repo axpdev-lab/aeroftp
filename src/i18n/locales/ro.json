@@ -247,7 +247,13 @@
             "saveAndConnect": "Salvează și conectează",
             "saveDisabledTotp": "Codurile TOTP sunt de unică folosință. Folosiți Salvează și conectează pentru a aplica acest cod acum.",
             "generatePersonalLoginToken": "Generează token de autentificare personal",
-            "endpointUrl": "URL endpoint"
+            "endpointUrl": "URL endpoint",
+            "b2NativeAdvantagesTitle": "API nativ Backblaze B2: funcții suplimentare față de cel compatibil S3",
+            "b2NativeAdvLargeFiles": "Ideal pentru fișiere mari: încărcare nativă pe segmente cu dimensiunea recomandată a părții de 100 MB",
+            "b2NativeAdvSoftDelete": "Ștergere temporară: fișierele șterse pot fi recuperate din istoricul versiunilor",
+            "b2NativeAdvBucketUsage": "Utilizarea spațiului la nivel de bucket afișată în bara de stare",
+            "b2NativeAdvShareLinks": "Linkuri de partajare cu expirare personalizată (până la 7 zile)",
+            "b2NativeAdvVersions": "Istoric complet al versiunilor pentru fiecare obiect"
         },
         "browser": {
             "remote": "La distanță",
@@ -1112,7 +1118,8 @@
             "update": "Actualizare",
             "insecureConnectionUnencrypted": "Această conexiune nu este criptată. Datele de autentificare sunt trimise ca text simplu.",
             "secureConnection": "Securizată",
-            "secureConnectionTitle": "Conexiune criptată prin {protocol}"
+            "secureConnectionTitle": "Conexiune criptată prin {protocol}",
+            "usedNoCap": "utilizat (fără limită de cotă)"
         },
         "dialogs": {
             "confirmTitle": "Confirmă",

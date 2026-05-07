@@ -247,7 +247,13 @@
             "saveAndConnect": "Speichern & Verbinden",
             "saveDisabledTotp": "TOTP-Codes sind einmalig gültig. Nutzen Sie „Speichern & Verbinden“, um diesen Code jetzt anzuwenden.",
             "generatePersonalLoginToken": "Persönliches Anmelde-Token generieren",
-            "endpointUrl": "Endpunkt-URL"
+            "endpointUrl": "Endpunkt-URL",
+            "b2NativeAdvantagesTitle": "Backblaze B2 native API: zusätzliche Funktionen gegenüber S3-kompatibel",
+            "b2NativeAdvLargeFiles": "Optimal für große Dateien: nativer Chunked-Upload mit empfohlener Teilgröße von 100 MB",
+            "b2NativeAdvSoftDelete": "Soft-Delete: gelöschte Dateien können aus dem Versionsverlauf wiederhergestellt werden",
+            "b2NativeAdvBucketUsage": "Speichernutzung auf Bucket-Ebene wird in der Statusleiste angezeigt",
+            "b2NativeAdvShareLinks": "Freigabelinks mit benutzerdefinierter Ablaufzeit (bis zu 7 Tage)",
+            "b2NativeAdvVersions": "Vollständiger Dateiversionsverlauf pro Objekt"
         },
         "browser": {
             "remote": "Remote",
@@ -1112,7 +1118,8 @@
             "update": "Aktualisierung",
             "insecureConnectionUnencrypted": "Diese Verbindung ist nicht verschlüsselt. Anmeldedaten werden im Klartext gesendet.",
             "secureConnection": "Sicher",
-            "secureConnectionTitle": "Verschlüsselte Verbindung über {protocol}"
+            "secureConnectionTitle": "Verschlüsselte Verbindung über {protocol}",
+            "usedNoCap": "belegt (kein Kontingentlimit)"
         },
         "dialogs": {
             "confirmTitle": "Bestätigen",

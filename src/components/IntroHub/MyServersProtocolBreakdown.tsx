@@ -104,10 +104,10 @@ export function MyServersProtocolBreakdown({
                                     {row.unique}
                                 </td>
                                 <td className="px-3 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-400">
-                                    {row.total > 0 ? formatBytes(row.used) : '-'}
+                                    {row.total > 0 || row.used > 0 ? formatBytes(row.used) : '-'}
                                 </td>
                                 <td className="px-3 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-400">
-                                    {row.total > 0 ? formatBytes(row.total) : '-'}
+                                    {row.total > 0 ? formatBytes(row.total) : row.used > 0 ? '∞' : '-'}
                                 </td>
                                 <td
                                     className={`px-3 py-1.5 text-right tabular-nums ${TONE_TEXT_CLASS[tone.tone]}`}

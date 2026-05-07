@@ -247,7 +247,13 @@
             "saveAndConnect": "Зберегти й підключитися",
             "saveDisabledTotp": "Коди TOTP одноразові. Натисніть «Зберегти й підключитися», щоб застосувати цей код зараз.",
             "generatePersonalLoginToken": "Створити персональний токен входу",
-            "endpointUrl": "URL кінцевої точки"
+            "endpointUrl": "URL кінцевої точки",
+            "b2NativeAdvantagesTitle": "Нативний API Backblaze B2: додаткові можливості порівняно з S3-сумісним",
+            "b2NativeAdvLargeFiles": "Найкраще для великих файлів: нативне завантаження частинами з рекомендованим розміром частини 100 МБ",
+            "b2NativeAdvSoftDelete": "М'яке видалення: видалені файли можна відновити з історії версій",
+            "b2NativeAdvBucketUsage": "Використання сховища на рівні bucket показано в рядку стану",
+            "b2NativeAdvShareLinks": "Посилання для спільного доступу з налаштованим терміном дії (до 7 днів)",
+            "b2NativeAdvVersions": "Повна історія версій файлів для кожного об'єкта"
         },
         "browser": {
             "remote": "Віддалений",
@@ -1112,7 +1118,8 @@
             "update": "Оновлення",
             "insecureConnectionUnencrypted": "Це з'єднання не зашифроване. Облікові дані надсилаються відкритим текстом.",
             "secureConnection": "Захищено",
-            "secureConnectionTitle": "Зашифроване з'єднання через {protocol}"
+            "secureConnectionTitle": "Зашифроване з'єднання через {protocol}",
+            "usedNoCap": "використано (без обмеження квоти)"
         },
         "dialogs": {
             "confirmTitle": "Підтвердження",
