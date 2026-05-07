@@ -29,6 +29,14 @@ use super::{
 
 const API_BASE: &str = "https://cloud-api.yandex.net/v1/disk";
 
+/// Maximum number of attempts (initial + retries) for an upload PUT against
+/// a Yandex upload-target URL. Each attempt re-acquires the upload-target
+/// because the URL has a short TTL and may already be 410 Gone if reused.
+const YANDEX_UPLOAD_MAX_ATTEMPTS: u32 = 3;
+
+/// Base delay for exponential backoff between upload retries (500 ms, 1 s, 2 s).
+const YANDEX_UPLOAD_BACKOFF_BASE_MS: u64 = 500;
+
 #[cfg(debug_assertions)]
 fn yd_log(msg: &str) {
     eprintln!("[yandex-disk] {}", msg);
@@ -36,6 +44,22 @@ fn yd_log(msg: &str) {
 
 #[cfg(not(debug_assertions))]
 fn yd_log(_msg: &str) {}
+
+/// HTTP statuses that indicate a transient failure during upload PUT and
+/// can be retried after re-acquiring a fresh upload-target.
+fn is_yandex_upload_retryable_status(status: reqwest::StatusCode) -> bool {
+    let code = status.as_u16();
+    status.is_server_error() || code == 408 || code == 425 || code == 429
+}
+
+/// ProviderError variants raised during the GET upload-target step that
+/// indicate a transient failure worth retrying with backoff.
+fn is_yandex_upload_retryable_error(err: &ProviderError) -> bool {
+    matches!(
+        err,
+        ProviderError::NetworkError(_) | ProviderError::ServerError(_),
+    )
+}
 
 // ─── API Response Structures ─────────────────────────────────────────
 
@@ -569,6 +593,38 @@ impl YandexDiskProvider {
             Err(self.parse_error(resp).await)
         }
     }
+
+    /// Request a fresh upload-target URL from the Yandex Disk API.
+    ///
+    /// Yandex returns a short-lived signed URL (`https://uploader<NNN><tag>.disk.yandex.net/upload-target/...`)
+    /// that the caller must PUT the body to. The URL has an implicit TTL and
+    /// can return 410 Gone if reused after expiration: callers retrying an
+    /// upload after a transient failure must re-acquire a new one rather than
+    /// re-PUT to the same href.
+    async fn acquire_upload_target(&mut self, encoded: &str) -> Result<YdLink, ProviderError> {
+        let url = format!(
+            "{}/resources/upload?path={}&overwrite=true",
+            API_BASE, encoded
+        );
+        let resp = self
+            .send_with_reauth(|this| {
+                this.client
+                    .get(&url)
+                    .header(AUTHORIZATION, this.auth_header())
+            })
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(self.parse_error(resp).await);
+        }
+
+        let link: YdLink = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        validate_yd_url(&link.href)?;
+        Ok(link)
+    }
 }
 
 // ─── StorageProvider Trait Implementation ─────────────────────────────
@@ -850,76 +906,130 @@ impl StorageProvider for YandexDiskProvider {
         let encoded = encode_yd_path(&resolved);
         yd_log(&format!("upload: {} -> {}", local_path, resolved));
 
-        // Read file into chunks for streaming upload
         let file_meta = tokio::fs::metadata(local_path)
             .await
             .map_err(ProviderError::IoError)?;
         let total = file_meta.len();
 
-        // Step 1: Get upload URL
-        let url = format!(
-            "{}/resources/upload?path={}&overwrite=true",
-            API_BASE, encoded
-        );
-        let resp = self
-            .send_with_reauth(|this| {
-                this.client
-                    .get(&url)
-                    .header(AUTHORIZATION, this.auth_header())
-            })
-            .await?;
-
-        if !resp.status().is_success() {
-            return Err(self.parse_error(resp).await);
-        }
-
-        let link: YdLink = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-        validate_yd_url(&link.href)?;
-
-        // Step 2: PUT file data to the upload URL (no auth needed)
-        // Stream from file to avoid loading entire file into memory
-        let file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        use futures_util::StreamExt;
-        use tokio_util::io::ReaderStream;
-
-        let progress_cb = on_progress;
-        let mut uploaded: u64 = 0;
-        let stream = ReaderStream::with_capacity(file, 65536).map(move |chunk| {
-            if let Ok(bytes) = &chunk {
-                uploaded += bytes.len() as u64;
-                if let Some(ref cb) = progress_cb {
-                    cb(uploaded, total);
+        // Forward progress updates from each per-attempt stream to the
+        // caller through a serialized channel. On retry the per-attempt
+        // counter restarts at 0, which the caller sees as a normal reset
+        // before climbing back to `total` on the successful PUT.
+        let progress_tx = on_progress.map(|cb| {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(u64, u64)>();
+            tokio::spawn(async move {
+                while let Some((sent, t)) = rx.recv().await {
+                    cb(sent, t);
                 }
-            }
-            chunk
+            });
+            tx
         });
 
-        let body = reqwest::Body::wrap_stream(stream);
-        let resp = self
-            .client
-            .put(&link.href)
-            .header("Content-Type", "application/octet-stream")
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let mut last_error: Option<ProviderError> = None;
+        for attempt in 1..=YANDEX_UPLOAD_MAX_ATTEMPTS {
+            // Step 1: acquire a fresh upload-target on every attempt. Yandex
+            // upload-target URLs are short-lived (signed with TTL); reusing
+            // one from a failed attempt risks 410 Gone. The GET itself goes
+            // through send_with_reauth which already handles 401-once.
+            let link = match self.acquire_upload_target(&encoded).await {
+                Ok(link) => link,
+                Err(e)
+                    if is_yandex_upload_retryable_error(&e)
+                        && attempt < YANDEX_UPLOAD_MAX_ATTEMPTS =>
+                {
+                    let backoff_ms = YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << (attempt - 1));
+                    yd_log(&format!(
+                        "acquire upload-target failed on attempt {}/{}: {}. Retry in {} ms",
+                        attempt, YANDEX_UPLOAD_MAX_ATTEMPTS, e, backoff_ms,
+                    ));
+                    last_error = Some(e);
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 201 || status.as_u16() == 202 {
-            yd_log(&format!("upload complete: {} bytes", total));
-            Ok(())
-        } else {
-            Err(ProviderError::TransferFailed(format!(
-                "Upload failed: HTTP {}",
-                status
-            )))
+            // Step 2: PUT body. ReaderStream takes ownership of the file
+            // handle, so we re-open it for every attempt.
+            let file = tokio::fs::File::open(local_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+
+            use futures_util::StreamExt;
+            use tokio_util::io::ReaderStream;
+
+            let progress_for_attempt = progress_tx.clone();
+            let mut uploaded: u64 = 0;
+            let stream = ReaderStream::with_capacity(file, 65536).map(move |chunk| {
+                if let Ok(bytes) = &chunk {
+                    uploaded += bytes.len() as u64;
+                    if let Some(ref tx) = progress_for_attempt {
+                        let _ = tx.send((uploaded, total));
+                    }
+                }
+                chunk
+            });
+
+            let body = reqwest::Body::wrap_stream(stream);
+            let put_result = self
+                .client
+                .put(&link.href)
+                .header("Content-Type", "application/octet-stream")
+                .body(body)
+                .send()
+                .await;
+
+            match put_result {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_success()
+                        || status.as_u16() == 201
+                        || status.as_u16() == 202
+                    {
+                        yd_log(&format!(
+                            "upload complete: {} bytes (attempt {}/{})",
+                            total, attempt, YANDEX_UPLOAD_MAX_ATTEMPTS,
+                        ));
+                        return Ok(());
+                    }
+                    let err = ProviderError::TransferFailed(format!(
+                        "Upload failed: HTTP {}",
+                        status,
+                    ));
+                    if is_yandex_upload_retryable_status(status)
+                        && attempt < YANDEX_UPLOAD_MAX_ATTEMPTS
+                    {
+                        let backoff_ms = YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << (attempt - 1));
+                        yd_log(&format!(
+                            "upload HTTP {} on attempt {}/{}, retry in {} ms with fresh upload-target",
+                            status, attempt, YANDEX_UPLOAD_MAX_ATTEMPTS, backoff_ms,
+                        ));
+                        last_error = Some(err);
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                        continue;
+                    }
+                    return Err(err);
+                }
+                Err(e) => {
+                    let err = ProviderError::TransferFailed(e.to_string());
+                    if attempt < YANDEX_UPLOAD_MAX_ATTEMPTS {
+                        let backoff_ms = YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << (attempt - 1));
+                        yd_log(&format!(
+                            "upload network error on attempt {}/{}: {}. Retry in {} ms with fresh upload-target",
+                            attempt, YANDEX_UPLOAD_MAX_ATTEMPTS, e, backoff_ms,
+                        ));
+                        last_error = Some(err);
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                        continue;
+                    }
+                    return Err(err);
+                }
+            }
         }
+
+        Err(last_error.unwrap_or_else(|| {
+            ProviderError::TransferFailed("Upload exhausted retries".to_string())
+        }))
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1443,5 +1553,58 @@ mod tests {
         assert!(!is_yandex_retryable_auth_error(&err));
         let msg = err.to_string();
         assert!(msg.contains("Regenerate the OAuth token"));
+    }
+
+    #[test]
+    fn upload_retryable_status_accepts_5xx_408_425_429() {
+        for code in [500, 501, 502, 503, 504, 408, 425, 429] {
+            let status = reqwest::StatusCode::from_u16(code).unwrap();
+            assert!(
+                is_yandex_upload_retryable_status(status),
+                "HTTP {} should be retryable",
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn upload_retryable_status_rejects_2xx_4xx_terminal() {
+        for code in [200, 201, 202, 400, 401, 403, 404, 410, 413] {
+            let status = reqwest::StatusCode::from_u16(code).unwrap();
+            assert!(
+                !is_yandex_upload_retryable_status(status),
+                "HTTP {} should NOT be retryable",
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn upload_retryable_error_accepts_network_and_server() {
+        let net = ProviderError::NetworkError("connection reset".into());
+        let srv = ProviderError::ServerError("upstream timeout".into());
+        assert!(is_yandex_upload_retryable_error(&net));
+        assert!(is_yandex_upload_retryable_error(&srv));
+    }
+
+    #[test]
+    fn upload_retryable_error_rejects_terminal_classes() {
+        let auth = ProviderError::AuthenticationFailed("revoked".into());
+        let path = ProviderError::InvalidPath("../traversal".into());
+        let parse = ProviderError::ParseError("bad json".into());
+        let transfer = ProviderError::TransferFailed("Upload failed: HTTP 413".into());
+        assert!(!is_yandex_upload_retryable_error(&auth));
+        assert!(!is_yandex_upload_retryable_error(&path));
+        assert!(!is_yandex_upload_retryable_error(&parse));
+        assert!(!is_yandex_upload_retryable_error(&transfer));
+    }
+
+    #[test]
+    fn upload_backoff_is_exponential_500ms_base() {
+        // Backoff schedule: attempt 1 -> 500 ms, attempt 2 -> 1 s, attempt 3 -> 2 s.
+        assert_eq!(YANDEX_UPLOAD_BACKOFF_BASE_MS, 500);
+        assert_eq!(YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << 1), 1000);
+        assert_eq!(YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << 2), 2000);
+        assert_eq!(YANDEX_UPLOAD_MAX_ATTEMPTS, 3);
     }
 }
