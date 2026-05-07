@@ -137,11 +137,23 @@ export function ServerBadges({ server }: { server: ServerProfile }) {
             ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
             : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300';
 
+    // Recognise both the bare provider id and the `-webdav` suffix variant
+    // emitted by MyServersPanel's host heuristic for legacy profiles.
+    const pid = server.providerId || '';
+    const isFelicloud = pid === 'felicloud' || pid === 'felicloud-webdav';
+    const isTabdigital = pid === 'tabdigital' || pid === 'tabdigital-webdav';
+    const isOcsBranded = isFelicloud || isTabdigital;
+    const ocsBadgeStyle = isFelicloud
+        ? { backgroundColor: '#0083ce22', color: '#0083ce' }
+        : isTabdigital
+            ? { backgroundColor: '#04bb7022', color: '#04bb70' }
+            : undefined;
+
     return (
         <div className="flex items-center gap-1 flex-wrap">
-            {server.providerId === 'felicloud' ? (
+            {isOcsBranded ? (
                 <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase"
-                      style={{ backgroundColor: '#0083ce22', color: '#0083ce' }}>
+                      style={ocsBadgeStyle}>
                     API OCS
                 </span>
             ) : showProtoBadge ? (
@@ -149,7 +161,7 @@ export function ServerBadges({ server }: { server: ServerProfile }) {
                     {displayProto}
                 </span>
             ) : null}
-            {showClassBadge && server.providerId !== 'felicloud' && (
+            {showClassBadge && !isOcsBranded && (
                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium inline-flex items-center gap-0.5 ${classBadgeColor[protocolClass] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
                     {e2eBits && <Lock size={10} />}
                     {protocolClassLabel}

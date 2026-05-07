@@ -209,6 +209,44 @@ const resolveUsernameTemplate = (
   return path.replace(/\{username\}/g, u);
 };
 
+/**
+ * Strip a legacy initialPath that points exactly at a Nextcloud WebDAV root
+ * for a provider that no longer needs it. Tab.digital saved profiles created
+ * before commit efb5a27f shipped with `initialPath = "/remote.php/dav/files/<user>/"`
+ * (template resolved at save time). With basePath dropped from the preset,
+ * the WebDAV auto-detect in connect() finds the same path on its own and
+ * lists it under Depth: 0, while passing the literal path here forces a
+ * Depth: 1 PROPFIND that the Cloudflare edge has been observed to 404 on
+ * fie.nl.tab.digital. Returning null lets the auto-detect drive instead,
+ * matching the behaviour of a freshly-saved profile.
+ *
+ * Only strips when the profile is identifiably Nextcloud-based and the path
+ * is the exact wk_path the auto-detect would have found anyway. Sub-folders
+ * (e.g. /remote.php/dav/files/<user>/Documents/) survive unchanged.
+ */
+const stripLegacyNextcloudWebdavRoot = (
+  initialPath: string | null | undefined,
+  providerId: string | undefined,
+  username: string | null | undefined,
+): string | null => {
+  if (!initialPath) return initialPath ?? null;
+  const pid = providerId || '';
+  const isNextcloudBased =
+    pid === 'tabdigital' ||
+    pid === 'tabdigital-webdav' ||
+    pid === 'felicloud' ||
+    pid === 'felicloud-webdav' ||
+    pid === 'nextcloud';
+  if (!isNextcloudBased) return initialPath;
+  const u = (username || '').trim();
+  if (!u) return initialPath;
+  // Exact wk_path with optional trailing slash.
+  const wkExact = `/remote.php/dav/files/${u}`;
+  const trimmed = initialPath.replace(/\/+$/, '');
+  if (trimmed === wkExact) return null;
+  return initialPath;
+};
+
 const Github = ({ size = 24, className = '' }: { size?: number; className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
     <path fillRule="evenodd" clipRule="evenodd" d="M12.026 2c-5.509 0-9.974 4.465-9.974 9.974 0 4.406 2.857 8.145 6.821 9.465.499.09.679-.217.679-.481 0-.237-.008-.865-.011-1.696-2.775.602-3.361-1.338-3.361-1.338-.452-1.152-1.107-1.459-1.107-1.459-.905-.619.069-.605.069-.605 1.002.07 1.527 1.028 1.527 1.028.89 1.524 2.336 1.084 2.902.829.091-.645.351-1.085.635-1.334-2.214-.251-4.542-1.107-4.542-4.93 0-1.087.389-1.979 1.024-2.675-.101-.253-.446-1.268.099-2.64 0 0 .837-.269 2.742 1.021a9.582 9.582 0 0 1 2.496-.336 9.554 9.554 0 0 1 2.496.336c1.906-1.291 2.742-1.021 2.742-1.021.545 1.372.203 2.387.099 2.64.64.696 1.024 1.587 1.024 2.675 0 3.833-2.33 4.675-4.552 4.922.355.308.675.916.675 1.846 0 1.334-.012 2.41-.012 2.737 0 .267.178.577.687.479C19.146 20.115 22 16.379 22 11.974 22 6.465 17.535 2 12.026 2z"/>
@@ -3346,9 +3384,15 @@ interface UpdateVerificationInfo {
 
         // Resolve any `{username}` placeholder against the actual username
         // before the path enters the connect flow. See resolveUsernameTemplate
-        // doc comment: covers Nextcloud-based presets that ship with
-        // `defaults.basePath = '/remote.php/dav/files/{username}/'`.
-        const resolvedRemoteDir = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
+        // doc comment. Then strip the literal Nextcloud WebDAV root for
+        // legacy Tab.digital / Felicloud / Nextcloud profiles saved before
+        // basePath was dropped from the preset.
+        const qcTemplateResolved = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
+        const resolvedRemoteDir = stripLegacyNextcloudWebdavRoot(
+          qcTemplateResolved,
+          effectiveParams.providerId,
+          effectiveParams.username,
+        );
         const providerPayload = await buildProviderParams(effectiveParams, resolvedRemoteDir);
         effectiveParams = providerPayload.effectiveParams;
         setConnectionParams(effectiveParams);
@@ -9554,8 +9598,16 @@ interface UpdateVerificationInfo {
                     try { await invoke('disconnect_ftp'); } catch { }
 
                     // Resolve {username} placeholder before any path enters
-                    // the connect flow. See resolveUsernameTemplate doc comment.
-                    const resolvedSavedInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username);
+                    // the connect flow. See resolveUsernameTemplate doc.
+                    // Then strip the literal Nextcloud WebDAV root for
+                    // legacy Tab.digital / Felicloud / Nextcloud profiles
+                    // saved before basePath was dropped from the preset.
+                    const templateResolved = resolveUsernameTemplate(initialPath, normalizedParams.username);
+                    const resolvedSavedInitialPath = stripLegacyNextcloudWebdavRoot(
+                        templateResolved,
+                        normalizedParams.providerId,
+                        normalizedParams.username,
+                    );
                     const providerPayload = await buildProviderParams(normalizedParams, resolvedSavedInitialPath);
                     const connectedParams = providerPayload.effectiveParams;
                     const providerParams = providerPayload.providerParams;
