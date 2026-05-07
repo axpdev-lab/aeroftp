@@ -1331,7 +1331,7 @@ impl B2Provider {
                 }
                 let modified = f
                     .upload_timestamp
-                    .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms))
+                    .and_then(chrono::DateTime::from_timestamp_millis)
                     .map(|dt| dt.to_rfc3339());
                 let display_name = f
                     .file_name
