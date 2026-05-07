@@ -3208,7 +3208,8 @@
             "website": "Tovuti",
             "documentation": "Nyaraka",
             "mcp": "MCP Server...",
-            "mountManager": "Kidhibiti cha Kupachika..."
+            "mountManager": "Kidhibiti cha Kupachika...",
+            "activityLog": "Kumbukumbu ya Shughuli"
         },
         "activityPanel": {
             "awaitingCommands": "Inasubiri amri...",

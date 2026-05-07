@@ -3208,7 +3208,8 @@
             "website": "Weboldal",
             "documentation": "Dokumentáció",
             "mcp": "MCP Server...",
-            "mountManager": "Csatolási kezelő..."
+            "mountManager": "Csatolási kezelő...",
+            "activityLog": "Tevékenységnapló"
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",

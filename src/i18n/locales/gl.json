@@ -3208,7 +3208,8 @@
             "website": "Sitio web",
             "documentation": "Documentacion",
             "mcp": "MCP Server...",
-            "mountManager": "Xestor de montaxes..."
+            "mountManager": "Xestor de montaxes...",
+            "activityLog": "Rexistro de actividade"
         },
         "activityPanel": {
             "awaitingCommands": "Agardando comandos...",

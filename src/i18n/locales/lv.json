@@ -3208,7 +3208,8 @@
             "website": "Tīmekļa vietne",
             "documentation": "Dokumentācija",
             "mcp": "MCP Server...",
-            "mountManager": "Montēšanas pārvaldnieks..."
+            "mountManager": "Montēšanas pārvaldnieks...",
+            "activityLog": "Aktivitāšu žurnāls"
         },
         "activityPanel": {
             "awaitingCommands": "Gaida komandas...",

@@ -3208,7 +3208,8 @@
             "website": "Vefsíða",
             "documentation": "Skjölun",
             "mcp": "MCP Server...",
-            "mountManager": "Tengingarstjóri..."
+            "mountManager": "Tengingarstjóri...",
+            "activityLog": "Aðgerðaskrá"
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",

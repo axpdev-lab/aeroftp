@@ -3208,7 +3208,8 @@
             "website": "Laman web",
             "documentation": "Dokumentasi",
             "mcp": "MCP Server...",
-            "mountManager": "Pengurus Lekapan..."
+            "mountManager": "Pengurus Lekapan...",
+            "activityLog": "Log Aktiviti"
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu arahan...",

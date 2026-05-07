@@ -3208,7 +3208,8 @@
             "website": "Verkkosivusto",
             "documentation": "Dokumentaatio",
             "mcp": "MCP Server...",
-            "mountManager": "Liitäntöjen hallinta..."
+            "mountManager": "Liitäntöjen hallinta...",
+            "activityLog": "Tapahtumaloki"
         },
         "activityPanel": {
             "awaitingCommands": "Odotetaan komentoja...",

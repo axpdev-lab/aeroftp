@@ -3208,7 +3208,8 @@
             "website": "网站",
             "documentation": "文档",
             "mcp": "MCP Server...",
-            "mountManager": "挂载管理器..."
+            "mountManager": "挂载管理器...",
+            "activityLog": "活动日志"
         },
         "activityPanel": {
             "awaitingCommands": "等待命令...",

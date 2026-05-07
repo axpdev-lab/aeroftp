@@ -3347,7 +3347,8 @@
             "website": "Sito Web",
             "documentation": "Documentazione",
             "mcp": "MCP Server...",
-            "mountManager": "Gestione mount..."
+            "mountManager": "Gestione mount...",
+            "activityLog": "Registro attività"
         },
         "mountManager": {
             "title": "Gestione mount",

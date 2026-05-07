@@ -1825,6 +1825,7 @@
       "toggleDevtools": "AeroTools",
       "toggleEditor": "Editor",
       "toggleTerminal": "Terminal",
+      "activityLog": "Activity Log",
       "selectAll": "Select All",
       "toggleTheme": "Toggle Theme",
       "view": "View",

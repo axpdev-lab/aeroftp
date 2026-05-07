@@ -3208,7 +3208,8 @@
             "website": "Sitio web",
             "documentation": "Documentacion",
             "mcp": "MCP Server...",
-            "mountManager": "Administrador de montajes..."
+            "mountManager": "Administrador de montajes...",
+            "activityLog": "Registro de actividad"
         },
         "activityPanel": {
             "awaitingCommands": "Esperando comandos...",

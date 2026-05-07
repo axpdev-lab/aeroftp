@@ -3208,7 +3208,8 @@
             "website": "Trang web",
             "documentation": "Tài liệu",
             "mcp": "MCP Server...",
-            "mountManager": "Trình quản lý gắn kết..."
+            "mountManager": "Trình quản lý gắn kết...",
+            "activityLog": "Nhật ký hoạt động"
         },
         "activityPanel": {
             "awaitingCommands": "Đang chờ lệnh...",

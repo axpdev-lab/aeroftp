@@ -3201,7 +3201,8 @@
             "website": "Կայքէջ",
             "documentation": "Փաստաթղթեր",
             "mcp": "MCP Server...",
-            "mountManager": "Միացման կառավարիչ..."
+            "mountManager": "Միացման կառավարիչ...",
+            "activityLog": "Գործունեության մատյան"
         },
         "activityPanel": {
             "awaitingCommands": "Սպասում է հրամանների...",

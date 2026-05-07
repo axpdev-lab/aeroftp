@@ -3208,7 +3208,8 @@
             "website": "Ιστότοπος",
             "documentation": "Τεκμηρίωση",
             "mcp": "MCP Server...",
-            "mountManager": "Διαχειριστής Προσαρτήσεων..."
+            "mountManager": "Διαχειριστής Προσαρτήσεων...",
+            "activityLog": "Αρχείο δραστηριότητας"
         },
         "activityPanel": {
             "awaitingCommands": "Αναμονή εντολών...",

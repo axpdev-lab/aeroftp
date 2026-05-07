@@ -3208,7 +3208,8 @@
             "website": "Website",
             "documentation": "Dokumentasyon",
             "mcp": "MCP Server...",
-            "mountManager": "Tagapamahala ng Mount..."
+            "mountManager": "Tagapamahala ng Mount...",
+            "activityLog": "Log ng Aktibidad"
         },
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",

@@ -3208,7 +3208,8 @@
             "website": "Webové stránky",
             "documentation": "Dokumentace",
             "mcp": "MCP Server...",
-            "mountManager": "Správce připojení..."
+            "mountManager": "Správce připojení...",
+            "activityLog": "Protokol aktivit"
         },
         "activityPanel": {
             "awaitingCommands": "Čekání na příkazy...",
