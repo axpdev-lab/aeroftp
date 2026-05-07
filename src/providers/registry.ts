@@ -1635,14 +1635,16 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#04bb70',
         stable: true,
         contactVerified: true,
+        // Felicloud-style minimal form: only username + password are visible.
+        // The Tab.digital endpoint and port live under "Advanced" with the
+        // pre-filled regional default (fie.nl), so non-NL users open Advanced
+        // and Edit the subdomain (fie.de, fie.it, fie.se, fie.lv) once.
         fields: [
             {
-                ...COMMON_FIELDS.server,
-                label: 'Tab.digital Endpoint',
-                placeholder: 'es. https://fie.nl.tab.digital',
-                helpText: 'Find your endpoint under Settings → Personal → WebDAV on tab.digital. The subdomain is regional (fie.nl, fie.de, ...).',
+                ...COMMON_FIELDS.username,
+                label: 'Email',
+                placeholder: 'email@example.com',
             },
-            { ...COMMON_FIELDS.username },
             {
                 ...COMMON_FIELDS.password,
                 label: 'Password or App Token',
@@ -1650,6 +1652,11 @@ export const PROVIDERS: ProviderConfig[] = [
             },
         ],
         defaults: {
+            // Default to the fie.nl region (EU continental). Users on other
+            // regional shards (DE, IT, SE, LV per the Tab.digital data-centre
+            // map) open Advanced and edit the subdomain once. The full URL
+            // resolves {username} via WebDavConfig::from_provider_config.
+            server: 'https://fie.nl.tab.digital/remote.php/dav/files/{username}/',
             port: 443,
             basePath: '/remote.php/dav/files/{username}/',
         },
