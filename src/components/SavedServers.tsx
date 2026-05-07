@@ -723,19 +723,19 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                                         // Match both the bare provider id and the `-webdav`
                                         // suffix variant set by MyServersPanel's host heuristic
                                         // for legacy profiles saved before the preset existed.
+                                        // Felicloud + Tab.digital share the same OCS protocol
+                                        // class so the badge uses one tint for both: a colour
+                                        // difference would read as a protocol difference.
                                         const pid = server.providerId || '';
-                                        const isFelicloud = pid === 'felicloud' || pid === 'felicloud-webdav';
-                                        const isTabdigital = pid === 'tabdigital' || pid === 'tabdigital-webdav';
-                                        const isOcsBranded = isFelicloud || isTabdigital;
-                                        const brandedStyle = isFelicloud
-                                            ? { backgroundColor: '#0083ce22', color: '#0083ce' }
-                                            : isTabdigital
-                                                ? { backgroundColor: '#04bb7022', color: '#04bb70' }
-                                                : undefined;
+                                        const isOcsBranded =
+                                            pid === 'felicloud' ||
+                                            pid === 'felicloud-webdav' ||
+                                            pid === 'tabdigital' ||
+                                            pid === 'tabdigital-webdav';
                                         return (
                                             <span
                                                 className={`text-xs px-1.5 py-0.5 rounded font-medium uppercase ${isOcsBranded ? '' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}
-                                                style={brandedStyle}
+                                                style={isOcsBranded ? { backgroundColor: '#0083ce22', color: '#0083ce' } : undefined}
                                             >
                                                 {isOcsBranded ? 'API OCS' : (server.protocol || 'ftp')}
                                             </span>
