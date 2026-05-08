@@ -1301,6 +1301,12 @@ impl StorageProvider for DrimeCloudProvider {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            let body_lower = body.to_lowercase();
+            if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY
+                && body_lower.contains("already exists")
+            {
+                return Err(ProviderError::AlreadyExists(resolved));
+            }
             return Err(ProviderError::ServerError(format!(
                 "Create directory failed ({}): {}",
                 status,
