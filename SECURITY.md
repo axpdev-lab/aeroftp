@@ -93,10 +93,32 @@ All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC ke
 
 ### Continuous Monitoring
 
-- **[Aikido Security](https://aikido.dev)**: SAST, SCA, secrets detection, IaC scanning - daily automated scans
+#### Self-Hosted Vulnerability Audit (primary)
+
+AeroFTP ships a self-hosted audit pipeline that runs locally and in CI without depending on any vendor SaaS. It aggregates three independent advisory databases and cross-references findings against a documented suppression list:
+
+```bash
+npm run security:report        # generate HTML report
+npm run security:report -- --json
+```
+
+- **[`cargo audit`](https://rustsec.org/)** against the RustSec advisory database (Rust dependencies)
+- **`npm audit`** against the npm registry (Node production dependencies)
+- **[`osv-scanner`](https://google.github.io/osv-scanner/)** against the Google OSV database (cross-references RustSec, GHSA, CVE)
+
+Findings not yet addressed are surfaced as **open**. Findings accepted with written rationale are listed under **suppressed** with a link to [`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml) where every entry carries an inline justification reviewers can audit.
+
+| Month | Version | Open | Suppressed (justified) | Report |
+|---|---|---|---|---|
+| May 2026 | v3.7.5 | **0** | 25 | [HTML](docs/security/security-report-latest.html) |
+
+#### Third-party tooling
+
 - **[Socket.dev](https://socket.dev)**: Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection
 - **[Snyk](https://snyk.io)**: Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs
 - **[CodeRabbit](https://www.coderabbit.ai)**: AI-driven pull-request review on every PR - inline code suggestions and secret/PII checks complementing the SAST/SCA stack
+- **GitHub Dependabot**: Native alerts and auto-PRs cross-referenced against the self-hosted audit suppression list
+- **[Aikido Security](https://aikido.dev)**: Past audits (February-May 2026) archived - Top 5% benchmark, 0 open issues during the trial period
 
 For Sigstore verification commands and CI/CD security controls, see [Supply Chain Security](https://docs.aeroftp.app/security/supply-chain).
 

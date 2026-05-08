@@ -370,20 +370,39 @@ AeroFTP incorporates privacy protections that go beyond what traditional file ma
 
 See [SECURITY.md](SECURITY.md) for the security policy and architecture summary, and [docs.aeroftp.app/security](https://docs.aeroftp.app/security/overview) for the complete security documentation with encryption specs, AI security model, supply chain details, and audit history.
 
+### Self-Hosted Continuous Audit
+
+AeroFTP runs its own vulnerability audit pipeline that does not depend on any vendor SaaS. The pipeline aggregates three independent advisory databases (RustSec, npm registry, Google OSV) and cross-references findings against a documented suppression list with written rationales for every accepted advisory.
+
+```bash
+npm run security:report        # generate HTML report
+npm run security:report -- --json    # machine-readable output
+```
+
+Output is published in [`docs/security/security-report-latest.html`](docs/security/security-report-latest.html). The script and suppression list ([`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml)) are part of the repository and run identically on any developer machine and in CI.
+
+| Month | Version | Open | Suppressed (justified) | Notes |
+|---|---|---|---|---|
+| May 2026 | v3.7.5 | **0** | 25 | Closed CVE-2026-42184 (tauri origin confusion), GHSA-2p6r-x3vv-xqm2 (rpassword), 2x openssl GHSA |
+
+Each month we publish the run results here. Past Aikido Security reports remain linked in the Security Posture table below for archive.
+
 ### Security Posture
 
 | Area | Details |
 |---|---|
+| **Self-Hosted Audit** | `cargo audit` + `npm audit` + `osv-scanner` aggregator with documented suppression list - **0 open findings** ([latest report](docs/security/security-report-latest.html)) |
 | **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
-| **Aikido Security** | Continuous SAST/SCA monitoring - **Top 5% benchmark**, OWASP Top 10 coverage, 0 open issues |
+| **Aikido Security** | Past audits archived - **Top 5% benchmark**, 0 open issues during trial period (Feb-May 2026) |
 | **Socket.dev** | Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection |
 | **Snyk** | Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs |
 | **CodeRabbit** | AI-driven pull-request review on every PR - inline code suggestions, secret/PII checks, complement to the SAST/SCA stack |
-| **Dependency Scanning** | 1,156 packages monitored (320 JS + 836 Rust), daily automated scans |
+| **Dependabot** | GitHub-native dependency alerts and auto-PRs cross-referenced against the self-hosted audit list |
+| **Dependency Scanning** | 1,434 packages monitored (303 JS + 1,131 Rust), daily automated scans |
 | **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled, [Sigstore](https://sigstore.dev) signing with client-side verification |
 | **Compliance** | Verified against OWASP Top 10, ISO 27001, CIS, NIS2, GDPR - 0 open issues ([March 2026 audit](docs/Security%20Audit%20Report%20axpdev-lab%20-%20March%202026.pdf)) |
 | **Security Audits** | 300+ findings resolved across [9 independent audits](https://docs.aeroftp.app/security/audits) - grade A- |
-| **Security Audit** | [March 2026](docs/Security%20Audit%20Report%20axpdev-lab%20-%20March%202026.pdf) - [February 2026](docs/Security%20Audit%20Report%20axpnet%20-%20February%202026.pdf) (Aikido Security) |
+| **Past Aikido Reports** | [March 2026](docs/Security%20Audit%20Report%20axpdev-lab%20-%20March%202026.pdf) - [February 2026](docs/Security%20Audit%20Report%20axpnet%20-%20February%202026.pdf) |
 
 ---
 
