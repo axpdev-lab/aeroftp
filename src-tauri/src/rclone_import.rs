@@ -967,8 +967,12 @@ pub fn export_rclone(
             "s3" => {
                 output.push_str("type = s3\n");
                 let provider_id = server.provider_id.as_deref().unwrap_or("custom-s3");
+                // rclone S3 backend providers: see `rclone help backend s3`.
+                // Names are case-sensitive; "Other" forces the generic
+                // signature path which works for unknown S3-compatible
+                // endpoints but skips provider-specific quirks.
                 let rclone_provider = match provider_id {
-                    "amazon-s3" => "AWS",
+                    "amazon-s3" | "aws-s3" => "AWS",
                     "cloudflare-r2" => "Cloudflare",
                     "digitalocean-spaces" => "DigitalOcean",
                     "wasabi" => "Wasabi",
@@ -979,49 +983,93 @@ pub fn export_rclone(
                     "idrive-e2" => "IDrive",
                     "minio" => "Minio",
                     "ionos-s3" => "IONOS",
+                    "alibaba-oss" => "Alibaba",
+                    "tencent-cos" => "TencentCOS",
+                    "qiniu-kodo" => "Qiniu",
+                    "google-cloud-storage" => "GCS",
                     _ => "Other",
                 };
                 output.push_str(&format!("provider = {}\n", rclone_provider));
                 output.push_str(&format!("access_key_id = {}\n", server.username));
                 if let Some(pw) = password {
-                    output.push_str(&format!(
-                        "secret_access_key = {}\n",
-                        obscure_password(pw).unwrap_or_default()
-                    ));
+                    // S3 `secret_access_key` is NOT a `IsPassword: true`
+                    // field in rclone's backend definition: it must be
+                    // emitted in plain form. Obscuring it produces an
+                    // `AWS4-HMAC-SHA256` signature mismatch on every
+                    // request because rclone hashes the obscured string
+                    // verbatim instead of reversing it first.
+                    output.push_str(&format!("secret_access_key = {}\n", pw));
                 }
+                let mut emitted_endpoint = false;
                 if let Some(opts) = options {
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
                         output.push_str(&format!("region = {}\n", region));
                     }
                     if let Some(endpoint) = opts.get("endpoint").and_then(|v| v.as_str()) {
                         output.push_str(&format!("endpoint = {}\n", endpoint));
+                        emitted_endpoint = true;
                     }
                     if let Some(bucket) = opts.get("bucket").and_then(|v| v.as_str()) {
                         output.push_str(&format!("bucket = {}\n", bucket));
                     }
                 }
+                // Fallback: some profiles (Storj S3 gateway, Cloudflare R2
+                // when configured via the legacy URL field, generic S3
+                // remotes) embed the endpoint URL directly in the host
+                // field instead of the options map. Reuse it so the
+                // rclone section is functional out of the box.
+                if !emitted_endpoint && !server.host.trim().is_empty() {
+                    let endpoint = server.host.trim_end_matches('/');
+                    let endpoint = if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+                        endpoint.to_string()
+                    } else {
+                        format!("https://{}", endpoint)
+                    };
+                    output.push_str(&format!("endpoint = {}\n", endpoint));
+                }
             }
             "webdav" => {
                 output.push_str("type = webdav\n");
+                // Nextcloud-derived presets (Tab.digital, FeliCloud, generic
+                // Nextcloud) speak the same WebDAV dialect as upstream
+                // Nextcloud. Mapping them to vendor=nextcloud lets rclone
+                // use the correct chunked-upload + checksum behaviour.
                 let vendor = match server.provider_id.as_deref() {
-                    Some("nextcloud") => "nextcloud",
-                    Some("owncloud") => "owncloud",
+                    Some("nextcloud")
+                    | Some("nextcloud-webdav")
+                    | Some("tabdigital")
+                    | Some("tabdigital-webdav")
+                    | Some("felicloud")
+                    | Some("felicloud-webdav") => "nextcloud",
+                    Some("owncloud") | Some("owncloud-webdav") => "owncloud",
                     _ => "other",
                 };
                 let base_path = options
                     .and_then(|o| o.get("basePath"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let scheme = if server.port == 80 { "http" } else { "https" };
-                let port_str = if server.port == 443 || server.port == 80 {
-                    String::new()
+                // Some host strings already carry the scheme (`https://...`)
+                // because the GUI persists the full URL as the host on
+                // certain WebDAV presets. In that case we MUST NOT prepend
+                // another scheme or the URL becomes `https://https://...`
+                // and rclone refuses to dial.
+                let host = server.host.trim_end_matches('/');
+                let url = if host.starts_with("http://") || host.starts_with("https://") {
+                    format!("{}{}", host, base_path)
                 } else {
-                    format!(":{}", server.port)
+                    let scheme = if server.port == 80 { "http" } else { "https" };
+                    let port_str = if server.port == 443 || server.port == 80 {
+                        String::new()
+                    } else {
+                        format!(":{}", server.port)
+                    };
+                    format!("{}://{}{}{}", scheme, host, port_str, base_path)
                 };
-                output.push_str(&format!(
-                    "url = {}://{}{}{}\n",
-                    scheme, server.host, port_str, base_path
-                ));
+                // Resolve {username} template that Nextcloud-derived
+                // presets store verbatim in the URL or initial path
+                // (Tab.digital, FeliCloud).
+                let url = url.replace("{username}", &server.username);
+                output.push_str(&format!("url = {}\n", url));
                 output.push_str(&format!("vendor = {}\n", vendor));
                 output.push_str(&format!("user = {}\n", server.username));
                 if let Some(pw) = password {
@@ -1063,10 +1111,11 @@ pub fn export_rclone(
                 output.push_str("type = azureblob\n");
                 output.push_str(&format!("account = {}\n", server.username));
                 if let Some(pw) = password {
-                    output.push_str(&format!(
-                        "key = {}\n",
-                        obscure_password(pw).unwrap_or_default()
-                    ));
+                    // Azure Blob `key` is the storage account access key
+                    // (base64). rclone's azureblob backend does NOT mark
+                    // this field as `IsPassword: true`, so it must be
+                    // emitted plain (same reasoning as S3 secret_access_key).
+                    output.push_str(&format!("key = {}\n", pw));
                 }
                 if let Some(opts) = options {
                     if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
