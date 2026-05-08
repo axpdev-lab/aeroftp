@@ -403,9 +403,15 @@ impl WebDavConfig {
             format!("{}://{}{}", resolved_scheme, config.host, port_suffix)
         };
 
-        // Resolve {username} template in URL (used by CloudMe, Nextcloud presets)
+        // Resolve {username} template in URL and initial_path (used by
+        // CloudMe, Nextcloud, Tab.digital presets that pin to the per-user
+        // WebDAV root `/remote.php/dav/files/{username}`).
         let username = config.username.clone().unwrap_or_default();
         let url = raw_url.replace("{username}", &username);
+        let initial_path = config
+            .initial_path
+            .as_ref()
+            .map(|p| p.replace("{username}", &username));
 
         let verify_cert = config
             .extra
@@ -422,7 +428,7 @@ impl WebDavConfig {
             url,
             username,
             password: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
-            initial_path: config.initial_path.clone(),
+            initial_path,
             verify_cert,
             anonymous,
         })
@@ -562,6 +568,65 @@ mod webdav_config_tests {
         assert_eq!(cfg.url, "https://cloud.example.com");
         let cfg = build("intranet.local", Some(80), None);
         assert_eq!(cfg.url, "http://intranet.local");
+    }
+
+    #[test]
+    fn username_placeholder_is_substituted_in_initial_path() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("tls_mode".to_string(), "https".to_string());
+        let cfg = ProviderConfig {
+            name: "test".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "fie.nl.tab.digital".to_string(),
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: Some("/remote.php/dav/files/{username}".to_string()),
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://fie.nl.tab.digital");
+        assert_eq!(
+            resolved.initial_path.as_deref(),
+            Some("/remote.php/dav/files/alice")
+        );
+    }
+
+    #[test]
+    fn username_placeholder_is_substituted_in_url_too() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("tls_mode".to_string(), "https".to_string());
+        let cfg = ProviderConfig {
+            name: "cloudme".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "https://webdav.cloudme.com/{username}".to_string(),
+            port: Some(443),
+            username: Some("bob".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://webdav.cloudme.com/bob");
+        assert!(resolved.initial_path.is_none());
+    }
+
+    #[test]
+    fn initial_path_without_placeholder_is_unchanged() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("tls_mode".to_string(), "https".to_string());
+        let cfg = ProviderConfig {
+            name: "test".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "cloud.example.com".to_string(),
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: Some("/Documents".to_string()),
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.initial_path.as_deref(), Some("/Documents"));
     }
 }
 
