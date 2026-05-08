@@ -95,6 +95,11 @@ run-clean.sh
 !/scripts/i18n-validate.ts
 !/scripts/i18n-sync.ts
 !/scripts/i18n-stats.ts
+!/scripts/security-report.cjs
+
+# Security reports: keep latest snapshot in repo, ignore dated copies
+/docs/security/security-report-20*.html
+/docs/security/security-report-20*.json
 
 # Temporary output files
 check_output*.txt
