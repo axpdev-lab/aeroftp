@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.5] - 2026-05-08
+
+### Security audit closure, self-hosted vulnerability pipeline and community benchmark Section 7
+
+A security-focused patch release that ships a vendor-independent vulnerability audit pipeline, closes four GHSA advisories surfaced by the new pipeline (including a Tauri Origin Confusion CVE rated MEDIUM 6.1), and clears the five known open bugs that the v3.7.3 community benchmark left in Section 7 of its report.
+
+#### Added
+
+- **Self-hosted vulnerability audit pipeline** (`npm run security:report`): a vendor-independent script that aggregates `cargo audit` (RustSec), `npm audit` (npm registry) and `osv-scanner` (Google OSV cross-references RustSec, GHSA, CVE) into a single self-contained HTML report under `docs/security/`. The report parses `src-tauri/.cargo/audit.toml` and splits OSV findings into "open" (require action) vs "suppressed" (require written rationale already in audit.toml). External reviewers (NLnet, OpenSSF, supply-chain auditors) can audit each accepted risk inline. Latest run: 0 open / 25 suppressed.
+- **Continuous audit results table in README and SECURITY**: monthly results published in the repository so readers do not need to download proprietary PDFs. Previous Aikido Security reports remain linked as historical archive.
+- **CLI Section 7 benchmark closures**: tooling fixes that close the five known open bugs left in the v3.7.3 community benchmark report (`docs/dev/benchmarks/2026-05-07_community-benchmark-v3.7.3/`). Includes per-profile timeout flag for slow storage (idrive S3, InfiniCloud jp), sub-path benchmark variant for providers that refuse `/` operations (kDrive, SeaFile WebDAV), strict-provider delete-between-runs handling for benchmarks that assume overwrite-on-PUT (4shared), and improved retry resilience for provider-side intermittent 5xx (FileLu native delete, Yandex Disk).
+- **CLI profile export to rclone, WinSCP and FileZilla** (`aeroftp-cli export rclone|winscp|filezilla`): exports saved server profiles into the native config formats consumed by rclone (`rclone.conf` ini), WinSCP (sessions ini) and FileZilla (`sitemanager.xml`), so users can migrate from AeroFTP-managed profiles to any of the three reference clients without retyping credentials. S3 secrets are written with the correct percent-encoding for rclone, Azure access keys map to the right rclone field, and WebDAV URLs are reconstructed with the saved scheme + host + base path. Round-trip verified against rclone 1.69 and WinSCP 6.x.
+
+#### Fixed
+
+- **Closed CVE-2026-42184 / GHSA-7gmj-67g7-phm9 (Tauri Origin Confusion in IPC, MEDIUM 6.1)**: bumped `tauri 2.11.0 -> 2.11.1`. Closes Dependabot alert #43.
+- **Closed GHSA-xp3w-r5p5-63rr (openssl HIGH 8.7) and GHSA-xv59-967r-8726 (openssl MEDIUM 5.1)**: bumped `openssl 0.10.78 -> 0.10.79` (transitive via native-tls / reqwest / sigstore / oauth2 / tough).
+- **Closed GHSA-2p6r-x3vv-xqm2 (rpassword partial password reveal, LOW 3.8)**: bumped `rpassword 7.4.0 -> 7.5.2`. The published 7.5.0 fix introduced a glibc-only `__errno_location()` regression that broke macOS compilation; upstream shipped 7.5.1 / 7.5.2 hotfixes that drop the manual errno reset in favour of the standard `io_result()` wrapper. Closes Dependabot alert #44.
+- **Yandex Disk chunked Content-Range upload (Y3 fix)**: large payloads now stream in chunks with proper Content-Range headers so the upload no longer fails on the body-decode path that emerged after the v3.7.4 Y2 closure.
+- **FileLu native delete retry on body-level 5xx**: provider-side 5xx surfacing as `ServerError` is now retried with exponential backoff so the intermittent delete failures observed in S5 of the community benchmark no longer break sync flows.
+- **WebDAV `{username}` placeholder substitution in `initial_path`**: presets like Filen WebDAV that expose user-relative roots now expand `{username}` against the authenticated identity instead of treating it as a literal path segment.
+- **S3 multipart cutoff bumped from 5 MiB to 200 MiB (rclone parity)**: the previous 5 MiB threshold forced multipart uploads even for small files, adding pointless latency to common payloads. Aligned with rclone's default behaviour so AeroFTP-vs-rclone benchmarks compare on equal terms and end-users get faster uploads on the 5-200 MiB band.
+
+#### Changed
+
+- **`audit.toml` documents tough 0.21 GHSA advisories pending sigstore upstream**: GHSA-4v58-8p28-2rq3 (HIGH 7.1, missing delegated-metadata validation) and GHSA-8m7c-8m39-rv4x (HIGH 7.0, signature-uniqueness threshold bypass) on `tough 0.21.0` are both fixed in `tough 0.22.0`, but `sigstore 0.13.0` (latest stable on crates.io as of 2026-05-08) requires `tough = ^0.21` and blocks the in-place bump. The threat model is fully written out in `src-tauri/.cargo/audit.toml`: AeroFTP only consumes the official Sigstore public-good TUF root and `verify_sigstore_bundle` is non-blocking (any failure degrades to `VerificationMode::Unavailable`, with SHA-256 of the artifact remaining the primary integrity anchor).
+
 ## [3.7.4] - 2026-05-07
 
 ### Filen reliability, provider polish and Windows Auto-Update parity
