@@ -57,14 +57,15 @@ For the full encryption architecture, cipher comparison tables, and AeroVault v2
 
 ### Connection Protocols
 
-AeroFTP supports 7 transport protocols and 20+ native provider integrations with appropriate transport security:
+AeroFTP supports 7 transport protocols and 25+ native provider integrations with appropriate transport security:
 
 | Category | Protocols |
 | -------- | --------- |
 | **End-to-end encrypted** | MEGA.nz, Filen, Internxt (client-side AES, zero-knowledge) |
 | **OAuth2 with PKCE** | Google Drive, Dropbox, OneDrive, Box, Zoho WorkDrive, kDrive, Koofr, Internxt |
 | **TLS/HTTPS** | S3, WebDAV, Azure Blob, pCloud, FileLu, Jottacloud, OpenDrive, Yandex Disk |
-| **API Token over HTTPS** | GitHub, GitLab (PAT/Project Access Token, API v4) |
+| **API Token over HTTPS** | GitHub, GitLab (PAT / Project Access Token, API v4) |
+| **API Key over HTTPS (media)** | ImageKit (private key, HTTP Basic), Uploadcare (public + secret), Cloudinary (cloudname + key + secret), Immich (`x-api-key`) |
 | **SSH** | SFTP with TOFU host key verification |
 | **Configurable TLS** | FTP/FTPS (Explicit, Implicit, opportunistic) |
 
@@ -95,6 +96,7 @@ All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC ke
 - **[Aikido Security](https://aikido.dev)**: SAST, SCA, secrets detection, IaC scanning - daily automated scans
 - **[Socket.dev](https://socket.dev)**: Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection
 - **[Snyk](https://snyk.io)**: Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs
+- **[CodeRabbit](https://www.coderabbit.ai)**: AI-driven pull-request review on every PR - inline code suggestions and secret/PII checks complementing the SAST/SCA stack
 
 For Sigstore verification commands and CI/CD security controls, see [Supply Chain Security](https://docs.aeroftp.app/security/supply-chain).
 
