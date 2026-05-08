@@ -1,15 +1,15 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 6 May 2026
-> Version: v3.7.2
+> Last Updated: 8 May 2026
+> Version: v3.7.4
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
 > 1. **7 transport protocols** (FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift) - native wire-level support;
-> 2. **20+ native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, Google Photos, GitHub, GitLab, Immich);
-> 3. **40+ pre-configured presets** in the Discover catalog (S3-compatible endpoints, WebDAV-compatible servers, SourceForge, etc.).
+> 2. **25+ native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, Google Photos, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary, InfiniCLOUD, Felicloud);
+> 3. **45+ pre-configured presets** in the Discover catalog: S3-compatible (MEGA S4, Filen S5, MinIO, Wasabi, Cloudflare R2, DigitalOcean, Tencent COS, Alibaba OSS, Oracle, Storj, IDrive e2, Hetzner, Yandex Object Storage, Quotaless, Backblaze B2-S3, Filen Desktop S3, S3Drive, Blomp), WebDAV-compatible (Nextcloud, Tab.digital, Felicloud, Seafile, InfiniCLOUD, CloudMe, Jianguoyun, Koofr-WebDAV, FileLu-WebDAV, Yandex-WebDAV, OpenDrive-WebDAV, Quotaless-WebDAV, MEGAcmd, Filen Desktop WebDAV), and SFTP-based (SourceForge, GitHub via SFTP).
 >
-> The feature matrix tables below cover the core production set. GitHub, GitLab, and Immich have repository / media-specific semantics and are documented inline in their dedicated sections.
+> The feature matrix tables below cover the core production set. GitHub, GitLab, Immich, ImageKit, Uploadcare, and Cloudinary have repository / media-specific semantics and are documented inline in their dedicated sections.
 
 ---
 
@@ -161,6 +161,42 @@ FileLu exposes privacy and management features beyond generic file operations:
 | **Restore Folder** | `/folder/restore` | `filelu_restore_folder` | Restore by `fld_id` |
 | **Permanent Delete** | `/file/remove` | `filelu_permanent_delete` | Bypass trash, irrecoverable |
 | **Remote URL Upload** | `/upload/url` | `filelu_remote_url_upload` | FileLu fetches file from URL server-side |
+
+## Media Providers (ImageKit, Uploadcare, Cloudinary)
+
+Three image / media-CDN integrations now share a dedicated tier in IntroHub Discover and CrossProfile. They use the standard `StorageProvider` trait for list / upload / download / delete / mkdir / rename, and add CDN-specific metadata (transformation URLs, public IDs, version history) on top.
+
+| Capability | ImageKit | Uploadcare | Cloudinary |
+|------------|----------|------------|------------|
+| Shipped | v3.7.2 (23rd protocol) | v3.7.2 (24th protocol) | v3.7.4 (25th protocol) |
+| Auth | Private key (HTTP Basic) | Public + Secret key | Cloudname + API key + secret |
+| REST endpoint | `api.imagekit.io` | `api.uploadcare.com` (REST) + `upload.uploadcare.com` (multipart) | `api.cloudinary.com/v1_1/{cloud_name}/` |
+| Free tier | 20 GB media + 20 GB BW/month | EU-based, GDPR-friendly | 25 GB / 25k transformations / 25 GB BW (free plan) |
+| Folder semantics | Native folders | Cursor-based listing, store-once mapped to directory model | Asset folders (paid) + tag-based pseudo-folders (all plans) |
+| Listing | `/files` with `type=all`, `null_to_default` deserializer | Cursor pagination | `/resources/by_asset_folder` and `/folders` |
+| Upload path | `/files/upload` (multipart) | `/base/` (multipart) + `/files/{uuid}/storage/` to commit | `/resources/{type}/upload` |
+| CDN transformations | Passthrough URL parameters | Effects pipeline | URL-based transformations (`f_auto`, `q_auto`, etc.) |
+| Used as | Media-CDN + storage | EU-friendly media storage | Image / video CDN + AI media services |
+
+> Activity Log "Authenticated as ..." now renders public account identifiers (ImageKit URL endpoint, Uploadcare project, Cloudinary cloudname) in the clear instead of being mis-masked as a 3-char prefix; the credential masker detects `https://...` and returns `host + pathname` unmasked.
+
+---
+
+## Nextcloud-as-a-Service Presets
+
+Nextcloud-compatible WebDAV stacks share a single backend (WebDAV + OCS) and ship as discrete presets so users see provider-specific branding, signup links, and trust signals in Discover.
+
+| Preset | Status | Notes |
+|--------|--------|-------|
+| **Nextcloud** | Stable | Self-hosted WebDAV + OCS, auto-discovery of `/remote.php/dav/files/{username}/` (v3.5.0) |
+| **Felicloud** | Stable | EU-based Nextcloud SaaS (v3.1.6), share links + trash via OCS API |
+| **Tab.digital** | Stable | EU / GDPR Nextcloud SaaS (v3.7.4), 8 GB free, OCS badge, Felicloud-parity Edit form, healthCheckUrl preset |
+| **Jianguoyun** | Stable | China-based WebDAV |
+| **InfiniCLOUD** | Stable | Japan-based Nextcloud-derivative, 25 GB free, REST v2 (Muramasa) auto-discovery + real-time quota (v3.7.0) |
+| **Seafile** | Stable | Self-hosted or cloud, WebDAV via `seafdav` endpoint |
+| **CloudMe** | Stable | Swedish, 3 GB free, Digest auth (auto-detected) |
+
+---
 
 ## Box Special Features (v2.7.4)
 

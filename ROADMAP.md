@@ -154,7 +154,7 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 | **ImageKit** | REST API | 🔵 Up Next: media CDN + storage |
 | **Blomp** | OpenStack Swift | ⏸ Awaiting Blomp proxy fix (auth works, storage 403) |
 
-**Already supported via presets**: Quotaless (S3 + WebDAV), PixelUnion (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud / ownCloud (WebDAV auto-detect).
+**Already supported via presets**: Quotaless (S3 + WebDAV), PixelUnion (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud / ownCloud (WebDAV auto-detect), **Tab.digital** (Nextcloud-as-a-Service, EU / GDPR, v3.7.4), **Felicloud** (Nextcloud-as-a-Service, OCS API), **Seafile** (`seafdav` endpoint), **CloudMe** (Digest auth auto-detected), **Jianguoyun** (China-based WebDAV), **Filen Desktop S3 / WebDAV bridges** (local ports 1700 / 1900), **MEGA S4 Object Storage** (S3-compatible, 4 EU/CA regions), **Filen S5** (S3-compatible), **MinIO** (dedicated S3-compatible), **MEGAcmd** (anonymous WebDAV), **S3Drive** (path-style S3).
 
 ---
 
@@ -325,6 +325,9 @@ Every native cloud provider integration is a milestone. Here's the full history:
 
 | # | Provider | Version | Protocol |
 |---|----------|---------|----------|
+| 28 | **Cloudinary** | v3.7.4 | REST API (image / video CDN + media services) |
+| 27 | **Uploadcare** | v3.7.2 | REST + Upload API (EU / GDPR media storage) |
+| 26 | **ImageKit** | v3.7.2 | REST API (media CDN + storage) |
 | 25 | **InfiniCLOUD** | v3.7.0 | REST v2 (Muramasa) + WebDAV |
 | 24 | **Immich** | v3.4.4 | REST API (self-hosted) |
 | 23 | **Google Photos** | v3.4.3 | OAuth2 (read-only, Google restricted scope 2025) |
