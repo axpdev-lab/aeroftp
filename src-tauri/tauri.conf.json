@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "AeroFTP",
-    "version": "3.7.5",
+    "version": "3.7.6",
     "identifier": "com.aeroftp.AeroFTP",
     "build": {
         "frontendDist": "../dist",
@@ -10,24 +10,7 @@
         "beforeBuildCommand": "npm run build"
     },
     "app": {
-        "windows": [
-            {
-                "title": "AeroFTP",
-                "width": 1540,
-                "height": 1050,
-                "minWidth": 1024,
-                "minHeight": 600,
-                "resizable": true,
-                "maximizable": true,
-                "minimizable": true,
-                "closable": true,
-                "fullscreen": false,
-                "decorations": false,
-                "transparent": false,
-                "visible": false,
-                "dragDropEnabled": false
-            }
-        ],
+        "windows": [],
         "security": {
             "dangerousDisableAssetCspModification": true,
             "csp": "default-src 'self' asset: http://asset.localhost data: blob:; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost blob:; worker-src 'self' blob:; media-src 'self' asset: http://asset.localhost data: blob: https:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.6] - 2026-05-08
+
+### Hotfix: restore IPC after Tauri 2.11.1 origin-confusion regression
+
+A hotfix release that restores Linux production builds after v3.7.5 shipped a critical regression which broke every IPC call with "Command X not allowed by ACL". Health checks, local file listing and the rest of the application were unable to invoke any backend command. The v3.7.5 GitHub Release, remote tag, Snap stable channel and the open winget submission were rolled back before users could pick up the broken build, so v3.7.6 is the first build a user receives after v3.7.4 unless they manually pulled the v3.7.5 .deb. No user data was lost.
+
+#### Fixed
+
+- **IPC restored on Linux production builds**: pinned `tauri = "=2.11.0"` to avoid the new `is_local_url()` check introduced by tauri 2.11.1's GHSA-7gmj-67g7-phm9 fix. The check classifies `http://127.0.0.1:14321` as a remote origin and rejects every custom command from remote origins unless the app ships a full ACL manifest listing every command. AeroFTP's Linux production build has historically loaded its bundled frontend from the `tauri-plugin-localhost` loopback server to work around WebKitGTK rendering issues with `tauri://` for Monaco, xterm.js and iframes, so the new check broke the entire backend surface. Keeping the existing webview origin intact also preserves every WebKit origin-scoped value on upgrade (localStorage, IndexedDB, master password unlock cache, theme, local tabs, recent paths, server filters, Activity Log entries), so users with established profiles do not see the consolidation Migration Wizard re-fire and lose visibility on entries that require master password unlock.
+- **Main window creation moved from `tauri.conf.json` to a programmatic `WebviewWindowBuilder` in `setup()`**: the URL is now set up-front per platform with no post-creation `navigate()`, eliminating the previous origin-swap pattern that the future tauri 2.11.x fix will block again and aligning Linux with the splash screen pattern. On Linux production the URL is `http://127.0.0.1:14321/index.html` directly; macOS and Windows production keep the bundled-protocol default (`tauri://localhost/index.html` or `https://tauri.localhost/index.html`); dev mode uses the configured `devUrl`.
+
+### Security
+
+- **GHSA-7gmj-67g7-phm9 / CVE-2026-42184 (Tauri Origin Confusion in IPC, MEDIUM 6.1) accepted as not applicable**: the CVE vector requires loading remote/untrusted content into a webview to confuse the IPC origin. AeroFTP loads only its own bundled frontend assets, has no remote iframe surface, no remote webview navigation, no `WebviewUrl::External` to user-controlled URLs, so the vector cannot be triggered on this surface. The pin to `tauri = "=2.11.0"` is documented in `src-tauri/Cargo.toml` and `src-tauri/.cargo/audit.toml`. A full app ACL manifest migration is tracked for a future release that will let us un-pin tauri while keeping the strict origin check active.
+
 ## [3.7.5] - 2026-05-08
 
 ### Security audit closure, self-hosted vulnerability pipeline and community benchmark Section 7
