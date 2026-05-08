@@ -1326,6 +1326,56 @@ enum Commands {
         #[command(subcommand)]
         command: ImportCommands,
     },
+    /// Export saved server profiles to external configuration formats
+    Export {
+        #[command(subcommand)]
+        command: ExportCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ExportCommands {
+    /// Export profiles to rclone.conf format (S3, SFTP, FTP, WebDAV, Mega).
+    /// OAuth-based providers (pCloud, Dropbox, Google Drive, Box, OneDrive,
+    /// Yandex, Zoho, Koofr, Internxt, kDrive) cannot be exported because
+    /// rclone uses its own OAuth flow with provider-issued client IDs:
+    /// they are listed as `# manual setup required` comments instead.
+    Rclone {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export. If omitted, every
+        /// exportable profile in the vault is emitted.
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary instead of plaintext path message
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export profiles to WinSCP.ini format (FTP/FTPS/SFTP).
+    Winscp {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export profiles to FileZilla sitemanager.xml format (FTP/FTPS/SFTP).
+    Filezilla {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -13090,6 +13140,490 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
             1
         }
     }
+}
+
+/// Shared scaffold for the three `Commands::Export` subcommands. Reads
+/// the GUI-managed profile list from the vault, resolves credentials
+/// against the same `server_<id>` keys used by the connect path, and
+/// hands off to the per-format `pub fn export_*` functions in
+/// `rclone_import` / `winscp_import` / `filezilla_import` (the same
+/// functions called by the GUI Export modal).
+struct ProfileExportScaffold {
+    name: String,
+    host: String,
+    port: u32,
+    username: String,
+    protocol: String,
+    options: Option<serde_json::Value>,
+    provider_id: Option<String>,
+    initial_path: Option<String>,
+    secret: String,
+}
+
+#[derive(Default)]
+struct ExportCollected {
+    profiles: Vec<ProfileExportScaffold>,
+    passwords: std::collections::HashMap<String, String>,
+    skipped: Vec<(String, String)>,
+}
+
+/// Pull every profile that matches `name_filter` (or all profiles if `None`)
+/// from the vault, decoding `server_<id>` credentials. `oauth_protocols` are
+/// always recorded as skipped because rclone/WinSCP/FileZilla all need their
+/// own OAuth flow for those.
+fn collect_export_scaffold(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    servers_json: &serde_json::Value,
+    name_filter: Option<&[String]>,
+    supported_protocols: &[&str],
+    oauth_protocols: &[&str],
+) -> Result<ExportCollected, String> {
+    let arr = servers_json
+        .as_array()
+        .ok_or_else(|| "vault profiles payload is not an array".to_string())?;
+    let mut out = ExportCollected::default();
+
+    for entry in arr {
+        let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        if name.is_empty() {
+            continue;
+        }
+        if let Some(filter) = name_filter {
+            if !filter.iter().any(|n| n == name) {
+                continue;
+            }
+        }
+
+        let id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let protocol = entry
+            .get("protocol")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ftp")
+            .to_string();
+        let host = entry
+            .get("host")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let username = entry
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let port = entry.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let provider_id = entry
+            .get("providerId")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let options = entry.get("options").cloned();
+        let initial_path = entry
+            .get("initialPath")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+
+        let secret = if id.is_empty() {
+            String::new()
+        } else {
+            match store.get(&format!("server_{}", id)) {
+                Ok(stored) => {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
+                        v.get("password")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or(stored.trim_matches('"'))
+                            .to_string()
+                    } else {
+                        stored
+                    }
+                }
+                Err(_) => String::new(),
+            }
+        };
+
+        let proto_supported = supported_protocols.contains(&protocol.as_str());
+        let proto_oauth = oauth_protocols.contains(&protocol.as_str());
+
+        if proto_oauth {
+            out.skipped.push((
+                name.to_string(),
+                format!(
+                    "{} requires a provider-issued OAuth client (run the target tool's interactive setup)",
+                    protocol
+                ),
+            ));
+            continue;
+        }
+        if !proto_supported {
+            out.skipped
+                .push((name.to_string(), format!("protocol {} not exportable", protocol)));
+            continue;
+        }
+        if secret.is_empty() {
+            out.skipped
+                .push((name.to_string(), "no credential in vault".to_string()));
+            continue;
+        }
+
+        out.passwords.insert(name.to_string(), secret.clone());
+        out.profiles.push(ProfileExportScaffold {
+            name: name.to_string(),
+            host,
+            port,
+            username,
+            protocol,
+            options,
+            provider_id,
+            initial_path,
+            secret,
+        });
+    }
+
+    Ok(out)
+}
+
+/// Parse the comma-separated --profiles filter into a Vec.
+fn parse_profile_name_filter(arg: Option<String>) -> Option<Vec<String>> {
+    arg.map(|s| {
+        s.split(',')
+            .map(|tok| tok.trim().to_string())
+            .filter(|tok| !tok.is_empty())
+            .collect()
+    })
+}
+
+/// Export saved profiles to rclone.conf. Reuses the same Rust function the
+/// GUI Export modal calls. The vault unlocks automatically when the OS
+/// keyring is available; the resulting rclone.conf contains rclone-obscured
+/// passwords (AES-256-CTR) so it can be consumed directly by
+/// `rclone --config <file> ...`.
+async fn cmd_export_rclone(
+    output: Option<String>,
+    profiles: Option<String>,
+    json: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::rclone_import::{export_rclone, RcloneExportServer};
+
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("vault unlock failed: {}", e), 5);
+            return 5;
+        }
+    };
+    let servers_json = match read_vault_profiles(&store) {
+        Ok(v) => v,
+        Err(e) => {
+            print_error(format, &format!("read profiles: {}", e), 4);
+            return 4;
+        }
+    };
+    let filter = parse_profile_name_filter(profiles);
+
+    // rclone supports password-auth backends (FTP/SFTP/WebDAV/Mega/Azure/
+    // Swift/Koofr) and S3 (access_key/secret). OAuth backends need their
+    // own `rclone config` flow and are reported as skipped.
+    let supported = [
+        "ftp", "ftps", "sftp", "s3", "webdav", "mega", "azure", "swift", "koofr",
+    ];
+    let oauth = [
+        "googledrive",
+        "dropbox",
+        "onedrive",
+        "box",
+        "pcloud",
+        "yandexdisk",
+        "zohoworkdrive",
+        "internxt",
+        "kdrive",
+        "fourshared",
+        "drime",
+        "filen",
+        "jottacloud",
+        "filelu",
+        "opendrive",
+    ];
+
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
+
+    if collected.profiles.is_empty() {
+        emit_empty_export(json, format, &collected.skipped);
+        return 4;
+    }
+
+    let exportable: Vec<RcloneExportServer> = collected
+        .profiles
+        .iter()
+        .map(|p| RcloneExportServer {
+            name: p.name.clone(),
+            host: p.host.clone(),
+            port: p.port,
+            username: p.username.clone(),
+            protocol: Some(p.protocol.clone()),
+            options: p.options.clone(),
+            provider_id: p.provider_id.clone(),
+        })
+        .collect();
+
+    let target_path = match output {
+        Some(p) => std::path::PathBuf::from(p),
+        None => std::env::temp_dir().join("aeroftp-rclone-export.conf"),
+    };
+
+    match export_rclone(&exportable, &collected.passwords, &target_path) {
+        Ok(count) => {
+            emit_export_success(json, "rclone.conf", count, &target_path, &collected.skipped);
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("export failed: {}", e), 4);
+            4
+        }
+    }
+}
+
+async fn cmd_export_winscp(
+    output: Option<String>,
+    profiles: Option<String>,
+    json: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::winscp_import::{export_winscp, WinScpExportServer};
+
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("vault unlock failed: {}", e), 5);
+            return 5;
+        }
+    };
+    let servers_json = match read_vault_profiles(&store) {
+        Ok(v) => v,
+        Err(e) => {
+            print_error(format, &format!("read profiles: {}", e), 4);
+            return 4;
+        }
+    };
+    let filter = parse_profile_name_filter(profiles);
+
+    // WinSCP only handles FTP/FTPS/SFTP. Everything else is skipped.
+    let supported = ["ftp", "ftps", "sftp"];
+    let oauth: [&str; 0] = [];
+
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
+    if collected.profiles.is_empty() {
+        emit_empty_export(json, format, &collected.skipped);
+        return 4;
+    }
+
+    let exportable: Vec<WinScpExportServer> = collected
+        .profiles
+        .iter()
+        .map(|p| WinScpExportServer {
+            name: p.name.clone(),
+            host: p.host.clone(),
+            port: p.port,
+            username: p.username.clone(),
+            protocol: Some(p.protocol.clone()),
+            options: p.options.clone(),
+            initial_path: p.initial_path.clone(),
+        })
+        .collect();
+
+    let target_path = match output {
+        Some(p) => std::path::PathBuf::from(p),
+        None => std::env::temp_dir().join("aeroftp-winscp-export.ini"),
+    };
+
+    match export_winscp(&exportable, &collected.passwords, &target_path) {
+        Ok(count) => {
+            emit_export_success(json, "WinSCP.ini", count, &target_path, &collected.skipped);
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("export failed: {}", e), 4);
+            4
+        }
+    }
+}
+
+async fn cmd_export_filezilla(
+    output: Option<String>,
+    profiles: Option<String>,
+    json: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::filezilla_import::{export_filezilla, FileZillaExportServer};
+
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("vault unlock failed: {}", e), 5);
+            return 5;
+        }
+    };
+    let servers_json = match read_vault_profiles(&store) {
+        Ok(v) => v,
+        Err(e) => {
+            print_error(format, &format!("read profiles: {}", e), 4);
+            return 4;
+        }
+    };
+    let filter = parse_profile_name_filter(profiles);
+
+    // FileZilla supports FTP/FTPS/SFTP and Storj (s3). For consistency
+    // with the GUI we restrict to the protocol set commonly tested.
+    let supported = ["ftp", "ftps", "sftp"];
+    let oauth: [&str; 0] = [];
+
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        &supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
+    if collected.profiles.is_empty() {
+        emit_empty_export(json, format, &collected.skipped);
+        return 4;
+    }
+
+    let exportable: Vec<FileZillaExportServer> = collected
+        .profiles
+        .iter()
+        .map(|p| FileZillaExportServer {
+            name: p.name.clone(),
+            host: p.host.clone(),
+            port: p.port,
+            username: p.username.clone(),
+            protocol: Some(p.protocol.clone()),
+            options: p.options.clone(),
+            initial_path: p.initial_path.clone(),
+        })
+        .collect();
+
+    let target_path = match output {
+        Some(p) => std::path::PathBuf::from(p),
+        None => std::env::temp_dir().join("aeroftp-filezilla-export.xml"),
+    };
+
+    match export_filezilla(&exportable, &collected.passwords, &target_path) {
+        Ok(count) => {
+            emit_export_success(
+                json,
+                "FileZilla sitemanager.xml",
+                count,
+                &target_path,
+                &collected.skipped,
+            );
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("export failed: {}", e), 4);
+            4
+        }
+    }
+}
+
+fn emit_empty_export(json: bool, format: OutputFormat, skipped: &[(String, String)]) {
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({"error": "no exportable profiles", "skipped": skipped})
+        );
+    } else if matches!(format, OutputFormat::Text) {
+        eprintln!("No exportable profiles in vault.");
+        for (n, r) in skipped {
+            eprintln!("  skipped {} : {}", n, r);
+        }
+    }
+}
+
+fn emit_export_success(
+    json: bool,
+    label: &str,
+    count: usize,
+    target_path: &std::path::Path,
+    skipped: &[(String, String)],
+) {
+    let _ = label;
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "exported": count,
+                "path": target_path.display().to_string(),
+                "skipped": skipped,
+            })
+        );
+    } else {
+        eprintln!(
+            "Exported {} profiles to {}",
+            count,
+            target_path.display()
+        );
+        if !skipped.is_empty() {
+            eprintln!();
+            eprintln!("Skipped ({}):", skipped.len());
+            for (n, r) in skipped {
+                eprintln!("  {} : {}", n, r);
+            }
+        }
+    }
+}
+
+// `secret` field is read by the downstream export functions through the
+// `passwords` HashMap, but not directly by the scaffold. Suppress the
+// unused warning so clippy stays clean without ripping the field out
+// (it's deliberately attached so future formats that need it inline
+// don't have to refactor the scaffold).
+#[allow(dead_code)]
+fn _scaffold_secret_is_used(p: &ProfileExportScaffold) -> &str {
+    &p.secret
+}
+
+/// Read the GUI-managed server profile list from the unified vault under
+/// the `config_server_profiles` key (same source as
+/// `aeroftp-cli profiles list`). The vault MUST already be unlocked.
+fn read_vault_profiles(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Result<serde_json::Value, String> {
+    let raw = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("vault key `config_server_profiles` not readable: {}", e))?;
+    serde_json::from_str(&raw).map_err(|e| format!("parse profiles JSON: {}", e))
 }
 
 async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
@@ -29260,6 +29794,50 @@ async fn main() {
                 force,
                 json,
             } => cmd_import_rclone_filter(path.clone(), output.clone(), *force, *json).await,
+        },
+        Commands::Export { command } => match command {
+            ExportCommands::Rclone {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_rclone(
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
+            }
+            ExportCommands::Winscp {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_winscp(
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
+            }
+            ExportCommands::Filezilla {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_filezilla(
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
+            }
         },
         Commands::Audit { command } => cmd_audit(command, &cli, format).await,
         Commands::Transfer {
