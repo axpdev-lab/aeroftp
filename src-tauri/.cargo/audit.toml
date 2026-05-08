@@ -11,7 +11,7 @@
 #   - docs/dev/roadmap/APPENDIX-SIGSTORE_*.md       (sigstore path, planned)
 #   - docs/security-evidence/AEROFTP-CLI-AUDIT-2026-05-06.md     (origin audit)
 #
-# Reviewed: 2026-05-06 (release v3.7.2)
+# Reviewed: 2026-05-08 (release v3.7.5)
 
 [advisories]
 ignore = [
@@ -123,6 +123,34 @@ ignore = [
     # `fxhash 0.2.1` <- `selectors 0.24.0` <- `kuchikiki` <- `tauri-utils`.
     # Build-dependency, not in runtime binary. Same Tauri stack situation.
     "RUSTSEC-2025-0057",  # fxhash
+
+    # ----------------------------------------------------------------
+    # tough 0.21.0 - delegated metadata validation issues (transitive via sigstore)
+    # ----------------------------------------------------------------
+    # Two GHSA advisories cover `tough 0.21.0`, both fixed in 0.22.0:
+    #   GHSA-4v58-8p28-2rq3 (HIGH 7.1) - missing expiration/hash/length checks
+    #     on delegated TUF target metadata in `load_delegations`.
+    #   GHSA-8m7c-8m39-rv4x (HIGH 7.0) - signature uniqueness not enforced on
+    #     delegated role metadata, allowing duplicated-signature threshold bypass.
+    #
+    # Both vulnerabilities require an attacker with **delegated TUF signing
+    # authority** on the metadata tree being consumed. AeroFTP only consumes
+    # the official Sigstore public-good TUF root via `sigstore::trust::sigstore::SigstoreTrustRoot`.
+    # Exploitation would require compromising Sigstore project KMS keys; this
+    # is a Sigstore-project supply-chain attack, not an AeroFTP-reachable one.
+    #
+    # Additionally, the verification path is explicitly NON-BLOCKING in
+    # `verify_sigstore_bundle` (src-tauri/src/lib.rs ~2300): any failure (including
+    # tampered TUF cache poisoning) degrades to `VerificationMode::Unavailable`
+    # rather than refusing the update. Update integrity is primarily anchored
+    # by the SHA-256 hash of the release artifact pinned in the AppCast feed.
+    #
+    # Cannot be fixed locally: `tough = "^0.22"` is not selectable while
+    # `sigstore = "0.13.0"` (latest stable) requires `tough = "^0.21"`. Awaiting
+    # sigstore-rs 0.14 or a [patch] from upstream. Tracked alongside the
+    # russh/RSA decommission in APPENDIX-SIGSTORE.
+    "GHSA-4v58-8p28-2rq3",  # tough delegated metadata validation
+    "GHSA-8m7c-8m39-rv4x",  # tough delegated signature threshold
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
