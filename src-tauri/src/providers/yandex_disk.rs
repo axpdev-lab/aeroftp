@@ -37,6 +37,29 @@ const YANDEX_UPLOAD_MAX_ATTEMPTS: u32 = 3;
 /// Base delay for exponential backoff between upload retries (500 ms, 1 s, 2 s).
 const YANDEX_UPLOAD_BACKOFF_BASE_MS: u64 = 500;
 
+/// Y3 fix: switch to chunked Content-Range upload for files larger than this
+/// threshold. Yandex Disk caps upload throughput around 1 Mbps server-side and
+/// closes the TCP connection mid-stream on long single-shot PUTs, so a 100 MiB
+/// payload (~13 min) and a 1 GiB payload (~2 h) reliably fail under retries
+/// that all rebuild the same single connection. Splitting the body lets each
+/// PUT bound itself to a few seconds and survive Yandex's idle disconnects.
+/// Below this threshold the original single-PUT path is preserved unchanged.
+const YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES: u64 = 32 * 1024 * 1024; // 32 MiB
+
+/// Per-chunk size for the resumable PUT loop. 8 MiB sits comfortably within
+/// the empirical 1 Mbps Yandex upload cap: each chunk completes in ~60 s
+/// well below any plausible idle-timeout the server enforces.
+const YANDEX_UPLOAD_CHUNK_SIZE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Maximum retries per chunk on transient 5xx/network errors before we
+/// either re-acquire a fresh upload-target or surface the failure.
+const YANDEX_UPLOAD_CHUNK_MAX_RETRIES: u32 = 4;
+
+/// Maximum number of full upload-session restarts when the upload-target URL
+/// returns 410 Gone (TTL expired) mid-transfer. A fresh session restarts the
+/// payload from byte 0; we cap retries to bound worst-case wall time.
+const YANDEX_UPLOAD_MAX_SESSION_RESTARTS: u32 = 2;
+
 #[cfg(debug_assertions)]
 fn yd_log(msg: &str) {
     eprintln!("[yandex-disk] {}", msg);
@@ -625,6 +648,191 @@ impl YandexDiskProvider {
         validate_yd_url(&link.href)?;
         Ok(link)
     }
+
+    /// Y3 fix: chunked Content-Range upload for files larger than
+    /// `YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES`. Mirrors the Google Drive
+    /// resumable-upload pattern, which Yandex Disk's uploader endpoint
+    /// implements via:
+    /// - 201 Created: full payload uploaded
+    /// - 202 Accepted: partial accept, optional `Range: bytes=0-N` hint for
+    ///   the next start offset (ignored: we use our own contiguous offset
+    ///   since each chunk is sent in order)
+    /// - 4xx (especially 410 Gone): upload-target expired, restart whole
+    ///   payload with a fresh upload session
+    /// - 5xx / network: per-chunk retry with exponential backoff
+    async fn upload_chunked(
+        &mut self,
+        local_path: &str,
+        encoded: &str,
+        total: u64,
+        progress_tx: Option<tokio::sync::mpsc::UnboundedSender<(u64, u64)>>,
+    ) -> Result<(), ProviderError> {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
+
+        if total == 0 {
+            // Edge case: zero-byte uploads still need an upload-target PUT
+            // with an empty body. Fall back to single-PUT semantics.
+            let link = self.acquire_upload_target(encoded).await?;
+            let resp = self
+                .client
+                .put(&link.href)
+                .header("Content-Type", "application/octet-stream")
+                .body(Vec::<u8>::new())
+                .send()
+                .await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            return if resp.status().is_success() {
+                Ok(())
+            } else {
+                Err(ProviderError::TransferFailed(format!(
+                    "Upload failed: HTTP {}",
+                    resp.status()
+                )))
+            };
+        }
+
+        for session in 0..=YANDEX_UPLOAD_MAX_SESSION_RESTARTS {
+            let link = self.acquire_upload_target(encoded).await?;
+            yd_log(&format!(
+                "chunked upload session {}/{}: target acquired ({} bytes total, chunk {})",
+                session + 1,
+                YANDEX_UPLOAD_MAX_SESSION_RESTARTS + 1,
+                total,
+                YANDEX_UPLOAD_CHUNK_SIZE_BYTES
+            ));
+
+            let mut file = tokio::fs::File::open(local_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+
+            let mut uploaded: u64 = 0;
+            let mut session_failed_with_gone = false;
+            let mut session_error: Option<ProviderError> = None;
+
+            'chunks: while uploaded < total {
+                let remaining = total - uploaded;
+                let chunk_size = remaining.min(YANDEX_UPLOAD_CHUNK_SIZE_BYTES);
+                let chunk_end = uploaded + chunk_size - 1;
+
+                file.seek(SeekFrom::Start(uploaded))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                let mut buf = vec![0u8; chunk_size as usize];
+                file.read_exact(&mut buf)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+
+                let content_range = format!("bytes {}-{}/{}", uploaded, chunk_end, total);
+
+                for chunk_attempt in 1..=YANDEX_UPLOAD_CHUNK_MAX_RETRIES {
+                    let req = self
+                        .client
+                        .put(&link.href)
+                        .header("Content-Type", "application/octet-stream")
+                        .header("Content-Range", &content_range)
+                        .body(buf.clone());
+
+                    match req.send().await {
+                        Ok(resp) => {
+                            let status = resp.status();
+                            let code = status.as_u16();
+                            if code == 201 {
+                                yd_log(&format!(
+                                    "chunked upload complete: {} bytes ({} chunks)",
+                                    total,
+                                    total.div_ceil(YANDEX_UPLOAD_CHUNK_SIZE_BYTES)
+                                ));
+                                if let Some(ref tx) = progress_tx {
+                                    let _ = tx.send((total, total));
+                                }
+                                return Ok(());
+                            } else if code == 202 {
+                                uploaded = chunk_end + 1;
+                                if let Some(ref tx) = progress_tx {
+                                    let _ = tx.send((uploaded, total));
+                                }
+                                continue 'chunks;
+                            } else if code == 410 || code == 404 {
+                                yd_log(&format!(
+                                    "chunked upload upload-target gone (HTTP {}): restart session",
+                                    code
+                                ));
+                                session_failed_with_gone = true;
+                                session_error = Some(ProviderError::TransferFailed(format!(
+                                    "Upload target expired: HTTP {}",
+                                    code
+                                )));
+                                break 'chunks;
+                            } else if is_yandex_upload_retryable_status(status)
+                                && chunk_attempt < YANDEX_UPLOAD_CHUNK_MAX_RETRIES
+                            {
+                                let backoff_ms = YANDEX_UPLOAD_BACKOFF_BASE_MS
+                                    * (1u64 << (chunk_attempt - 1));
+                                yd_log(&format!(
+                                    "chunk {}-{} HTTP {} (attempt {}/{}), retry in {} ms",
+                                    uploaded,
+                                    chunk_end,
+                                    status,
+                                    chunk_attempt,
+                                    YANDEX_UPLOAD_CHUNK_MAX_RETRIES,
+                                    backoff_ms
+                                ));
+                                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
+                                    .await;
+                                continue;
+                            } else {
+                                return Err(ProviderError::TransferFailed(format!(
+                                    "Upload failed at byte {}: HTTP {}",
+                                    uploaded, status
+                                )));
+                            }
+                        }
+                        Err(e) => {
+                            if chunk_attempt < YANDEX_UPLOAD_CHUNK_MAX_RETRIES {
+                                let backoff_ms = YANDEX_UPLOAD_BACKOFF_BASE_MS
+                                    * (1u64 << (chunk_attempt - 1));
+                                yd_log(&format!(
+                                    "chunk {}-{} network error (attempt {}/{}): {}. Retry in {} ms",
+                                    uploaded,
+                                    chunk_end,
+                                    chunk_attempt,
+                                    YANDEX_UPLOAD_CHUNK_MAX_RETRIES,
+                                    e,
+                                    backoff_ms
+                                ));
+                                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
+                                    .await;
+                                continue;
+                            }
+                            return Err(ProviderError::TransferFailed(e.to_string()));
+                        }
+                    }
+                }
+            }
+
+            if !session_failed_with_gone {
+                // Either we exited the chunks loop without sending the last
+                // chunk (shouldn't happen with the logic above) or every
+                // chunk got 202 and the server never returned 201. Surface
+                // the last error if we have one, otherwise treat as success.
+                if uploaded >= total {
+                    return Ok(());
+                }
+                if let Some(e) = session_error {
+                    return Err(e);
+                }
+                return Err(ProviderError::TransferFailed(format!(
+                    "Upload incomplete at byte {}/{}",
+                    uploaded, total
+                )));
+            }
+            // Session expired (410): loop and acquire a fresh upload-target.
+        }
+
+        Err(ProviderError::TransferFailed(
+            "Upload exhausted session restarts (upload-target kept expiring)".to_string(),
+        ))
+    }
 }
 
 // ─── StorageProvider Trait Implementation ─────────────────────────────
@@ -924,6 +1132,14 @@ impl StorageProvider for YandexDiskProvider {
             });
             tx
         });
+
+        // Y3 fix: large payloads must use chunked Content-Range to survive
+        // Yandex's mid-stream TCP disconnects on slow upload paths.
+        if total > YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES {
+            return self
+                .upload_chunked(local_path, &encoded, total, progress_tx)
+                .await;
+        }
 
         let mut last_error: Option<ProviderError> = None;
         for attempt in 1..=YANDEX_UPLOAD_MAX_ATTEMPTS {
@@ -1461,6 +1677,23 @@ mod tests {
         assert_eq!(encode_yd_path(""), "disk:/");
         assert_eq!(encode_yd_path("disk:/"), "disk:/");
     }
+
+    // Compile-time invariants for the chunked upload path. These are
+    // expressed as `const _: () = assert!(..)` rather than runtime tests
+    // because the operands are all `const` (clippy correctly flags runtime
+    // assertions on constant expressions).
+    const _: () = {
+        // Files <= 32 MiB stay on the original single-PUT path.
+        assert!(1024 * 1024 < YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES);
+        assert!(10 * 1024 * 1024 < YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES);
+        // 100 MiB and 1 GiB must trigger the chunked path.
+        assert!(100 * 1024 * 1024 > YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES);
+        assert!(1024 * 1024 * 1024 > YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES);
+        // The threshold must be at least one chunk wide.
+        assert!(YANDEX_UPLOAD_CHUNK_SIZE_BYTES <= YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES);
+        // 1 GiB / 8 MiB = 128 chunks (sanity check on chunk granularity).
+        assert!((1024u64 * 1024 * 1024).div_ceil(YANDEX_UPLOAD_CHUNK_SIZE_BYTES) == 128);
+    };
 
     #[test]
     fn test_encode_yd_path_segments() {
