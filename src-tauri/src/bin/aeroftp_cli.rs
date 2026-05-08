@@ -862,6 +862,22 @@ enum Commands {
         /// Write the JSON report to a file
         #[arg(long)]
         report: Option<String>,
+        /// Total benchmark timeout in seconds (default 3600). Bumps the cap
+        /// for slow cold storage (idrive S3, InfiniCloud) so 1G transfers
+        /// can finish without aborting mid-sweep.
+        #[arg(long, value_name = "SECS")]
+        profile_timeout: Option<u64>,
+        /// Custom remote prefix for the scratch tree (default: provider initial
+        /// path joined with `aeroftp-bench`). Use this to redirect the bench
+        /// payloads under a writable sub-path on providers that refuse
+        /// operations on `/` (kDrive, SeaFile WebDAV).
+        #[arg(long, value_name = "PATH")]
+        test_root_prefix: Option<String>,
+        /// Delete the remote payload between successive upload runs of the
+        /// same size. Workaround for strict providers (4shared and several
+        /// WebDAV servers) that reject overwrite-on-PUT.
+        #[arg(long)]
+        pre_delete: bool,
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
@@ -6961,11 +6977,22 @@ fn profile_to_provider_config(
         .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("unnamed");
-    let mut host = profile
+    let username_for_template = profile
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let raw_host = profile
         .get("host")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    // Resolve {username} template in the host string here as well so the
+    // displayed banner and any downstream consumer see a concrete URL.
+    // `WebDavConfig::from_provider_config` does the same substitution for
+    // its `url` field, but the raw host is also used by the banner and by
+    // some option lookups before WebDavConfig is built.
+    let mut host = raw_host.replace("{username}", &username_for_template);
     let port = profile
         .get("port")
         .and_then(|v| v.as_u64())
@@ -6984,6 +7011,23 @@ fn profile_to_provider_config(
         .and_then(|v| v.as_str())
         .unwrap_or("/")
         .to_string();
+    // Resolve {username} template in initial_path so the rest of the CLI
+    // (banner, scratch-dir creation, path resolution) sees a concrete path
+    // rather than the literal placeholder. Same semantics as
+    // `WebDavConfig::from_provider_config` does for the URL.
+    let initial_path = initial_path.replace("{username}", &username);
+    // Auto-strip the legacy Nextcloud-style WebDAV root when it was saved
+    // both as part of the host URL and again as initial_path. Mirrors the
+    // frontend `stripLegacyNextcloudWebdavRoot` helper so profiles that
+    // predate that fix still work from the CLI without needing a re-save.
+    let initial_path = strip_legacy_nextcloud_webdav_root(
+        &initial_path,
+        profile
+            .get("providerId")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+        &username,
+    );
 
     // Load credentials from vault
     // Password is stored as a raw string (not JSON) in server_{id}
@@ -8100,6 +8144,38 @@ fn resolve_served_backend_path(
 /// If the user path already starts with the initial_path, it is used as-is.
 /// If initial_path is `/` or empty, leading slashes are stripped to treat the
 /// path as relative to the current working directory.
+/// Mirror of the frontend `stripLegacyNextcloudWebdavRoot` helper from
+/// `aa5865ab`. Profiles saved before that fix kept the legacy WebDAV root
+/// (`/remote.php/dav/files/<user>`) embedded both in the host URL and in
+/// `initialPath`, which causes a doubled URL when the WebDAV provider joins
+/// them. The frontend strips this duplication on save; the CLI applies the
+/// same strip on load so legacy profiles work without a GUI re-save.
+fn strip_legacy_nextcloud_webdav_root(
+    initial_path: &str,
+    provider_id: &str,
+    username: &str,
+) -> String {
+    let pid = provider_id;
+    let is_nextcloud_based = pid == "tabdigital"
+        || pid == "tabdigital-webdav"
+        || pid == "felicloud"
+        || pid == "felicloud-webdav"
+        || pid == "nextcloud";
+    if !is_nextcloud_based {
+        return initial_path.to_string();
+    }
+    let user = username.trim();
+    if user.is_empty() {
+        return initial_path.to_string();
+    }
+    let trimmed = initial_path.trim_end_matches('/');
+    let wk_exact = format!("/remote.php/dav/files/{}", user);
+    if trimmed == wk_exact {
+        return "/".to_string();
+    }
+    initial_path.to_string()
+}
+
 fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
     // Reject path traversal components (.. as a path segment)
     for component in user_path.split('/') {
@@ -14801,6 +14877,28 @@ fn benchmark_remote_roots(initial_path: &str, report_id: &str) -> (String, Strin
     (bench_base, test_root)
 }
 
+fn benchmark_remote_roots_from_prefix(prefix: &str, report_id: &str) -> (String, String) {
+    // Honor `--test-root-prefix` verbatim: the user has chosen a writable
+    // sub-path (typically required for kDrive and SeaFile WebDAV which refuse
+    // operations on `/`). We still nest a unique scratch dir under it so the
+    // base prefix can be reused across runs without colliding.
+    let trimmed = prefix.trim();
+    let normalized = trimmed.trim_end_matches('/');
+    let bench_base = if normalized.is_empty() {
+        "/".to_string()
+    } else if normalized.starts_with('/') {
+        normalized.to_string()
+    } else {
+        format!("/{}", normalized)
+    };
+    let test_root = if bench_base == "/" {
+        format!("/{}", report_id)
+    } else {
+        format!("{}/{}", bench_base, report_id)
+    };
+    (bench_base, test_root)
+}
+
 /// Pattern table reused by both [`benchmark_sanitize`] (replacement pass) and
 /// [`benchmark_sanitization_sweep`] (assertion pass).
 fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static str)] {
@@ -14935,9 +15033,15 @@ async fn cmd_benchmark(
     consent_publish: bool,
     anonymize_extra: bool,
     report_path: Option<&str>,
+    profile_timeout_override: Option<u64>,
+    test_root_prefix_override: Option<&str>,
+    pre_delete: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    let profile_timeout_secs = profile_timeout_override
+        .map(|v| v.clamp(60, 86_400))
+        .unwrap_or(BENCHMARK_TOTAL_TIMEOUT_SECS);
     if cli.profile.is_none() {
         print_error(
             format,
@@ -14980,7 +15084,10 @@ async fn cmd_benchmark(
     let protocol = provider.provider_type().to_string();
 
     let report_id = uuid::Uuid::new_v4().to_string();
-    let (bench_base, test_root) = benchmark_remote_roots(&initial_path, &report_id);
+    let (bench_base, test_root) = match test_root_prefix_override {
+        Some(prefix) => benchmark_remote_roots_from_prefix(prefix, &report_id),
+        None => benchmark_remote_roots(&initial_path, &report_id),
+    };
     // Create the scratch directory tree before any upload. `bench_base` may
     // already exist from a prior run (`AlreadyExists` is fine), but `test_root`
     // is unique per run: if its creation fails the upload will hit "parent not
@@ -15014,8 +15121,11 @@ async fn cmd_benchmark(
     let mut early_abort = false;
 
     'outer: for &size in &cfg.sizes_bytes {
-        if total_start.elapsed().as_secs() > BENCHMARK_TOTAL_TIMEOUT_SECS {
-            errors.push("benchmark hit total-timeout cap (1h), aborting".into());
+        if total_start.elapsed().as_secs() > profile_timeout_secs {
+            errors.push(format!(
+                "benchmark hit profile-timeout cap ({}s), aborting",
+                profile_timeout_secs
+            ));
             early_abort = true;
             break;
         }
@@ -15068,6 +15178,16 @@ async fn cmd_benchmark(
             let is_warmup = iter < cfg.warmup_runs;
 
             if needs_upload {
+                // Strict providers (4shared, several WebDAV servers) reject
+                // overwrite-on-PUT: between successive runs of the same size
+                // we delete the previous payload best-effort. Errors are
+                // ignored on the first iteration (file does not exist yet)
+                // and on transient deletes (the upload itself will reveal
+                // any real failure).
+                if pre_delete && iter > 0 {
+                    let _ = provider.delete(&remote_path).await;
+                }
+
                 let start = Instant::now();
                 let upload_result = provider
                     .upload(
@@ -28883,6 +29003,9 @@ async fn main() {
             consent_publish,
             anonymize_extra,
             report,
+            profile_timeout,
+            test_root_prefix,
+            pre_delete,
         } => {
             cmd_benchmark(
                 *level,
@@ -28892,6 +29015,9 @@ async fn main() {
                 *consent_publish,
                 *anonymize_extra,
                 report.as_deref(),
+                *profile_timeout,
+                test_root_prefix.as_deref(),
+                *pre_delete,
                 &cli,
                 format,
             )
@@ -30904,6 +31030,98 @@ mod tests {
         let (base, root) = benchmark_remote_roots("", "rid");
         assert_eq!(base, "aeroftp-bench");
         assert_eq!(root, "aeroftp-bench/rid");
+    }
+
+    #[test]
+    fn benchmark_remote_roots_from_prefix_keeps_user_subpath() {
+        let (base, root) = benchmark_remote_roots_from_prefix("/Drive/aeroftp-bench", "rid");
+        assert_eq!(base, "/Drive/aeroftp-bench");
+        assert_eq!(root, "/Drive/aeroftp-bench/rid");
+    }
+
+    #[test]
+    fn benchmark_remote_roots_from_prefix_normalizes_trailing_slash() {
+        let (base, root) = benchmark_remote_roots_from_prefix("/Drive/bench/", "rid");
+        assert_eq!(base, "/Drive/bench");
+        assert_eq!(root, "/Drive/bench/rid");
+    }
+
+    #[test]
+    fn benchmark_remote_roots_from_prefix_prepends_leading_slash() {
+        let (base, root) = benchmark_remote_roots_from_prefix("home/aeroftp", "rid");
+        assert_eq!(base, "/home/aeroftp");
+        assert_eq!(root, "/home/aeroftp/rid");
+    }
+
+    #[test]
+    fn benchmark_remote_roots_from_prefix_falls_back_to_root() {
+        let (base, root) = benchmark_remote_roots_from_prefix("/", "rid");
+        assert_eq!(base, "/");
+        assert_eq!(root, "/rid");
+    }
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_strips_exact_wk_path() {
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/aeroftpdev",
+                "tabdigital",
+                "aeroftpdev"
+            ),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/aeroftpdev/",
+                "tabdigital-webdav",
+                "aeroftpdev"
+            ),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/alice",
+                "felicloud",
+                "alice"
+            ),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/alice",
+                "nextcloud",
+                "alice"
+            ),
+            "/"
+        );
+    }
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_keeps_subfolders() {
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/alice/Documents",
+                "tabdigital",
+                "alice"
+            ),
+            "/remote.php/dav/files/alice/Documents"
+        );
+    }
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_skips_other_providers() {
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "webdav", "alice"),
+            "/remote.php/dav/files/alice"
+        );
+    }
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_requires_username() {
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "tabdigital", ""),
+            "/remote.php/dav/files/alice"
+        );
     }
 
     #[test]
