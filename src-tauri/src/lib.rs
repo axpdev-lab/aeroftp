@@ -13452,6 +13452,9 @@ pub fn run() {
                 }
             };
 
+            // Note: `.transparent(false)` is the default and is gated behind
+            // the `macos-private-api` feature on macOS, so we omit the call
+            // to keep the build portable.
             let _main = WebviewWindowBuilder::new(app, "main", main_url)
                 .title("AeroFTP")
                 .inner_size(1540.0, 1050.0)
@@ -13461,7 +13464,6 @@ pub fn run() {
                 .minimizable(true)
                 .closable(true)
                 .decorations(false)
-                .transparent(false)
                 .visible(false)
                 .disable_drag_drop_handler()
                 .build()?;
