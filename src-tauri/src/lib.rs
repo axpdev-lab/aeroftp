@@ -13411,16 +13411,60 @@ pub fn run() {
             // Local panel filesystem watcher state (one watcher slot, swapped on path change)
             app.manage(local_panel_watcher::LocalPanelWatcherState::default());
 
-            // Navigate main window from tauri:// to http://localhost to fix
-            // WebKitGTK rendering issues with Monaco, xterm.js, and iframes.
-            // Linux-only: macOS/Windows use Tauri's default asset protocol.
-            // Only in production: in dev mode, Tauri uses devUrl (Vite on :5173).
-            #[cfg(all(not(dev), target_os = "linux"))]
-            if let Some(window) = app.get_webview_window("main") {
-                let url = url::Url::parse(&format!("http://127.0.0.1:{}", port))
-                    .expect("valid localhost URL");
-                let _ = window.navigate(url);
-            }
+            // === Main window ===
+            // Built programmatically (not via tauri.conf.json) so the URL can
+            // be platform-specific and the window is created AFTER the
+            // tauri-plugin-localhost bind wait, with the final URL up-front
+            // and no post-creation navigation.
+            //
+            // On Linux production we load directly from the localhost server
+            // because WebKitGTK has historically had rendering issues with
+            // `tauri://` for Monaco, xterm.js and iframes; serving via HTTP
+            // avoids them entirely. Keeping `http://127.0.0.1:14321` as the
+            // webview origin also means upgrades from older AeroFTP releases
+            // preserve every localStorage/IndexedDB value (theme, local tabs,
+            // recent paths, etc.), which are origin-scoped in WebKit.
+            //
+            // Tauri is pinned to 2.11.0 in Cargo.toml because 2.11.1's fix
+            // for GHSA-7gmj-67g7-phm9 introduced an `is_local_url()` check
+            // that classifies `http://127.0.0.1:*` as remote and rejects all
+            // custom commands without a full app ACL manifest. AeroFTP does
+            // not load remote/untrusted content, so the CVE vector does not
+            // apply to our surface.
+            //
+            // Window is hidden until the frontend signals `app_ready` so the
+            // splash can stay visible during initial load.
+            let main_url: WebviewUrl = {
+                #[cfg(dev)]
+                {
+                    WebviewUrl::App("index.html".into())
+                }
+                #[cfg(all(not(dev), target_os = "linux"))]
+                {
+                    WebviewUrl::External(
+                        url::Url::parse(&format!("http://127.0.0.1:{}/index.html", port))
+                            .expect("valid localhost URL"),
+                    )
+                }
+                #[cfg(all(not(dev), not(target_os = "linux")))]
+                {
+                    WebviewUrl::App("index.html".into())
+                }
+            };
+
+            let _main = WebviewWindowBuilder::new(app, "main", main_url)
+                .title("AeroFTP")
+                .inner_size(1540.0, 1050.0)
+                .min_inner_size(1024.0, 600.0)
+                .resizable(true)
+                .maximizable(true)
+                .minimizable(true)
+                .closable(true)
+                .decorations(false)
+                .transparent(false)
+                .visible(false)
+                .disable_drag_drop_handler()
+                .build()?;
 
             let accel = |shortcut: &'static str| -> Option<&'static str> {
                 #[cfg(target_os = "linux")]
@@ -13586,8 +13630,9 @@ pub fn run() {
 
             // === Splash Screen ===
             // Create splash BEFORE setting the global app menu so it never inherits it.
-            // The main window is hidden (visible: false in tauri.conf.json) until
-            // the frontend signals readiness via the `app_ready` command.
+            // The main window was built earlier with `visible(false)` and stays
+            // hidden until the frontend signals readiness via the `app_ready`
+            // command.
             let splash_url = {
                 #[cfg(dev)]
                 {
