@@ -469,6 +469,34 @@ impl FileLuProvider {
         }
     }
 
+    /// Match FileLu API errors that look like transient 5xx hiccups.
+    ///
+    /// FileLu can return:
+    /// - HTTP 5xx (handled by `send_with_retry`)
+    /// - HTTP 200 with body `{"status": 5xx, "msg": "..."}` (NOT handled by
+    ///   `send_with_retry`, surfaces here as `ServerError`)
+    ///
+    /// The reference report against v3.7.3 documents `file/remove` returning
+    /// HTTP 500 intermittently on a payload that exists; both representations
+    /// are worth retrying once or twice before bubbling up.
+    fn is_filelu_transient_5xx(err: &ProviderError) -> bool {
+        let msg = match err {
+            ProviderError::ServerError(s) | ProviderError::NetworkError(s) => s.as_str(),
+            _ => return false,
+        };
+        let lower = msg.to_ascii_lowercase();
+        lower.contains("http 500")
+            || lower.contains("http 502")
+            || lower.contains("http 503")
+            || lower.contains("http 504")
+            || lower.starts_with("api error 5")
+            || lower.contains(" 500")
+            || lower.contains("internal server error")
+            || lower.contains("bad gateway")
+            || lower.contains("service unavailable")
+            || lower.contains("gateway timeout")
+    }
+
     async fn ensure_api_ok(resp: reqwest::Response) -> Result<(), ProviderError> {
         let status = resp.status();
         let text = resp
@@ -1637,21 +1665,54 @@ impl StorageProvider for FileLuProvider {
         let norm = self.resolve_path(path);
         let entry = self.resolve_path_entry(&norm).await?;
 
-        // Delete: move to trash (soft-delete). Permanent delete only from TrashManager.
-        if entry.is_dir {
-            let url = self.api_url_with("folder/delete", &[("fld_id", &entry.fld_id.to_string())]);
-            let resp = self.get_with_retry(&url).await?;
-            Self::ensure_api_ok(resp).await?;
+        // FileLu's `file/remove` and `folder/delete` endpoints occasionally
+        // surface intermittent 5xx responses (HTTP 500 with body `{"status":500}`
+        // or HTTP 5xx with a generic body). They are provider-side hiccups and
+        // succeed on a fresh attempt. `send_with_retry` already retries on
+        // HTTP 5xx, but a body-level `{"status":500,"msg":"..."}` returned with
+        // HTTP 200 slips through. Wrap the API-OK check in a small retry loop
+        // that also matches body-level 5xx and the matching error text.
+        let url = if entry.is_dir {
+            self.api_url_with("folder/delete", &[("fld_id", &entry.fld_id.to_string())])
         } else {
             // v1 file/remove with remove=1. FileLu API has no soft-delete endpoint -
             // file/remove without remove=1 returns "Invalid option". Permanent delete is
             // the only API-supported delete. Trash is web-UI only on FileLu.
-            let url = self.api_url_with(
+            self.api_url_with(
                 "file/remove",
                 &[("file_code", &entry.file_code), ("remove", "1")],
-            );
+            )
+        };
+
+        const FILELU_DELETE_ATTEMPTS: u32 = 3;
+        let mut last_err: Option<ProviderError> = None;
+        for attempt in 0..FILELU_DELETE_ATTEMPTS {
             let resp = self.get_with_retry(&url).await?;
-            Self::ensure_api_ok(resp).await?;
+            match Self::ensure_api_ok(resp).await {
+                Ok(()) => {
+                    last_err = None;
+                    break;
+                }
+                Err(e) if Self::is_filelu_transient_5xx(&e) && attempt + 1 < FILELU_DELETE_ATTEMPTS => {
+                    let backoff_ms = 500u64 * (1u64 << attempt);
+                    tracing::debug!(
+                        "FileLu delete returned transient 5xx ({}), retrying after {}ms (attempt {}/{})",
+                        e,
+                        backoff_ms,
+                        attempt + 1,
+                        FILELU_DELETE_ATTEMPTS
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    last_err = Some(e);
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    break;
+                }
+            }
+        }
+        if let Some(e) = last_err {
+            return Err(e);
         }
 
         let parent = norm
@@ -2044,6 +2105,67 @@ mod tests {
         assert_eq!(FileLuProvider::normalize_path("/foo/"), "/foo");
         assert_eq!(FileLuProvider::normalize_path("foo/bar"), "/foo/bar");
         assert_eq!(FileLuProvider::normalize_path(""), "/");
+    }
+
+    #[test]
+    fn test_is_filelu_transient_5xx_matches_http_codes() {
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("HTTP 500: internal server error".into())
+        ));
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("HTTP 502: bad gateway".into())
+        ));
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("HTTP 503".into())
+        ));
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("HTTP 504".into())
+        ));
+    }
+
+    #[test]
+    fn test_is_filelu_transient_5xx_matches_body_status() {
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("API error 500".into())
+        ));
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("API error 503".into())
+        ));
+    }
+
+    #[test]
+    fn test_is_filelu_transient_5xx_rejects_4xx_and_other() {
+        assert!(!FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("HTTP 400: bad request".into())
+        ));
+        assert!(!FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("HTTP 404: not found".into())
+        ));
+        assert!(!FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("API error 403".into())
+        ));
+        assert!(!FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::NotFound("missing".into())
+        ));
+        assert!(!FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::AlreadyExists("dup".into())
+        ));
+    }
+
+    #[test]
+    fn test_is_filelu_transient_5xx_matches_text_aliases() {
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("Internal Server Error".into())
+        ));
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::NetworkError("Bad Gateway upstream".into())
+        ));
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("service unavailable".into())
+        ));
+        assert!(FileLuProvider::is_filelu_transient_5xx(
+            &ProviderError::ServerError("Gateway Timeout".into())
+        ));
     }
 
     #[test]
