@@ -902,16 +902,32 @@ impl S3Provider {
         }
     }
 
-    /// Minimum part size for multipart upload (5 MB)
-    const MULTIPART_THRESHOLD: usize = 5 * 1024 * 1024;
-    /// Default part size for multipart upload chunks (5 MB)
-    const MULTIPART_PART_SIZE: usize = 5 * 1024 * 1024;
+    /// Cutoff above which we switch to multipart upload. Bumped from the
+    /// historical 5 MiB to 200 MiB to match rclone's `--s3-upload-cutoff`
+    /// default. The previous aggressive cutoff produced 20 small parts for
+    /// a 100 MiB payload, which on the Storj S3 gateway results in segment
+    /// distributions that are measurably slower to read back later (~2x
+    /// download regression observed in the 2026-05-08 cross-tool bench).
+    /// Single-PUT is preferred when the file size fits, because every
+    /// supported S3 backend ships single-PUT semantics that map cleanly
+    /// onto their underlying storage layout.
+    const MULTIPART_THRESHOLD: usize = 200 * 1024 * 1024;
+    /// Minimum part size required by S3 spec for any multipart upload (5 MiB).
+    /// Used as a floor for `effective_part_size`.
+    const MULTIPART_PART_MIN: usize = 5 * 1024 * 1024;
+    /// Default part size for multipart upload chunks. Kept at 16 MiB so that
+    /// payloads above the new 200 MiB cutoff still split into a manageable
+    /// number of parts (e.g. 1 GiB → 64 parts) without flooding the part
+    /// list with thousands of tiny segments.
+    const MULTIPART_PART_SIZE: usize = 16 * 1024 * 1024;
 
-    /// Effective part size, using override if set (min 5 MB per S3 spec)
+    /// Effective part size, using override if set. Capped on the low end
+    /// at the S3 spec minimum (5 MiB), not at the multipart cutoff (which
+    /// is now 200 MiB and would otherwise reject any sane part size).
     fn effective_part_size(&self) -> usize {
         self.upload_chunk_override
             .unwrap_or(Self::MULTIPART_PART_SIZE)
-            .max(Self::MULTIPART_THRESHOLD)
+            .max(Self::MULTIPART_PART_MIN)
     }
 
     /// Initiate a multipart upload, returns the UploadId.
