@@ -14,6 +14,7 @@
     "test:unit:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "security:regression": "node .github/scripts/security-regression.cjs",
+    "security:report": "node scripts/security-report.cjs",
     "i18n:validate": "npx tsx scripts/i18n-validate.ts",
     "i18n:sync": "npx tsx scripts/i18n-sync.ts",
     "i18n:stats": "npx tsx scripts/i18n-stats.ts"
