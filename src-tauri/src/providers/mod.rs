@@ -375,6 +375,28 @@ pub trait StorageProvider: Send + Sync {
 
     // Optional capabilities - providers can override these
 
+    /// Hard-delete a path bypassing the provider's recycle bin.
+    ///
+    /// `delete()` on consumer-cloud providers (Google Drive, Dropbox, OneDrive,
+    /// Box, MEGA, Yandex, FileLu, Internxt, kDrive, Zoho WorkDrive, pCloud,
+    /// Jottacloud, OpenDrive, Backblaze B2 with versioning) is a soft delete:
+    /// the item ends up in the provider's trash and still consumes quota.
+    ///
+    /// Implementations should override this to perform the actual purge so
+    /// trash does not silently fill up during long-running benchmarks or sync
+    /// operations. The path is the same one passed to `delete()`; ID-based
+    /// providers must resolve it via their trash listing.
+    ///
+    /// Returns:
+    /// - `Ok(true)` when a real purge was performed.
+    /// - `Ok(false)` when the provider has no trash concept (FTP, FTPS, SFTP,
+    ///   most WebDAV, plain S3) and the call was a no-op. This is the safe
+    ///   default for unmigrated providers.
+    /// - `Err(_)` only when the provider has trash but the purge call failed.
+    async fn delete_permanent(&mut self, _path: &str) -> Result<bool, ProviderError> {
+        Ok(false)
+    }
+
     /// Check if provider supports chmod
     fn supports_chmod(&self) -> bool {
         false

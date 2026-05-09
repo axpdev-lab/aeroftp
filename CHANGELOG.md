@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.7] - 2026-05-09
+
+### Benchmark Cleanup: Trash Purge for Consumer Cloud Providers
+
+A targeted cleanup release that stops the CLI benchmark from silently filling up provider trash bins. Reported by a user after a v3.7.5 community benchmark sweep left ~1 GB of test artefacts in Google Drive's trash, with similar leaks expected on Dropbox, OneDrive, Box, MEGA, FileLu, Internxt, kDrive, Zoho WorkDrive, pCloud, OpenDrive and Backblaze B2 over long runs.
+
+#### Added
+
+- **`StorageProvider::delete_permanent` trait method**: a hard-delete path that bypasses the recycle bin. The default returns `Ok(false)` (no-op), which is correct for protocols without a trash concept (FTP, FTPS, SFTP, plain S3, plain WebDAV) and for any unmigrated provider. Trash-aware providers override it to perform the actual purge.
+- **CLI benchmark trash purge**: `aeroftp-cli speed` and `aeroftp-cli benchmark` now call `delete_permanent` after the standard cleanup. The `speed` JSON / CSV / Markdown reports gain a `trash_purged` column and a `trash_purge_error` field. The `benchmark` command logs the purge of the test root and surfaces any failure in the run errors.
+
+#### Fixed
+
+- **Google Drive trash leak**: benchmark and speed cleanup now resolves the just-trashed file by basename via `name='X' and trashed=true` and calls the existing inherent `permanent_delete(file_id)`, leaving the trash empty after the run.
+- **Dropbox trash leak**: `delete_permanent` wraps the inherent `permanent_delete(path)`. The OAuth scope set was bumped to include `files.permanent_delete` so newly issued tokens can perform the call. Existing tokens issued before this release will need a one-time disconnect and reconnect to refresh permissions: a clear hint is now surfaced when the API returns the missing-scope error.
+- **MEGA and MEGA native trash leak**: `delete_permanent` wraps the inherent `permanent_delete_from_trash(basename)` so files moved to `//bin/` by `delete()` are actually purged.
+- **Box, pCloud, OpenDrive, kDrive, Zoho WorkDrive trash leak**: each provider's `delete_permanent` resolves the basename in its trash listing, recovers the item id (and item type / dir flag where required) from the listing metadata, then dispatches to the existing inherent `permanent_delete*` helper.
+- **FileLu trash leak (single-file case)**: matches the basename in `files/deleted` and calls `permanent_delete_file(file_code)`. Folder-level paths fall back to the no-op default because the FileLu API has no folder permanent-delete endpoint and trashed files do not carry parent-folder identifiers.
+- **Internxt trash leak**: matches the basename in the trash listing, extracts the item UUID and type, then issues `DELETE /storage/trash` with `{ items: [{ uuid, type }] }`.
+- **Backblaze B2 version leak**: `delete_permanent` calls the inherent `permanent_delete_path(path)` which walks every version (including hide markers) so soft-deleted files no longer accumulate when versioning is on.
+- **OneDrive recycle bin (Personal accounts)**: the override is wired to the `permanent_delete(item_id)` helper but Microsoft Graph does not expose a documented endpoint for the personal recycle bin: the search now returns `Ok(None)` instead of erroring out so the benchmark reports `trash_purged: false` cleanly. Microsoft auto-purges the OneDrive recycle bin after 30 days.
+
+### Provider notes
+
+- **Yandex Disk and Jottacloud**: explicitly NOT overridden. Their `delete()` already issues a hard delete (`permanently=true` for Yandex, `?rm=true` for Jottacloud) so the default no-op is correct: a comment on each impl block now records this rationale.
+
 ## [3.7.6] - 2026-05-08
 
 ### Hotfix: restore IPC after Tauri 2.11.1 origin-confusion regression

@@ -1058,6 +1058,27 @@ impl StorageProvider for KDriveProvider {
         self.delete(path).await
     }
 
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // kDrive trash entries carry file_id in metadata. Match by basename
+        // and dispatch to the inherent permanently_delete_trash helper.
+        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        if basename.is_empty() {
+            return Ok(false);
+        }
+        let trashed = self.list_trash().await?;
+        let id = trashed
+            .iter()
+            .find(|e| e.name == basename)
+            .and_then(|e| e.metadata.get("file_id").cloned());
+        match id {
+            Some(file_id) => {
+                self.permanently_delete_trash(&file_id).await?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);

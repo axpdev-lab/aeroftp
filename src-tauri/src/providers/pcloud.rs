@@ -868,6 +868,31 @@ impl StorageProvider for PCloudProvider {
         self.rmdir(path).await
     }
 
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // pCloud trash listing carries fileid OR folderid in metadata.
+        // Match by basename to recover the id and dir flag, then call the
+        // inherent helper.
+        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        if basename.is_empty() {
+            return Ok(false);
+        }
+        let trashed = self.list_trash().await?;
+        let target = trashed.iter().find(|e| e.name == basename).and_then(|e| {
+            if let Some(folderid) = e.metadata.get("folderid") {
+                Some((folderid.clone(), true))
+            } else {
+                e.metadata.get("fileid").map(|fid| (fid.clone(), false))
+            }
+        });
+        match target {
+            Some((id, is_folder)) => {
+                self.permanent_delete_from_trash(&id, is_folder).await?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);

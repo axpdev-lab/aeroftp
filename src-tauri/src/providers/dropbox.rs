@@ -333,10 +333,22 @@ impl DropboxProvider {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
+            let sanitized = sanitize_api_error(&text);
+            // Surface the missing-scope case explicitly: tokens issued before
+            // we added `files.permanent_delete` to the OAuth scope set will
+            // fail here. The user has to disconnect and reconnect once to
+            // refresh permissions.
+            if text.contains("missing_scope") && text.contains("files.permanent_delete") {
+                return Err(ProviderError::Other(
+                    "Dropbox token missing 'files.permanent_delete' scope. \
+                     Disconnect and reconnect Dropbox once to refresh \
+                     permissions, then retry."
+                        .to_string(),
+                ));
+            }
             return Err(ProviderError::Other(format!(
                 "Permanent delete failed {}: {}",
-                status,
-                sanitize_api_error(&text)
+                status, sanitized
             )));
         }
 
@@ -1036,6 +1048,10 @@ impl StorageProvider for DropboxProvider {
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         // Dropbox delete removes folders with contents
         self.delete(path).await
+    }
+
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        self.permanent_delete(path).await.map(|_| true)
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {

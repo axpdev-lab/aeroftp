@@ -2566,6 +2566,30 @@ impl StorageProvider for ZohoWorkdriveProvider {
         self.delete(path).await
     }
 
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // Resolve basename → trashed file id by scanning the trash listing
+        // (privatespace + team folders). The id is stored in metadata["id"]
+        // by `to_remote_entry`. If multiple trashed entries share the name
+        // we delete the first match (the JSON:API listing returns newest
+        // first per Zoho convention).
+        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        if basename.is_empty() {
+            return Ok(false);
+        }
+        let trashed = self.list_trash().await?;
+        let id = trashed
+            .iter()
+            .find(|e| e.name == basename)
+            .and_then(|e| e.metadata.get("id").cloned());
+        match id {
+            Some(file_id) => {
+                self.permanent_delete(&file_id).await?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_path = from.trim_matches('/');
         let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {

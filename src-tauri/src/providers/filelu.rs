@@ -1739,6 +1739,32 @@ impl StorageProvider for FileLuProvider {
         self.delete(path).await
     }
 
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // FileLu: `files/deleted` returns trashed FILES with file_code +
+        // basename. Folders don't appear directly: only their contained
+        // files do. So this resolves single-file paths by basename and
+        // calls `permanent_delete_file`. Folder paths fall back to Ok(false)
+        // (the API has no `folder/permanent_delete` endpoint and there is
+        // no parent-id field on deleted file entries to safely associate
+        // them with the dropped folder).
+        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        if basename.is_empty() {
+            return Ok(false);
+        }
+        let deleted = self.list_deleted_files().await?;
+        let code = deleted
+            .iter()
+            .find(|e| e.name.as_deref() == Some(basename))
+            .and_then(|e| e.file_code.clone());
+        match code {
+            Some(c) => {
+                self.permanent_delete_file(&c).await?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             self.connect().await?;

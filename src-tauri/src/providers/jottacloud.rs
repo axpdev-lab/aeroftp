@@ -1550,6 +1550,12 @@ impl StorageProvider for JottacloudProvider {
         self.delete(path).await
     }
 
+    // delete_permanent: not overridden. Jottacloud's `delete()` already
+    // sends `?rm=true` (hard delete that bypasses trash), so the default
+    // Ok(false) no-op is correct: there is nothing to purge afterwards.
+    // The inherent `permanent_delete_from_trash` exists for the separate
+    // case of items already in trash from another client.
+
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         let entry = self.stat(path).await?;
         Ok(entry.size)

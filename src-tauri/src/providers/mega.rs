@@ -707,6 +707,13 @@ impl StorageProvider for MegaCmdProvider {
         Ok(())
     }
 
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // MEGA `delete()` moves the item to //bin/ (rubbish). The inherent
+        // `permanent_delete_from_trash` extracts the basename and runs
+        // `mega-rm -f //bin/<name>` to purge it.
+        self.permanent_delete_from_trash(path).await.map(|_| true)
+    }
+
     async fn rename(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
         let f = self.resolve_path(f);
         let t = self.resolve_path(t);

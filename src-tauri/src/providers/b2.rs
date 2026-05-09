@@ -1908,6 +1908,16 @@ impl StorageProvider for B2Provider {
         }
     }
 
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // B2 `delete()` writes a hide marker (soft delete). `permanent_delete_path`
+        // walks every version of the file (and the hide marker) and deletes
+        // each one, returning the count purged. Returning Ok(true) when at
+        // least one version was actually removed; Ok(false) if there was
+        // nothing to purge (path was already absent).
+        let count = self.permanent_delete_path(path).await?;
+        Ok(count > 0)
+    }
+
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);

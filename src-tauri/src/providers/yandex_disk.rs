@@ -1305,6 +1305,13 @@ impl StorageProvider for YandexDiskProvider {
         self.delete(path).await
     }
 
+    // delete_permanent: not overridden. Yandex Disk's `delete()` already
+    // appends `permanently=true` to the API call (hard delete that bypasses
+    // trash), so the default Ok(false) no-op is correct: there is nothing
+    // left to purge afterwards. The inherent `permanent_delete_from_trash`
+    // exists for the separate case of items already in trash from another
+    // client.
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
