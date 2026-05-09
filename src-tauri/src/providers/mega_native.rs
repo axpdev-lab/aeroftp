@@ -1557,9 +1557,23 @@ impl StorageProvider for MegaNativeProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        // MEGA native `delete()` moves the node to the trash subtree. The
-        // inherent helper extracts the basename and purges it from trash.
-        self.permanent_delete_from_trash(path).await.map(|_| true)
+        // MEGA native `delete()` calls move_to_trash, which sends `{a:"m"}`
+        // to move ONLY the file node (not its parents) under the trash
+        // root. The node keeps its basename, so the inherent
+        // `permanent_delete_from_trash` (which scans trash children by
+        // name == filename) needs the basename, not the original full
+        // path. Strip to basename before dispatch. Treat NotFound as
+        // Ok(false) so a missing item (already cleared elsewhere) does
+        // not fail the caller.
+        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        if basename.is_empty() {
+            return Ok(false);
+        }
+        match self.permanent_delete_from_trash(basename).await {
+            Ok(()) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
