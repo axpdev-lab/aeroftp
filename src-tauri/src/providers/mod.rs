@@ -130,14 +130,65 @@ pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
 /// For larger files, use the streaming download() method instead.
 pub const MAX_DOWNLOAD_TO_BYTES: u64 = 500 * 1024 * 1024;
 
+/// Defense-in-depth helper for the rare case where a server hands the full
+/// `Content-Length` body to the TLS layer and *then* closes the connection
+/// without sending a `close_notify` alert.
+///
+/// rustls (and Go `crypto/tls`, and schannel) report this as
+/// `io::ErrorKind::UnexpectedEof` on the read that follows the body, while
+/// permissive backends (OpenSSL with the default `SSL_OP_IGNORE_UNEXPECTED_EOF`)
+/// silently accept what they got. This helper lets us match the permissive
+/// behavior **only** when the count matches: no truncation-attack risk.
+///
+/// **Known case where this helper does NOT help**: the Filen Desktop WebDAV
+/// bridge on Windows tears down the TLS connection so early that rustls
+/// drops the body bytes before they reach the streaming reader, so `received`
+/// stays at 0 and the helper returns false. That bug is server-side,
+/// reproduces identically on rclone (Go) and curl (schannel), and is tracked
+/// upstream at FilenCloudDienste/filen-desktop. See report 006 of the
+/// 2026-05-09 Windows debug session for the full diagnostic trace.
+///
+/// Returns true only when ALL of:
+/// 1. the response advertised a Content-Length (`expected > 0`)
+/// 2. the streamed bytes already meet or exceed it (`received >= expected`)
+/// 3. the reqwest error is classified as body/decode
+/// 4. the underlying io::Error in the cause chain is `UnexpectedEof`
+pub fn is_unexpected_eof_after_full_body(
+    e: &reqwest::Error,
+    received: u64,
+    expected: u64,
+) -> bool {
+    use std::error::Error as _;
+    if expected == 0 || received < expected {
+        return false;
+    }
+    if !e.is_body() && !e.is_decode() {
+        return false;
+    }
+    let mut src: Option<&(dyn std::error::Error + 'static)> = e.source();
+    while let Some(s) = src {
+        if let Some(io_err) = s.downcast_ref::<std::io::Error>() {
+            if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
+                return true;
+            }
+        }
+        src = s.source();
+    }
+    false
+}
+
 /// H2: Read a reqwest Response into Vec<u8> with a size cap.
 /// Checks Content-Length first; if absent, reads up to `limit` bytes via streaming.
+///
+/// Tolerates a missing TLS close_notify when the full Content-Length has
+/// already been received (see [`is_unexpected_eof_after_full_body`]).
 pub async fn response_bytes_with_limit(
     resp: reqwest::Response,
     limit: u64,
 ) -> Result<Vec<u8>, ProviderError> {
     // Check Content-Length header if present
-    if let Some(cl) = resp.content_length() {
+    let expected = resp.content_length();
+    if let Some(cl) = expected {
         if cl > limit {
             return Err(ProviderError::TransferFailed(format!(
                 "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
@@ -146,20 +197,36 @@ pub async fn response_bytes_with_limit(
             )));
         }
     }
+    let expected = expected.unwrap_or(0);
 
     // Stream the body with a size guard
     let mut bytes = Vec::new();
     let mut stream = resp.bytes_stream();
     use futures_util::StreamExt;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        if bytes.len() as u64 + chunk.len() as u64 > limit {
-            return Err(ProviderError::TransferFailed(format!(
-                "Download exceeded {:.0} MB size limit. Use streaming download for large files.",
-                limit as f64 / 1_048_576.0,
-            )));
+    loop {
+        match stream.next().await {
+            Some(Ok(chunk)) => {
+                if bytes.len() as u64 + chunk.len() as u64 > limit {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "Download exceeded {:.0} MB size limit. Use streaming download for large files.",
+                        limit as f64 / 1_048_576.0,
+                    )));
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            Some(Err(e)) => {
+                if is_unexpected_eof_after_full_body(&e, bytes.len() as u64, expected) {
+                    tracing::warn!(
+                        "[HTTP] Server closed connection without TLS close_notify but full body received ({}/{} bytes); accepting",
+                        bytes.len(),
+                        expected
+                    );
+                    break;
+                }
+                return Err(ProviderError::TransferFailed(e.to_string()));
+            }
+            None => break,
         }
-        bytes.extend_from_slice(&chunk);
     }
 
     Ok(bytes)

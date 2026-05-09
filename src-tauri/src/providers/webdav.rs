@@ -1671,16 +1671,34 @@ impl StorageProvider for WebDavProvider {
                     .map_err(ProviderError::IoError)?;
                 let mut downloaded: u64 = 0;
 
-                while let Some(chunk_result) = stream.next().await {
-                    let chunk =
-                        chunk_result.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                    atomic
-                        .write_all(&chunk)
-                        .await
-                        .map_err(ProviderError::IoError)?;
-                    downloaded += chunk.len() as u64;
-                    if let Some(ref progress) = on_progress {
-                        progress(downloaded, total_size);
+                loop {
+                    match stream.next().await {
+                        Some(Ok(chunk)) => {
+                            atomic
+                                .write_all(&chunk)
+                                .await
+                                .map_err(ProviderError::IoError)?;
+                            downloaded += chunk.len() as u64;
+                            if let Some(ref progress) = on_progress {
+                                progress(downloaded, total_size);
+                            }
+                        }
+                        Some(Err(e)) => {
+                            if super::is_unexpected_eof_after_full_body(
+                                &e,
+                                downloaded,
+                                total_size,
+                            ) {
+                                tracing::warn!(
+                                    "[WEBDAV] Server closed connection without TLS close_notify but full body received ({}/{} bytes); accepting",
+                                    downloaded,
+                                    total_size
+                                );
+                                break;
+                            }
+                            return Err(ProviderError::TransferFailed(e.to_string()));
+                        }
+                        None => break,
                     }
                 }
                 atomic.commit().await.map_err(ProviderError::IoError)?;
