@@ -869,20 +869,27 @@ impl StorageProvider for PCloudProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        // pCloud trash listing carries fileid OR folderid in metadata.
-        // Match by basename to recover the id and dir flag, then call the
-        // inherent helper.
+        // pCloud trash listing carries fileid OR folderid in metadata, and
+        // the inherent `permanent_delete_from_trash(id, is_folder)` builds a
+        // `trash_clear?fileid=X` URL. Folder purge works as expected via
+        // `trash_clear?folderid=X`, but pCloud's API silently ignores the
+        // unknown `fileid` query parameter on `trash_clear` and falls
+        // through to "Log in required" (error 1000): there is no documented
+        // single-file purge endpoint. So we only attempt the call when we
+        // can resolve the trashed item to a folderid; for plain files in
+        // trash we fall back to Ok(false) and let pCloud's 30-day auto
+        // retention reclaim the space. Benchmark cleanup is unaffected
+        // because the test root is a folder.
         let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }
         let trashed = self.list_trash().await?;
         let target = trashed.iter().find(|e| e.name == basename).and_then(|e| {
-            if let Some(folderid) = e.metadata.get("folderid") {
-                Some((folderid.clone(), true))
-            } else {
-                e.metadata.get("fileid").map(|fid| (fid.clone(), false))
-            }
+            // Prefer folderid: that path actually works against trash_clear.
+            e.metadata
+                .get("folderid")
+                .map(|fid| (fid.clone(), true))
         });
         match target {
             Some((id, is_folder)) => {

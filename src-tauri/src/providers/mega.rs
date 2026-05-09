@@ -708,10 +708,31 @@ impl StorageProvider for MegaCmdProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        // MEGA `delete()` moves the item to //bin/ (rubbish). The inherent
-        // `permanent_delete_from_trash` extracts the basename and runs
-        // `mega-rm -f //bin/<name>` to purge it.
-        self.permanent_delete_from_trash(path).await.map(|_| true)
+        // MEGA `delete()` calls `mega-mv <abs_path> //bin/`, which preserves
+        // the original folder hierarchy under //bin (so a file at
+        // /aeroftp-bench-v377/test.bin lands at //bin/aeroftp-bench-v377/
+        // test.bin, NOT //bin/test.bin). The inherent
+        // `permanent_delete_from_trash` strips to basename only, which is
+        // correct for trash items already at top level (e.g. set up via
+        // the GUI) but not for items we just trashed via `delete()`. So
+        // we build the //bin path ourselves from the resolved absolute
+        // path and use mega-rm -r -f for a recursive idempotent purge.
+        let resolved = self.resolve_path(path);
+        let relative = resolved.trim_start_matches('/');
+        if relative.is_empty() {
+            return Ok(false);
+        }
+        let rubbish_path = format!("//bin/{}", relative);
+        match self
+            .run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &rubbish_path])
+            .await
+        {
+            Ok(_) => Ok(true),
+            // Item already purged (e.g. cleared by another client) is not
+            // an error: report Ok(false) so the caller can continue.
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     async fn rename(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {

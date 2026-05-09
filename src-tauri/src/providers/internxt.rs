@@ -2034,6 +2034,14 @@ impl StorageProvider for InternxtProvider {
         // Use the existing list_trash to recover uuid + type by basename.
         // The uuid is encoded in the synthetic path "[Trash]/{uuid}" set by
         // list_trash; is_dir distinguishes file vs folder for the API "type".
+        //
+        // Empirical note: on the gateway tested (gateway.internxt.com,
+        // 2026-05-09) `DELETE /drive/files/{uuid}` already removes the file
+        // hard (the trash listing remains empty after the call) so this
+        // override mostly returns Ok(false). It is wired anyway because
+        // other Internxt deployments and workspace plans do route through
+        // a recoverable trash, in which case the basename match + DELETE
+        // /storage/trash flow works correctly.
         let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
@@ -2502,14 +2510,35 @@ impl InternxtProvider {
 
     /// List trashed files and folders (paginated).
     /// Uses GET /drive/storage/trash/paginated.
+    /// The endpoint requires both `type` (files|folders) and `root` (bool)
+    /// query parameters: omitting either returns 400 Bad Request. So we
+    /// page through `type=folders` and `type=files` separately and merge
+    /// the results.
     #[allow(dead_code)]
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut results = Vec::new();
-        let mut offset = 0;
-        let limit = 50;
 
+        // First pass: trashed folders.
+        self.fetch_trash_page("folders", &mut results).await?;
+        // Second pass: trashed files.
+        self.fetch_trash_page("files", &mut results).await?;
+
+        internxt_log(&format!("[TRASH] Listed {} trashed items", results.len()));
+        Ok(results)
+    }
+
+    async fn fetch_trash_page(
+        &mut self,
+        kind: &str,
+        out: &mut Vec<RemoteEntry>,
+    ) -> Result<(), ProviderError> {
+        let limit: usize = 50;
+        let mut offset: usize = 0;
         loop {
-            let url = format!("/storage/trash/paginated?offset={}&limit={}", offset, limit);
+            let url = format!(
+                "/storage/trash/paginated?offset={}&limit={}&type={}&root=true",
+                offset, limit, kind
+            );
             let resp = self
                 .send_with_reauth(|this| this.drive_request(reqwest::Method::GET, &url))
                 .await?;
@@ -2527,34 +2556,39 @@ impl InternxtProvider {
             let raw = resp.text().await.map_err(|e| {
                 ProviderError::ServerError(format!("Failed to read trash response: {}", e))
             })?;
-
-            // Parse response: may contain both "files" and "folders" arrays
             let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
                 ProviderError::ServerError(format!("Failed to parse trash response: {}", e))
             })?;
 
-            let mut page_count = 0;
+            // The Internxt API returns either { "result": [...] } (newer
+            // shape) or a top-level array { "files": [...], "folders": [...] }
+            // (older shape). Be lenient with both.
+            let items = parsed
+                .get("result")
+                .and_then(|v| v.as_array())
+                .or_else(|| parsed.get(kind).and_then(|v| v.as_array()))
+                .cloned()
+                .unwrap_or_default();
 
-            // Parse trashed folders
-            if let Some(folders) = parsed.get("folders").and_then(|f| f.as_array()) {
-                for folder in folders {
-                    let name = folder
+            let page_count = items.len();
+            for item in items {
+                let uuid = item
+                    .get("uuid")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let updated = item
+                    .get("updatedAt")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                if kind == "folders" {
+                    let name = item
                         .get("plainName")
-                        .or_else(|| folder.get("name"))
+                        .or_else(|| item.get("name"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("unnamed")
                         .to_string();
-                    let uuid = folder
-                        .get("uuid")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let updated = folder
-                        .get("updatedAt")
-                        .and_then(|v| v.as_str())
-                        .map(String::from);
-
-                    results.push(RemoteEntry {
+                    out.push(RemoteEntry {
                         name,
                         path: format!("[Trash]/{}", uuid),
                         is_dir: true,
@@ -2568,36 +2602,20 @@ impl InternxtProvider {
                         mime_type: None,
                         metadata: Default::default(),
                     });
-                    page_count += 1;
-                }
-            }
-
-            // Parse trashed files
-            if let Some(files) = parsed.get("files").and_then(|f| f.as_array()) {
-                for file in files {
-                    let plain_name = file
+                } else {
+                    let plain_name = item
                         .get("plainName")
-                        .or_else(|| file.get("name"))
+                        .or_else(|| item.get("name"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("unnamed");
-                    let file_type = file.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    let file_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     let name = if file_type.is_empty() {
                         plain_name.to_string()
                     } else {
                         format!("{}.{}", plain_name, file_type)
                     };
-                    let uuid = file
-                        .get("uuid")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let size = file.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let updated = file
-                        .get("updatedAt")
-                        .and_then(|v| v.as_str())
-                        .map(String::from);
-
-                    results.push(RemoteEntry {
+                    let size = item.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                    out.push(RemoteEntry {
                         name,
                         path: format!("[Trash]/{}", uuid),
                         is_dir: false,
@@ -2611,7 +2629,6 @@ impl InternxtProvider {
                         mime_type: None,
                         metadata: Default::default(),
                     });
-                    page_count += 1;
                 }
             }
 
@@ -2620,9 +2637,7 @@ impl InternxtProvider {
             }
             offset += limit;
         }
-
-        internxt_log(&format!("[TRASH] Listed {} trashed items", results.len()));
-        Ok(results)
+        Ok(())
     }
 
     /// Whether this provider supports trash management
