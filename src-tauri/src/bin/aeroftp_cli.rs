@@ -1833,6 +1833,12 @@ struct CliSpeedResult {
     download_sha256: String,
     cleanup_ok: bool,
     cleanup_error: Option<String>,
+    /// True when the provider has a trash concept and the test artefact was
+    /// hard-deleted from it (so it does not pile up). False either because the
+    /// provider has no trash (S3, SFTP, FTP, plain WebDAV) or because the
+    /// purge call failed (see `trash_purge_error`).
+    trash_purged: bool,
+    trash_purge_error: Option<String>,
     elapsed_secs: f64,
     protocol: String,
 }
@@ -14681,14 +14687,18 @@ async fn cmd_speed(
                     "CORRUPTED"
                 };
                 println!("  Integrity: {}", integrity_label);
-                println!(
-                    "  Cleanup:   {}",
-                    if result.cleanup_ok {
-                        "removed".to_string()
+                let cleanup_str = if result.cleanup_ok {
+                    if result.trash_purged {
+                        "removed (purged from trash)".to_string()
+                    } else if let Some(err) = result.trash_purge_error.as_ref() {
+                        format!("removed; trash purge failed: {}", err)
                     } else {
-                        format!("manual: {}", result.remote_path)
+                        "removed".to_string()
                     }
-                );
+                } else {
+                    format!("manual: {}", result.remote_path)
+                };
+                println!("  Cleanup:   {}", cleanup_str);
                 println!("  Remote:    {}", result.remote_path);
             }
         }
@@ -14842,10 +14852,15 @@ async fn finalize_speed_result(
     protocol: String,
     elapsed_secs: f64,
 ) -> Result<CliSpeedResult, (String, i32)> {
-    let (cleanup_ok, cleanup_error) = match provider.delete(remote_test_path).await {
-        Ok(()) => (true, None),
-        Err(e) => (false, Some(e.to_string())),
-    };
+    let (cleanup_ok, cleanup_error, trash_purged, trash_purge_error) =
+        match provider.delete(remote_test_path).await {
+            Ok(()) => match provider.delete_permanent(remote_test_path).await {
+                Ok(true) => (true, None, true, None),
+                Ok(false) => (true, None, false, None),
+                Err(e) => (true, None, false, Some(e.to_string())),
+            },
+            Err(e) => (false, Some(e.to_string()), false, None),
+        };
     let _ = provider.disconnect().await;
 
     let avg_up = (upload_total / iterations.max(1) as f64) as u64;
@@ -14867,6 +14882,8 @@ async fn finalize_speed_result(
         download_sha256,
         cleanup_ok,
         cleanup_error,
+        trash_purged,
+        trash_purge_error,
         elapsed_secs,
         protocol,
     })
@@ -15035,7 +15052,7 @@ async fn cmd_speed_compare(
     }
     if let Some(path) = csv_out {
         let mut csv = String::from(
-            "rank,url,protocol,size_bytes,upload_mbps,download_mbps,download_ttfb_ms,integrity,cleanup,score,error\n",
+            "rank,url,protocol,size_bytes,upload_mbps,download_mbps,download_ttfb_ms,integrity,cleanup,trash_purged,score,error\n",
         );
         for e in report.results.iter() {
             if let Some(r) = e.result.as_ref() {
@@ -15047,7 +15064,7 @@ async fn cmd_speed_compare(
                     "corrupted"
                 };
                 csv.push_str(&format!(
-                    "{},{},{},{},{:.2},{:.2},{},{},{},{:.1},{}\n",
+                    "{},{},{},{},{:.2},{:.2},{},{},{},{},{:.1},{}\n",
                     e.rank,
                     csv_cell_safe(&e.url),
                     csv_cell_safe(&r.protocol),
@@ -15059,12 +15076,13 @@ async fn cmd_speed_compare(
                         .unwrap_or_default(),
                     integrity,
                     r.cleanup_ok as u8,
+                    r.trash_purged as u8,
                     e.score * 100.0,
                     "",
                 ));
             } else {
                 csv.push_str(&format!(
-                    ",{},,,,,,,,,{}\n",
+                    ",{},,,,,,,,,,{}\n",
                     csv_cell_safe(&e.url),
                     csv_cell_safe(e.error.as_deref().unwrap_or("")),
                 ));
@@ -15081,8 +15099,8 @@ async fn cmd_speed_compare(
             format_size(size),
             parallel
         ));
-        md.push_str("| # | URL | Protocol | Down (Mbps) | Up (Mbps) | TTFB (ms) | Integ. | Clean. | Score |\n");
-        md.push_str("|---:|---|---|---:|---:|---:|:---:|:---:|---:|\n");
+        md.push_str("| # | URL | Protocol | Down (Mbps) | Up (Mbps) | TTFB (ms) | Integ. | Clean. | Purged | Score |\n");
+        md.push_str("|---:|---|---|---:|---:|---:|:---:|:---:|:---:|---:|\n");
         for e in report.results.iter() {
             if let Some(r) = e.result.as_ref() {
                 let integ = if !r.integrity_checked {
@@ -15092,8 +15110,15 @@ async fn cmd_speed_compare(
                 } else {
                     "✗"
                 };
+                let purged = if r.trash_purged {
+                    "✓"
+                } else if r.trash_purge_error.is_some() {
+                    "✗"
+                } else {
+                    "-"
+                };
                 md.push_str(&format!(
-                    "| {} | {} | {} | {:.2} | {:.2} | {} | {} | {} | {:.0} |\n",
+                    "| {} | {} | {} | {:.2} | {:.2} | {} | {} | {} | {} | {:.0} |\n",
                     e.rank,
                     md_cell_safe(&e.url),
                     md_cell_safe(&r.protocol.to_uppercase()),
@@ -15104,11 +15129,12 @@ async fn cmd_speed_compare(
                         .unwrap_or_else(|| "-".into()),
                     integ,
                     if r.cleanup_ok { "✓" } else { "✗" },
+                    purged,
                     e.score * 100.0,
                 ));
             } else {
                 md.push_str(&format!(
-                    "|: | {} |: |: |: |: |: |: | error: {} |\n",
+                    "|: | {} |: |: |: |: |: |: |: | error: {} |\n",
                     md_cell_safe(&e.url),
                     md_cell_safe(e.error.as_deref().unwrap_or("")),
                 ));
@@ -15985,13 +16011,36 @@ async fn cmd_benchmark(
 
     // Final cleanup: remove the test root recursively. Best-effort;
     // any residual is logged as an error but does not invalidate the run.
-    if let Err(e) = provider.rmdir_recursive(&test_root).await {
-        // Some providers may not implement rmdir_recursive against a path
-        // they did not auto-create. We still try to delete the parent.
-        errors.push(format!(
-            "cleanup of {} returned error (manual review may be needed): {}",
-            test_root, e
-        ));
+    let rmdir_ok = match provider.rmdir_recursive(&test_root).await {
+        Ok(()) => true,
+        Err(e) => {
+            // Some providers may not implement rmdir_recursive against a path
+            // they did not auto-create. We still try to delete the parent.
+            errors.push(format!(
+                "cleanup of {} returned error (manual review may be needed): {}",
+                test_root, e
+            ));
+            false
+        }
+    };
+    // Trash purge: rmdir_recursive on consumer cloud providers (Google Drive,
+    // Dropbox, OneDrive, Box, MEGA, Yandex, FileLu, Internxt, kDrive, Zoho,
+    // pCloud, Jottacloud, OpenDrive) is a soft delete and the test root ends
+    // up in the recycle bin. Hard-purge it so quotas do not silently fill up
+    // across repeated benchmark runs. No-op for FTP/SFTP/S3/plain WebDAV.
+    if rmdir_ok {
+        match provider.delete_permanent(&test_root).await {
+            Ok(true) => {
+                if !cli.quiet && matches!(format, OutputFormat::Text) {
+                    eprintln!("trash purge: {} hard-deleted", test_root);
+                }
+            }
+            Ok(false) => {}
+            Err(e) => errors.push(format!(
+                "trash purge of {} failed (item still in trash, will be auto-deleted by provider retention): {}",
+                test_root, e
+            )),
+        }
     }
     let _ = provider.disconnect().await;
 

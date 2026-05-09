@@ -205,6 +205,7 @@ impl OAuthConfig {
                 "files.metadata.write".to_string(),
                 "files.content.read".to_string(),
                 "files.content.write".to_string(),
+                "files.permanent_delete".to_string(),
                 "sharing.read".to_string(),
                 "sharing.write".to_string(),
             ],

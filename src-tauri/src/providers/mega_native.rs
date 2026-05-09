@@ -1556,6 +1556,12 @@ impl StorageProvider for MegaNativeProvider {
         self.move_to_trash(path).await
     }
 
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // MEGA native `delete()` moves the node to the trash subtree. The
+        // inherent helper extracts the basename and purges it from trash.
+        self.permanent_delete_from_trash(path).await.map(|_| true)
+    }
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.ensure_nodes_loaded().await?;
         let from_handle = self.resolve_path(from)?;

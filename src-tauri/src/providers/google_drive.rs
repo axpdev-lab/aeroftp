@@ -862,6 +862,45 @@ impl GoogleDriveProvider {
         Ok(())
     }
 
+    /// Look up a file in the trash by basename. Returns the id of the most
+    /// recently trashed match, or None if no trashed file with that name
+    /// exists. Used by `delete_permanent` to resolve the path the caller
+    /// just passed to `delete()` (which trashed it).
+    async fn find_trashed_by_basename(
+        &mut self,
+        basename: &str,
+    ) -> Result<Option<String>, ProviderError> {
+        // Escape single quotes per Drive query syntax (\').
+        let escaped = basename.replace('\\', "\\\\").replace('\'', "\\'");
+        let q = format!("name='{}' and trashed=true", escaped);
+        let url = format!(
+            "{}/files?q={}&orderBy=modifiedTime+desc&fields=files(id,name,mimeType,modifiedTime),nextPageToken&pageSize=10",
+            DRIVE_API_BASE,
+            urlencoding::encode(&q)
+        );
+        let response = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Trash search failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
+        }
+        let list: DriveFileList = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::Other(format!("Trash search parse error: {}", e)))?;
+        Ok(list.files.into_iter().next().map(|f| f.id))
+    }
+
     /// Permanently delete a file by file ID (bypasses trash)
     pub async fn permanent_delete(&mut self, file_id: &str) -> Result<(), ProviderError> {
         let url = format!("{}/files/{}", DRIVE_API_BASE, file_id);
@@ -1461,6 +1500,24 @@ impl StorageProvider for GoogleDriveProvider {
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         // Google Drive deletes folders with contents by default
         self.delete(path).await
+    }
+
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // After `delete()` the item lives in trash with no usable path; look
+        // it up by basename in the trash listing and call `permanent_delete`
+        // by file id. If nothing matches the path is treated as already
+        // purged (Ok(false)) rather than an error so the caller can continue.
+        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        if basename.is_empty() {
+            return Ok(false);
+        }
+        match self.find_trashed_by_basename(basename).await? {
+            Some(id) => {
+                self.permanent_delete(&id).await?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {

@@ -430,6 +430,66 @@ impl OneDriveProvider {
         Ok(())
     }
 
+    /// Look up an item in the recycle bin by basename. Pages through up to
+    /// `MAX_PAGES` of results and returns the id of the first match.
+    ///
+    /// Microsoft Graph does NOT expose a documented endpoint for the OneDrive
+    /// Personal recycle bin: `/me/drive/special/deleted/children` is the
+    /// shape used by `list_trash` but most personal tenants reject it with
+    /// `invalidRequest: The special folder identifier isn't valid`. When
+    /// that happens we fall back to `Ok(None)` (no match) so `delete_permanent`
+    /// becomes a no-op rather than a hard failure: the benchmark wiring
+    /// already accepts that and surfaces it as `trash_purged: false`. Tenants
+    /// where the endpoint does work (some Business accounts) keep the search
+    /// behaviour. Microsoft auto-purges OneDrive recycle bins after 30 days.
+    async fn find_trashed_by_basename(
+        &mut self,
+        basename: &str,
+    ) -> Result<Option<String>, ProviderError> {
+        const MAX_PAGES: usize = 5;
+        let mut url = format!(
+            "{}/me/drive/special/deleted/children?$top=200",
+            GRAPH_API_BASE
+        );
+        let mut pages = 0;
+        loop {
+            let response = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response.text().await.unwrap_or_default();
+                // 400 / 404 on the recycle bin endpoint = not exposed for
+                // this account type. Treat as "no match" so the caller does
+                // not abort the run with a misleading error.
+                if status.as_u16() == 400 || status.as_u16() == 404 {
+                    return Ok(None);
+                }
+                return Err(ProviderError::Other(format!(
+                    "Recycle bin search failed: {}",
+                    sanitize_api_error(&text)
+                )));
+            }
+            let result: ChildrenResponse = response.json().await.map_err(|e| {
+                ProviderError::Other(format!("Recycle bin parse error: {}", e))
+            })?;
+            for item in result.value {
+                if item.name == basename {
+                    return Ok(Some(item.id));
+                }
+            }
+            pages += 1;
+            match result.next_link {
+                Some(next) if pages < MAX_PAGES => url = next,
+                _ => return Ok(None),
+            }
+        }
+    }
+
     /// Permanently delete an item by ID
     ///
     /// OneDrive's DELETE on a trashed item permanently removes it.
@@ -934,6 +994,20 @@ impl StorageProvider for OneDriveProvider {
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         // OneDrive delete removes folders with contents
         self.delete(path).await
+    }
+
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        if basename.is_empty() {
+            return Ok(false);
+        }
+        match self.find_trashed_by_basename(basename).await? {
+            Some(id) => {
+                self.permanent_delete(&id).await?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {

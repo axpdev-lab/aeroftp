@@ -2029,6 +2029,50 @@ impl StorageProvider for InternxtProvider {
         self.rmdir(&resolved).await
     }
 
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        // Internxt: DELETE /storage/trash with body { items: [{ uuid, type }] }.
+        // Use the existing list_trash to recover uuid + type by basename.
+        // The uuid is encoded in the synthetic path "[Trash]/{uuid}" set by
+        // list_trash; is_dir distinguishes file vs folder for the API "type".
+        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        if basename.is_empty() {
+            return Ok(false);
+        }
+        let trashed = self.list_trash().await?;
+        let target = trashed.iter().find(|e| e.name == basename).and_then(|e| {
+            let uuid = e.path.strip_prefix("[Trash]/")?.to_string();
+            if uuid.is_empty() {
+                None
+            } else {
+                Some((uuid, e.is_dir))
+            }
+        });
+        let (uuid, is_dir) = match target {
+            Some(t) => t,
+            None => return Ok(false),
+        };
+        let kind = if is_dir { "folder" } else { "file" };
+        let payload = serde_json::json!({
+            "items": [{ "uuid": uuid, "type": kind }]
+        });
+        let resp = self
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::DELETE, "/storage/trash")
+                    .json(&payload)
+            })
+            .await?;
+        let status = resp.status();
+        if !status.is_success() && status.as_u16() != 204 {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Permanent trash delete failed ({}): {}",
+                status,
+                super::sanitize_api_error(&body)
+            )));
+        }
+        Ok(true)
+    }
+
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_resolved = self.resolve_path(from);
         let to_resolved = self.resolve_path(to);
