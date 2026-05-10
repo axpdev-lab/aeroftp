@@ -7,7 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.7.7] - 2026-05-09
+## [3.7.7] - 2026-05-10
+
+### Benchmark Trash Purge, AeroFile UX Polish, and Windows Update No-Trace
+
+A consolidation release. The original benchmark trash-purge work (still detailed below) ships alongside a sweep of file-browser UX papercuts surfaced in [#178](https://github.com/axpdev-lab/aeroftp/issues/178), the no-trace portable update and per-user file associations on Windows ([#176](https://github.com/axpdev-lab/aeroftp/issues/176)), and a handful of provider polish items.
+
+#### Added
+
+- **Dedicated MIME-style icons for AeroFTP file types** so `.aerovault`, `.aeroftp` and `.aeroftp-keystore` render with their own document icons in the file list and in the host file manager.
+- **App version in the window title and Help menu**, so users can see at a glance which build they are running.
+- **Folder drill-in spinner** ([#178](https://github.com/axpdev-lab/aeroftp/issues/178) #2): both Remote and Local panels now show a soft overlay spinner while a directory listing is in flight. Debounced via a `fadeInDelayed` keyframe (opacity 0 for the first ~250 ms of a 450 ms animation) so fast listings never reveal the spinner. Honours `prefers-reduced-motion`.
+- **Per-panel Up button** ([#178](https://github.com/axpdev-lab/aeroftp/issues/178) #3): Up has moved from the global toolbar into each panel's path bar (next to the existing refresh icon) so the affordance is unambiguously bound to the panel it operates on. Works in both AeroFile mode and dual-pane.
+
+#### Changed
+
+- **Parent folder row navigates on single click** ([#178](https://github.com/axpdev-lab/aeroftp/issues/178) bonus): the legacy `..` row required a double-click, inheriting the FileZilla / WinSCP convention. Selecting a Parent row was always a no-op (you cannot download, delete or rename a parent entry) so single-click is strictly better.
+- **Self-extracting auto-update artifacts stage outside `~/Downloads/`** ([#176](https://github.com/axpdev-lab/aeroftp/issues/176)): portable `.zip` and `.AppImage` now stage into a private cache directory (`$XDG_CACHE_HOME/aeroftp/updates/` on Linux, `~/Library/Caches/aeroftp/updates/` on macOS, `%LOCALAPPDATA%\aeroftp\updates\` on Windows). Installer formats (msi/exe/deb/rpm/dmg) keep `~/Downloads/` because they ARE the artifact, useful to re-run, copy to USB, hand to a colleague. The Windows portable cmd helper also wipes the staged ZIP, the sigstore sidecar and the temp extraction dir after the swap so the "portable" no-trace contract is honoured. The Linux AppImage install drops the staged source archive after copying it into the running install location.
+- **WebDAV setup example shows the full URL with `https://` scheme** ([#175](https://github.com/axpdev-lab/aeroftp/issues/175) follow-up): the previous example "Example: cloud.example.com/remote.php/dav/files/user/" omitted the scheme the server field actually requires, so users would copy-paste a URL the backend then rejected. The placeholder is now hardcoded as a technical example; only the surrounding "Example:" label stays translated.
+
+#### Fixed
+
+- **WebDAV reads tolerate a missing TLS `close_notify` after the full body has been received**: some WebDAV servers do not send `close_notify` after the last byte and the previous behaviour aborted the read mid-stream once Content-Length had been satisfied.
+- **Trash purge fixes for MEGA, Internxt and pCloud after live tests**: final live-test corrections on top of the benchmark trash-purge work below.
+- **Filen S3 and WebDAV wrapper triage**: connections through Filen's S3 and WebDAV bridges work again after a wrapper-layer regression.
+- **Filen email placeholder key + Tab.digital `tabdigital.cloud` shard recognition**: the email field now displays the correct hint, and the Tab.digital connection screen recognises `tabdigital.cloud` as a Tab.digital shard for proper routing.
+- **2FA detection ordered before the failure log on the saved-server connect path** ([#128](https://github.com/axpdev-lab/aeroftp/issues/128) follow-up): the saved-server flow logged `Connection to <server> failed. Check credentials.` before checking for the TOTP challenge, so the activity log misled users into thinking the password was wrong when the server was just asking for a 2FA code. The order now mirrors the QuickConnect path: 2FA detection first, log entry becomes `auth.enter2FAHint` instead of `Check credentials`.
+- **Portable AeroFTP no longer overwrites the installed app's vault keyring entry**: portable builds now use a separate `vault-passphrase-portable` slot under the same `KEYRING_SERVICE`, so a portable instance launched alongside an installed AeroFTP cannot lock the installed vault on first init.
+- **Windows file associations register under HKCU** for per-user installs: the previous HKLM writes were being silently dropped by Windows registry virtualisation on non-elevated Tauri NSIS installs, which is why the doc-style MIME icons were never honoured. Explorer's icon cache is also flushed post-install so the icons appear immediately rather than after a logout.
+- **Windows auto-update no longer flashes a `cmd.exe` console window**: dropping `DETACHED_PROCESS` while keeping `CREATE_NO_WINDOW` and pinning the child stdio to null eliminates the console-allocation race that briefly drew the window before destroying it.
+- **Stale `protocol.tabdigital*` and `webdavLocalScheme*` translation keys**: 5 keys had been carrying `[NEEDS TRANSLATION]` placeholders in 45 locales since their introduction. `npm run i18n:validate` is now warning-free.
 
 ### Benchmark Cleanup: Trash Purge for Consumer Cloud Providers
 
