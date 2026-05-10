@@ -9714,12 +9714,17 @@ interface UpdateVerificationInfo {
                     setConnectionParams({ server: '', username: '', password: '' });
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
                   } catch (error) {
-                    humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
-                    // Issue #128: surface dedicated 2FA prompt for MEGA / Filen / Internxt
+                    // Issue #128: surface dedicated 2FA prompt for MEGA / Filen / Internxt.
+                    // Check for the 2FA challenge BEFORE emitting the failure log so the
+                    // activity panel shows the "enter 2FA hint" line instead of the misleading
+                    // "Check credentials" toast (the password is fine, the server just wants
+                    // a TOTP). Mirrors the order used in connectToFtp.
                     if (tryShowTwoFactorPrompt(error, normalizedParams, maskedProviderName)) {
+                      humanLog.updateEntry(logId, { status: 'error', message: t('auth.enter2FAHint') });
                       setLoading(false);
                       return;
                     }
+                    humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
                     notify.error(t('connection.connectionFailed'), String(error));
                   } finally {
                     setLoading(false);
