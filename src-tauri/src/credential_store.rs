@@ -47,7 +47,20 @@ const MODE_MASTER: u8 = 0x01;
 const MODE_AUTO_KEYRING: u8 = 0x02;
 const PASSPHRASE_LEN: usize = 64;
 const KEYRING_SERVICE: &str = "com.aeroftp.AeroFTP";
-const KEYRING_ACCOUNT: &str = "vault-passphrase";
+
+/// Keyring account name. Portable builds use a separate slot so a portable
+/// AeroFTP instance launched on a machine that already has an installed
+/// AeroFTP can never overwrite the installed app's vault passphrase. Both
+/// builds otherwise share the same `KEYRING_SERVICE`, so a single user
+/// inspecting Credential Manager / Keychain / libsecret sees the AeroFTP
+/// entries grouped together.
+fn keyring_account() -> &'static str {
+    if crate::portable::is_portable() {
+        "vault-passphrase-portable"
+    } else {
+        "vault-passphrase"
+    }
+}
 
 // ============ Error Types ============
 
@@ -300,7 +313,7 @@ impl VaultKeyFile {
 }
 
 fn keyring_entry() -> Result<keyring::Entry, CredentialError> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+    keyring::Entry::new(KEYRING_SERVICE, keyring_account())
         .map_err(|e| CredentialError::Encryption(format!("Failed to access system keyring: {}", e)))
 }
 
