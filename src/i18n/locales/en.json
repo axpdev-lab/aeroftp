@@ -2315,7 +2315,6 @@
       "directContact": "In direct contact with {provider} for priority support and updates.",
       "webdavConnectVia": "Connect to {name} via WebDAV",
       "webdavDesc": "Nextcloud, CloudMe, Koofr",
-      "webdavExample": "cloud.example.com/remote.php/dav/files/user/",
       "webdavExampleLabel": "Example:",
       "webdavLocalScheme": "Protocol",
       "webdavLocalSchemeHelp": "Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically.",
