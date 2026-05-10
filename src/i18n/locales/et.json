@@ -954,7 +954,11 @@
       "customIconsUpload": "Laadi üles",
       "customIconsRenameHint": "Topeltklõps ümbernimetamiseks",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay ajalõpp",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay seansid lukustuvad automaatselt pärast seda mitteaktiivsuse perioodi. Madalamad väärtused on turvalisemad, kuid nõuavad sagedamini avamist."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay seansid lukustuvad automaatselt pärast seda mitteaktiivsuse perioodi. Madalamad väärtused on turvalisemad, kuid nõuavad sagedamini avamist.",
+      "themeTruedarkLabel": "Tõeliselt tume",
+      "themeTruedarkDesc": "Tõeliselt neutraalne tume GitHubi stiilis, ilma sinise varjundita",
+      "themeGreenLabel": "Roheline",
+      "themeGreenDesc": "Loodusest inspireeritud metsapalett rohelise armastajatele"
     },
     "devtools": {
       "title": "AeroTools",

@@ -954,7 +954,11 @@
       "customIconsUpload": "Yükle",
       "customIconsRenameHint": "Yeniden adlandırmak için çift tıklayın",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay Zaman Aşımı",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay oturumları, bu hareketsizlik süresinin ardından otomatik olarak kilitlenir. Daha düşük değerler daha güvenlidir ancak daha sık kilit açma gerektirir."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay oturumları, bu hareketsizlik süresinin ardından otomatik olarak kilitlenir. Daha düşük değerler daha güvenlidir ancak daha sık kilit açma gerektirir.",
+      "themeTruedarkLabel": "Gerçek Karanlık",
+      "themeTruedarkDesc": "GitHub tarzında gerçek nötr karanlık, mavi ton içermez",
+      "themeGreenLabel": "Yeşil",
+      "themeGreenDesc": "Doğadan ilham alan orman paleti, yeşil sevenler için"
     },
     "devtools": {
       "title": "AeroTools",

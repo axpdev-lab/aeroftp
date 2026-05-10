@@ -954,7 +954,11 @@
       "customIconsUpload": "Augšupielādēt",
       "customIconsRenameHint": "Veiciet dubultklikšķi, lai pārdēvētu",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay noildze",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay sesijas automātiski tiek bloķētas pēc šī neaktivitātes perioda. Zemākas vērtības ir drošākas, bet prasa biežāku atbloķēšanu."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay sesijas automātiski tiek bloķētas pēc šī neaktivitātes perioda. Zemākas vērtības ir drošākas, bet prasa biežāku atbloķēšanu.",
+      "themeTruedarkLabel": "Patiesi Tumšs",
+      "themeTruedarkDesc": "Patiesi neitrāls tumšs GitHub stilā, bez zila toņa",
+      "themeGreenLabel": "Zaļš",
+      "themeGreenDesc": "Dabas iedvesmota meža palete zaļā cienītājiem"
     },
     "devtools": {
       "title": "AeroTools",

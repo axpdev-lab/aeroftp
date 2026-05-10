@@ -954,7 +954,11 @@
       "customIconsUpload": "Carrega",
       "customIconsRenameHint": "Fes doble clic per canviar el nom",
       "aerovaultOverlayTimeoutTitle": "Temps d'espera d'AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Les sessions d'AeroVault Overlay es bloquegen automàticament després d'aquest període d'inactivitat. Els valors més baixos són més segurs però requereixen desbloquejos més freqüents."
+      "aerovaultOverlayTimeoutDesc": "Les sessions d'AeroVault Overlay es bloquegen automàticament després d'aquest període d'inactivitat. Els valors més baixos són més segurs però requereixen desbloquejos més freqüents.",
+      "themeTruedarkLabel": "Veritablement Fosc",
+      "themeTruedarkDesc": "Fosc neutre real a l'estil GitHub, sense to blau",
+      "themeGreenLabel": "Verd",
+      "themeGreenDesc": "Paleta forestal inspirada en la natura per als amants del verd"
     },
     "devtools": {
       "title": "AeroTools",

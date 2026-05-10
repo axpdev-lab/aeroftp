@@ -954,7 +954,11 @@
       "customIconsUpload": "Ladda upp",
       "customIconsRenameHint": "Dubbelklicka för att byta namn",
       "aerovaultOverlayTimeoutTitle": "Tidsgräns för AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-sessioner låses automatiskt efter denna period av inaktivitet. Lägre värden är säkrare men kräver mer frekventa upplåsningar."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-sessioner låses automatiskt efter denna period av inaktivitet. Lägre värden är säkrare men kräver mer frekventa upplåsningar.",
+      "themeTruedarkLabel": "Äkta Mörkt",
+      "themeTruedarkDesc": "Äkta neutralt mörkt i GitHub-stil, utan blå ton",
+      "themeGreenLabel": "Grön",
+      "themeGreenDesc": "Naturinspirerad skogspalett för älskare av grönt"
     },
     "devtools": {
       "title": "AeroTools",

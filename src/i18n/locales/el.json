@@ -954,7 +954,11 @@
       "customIconsUpload": "Μεταφόρτωση",
       "customIconsRenameHint": "Διπλό κλικ για μετονομασία",
       "aerovaultOverlayTimeoutTitle": "Λήξη χρόνου AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Οι συνεδρίες AeroVault Overlay κλειδώνουν αυτόματα μετά από αυτήν την περίοδο αδράνειας. Οι χαμηλότερες τιμές είναι πιο ασφαλείς αλλά απαιτούν συχνότερα ξεκλειδώματα."
+      "aerovaultOverlayTimeoutDesc": "Οι συνεδρίες AeroVault Overlay κλειδώνουν αυτόματα μετά από αυτήν την περίοδο αδράνειας. Οι χαμηλότερες τιμές είναι πιο ασφαλείς αλλά απαιτούν συχνότερα ξεκλειδώματα.",
+      "themeTruedarkLabel": "Πραγματικά Σκούρο",
+      "themeTruedarkDesc": "Πραγματικά ουδέτερο σκούρο σε στυλ GitHub, χωρίς μπλε απόχρωση",
+      "themeGreenLabel": "Πράσινο",
+      "themeGreenDesc": "Δασική παλέτα εμπνευσμένη από τη φύση για τους λάτρεις του πράσινου"
     },
     "devtools": {
       "title": "AeroTools",

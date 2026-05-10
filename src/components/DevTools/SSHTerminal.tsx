@@ -263,16 +263,72 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightWhite: '#f0fff0',
         },
     },
+    'true-dark': {
+        name: 'True Dark',
+        colors: {
+            background: '#0d1117',
+            foreground: '#e6edf3',
+            cursor: '#e6edf3',
+            cursorAccent: '#0d1117',
+            selectionBackground: '#30363d',
+            selectionForeground: '#f0f6fc',
+            black: '#21262d',
+            red: '#f85149',
+            green: '#3fb950',
+            yellow: '#d29922',
+            blue: '#58a6ff',
+            magenta: '#bc8cff',
+            cyan: '#39c5cf',
+            white: '#b1bac4',
+            brightBlack: '#6e7681',
+            brightRed: '#ff7b72',
+            brightGreen: '#56d364',
+            brightYellow: '#e3b341',
+            brightBlue: '#79c0ff',
+            brightMagenta: '#d2a8ff',
+            brightCyan: '#56d4dd',
+            brightWhite: '#f0f6fc',
+        },
+    },
+    'green': {
+        name: 'Green',
+        colors: {
+            background: '#0f1f17',
+            foreground: '#e8f5ec',
+            cursor: '#22c55e',
+            cursorAccent: '#0f1f17',
+            selectionBackground: '#18302a',
+            selectionForeground: '#e8f5ec',
+            black: '#18302a',
+            red: '#c2410c',
+            green: '#22c55e',
+            yellow: '#f59e0b',
+            blue: '#34d399',
+            magenta: '#84cc16',
+            cyan: '#10b981',
+            white: '#e8f5ec',
+            brightBlack: '#3a5b4d',
+            brightRed: '#f97316',
+            brightGreen: '#4ade80',
+            brightYellow: '#fbbf24',
+            brightBlue: '#6ee7b7',
+            brightMagenta: '#a3e635',
+            brightCyan: '#34d399',
+            brightWhite: '#f0fdf4',
+        },
+    },
 };
 
-const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light', 'cyber'];
+const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light', 'cyber', 'true-dark', 'green'];
 
 // Map app themes to matching terminal themes
 const APP_THEME_TO_TERMINAL: Record<string, string> = {
     'light': 'solarized-light',
     'dark': 'github-dark',
+    'truedark': 'true-dark',
     'tokyo': 'tokyo-night',
     'cyber': 'cyber',
+    'green': 'green',
 };
 
 // ============ Tab State ============

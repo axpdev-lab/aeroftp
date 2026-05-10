@@ -954,7 +954,11 @@
       "customIconsUpload": "Kargatu",
       "customIconsRenameHint": "Klik bikoitza berrizendatzeko",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay-en denbora-muga",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay saioak automatikoki blokeatzen dira jardunik gabeko aldi honen ondoren. Balio txikiagoak seguruagoak dira, baina maizago desblokeatu behar dira."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay saioak automatikoki blokeatzen dira jardunik gabeko aldi honen ondoren. Balio txikiagoak seguruagoak dira, baina maizago desblokeatu behar dira.",
+      "themeTruedarkLabel": "Benetako Iluna",
+      "themeTruedarkDesc": "Benetako iluna neutroa GitHub estiloan, urdin tonurik gabe",
+      "themeGreenLabel": "Berdea",
+      "themeGreenDesc": "Naturan inspiratutako baso-paleta berdearen maitaleentzat"
     },
     "devtools": {
       "title": "AeroTools",

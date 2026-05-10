@@ -954,7 +954,11 @@
       "customIconsUpload": "Nahrať",
       "customIconsRenameHint": "Dvojklikom premenujete",
       "aerovaultOverlayTimeoutTitle": "Časový limit AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Relácie AeroVault Overlay sa automaticky uzamknú po tomto období nečinnosti. Nižšie hodnoty sú bezpečnejšie, ale vyžadujú častejšie odomykanie."
+      "aerovaultOverlayTimeoutDesc": "Relácie AeroVault Overlay sa automaticky uzamknú po tomto období nečinnosti. Nižšie hodnoty sú bezpečnejšie, ale vyžadujú častejšie odomykanie.",
+      "themeTruedarkLabel": "Skutočne tmavá",
+      "themeTruedarkDesc": "Skutočne neutrálna tmavá v štýle GitHubu, bez modrého nádychu",
+      "themeGreenLabel": "Zelená",
+      "themeGreenDesc": "Lesná paleta inšpirovaná prírodou pre milovníkov zelenej"
     },
     "devtools": {
       "title": "AeroTools",

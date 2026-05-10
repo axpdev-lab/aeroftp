@@ -954,7 +954,11 @@
       "customIconsUpload": "Hlaða upp",
       "customIconsRenameHint": "Tvísmelltu til að endurnefna",
       "aerovaultOverlayTimeoutTitle": "Tímamörk AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay lotur læsast sjálfkrafa eftir þetta tímabil án virkni. Lægri gildi eru öruggari en krefjast tíðari aflæsingar."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay lotur læsast sjálfkrafa eftir þetta tímabil án virkni. Lægri gildi eru öruggari en krefjast tíðari aflæsingar.",
+      "themeTruedarkLabel": "Sannarlega Dökkt",
+      "themeTruedarkDesc": "Sannarlega hlutlaust dökkt í GitHub stíl, án blás blæs",
+      "themeGreenLabel": "Grænt",
+      "themeGreenDesc": "Skógarlitir innblásnir af náttúrunni fyrir unnendur græna litarins"
     },
     "devtools": {
       "title": "AeroTools",

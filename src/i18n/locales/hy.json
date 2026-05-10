@@ -954,7 +954,11 @@
       "customIconsUpload": "Վերբեռնել",
       "customIconsRenameHint": "Կրկնակի սեղմեք վերանվանելու համար",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay-ի սպասման ժամանակը",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-ի աշխատաշրջանները ինքնաշխատ կողպվում են անգործության այս ժամանակահատվածից հետո։ Ցածր արժեքներն ավելի անվտանգ են, բայց պահանջում են ավելի հաճախակի ապակողպում։"
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-ի աշխատաշրջանները ինքնաշխատ կողպվում են անգործության այս ժամանակահատվածից հետո։ Ցածր արժեքներն ավելի անվտանգ են, բայց պահանջում են ավելի հաճախակի ապակողպում։",
+      "themeTruedarkLabel": "Իսկապես մուգ",
+      "themeTruedarkDesc": "Իսկապես չեզոք մուգ GitHub ոճով, առանց կապույտ երանգի",
+      "themeGreenLabel": "Կանաչ",
+      "themeGreenDesc": "Բնությունից ներշնչված անտառային գունապնակ կանաչի սիրահարների համար"
     },
     "devtools": {
       "title": "AeroTools",

@@ -273,10 +273,12 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const closeMenu = React.useCallback(() => setOpenMenu(null), []);
     const anyMenuOpen = openMenu !== null;
 
-    // Logo icon per theme
+    // Logo icon per theme.
+    // truedark + green inherit dark/cyber assets until dedicated PNGs ship.
     const iconSrc = appTheme === 'light' ? '/icons/AeroFTP_simbol_color_light_120x120.png'
         : appTheme === 'tokyo' ? '/icons/AeroFTP_simbol_color_tokio_120x120.png'
         : appTheme === 'cyber' ? '/icons/AeroFTP_simbol_color_cyber_120x120.png'
+        : appTheme === 'green' ? '/icons/AeroFTP_simbol_color_cyber_120x120.png'
         : '/icons/AeroFTP_simbol_color_dark_120x120.png';
 
     const activityCls = hasActivity ? 'animate-pulse' : '';

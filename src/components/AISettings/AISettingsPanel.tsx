@@ -1311,7 +1311,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                 <h4 className="text-sm font-medium text-white mb-1">{t('ai.agentMode.title')}</h4>
                                 <p className="text-xs text-gray-500 mb-3">{t('ai.agentMode.description')}</p>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {(document.documentElement.classList.contains('cyber') ? (['safe', 'normal', 'expert', 'extreme'] as const) : (['safe', 'normal', 'expert'] as const)).map((mode) => {
+                                    {((document.documentElement.classList.contains('cyber') || document.documentElement.classList.contains('truedark')) ? (['safe', 'normal', 'expert', 'extreme'] as const) : (['safe', 'normal', 'expert'] as const)).map((mode) => {
                                         const isSelected = selectedAgentMode === mode;
                                         const icons: Record<string, React.ReactNode> = {
                                             safe: <ShieldCheck size={18} />,

@@ -954,7 +954,11 @@
       "customIconsUpload": "Hochladen",
       "customIconsRenameHint": "Doppelklick zum Umbenennen",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay-Timeout",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-Sitzungen werden nach dieser Inaktivitätsdauer automatisch gesperrt. Niedrigere Werte sind sicherer, erfordern jedoch häufigeres Entsperren."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-Sitzungen werden nach dieser Inaktivitätsdauer automatisch gesperrt. Niedrigere Werte sind sicherer, erfordern jedoch häufigeres Entsperren.",
+      "themeTruedarkLabel": "Echtes Dunkel",
+      "themeTruedarkDesc": "Echtes neutrales Dunkel im GitHub-Stil, ohne Blaustich",
+      "themeGreenLabel": "Grün",
+      "themeGreenDesc": "Naturinspirierte Waldpalette für Liebhaber von Grün"
     },
     "devtools": {
       "title": "AeroTools",

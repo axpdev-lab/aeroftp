@@ -954,7 +954,11 @@
       "customIconsUpload": "Muat naik",
       "customIconsRenameHint": "Klik dua kali untuk menamakan semula",
       "aerovaultOverlayTimeoutTitle": "Tamat Masa AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Sesi AeroVault Overlay dikunci secara automatik selepas tempoh tidak aktif ini. Nilai yang lebih rendah lebih selamat tetapi memerlukan pembukaan kunci yang lebih kerap."
+      "aerovaultOverlayTimeoutDesc": "Sesi AeroVault Overlay dikunci secara automatik selepas tempoh tidak aktif ini. Nilai yang lebih rendah lebih selamat tetapi memerlukan pembukaan kunci yang lebih kerap.",
+      "themeTruedarkLabel": "Gelap Sebenar",
+      "themeTruedarkDesc": "Gelap neutral sebenar gaya GitHub, tanpa warna biru",
+      "themeGreenLabel": "Hijau",
+      "themeGreenDesc": "Palet hutan diinspirasikan alam untuk pencinta hijau"
     },
     "devtools": {
       "title": "AeroTools",

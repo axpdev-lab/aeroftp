@@ -954,7 +954,11 @@
       "customIconsUpload": "Uploaden",
       "customIconsRenameHint": "Dubbelklik om te hernoemen",
       "aerovaultOverlayTimeoutTitle": "Time-out AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-sessies worden na deze inactieve periode automatisch vergrendeld. Lagere waarden zijn veiliger, maar vereisen vaker ontgrendelen."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-sessies worden na deze inactieve periode automatisch vergrendeld. Lagere waarden zijn veiliger, maar vereisen vaker ontgrendelen.",
+      "themeTruedarkLabel": "Echt Donker",
+      "themeTruedarkDesc": "Echt neutraal donker in GitHub-stijl, zonder blauwe tint",
+      "themeGreenLabel": "Groen",
+      "themeGreenDesc": "Natuurgeïnspireerd bospalet voor liefhebbers van groen"
     },
     "devtools": {
       "title": "AeroTools",

@@ -954,7 +954,11 @@
       "customIconsUpload": "Uwchlwytho",
       "customIconsRenameHint": "Clic dwbl i ailenwi",
       "aerovaultOverlayTimeoutTitle": "Goramser AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Mae sesiynau AeroVault Overlay yn cloi'n awtomatig ar ôl y cyfnod hwn o anweithgarwch. Mae gwerthoedd is yn fwy diogel ond mae angen datgloi'n amlach."
+      "aerovaultOverlayTimeoutDesc": "Mae sesiynau AeroVault Overlay yn cloi'n awtomatig ar ôl y cyfnod hwn o anweithgarwch. Mae gwerthoedd is yn fwy diogel ond mae angen datgloi'n amlach.",
+      "themeTruedarkLabel": "Gwir Dywyll",
+      "themeTruedarkDesc": "Tywyll niwtral go iawn yn arddull GitHub, dim arlliw glas",
+      "themeGreenLabel": "Gwyrdd",
+      "themeGreenDesc": "Palet coedwig wedi'i ysbrydoli gan natur i garwyr y gwyrdd"
     },
     "devtools": {
       "title": "AeroTools",

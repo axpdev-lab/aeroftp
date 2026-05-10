@@ -954,7 +954,11 @@
       "customIconsUpload": "Качване",
       "customIconsRenameHint": "Двойно щракване за преименуване",
       "aerovaultOverlayTimeoutTitle": "Изтичане на AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Сесиите на AeroVault Overlay се заключват автоматично след този период на неактивност. По-ниските стойности са по-сигурни, но изискват по-чести отключвания."
+      "aerovaultOverlayTimeoutDesc": "Сесиите на AeroVault Overlay се заключват автоматично след този период на неактивност. По-ниските стойности са по-сигурни, но изискват по-чести отключвания.",
+      "themeTruedarkLabel": "Истински тъмен",
+      "themeTruedarkDesc": "Истински неутрален тъмен в стил GitHub, без син оттенък",
+      "themeGreenLabel": "Зелен",
+      "themeGreenDesc": "Горска палитра, вдъхновена от природата, за любителите на зеленото"
     },
     "devtools": {
       "title": "AeroTools",

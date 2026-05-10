@@ -954,7 +954,11 @@
       "customIconsUpload": "Загрузить",
       "customIconsRenameHint": "Дважды щёлкните для переименования",
       "aerovaultOverlayTimeoutTitle": "Тайм-аут AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Сеансы AeroVault Overlay автоматически блокируются после этого периода неактивности. Меньшие значения безопаснее, но требуют более частой разблокировки."
+      "aerovaultOverlayTimeoutDesc": "Сеансы AeroVault Overlay автоматически блокируются после этого периода неактивности. Меньшие значения безопаснее, но требуют более частой разблокировки.",
+      "themeTruedarkLabel": "Истинно тёмная",
+      "themeTruedarkDesc": "Истинно нейтральная тёмная в стиле GitHub, без синего оттенка",
+      "themeGreenLabel": "Зелёная",
+      "themeGreenDesc": "Лесная палитра, вдохновлённая природой, для любителей зелёного"
     },
     "devtools": {
       "title": "AeroTools",

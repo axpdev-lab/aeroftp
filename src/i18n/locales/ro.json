@@ -954,7 +954,11 @@
       "customIconsUpload": "Încarcă",
       "customIconsRenameHint": "Faceți dublu clic pentru a redenumi",
       "aerovaultOverlayTimeoutTitle": "Timp de expirare AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Sesiunile AeroVault Overlay se blochează automat după această perioadă de inactivitate. Valorile mai mici sunt mai sigure, dar necesită deblocări mai frecvente."
+      "aerovaultOverlayTimeoutDesc": "Sesiunile AeroVault Overlay se blochează automat după această perioadă de inactivitate. Valorile mai mici sunt mai sigure, dar necesită deblocări mai frecvente.",
+      "themeTruedarkLabel": "Cu Adevărat Întunecat",
+      "themeTruedarkDesc": "Întunecat neutru autentic în stil GitHub, fără tentă albastră",
+      "themeGreenLabel": "Verde",
+      "themeGreenDesc": "Paletă forestieră inspirată din natură pentru iubitorii de verde"
     },
     "devtools": {
       "title": "AeroTools",

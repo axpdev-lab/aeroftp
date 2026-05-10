@@ -954,7 +954,11 @@
       "customIconsUpload": "アップロード",
       "customIconsRenameHint": "ダブルクリックで名前を変更",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay のタイムアウト",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay のセッションは、この非アクティブ期間が経過すると自動的にロックされます。値を小さくすると安全性は高まりますが、より頻繁にロック解除する必要があります。"
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay のセッションは、この非アクティブ期間が経過すると自動的にロックされます。値を小さくすると安全性は高まりますが、より頻繁にロック解除する必要があります。",
+      "themeTruedarkLabel": "トゥルーダーク",
+      "themeTruedarkDesc": "GitHubスタイルの真にニュートラルなダーク、青みなし",
+      "themeGreenLabel": "グリーン",
+      "themeGreenDesc": "緑が好きな人のための自然にインスパイアされた森のパレット"
     },
     "devtools": {
       "title": "AeroTools",

@@ -94,7 +94,77 @@ const cyberTheme = {
     },
 };
 
-type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber';
+// True Dark theme: GitHub-style neutral dark, no blue tint in chrome
+const truedarkTheme = {
+    base: 'vs-dark' as const,
+    inherit: true,
+    rules: [
+        { token: 'comment', foreground: '8b949e', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'ff7b72' },
+        { token: 'string', foreground: 'a5d6ff' },
+        { token: 'number', foreground: '79c0ff' },
+        { token: 'type', foreground: 'ffa657' },
+        { token: 'function', foreground: 'd2a8ff' },
+        { token: 'variable', foreground: 'e6edf3' },
+        { token: 'constant', foreground: '79c0ff' },
+        { token: 'tag', foreground: '7ee787' },
+        { token: 'attribute.name', foreground: '79c0ff' },
+        { token: 'attribute.value', foreground: 'a5d6ff' },
+        { token: 'delimiter', foreground: 'e6edf3' },
+        { token: 'operator', foreground: 'ff7b72' },
+    ],
+    colors: {
+        'editor.background': '#0d1117',
+        'editor.foreground': '#e6edf3',
+        'editorLineNumber.foreground': '#6e7681',
+        'editorLineNumber.activeForeground': '#e6edf3',
+        'editor.selectionBackground': '#264f78',
+        'editor.lineHighlightBackground': '#161b22',
+        'editorCursor.foreground': '#e6edf3',
+        'editorWhitespace.foreground': '#21262d',
+        'editorIndentGuide.background': '#21262d',
+        'editor.selectionHighlightBackground': '#1f6feb44',
+        'editorBracketMatch.background': '#1f6feb33',
+        'editorBracketMatch.border': '#58a6ff',
+    },
+};
+
+// Green theme: nature-inspired editor for green lovers
+const greenTheme = {
+    base: 'vs-dark' as const,
+    inherit: true,
+    rules: [
+        { token: 'comment', foreground: '6b8a78', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '22c55e' },
+        { token: 'string', foreground: 'a3e635' },
+        { token: 'number', foreground: 'f59e0b' },
+        { token: 'type', foreground: '34d399' },
+        { token: 'function', foreground: '4ade80' },
+        { token: 'variable', foreground: 'e8f5ec' },
+        { token: 'constant', foreground: 'fbbf24' },
+        { token: 'tag', foreground: '16a34a' },
+        { token: 'attribute.name', foreground: '34d399' },
+        { token: 'attribute.value', foreground: 'a3e635' },
+        { token: 'delimiter', foreground: '6ee7b7' },
+        { token: 'operator', foreground: '6ee7b7' },
+    ],
+    colors: {
+        'editor.background': '#0f1f17',
+        'editor.foreground': '#e8f5ec',
+        'editorLineNumber.foreground': '#3a5b4d',
+        'editorLineNumber.activeForeground': '#22c55e',
+        'editor.selectionBackground': '#18302a',
+        'editor.lineHighlightBackground': '#142a20',
+        'editorCursor.foreground': '#22c55e',
+        'editorWhitespace.foreground': '#1e362c',
+        'editorIndentGuide.background': '#1e362c',
+        'editor.selectionHighlightBackground': '#16a34a55',
+        'editorBracketMatch.background': '#22c55e33',
+        'editorBracketMatch.border': '#22c55e',
+    },
+};
+
+type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green';
 
 interface CodeEditorProps {
     file: PreviewFile | null;
@@ -145,6 +215,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         // Define custom themes
         monaco.editor.defineTheme('tokyo-night', tokyoNightTheme);
         monaco.editor.defineTheme('cyber', cyberTheme);
+        monaco.editor.defineTheme('truedark', truedarkTheme);
+        monaco.editor.defineTheme('green', greenTheme);
         monaco.editor.setTheme(theme);
 
         if (file) {

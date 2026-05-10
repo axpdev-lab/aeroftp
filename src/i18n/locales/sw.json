@@ -954,7 +954,11 @@
       "customIconsUpload": "Pakia",
       "customIconsRenameHint": "Bofya mara mbili kubadilisha jina",
       "aerovaultOverlayTimeoutTitle": "Muda wa Kuisha wa AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Vipindi vya AeroVault Overlay hujifunga kiotomatiki baada ya kipindi hiki cha kutotumika. Thamani za chini ni salama zaidi lakini zinahitaji kufungua mara nyingi zaidi."
+      "aerovaultOverlayTimeoutDesc": "Vipindi vya AeroVault Overlay hujifunga kiotomatiki baada ya kipindi hiki cha kutotumika. Thamani za chini ni salama zaidi lakini zinahitaji kufungua mara nyingi zaidi.",
+      "themeTruedarkLabel": "Giza la Kweli",
+      "themeTruedarkDesc": "Giza la kweli la kati katika mtindo wa GitHub, bila tinti ya bluu",
+      "themeGreenLabel": "Kijani",
+      "themeGreenDesc": "Paleti ya msitu iliyochochewa na asili kwa wapenzi wa rangi ya kijani"
     },
     "devtools": {
       "title": "AeroTools",

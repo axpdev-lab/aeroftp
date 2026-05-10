@@ -31,7 +31,7 @@ import { useTranslation } from '../i18n';
 // Theme Types
 // ============================================================================
 
-type LogTheme = 'light' | 'dark' | 'tokyo' | 'cyber';
+type LogTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green';
 
 // ============================================================================
 // Icon Mapping - Lucide icons for operations
@@ -67,7 +67,7 @@ const OperationIcon: React.FC<{ iconName: string; className?: string }> = ({ ico
 // Theme Configurations
 // ============================================================================
 
-const THEMES = {
+const BASE_THEMES = {
     light: {
         // Light theme - clean and professional
         panel: 'bg-gray-50 border-t border-gray-200',
@@ -316,6 +316,14 @@ const THEMES = {
         liveText: 'text-emerald-400',
         cursor: 'bg-emerald-400',
     },
+};
+
+// truedark + green inherit visual semantics from dark/cyber respectively.
+// They get their distinct chrome from CSS overrides on the html element.
+const THEMES: Record<LogTheme, typeof BASE_THEMES.dark> = {
+    ...BASE_THEMES,
+    truedark: BASE_THEMES.dark,
+    green: BASE_THEMES.cyber,
 };
 
 // ============================================================================
