@@ -401,19 +401,32 @@ endlocal
     Ok(script_path)
 }
 
-/// Spawn the helper script detached: no console window, no parent wait.
-/// `CREATE_NO_WINDOW` (0x08000000) suppresses the console; `DETACHED_PROCESS`
-/// (0x00000008) detaches from the parent's console group.
+/// Spawn the helper script with the console suppressed.
+///
+/// Prior versions combined `CREATE_NO_WINDOW | DETACHED_PROCESS`, which on a
+/// console-subsystem child (cmd.exe) produced a race in console allocation:
+/// the window flashed for a frame before being destroyed, so the user saw a
+/// black box appear and disappear during the auto-update. Microsoft's process-
+/// creation-flags doc treats the two flags as effectively conflicting for
+/// console children.
+///
+/// Candidate A: keep `CREATE_NO_WINDOW`, drop `DETACHED_PROCESS`, and pin
+/// stdio to null so the helper does not inherit the parent's console handles.
+/// The parent (AeroFTP) exits within milliseconds anyway, so true detachment
+/// is not required: the child outlives the parent once the parent's console
+/// handle is closed.
 fn spawn_detached(script: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
-    const DETACHED_PROCESS: u32 = 0x00000008;
 
     std::process::Command::new("cmd.exe")
         .args(["/C", "call"])
         .arg(script)
-        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Failed to spawn helper: {e}"))
