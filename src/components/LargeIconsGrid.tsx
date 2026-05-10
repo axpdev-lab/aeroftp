@@ -257,7 +257,7 @@ export function LargeIconsGrid({
       className={`flex flex-col items-center p-3 rounded-lg cursor-pointer transition-colors select-none ${
         isAtRoot ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700/30'
       }`}
-      onDoubleClick={handleNavigateUp}
+      onClick={handleNavigateUp}
       title="Go up"
     >
       <div className="flex items-center justify-center w-16 h-16">

@@ -470,6 +470,10 @@ const App: React.FC = () => {
   const [connectionParams, setConnectionParams] = useState<ConnectionParams>({ server: '', username: '', password: '' });
   const [quickConnectDirs, setQuickConnectDirs] = useState({ remoteDir: '', localDir: '' });
   const [loading, setLoading] = useState(false);
+  // Per-panel directory-listing loading flags. Drive the overlay spinner that
+  // appears while a folder drill-in is fetching its contents (issue #178 #2).
+  const [remoteListLoading, setRemoteListLoading] = useState(false);
+  const [localListLoading, setLocalListLoading] = useState(false);
   // Transfer progress: ref holds data (no re-renders), boolean state only changes on start/complete
   const activeTransferRef = useRef<TransferProgress | null>(null);
   const [hasActiveTransfer, setHasActiveTransfer] = useState(false);
@@ -4374,6 +4378,7 @@ interface UpdateVerificationInfo {
     }
     // Increment navigation counter: used to discard stale async responses
     const navId = ++remoteNavCounter.current;
+    setRemoteListLoading(true);
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
@@ -4462,6 +4467,10 @@ interface UpdateVerificationInfo {
         }
       }
       notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(error) }));
+    } finally {
+      // Only clear if this is still the latest navigation; otherwise a faster
+      // follow-up navigation would have its spinner cleared early.
+      if (navId === remoteNavCounter.current) setRemoteListLoading(false);
     }
   };
 
@@ -4474,7 +4483,13 @@ interface UpdateVerificationInfo {
       // Block if target is a proper ancestor of the base path
       if (normTarget !== normBase && (normTarget === '/' || normBase.startsWith(normTarget + '/'))) return;
     }
-    const success = await loadLocalFiles(path);
+    setLocalListLoading(true);
+    let success = false;
+    try {
+      success = await loadLocalFiles(path);
+    } finally {
+      setLocalListLoading(false);
+    }
     if (!success) return; // Don't record failed navigations
     humanLog.logNavigate(path, false);
     addRecentPath(path);
@@ -9840,22 +9855,10 @@ interface UpdateVerificationInfo {
               {/* Toolbar */}
               <div role="toolbar" aria-label="File operations" className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <div className="flex gap-2">
-                  {(() => {
-                    const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
-                    const atSyncRemoteRoot = isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote);
-                    const atSyncLocalRoot = isSyncNavigation && syncBasePaths && normP(currentLocalPath) === normP(syncBasePaths.local);
-                    const isDisabled = activePanel === 'remote'
-                      ? (currentRemotePath === '/' || !!atSyncRemoteRoot)
-                      : (currentLocalPath === '/' || !!atSyncLocalRoot);
-                    return <button
-                      onClick={() => !isDisabled && (activePanel === 'remote' ? changeRemoteDirectory('..') : changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/'))}
-                      className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${isDisabled ? 'bg-gray-200 dark:bg-gray-600 opacity-50 cursor-not-allowed' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
-                      disabled={isDisabled}
-                      aria-label={t('common.up')}
-                    >
-                      <FolderUp size={16} /> {t('common.up')}
-                    </button>;
-                  })()}
+                  {/* Up button is rendered per-panel inside each path bar (see remote
+                      path bar above and LocalFilePanel) so the affordance is bound to
+                      the panel it operates on (issue #178 #3). The legacy global Up
+                      button has been removed to avoid redundancy. */}
                   <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.refresh')}>
                     <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" /> {t('common.refresh')}
                   </button>
@@ -10074,11 +10077,21 @@ interface UpdateVerificationInfo {
                 {isConnected && showRemotePanel && <div
                   role="region"
                   aria-label="Remote files"
-                  className={`w-1/2 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                  className={`relative w-1/2 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                   onDragOver={(e) => handlePanelDragOver(e, true)}
                   onDrop={(e) => handlePanelDrop(e, true)}
                   onDragLeave={handlePanelDragLeave}
                 >
+                  {/* Drill-in spinner overlay (issue #178 #2). Debounced to
+                      avoid flicker on fast listings. Soft background, no blur. */}
+                  {remoteListLoading && (
+                    <div
+                      className="absolute inset-0 z-20 flex items-center justify-center bg-white/10 dark:bg-gray-900/10 pointer-events-none animate-fade-in-delayed"
+                      aria-hidden="true"
+                    >
+                      <Loader2 size={20} className="animate-spin text-blue-500/80" />
+                    </div>
+                  )}
                   <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
                     <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${isSyncPathMismatch ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
                       {/* Protocol icon inside address bar (like Chrome favicon) */}
@@ -10128,6 +10141,22 @@ interface UpdateVerificationInfo {
                         placeholder="/path/to/directory"
                       />
                     </div>
+                    {(() => {
+                      const normP = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+                      const atSyncRoot = isSyncNavigation && syncBasePaths && normP(currentRemotePath) === normP(syncBasePaths.remote);
+                      const upDisabled = !isConnected || currentRemotePath === '/' || !!atSyncRoot;
+                      return (
+                        <button
+                          onClick={() => !upDisabled && changeRemoteDirectory('..')}
+                          disabled={upDisabled}
+                          className={`flex-shrink-0 p-1.5 rounded transition-colors ${upDisabled ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                          title={t('common.up')}
+                          aria-label={t('common.up')}
+                        >
+                          <FolderUp size={13} />
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={(e) => {
                         const btn = e.currentTarget;
@@ -10408,7 +10437,7 @@ interface UpdateVerificationInfo {
                               <tr
                                 role="row"
                                 className={`${canGoUp ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                                onDoubleClick={() => canGoUp && changeRemoteDirectory('..')}
+                                onClick={() => canGoUp && changeRemoteDirectory('..')}
                               >
                                 <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
                                   {iconProvider.getFolderUpIcon(16).icon}
@@ -10601,7 +10630,7 @@ interface UpdateVerificationInfo {
                         {/* Go Up Item - always visible, disabled at root */}
                         <div
                           className={`file-grid-item file-grid-go-up ${currentRemotePath === '/' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          onDoubleClick={() => currentRemotePath !== '/' && changeRemoteDirectory('..')}
+                          onClick={() => currentRemotePath !== '/' && changeRemoteDirectory('..')}
                         >
                           <div className="file-grid-icon">
                             {iconProvider.getFolderUpIcon(32).icon}
@@ -10725,6 +10754,7 @@ interface UpdateVerificationInfo {
                   isSyncPathMismatch={isSyncPathMismatch}
                   isSyncNavigation={isSyncNavigation}
                   syncBasePaths={syncBasePaths}
+                  isLoading={localListLoading}
                   localFiles={localFiles}
                   sortedFiles={sortedLocalFiles}
                   selectedFiles={selectedLocalFiles}

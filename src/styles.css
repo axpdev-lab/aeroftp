@@ -416,6 +416,29 @@ table::-webkit-scrollbar-thumb:hover {
   animation: scaleIn 0.25s ease-out;
 }
 
+/* Drill-in spinner overlay: keep the spinner invisible for the first 250 ms so
+   fast directory listings never produce a flash. Listings that complete under
+   the threshold skip the spinner entirely; longer ones fade in smoothly. */
+@keyframes fadeInDelayed {
+  0%, 60% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in-delayed {
+  animation: fadeInDelayed 0.45s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-delayed {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .truncate-path {
   direction: rtl;
   text-align: left;
