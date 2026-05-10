@@ -1232,7 +1232,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             <span>{t('protocol.webdavNote')}</span>
                         </div>
                         <p className="text-xs text-gray-500">
-                            {t('protocol.webdavExampleLabel')} <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{t('protocol.webdavExample')}</code>
+                            {t('protocol.webdavExampleLabel')} <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">https://cloud.example.com/remote.php/dav/files/user/</code>
                         </p>
                     </>
                 )}
