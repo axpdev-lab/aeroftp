@@ -755,6 +755,29 @@ const App: React.FC = () => {
   const [sessions, setSessions] = useState<FtpSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
+  // Window title: keep the current AeroFTP version visible in OS taskbar /
+  // window switcher without forcing the user to open the About dialog.
+  // Idle:      `AeroFTP X.Y.Z`
+  // Connected: `AeroFTP X.Y.Z - <session/server name>`
+  // Issue #175 follow-up. ASCII separator (` - `) intentionally, not em-dash.
+  const [appVersion, setAppVersion] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    getVersion()
+      .then(v => { if (!cancelled) setAppVersion(v); })
+      .catch(() => { /* leave empty: title falls back to plain `AeroFTP` */ });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    const versionTag = appVersion ? ` ${appVersion}` : '';
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const sessionName = (activeSession?.serverName || '').trim();
+    const title = isConnected && sessionName
+      ? `AeroFTP${versionTag} - ${sessionName}`
+      : `AeroFTP${versionTag}`;
+    getCurrentWindow().setTitle(title).catch(() => { /* non-fatal */ });
+  }, [isConnected, sessions, activeSessionId, appVersion]);
+
   // Transfer Queue (unified upload + download)
   const transferQueue = useTransferQueue();
   const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
