@@ -1989,6 +1989,34 @@ const SIGSTORE_WORKFLOW_IDENTITY_PREFIX: &str =
 
 // ============ Updater Command ============
 
+/// Directory where self-extracting auto-update artifacts (portable .zip,
+/// .AppImage) are staged before being applied. Kept out of the user-visible
+/// `~/Downloads/` so we don't pollute it with archive boxes that have no
+/// independent life once the swap is done.
+///
+/// Linux:   `$XDG_CACHE_HOME/aeroftp/updates/` (or `~/.cache/aeroftp/updates/`)
+/// macOS:   `~/Library/Caches/aeroftp/updates/`
+/// Windows: `%LOCALAPPDATA%\aeroftp\updates\` (or `%TEMP%\aeroftp-updates\`)
+///
+/// Falls back to a sub-folder under the OS temp dir if no cache dir is
+/// resolvable. Issue #176.
+fn updates_staging_dir() -> PathBuf {
+    if let Some(cache) = dirs::cache_dir() {
+        return cache.join("aeroftp").join("updates");
+    }
+    std::env::temp_dir().join("aeroftp-updates")
+}
+
+/// True when the asset name describes a self-extracting artifact: portable
+/// `.zip` (Windows) or `.AppImage` (Linux). Both decompose into the running
+/// application after install, so the source archive has no independent life
+/// (no installer to re-run, no separate `.exe`/`.deb` to keep around).
+/// Issue #176.
+fn is_self_extracting_format(asset_name: &str) -> bool {
+    let lower = asset_name.to_ascii_lowercase();
+    lower.ends_with(".appimage") || (lower.contains("portable") && lower.ends_with(".zip"))
+}
+
 fn update_download_supported(install_format: &str) -> bool {
     matches!(
         install_format,
@@ -2569,7 +2597,9 @@ fn log_update_detection(version: String) {
     info!("New version detected: v{}", version);
 }
 
-/// A8-03: Validate that update file path is in Downloads or temp directory (not arbitrary path)
+/// A8-03: Validate that update file path is in Downloads, temp directory, or
+/// the AeroFTP staging dir (issue #176: portable .zip / .AppImage live there
+/// instead of `~/Downloads/`).
 #[allow(dead_code)]
 fn validate_update_path(path: &str) -> Result<(), String> {
     let canonical = std::path::Path::new(path)
@@ -2583,6 +2613,7 @@ fn validate_update_path(path: &str) -> Result<(), String> {
             .map(|h| h.join("Downloads"))
             .unwrap_or_default(),
         std::env::temp_dir(),
+        updates_staging_dir(),
     ];
 
     let in_allowed = allowed_dirs.iter().any(|dir| {
@@ -2616,7 +2647,18 @@ fn sha256_file_hex(path: &Path) -> Result<String, String> {
 async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateResponse, String> {
     let asset = parse_release_download_url(&url)?;
 
-    let download_directory = dirs::download_dir().unwrap_or_else(std::env::temp_dir);
+    // Issue #176: portable .zip and .AppImage stage into a private cache
+    // directory rather than `~/Downloads/`. They have no independent life
+    // once the swap is done (the new exe is already living in its install
+    // location), so leaving them in Downloads erodes the no-trace contract
+    // of "portable" and adds clutter for AppImage users. Installer formats
+    // (msi, exe, deb, rpm, dmg) keep `~/Downloads/`: they ARE the artifact,
+    // useful to re-run, copy to USB, hand to a colleague.
+    let download_directory = if is_self_extracting_format(&asset.asset_name) {
+        updates_staging_dir()
+    } else {
+        dirs::download_dir().unwrap_or_else(std::env::temp_dir)
+    };
     tokio::fs::create_dir_all(&download_directory)
         .await
         .map_err(|error| format!("Failed to prepare download directory: {}", error))?;
@@ -2844,6 +2886,12 @@ async fn install_appimage_update(
     }
 
     let _ = std::fs::remove_file(&backup_path);
+
+    // Issue #176: the downloaded AppImage was copied (not moved) into the
+    // running install location, so the source in our staging dir is now
+    // an unused archive. Drop it. Best-effort: a leftover file is not a
+    // user-visible bug since the staging dir is hidden under the cache.
+    let _ = std::fs::remove_file(&downloaded);
 
     let from_version = app.package_info().version.to_string();
     write_update_marker(
