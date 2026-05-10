@@ -1617,11 +1617,11 @@
             "discoverImageKit": "CDN ya midia na hifadhi yenye folda asili (20 GB bure)",
             "discoverUploadcare": "Usimamizi wa midia EU wenye CDN na API za faili (3 GB bure)",
             "discoverCloudinary": "CDN ya usimamizi wa midia ikiwa na REST API (krediti 25/mwezi bure)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB bure, msingi wa Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: timu huru ya wingu ya EU tangu 2018, Nextcloud-as-a-service na 8GB bure, inazingatia GDPR, vidomeni vidogo vya kimkoa (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB bure, msingi wa Nextcloud, EU/GDPR, vidomeni vidogo vya kimkoa)",
+            "webdavLocalScheme": "Itifaki",
+            "webdavLocalSchemeHelp": "Linganisha na mpangilio wa HTTP/HTTPS wa daraja la WebDAV la ndani (Filen Desktop, MEGAcmd). HTTPS hutumia cheti kilichotiwa saini na yenyewe, kwa hivyo uthibitishaji wa cheti unazimwa kiotomatiki."
         },
         "shortcuts": {
             "title": "Njia za Mkato",

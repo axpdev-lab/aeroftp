@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Yerel klasörlerle medya CDN ve depolama (20 GB ücretsiz)",
             "discoverUploadcare": "CDN ve dosya API'leri ile EU medya yönetimi (3 GB ücretsiz)",
             "discoverCloudinary": "REST API ile medya yönetimi için CDN (25 kredi/ay ücretsiz)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB ücretsiz, Nextcloud tabanlı, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: 2018'den beri bağımsız EU bulut ekibi, 8GB ücretsiz Nextcloud-as-a-service, GDPR uyumlu, bölgesel alt alan adları (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB ücretsiz, Nextcloud tabanlı, EU/GDPR, bölgesel alt alan adları)",
+            "webdavLocalScheme": "Protokol",
+            "webdavLocalSchemeHelp": "Yerel WebDAV köprüsünün HTTP/HTTPS ayarıyla eşleştirin (Filen Desktop, MEGAcmd). HTTPS kendinden imzalı sertifika kullanır, bu nedenle sertifika doğrulaması otomatik olarak devre dışı bırakılır."
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

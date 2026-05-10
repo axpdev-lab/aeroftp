@@ -1617,11 +1617,11 @@
             "discoverImageKit": "नेटिव फ़ोल्डर के साथ मीडिया CDN और स्टोरेज (20 GB मुफ़्त)",
             "discoverUploadcare": "CDN और फ़ाइल API के साथ EU मीडिया प्रबंधन (3 GB मुफ़्त)",
             "discoverCloudinary": "REST API के साथ मीडिया प्रबंधन के लिए CDN (25 क्रेडिट/माह मुफ्त)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB मुफ़्त, Nextcloud-आधारित, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: 2018 से स्वतंत्र EU क्लाउड टीम, 8GB मुफ़्त के साथ Nextcloud-as-a-service, GDPR-संगत, क्षेत्रीय उपडोमेन (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB मुफ़्त, Nextcloud-आधारित, EU/GDPR, क्षेत्रीय उपडोमेन)",
+            "webdavLocalScheme": "प्रोटोकॉल",
+            "webdavLocalSchemeHelp": "स्थानीय WebDAV ब्रिज (Filen Desktop, MEGAcmd) की HTTP/HTTPS सेटिंग से मिलाएँ। HTTPS एक स्वयं-हस्ताक्षरित प्रमाणपत्र का उपयोग करता है, इसलिए प्रमाणपत्र सत्यापन स्वचालित रूप से अक्षम हो जाता है।"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

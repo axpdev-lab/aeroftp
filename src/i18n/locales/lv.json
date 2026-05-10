@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Mediju CDN un krātuve ar dzimtajām mapēm (20 GB bez maksas)",
             "discoverUploadcare": "EU mediju pārvaldība ar CDN un failu API (3 GB bez maksas)",
             "discoverCloudinary": "CDN mediju pārvaldībai ar REST API (25 kredīti/mēnesī bez maksas)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB bezmaksas, balstīts uz Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: neatkarīga ES mākoņa komanda kopš 2018. gada, Nextcloud-as-a-service ar 8GB bezmaksas, atbilst GDPR, reģionālie apakšdomēni (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB bezmaksas, balstīts uz Nextcloud, EU/GDPR, reģionālie apakšdomēni)",
+            "webdavLocalScheme": "Protokols",
+            "webdavLocalSchemeHelp": "Saskaņojiet ar lokālā WebDAV tilta HTTP/HTTPS iestatījumu (Filen Desktop, MEGAcmd). HTTPS izmanto pašparakstītu sertifikātu, tāpēc sertifikāta pārbaude tiek automātiski atspējota."
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

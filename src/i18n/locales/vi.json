@@ -1617,11 +1617,11 @@
             "discoverImageKit": "CDN phương tiện và lưu trữ với thư mục gốc (20 GB miễn phí)",
             "discoverUploadcare": "Quản lý phương tiện EU với CDN và API tệp (3 GB miễn phí)",
             "discoverCloudinary": "CDN quản lý media với REST API (25 tín dụng/tháng miễn phí)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB miễn phí, dựa trên Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: nhóm đám mây EU độc lập từ năm 2018, Nextcloud-as-a-service với 8GB miễn phí, tuân thủ GDPR, tên miền phụ theo khu vực (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB miễn phí, dựa trên Nextcloud, EU/GDPR, tên miền phụ theo khu vực)",
+            "webdavLocalScheme": "Giao thức",
+            "webdavLocalSchemeHelp": "Khớp với cài đặt HTTP/HTTPS của cầu WebDAV cục bộ (Filen Desktop, MEGAcmd). HTTPS sử dụng chứng chỉ tự ký, vì vậy việc xác minh chứng chỉ bị tự động vô hiệu hóa."
         },
         "shortcuts": {
             "title": "Phím tắt",

@@ -1617,11 +1617,11 @@
             "discoverImageKit": "CDN media și stocare cu foldere native (20 GB gratuit)",
             "discoverUploadcare": "Gestionare media EU cu CDN și API-uri de fișiere (3 GB gratuit)",
             "discoverCloudinary": "CDN pentru gestionarea media cu REST API (25 credite/lună gratuit)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB gratuit, bazat pe Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: echipă cloud UE independentă din 2018, Nextcloud-as-a-service cu 8GB gratuit, conform GDPR, subdomenii regionale (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB gratuit, bazat pe Nextcloud, EU/GDPR, subdomenii regionale)",
+            "webdavLocalScheme": "Protocol",
+            "webdavLocalSchemeHelp": "Potriviți cu setarea HTTP/HTTPS a punții WebDAV locale (Filen Desktop, MEGAcmd). HTTPS folosește un certificat autosemnat, prin urmare verificarea certificatului este dezactivată automat."
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

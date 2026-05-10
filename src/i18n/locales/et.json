@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Meedia CDN ja salvestus loomulike kaustadega (20 GB tasuta)",
             "discoverUploadcare": "EU meediahaldus CDN-i ja faili-API-dega (3 GB tasuta)",
             "discoverCloudinary": "CDN meediahalduseks REST API-ga (25 krediiti/kuus tasuta)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB tasuta, Nextcloud-põhine, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: sõltumatu EU pilvemeeskond alates 2018. aastast, Nextcloud-as-a-service 8GB tasuta, GDPR-iga ühilduv, piirkondlikud alamdomeenid (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB tasuta, Nextcloud-põhine, EU/GDPR, piirkondlikud alamdomeenid)",
+            "webdavLocalScheme": "Protokoll",
+            "webdavLocalSchemeHelp": "Sobita kohaliku WebDAV silla HTTP/HTTPS sättega (Filen Desktop, MEGAcmd). HTTPS kasutab iseallkirjastatud sertifikaati, seega on sertifikaadi kontroll automaatselt välja lülitatud."
         },
         "shortcuts": {
             "title": "Kiirklahvid",

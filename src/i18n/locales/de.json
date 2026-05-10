@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Medien-CDN und Speicher mit nativen Ordnern (20 GB kostenlos)",
             "discoverUploadcare": "EU-Medienverwaltung mit CDN und Datei-APIs (3 GB kostenlos)",
             "discoverCloudinary": "CDN für Medienverwaltung mit REST API (25 Credits/Monat kostenlos)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB kostenlos, Nextcloud-basiert, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: unabhängiges EU-Cloud-Team seit 2018, Nextcloud-as-a-service mit 8GB kostenlos, GDPR-konform, regionale Subdomains (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB kostenlos, Nextcloud-basiert, EU/GDPR, regionale Subdomains)",
+            "webdavLocalScheme": "Protokoll",
+            "webdavLocalSchemeHelp": "Stimmen Sie mit der HTTP/HTTPS-Einstellung der lokalen WebDAV-Brücke überein (Filen Desktop, MEGAcmd). HTTPS verwendet ein selbstsigniertes Zertifikat, daher wird die Zertifikatsüberprüfung automatisch deaktiviert."
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

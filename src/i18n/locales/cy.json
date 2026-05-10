@@ -1617,11 +1617,11 @@
             "discoverImageKit": "CDN cyfryngau a storfa gyda ffolderi brodorol (20 GB am ddim)",
             "discoverUploadcare": "Rheoli cyfryngau EU gyda CDN ac API ffeiliau (3 GB am ddim)",
             "discoverCloudinary": "CDN ar gyfer rheoli cyfryngau gyda REST API (25 credyd/mis am ddim)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB am ddim, seiliedig ar Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: tîm cwmwl annibynnol o'r EU ers 2018, Nextcloud-as-a-service gydag 8GB am ddim, yn cydymffurfio â GDPR, is-barthau rhanbarthol (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB am ddim, seiliedig ar Nextcloud, EU/GDPR, is-barthau rhanbarthol)",
+            "webdavLocalScheme": "Protocol",
+            "webdavLocalSchemeHelp": "Cyfateb i osodiad HTTP/HTTPS y bont WebDAV leol (Filen Desktop, MEGAcmd). Mae HTTPS yn defnyddio tystysgrif hunan-lofnodedig, felly mae gwirio tystysgrifau yn cael ei analluogi'n awtomatig."
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

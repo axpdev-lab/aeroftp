@@ -1617,11 +1617,11 @@
             "discoverImageKit": "支持原生文件夹的媒体 CDN 与存储（20 GB 免费）",
             "discoverUploadcare": "带 CDN 和文件 API 的 EU 媒体管理（3 GB 免费）",
             "discoverCloudinary": "媒体管理 CDN，提供 REST API（每月 25 积分免费）",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB 免费, 基于 Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: 自 2018 年起的独立欧盟云团队, 提供 8GB 免费的 Nextcloud-as-a-service, 符合 GDPR, 区域子域名 (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB 免费, 基于 Nextcloud, EU/GDPR, 区域子域名)",
+            "webdavLocalScheme": "协议",
+            "webdavLocalSchemeHelp": "匹配本地 WebDAV 桥接 (Filen Desktop, MEGAcmd) 的 HTTP/HTTPS 设置。HTTPS 使用自签名证书, 因此证书验证会自动禁用。"
         },
         "shortcuts": {
             "title": "键盘快捷键",

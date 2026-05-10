@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Медийна CDN и съхранение с естествени папки (20 GB безплатно)",
             "discoverUploadcare": "EU управление на медия с CDN и файлови API (3 GB безплатно)",
             "discoverCloudinary": "CDN за управление на медии с REST API (25 кредита/месец безплатно)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB безплатно, базиран на Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: независим европейски облачен екип от 2018 г., Nextcloud-as-a-service с 8GB безплатно, съответства на GDPR, регионални поддомейни (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB безплатно, базиран на Nextcloud, EU/GDPR, регионални поддомейни)",
+            "webdavLocalScheme": "Протокол",
+            "webdavLocalSchemeHelp": "Съответства на настройката HTTP/HTTPS на локалния WebDAV мост (Filen Desktop, MEGAcmd). HTTPS използва самоподписан сертификат, така че проверката на сертификата е автоматично деактивирана."
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

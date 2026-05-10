@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Multimedia CDN eta biltegiratzea karpeta natiboekin (20 GB doan)",
             "discoverUploadcare": "EU multimedia-kudeaketa CDN eta fitxategi APIekin (3 GB doan)",
             "discoverCloudinary": "Multimedia kudeatzeko CDNa REST APIarekin (25 kreditu/hilean doan)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB doan, Nextcloud-en oinarrituta, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: 2018tik EBko hodei talde independentea, Nextcloud-as-a-service 8GB doanekin, GDPRrekin bateragarria, eskualdeko azpidomeinuak (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB doan, Nextcloud-en oinarrituta, EU/GDPR, eskualdeko azpidomeinuak)",
+            "webdavLocalScheme": "Protokoloa",
+            "webdavLocalSchemeHelp": "Bat etorri tokiko WebDAV zubiaren HTTP/HTTPS ezarpenarekin (Filen Desktop, MEGAcmd). HTTPSk auto-sinatutako ziurtagiri bat erabiltzen du, beraz ziurtagirien egiaztapena automatikoki desaktibatzen da."
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
