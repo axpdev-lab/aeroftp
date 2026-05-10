@@ -32,6 +32,32 @@ use super::{
 /// local-bridge hostname (Filen Desktop S3 at local.s3.filen.io, MEGAcmd, ...).
 /// Used to auto-trust self-signed TLS certificates in S3Provider::new without
 /// requiring the user to flip verify_cert manually for every loopback profile.
+/// URL-encode an S3 key path segment-by-segment, preserving `/` as the
+/// path separator. AWS SigV4 and any compliant S3 server expect the wire
+/// URL to contain percent-encoded keys (spaces -> `%20`, emojis -> UTF-8
+/// percent triplets). `urlencoding::encode` alone would also escape `/`,
+/// so we split on `/` first.
+///
+/// Spaces in mkdir/put paths previously hit Filen's local S3 bridge with
+/// a 401 Unauthorized because `url::Url::parse` lenient-encoded the URL
+/// while the signature canonical path was computed differently. Canonicalise
+/// here. Issue #128.
+fn encode_s3_key_path(key: &str) -> String {
+    if key.is_empty() {
+        return String::new();
+    }
+    key.split('/')
+        .map(|segment| {
+            if segment.is_empty() {
+                String::new()
+            } else {
+                urlencoding::encode(segment).into_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
     let lower = endpoint.trim().to_ascii_lowercase();
     let stripped = lower
@@ -148,6 +174,7 @@ impl S3Provider {
     fn build_url(&self, key: &str) -> String {
         let endpoint = self.endpoint();
         let key = key.trim_start_matches('/');
+        let encoded_key = encode_s3_key_path(key);
 
         if self.config.path_style {
             // Path-style: https://endpoint/bucket/key
@@ -155,10 +182,10 @@ impl S3Provider {
             // when the bucket-only URL is sent without a trailing slash. AWS, MinIO,
             // Wasabi all accept both forms, so adding the trailing slash for
             // bucket-only requests is universally safe.
-            if key.is_empty() {
+            if encoded_key.is_empty() {
                 format!("{}/{}/", endpoint, self.config.bucket)
             } else {
-                format!("{}/{}/{}", endpoint, self.config.bucket, key)
+                format!("{}/{}/{}", endpoint, self.config.bucket, encoded_key)
             }
         } else {
             // Virtual-hosted style: https://bucket.endpoint/key
@@ -169,7 +196,7 @@ impl S3Provider {
                 "https"
             };
 
-            if key.is_empty() {
+            if encoded_key.is_empty() {
                 format!(
                     "{}://{}.{}",
                     scheme, self.config.bucket, endpoint_without_scheme
@@ -177,7 +204,7 @@ impl S3Provider {
             } else {
                 format!(
                     "{}://{}.{}/{}",
-                    scheme, self.config.bucket, endpoint_without_scheme, key
+                    scheme, self.config.bucket, endpoint_without_scheme, encoded_key
                 )
             }
         }
@@ -2231,11 +2258,44 @@ impl StorageProvider for S3Provider {
                 return self.rename_filelu_safe(from, to).await;
             }
 
-            // Single file rename: copy + delete
-            self.server_copy(from, to).await?;
-            self.verify_copy_target_exists(to).await?;
-            self.delete(from).await?;
-            info!("Renamed file (copy+delete) {} to {}", from, to);
+            // ListObjectsV2 with the source as prefix returned nothing. Two
+            // cases collapse here: (a) `from` is a real file (no children),
+            // (b) `from` is a virtual folder with no marker key. Some
+            // S3-compatible bridges (Filen's local S3 in particular)
+            // represent empty folders as CommonPrefixes generated from
+            // internal metadata, with no actual key. Attempting Copy on
+            // such a phantom returns 412 Precondition Failed, surfacing as
+            // a confusing error to the user. Probe with HEAD: if the
+            // source has no underlying object, fail with a clear message
+            // rather than letting the wrapper return 412. Issue #128.
+            let from_key = from.trim_start_matches('/');
+            match self.s3_request(Method::HEAD, from_key, None, None).await {
+                Ok(resp) if resp.status() == StatusCode::OK => {
+                    // Real file: proceed with single-file rename.
+                    self.server_copy(from, to).await?;
+                    self.verify_copy_target_exists(to).await?;
+                    self.delete(from).await?;
+                    info!("Renamed file (copy+delete) {} to {}", from, to);
+                }
+                Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
+                    return Err(ProviderError::NotSupported(format!(
+                        "Cannot rename '{}': the path does not exist as an \
+                         S3 object. Some S3-compatible backends (e.g. Filen's \
+                         local S3 bridge) represent empty folders as virtual \
+                         prefixes without a marker key, which precludes \
+                         server-side rename. Add a file inside the folder \
+                         first, or use the native API / WebDAV bridge.",
+                        from
+                    )));
+                }
+                Ok(resp) => {
+                    return Err(ProviderError::ServerError(format!(
+                        "HEAD on rename source returned status {}",
+                        resp.status()
+                    )));
+                }
+                Err(e) => return Err(e),
+            }
         } else {
             // Directory rename: copy all objects to new prefix, then delete originals
             let to_prefix = format!("{}/", to_trimmed);
@@ -3667,6 +3727,31 @@ mod tests {
             provider.build_url("path/to/file.txt"),
             "https://my-bucket.s3.us-west-2.amazonaws.com/path/to/file.txt"
         );
+    }
+
+    /// Issue #128: spaces and emojis in S3 keys must be percent-encoded in
+    /// the wire URL. Without this, Filen's local S3 bridge returned 401
+    /// because the SigV4 signature didn't match the wire path that the
+    /// server reconstructed from the (lenient) request line.
+    #[test]
+    fn encode_s3_key_path_handles_spaces_and_unicode() {
+        // Plain key passes through.
+        assert_eq!(encode_s3_key_path("hello.txt"), "hello.txt");
+        // Path separators preserved, segments encoded individually.
+        assert_eq!(encode_s3_key_path("a/b/c.txt"), "a/b/c.txt");
+        // Spaces percent-encoded as %20 (NOT '+').
+        assert_eq!(encode_s3_key_path("my folder"), "my%20folder");
+        assert_eq!(encode_s3_key_path("my folder/file.txt"), "my%20folder/file.txt");
+        // Trailing slash preserved (folder-marker keys).
+        assert_eq!(encode_s3_key_path("my folder/"), "my%20folder/");
+        // Emoji encoded as UTF-8 percent triplets.
+        assert_eq!(encode_s3_key_path("party"), "party");
+        assert_eq!(encode_s3_key_path("🎉/notes.md"), "%F0%9F%8E%89/notes.md");
+        // Special chars (RFC 3986 reserved) encoded.
+        assert_eq!(encode_s3_key_path("a+b"), "a%2Bb");
+        assert_eq!(encode_s3_key_path("a&b=c"), "a%26b%3Dc");
+        // Empty stays empty.
+        assert_eq!(encode_s3_key_path(""), "");
     }
 
     #[test]
