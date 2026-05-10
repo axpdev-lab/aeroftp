@@ -13,7 +13,7 @@
 
 import React from 'react';
 import {
-  RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList,
+  RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
 } from 'lucide-react';
 import { BreadcrumbBar } from './BreadcrumbBar';
 import { PlacesSidebar } from './PlacesSidebar';
@@ -53,6 +53,8 @@ export interface LocalFilePanelProps {
   isSyncPathMismatch: boolean;
   isSyncNavigation: boolean;
   syncBasePaths: { remote: string; local: string } | null;
+  /** Spinner overlay during a directory drill-in (issue #178 #2). */
+  isLoading?: boolean;
 
   // --- Files ---
   localFiles: LocalFile[];
@@ -178,6 +180,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   isSyncPathMismatch,
   isSyncNavigation,
   syncBasePaths,
+  isLoading,
   localFiles,
   sortedFiles,
   selectedFiles,
@@ -328,11 +331,22 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     <div
       role="region"
       aria-label="Local files"
-      className={`${isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
+      className={`relative ${isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
       onDragOver={(e) => onPanelDragOver(e, false)}
       onDrop={(e) => onPanelDrop(e, false)}
       onDragLeave={onPanelDragLeave}
     >
+      {/* Drill-in spinner overlay (issue #178 #2). Debounced via CSS animation
+          so fast listings (<250 ms) never reveal the spinner. Soft background,
+          no blur, smaller icon to keep the affordance non-invasive. */}
+      {isLoading && (
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center bg-white/10 dark:bg-gray-900/10 pointer-events-none animate-fade-in-delayed"
+          aria-hidden="true"
+        >
+          <Loader2 size={20} className="animate-spin text-blue-500/80" />
+        </div>
+      )}
       {/* Header: BreadcrumbBar (AeroFile) or Address Bar (Connected) */}
       <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
         {isAeroFileMode ? (
@@ -346,6 +360,20 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 t={t}
               />
             </div>
+            {(() => {
+              const upDisabled = !currentPath || currentPath === '/' || /^[A-Za-z]:[\\/]?$/.test(currentPath);
+              return (
+                <button
+                  onClick={() => !upDisabled && navigateUp()}
+                  disabled={upDisabled}
+                  className={`flex-shrink-0 p-1.5 rounded transition-colors ${upDisabled ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                  title={t('common.up')}
+                  aria-label={t('common.up')}
+                >
+                  <FolderUp size={13} />
+                </button>
+              );
+            })()}
             <button
               onClick={handleRefreshClick}
               className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
@@ -384,6 +412,20 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 placeholder="/path/to/local/directory"
               />
             </div>
+            {(() => {
+              const upDisabled = !currentPath || currentPath === '/' || /^[A-Za-z]:[\\/]?$/.test(currentPath);
+              return (
+                <button
+                  onClick={() => !upDisabled && navigateUp()}
+                  disabled={upDisabled}
+                  className={`flex-shrink-0 p-1.5 rounded transition-colors ${upDisabled ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                  title={t('common.up')}
+                  aria-label={t('common.up')}
+                >
+                  <FolderUp size={13} />
+                </button>
+              );
+            })()}
             <button
               onClick={handleRefreshClick}
               className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
@@ -612,7 +654,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               <tr
                 role="row"
                 className={`${currentPath !== '/' ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-                onDoubleClick={() => currentPath !== '/' && navigateUp()}
+                onClick={() => currentPath !== '/' && navigateUp()}
               >
                 <td className="px-4 py-2 flex items-center gap-2 text-gray-500">
                   {iconProvider.getFolderUpIcon(16).icon}
