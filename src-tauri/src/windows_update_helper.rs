@@ -95,7 +95,7 @@ pub fn install_with_helper(
         InstallFormat::Nsis => write_nsis_helper(downloaded_path, &exe_path)?,
         InstallFormat::Portable => {
             let staged = stage_portable_artifact(downloaded_path)?;
-            write_portable_helper(&staged, &exe_path)?
+            write_portable_helper(&staged, &exe_path, downloaded_path)?
         }
     };
 
@@ -195,12 +195,14 @@ endlocal
 }
 
 /// Staged portable artifact: paths to the new exe + ancillary files
-/// extracted from the downloaded ZIP.
+/// extracted from the downloaded ZIP, plus the stage dir itself so the
+/// cmd helper can wipe it after the swap (issue #176).
 struct StagedPortable {
     new_exe: PathBuf,
     new_marker: Option<PathBuf>,
     new_readme: Option<PathBuf>,
     new_license: Option<PathBuf>,
+    stage_dir: PathBuf,
 }
 
 /// Extract the portable ZIP into `%TEMP%\aeroftp-update-stage-<rand>\`
@@ -264,6 +266,7 @@ fn stage_portable_artifact(zip_path: &Path) -> Result<StagedPortable, String> {
         new_marker: pick_optional("portable.marker"),
         new_readme: pick_optional("README.txt"),
         new_license: pick_optional("LICENSE.txt"),
+        stage_dir,
     })
 }
 
@@ -287,8 +290,14 @@ fn find_first_exe(dir: &Path) -> Result<PathBuf, String> {
 }
 
 /// Portable helper: rename old exe, move new exe into place, copy marker
-/// and ancillary files, relaunch with --post-update-cleanup.
-fn write_portable_helper(staged: &StagedPortable, current_exe: &Path) -> Result<PathBuf, String> {
+/// and ancillary files, relaunch with --post-update-cleanup, and wipe the
+/// staged ZIP + extraction dir so nothing leaks into Downloads/TEMP after
+/// the swap (issue #176: portable contract is "no-trace").
+fn write_portable_helper(
+    staged: &StagedPortable,
+    current_exe: &Path,
+    downloaded_zip: &Path,
+) -> Result<PathBuf, String> {
     let script_path = temp_dir().join(format!("aeroftp-update-{}.cmd", random_suffix()));
 
     let exe_dir = current_exe
@@ -327,6 +336,8 @@ rem .old (Windows allows rename of a running exe but not delete), moves
 rem the new exe into place, copies the new marker/README/LICENSE, then
 rem launches the new exe with --post-update-cleanup pointing at the .old
 rem so the new process can delete it once the old process is fully gone.
+rem After the swap the staged ZIP and extraction dir are also wiped so
+rem the portable update leaves nothing behind (issue #176).
 
 ping 127.0.0.1 -n 3 >nul
 
@@ -359,6 +370,17 @@ rem Copy ancillary files (marker, README, LICENSE) over the old ones.
 rem Launch the new exe with cleanup arg pointing at the .old file.
 start "" {current} --post-update-cleanup {old}
 
+rem Wipe staged artifacts. Best-effort: a leftover here is invisible to
+rem the user (cache dir + temp dir), but tidy is part of the portable
+rem promise. `del` and `rmdir` swallow errors when the path is missing.
+rem The sigstore sidecar (`<zip>.sigstore.json`) is normally removed by
+rem download_update post-verification, but if the flow is interrupted
+rem between download and removal the sidecar can survive. Clean it
+rem here too so the staging dir reaches steady state == empty.
+del /F /Q {zip} >nul 2>&1
+del /F /Q {sigstore} >nul 2>&1
+rmdir /S /Q {stage} >nul 2>&1
+
 del /F /Q "%~f0"
 endlocal
 "#,
@@ -366,6 +388,12 @@ endlocal
         old = quote_for_cmd(&old_exe),
         new_exe = quote_for_cmd(&staged.new_exe),
         copy_block = copy_block,
+        zip = quote_for_cmd(downloaded_zip),
+        sigstore = quote_for_cmd(&downloaded_zip.with_file_name(format!(
+            "{}.sigstore.json",
+            downloaded_zip.file_name().and_then(|n| n.to_str()).unwrap_or("")
+        ))),
+        stage = quote_for_cmd(&staged.stage_dir),
     );
 
     std::fs::write(&script_path, body)
