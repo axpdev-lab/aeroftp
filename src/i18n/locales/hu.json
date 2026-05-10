@@ -954,7 +954,11 @@
       "customIconsUpload": "Feltöltés",
       "customIconsRenameHint": "Kattintson duplán az átnevezéshez",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay időtúllépés",
-      "aerovaultOverlayTimeoutDesc": "Az AeroVault Overlay munkamenetek ezen inaktivitási idő után automatikusan zárolódnak. Az alacsonyabb értékek biztonságosabbak, de gyakoribb feloldást igényelnek."
+      "aerovaultOverlayTimeoutDesc": "Az AeroVault Overlay munkamenetek ezen inaktivitási idő után automatikusan zárolódnak. Az alacsonyabb értékek biztonságosabbak, de gyakoribb feloldást igényelnek.",
+      "themeTruedarkLabel": "Igazi Sötét",
+      "themeTruedarkDesc": "Igazi semleges sötét GitHub stílusban, kék árnyalat nélkül",
+      "themeGreenLabel": "Zöld",
+      "themeGreenDesc": "Természet ihlette erdei paletta a zöld szerelmeseinek"
     },
     "devtools": {
       "title": "AeroTools",

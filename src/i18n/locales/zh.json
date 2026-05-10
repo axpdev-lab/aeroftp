@@ -954,7 +954,11 @@
       "customIconsUpload": "上传",
       "customIconsRenameHint": "双击以重命名",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay 超时",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay 会话在此非活动期后自动锁定。较低的值更安全，但需要更频繁地解锁。"
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay 会话在此非活动期后自动锁定。较低的值更安全，但需要更频繁地解锁。",
+      "themeTruedarkLabel": "真深色",
+      "themeTruedarkDesc": "GitHub 风格的真正中性深色，无蓝色调",
+      "themeGreenLabel": "绿色",
+      "themeGreenDesc": "为爱绿者打造的自然森林调色板"
     },
     "devtools": {
       "title": "AeroTools",

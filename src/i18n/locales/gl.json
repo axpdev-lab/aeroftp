@@ -954,7 +954,11 @@
       "customIconsUpload": "Cargar",
       "customIconsRenameHint": "Dobre clic para renomear",
       "aerovaultOverlayTimeoutTitle": "Tempo de espera de AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "As sesións de AeroVault Overlay bloquéanse automaticamente despois deste período de inactividade. Os valores máis baixos son máis seguros pero requiren desbloqueos máis frecuentes."
+      "aerovaultOverlayTimeoutDesc": "As sesións de AeroVault Overlay bloquéanse automaticamente despois deste período de inactividade. Os valores máis baixos son máis seguros pero requiren desbloqueos máis frecuentes.",
+      "themeTruedarkLabel": "Verdadeiramente Escuro",
+      "themeTruedarkDesc": "Verdadeiro escuro neutro ao estilo GitHub, sen ton azul",
+      "themeGreenLabel": "Verde",
+      "themeGreenDesc": "Paleta forestal inspirada na natureza para os amantes do verde"
     },
     "devtools": {
       "title": "AeroTools",

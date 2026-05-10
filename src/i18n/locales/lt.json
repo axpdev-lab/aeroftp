@@ -954,7 +954,11 @@
       "customIconsUpload": "Įkelti",
       "customIconsRenameHint": "Dukart spustelėkite pervadinti",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay laiko limitas",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay seansai automatiškai užrakinami po šio neveiklumo laikotarpio. Mažesnės reikšmės yra saugesnės, tačiau reikalauja dažnesnio atrakinimo."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay seansai automatiškai užrakinami po šio neveiklumo laikotarpio. Mažesnės reikšmės yra saugesnės, tačiau reikalauja dažnesnio atrakinimo.",
+      "themeTruedarkLabel": "Tikrai tamsi",
+      "themeTruedarkDesc": "Tikrai neutrali tamsi GitHub stiliumi, be mėlyno atspalvio",
+      "themeGreenLabel": "Žalia",
+      "themeGreenDesc": "Gamtos įkvėpta miško paletė žalios mylėtojams"
     },
     "devtools": {
       "title": "AeroTools",

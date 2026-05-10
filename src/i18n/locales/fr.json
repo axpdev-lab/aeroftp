@@ -954,7 +954,11 @@
       "customIconsUpload": "Téléverser",
       "customIconsRenameHint": "Double-cliquez pour renommer",
       "aerovaultOverlayTimeoutTitle": "Délai d'expiration d'AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Les sessions AeroVault Overlay se verrouillent automatiquement après cette période d'inactivité. Des valeurs plus basses sont plus sûres mais nécessitent des déverrouillages plus fréquents."
+      "aerovaultOverlayTimeoutDesc": "Les sessions AeroVault Overlay se verrouillent automatiquement après cette période d'inactivité. Des valeurs plus basses sont plus sûres mais nécessitent des déverrouillages plus fréquents.",
+      "themeTruedarkLabel": "Vrai Sombre",
+      "themeTruedarkDesc": "Vrai sombre neutre style GitHub, sans teinte bleue",
+      "themeGreenLabel": "Vert",
+      "themeGreenDesc": "Palette forestière inspirée de la nature pour les amoureux du vert"
     },
     "devtools": {
       "title": "AeroTools",

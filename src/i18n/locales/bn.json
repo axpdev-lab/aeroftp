@@ -954,7 +954,11 @@
       "customIconsUpload": "আপলোড",
       "customIconsRenameHint": "নাম পরিবর্তন করতে ডাবল-ক্লিক করুন",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay টাইমআউট",
-      "aerovaultOverlayTimeoutDesc": "নিষ্ক্রিয়তার এই সময়ের পরে AeroVault Overlay সেশনগুলি স্বয়ংক্রিয়ভাবে লক হয়ে যায়। কম মান বেশি নিরাপদ কিন্তু আরও ঘন ঘন আনলক করা প্রয়োজন।"
+      "aerovaultOverlayTimeoutDesc": "নিষ্ক্রিয়তার এই সময়ের পরে AeroVault Overlay সেশনগুলি স্বয়ংক্রিয়ভাবে লক হয়ে যায়। কম মান বেশি নিরাপদ কিন্তু আরও ঘন ঘন আনলক করা প্রয়োজন।",
+      "themeTruedarkLabel": "প্রকৃত ডার্ক",
+      "themeTruedarkDesc": "GitHub শৈলীতে প্রকৃত নিরপেক্ষ ডার্ক, কোনো নীল আভা নেই",
+      "themeGreenLabel": "সবুজ",
+      "themeGreenDesc": "সবুজপ্রেমীদের জন্য প্রকৃতি-অনুপ্রাণিত বনের প্যালেট"
     },
     "devtools": {
       "title": "AeroTools",

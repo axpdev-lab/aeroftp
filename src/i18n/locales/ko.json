@@ -954,7 +954,11 @@
       "customIconsUpload": "업로드",
       "customIconsRenameHint": "두 번 클릭하여 이름 변경",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay 시간 제한",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay 세션은 이 비활성 기간이 지나면 자동으로 잠깁니다. 낮은 값은 더 안전하지만 더 자주 잠금을 해제해야 합니다."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay 세션은 이 비활성 기간이 지나면 자동으로 잠깁니다. 낮은 값은 더 안전하지만 더 자주 잠금을 해제해야 합니다.",
+      "themeTruedarkLabel": "트루 다크",
+      "themeTruedarkDesc": "GitHub 스타일의 진정한 중립 다크, 푸른색 없음",
+      "themeGreenLabel": "그린",
+      "themeGreenDesc": "녹색 애호가를 위한 자연에서 영감을 받은 숲 팔레트"
     },
     "devtools": {
       "title": "AeroTools",

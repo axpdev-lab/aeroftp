@@ -97,7 +97,7 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
     }, [showModeMenu]);
 
     const selectMode = useCallback((mode: AgentMode) => {
-        if (mode === 'extreme' && appTheme !== 'cyber') {
+        if (mode === 'extreme' && appTheme !== 'cyber' && appTheme !== 'truedark') {
             onExtremeWarning?.();
             setShowModeMenu(false);
             return;
@@ -134,6 +134,24 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
                 dropdownItem: 'hover:bg-emerald-500/10',
                 dropdownItemText: 'text-gray-500',
                 sparkle: 'text-emerald-400',
+            };
+            case 'truedark': return {
+                headerBg: 'bg-[#010409]/60 border-[#30363d]',
+                textLabel: 'text-[#e6edf3]',
+                btn: 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#161b22]',
+                dropdown: 'bg-[#0d1117] border-[#30363d] shadow-xl',
+                dropdownItem: 'hover:bg-[#161b22]',
+                dropdownItemText: 'text-[#8b949e]',
+                sparkle: 'text-[#79c0ff]',
+            };
+            case 'green': return {
+                headerBg: 'bg-[#081410]/60 border-green-900/40',
+                textLabel: 'text-[#e8f5ec]',
+                btn: 'text-[#6b8a78] hover:text-[#e8f5ec] hover:bg-green-500/10',
+                dropdown: 'bg-[#081410] border-green-800/50 shadow-xl shadow-green-900/20',
+                dropdownItem: 'hover:bg-green-500/10',
+                dropdownItemText: 'text-[#6b8a78]',
+                sparkle: 'text-green-400',
             };
             default: return { // dark
                 headerBg: 'bg-gray-800/50 border-gray-700/50',
@@ -175,7 +193,7 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
                     </button>
                     {showModeMenu && (
                         <div className={`absolute right-0 top-full mt-1 ${styles.dropdown} border rounded-lg z-30 py-1 min-w-[240px]`}>
-                            {(appTheme === 'cyber' ? ALL_MODES : BASE_MODES).map(mode => {
+                            {(appTheme === 'cyber' || appTheme === 'truedark' ? ALL_MODES : BASE_MODES).map(mode => {
                                 const cfg = MODE_CONFIG[mode];
                                 const Icon = cfg.icon;
                                 const isActive = mode === agentMode;

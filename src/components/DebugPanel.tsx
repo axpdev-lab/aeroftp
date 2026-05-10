@@ -261,6 +261,8 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
             case 'light': return { base: 'bg-gray-300 hover:bg-blue-500', bar: 'bg-gray-400 group-hover:bg-white' };
             case 'tokyo': return { base: 'bg-[#292e42] hover:bg-[#7aa2f7]', bar: 'bg-[#414868] group-hover:bg-[#7aa2f7]' };
             case 'cyber': return { base: 'bg-[#0d1117] hover:bg-emerald-500', bar: 'bg-emerald-800/60 group-hover:bg-emerald-400' };
+            case 'truedark': return { base: 'bg-[#161b22] hover:bg-[#58a6ff]', bar: 'bg-[#30363d] group-hover:bg-[#79c0ff]' };
+            case 'green': return { base: 'bg-[#18302a] hover:bg-green-500', bar: 'bg-green-800/60 group-hover:bg-green-400' };
             default: return { base: 'bg-gray-700 hover:bg-blue-500', bar: 'bg-gray-500 group-hover:bg-blue-400' };
         }
     }, [appTheme]);

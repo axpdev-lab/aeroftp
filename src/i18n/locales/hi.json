@@ -954,7 +954,11 @@
       "customIconsUpload": "अपलोड",
       "customIconsRenameHint": "नाम बदलने के लिए डबल-क्लिक करें",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay टाइमआउट",
-      "aerovaultOverlayTimeoutDesc": "इस निष्क्रियता अवधि के बाद AeroVault Overlay सत्र स्वचालित रूप से लॉक हो जाते हैं। कम मान अधिक सुरक्षित होते हैं लेकिन उन्हें अधिक बार अनलॉक करने की आवश्यकता होती है।"
+      "aerovaultOverlayTimeoutDesc": "इस निष्क्रियता अवधि के बाद AeroVault Overlay सत्र स्वचालित रूप से लॉक हो जाते हैं। कम मान अधिक सुरक्षित होते हैं लेकिन उन्हें अधिक बार अनलॉक करने की आवश्यकता होती है।",
+      "themeTruedarkLabel": "सच्चा डार्क",
+      "themeTruedarkDesc": "GitHub शैली में वास्तविक तटस्थ डार्क, कोई नीला रंग नहीं",
+      "themeGreenLabel": "हरा",
+      "themeGreenDesc": "हरित प्रेमियों के लिए प्रकृति-प्रेरित वन पैलेट"
     },
     "devtools": {
       "title": "AeroTools",

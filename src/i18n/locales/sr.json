@@ -954,7 +954,11 @@
       "customIconsUpload": "Отпреми",
       "customIconsRenameHint": "Двоструки клик за преименовање",
       "aerovaultOverlayTimeoutTitle": "Време истека AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "Сесије AeroVault Overlay се аутоматски закључавају након овог периода неактивности. Ниже вредности су безбедније, али захтевају чешће откључавање."
+      "aerovaultOverlayTimeoutDesc": "Сесије AeroVault Overlay се аутоматски закључавају након овог периода неактивности. Ниже вредности су безбедније, али захтевају чешће откључавање.",
+      "themeTruedarkLabel": "Истински Тамна",
+      "themeTruedarkDesc": "Истински неутрална тамна у GitHub стилу, без плавог нијансе",
+      "themeGreenLabel": "Зелена",
+      "themeGreenDesc": "Шумска палета инспирисана природом за љубитеље зелене"
     },
     "devtools": {
       "title": "AeroTools",

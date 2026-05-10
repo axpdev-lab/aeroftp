@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, Monitor, Image, Shapes, Info, Copy, Link2 } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Monitor, Image, Shapes, Info, Copy, Link2 } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -274,7 +274,7 @@ const defaultSettings: AppSettings = {
 };
 
 type TabId = 'general' | 'connection' | 'servers' | 'aerocloud' | 'cloudproviders' | 'transfers' | 'filehandling' | 'ui' | 'security' | 'backup' | 'privacy';
-type AppearanceSubTabId = 'theme' | 'icons' | 'interface' | 'backgrounds';
+type AppearanceSubTabId = 'interface' | 'theme' | 'icons' | 'backgrounds';
 
 // Check Update Button with loading animation and Activity Log support
 interface CheckUpdateButtonProps {
@@ -367,7 +367,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
     const [activeTab, setActiveTab] = useState<TabId>(initialTab || 'general');
-    const [appearanceSubTab, setAppearanceSubTab] = useState<AppearanceSubTabId>('theme');
+    const [appearanceSubTab, setAppearanceSubTab] = useState<AppearanceSubTabId>('interface');
     const { iconTheme, setIconTheme } = useIconTheme();
 
     // Reset to initialTab when panel opens with a specific tab
@@ -815,6 +815,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
     const appearanceTabs: { id: AppearanceSubTabId; label: string; icon: React.ReactNode }[] = [
         {
+            id: 'interface',
+            label: t('settings.interfaceTab'),
+            icon: <Monitor size={13} />,
+        },
+        {
             id: 'theme',
             label: t('settings.themeTab'),
             icon: <Palette size={13} />,
@@ -823,11 +828,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             id: 'icons',
             label: t('settings.iconsTab'),
             icon: <Shapes size={13} />,
-        },
-        {
-            id: 'interface',
-            label: t('settings.interfaceTab'),
-            icon: <Monitor size={13} />,
         },
         {
             id: 'backgrounds',
@@ -3093,6 +3093,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         desc: t('settings.themeDarkDesc'),
                                                     },
                                                     {
+                                                        id: 'truedark' as Theme,
+                                                        label: t('settings.themeTruedarkLabel'),
+                                                        icon: <MoonStar size={20} />,
+                                                        colors: ['#010409', '#0d1117', '#30363d'],
+                                                        selectedBorder: 'border-zinc-400 ring-1 ring-zinc-400/30 bg-zinc-400/5',
+                                                        selectedIcon: 'text-zinc-300',
+                                                        checkBg: 'bg-zinc-500',
+                                                        desc: t('settings.themeTruedarkDesc'),
+                                                    },
+                                                    {
                                                         id: 'tokyo' as Theme,
                                                         label: t('settings.themeTokyoLabel'),
                                                         icon: (
@@ -3120,6 +3130,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         selectedIcon: 'text-emerald-500',
                                                         checkBg: 'bg-emerald-500',
                                                         desc: t('settings.themeCyberDesc'),
+                                                    },
+                                                    {
+                                                        id: 'green' as Theme,
+                                                        label: t('settings.themeGreenLabel'),
+                                                        icon: <Leaf size={20} />,
+                                                        colors: ['#0f1f17', '#081410', '#22c55e'],
+                                                        selectedBorder: 'border-green-500 ring-1 ring-green-500/30 bg-green-500/5',
+                                                        selectedIcon: 'text-green-500',
+                                                        checkBg: 'bg-green-500',
+                                                        desc: t('settings.themeGreenDesc'),
                                                     },
                                                 ].map((themeOption) => {
                                                     const isSelected = appThemeProp === themeOption.id;

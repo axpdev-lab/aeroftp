@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== Theme swap perf guard =====
+ * When the user switches theme, useTheme adds .is-changing-theme on <html>
+ * for one frame. This kills every transition + animation cascade-wide so
+ * WebKit can apply hundreds of color overrides in a single paint instead
+ * of animating each one (which spins the fan on big file lists). */
+html.is-changing-theme,
+html.is-changing-theme *,
+html.is-changing-theme *::before,
+html.is-changing-theme *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
 /* ======================================
    AeroFTP - Apple Style Design System
    ====================================== */
@@ -1420,6 +1433,223 @@ html.cyber .dark\:from-gray-900 {
 
 html.cyber .dark\:to-gray-800 {
   --tw-gradient-to: var(--cyber-bg-dark) !important;
+}
+
+/* ======================================
+   True Dark Theme
+   GitHub-style pure neutral dark, no blue tint
+   ====================================== */
+
+html.truedark {
+  --truedark-bg: #0d1117;
+  --truedark-bg-dark: #010409;
+  --truedark-bg-highlight: #161b22;
+  --truedark-fg: #e6edf3;
+  --truedark-fg-secondary: #8b949e;
+  --truedark-fg-muted: #6e7681;
+  --truedark-accent: #d4d4d8;
+  --truedark-accent-hover: #f4f4f5;
+  --truedark-link: #58a6ff;
+  --truedark-success: #3fb950;
+  --truedark-warning: #d29922;
+  --truedark-danger: #f85149;
+  --truedark-border: #30363d;
+}
+
+/* True Dark - Override dark mode colors */
+html.truedark.dark {
+  --color-bg-primary: var(--truedark-bg);
+  --color-bg-secondary: var(--truedark-bg-dark);
+  --color-bg-tertiary: var(--truedark-bg-highlight);
+  --color-text-primary: var(--truedark-fg);
+  --color-text-secondary: var(--truedark-fg-secondary);
+  --color-text-muted: var(--truedark-fg-muted);
+  --color-accent: var(--truedark-link);
+  --color-accent-hover: #79b8ff;
+  --color-border: var(--truedark-border);
+}
+
+/* True Dark specific styling */
+html.truedark .dark\:bg-gray-900 {
+  background-color: var(--truedark-bg-dark) !important;
+}
+
+html.truedark .dark\:bg-gray-800 {
+  background-color: var(--truedark-bg) !important;
+}
+
+html.truedark .dark\:bg-gray-700 {
+  background-color: var(--truedark-bg-highlight) !important;
+}
+
+html.truedark .dark\:border-gray-700,
+html.truedark .dark\:border-gray-600 {
+  border-color: var(--truedark-border) !important;
+}
+
+html.truedark .dark\:text-gray-100,
+html.truedark .dark\:text-white {
+  color: var(--truedark-fg) !important;
+}
+
+html.truedark .dark\:text-gray-400,
+html.truedark .dark\:text-gray-300 {
+  color: var(--truedark-fg-secondary) !important;
+}
+
+/* True Dark folder icons */
+html.truedark .text-yellow-500 {
+  color: var(--truedark-warning) !important;
+}
+
+/* True Dark success/error colors */
+html.truedark .text-green-500,
+html.truedark .text-green-600 {
+  color: var(--truedark-success) !important;
+}
+
+html.truedark .text-red-500,
+html.truedark .text-red-600 {
+  color: var(--truedark-danger) !important;
+}
+
+/* True Dark gradient override for header */
+html.truedark .dark\:from-gray-900 {
+  --tw-gradient-from: var(--truedark-bg-dark) !important;
+}
+
+html.truedark .dark\:to-gray-800 {
+  --tw-gradient-to: var(--truedark-bg) !important;
+}
+
+/* True Dark scrollbar */
+html.truedark::-webkit-scrollbar-track {
+  background: var(--truedark-bg-dark);
+}
+
+html.truedark::-webkit-scrollbar-thumb {
+  background: var(--truedark-border);
+}
+
+html.truedark::-webkit-scrollbar-thumb:hover {
+  background: var(--truedark-fg-muted);
+}
+
+/* ======================================
+   Green Theme
+   Nature-inspired palette for green lovers
+   ====================================== */
+
+html.green {
+  --green-bg: #0f1f17;
+  --green-bg-dark: #081410;
+  --green-bg-highlight: #18302a;
+  --green-fg: #e8f5ec;
+  --green-fg-secondary: #a7c4b1;
+  --green-fg-muted: #6b8a78;
+  --green-accent: #22c55e;
+  --green-accent-hover: #4ade80;
+  --green-leaf: #16a34a;
+  --green-moss: #65a30d;
+  --green-mint: #34d399;
+  --green-amber: #f59e0b;
+  --green-clay: #c2410c;
+  --green-border: rgba(34, 197, 94, 0.22);
+}
+
+/* Green - Override dark mode colors */
+html.green.dark {
+  --color-bg-primary: var(--green-bg);
+  --color-bg-secondary: var(--green-bg-dark);
+  --color-bg-tertiary: var(--green-bg-highlight);
+  --color-text-primary: var(--green-fg);
+  --color-text-secondary: var(--green-fg-secondary);
+  --color-text-muted: var(--green-fg-muted);
+  --color-accent: var(--green-accent);
+  --color-accent-hover: var(--green-accent-hover);
+  --color-border: var(--green-border);
+}
+
+/* Green specific styling */
+html.green .dark\:bg-gray-900 {
+  background-color: var(--green-bg-dark) !important;
+}
+
+html.green .dark\:bg-gray-800 {
+  background-color: var(--green-bg) !important;
+}
+
+html.green .dark\:bg-gray-700 {
+  background-color: var(--green-bg-highlight) !important;
+}
+
+html.green .dark\:border-gray-700,
+html.green .dark\:border-gray-600 {
+  border-color: var(--green-border) !important;
+}
+
+html.green .dark\:text-gray-100,
+html.green .dark\:text-white {
+  color: var(--green-fg) !important;
+}
+
+html.green .dark\:text-gray-400,
+html.green .dark\:text-gray-300 {
+  color: var(--green-fg-secondary) !important;
+}
+
+/* Green accents - remap blue to leaf green */
+html.green .text-blue-500,
+html.green .dark\:text-blue-400 {
+  color: var(--green-mint) !important;
+}
+
+html.green .bg-blue-500,
+html.green .dark\:bg-blue-600 {
+  background-color: var(--green-accent) !important;
+}
+
+html.green .bg-blue-500:hover,
+html.green .hover\:bg-blue-600:hover {
+  background-color: var(--green-accent-hover) !important;
+}
+
+/* Green folder icons */
+html.green .text-yellow-500 {
+  color: var(--green-amber) !important;
+}
+
+/* Green success/error colors */
+html.green .text-green-500,
+html.green .text-green-600 {
+  color: var(--green-leaf) !important;
+}
+
+html.green .text-red-500,
+html.green .text-red-600 {
+  color: var(--green-clay) !important;
+}
+
+/* Green gradient override for header */
+html.green .dark\:from-gray-900 {
+  --tw-gradient-from: var(--green-bg-dark) !important;
+}
+
+html.green .dark\:to-gray-800 {
+  --tw-gradient-to: var(--green-bg) !important;
+}
+
+/* Green scrollbar */
+html.green::-webkit-scrollbar-track {
+  background: var(--green-bg-dark);
+}
+
+html.green::-webkit-scrollbar-thumb {
+  background: var(--green-fg-muted);
+}
+
+html.green::-webkit-scrollbar-thumb:hover {
+  background: var(--green-leaf);
 }
 
 /* =========================================================

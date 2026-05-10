@@ -466,6 +466,46 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 sidebarInactive: 'text-gray-500 hover:bg-emerald-500/10 hover:text-emerald-300',
                 modelSelected: 'bg-emerald-900/30',
             };
+            case 'truedark': return {
+                bg: 'bg-[#0d1117]', bgSecondary: 'bg-[#010409]', bgSecondaryHalf: 'bg-[#010409]/60',
+                bgSecondaryHover: 'hover:bg-[#161b22]', bgHalf: 'bg-[#0d1117]/80',
+                border: 'border-[#30363d]', borderSolid: 'border-[#30363d]',
+                text: 'text-[#e6edf3]', textSecondary: 'text-[#8b949e]', textMuted: 'text-[#6e7681]',
+                textHover: 'hover:text-[#f0f6fc]',
+                btn: 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#161b22]',
+                userMsg: 'bg-[#161b22] text-[#e6edf3] border border-[#30363d]',
+                userMsgMeta: 'text-[#8b949e]',
+                assistantMsg: 'bg-[#161b22]/80 text-[#e6edf3]',
+                prose: 'prose prose-invert prose-sm',
+                gradient: 'from-[#010409]',
+                inputBg: 'bg-[#0d1117] border-[#30363d]', inputText: 'text-[#e6edf3] placeholder-[#6e7681]',
+                dropdown: 'bg-[#0d1117] border-[#30363d] shadow-xl',
+                dropdownItem: 'hover:bg-[#161b22]', dropdownText: 'text-[#e6edf3]',
+                sidebarBg: 'border-[#30363d] bg-[#010409]/30',
+                sidebarActive: 'bg-[#1f6feb]/20 text-[#79c0ff]',
+                sidebarInactive: 'text-[#8b949e] hover:bg-[#161b22] hover:text-[#e6edf3]',
+                modelSelected: 'bg-[#161b22]',
+            };
+            case 'green': return {
+                bg: 'bg-[#0f1f17]', bgSecondary: 'bg-[#081410]', bgSecondaryHalf: 'bg-[#081410]/60',
+                bgSecondaryHover: 'hover:bg-green-500/10', bgHalf: 'bg-[#0f1f17]/80',
+                border: 'border-green-900/40', borderSolid: 'border-green-800/50',
+                text: 'text-[#e8f5ec]', textSecondary: 'text-[#a7c4b1]', textMuted: 'text-[#6b8a78]',
+                textHover: 'hover:text-[#f0fdf4]',
+                btn: 'text-[#6b8a78] hover:text-[#e8f5ec] hover:bg-green-500/10',
+                userMsg: 'bg-green-950/40 text-[#e8f5ec] border border-green-500/30',
+                userMsgMeta: 'text-green-400/60',
+                assistantMsg: 'bg-[#081410]/80 text-[#e8f5ec]',
+                prose: 'prose prose-invert prose-sm',
+                gradient: 'from-[#081410]',
+                inputBg: 'bg-[#081410] border-green-800/50', inputText: 'text-[#e8f5ec] placeholder-[#6b8a78]',
+                dropdown: 'bg-[#081410] border-green-800/50 shadow-xl shadow-green-900/20',
+                dropdownItem: 'hover:bg-green-500/10', dropdownText: 'text-[#e8f5ec]',
+                sidebarBg: 'border-green-900/40 bg-[#081410]/30',
+                sidebarActive: 'bg-green-500/20 text-green-300',
+                sidebarInactive: 'text-[#6b8a78] hover:bg-green-500/10 hover:text-[#e8f5ec]',
+                modelSelected: 'bg-green-900/30',
+            };
             default: return { // dark
                 bg: 'bg-gray-900', bgSecondary: 'bg-gray-800', bgSecondaryHalf: 'bg-gray-800/50',
                 bgSecondaryHover: 'hover:bg-gray-700', bgHalf: 'bg-gray-800/80',
@@ -568,7 +608,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             return raw ? JSON.parse(raw) : null;
         } catch { return null; }
     });
-    // Extreme mode: auto-approve all tools, increased step limit (Cyber theme only)
+    // Extreme mode: auto-approve all tools, increased step limit (Cyber + True Dark themes only)
     // Unified Agent Mode: safe → normal → expert → extreme
     const [agentMode, setAgentMode] = useState<AgentMode>(() => {
         try {
@@ -578,7 +618,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
             // Migrate from old system
             const oldExtreme = localStorage.getItem('aeroftp_ai_extreme_mode');
-            if (oldExtreme === 'true' && document.documentElement.classList.contains('cyber')) {
+            const docEl = document.documentElement;
+            if (oldExtreme === 'true' && (docEl.classList.contains('cyber') || docEl.classList.contains('truedark'))) {
                 localStorage.setItem('aeroftp_ai_agent_mode', 'extreme');
                 localStorage.removeItem('aeroftp_ai_extreme_mode');
                 localStorage.removeItem('aeroftp_ai_approval_profile');
@@ -597,9 +638,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     });
     const agentModeRef = useRef<AgentMode>(agentMode);
     useEffect(() => { agentModeRef.current = agentMode; }, [agentMode]);
-    // Reset extreme mode when leaving Cyber theme
+    // Reset extreme mode when leaving Cyber or True Dark theme
     useEffect(() => {
-        if (appTheme !== 'cyber' && agentMode === 'extreme') {
+        if (appTheme !== 'cyber' && appTheme !== 'truedark' && agentMode === 'extreme') {
             setAgentMode('normal');
             localStorage.setItem('aeroftp_ai_agent_mode', 'normal');
         }

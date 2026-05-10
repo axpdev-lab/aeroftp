@@ -954,7 +954,11 @@
       "customIconsUpload": "ផ្ទុកឡើង",
       "customIconsRenameHint": "ចុចពីរដងដើម្បីប្តូរឈ្មោះ",
       "aerovaultOverlayTimeoutTitle": "ការអស់ពេលនៃ AeroVault Overlay",
-      "aerovaultOverlayTimeoutDesc": "វគ្គ AeroVault Overlay នឹងចាក់សោដោយស្វ័យប្រវត្តិបន្ទាប់ពីអំឡុងពេលអសកម្មនេះ។ តម្លៃទាបជាងគឺមានសុវត្ថិភាពជាង ប៉ុន្តែតម្រូវឱ្យដោះសោញឹកញាប់ជាង។"
+      "aerovaultOverlayTimeoutDesc": "វគ្គ AeroVault Overlay នឹងចាក់សោដោយស្វ័យប្រវត្តិបន្ទាប់ពីអំឡុងពេលអសកម្មនេះ។ តម្លៃទាបជាងគឺមានសុវត្ថិភាពជាង ប៉ុន្តែតម្រូវឱ្យដោះសោញឹកញាប់ជាង។",
+      "themeTruedarkLabel": "ងងឹតពិត",
+      "themeTruedarkDesc": "ងងឹតអព្យាក្រឹតពិតប្រាកដក្នុងស្ទីល GitHub, គ្មានពណ៌ខៀវ",
+      "themeGreenLabel": "បៃតង",
+      "themeGreenDesc": "ផ្ទាំងពណ៌ព្រៃឈើដែលបំផុសគំនិតពីធម្មជាតិសម្រាប់អ្នកស្រឡាញ់ពណ៌បៃតង"
     },
     "devtools": {
       "title": "AeroTools",

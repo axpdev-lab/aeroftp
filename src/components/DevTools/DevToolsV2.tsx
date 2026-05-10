@@ -21,8 +21,8 @@ interface DevToolsV2Props {
     onClose: () => void;
     onSaveFile?: (content: string, file: PreviewFile) => Promise<void>;
     onClearFile?: () => void;
-    /** Monaco editor theme: 'vs' (light), 'vs-dark', 'tokyo-night', or 'cyber' */
-    editorTheme?: 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber';
+    /** Monaco editor theme */
+    editorTheme?: 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green';
     /** App-level theme for DevTools panel styling */
     appTheme?: EffectiveTheme;
     /** SSH connection info for remote shell (when connected to SFTP) */
@@ -270,6 +270,30 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                 text: 'text-emerald-600/80',
                 divider: 'bg-emerald-900/40',
                 panelHeader: 'bg-[#0d1117]/50 border-emerald-900/40',
+            };
+            case 'truedark': return {
+                panel: 'bg-[#0d1117] text-[#e6edf3]',
+                toolbar: 'bg-[#010409] border-[#30363d]',
+                border: 'border-[#30363d]',
+                resizeHandle: 'bg-[#161b22] hover:bg-[#58a6ff]',
+                resizeBar: 'bg-[#30363d] group-hover:bg-[#79c0ff]',
+                buttonInactive: 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#161b22]',
+                buttonHover: 'hover:bg-[#161b22]',
+                text: 'text-[#8b949e]',
+                divider: 'bg-[#30363d]',
+                panelHeader: 'bg-[#010409]/50 border-[#30363d]',
+            };
+            case 'green': return {
+                panel: 'bg-[#0f1f17] text-[#e8f5ec]',
+                toolbar: 'bg-[#081410] border-green-900/40',
+                border: 'border-green-900/40',
+                resizeHandle: 'bg-[#18302a] hover:bg-green-500',
+                resizeBar: 'bg-green-800/60 group-hover:bg-green-400',
+                buttonInactive: 'text-[#6b8a78] hover:text-[#e8f5ec] hover:bg-green-500/10',
+                buttonHover: 'hover:bg-green-500/10',
+                text: 'text-[#6b8a78]',
+                divider: 'bg-green-900/40',
+                panelHeader: 'bg-[#081410]/50 border-green-900/40',
             };
             default: return { // dark
                 panel: 'bg-gray-900 text-gray-100',

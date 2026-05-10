@@ -954,7 +954,11 @@
       "customIconsUpload": "Lataa",
       "customIconsRenameHint": "Kaksoisnapsauta nimetäksesi uudelleen",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlayn aikakatkaisu",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-istunnot lukittuvat automaattisesti tämän käyttämättömyysajan jälkeen. Pienemmät arvot ovat turvallisempia, mutta vaativat tiheämpiä avaamisia."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-istunnot lukittuvat automaattisesti tämän käyttämättömyysajan jälkeen. Pienemmät arvot ovat turvallisempia, mutta vaativat tiheämpiä avaamisia.",
+      "themeTruedarkLabel": "Aito tumma",
+      "themeTruedarkDesc": "Aito neutraali tumma GitHub-tyyliin, ilman sinistä vivahdetta",
+      "themeGreenLabel": "Vihreä",
+      "themeGreenDesc": "Luonnosta inspiroitu metsäpaletti vihreän rakastajille"
     },
     "devtools": {
       "title": "AeroTools",

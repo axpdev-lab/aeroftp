@@ -954,7 +954,11 @@
       "customIconsUpload": "ატვირთვა",
       "customIconsRenameHint": "ორმაგი დაწკაპუნება გადარქმევისთვის",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay-ის ლოდინის დრო",
-      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-ის სესიები ავტომატურად იბლოკება უმოქმედობის ამ პერიოდის შემდეგ. დაბალი მნიშვნელობები უფრო უსაფრთხოა, მაგრამ უფრო ხშირ განბლოკვას მოითხოვს."
+      "aerovaultOverlayTimeoutDesc": "AeroVault Overlay-ის სესიები ავტომატურად იბლოკება უმოქმედობის ამ პერიოდის შემდეგ. დაბალი მნიშვნელობები უფრო უსაფრთხოა, მაგრამ უფრო ხშირ განბლოკვას მოითხოვს.",
+      "themeTruedarkLabel": "ჭეშმარიტი მუქი",
+      "themeTruedarkDesc": "ჭეშმარიტი ნეიტრალური მუქი GitHub სტილში, ლურჯი ელფერის გარეშე",
+      "themeGreenLabel": "მწვანე",
+      "themeGreenDesc": "ბუნებით შთაგონებული ტყის პალიტრა მწვანის მოყვარულებისთვის"
     },
     "devtools": {
       "title": "AeroTools",
