@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Mediální CDN a úložiště s nativními složkami (20 GB zdarma)",
             "discoverUploadcare": "EU správa médií s CDN a souborovým API (3 GB zdarma)",
             "discoverCloudinary": "CDN pro správu médií s REST API (25 kreditů/měsíc zdarma)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB zdarma, založeno na Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: nezávislý cloudový tým z EU od roku 2018, Nextcloud-as-a-service s 8GB zdarma, v souladu s GDPR, regionální subdomény (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB zdarma, založeno na Nextcloud, EU/GDPR, regionální subdomény)",
+            "webdavLocalScheme": "Protokol",
+            "webdavLocalSchemeHelp": "Odpovídá nastavení HTTP/HTTPS lokálního WebDAV mostu (Filen Desktop, MEGAcmd). HTTPS používá samopodepsaný certifikát, takže ověřování certifikátu je automaticky vypnuto."
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

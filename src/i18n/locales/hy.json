@@ -1610,11 +1610,11 @@
             "discoverImageKit": "Մեդիա CDN և պահոցում ներքին թղթապանակներով (20 GB անվճար)",
             "discoverUploadcare": "EU մեդիայի կառավարում CDN-ով և ֆայլերի API-ներով (3 GB անվճար)",
             "discoverCloudinary": "CDN մեդիա կառավարման համար REST API-ով (25 կրեդիտ/ամսական անվճար)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: անկախ ԵՄ ամպային թիմ 2018 թվականից, Nextcloud-as-a-service 8GB անվճար, GDPR-ի համապատասխան, տարածաշրջանային ենթադոմեններ (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR, տարածաշրջանային ենթադոմեններ)",
+            "webdavLocalScheme": "Արձանագրություն",
+            "webdavLocalSchemeHelp": "Համապատասխանեցրեք տեղական WebDAV կամրջի HTTP/HTTPS կարգավորմանը (Filen Desktop, MEGAcmd)։ HTTPS-ն օգտագործում է ինքնաստորագրված վկայական, ուստի վկայականի ստուգումն ինքնաշխատ կերպով անջատվում է։"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

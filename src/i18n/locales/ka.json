@@ -1617,11 +1617,11 @@
             "discoverImageKit": "მედია CDN და საცავი მშობლიური საქაღალდეებით (20 GB უფასო)",
             "discoverUploadcare": "EU მედიის მართვა CDN-ით და ფაილების API-ებით (3 GB უფასო)",
             "discoverCloudinary": "CDN მედიის მართვისთვის REST API-ით (25 კრედიტი/თვეში უფასოდ)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB უფასო, Nextcloud-ზე დაფუძნებული, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: დამოუკიდებელი ევროკავშირის ღრუბლის გუნდი 2018 წლიდან, Nextcloud-as-a-service 8GB უფასოდ, GDPR-თან თავსებადი, რეგიონული ქვედომენები (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB უფასო, Nextcloud-ზე დაფუძნებული, EU/GDPR, რეგიონული ქვედომენები)",
+            "webdavLocalScheme": "პროტოკოლი",
+            "webdavLocalSchemeHelp": "შეუსაბამეთ ლოკალური WebDAV ხიდის HTTP/HTTPS პარამეტრს (Filen Desktop, MEGAcmd). HTTPS იყენებს თვითხელმოწერილ სერტიფიკატს, ამიტომ სერტიფიკატის შემოწმება ავტომატურად გათიშულია."
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

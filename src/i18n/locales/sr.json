@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Medijski CDN i skladište sa nativnim folderima (20 GB besplatno)",
             "discoverUploadcare": "EU upravljanje medijima sa CDN-om i API-jima za datoteke (3 GB besplatno)",
             "discoverCloudinary": "CDN за управљање медијима са REST API-јем (25 кредита/месечно бесплатно)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB бесплатно, базирано на Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: независан ЕУ облак тим од 2018, Nextcloud-as-a-service са 8GB бесплатно, усклађено са GDPR, регионални поддомени (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB бесплатно, базирано на Nextcloud, EU/GDPR, регионални поддомени)",
+            "webdavLocalScheme": "Протокол",
+            "webdavLocalSchemeHelp": "Ускладите са HTTP/HTTPS подешавањем локалног WebDAV моста (Filen Desktop, MEGAcmd). HTTPS користи самопотписани сертификат, па је верификација сертификата аутоматски онемогућена."
         },
         "shortcuts": {
             "title": "Prečice na tastaturi",

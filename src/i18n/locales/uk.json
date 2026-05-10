@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Медіа CDN та сховище з нативними папками (20 GB безкоштовно)",
             "discoverUploadcare": "EU керування медіа з CDN та файловими API (3 GB безкоштовно)",
             "discoverCloudinary": "CDN для керування медіа з REST API (25 кредитів/місяць безкоштовно)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 ГБ безкоштовно, на основі Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: незалежна хмарна команда ЄС з 2018 року, Nextcloud-as-a-service з 8GB безкоштовно, відповідає GDPR, регіональні піддомени (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 ГБ безкоштовно, на основі Nextcloud, EU/GDPR, регіональні піддомени)",
+            "webdavLocalScheme": "Протокол",
+            "webdavLocalSchemeHelp": "Узгодьте з налаштуванням HTTP/HTTPS локального мосту WebDAV (Filen Desktop, MEGAcmd). HTTPS використовує самопідписаний сертифікат, тому перевірка сертифіката автоматично вимкнена."
         },
         "shortcuts": {
             "title": "Грячі клавіші",

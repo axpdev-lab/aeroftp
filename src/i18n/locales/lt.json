@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Medijos CDN ir saugykla su gimtaisiais aplankais (20 GB nemokamai)",
             "discoverUploadcare": "EU medijos valdymas su CDN ir failų API (3 GB nemokamai)",
             "discoverCloudinary": "CDN medijų valdymui su REST API (25 kreditai per mėnesį nemokamai)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB nemokamai, Nextcloud pagrindu, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: nepriklausoma ES debesijos komanda nuo 2018 m., Nextcloud-as-a-service su 8GB nemokamai, atitinka GDPR, regioniniai padomeniai (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB nemokamai, Nextcloud pagrindu, EU/GDPR, regioniniai padomeniai)",
+            "webdavLocalScheme": "Protokolas",
+            "webdavLocalSchemeHelp": "Atitikite vietinio WebDAV tilto HTTP/HTTPS nustatymą (Filen Desktop, MEGAcmd). HTTPS naudoja savaime pasirašytą sertifikatą, todėl sertifikato patikrinimas automatiškai išjungiamas."
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

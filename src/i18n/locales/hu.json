@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Média CDN és tárhely natív mappákkal (20 GB ingyenes)",
             "discoverUploadcare": "EU médiakezelés CDN-nel és fájl API-kkal (3 GB ingyenes)",
             "discoverCloudinary": "Médiakezelő CDN REST API-val (25 kredit/hónap ingyenes)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB ingyenes, Nextcloud-alapú, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: független EU felhő csapat 2018 óta, Nextcloud-as-a-service 8GB ingyenes tárhellyel, GDPR-kompatibilis, regionális aldomainek (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB ingyenes, Nextcloud-alapú, EU/GDPR, regionális aldomainek)",
+            "webdavLocalScheme": "Protokoll",
+            "webdavLocalSchemeHelp": "Egyezzen meg a helyi WebDAV híd HTTP/HTTPS beállításával (Filen Desktop, MEGAcmd). A HTTPS önaláírt tanúsítványt használ, így a tanúsítvány-ellenőrzés automatikusan letiltásra kerül."
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

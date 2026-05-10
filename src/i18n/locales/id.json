@@ -1617,11 +1617,11 @@
             "discoverImageKit": "CDN media dan penyimpanan dengan folder native (20 GB gratis)",
             "discoverUploadcare": "Manajemen media EU dengan CDN dan API file (3 GB gratis)",
             "discoverCloudinary": "CDN untuk manajemen media dengan REST API (25 kredit/bulan gratis)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB gratis, berbasis Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: tim cloud independen UE sejak 2018, Nextcloud-as-a-service dengan 8GB gratis, sesuai GDPR, subdomain regional (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB gratis, berbasis Nextcloud, EU/GDPR, subdomain regional)",
+            "webdavLocalScheme": "Protokol",
+            "webdavLocalSchemeHelp": "Sesuaikan dengan pengaturan HTTP/HTTPS jembatan WebDAV lokal (Filen Desktop, MEGAcmd). HTTPS menggunakan sertifikat yang ditandatangani sendiri, sehingga verifikasi sertifikat dinonaktifkan secara otomatis."
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

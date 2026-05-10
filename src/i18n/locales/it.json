@@ -424,7 +424,7 @@
             "felicloudDesc": "Felicloud (10 GB gratuiti, EU/GDPR)",
             "felicloudTooltip": "Felicloud — Archiviazione cloud EU basata su Nextcloud con 10GB gratuiti, conforme al GDPR",
             "tabdigitalDesc": "Tab.digital (8 GB gratuiti, basato su Nextcloud, EU/GDPR)",
-            "tabdigitalTooltip": "Tab.digital — Team cloud indipendente EU dal 2018, Nextcloud-as-a-service con 8GB gratuiti, GDPR-compliant, sottodomini regionali (fie.nl, fie.de, ...)",
+            "tabdigitalTooltip": "Tab.digital: team cloud indipendente EU dal 2018, Nextcloud-as-a-service con 8GB gratuiti, GDPR-compliant, sottodomini regionali (fie.nl, fie.de, ...)",
             "blompDesc": "Blomp (40 GB di archiviazione cloud gratuita)",
             "blompTooltip": "Blomp — 40GB di archiviazione cloud gratuita alimentata da OpenStack Swift",
             "swiftDesc": "OpenStack Swift archiviazione oggetti",

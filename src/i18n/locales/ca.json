@@ -1617,11 +1617,11 @@
             "discoverImageKit": "CDN i emmagatzematge multimèdia amb carpetes natives (20 GB gratis)",
             "discoverUploadcare": "Gestió de mèdia EU amb CDN i API de fitxers (3 GB gratis)",
             "discoverCloudinary": "CDN per a la gestió de mèdia amb REST API (25 crèdits/mes gratuïts)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB gratis, basat en Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: equip cloud independent de la UE des de 2018, Nextcloud-as-a-service amb 8GB gratis, compatible amb GDPR, subdominis regionals (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB gratis, basat en Nextcloud, EU/GDPR, subdominis regionals)",
+            "webdavLocalScheme": "Protocol",
+            "webdavLocalSchemeHelp": "Coincideix amb la configuració HTTP/HTTPS del pont WebDAV local (Filen Desktop, MEGAcmd). HTTPS utilitza un certificat autosignat, de manera que la verificació del certificat es desactiva automàticament."
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",

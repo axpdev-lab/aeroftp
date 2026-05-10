@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Margmiðlunar-CDN og geymsla með innfæddum möppum (20 GB ókeypis)",
             "discoverUploadcare": "EU margmiðlunarstjórnun með CDN og skráa-API (3 GB ókeypis)",
             "discoverCloudinary": "CDN fyrir miðlastjórnun með REST API (25 inneignir/mánuði ókeypis)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB ókeypis, Nextcloud-byggt, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: óháð ESB skýjateymi síðan 2018, Nextcloud-as-a-service með 8GB ókeypis, GDPR-samhæft, svæðisbundin undirlén (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB ókeypis, Nextcloud-byggt, EU/GDPR, svæðisbundin undirlén)",
+            "webdavLocalScheme": "Samskiptaregla",
+            "webdavLocalSchemeHelp": "Samsvarið HTTP/HTTPS stillingu staðbundinnar WebDAV brúar (Filen Desktop, MEGAcmd). HTTPS notar sjálfundirritað skírteini, þannig að skírteinisstaðfesting er sjálfkrafa óvirk."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

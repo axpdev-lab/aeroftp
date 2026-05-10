@@ -1617,11 +1617,11 @@
             "discoverImageKit": "네이티브 폴더를 지원하는 미디어 CDN 및 저장소 (20 GB 무료)",
             "discoverUploadcare": "CDN 및 파일 API를 갖춘 EU 미디어 관리 (3 GB 무료)",
             "discoverCloudinary": "REST API를 갖춘 미디어 관리 CDN (월 25 크레딧 무료)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB 무료, Nextcloud 기반, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: 2018년부터 독립적인 EU 클라우드 팀, 8GB 무료 Nextcloud-as-a-service, GDPR 준수, 지역별 서브도메인 (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB 무료, Nextcloud 기반, EU/GDPR, 지역별 서브도메인)",
+            "webdavLocalScheme": "프로토콜",
+            "webdavLocalSchemeHelp": "로컬 WebDAV 브리지(Filen Desktop, MEGAcmd)의 HTTP/HTTPS 설정과 일치시키세요. HTTPS는 자체 서명 인증서를 사용하므로 인증서 검증이 자동으로 비활성화됩니다."
         },
         "shortcuts": {
             "title": "단축키",

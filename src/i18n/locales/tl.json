@@ -1617,11 +1617,11 @@
             "discoverImageKit": "Media CDN at imbakan na may native na mga folder (20 GB libre)",
             "discoverUploadcare": "Pamamahala ng EU media na may CDN at file API (3 GB libre)",
             "discoverCloudinary": "CDN para sa pamamahala ng media na may REST API (25 credits/buwan libre)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB libre, batay sa Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: independiyenteng cloud team ng EU mula 2018, Nextcloud-as-a-service na may 8GB libre, sumusunod sa GDPR, mga rehiyonal na subdomain (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB libre, batay sa Nextcloud, EU/GDPR, mga rehiyonal na subdomain)",
+            "webdavLocalScheme": "Protocol",
+            "webdavLocalSchemeHelp": "Itugma sa HTTP/HTTPS na setting ng lokal na WebDAV bridge (Filen Desktop, MEGAcmd). Gumagamit ang HTTPS ng self-signed certificate, kaya awtomatikong hindi pinagana ang pag-verify ng certificate."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

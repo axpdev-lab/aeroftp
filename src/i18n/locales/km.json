@@ -1617,11 +1617,11 @@
             "discoverImageKit": "មេឌៀ CDN និងការផ្ទុកជាមួយថតដើម (20 GB ឥតគិតថ្លៃ)",
             "discoverUploadcare": "ការគ្រប់គ្រងមេឌៀ EU ជាមួយ CDN និង API ឯកសារ (3 GB ឥតគិតថ្លៃ)",
             "discoverCloudinary": "CDN សម្រាប់​ការ​គ្រប់គ្រង​មេឌៀ​ជាមួយ REST API (25 ឥណទាន/ខែ ឥតគិតថ្លៃ)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: ក្រុមពពកឯករាជ្យនៃសហភាពអឺរ៉ុបចាប់តាំងពីឆ្នាំ 2018, Nextcloud-as-a-service ដោយឥតគិតថ្លៃ 8GB, អនុលោមតាម GDPR, ដែនរងតាមតំបន់ (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR, ដែនរងតាមតំបន់)",
+            "webdavLocalScheme": "ពិធីការ",
+            "webdavLocalSchemeHelp": "ផ្គូផ្គងការកំណត់ HTTP/HTTPS របស់ស្ពាន WebDAV ក្នុងស្រុក (Filen Desktop, MEGAcmd)។ HTTPS ប្រើវិញ្ញាបនបត្រដែលចុះហត្ថលេខាដោយខ្លួនឯង ដូច្នេះការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទដោយស្វ័យប្រវត្តិ។"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

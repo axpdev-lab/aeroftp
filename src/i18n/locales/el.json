@@ -1617,11 +1617,11 @@
             "discoverImageKit": "CDN πολυμέσων και αποθήκευση με εγγενείς φακέλους (20 GB δωρεάν)",
             "discoverUploadcare": "EU διαχείριση πολυμέσων με CDN και API αρχείων (3 GB δωρεάν)",
             "discoverCloudinary": "CDN για διαχείριση πολυμέσων με REST API (25 πιστώσεις/μήνα δωρεάν)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB δωρεάν, βασισμένο σε Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: ανεξάρτητη ομάδα cloud της ΕΕ από το 2018, Nextcloud-as-a-service με 8GB δωρεάν, συμβατό με GDPR, περιφερειακά υποτομέα (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB δωρεάν, βασισμένο σε Nextcloud, EU/GDPR, περιφερειακά υποτομέα)",
+            "webdavLocalScheme": "Πρωτόκολλο",
+            "webdavLocalSchemeHelp": "Ταιριάξτε με τη ρύθμιση HTTP/HTTPS της τοπικής γέφυρας WebDAV (Filen Desktop, MEGAcmd). Το HTTPS χρησιμοποιεί αυτο-υπογεγραμμένο πιστοποιητικό, οπότε η επαλήθευση πιστοποιητικού απενεργοποιείται αυτόματα."
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

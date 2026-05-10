@@ -1617,11 +1617,11 @@
             "discoverImageKit": "CDN สื่อและพื้นที่จัดเก็บพร้อมโฟลเดอร์ดั้งเดิม (20 GB ฟรี)",
             "discoverUploadcare": "การจัดการสื่อ EU ด้วย CDN และ API ไฟล์ (3 GB ฟรี)",
             "discoverCloudinary": "CDN สำหรับจัดการสื่อด้วย REST API (25 เครดิต/เดือน ฟรี)",
-            "tabdigitalDesc": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, EU)",
-            "tabdigitalTooltip": "[NEEDS TRANSLATION] Tab.digital — Nextcloud-as-a-service with 8GB free, regional subdomains (fie.nl, fie.de, ...)",
-            "discoverTabDigital": "[NEEDS TRANSLATION] Tab.digital (8 GB free, Nextcloud-based, regional EU subdomains)",
-            "webdavLocalScheme": "[NEEDS TRANSLATION] Protocol",
-            "webdavLocalSchemeHelp": "[NEEDS TRANSLATION] Match the HTTP/HTTPS setting of the local WebDAV bridge (Filen Desktop, MEGAcmd). HTTPS uses a self-signed certificate, so certificate verification is disabled automatically."
+            "tabdigitalDesc": "Tab.digital (8 GB ฟรี, ใช้ Nextcloud, EU/GDPR)",
+            "tabdigitalTooltip": "Tab.digital: ทีมคลาวด์ EU อิสระตั้งแต่ปี 2018, Nextcloud-as-a-service พร้อม 8GB ฟรี, สอดคล้องกับ GDPR, โดเมนย่อยตามภูมิภาค (fie.nl, fie.de, ...)",
+            "discoverTabDigital": "Tab.digital (8 GB ฟรี, ใช้ Nextcloud, EU/GDPR, โดเมนย่อยตามภูมิภาค)",
+            "webdavLocalScheme": "โปรโตคอล",
+            "webdavLocalSchemeHelp": "ให้ตรงกับการตั้งค่า HTTP/HTTPS ของบริดจ์ WebDAV ในเครื่อง (Filen Desktop, MEGAcmd) HTTPS ใช้ใบรับรองที่ลงนามด้วยตนเอง ดังนั้นการตรวจสอบใบรับรองจะถูกปิดใช้งานโดยอัตโนมัติ"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
