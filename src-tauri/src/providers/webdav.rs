@@ -983,9 +983,19 @@ impl WebDavProvider {
                                 Some(getlastmodified.trim().to_string())
                             };
 
-                            // Extract name: prefer displayname, fallback to href
+                            // Extract name: prefer displayname, fallback to href.
+                            // Filen Desktop's WebDAV bridge ships displayname percent-
+                            // encoded (e.g. `my%20folder` for "my folder"), against the
+                            // RFC 4918 expectation that `<DAV:displayname>` is a
+                            // human-readable string. Mirror the href branch and decode
+                            // defensively: on RFC-compliant servers (Nextcloud, Koofr,
+                            // ...) the input has no percent-encoding and decode is a
+                            // no-op; on the Filen bridge it un-mangles the name. Issue
+                            // #128.
                             let name = if !displayname.is_empty() {
-                                displayname.clone()
+                                urlencoding::decode(&displayname)
+                                    .unwrap_or_else(|_| displayname.clone().into())
+                                    .into_owned()
                             } else {
                                 decoded_href
                                     .trim_end_matches('/')
@@ -2570,6 +2580,59 @@ mod tests {
         assert_eq!(entries[0].size, 1024);
         assert_eq!(entries[1].name, "subdir");
         assert!(entries[1].is_dir);
+    }
+
+    /// Issue #128 (Filen WebDAV bridge): the local bridge ships
+    /// `<DAV:displayname>` percent-encoded ("my%20folder") instead of the
+    /// human-readable form RFC 4918 mandates. Defensive decoding in
+    /// parse_propfind_response un-mangles it. RFC-compliant servers send
+    /// raw display names, on which the decode is a no-op.
+    #[test]
+    fn parse_propfind_decodes_percent_encoded_displayname() {
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>/dav/my%20folder/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>my%20folder</d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/foto%20vacanze.jpg</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>foto%20vacanze.jpg</d:displayname>
+                        <d:resourcetype/>
+                        <d:getcontentlength>2048</d:getcontentlength>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/normal-file.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>normal-file.txt</d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
+        assert_eq!(entries.len(), 3);
+        // Filen-style: percent-encoded displayname must be decoded.
+        assert_eq!(entries[0].name, "my folder");
+        assert!(entries[0].is_dir);
+        assert_eq!(entries[1].name, "foto vacanze.jpg");
+        assert!(!entries[1].is_dir);
+        // RFC-compliant: raw displayname passes through unchanged.
+        assert_eq!(entries[2].name, "normal-file.txt");
     }
 
     // Issue #175 — boundary check must use the auto-detected `server_root`
