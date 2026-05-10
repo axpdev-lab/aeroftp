@@ -142,40 +142,59 @@ Var AeroFTPHadDesktopShortcut
             DetailPrint "VC++ Runtime download failed ($0) — install manually from https://aka.ms/vs/17/release/vc_redist.x64.exe"
     _vcredist_done:
 
-    ; Register .aerovault file association
-    WriteRegStr HKLM "Software\Classes\.aerovault" "" "AeroFTP.AeroVault"
-    WriteRegStr HKLM "Software\Classes\.aerovault" "Content Type" "application/x-aerovault"
-    WriteRegStr HKLM "Software\Classes\.aerovault" "PerceivedType" "document"
+    ; Register file associations under HKCU because Tauri's NSIS installer
+    ; runs per-user by default (no admin elevation). HKLM writes from a
+    ; non-elevated installer are silently dropped by Windows registry
+    ; virtualisation, which is why the doc-style MIME icons we ship were
+    ; never honoured: Tauri's auto-section already wrote AppIcon to
+    ; HKCU\Software\Classes\<ProgID>\DefaultIcon, our HKLM overwrite
+    ; never reached anywhere visible to Explorer, and HKCU's value won
+    ; the HKEY_CLASSES_ROOT merge. Issue: see APPENDIX-SPRING.
 
-    WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault" "" "AeroVault Encrypted Container"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerovault.ico,0"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.AeroVault\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+    ; .aerovault
+    WriteRegStr HKCU "Software\Classes\.aerovault" "" "AeroFTP.AeroVault"
+    WriteRegStr HKCU "Software\Classes\.aerovault" "Content Type" "application/x-aerovault"
+    WriteRegStr HKCU "Software\Classes\.aerovault" "PerceivedType" "document"
 
-    ; Register .aeroftp file association (server profile export)
-    WriteRegStr HKLM "Software\Classes\.aeroftp" "" "AeroFTP.Profile"
-    WriteRegStr HKLM "Software\Classes\.aeroftp" "Content Type" "application/x-aeroftp"
-    WriteRegStr HKLM "Software\Classes\.aeroftp" "PerceivedType" "document"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroVault" "" "AeroVault Encrypted Container"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroVault\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerovault.ico,0"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroVault\shell\open" "" "Open with AeroFTP"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroVault\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
 
-    WriteRegStr HKLM "Software\Classes\AeroFTP.Profile" "" "AeroFTP Server Profile"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.Profile\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp.ico,0"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.Profile\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.Profile\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+    ; .aeroftp (server profile export)
+    WriteRegStr HKCU "Software\Classes\.aeroftp" "" "AeroFTP.Profile"
+    WriteRegStr HKCU "Software\Classes\.aeroftp" "Content Type" "application/x-aeroftp"
+    WriteRegStr HKCU "Software\Classes\.aeroftp" "PerceivedType" "document"
 
-    ; Register .aeroftp-keystore file association (encrypted keystore backup)
-    WriteRegStr HKLM "Software\Classes\.aeroftp-keystore" "" "AeroFTP.Keystore"
-    WriteRegStr HKLM "Software\Classes\.aeroftp-keystore" "Content Type" "application/x-aeroftp-keystore"
-    WriteRegStr HKLM "Software\Classes\.aeroftp-keystore" "PerceivedType" "document"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Profile" "" "AeroFTP Server Profile"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Profile\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp.ico,0"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Profile\shell\open" "" "Open with AeroFTP"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Profile\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
 
-    WriteRegStr HKLM "Software\Classes\AeroFTP.Keystore" "" "AeroFTP Keystore Backup"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.Keystore\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-keystore.ico,0"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.Keystore\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKLM "Software\Classes\AeroFTP.Keystore\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+    ; .aeroftp-keystore (encrypted keystore backup)
+    WriteRegStr HKCU "Software\Classes\.aeroftp-keystore" "" "AeroFTP.Keystore"
+    WriteRegStr HKCU "Software\Classes\.aeroftp-keystore" "Content Type" "application/x-aeroftp-keystore"
+    WriteRegStr HKCU "Software\Classes\.aeroftp-keystore" "PerceivedType" "document"
 
-    ; Register MIME types in Windows MIME database
-    WriteRegStr HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerovault" "Extension" ".aerovault"
-    WriteRegStr HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp" "Extension" ".aeroftp"
-    WriteRegStr HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore" "Extension" ".aeroftp-keystore"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Keystore" "" "AeroFTP Keystore Backup"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Keystore\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-keystore.ico,0"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Keystore\shell\open" "" "Open with AeroFTP"
+    WriteRegStr HKCU "Software\Classes\AeroFTP.Keystore\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
+
+    ; MIME database entries (HKCU\Software\Classes\MIME mirrors HKLM in
+    ; the merged HKCR view, so Explorer picks them up the same way).
+    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerovault" "Extension" ".aerovault"
+    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp" "Extension" ".aeroftp"
+    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore" "Extension" ".aeroftp-keystore"
+
+    ; Flush Explorer's icon cache so the doc-style MIME icons are
+    ; rendered immediately after install (otherwise users would have
+    ; to log out / restart Explorer to see the change). The cache file
+    ; lives at $LOCALAPPDATA\IconCache.db on Win10/11; deleting it is
+    ; safe (Windows rebuilds on demand) and is the documented way to
+    ; force a refresh post-association change.
+    Delete "$LOCALAPPDATA\IconCache.db"
+    Delete "$LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db"
 
     ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
@@ -216,7 +235,20 @@ _aeroftp_unpath_finish:
         System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
 _aeroftp_unpath_done:
 
-    ; Remove file associations and class registrations for all 3 AeroFTP MIME types
+    ; Remove file associations and class registrations for all 3 AeroFTP
+    ; MIME types. Mirror of the install-side HKCU writes (per-user
+    ; install scope). HKLM keys are also dropped on the off chance an
+    ; older AeroFTP build registered there before the HKCU migration.
+    DeleteRegKey HKCU "Software\Classes\.aerovault"
+    DeleteRegKey HKCU "Software\Classes\AeroFTP.AeroVault"
+    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerovault"
+    DeleteRegKey HKCU "Software\Classes\.aeroftp"
+    DeleteRegKey HKCU "Software\Classes\AeroFTP.Profile"
+    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp"
+    DeleteRegKey HKCU "Software\Classes\.aeroftp-keystore"
+    DeleteRegKey HKCU "Software\Classes\AeroFTP.Keystore"
+    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore"
+    ; Legacy HKLM cleanup (pre-HKCU migration installs).
     DeleteRegKey HKLM "Software\Classes\.aerovault"
     DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroVault"
     DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerovault"
