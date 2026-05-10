@@ -11,7 +11,9 @@ import {
     Archive, Image, Video, Music, FileCode, Code, Globe,
     FileType, Database, FileSpreadsheet, FileText, Folder, FolderUp
 } from 'lucide-react';
-import { VaultIcon } from '../../components/icons/VaultIcon';
+import { AeroVaultFileIcon } from '../../components/icons/AeroVaultFileIcon';
+import { AeroFtpFileIcon } from '../../components/icons/AeroFtpFileIcon';
+import { AeroFtpKeystoreIcon } from '../../components/icons/AeroFtpKeystoreIcon';
 import type { IconThemeProvider, FileIconResult } from './types';
 
 const iconMap: Record<string, { Icon: React.ElementType; color: string }> = {
@@ -109,7 +111,13 @@ export const outlineTheme: IconThemeProvider = {
     getFileIcon: (filename: string, size: number = 16): FileIconResult => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
         if (ext === 'aerovault') {
-            return { icon: <VaultIcon size={size} />, color: 'text-emerald-500' };
+            return { icon: <AeroVaultFileIcon size={size} />, color: 'text-emerald-500' };
+        }
+        if (ext === 'aeroftp-keystore') {
+            return { icon: <AeroFtpKeystoreIcon size={size} />, color: 'text-amber-500' };
+        }
+        if (ext === 'aeroftp') {
+            return { icon: <AeroFtpFileIcon size={size} />, color: 'text-blue-500' };
         }
         const entry = iconMap[ext];
         if (entry) {
