@@ -14,7 +14,9 @@
 
 import React from 'react';
 import type { IconThemeProvider, FileIconResult } from './types';
-import { VaultIcon } from '../../components/icons/VaultIcon';
+import { AeroVaultFileIcon } from '../../components/icons/AeroVaultFileIcon';
+import { AeroFtpFileIcon } from '../../components/icons/AeroFtpFileIcon';
+import { AeroFtpKeystoreIcon } from '../../components/icons/AeroFtpKeystoreIcon';
 
 // --- SVG Components ---
 
@@ -147,8 +149,6 @@ const filledIconMap: Record<string, { bgColor: string; badge: string }> = {
     'tar':    { bgColor: '#a16207', badge: 'TAR' },
     'gz':     { bgColor: '#a16207', badge: 'GZ' },
     '7z':     { bgColor: '#a16207', badge: '7Z' },
-    // Vault
-    'aerovault': { bgColor: '#10b981', badge: 'AV' },
     // Shell
     'sh':     { bgColor: '#22c55e', badge: 'SH' },
     'bash':   { bgColor: '#22c55e', badge: 'SH' },
@@ -160,6 +160,9 @@ const filledIconMap: Record<string, { bgColor: string; badge: string }> = {
     'lock':   { bgColor: '#6b7280', badge: 'LCK' },
     // Web server
     'htaccess': { bgColor: '#16a34a', badge: 'HTA' },
+    // AeroFTP-native types are handled by dedicated icon components in
+    // getFileIcon below (early-return guards for `aerovault`, `aeroftp`,
+    // `aeroftp-keystore`); they are NOT listed here on purpose.
 };
 
 export const filledTheme: IconThemeProvider = {
@@ -168,7 +171,13 @@ export const filledTheme: IconThemeProvider = {
     getFileIcon: (filename: string, size: number = 16): FileIconResult => {
         const ext = filename.split('.').pop()?.toLowerCase() || '';
         if (ext === 'aerovault') {
-            return { icon: <VaultIcon size={size} />, color: '' };
+            return { icon: <AeroVaultFileIcon size={size} />, color: '' };
+        }
+        if (ext === 'aeroftp-keystore') {
+            return { icon: <AeroFtpKeystoreIcon size={size} />, color: '' };
+        }
+        if (ext === 'aeroftp') {
+            return { icon: <AeroFtpFileIcon size={size} />, color: '' };
         }
         const entry = filledIconMap[ext];
         if (entry) {
