@@ -3226,7 +3226,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     port: 443
                                                 })}
                                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                placeholder={t('connection.filenEmailPlaceholder')}
+                                                placeholder={t('settings.filenEmailPlaceholder')}
                                                 autoFocus
                                             />
                                         </div>
