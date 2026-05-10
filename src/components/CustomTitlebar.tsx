@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getVersion } from '@tauri-apps/api/app';
 import { Minus, Square, X, Maximize2, Heart, Settings, Lock, LockOpen, LogOut, Cloud, Home } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { openUrl } from '../utils/openUrl';
@@ -180,6 +181,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const t = useTranslation();
     const [isMaximized, setIsMaximized] = React.useState(false);
     const [openMenu, setOpenMenu] = React.useState<string | null>(null);
+    const [appVersion, setAppVersion] = React.useState('');
 
     React.useEffect(() => {
         const updateMaximized = async () => {
@@ -189,6 +191,14 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         };
         updateMaximized();
         return guardedUnlisten(getCurrentWindow().onResized(updateMaximized));
+    }, []);
+
+    React.useEffect(() => {
+        let cancelled = false;
+        getVersion()
+            .then(v => { if (!cancelled) setAppVersion(v); })
+            .catch(() => { /* keep empty: Help menu falls back to non-versioned label */ });
+        return () => { cancelled = true; };
     }, []);
 
     const handleMinimize = async (e: React.MouseEvent) => {
@@ -257,7 +267,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('menu.mcp'), onClick: onShowMcp },
         { separator: true },
         { label: t('menu.support'), onClick: onShowSupport },
-        { label: t('menu.about'), onClick: onShowAbout },
+        { label: appVersion ? `${t('menu.about')} ${appVersion}` : t('menu.about'), onClick: onShowAbout },
     ];
 
     const closeMenu = React.useCallback(() => setOpenMenu(null), []);
