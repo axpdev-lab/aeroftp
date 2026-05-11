@@ -50,7 +50,9 @@ function mapVaultError(e: unknown, t: (key: string) => string): string {
 
 export type VaultMode = 'home' | 'create' | 'open' | 'browse';
 
-export type SecurityLevel = 'standard' | 'advanced' | 'paranoid';
+export type SecurityLevel = 'standard' | 'advanced' | 'paranoid' | 'experimental';
+
+export type VaultV3CompressionProfile = 'fast' | 'balanced' | 'archive';
 
 export interface VaultSecurityInfo {
     version: number;
@@ -88,6 +90,58 @@ interface VaultV2Info {
     description: string | null;
     file_count: number;
     files: { name: string; size: number; is_dir: boolean; modified: string }[];
+}
+
+interface VaultV3Info {
+    version: number;
+    file_count: number;
+    chunk_count: number;
+    dedup_chunks: number;
+    compression_level: number;
+    files: { name: string; size: number; is_dir: boolean; modified: string; chunk_count: number }[];
+}
+
+function mapV2InfoToEntries(info: VaultV2Info): ArchiveEntry[] {
+    return info.files.map(file => ({
+        name: file.name,
+        size: file.size,
+        compressedSize: file.size,
+        isDir: file.is_dir,
+        isEncrypted: true,
+        modified: file.modified,
+    }));
+}
+
+function mapV2InfoToMeta(info: VaultV2Info): AeroVaultMeta {
+    return {
+        version: info.version,
+        description: info.description || null,
+        created: info.created,
+        modified: info.modified,
+        fileCount: info.file_count,
+    };
+}
+
+function mapV3InfoToEntries(info: VaultV3Info): ArchiveEntry[] {
+    return info.files.map(file => ({
+        name: file.name,
+        size: file.size,
+        compressedSize: file.size,
+        isDir: file.is_dir,
+        isEncrypted: true,
+        modified: file.modified,
+    }));
+}
+
+function mapV3InfoToMeta(info: VaultV3Info, previousMeta?: AeroVaultMeta | null): AeroVaultMeta {
+    const now = new Date().toISOString();
+    return {
+        version: info.version,
+        description: previousMeta?.description || null,
+        created: previousMeta?.created || now,
+        modified: now,
+        fileCount: info.file_count,
+    };
 }
 
 export interface FolderScanResult {
@@ -136,6 +190,17 @@ export const securityLevels = {
         cascade: true,
         features: ['AES-256-GCM-SIV', 'ChaCha20-Poly1305 cascade', 'Argon2id 128 MB', 'Double encryption'],
         description: 'AES + ChaCha20 cascade · Double encryption'
+    },
+    experimental: {
+        icon: ShieldAlert,
+        color: 'text-amber-400',
+        bgColor: 'bg-amber-600',
+        borderColor: 'border-amber-500',
+        label: 'Experimental',
+        version: 3,
+        cascade: false,
+        features: ['Gear-CDC chunking', 'Chunk deduplication', 'Zstd per chunk', 'AES-256-GCM-SIV'],
+        description: 'Deduplicated archive · zstd chunks · Draft v3'
     }
 };
 
@@ -205,6 +270,8 @@ export interface VaultState {
     // Security
     securityLevel: SecurityLevel;
     setSecurityLevel: (level: SecurityLevel) => void;
+    compressionProfile: VaultV3CompressionProfile;
+    setCompressionProfile: (profile: VaultV3CompressionProfile) => void;
     vaultSecurity: VaultSecurityInfo | null;
     setVaultSecurity: (sec: VaultSecurityInfo | null) => void;
     showLevelDropdown: boolean;
@@ -292,6 +359,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
     // Security state
     const [securityLevel, setSecurityLevel] = useState<SecurityLevel>('advanced');
+    const [compressionProfile, setCompressionProfile] = useState<VaultV3CompressionProfile>('balanced');
     const [vaultSecurity, setVaultSecurity] = useState<VaultSecurityInfo | null>(null);
     const [showLevelDropdown, setShowLevelDropdown] = useState(false);
 
@@ -328,6 +396,15 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     const detectVaultVersion = async (path: string): Promise<VaultSecurityInfo> => {
+        try {
+            const isV3 = await invoke<boolean>('is_vault_v3', { path });
+            if (isV3) {
+                return { version: 3, cascadeMode: false, level: 'experimental' };
+            }
+        } catch {
+            // Ignore and continue with older versions.
+        }
+
         try {
             const peek = await invoke<{ version: number; cascade_mode: boolean; security_level: string }>('vault_v2_peek', { path });
             const level: SecurityLevel = peek.cascade_mode ? 'paranoid' : 'advanced';
@@ -400,11 +477,20 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            await invoke('vault_v2_add_directory', {
-                vaultPath,
-                password,
-                sourceDir: initialFolderPath,
-            });
+            if (vaultSecurity?.version === 3) {
+                await invoke('vault_v3_add_directory', {
+                    vaultPath,
+                    password,
+                    sourceDir: initialFolderPath,
+                    targetPrefix: currentDir || null,
+                });
+            } else {
+                await invoke('vault_v2_add_directory', {
+                    vaultPath,
+                    password,
+                    sourceDir: initialFolderPath,
+                });
+            }
             await refreshVaultEntries();
             setSuccess(t('vault.filesAdded', { count: String(folderScanResult?.file_count || 0) }));
         } catch (e) {
@@ -446,7 +532,53 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         const levelConfig = securityLevels[securityLevel];
 
         try {
-            if (levelConfig.version === 2) {
+            if (levelConfig.version === 3) {
+                await invoke('vault_v3_create', {
+                    vaultPath: savePath,
+                    password,
+                    compressionProfile,
+                });
+                setVaultPath(savePath);
+                setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
+
+                if (initialFolderPath) {
+                    setFolderProgress({ current: 0, total: folderScanResult?.file_count || 0, current_file: '' });
+                    await invoke('vault_v3_add_directory', {
+                        vaultPath: savePath,
+                        password,
+                        sourceDir: initialFolderPath,
+                        targetPrefix: null,
+                    });
+                    const info = await invoke<VaultV3Info>('vault_v3_open', { vaultPath: savePath, password });
+                    setEntries(mapV3InfoToEntries(info));
+                    setMeta(mapV3InfoToMeta(info));
+                    setSuccess(t('vault.created') + `: ${info.file_count} files`);
+                    setFolderProgress(null);
+                } else if (initialFiles?.length) {
+                    const info = await invoke<VaultV3Info>('vault_v3_add_files', {
+                        vaultPath: savePath,
+                        password,
+                        filePaths: initialFiles,
+                    });
+                    setEntries(mapV3InfoToEntries(info));
+                    setMeta(mapV3InfoToMeta(info));
+                    setSuccess(t('vault.created') + `: ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
+                } else {
+                    setSuccess(t('vault.created'));
+                    setEntries([]);
+                    setMeta({
+                        version: 3,
+                        description: null,
+                        created: new Date().toISOString(),
+                        modified: new Date().toISOString(),
+                        fileCount: 0,
+                    });
+                }
+                setMode('browse');
+
+                const vName = savePath.split(/[\\/]/).pop() || 'Vault';
+                await saveToHistory(savePath, vName, 'experimental', 3, false, initialFiles?.length || 0);
+            } else if (levelConfig.version === 2) {
                 await invoke('vault_v2_create', {
                     vaultPath: savePath,
                     password,
@@ -465,45 +597,17 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                         sourceDir: initialFolderPath,
                     });
                     const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath: savePath, password });
-                    const fileEntries: ArchiveEntry[] = info.files.map(f => ({
-                        name: f.name,
-                        size: f.size,
-                        compressedSize: f.size,
-                        isDir: f.is_dir,
-                        isEncrypted: true,
-                        modified: f.modified
-                    }));
-                    setEntries(fileEntries);
+                    setEntries(mapV2InfoToEntries(info));
                     setSuccess(t('vault.created') + `: ${info.file_count} files`);
-                    setMeta({
-                        version: info.version,
-                        description: description || null,
-                        created: info.created || new Date().toISOString(),
-                        modified: info.modified || new Date().toISOString(),
-                        fileCount: info.file_count
-                    });
+                    setMeta(mapV2InfoToMeta(info));
                     setFolderProgress(null);
                 } else if (initialFiles?.length) {
                     // Auto-add selected files
                     await invoke('vault_v2_add_files', { vaultPath: savePath, password, filePaths: initialFiles });
                     const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath: savePath, password });
-                    const fileEntries: ArchiveEntry[] = info.files.map(f => ({
-                        name: f.name,
-                        size: f.size,
-                        compressedSize: f.size,
-                        isDir: f.is_dir,
-                        isEncrypted: true,
-                        modified: f.modified
-                    }));
-                    setEntries(fileEntries);
+                    setEntries(mapV2InfoToEntries(info));
                     setSuccess(t('vault.created') + `: ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
-                    setMeta({
-                        version: info.version,
-                        description: description || null,
-                        created: info.created || new Date().toISOString(),
-                        modified: info.modified || new Date().toISOString(),
-                        fileCount: info.file_count
-                    });
+                    setMeta(mapV2InfoToMeta(info));
                 } else {
                     setSuccess(t('vault.created'));
                     setEntries([]);
@@ -604,24 +708,14 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     const refreshVaultEntries = async () => {
-        if (vaultSecurity?.version === 2) {
+        if (vaultSecurity?.version === 3) {
+            const info = await invoke<VaultV3Info>('vault_v3_open', { vaultPath, password });
+            setEntries(mapV3InfoToEntries(info));
+            setMeta(mapV3InfoToMeta(info, meta));
+        } else if (vaultSecurity?.version === 2) {
             const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath, password });
-            const fileEntries: ArchiveEntry[] = info.files.map(f => ({
-                name: f.name,
-                size: f.size,
-                compressedSize: f.size,
-                isDir: f.is_dir,
-                isEncrypted: true,
-                modified: f.modified
-            }));
-            setEntries(fileEntries);
-            setMeta({
-                version: info.version,
-                description: info.description || null,
-                created: info.created,
-                modified: info.modified,
-                fileCount: info.file_count
-            });
+            setEntries(mapV2InfoToEntries(info));
+            setMeta(mapV2InfoToMeta(info));
         } else {
             const list = await invoke<ArchiveEntry[]>('vault_list', { vaultPath, password });
             setEntries(list);
@@ -633,27 +727,22 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
 
         try {
-            if (vaultSecurity?.version === 2) {
+            if (vaultSecurity?.version === 3) {
+                const info = await invoke<VaultV3Info>('vault_v3_open', { vaultPath, password });
+                setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
+                setEntries(mapV3InfoToEntries(info));
+                setMeta(mapV3InfoToMeta(info, meta));
+                setMode('browse');
+
+                const vName = vaultPath.split(/[\\/]/).pop() || 'Vault';
+                await saveToHistory(vaultPath, vName, 'experimental', 3, false, info.file_count);
+            } else if (vaultSecurity?.version === 2) {
                 const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath, password });
                 const secLevel: SecurityLevel = info.cascade_mode ? 'paranoid' : 'advanced';
                 setVaultSecurity({ version: 2, cascadeMode: info.cascade_mode, level: secLevel });
 
-                const fileEntries: ArchiveEntry[] = info.files.map(f => ({
-                    name: f.name,
-                    size: f.size,
-                    compressedSize: f.size,
-                    isDir: f.is_dir,
-                    isEncrypted: true,
-                    modified: f.modified
-                }));
-                setEntries(fileEntries);
-                setMeta({
-                    version: info.version,
-                    description: info.description || null,
-                    created: info.created,
-                    modified: info.modified,
-                    fileCount: info.file_count
-                });
+                setEntries(mapV2InfoToEntries(info));
+                setMeta(mapV2InfoToMeta(info));
                 setMode('browse');
 
                 // Save to history
@@ -685,7 +774,27 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            if (vaultSecurity?.version === 2) {
+            if (vaultSecurity?.version === 3) {
+                if (currentDir) {
+                    const result = await invoke<{ added: number; total: number }>('vault_v3_add_files_to_dir', {
+                        vaultPath,
+                        password,
+                        filePaths: paths,
+                        targetDir: currentDir
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
+                } else {
+                    const info = await invoke<VaultV3Info>('vault_v3_add_files', {
+                        vaultPath,
+                        password,
+                        filePaths: paths,
+                    });
+                    setEntries(mapV3InfoToEntries(info));
+                    setMeta(mapV3InfoToMeta(info, meta));
+                    setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
+                }
+            } else if (vaultSecurity?.version === 2) {
                 const result = currentDir
                     ? await invoke<{ added: number; total: number }>('vault_v2_add_files_to_dir', {
                         vaultPath,
@@ -719,7 +828,27 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
         try {
             const targetDir = dragTargetDir || currentDir;
-            if (vaultSecurity?.version === 2) {
+            if (vaultSecurity?.version === 3) {
+                if (targetDir) {
+                    const result = await invoke<{ added: number; total: number }>('vault_v3_add_files_to_dir', {
+                        vaultPath,
+                        password,
+                        filePaths: paths,
+                        targetDir
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
+                } else {
+                    const info = await invoke<VaultV3Info>('vault_v3_add_files', {
+                        vaultPath,
+                        password,
+                        filePaths: paths,
+                    });
+                    setEntries(mapV3InfoToEntries(info));
+                    setMeta(mapV3InfoToMeta(info, meta));
+                    setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
+                }
+            } else if (vaultSecurity?.version === 2) {
                 const result = targetDir
                     ? await invoke<{ added: number; total: number }>('vault_v2_add_files_to_dir', {
                         vaultPath,
@@ -755,11 +884,19 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
         try {
             const fullPath = currentDir ? `${currentDir}/${trimmed}` : trimmed;
-            await invoke('vault_v2_create_directory', {
-                vaultPath,
-                password,
-                dirName: fullPath
-            });
+            if (vaultSecurity?.version === 3) {
+                await invoke('vault_v3_create_directory', {
+                    vaultPath,
+                    password,
+                    dirName: fullPath
+                });
+            } else {
+                await invoke('vault_v2_create_directory', {
+                    vaultPath,
+                    password,
+                    dirName: fullPath
+                });
+            }
             await refreshVaultEntries();
             setSuccess(t('vault.directoryCreated', { name: trimmed }));
             setShowNewDirDialog(false);
@@ -775,7 +912,26 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            if (vaultSecurity?.version === 2) {
+            if (vaultSecurity?.version === 3) {
+                if (isDir) {
+                    const result = await invoke<{ removed: number; remaining: number }>('vault_v3_delete_entries', {
+                        vaultPath,
+                        password,
+                        entryNames: [entryName],
+                        recursive: true
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(t('vault.itemsDeleted', { count: result.removed.toString() }));
+                } else {
+                    await invoke<{ deleted: string; remaining: number }>('vault_v3_delete_entry', {
+                        vaultPath,
+                        password,
+                        entryName
+                    });
+                    await refreshVaultEntries();
+                    setSuccess(t('vault.itemDeleted', { name: entryName.split('/').pop() || entryName }));
+                }
+            } else if (vaultSecurity?.version === 2) {
                 if (isDir) {
                     const result = await invoke<{ deleted: string[]; remaining: number; removed_count: number }>('vault_v2_delete_entries', {
                         vaultPath,
@@ -812,7 +968,14 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
         setLoading(true);
         try {
-            if (vaultSecurity?.version === 2) {
+            if (vaultSecurity?.version === 3) {
+                await invoke('vault_v3_extract_entry', {
+                    vaultPath,
+                    password,
+                    entryName,
+                    destPath: savePath
+                });
+            } else if (vaultSecurity?.version === 2) {
                 await invoke('vault_v2_extract_entry', {
                     vaultPath,
                     password,
@@ -837,7 +1000,13 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setLoading(true);
         setError(null);
         try {
-            if (vaultSecurity?.version === 2) {
+            if (vaultSecurity?.version === 3) {
+                await invoke('vault_v3_change_password', {
+                    vaultPath,
+                    oldPassword: password,
+                    newPassword
+                });
+            } else if (vaultSecurity?.version === 2) {
                 await invoke('vault_v2_change_password', {
                     vaultPath,
                     oldPassword: password,
@@ -943,6 +1112,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         remoteLoading,
         showRemoteInput, setShowRemoteInput,
         securityLevel, setSecurityLevel,
+        compressionProfile, setCompressionProfile,
         vaultSecurity, setVaultSecurity,
         showLevelDropdown, setShowLevelDropdown,
         dragOver, setDragOver,

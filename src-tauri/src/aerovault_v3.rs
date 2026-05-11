@@ -15,7 +15,7 @@ use rand::RngCore;
 use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use sha2::Sha512;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
@@ -149,6 +149,12 @@ struct OpenVaultV3 {
     manifest: VaultManifestV3,
     extensions: Vec<ExtensionEntryV3>,
     data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EntryKindV3 {
+    File,
+    Directory,
 }
 
 fn now_iso() -> String {
@@ -484,6 +490,470 @@ fn safe_entry_name(path: &Path) -> Result<String, String> {
     Ok(name)
 }
 
+fn normalize_vault_relative_path(path: &str) -> Result<String, String> {
+    let trimmed = path.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        return Err("Invalid AeroVault path: empty".to_string());
+    }
+    validate_vault_path(trimmed)?;
+    if trimmed
+        .split('/')
+        .any(|part| part.is_empty() || part == ".")
+    {
+        return Err(format!("Invalid AeroVault path: {trimmed}"));
+    }
+    Ok(trimmed.to_string())
+}
+
+fn normalize_leaf_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains("..")
+        || trimmed.contains('\0')
+    {
+        return Err("Invalid AeroVault name".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn join_vault_path(parent: &str, name: &str) -> String {
+    if parent.is_empty() {
+        name.to_string()
+    } else {
+        format!("{parent}/{name}")
+    }
+}
+
+fn path_parent(path: &str) -> Option<&str> {
+    path.rsplit_once('/').map(|(parent, _)| parent)
+}
+
+fn path_basename(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+fn is_descendant_of(path: &str, parent: &str) -> bool {
+    path.len() > parent.len()
+        && path.starts_with(parent)
+        && path.as_bytes().get(parent.len()) == Some(&b'/')
+}
+
+fn entry_kind(manifest: &VaultManifestV3, path: &str) -> Option<EntryKindV3> {
+    if let Some(entry) = manifest.entries.iter().find(|entry| entry.path == path) {
+        return Some(if entry.is_dir {
+            EntryKindV3::Directory
+        } else {
+            EntryKindV3::File
+        });
+    }
+    if manifest
+        .entries
+        .iter()
+        .any(|entry| is_descendant_of(&entry.path, path))
+    {
+        return Some(EntryKindV3::Directory);
+    }
+    None
+}
+
+fn ensure_no_file_ancestor(manifest: &VaultManifestV3, path: &str) -> Result<(), String> {
+    let mut current = path;
+    while let Some(parent) = path_parent(current) {
+        if manifest
+            .entries
+            .iter()
+            .any(|entry| entry.path == parent && !entry.is_dir)
+        {
+            return Err(format!("Parent path is a file: {parent}"));
+        }
+        current = parent;
+    }
+    Ok(())
+}
+
+fn sort_entries(manifest: &mut VaultManifestV3) {
+    manifest.entries.sort_by(|a, b| a.path.cmp(&b.path));
+}
+
+fn create_directory_in_manifest(manifest: &mut VaultManifestV3, dir_path: &str) -> Result<bool, String> {
+    let dir_path = normalize_vault_relative_path(dir_path)?;
+    ensure_no_file_ancestor(manifest, &dir_path)?;
+
+    if let Some(existing) = manifest.entries.iter().find(|entry| entry.path == dir_path) {
+        return if existing.is_dir {
+            Ok(false)
+        } else {
+            Err(format!("A file already exists at: {dir_path}"))
+        };
+    }
+
+    if let Some(parent) = path_parent(&dir_path) {
+        create_directory_in_manifest(manifest, parent)?;
+    }
+
+    manifest.entries.push(ManifestEntryV3 {
+        path: dir_path,
+        size: 0,
+        modified: now_iso(),
+        is_dir: true,
+        chunks: Vec::new(),
+    });
+    sort_entries(manifest);
+    manifest.modified = now_iso();
+    Ok(true)
+}
+
+fn ensure_parent_directories(manifest: &mut VaultManifestV3, path: &str) -> Result<(), String> {
+    if let Some(parent) = path_parent(path) {
+        create_directory_in_manifest(manifest, parent)?;
+    }
+    Ok(())
+}
+
+fn next_block_index(manifest: &VaultManifestV3) -> u64 {
+    manifest
+        .chunks
+        .values()
+        .map(|record| record.block_index)
+        .max()
+        .map(|max| max + 1)
+        .unwrap_or(0)
+}
+
+fn append_file_at(vault: &mut OpenVaultV3, source: &Path, entry_path: &str) -> Result<(), String> {
+    let entry_path = normalize_vault_relative_path(entry_path)?;
+    if !source.is_file() {
+        return Err(format!("Not a regular file: {}", source.display()));
+    }
+    ensure_parent_directories(&mut vault.manifest, &entry_path)?;
+
+    if let Some(kind) = entry_kind(&vault.manifest, &entry_path) {
+        match kind {
+            EntryKindV3::Directory => {
+                return Err(format!("Destination already exists as directory: {entry_path}"));
+            }
+            EntryKindV3::File => {
+                vault.manifest.entries.retain(|entry| entry.path != entry_path);
+            }
+        }
+    }
+
+    let mut plaintext =
+        std::fs::read(source).map_err(|e| format!("Read {}: {e}", source.display()))?;
+    let size = plaintext.len() as u64;
+    let chunk_key = hkdf_expand::<KEY_SIZE>(&vault.master_key, HKDF_CHUNK_ID)?;
+    let level = manifest_zstd_level(&vault.manifest);
+    let mut entry_chunks = Vec::new();
+
+    for (start, end) in chunk_ranges(&plaintext) {
+        let chunk = &plaintext[start..end];
+        let chunk_id = keyed_chunk_id(&chunk_key, chunk);
+        if !vault.manifest.chunks.contains_key(&chunk_id) {
+            let compressed = zstd::stream::encode_all(chunk, level)
+                .map_err(|e| format!("zstd compress failed: {e}"))?;
+            let block_index = next_block_index(&vault.manifest);
+            let aad = block_aad(block_index, &chunk_id);
+            let encrypted = encrypt_with_aad(&vault.master_key, &compressed, &aad)?;
+            let cipher_hash = blake3::hash(&encrypted).to_hex().to_string();
+            let data_offset = vault.data.len() as u64;
+            vault
+                .data
+                .extend_from_slice(&(encrypted.len() as u64).to_le_bytes());
+            vault.data.extend_from_slice(&encrypted);
+            vault.manifest.chunks.insert(
+                chunk_id.clone(),
+                ChunkRecordV3 {
+                    id: chunk_id.clone(),
+                    block_index,
+                    data_offset,
+                    block_len: encrypted.len() as u64,
+                    plaintext_len: chunk.len() as u64,
+                    compressed_len: compressed.len() as u64,
+                    cipher_hash,
+                },
+            );
+        }
+        entry_chunks.push(chunk_id);
+    }
+    plaintext.zeroize();
+
+    vault.manifest.entries.push(ManifestEntryV3 {
+        path: entry_path,
+        size,
+        modified: now_iso(),
+        is_dir: false,
+        chunks: entry_chunks,
+    });
+    sort_entries(&mut vault.manifest);
+    vault.manifest.modified = now_iso();
+    Ok(())
+}
+
+fn compact_live_chunks(vault: &mut OpenVaultV3) -> Result<(), String> {
+    let live_chunk_ids: HashSet<String> = vault
+        .manifest
+        .entries
+        .iter()
+        .flat_map(|entry| entry.chunks.iter().cloned())
+        .collect();
+
+    if live_chunk_ids.is_empty() {
+        vault.manifest.chunks.clear();
+        vault.data.clear();
+        return Ok(());
+    }
+
+    let mut ordered_ids: Vec<(u64, String)> = vault
+        .manifest
+        .chunks
+        .iter()
+        .filter(|(id, _)| live_chunk_ids.contains(*id))
+        .map(|(id, record)| (record.block_index, id.clone()))
+        .collect();
+    ordered_ids.sort_by_key(|(index, _)| *index);
+
+    let mut new_data = Vec::new();
+    let mut new_chunks = BTreeMap::new();
+
+    for (_, chunk_id) in ordered_ids {
+        let mut record = vault
+            .manifest
+            .chunks
+            .get(&chunk_id)
+            .cloned()
+            .ok_or_else(|| format!("Missing chunk record: {chunk_id}"))?;
+        let len_start = record.data_offset as usize;
+        let len_end = len_start
+            .checked_add(8)
+            .ok_or_else(|| "Chunk length offset overflow".to_string())?;
+        if len_end > vault.data.len() {
+            return Err("Chunk length is outside data section".to_string());
+        }
+        let block_len = u64::from_le_bytes(
+            vault.data[len_start..len_end]
+                .try_into()
+                .expect("slice length"),
+        );
+        if block_len != record.block_len || block_len > MAX_BLOCK_SIZE {
+            return Err("Chunk length metadata mismatch".to_string());
+        }
+        let block_start = len_end;
+        let block_end = block_start
+            .checked_add(block_len as usize)
+            .ok_or_else(|| "Chunk block offset overflow".to_string())?;
+        if block_end > vault.data.len() {
+            return Err("Chunk block is outside data section".to_string());
+        }
+
+        record.data_offset = new_data.len() as u64;
+        new_data.extend_from_slice(&block_len.to_le_bytes());
+        new_data.extend_from_slice(&vault.data[block_start..block_end]);
+        new_chunks.insert(chunk_id, record);
+    }
+
+    vault.data = new_data;
+    vault.manifest.chunks = new_chunks;
+    Ok(())
+}
+
+fn delete_entries_from_manifest(
+    vault: &mut OpenVaultV3,
+    entry_names: &[String],
+    recursive: bool,
+) -> Result<usize, String> {
+    let mut removed = 0usize;
+
+    for entry_name in entry_names {
+        let entry_name = normalize_vault_relative_path(entry_name)?;
+        let kind = entry_kind(&vault.manifest, &entry_name)
+            .ok_or_else(|| format!("Entry not found: {entry_name}"))?;
+
+        match kind {
+            EntryKindV3::File => {
+                let before = vault.manifest.entries.len();
+                vault.manifest.entries.retain(|entry| entry.path != entry_name);
+                removed += before.saturating_sub(vault.manifest.entries.len());
+            }
+            EntryKindV3::Directory => {
+                let has_children = vault
+                    .manifest
+                    .entries
+                    .iter()
+                    .any(|entry| is_descendant_of(&entry.path, &entry_name));
+                if has_children && !recursive {
+                    return Err(format!("Directory is not empty: {entry_name}"));
+                }
+                let before = vault.manifest.entries.len();
+                vault.manifest.entries.retain(|entry| {
+                    entry.path != entry_name && !is_descendant_of(&entry.path, &entry_name)
+                });
+                removed += before.saturating_sub(vault.manifest.entries.len());
+            }
+        }
+    }
+
+    if removed > 0 {
+        compact_live_chunks(vault)?;
+        sort_entries(&mut vault.manifest);
+        vault.manifest.modified = now_iso();
+    }
+
+    Ok(removed)
+}
+
+fn remap_entry_path(path: &str, from: &str, to: &str) -> String {
+    if path == from {
+        to.to_string()
+    } else {
+        format!("{}/{}", to, &path[from.len() + 1..])
+    }
+}
+
+fn prepare_relocation(
+    manifest: &VaultManifestV3,
+    from: &str,
+    to: &str,
+) -> Result<EntryKindV3, String> {
+    let from = normalize_vault_relative_path(from)?;
+    let to = normalize_vault_relative_path(to)?;
+    let kind = entry_kind(manifest, &from).ok_or_else(|| format!("Entry not found: {from}"))?;
+
+    if from == to {
+        return Ok(kind);
+    }
+    if kind == EntryKindV3::Directory && is_descendant_of(&to, &from) {
+        return Err("Cannot move a directory inside itself".to_string());
+    }
+    if entry_kind(manifest, &to).is_some() {
+        return Err(format!("Destination already exists: {to}"));
+    }
+    ensure_no_file_ancestor(manifest, &to)?;
+    Ok(kind)
+}
+
+fn move_entry_in_manifest(vault: &mut OpenVaultV3, from: &str, to: &str) -> Result<(), String> {
+    let from = normalize_vault_relative_path(from)?;
+    let to = normalize_vault_relative_path(to)?;
+    let _ = prepare_relocation(&vault.manifest, &from, &to)?;
+    if from == to {
+        return Ok(());
+    }
+    ensure_parent_directories(&mut vault.manifest, &to)?;
+    for entry in &mut vault.manifest.entries {
+        if entry.path == from || is_descendant_of(&entry.path, &from) {
+            entry.path = remap_entry_path(&entry.path, &from, &to);
+            entry.modified = now_iso();
+        }
+    }
+    sort_entries(&mut vault.manifest);
+    vault.manifest.modified = now_iso();
+    Ok(())
+}
+
+fn copy_entry_in_manifest(vault: &mut OpenVaultV3, from: &str, to: &str) -> Result<(), String> {
+    let from = normalize_vault_relative_path(from)?;
+    let to = normalize_vault_relative_path(to)?;
+    let _ = prepare_relocation(&vault.manifest, &from, &to)?;
+    if from == to {
+        return Ok(());
+    }
+    ensure_parent_directories(&mut vault.manifest, &to)?;
+    let clones: Vec<ManifestEntryV3> = vault
+        .manifest
+        .entries
+        .iter()
+        .filter(|entry| entry.path == from || is_descendant_of(&entry.path, &from))
+        .cloned()
+        .map(|mut entry| {
+            entry.path = remap_entry_path(&entry.path, &from, &to);
+            entry.modified = now_iso();
+            entry
+        })
+        .collect();
+    if clones.is_empty() {
+        return Err(format!("Entry not found: {from}"));
+    }
+    vault.manifest.entries.extend(clones);
+    sort_entries(&mut vault.manifest);
+    vault.manifest.modified = now_iso();
+    Ok(())
+}
+
+fn change_password_in_place(vault: &mut OpenVaultV3, new_password: &str) -> Result<(), String> {
+    if new_password.len() < MIN_PASSWORD_LEN {
+        return Err("Password must be at least 8 characters".to_string());
+    }
+    let salt = random_array::<SALT_SIZE>();
+    let mut base_kek = derive_base_kek(new_password, &salt)?;
+    let (kek_master, kek_mac) = derive_keks(&base_kek)?;
+    base_kek.zeroize();
+    vault.header.salt = salt;
+    vault.header.wrapped_master_key = wrap_key(&kek_master, &vault.master_key)?;
+    vault.header.wrapped_mac_key = wrap_key(&kek_mac, &vault.mac_key)?;
+    vault.manifest.modified = now_iso();
+    Ok(())
+}
+
+fn extract_file_entry(
+    vault: &OpenVaultV3,
+    entry: &ManifestEntryV3,
+    output_path: &Path,
+) -> Result<PathBuf, String> {
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Create output dir: {e}"))?;
+    }
+
+    let mut out = Vec::with_capacity(entry.size.min(32 * 1024 * 1024) as usize);
+    for chunk_id in &entry.chunks {
+        let record = vault
+            .manifest
+            .chunks
+            .get(chunk_id)
+            .ok_or_else(|| format!("Missing chunk record: {chunk_id}"))?;
+        let len_start = record.data_offset as usize;
+        let len_end = len_start
+            .checked_add(8)
+            .ok_or_else(|| "Chunk length offset overflow".to_string())?;
+        if len_end > vault.data.len() {
+            return Err("Chunk length is outside data section".to_string());
+        }
+        let block_len = u64::from_le_bytes(
+            vault.data[len_start..len_end]
+                .try_into()
+                .expect("slice length"),
+        );
+        if block_len != record.block_len || block_len > MAX_BLOCK_SIZE {
+            return Err("Chunk length metadata mismatch".to_string());
+        }
+        let block_start = len_end;
+        let block_end = block_start
+            .checked_add(block_len as usize)
+            .ok_or_else(|| "Chunk block offset overflow".to_string())?;
+        if block_end > vault.data.len() {
+            return Err("Chunk block is outside data section".to_string());
+        }
+        let encrypted = &vault.data[block_start..block_end];
+        let actual_hash = blake3::hash(encrypted).to_hex().to_string();
+        if actual_hash != record.cipher_hash {
+            return Err(format!("Cipher block hash mismatch for chunk {chunk_id}"));
+        }
+        let aad = block_aad(record.block_index, chunk_id);
+        let compressed = decrypt_with_aad(&vault.master_key, encrypted, &aad)?;
+        let plaintext = zstd::stream::decode_all(&compressed[..])
+            .map_err(|e| format!("zstd decompress failed: {e}"))?;
+        if plaintext.len() as u64 != record.plaintext_len {
+            return Err(format!("Plaintext length mismatch for chunk {chunk_id}"));
+        }
+        out.extend_from_slice(&plaintext);
+    }
+    out.truncate(entry.size as usize);
+    atomic_write(output_path, &out)?;
+    out.zeroize();
+    Ok(output_path.to_path_buf())
+}
+
 fn read_capped(
     file: &mut std::fs::File,
     offset: u64,
@@ -705,56 +1175,7 @@ fn validate_ranges(header: &VaultHeaderV3, file_len: u64) -> Result<(), String> 
 
 fn append_file(vault: &mut OpenVaultV3, source: &Path) -> Result<(), String> {
     let name = safe_entry_name(source)?;
-    let mut plaintext =
-        std::fs::read(source).map_err(|e| format!("Read {}: {e}", source.display()))?;
-    let size = plaintext.len() as u64;
-    let chunk_key = hkdf_expand::<KEY_SIZE>(&vault.master_key, HKDF_CHUNK_ID)?;
-    let level = manifest_zstd_level(&vault.manifest);
-    let mut entry_chunks = Vec::new();
-
-    for (start, end) in chunk_ranges(&plaintext) {
-        let chunk = &plaintext[start..end];
-        let chunk_id = keyed_chunk_id(&chunk_key, chunk);
-        if !vault.manifest.chunks.contains_key(&chunk_id) {
-            let compressed = zstd::stream::encode_all(chunk, level)
-                .map_err(|e| format!("zstd compress failed: {e}"))?;
-            let block_index = vault.manifest.chunks.len() as u64;
-            let aad = block_aad(block_index, &chunk_id);
-            let encrypted = encrypt_with_aad(&vault.master_key, &compressed, &aad)?;
-            let cipher_hash = blake3::hash(&encrypted).to_hex().to_string();
-            let data_offset = vault.data.len() as u64;
-            vault
-                .data
-                .extend_from_slice(&(encrypted.len() as u64).to_le_bytes());
-            vault.data.extend_from_slice(&encrypted);
-            vault.manifest.chunks.insert(
-                chunk_id.clone(),
-                ChunkRecordV3 {
-                    id: chunk_id.clone(),
-                    block_index,
-                    data_offset,
-                    block_len: encrypted.len() as u64,
-                    plaintext_len: chunk.len() as u64,
-                    compressed_len: compressed.len() as u64,
-                    cipher_hash,
-                },
-            );
-        }
-        entry_chunks.push(chunk_id);
-    }
-    plaintext.zeroize();
-
-    vault.manifest.entries.retain(|entry| entry.path != name);
-    vault.manifest.entries.push(ManifestEntryV3 {
-        path: name,
-        size,
-        modified: now_iso(),
-        is_dir: false,
-        chunks: entry_chunks,
-    });
-    vault.manifest.entries.sort_by(|a, b| a.path.cmp(&b.path));
-    vault.manifest.modified = now_iso();
-    Ok(())
+    append_file_at(vault, source, &name)
 }
 
 fn save_open_vault(vault: &OpenVaultV3) -> Result<(), String> {
@@ -774,73 +1195,66 @@ fn extract_entry(
     entry_name: &str,
     dest_path: &Path,
 ) -> Result<PathBuf, String> {
-    validate_vault_path(entry_name)?;
-    let entry = vault
-        .manifest
-        .entries
-        .iter()
-        .find(|entry| entry.path == entry_name)
-        .ok_or_else(|| format!("Entry not found: {entry_name}"))?;
-    if entry.is_dir {
-        return Err("Directory extraction is not implemented for AeroVault v3 draft".to_string());
-    }
+    let entry_name = normalize_vault_relative_path(entry_name)?;
+    match entry_kind(&vault.manifest, &entry_name) {
+        Some(EntryKindV3::File) => {
+            let entry = vault
+                .manifest
+                .entries
+                .iter()
+                .find(|entry| entry.path == entry_name)
+                .ok_or_else(|| format!("Entry not found: {entry_name}"))?;
+            let output_path = if dest_path.is_dir() {
+                dest_path.join(&entry.path)
+            } else {
+                dest_path.to_path_buf()
+            };
+            extract_file_entry(vault, entry, &output_path)
+        }
+        Some(EntryKindV3::Directory) => {
+            let output_root = if dest_path.exists() {
+                if !dest_path.is_dir() {
+                    return Err("Destination for directory extraction must be a directory".to_string());
+                }
+                dest_path.join(path_basename(&entry_name))
+            } else {
+                dest_path.to_path_buf()
+            };
+            std::fs::create_dir_all(&output_root)
+                .map_err(|e| format!("Create output dir: {e}"))?;
 
-    let output_path = if dest_path.is_dir() {
-        dest_path.join(&entry.path)
-    } else {
-        dest_path.to_path_buf()
-    };
-    if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Create output dir: {e}"))?;
-    }
+            let prefix = format!("{entry_name}/");
+            let mut descendants: Vec<&ManifestEntryV3> = vault
+                .manifest
+                .entries
+                .iter()
+                .filter(|entry| entry.path == entry_name || entry.path.starts_with(&prefix))
+                .collect();
+            descendants.sort_by(|a, b| a.path.cmp(&b.path));
 
-    let mut out = Vec::with_capacity(entry.size.min(32 * 1024 * 1024) as usize);
-    for chunk_id in &entry.chunks {
-        let record = vault
-            .manifest
-            .chunks
-            .get(chunk_id)
-            .ok_or_else(|| format!("Missing chunk record: {chunk_id}"))?;
-        let len_start = record.data_offset as usize;
-        let len_end = len_start
-            .checked_add(8)
-            .ok_or_else(|| "Chunk length offset overflow".to_string())?;
-        if len_end > vault.data.len() {
-            return Err("Chunk length is outside data section".to_string());
+            for entry in descendants {
+                let rel = if entry.path == entry_name {
+                    String::new()
+                } else {
+                    entry.path[entry_name.len() + 1..].to_string()
+                };
+                let child_output = if rel.is_empty() {
+                    output_root.clone()
+                } else {
+                    output_root.join(&rel)
+                };
+                if entry.is_dir {
+                    std::fs::create_dir_all(&child_output)
+                        .map_err(|e| format!("Create output dir: {e}"))?;
+                } else {
+                    extract_file_entry(vault, entry, &child_output)?;
+                }
+            }
+
+            Ok(output_root)
         }
-        let block_len = u64::from_le_bytes(
-            vault.data[len_start..len_end]
-                .try_into()
-                .expect("slice length"),
-        );
-        if block_len != record.block_len || block_len > MAX_BLOCK_SIZE {
-            return Err("Chunk length metadata mismatch".to_string());
-        }
-        let block_start = len_end;
-        let block_end = block_start
-            .checked_add(block_len as usize)
-            .ok_or_else(|| "Chunk block offset overflow".to_string())?;
-        if block_end > vault.data.len() {
-            return Err("Chunk block is outside data section".to_string());
-        }
-        let encrypted = &vault.data[block_start..block_end];
-        let actual_hash = blake3::hash(encrypted).to_hex().to_string();
-        if actual_hash != record.cipher_hash {
-            return Err(format!("Cipher block hash mismatch for chunk {chunk_id}"));
-        }
-        let aad = block_aad(record.block_index, chunk_id);
-        let compressed = decrypt_with_aad(&vault.master_key, encrypted, &aad)?;
-        let plaintext = zstd::stream::decode_all(&compressed[..])
-            .map_err(|e| format!("zstd decompress failed: {e}"))?;
-        if plaintext.len() as u64 != record.plaintext_len {
-            return Err(format!("Plaintext length mismatch for chunk {chunk_id}"));
-        }
-        out.extend_from_slice(&plaintext);
+        None => Err(format!("Entry not found: {entry_name}")),
     }
-    out.truncate(entry.size as usize);
-    atomic_write(&output_path, &out)?;
-    out.zeroize();
-    Ok(output_path)
 }
 
 fn info_from_manifest(manifest: &VaultManifestV3) -> VaultV3Info {
@@ -928,6 +1342,253 @@ pub async fn vault_v3_add_files(
 }
 
 #[tauri::command]
+pub async fn vault_v3_add_files_to_dir(
+    vault_path: String,
+    password: String,
+    file_paths: Vec<String>,
+    target_dir: String,
+) -> Result<serde_json::Value, String> {
+    let target_dir = normalize_vault_relative_path(&target_dir)?;
+    let mut vault = open_vault(&vault_path, &password)?;
+    create_directory_in_manifest(&mut vault.manifest, &target_dir)?;
+    let mut added = 0usize;
+    for file_path in file_paths {
+        let path = PathBuf::from(&file_path);
+        let name = safe_entry_name(&path)?;
+        append_file_at(&mut vault, &path, &join_vault_path(&target_dir, &name))?;
+        added += 1;
+    }
+    save_open_vault(&vault)?;
+    Ok(serde_json::json!({
+        "added": added,
+        "total": vault.manifest.entries.len()
+    }))
+}
+
+#[tauri::command]
+pub async fn vault_v3_create_directory(
+    vault_path: String,
+    password: String,
+    dir_name: String,
+) -> Result<serde_json::Value, String> {
+    let mut vault = open_vault(&vault_path, &password)?;
+    let created = create_directory_in_manifest(&mut vault.manifest, &dir_name)?;
+    save_open_vault(&vault)?;
+    Ok(serde_json::json!({
+        "created": created,
+        "dir": normalize_vault_relative_path(&dir_name)?
+    }))
+}
+
+#[tauri::command]
+pub async fn vault_v3_delete_entry(
+    vault_path: String,
+    password: String,
+    entry_name: String,
+) -> Result<serde_json::Value, String> {
+    let mut vault = open_vault(&vault_path, &password)?;
+    delete_entries_from_manifest(&mut vault, &[entry_name.clone()], false)?;
+    save_open_vault(&vault)?;
+    Ok(serde_json::json!({
+        "deleted": normalize_vault_relative_path(&entry_name)?,
+        "remaining": vault.manifest.entries.len()
+    }))
+}
+
+#[tauri::command]
+pub async fn vault_v3_delete_entries(
+    vault_path: String,
+    password: String,
+    entry_names: Vec<String>,
+    recursive: bool,
+) -> Result<serde_json::Value, String> {
+    let mut vault = open_vault(&vault_path, &password)?;
+    let removed = delete_entries_from_manifest(&mut vault, &entry_names, recursive)?;
+    save_open_vault(&vault)?;
+    Ok(serde_json::json!({
+        "removed": removed,
+        "remaining": vault.manifest.entries.len()
+    }))
+}
+
+#[tauri::command]
+pub async fn vault_v3_move_entry(
+    vault_path: String,
+    password: String,
+    from: String,
+    to: String,
+) -> Result<serde_json::Value, String> {
+    let mut vault = open_vault(&vault_path, &password)?;
+    move_entry_in_manifest(&mut vault, &from, &to)?;
+    save_open_vault(&vault)?;
+    Ok(serde_json::json!({
+        "moved": true,
+        "from": normalize_vault_relative_path(&from)?,
+        "to": normalize_vault_relative_path(&to)?
+    }))
+}
+
+#[tauri::command]
+pub async fn vault_v3_rename_entry(
+    vault_path: String,
+    password: String,
+    current_name: String,
+    new_name: String,
+) -> Result<serde_json::Value, String> {
+    let current_name = normalize_vault_relative_path(&current_name)?;
+    let new_name = normalize_leaf_name(&new_name)?;
+    let destination = if let Some(parent) = path_parent(&current_name) {
+        join_vault_path(parent, &new_name)
+    } else {
+        new_name.clone()
+    };
+    let mut vault = open_vault(&vault_path, &password)?;
+    move_entry_in_manifest(&mut vault, &current_name, &destination)?;
+    save_open_vault(&vault)?;
+    Ok(serde_json::json!({
+        "renamed": true,
+        "from": current_name,
+        "to": destination
+    }))
+}
+
+#[tauri::command]
+pub async fn vault_v3_copy_entry(
+    vault_path: String,
+    password: String,
+    from: String,
+    to: String,
+) -> Result<serde_json::Value, String> {
+    let mut vault = open_vault(&vault_path, &password)?;
+    copy_entry_in_manifest(&mut vault, &from, &to)?;
+    save_open_vault(&vault)?;
+    Ok(serde_json::json!({
+        "copied": true,
+        "from": normalize_vault_relative_path(&from)?,
+        "to": normalize_vault_relative_path(&to)?
+    }))
+}
+
+#[tauri::command]
+pub async fn vault_v3_change_password(
+    vault_path: String,
+    old_password: String,
+    new_password: String,
+) -> Result<String, String> {
+    let mut vault = open_vault(&vault_path, &old_password)?;
+    change_password_in_place(&mut vault, &new_password)?;
+    save_open_vault(&vault)?;
+    Ok("Password changed successfully".to_string())
+}
+
+#[tauri::command]
+pub async fn vault_v3_add_directory(
+    app: tauri::AppHandle,
+    vault_path: String,
+    password: String,
+    source_dir: String,
+    target_prefix: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use tauri::Emitter;
+
+    let source = Path::new(&source_dir)
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve directory: {e}"))?;
+    if !source.is_dir() {
+        return Err(format!("Not a directory: {source_dir}"));
+    }
+
+    struct DirEntry {
+        rel_path: String,
+        is_dir: bool,
+        abs_path: PathBuf,
+        depth: usize,
+    }
+
+    let normalized_prefix = target_prefix
+        .as_deref()
+        .map(|prefix| prefix.trim_matches('/'))
+        .filter(|prefix| !prefix.is_empty())
+        .map(normalize_vault_relative_path)
+        .transpose()?;
+
+    let mut all_entries: Vec<DirEntry> = Vec::new();
+    for entry in walkdir::WalkDir::new(&source)
+        .follow_links(false)
+        .max_depth(100)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.path() == source {
+            continue;
+        }
+        if all_entries.len() >= 500_000 {
+            return Err("Directory exceeds maximum entry limit (500000)".to_string());
+        }
+
+        let rel_path = entry
+            .path()
+            .strip_prefix(&source)
+            .map_err(|_| "Failed to compute relative path".to_string())?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let full_rel = if let Some(prefix) = &normalized_prefix {
+            join_vault_path(prefix, &rel_path)
+        } else {
+            rel_path
+        };
+        let full_rel = normalize_vault_relative_path(&full_rel)?;
+
+        all_entries.push(DirEntry {
+            rel_path: full_rel,
+            is_dir: entry.file_type().is_dir(),
+            abs_path: entry.path().to_path_buf(),
+            depth: entry.depth(),
+        });
+    }
+
+    let mut dirs: Vec<&DirEntry> = all_entries.iter().filter(|entry| entry.is_dir).collect();
+    let files: Vec<&DirEntry> = all_entries.iter().filter(|entry| !entry.is_dir).collect();
+    dirs.sort_by_key(|entry| entry.depth);
+
+    let mut vault = open_vault(&vault_path, &password)?;
+    let mut added_dirs = 0usize;
+    for dir_entry in dirs {
+        if create_directory_in_manifest(&mut vault.manifest, &dir_entry.rel_path)? {
+            added_dirs += 1;
+        }
+    }
+
+    let total_files = files.len();
+    let mut added_files = 0usize;
+    let mut last_emit = std::time::Instant::now();
+    let throttle = std::time::Duration::from_millis(150);
+
+    for file_entry in files {
+        append_file_at(&mut vault, &file_entry.abs_path, &file_entry.rel_path)?;
+        added_files += 1;
+        if last_emit.elapsed() >= throttle || added_files == total_files {
+            let _ = app.emit(
+                "vault-add-progress",
+                serde_json::json!({
+                    "current": added_files,
+                    "total": total_files,
+                    "current_file": file_entry.rel_path
+                }),
+            );
+            last_emit = std::time::Instant::now();
+        }
+    }
+
+    save_open_vault(&vault)?;
+    Ok(serde_json::json!({
+        "added_files": added_files,
+        "added_dirs": added_dirs,
+        "total_entries": added_files + added_dirs
+    }))
+}
+
+#[tauri::command]
 pub async fn vault_v3_extract_entry(
     vault_path: String,
     password: String,
@@ -1007,6 +1668,46 @@ mod tests {
         let out = dir.path().join("out.txt");
         extract_entry(&reopened, "a.txt", &out).unwrap();
         assert_eq!(std::fs::read(&out).unwrap(), std::fs::read(&a).unwrap());
+    }
+
+    #[test]
+    fn v3_directory_ops_and_password_rotation() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        std::fs::create_dir_all(source.join("docs/nested")).unwrap();
+        std::fs::write(source.join("docs/guide.txt"), b"guide").unwrap();
+        std::fs::write(source.join("docs/nested/readme.txt"), b"nested").unwrap();
+
+        let vault_path = dir.path().join("dir-test.aerovault");
+        create_empty_vault(&vault_path, "old-password", DEFAULT_ZSTD_LEVEL).unwrap();
+
+        let mut vault = open_vault(&vault_path, "old-password").unwrap();
+        create_directory_in_manifest(&mut vault.manifest, "empty").unwrap();
+        append_file_at(&mut vault, &source.join("docs/guide.txt"), "docs/guide.txt").unwrap();
+        append_file_at(&mut vault, &source.join("docs/nested/readme.txt"), "docs/nested/readme.txt").unwrap();
+        copy_entry_in_manifest(&mut vault, "docs", "docs-copy").unwrap();
+        move_entry_in_manifest(&mut vault, "docs-copy", "docs-archived").unwrap();
+        delete_entries_from_manifest(&mut vault, &["docs-archived".to_string()], true).unwrap();
+        change_password_in_place(&mut vault, "new-password").unwrap();
+        save_open_vault(&vault).unwrap();
+
+        assert!(open_vault(&vault_path, "old-password").is_err());
+        let reopened = open_vault(&vault_path, "new-password").unwrap();
+        assert!(entry_kind(&reopened.manifest, "docs").is_some());
+        assert!(entry_kind(&reopened.manifest, "empty").is_some());
+        assert!(entry_kind(&reopened.manifest, "docs-archived").is_none());
+
+        let extract_root = dir.path().join("extract-docs");
+        let extracted = extract_entry(&reopened, "docs", &extract_root).unwrap();
+        assert!(extracted.is_dir());
+        assert_eq!(
+            std::fs::read(extracted.join("guide.txt")).unwrap(),
+            b"guide"
+        );
+        assert_eq!(
+            std::fs::read(extracted.join("nested/readme.txt")).unwrap(),
+            b"nested"
+        );
     }
 
     #[test]

@@ -31,7 +31,7 @@ function relativeTime(timestamp: number): string {
 
 /** Map security_level string to SecurityLevel type */
 function toSecurityLevel(s: string): SecurityLevel {
-    if (s === 'standard' || s === 'advanced' || s === 'paranoid') return s;
+    if (s === 'standard' || s === 'advanced' || s === 'paranoid' || s === 'experimental') return s;
     return 'advanced';
 }
 
@@ -48,7 +48,7 @@ export const VaultHome: React.FC<VaultHomeProps> = ({ state, isConnected }) => {
             </svg>
 
             <p className="text-gray-600 dark:text-gray-300 text-center text-sm max-w-md">
-                {t('vault.descriptionV2')}
+                {t('vault.description')}
             </p>
 
             {/* Security levels preview */}

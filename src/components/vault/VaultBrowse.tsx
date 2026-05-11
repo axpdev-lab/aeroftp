@@ -20,7 +20,6 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
 
     const currentLevelConfig = state.vaultSecurity ? securityLevels[state.vaultSecurity.level] : null;
     const LevelIcon = currentLevelConfig?.icon || VaultIcon;
-
     // Filter entries for the current directory
     const prefix = state.currentDir ? `${state.currentDir}/` : '';
     const visibleEntries = state.entries.filter(entry => {
@@ -52,7 +51,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                 <button onClick={state.handleAddFiles} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-green-700 hover:bg-green-600 text-white rounded">
                     <Plus size={14} /> {t('vault.addFiles')}
                 </button>
-                {state.vaultSecurity?.version === 2 && (
+                {state.vaultSecurity && state.vaultSecurity.version >= 2 && (
                     <button onClick={() => { state.setShowNewDirDialog(true); state.setNewDirName(''); }} disabled={state.loading} className="flex items-center gap-1 px-2 py-1 text-xs bg-yellow-700 hover:bg-yellow-600 rounded">
                         <FolderPlus size={14} /> {t('vault.newFolder')}
                     </button>

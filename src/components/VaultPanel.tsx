@@ -51,9 +51,17 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         let cancelled = false;
 
         const syncOverlay = async () => {
-            if (state.mode !== 'browse' || !state.vaultPath || !state.password) {
+            if (state.mode !== 'browse' || !state.vaultPath || !state.password || !state.vaultSecurity || state.vaultSecurity.version < 2) {
+                const previousSessionId = overlaySessionRef.current?.sessionId;
                 overlaySessionRef.current = null;
                 onOverlaySessionChange(null);
+                if (previousSessionId) {
+                    try {
+                        await invoke('aerovault_overlay_lock', { sessionId: previousSessionId });
+                    } catch {
+                        // Best effort cleanup.
+                    }
+                }
                 return;
             }
 
@@ -116,6 +124,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         state.mode,
         state.vaultPath,
         state.password,
+        state.vaultSecurity?.version,
         state.currentDir,
         state.remoteVaultPath,
         state.remoteLocalPath,
