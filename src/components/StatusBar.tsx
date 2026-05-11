@@ -31,6 +31,8 @@ interface StatusBarProps {
     remoteFileCount?: number;
     localFileCount?: number;
     activePanel: 'remote' | 'local';
+    activeLocalPanelId?: 'local' | 'local2';
+    dualLocalPanel?: boolean;
     devToolsOpen?: boolean;
     cloudEnabled?: boolean;
     cloudPaused?: boolean;
@@ -69,6 +71,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     remoteFileCount = 0,
     localFileCount = 0,
     activePanel,
+    activeLocalPanelId = 'local',
+    dualLocalPanel = false,
     devToolsOpen = false,
     cloudEnabled = false,
     cloudPaused = false,
@@ -186,6 +190,17 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     ) : (
                         <>
                             <HardDrive size={12} className="text-amber-500 shrink-0" />
+                            {dualLocalPanel && (
+                                <span
+                                    className={`inline-flex items-center justify-center w-5 h-4 rounded text-[10px] font-semibold shrink-0 ${activeLocalPanelId === 'local2'
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                                    }`}
+                                    title={activeLocalPanelId === 'local2' ? t('aerofile.rightPanel') : t('aerofile.leftPanel')}
+                                >
+                                    {activeLocalPanelId === 'local2' ? 'R' : 'L'}
+                                </span>
+                            )}
                             <span className="truncate" title={localPath}>
                                 {localPath || '~'}
                             </span>
