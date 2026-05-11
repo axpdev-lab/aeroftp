@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Igazi semleges sötét GitHub stílusban, kék árnyalat nélkül",
             "themeGreenLabel": "Zöld",
             "themeGreenDesc": "Természet ihlette erdei paletta a zöld szerelmeseinek",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Mit tartalmazzon a biztonsági mentés",
+            "keystoreExportModeFull": "Teljes biztonsági mentés (ajánlott)",
+            "keystoreExportModeFullDesc": "Vault hitelesítő adatok, AI csevegési előzmények, ügynökmemória, fájlcímkék, telepített bővítmények, szinkronizációs pillanatképek és mentett beállítások. A teljes alkalmazásállapot egyetlen titkosított fájlban.",
+            "keystoreExportModeVaultOnly": "Csak vault (régi)",
+            "keystoreExportModeVaultOnlyDesc": "Csak a titkosított hitelesítő adatok és a kiszolgálóprofilok. Kisebb, gyorsabb, megegyezik a v3.7.8 előtti exportokkal. Hasznos szerverek gépek közötti migrálásakor anélkül, hogy a csevegési előzményeket magunkkal kellene vinnünk."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Hordozható mód: ez a mappa tartalmazza az összes AeroFTP-adatát",
+                "body": "Minden hordozható telepítés teljesen önálló: a mentett kiszolgálók, az AeroVault, az AI-csevegések és a beállítások mind az AeroFTP.exe mellett élnek. A v3.7.8-tól kezdve ugyanazon a PC-n lévő két hordozható mappa teljesen független: az egyik mappában lévő profil törlése már nem érinti a másikat.",
+                "legacyWarning": "Megmaradt adatokat észleltünk egy korábbi megosztott telepítésből a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ helyen. Ezeket a hordozható telepítés már nem használja. Ha nincs rá szüksége, manuálisan eltávolíthatja.",
+                "openFolder": "Adatmappa megnyitása",
+                "dismiss": "Értem"
             }
         }
     }

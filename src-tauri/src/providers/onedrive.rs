@@ -474,9 +474,10 @@ impl OneDriveProvider {
                     sanitize_api_error(&text)
                 )));
             }
-            let result: ChildrenResponse = response.json().await.map_err(|e| {
-                ProviderError::Other(format!("Recycle bin parse error: {}", e))
-            })?;
+            let result: ChildrenResponse = response
+                .json()
+                .await
+                .map_err(|e| ProviderError::Other(format!("Recycle bin parse error: {}", e)))?;
             for item in result.value {
                 if item.name == basename {
                     return Ok(Some(item.id));
@@ -997,7 +998,11 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }

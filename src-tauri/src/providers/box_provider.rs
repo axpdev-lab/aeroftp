@@ -1753,19 +1753,20 @@ impl StorageProvider for BoxProvider {
         // Box trash listing carries id and item_type ("file"|"folder") in
         // metadata. Match by basename and dispatch to the existing inherent
         // helper. Ok(false) when the trash search returns no match.
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }
         let trashed = self.list_trash().await?;
-        let target = trashed
-            .iter()
-            .find(|e| e.name == basename)
-            .and_then(|e| {
-                let id = e.metadata.get("id")?;
-                let kind = e.metadata.get("item_type")?;
-                Some((id.clone(), kind.clone()))
-            });
+        let target = trashed.iter().find(|e| e.name == basename).and_then(|e| {
+            let id = e.metadata.get("id")?;
+            let kind = e.metadata.get("item_type")?;
+            Some((id.clone(), kind.clone()))
+        });
         match target {
             Some((id, kind)) => {
                 self.permanent_delete_from_trash(&id, &kind).await?;

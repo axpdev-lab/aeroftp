@@ -1619,10 +1619,7 @@ impl StorageProvider for S3Provider {
             ))),
             status => {
                 let body = response.text().await.unwrap_or_default();
-                eprintln!(
-                    "[S3] connect() failed with status={} body={}",
-                    status, body
-                );
+                eprintln!("[S3] connect() failed with status={} body={}", status, body);
                 Err(ProviderError::ConnectionFailed(format!(
                     "S3 error ({}): {}",
                     status,
@@ -3741,7 +3738,10 @@ mod tests {
         assert_eq!(encode_s3_key_path("a/b/c.txt"), "a/b/c.txt");
         // Spaces percent-encoded as %20 (NOT '+').
         assert_eq!(encode_s3_key_path("my folder"), "my%20folder");
-        assert_eq!(encode_s3_key_path("my folder/file.txt"), "my%20folder/file.txt");
+        assert_eq!(
+            encode_s3_key_path("my folder/file.txt"),
+            "my%20folder/file.txt"
+        );
         // Trailing slash preserved (folder-marker keys).
         assert_eq!(encode_s3_key_path("my folder/"), "my%20folder/");
         // Emoji encoded as UTF-8 percent triplets.

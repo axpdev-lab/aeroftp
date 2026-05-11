@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Истинно нейтральная тёмная в стиле GitHub, без синего оттенка",
             "themeGreenLabel": "Зелёная",
             "themeGreenDesc": "Лесная палитра, вдохновлённая природой, для любителей зелёного",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Что включить в резервную копию",
+            "keystoreExportModeFull": "Полная резервная копия (рекомендуется)",
+            "keystoreExportModeFullDesc": "Учётные данные хранилища, история чатов ИИ, память агента, метки файлов, установленные плагины, снимки синхронизации и сохранённые настройки. Полное состояние приложения в одном зашифрованном файле.",
+            "keystoreExportModeVaultOnly": "Только хранилище (устаревший)",
+            "keystoreExportModeVaultOnlyDesc": "Только зашифрованные учётные данные и профили серверов. Меньше, быстрее, идентично экспортам до v3.7.8. Полезно при миграции серверов между машинами без перетаскивания истории чатов."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4402,11 +4402,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Портативный режим: эта папка содержит все ваши данные AeroFTP",
+                "body": "Каждая портативная установка полностью самодостаточна: сохранённые серверы, AeroVault, чаты ИИ и настройки находятся рядом с AeroFTP.exe. Начиная с v3.7.8 две портативные папки на одном ПК полностью независимы: удаление профиля в одной папке больше не влияет на другую.",
+                "legacyWarning": "Мы обнаружили остаточные данные от предыдущей общей установки по адресу %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Они больше не используются этой портативной установкой. Вы можете удалить их вручную, если они вам не нужны.",
+                "openFolder": "Открыть папку данных",
+                "dismiss": "Понятно"
             }
         }
     }

@@ -219,7 +219,11 @@ impl ImageKitProvider {
         if path.starts_with('/') {
             normalize_path(path)
         } else {
-            normalize_path(&format!("{}/{}", self.current_path.trim_end_matches('/'), path))
+            normalize_path(&format!(
+                "{}/{}",
+                self.current_path.trim_end_matches('/'),
+                path
+            ))
         }
     }
 
@@ -320,7 +324,10 @@ impl ImageKitProvider {
         }
 
         let resp = self
-            .auth(self.client.delete(format!("{}/files/{}", API_BASE, item.file_id)))
+            .auth(
+                self.client
+                    .delete(format!("{}/files/{}", API_BASE, item.file_id)),
+            )
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -439,7 +446,10 @@ impl ImageKitProvider {
         let source = folder_path(from);
         let destination = folder_path(to);
         let resp = self
-            .auth(self.client.post(format!("{}/bulkJobs/{}", API_BASE, endpoint)))
+            .auth(
+                self.client
+                    .post(format!("{}/bulkJobs/{}", API_BASE, endpoint)),
+            )
             .json(&BulkFolderRequest {
                 source_folder_path: &source,
                 destination_path: &destination,
@@ -478,7 +488,10 @@ impl StorageProvider for ImageKitProvider {
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
         let resp = self
-            .auth(self.client.get(format!("{}/files?limit=1&skip=0", API_BASE)))
+            .auth(
+                self.client
+                    .get(format!("{}/files?limit=1&skip=0", API_BASE)),
+            )
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -806,7 +819,9 @@ impl StorageProvider for ImageKitProvider {
             return Err(ProviderError::NotConnected);
         }
         let resolved = self.resolve_path(path);
-        self.find_entry(&resolved).await.map(|item| file_to_entry(&item))
+        self.find_entry(&resolved)
+            .await
+            .map(|item| file_to_entry(&item))
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -869,11 +884,7 @@ impl StorageProvider for ImageKitProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }

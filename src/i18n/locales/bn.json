@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "GitHub শৈলীতে প্রকৃত নিরপেক্ষ ডার্ক, কোনো নীল আভা নেই",
             "themeGreenLabel": "সবুজ",
             "themeGreenDesc": "সবুজপ্রেমীদের জন্য প্রকৃতি-অনুপ্রাণিত বনের প্যালেট",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "ব্যাকআপে কী অন্তর্ভুক্ত করবেন",
+            "keystoreExportModeFull": "সম্পূর্ণ ব্যাকআপ (প্রস্তাবিত)",
+            "keystoreExportModeFullDesc": "ভল্ট শংসাপত্র, AI চ্যাট ইতিহাস, এজেন্ট মেমরি, ফাইল ট্যাগ, ইনস্টল করা প্লাগইন, সিঙ্ক স্ন্যাপশট এবং সংরক্ষিত পছন্দসমূহ। একটি একক এনক্রিপ্ট করা ফাইলে সম্পূর্ণ অ্যাপ্লিকেশন অবস্থা।",
+            "keystoreExportModeVaultOnly": "শুধুমাত্র ভল্ট (লিগ্যাসি)",
+            "keystoreExportModeVaultOnlyDesc": "শুধুমাত্র এনক্রিপ্ট করা শংসাপত্র এবং সার্ভার প্রোফাইল। ছোট, দ্রুত, v3.7.8-এর আগের এক্সপোর্টের মতোই। চ্যাট ইতিহাস সাথে না টেনে মেশিনের মধ্যে সার্ভার মাইগ্রেট করার সময় উপযোগী।"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "পোর্টেবল মোড: এই ফোল্ডারে আপনার সমস্ত AeroFTP ডেটা রয়েছে",
+                "body": "প্রতিটি পোর্টেবল ইনস্টলেশন সম্পূর্ণরূপে স্বয়ংসম্পূর্ণ: সংরক্ষিত সার্ভার, AeroVault, AI চ্যাট এবং পছন্দসমূহ সবই AeroFTP.exe-এর পাশে থাকে। v3.7.8 থেকে শুরু করে, একই PC-তে দুটি পোর্টেবল ফোল্ডার সম্পূর্ণ স্বাধীন — একটি ফোল্ডারে একটি প্রোফাইল মুছে ফেললে এখন আর অন্যটিকে প্রভাবিত করে না।",
+                "legacyWarning": "আমরা %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\-এ পূর্ববর্তী ভাগ করা ইনস্টলের অবশিষ্ট ডেটা সনাক্ত করেছি। এটি এই পোর্টেবল ইনস্টলেশন দ্বারা আর ব্যবহৃত হয় না। আপনার প্রয়োজন না হলে আপনি এটি ম্যানুয়ালি সরাতে পারেন।",
+                "openFolder": "ডেটা ফোল্ডার খুলুন",
+                "dismiss": "বুঝেছি"
             }
         }
     }

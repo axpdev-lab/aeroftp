@@ -536,7 +536,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     } | null>(null);
     const [keystoreImportFilePath, setKeystoreImportFilePath] = useState<string | null>(null);
     const [keystoreMessage, setKeystoreMessage] = useState<{
-        type: 'success' | 'error';
+        type: 'success' | 'error' | 'info';
         text: string;
     } | null>(null);
     const [keystoreImportProgress, setKeystoreImportProgress] = useState<{
@@ -4182,12 +4182,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         </div>
                                         <div className="p-4 space-y-4">
                                             {/* Keystore message */}
-                                            {keystoreMessage && (
-                                                <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${keystoreMessage.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'}`}>
-                                                    {keystoreMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                                                    {keystoreMessage.text}
-                                                </div>
-                                            )}
+                                            {keystoreMessage && (() => {
+                                                const cls = keystoreMessage.type === 'success'
+                                                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400'
+                                                    : keystoreMessage.type === 'info'
+                                                        ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400'
+                                                        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400';
+                                                const Icon = keystoreMessage.type === 'success'
+                                                    ? CheckCircle2
+                                                    : keystoreMessage.type === 'info'
+                                                        ? AlertCircle
+                                                        : AlertCircle;
+                                                return (
+                                                    <div className={`p-3 rounded-lg text-sm flex items-center gap-2 border ${cls}`}>
+                                                        <Icon size={16} />
+                                                        {keystoreMessage.text}
+                                                    </div>
+                                                );
+                                            })()}
 
                                             {/* Export */}
                                             <div className="space-y-3">
@@ -4359,7 +4371,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 multiple: false,
                                                             });
                                                             if (!filePath) return;
-                                                            const path = typeof filePath === 'string' ? filePath : filePath;
+                                                            // Dialog open() with multiple:false always returns string | null.
+                                                            const path = filePath as string;
                                                             try {
                                                                 const meta = await invoke<{
                                                                     exportDate: string;
@@ -4505,6 +4518,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             sqliteDbsRestored?: number;
                                                                             filesRestored?: number;
                                                                             localStorage?: Record<string, string>;
+                                                                            // Audit 2026-05-11 C2: backend tells us when the
+                                                                            // running process is holding stale connections to
+                                                                            // SQLite DBs / plugin scripts that the import just
+                                                                            // rewrote on disk. UI must prompt for a restart so
+                                                                            // the imported state actually takes effect.
+                                                                            requiresRestart?: boolean;
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,
@@ -4528,12 +4547,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 console.warn('Failed to apply restored localStorage:', e);
                                                                             }
                                                                         }
+                                                                        // Audit 2026-05-11 C2: append the restart hint to
+                                                                        // the success toast and trigger the dedicated
+                                                                        // banner. Two channels (text + banner) cover the
+                                                                        // case where the toast scrolls off-screen before
+                                                                        // the user reads it.
+                                                                        const successText = t('settings.keystoreImported', {
+                                                                            imported: result.imported,
+                                                                            skipped: result.skipped,
+                                                                        });
                                                                         setKeystoreMessage({
-                                                                            type: 'success',
-                                                                            text: t('settings.keystoreImported', {
-                                                                                imported: result.imported,
-                                                                                skipped: result.skipped,
-                                                                            }),
+                                                                            type: result.requiresRestart ? 'info' : 'success',
+                                                                            text: result.requiresRestart
+                                                                                ? `${successText}. ${t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' })}`
+                                                                                : successText,
                                                                         });
 
                                                                         // Re-query actual vault count + categories (not optimistic)

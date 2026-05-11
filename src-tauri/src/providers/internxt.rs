@@ -2042,7 +2042,11 @@ impl StorageProvider for InternxtProvider {
         // other Internxt deployments and workspace plans do route through
         // a recoverable trash, in which case the basename match + DELETE
         // /storage/trash flow works correctly.
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }

@@ -1507,7 +1507,11 @@ impl StorageProvider for GoogleDriveProvider {
         // it up by basename in the trash listing and call `permanent_delete`
         // by file id. If nothing matches the path is treated as already
         // purged (Ok(false)) rather than an error so the caller can continue.
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }

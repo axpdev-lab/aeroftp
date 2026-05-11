@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Fosc neutre real a l'estil GitHub, sense to blau",
             "themeGreenLabel": "Verd",
             "themeGreenDesc": "Paleta forestal inspirada en la natura per als amants del verd",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Què incloure a la còpia de seguretat",
+            "keystoreExportModeFull": "Còpia de seguretat completa (recomanat)",
+            "keystoreExportModeFullDesc": "Credencials del vault, historial de xat d'IA, memòria de l'agent, etiquetes de fitxers, connectors instal·lats, instantànies de sincronització i preferències desades. L'estat complet de l'aplicació en un sol fitxer xifrat.",
+            "keystoreExportModeVaultOnly": "Només vault (heretat)",
+            "keystoreExportModeVaultOnlyDesc": "Només les credencials xifrades i els perfils de servidor. Més petit, més ràpid, idèntic a les exportacions anteriors a v3.7.8. Útil per migrar servidors entre màquines sense arrossegar l'historial de xat."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4431,11 +4431,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Mode portàtil: aquesta carpeta conté totes les vostres dades d'AeroFTP",
+                "body": "Cada instal·lació portàtil és completament autònoma: servidors desats, AeroVault, xats d'IA i preferències viuen al costat d'AeroFTP.exe. A partir de v3.7.8, dues carpetes portàtils al mateix PC són completament independents: eliminar un perfil en una carpeta ja no afecta l'altra.",
+                "legacyWarning": "Hem detectat dades residuals d'una instal·lació compartida anterior a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ja no s'utilitzen en aquesta instal·lació portàtil. Podeu eliminar-les manualment si no les necessiteu.",
+                "openFolder": "Obre la carpeta de dades",
+                "dismiss": "Entesos"
             }
         }
     }

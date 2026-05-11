@@ -1020,11 +1020,12 @@ pub fn export_rclone(
                 // rclone section is functional out of the box.
                 if !emitted_endpoint && !server.host.trim().is_empty() {
                     let endpoint = server.host.trim_end_matches('/');
-                    let endpoint = if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
-                        endpoint.to_string()
-                    } else {
-                        format!("https://{}", endpoint)
-                    };
+                    let endpoint =
+                        if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+                            endpoint.to_string()
+                        } else {
+                            format!("https://{}", endpoint)
+                        };
                     output.push_str(&format!("endpoint = {}\n", endpoint));
                 }
             }

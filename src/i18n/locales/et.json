@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Tõeliselt neutraalne tume GitHubi stiilis, ilma sinise varjundita",
             "themeGreenLabel": "Roheline",
             "themeGreenDesc": "Loodusest inspireeritud metsapalett rohelise armastajatele",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Mida varukoopiasse lisada",
+            "keystoreExportModeFull": "Täielik varukoopia (soovitatav)",
+            "keystoreExportModeFullDesc": "Vaulti mandaadid, AI-vestluste ajalugu, agendi mälu, faili sildid, paigaldatud pluginad, sünkroniseerimise hetketõmmised ja salvestatud eelistused. Rakenduse täielik olek ühes krüpteeritud failis.",
+            "keystoreExportModeVaultOnly": "Ainult vault (vana)",
+            "keystoreExportModeVaultOnlyDesc": "Ainult krüpteeritud mandaadid ja serveriprofiilid. Väiksem, kiirem, identne v3.7.8 eelsete ekspordifailidega. Kasulik serverite migreerimisel masinate vahel ilma vestluste ajalugu kaasa lohistamata."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Kaasaskantav režiim: see kaust sisaldab kõiki teie AeroFTP andmeid",
+                "body": "Iga kaasaskantav paigaldus on täielikult iseseisev: salvestatud serverid, AeroVault, AI-vestlused ja eelistused asuvad kõik AeroFTP.exe kõrval. Alates versioonist v3.7.8 on kaks kaasaskantavat kausta samas arvutis täiesti sõltumatud: ühes kaustas profiili kustutamine ei mõjuta enam teist.",
+                "legacyWarning": "Tuvastasime jääkandmed varasemast jagatud paigaldusest asukohas %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. See kaasaskantav paigaldus neid enam ei kasuta. Saate need käsitsi eemaldada, kui te neid ei vaja.",
+                "openFolder": "Ava andmekaust",
+                "dismiss": "Selge"
             }
         }
     }

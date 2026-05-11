@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Tunay na neutral na madilim sa estilo ng GitHub, walang asul na kulay",
             "themeGreenLabel": "Berde",
             "themeGreenDesc": "Paletang gubat na inspirasyon ng kalikasan para sa mga mahilig sa berde",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Ano ang isasama sa backup",
+            "keystoreExportModeFull": "Buong backup (inirerekomenda)",
+            "keystoreExportModeFullDesc": "Mga kredensyal ng vault, kasaysayan ng chat ng AI, memorya ng ahente, mga tag ng file, mga naka-install na plugin, mga snapshot ng pag-sync, at mga naka-save na kagustuhan. Ang kumpletong kalagayan ng aplikasyon sa isang naka-encrypt na file.",
+            "keystoreExportModeVaultOnly": "Vault lang (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Tanging ang mga naka-encrypt na kredensyal at mga profile ng server. Mas maliit, mas mabilis, kapareho ng mga export bago ang v3.7.8. Kapaki-pakinabang kapag naglilipat ng mga server sa pagitan ng mga makina nang hindi kinakailangang dalhin ang kasaysayan ng chat."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4431,11 +4431,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Portable mode: ang folder na ito ang naglalaman ng lahat ng iyong data ng AeroFTP",
+                "body": "Ang bawat portable na pag-install ay ganap na self-contained: ang mga naka-save na server, AeroVault, mga chat ng AI at mga kagustuhan ay lahat nakatira sa tabi ng AeroFTP.exe. Mula sa v3.7.8 pasulong, ang dalawang portable folder sa parehong PC ay ganap na malaya: ang pagtanggal ng profile sa isang folder ay hindi na nakakaapekto sa kabila.",
+                "legacyWarning": "Nakakita kami ng natitirang data mula sa nakaraang shared install sa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Hindi na ito ginagamit ng portable installation na ito. Maaari mo itong manu-manong tanggalin kung hindi mo na kailangan.",
+                "openFolder": "Buksan ang data folder",
+                "dismiss": "Nakuha"
             }
         }
     }

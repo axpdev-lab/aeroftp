@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Իսկապես չեզոք մուգ GitHub ոճով, առանց կապույտ երանգի",
             "themeGreenLabel": "Կանաչ",
             "themeGreenDesc": "Բնությունից ներշնչված անտառային գունապնակ կանաչի սիրահարների համար",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Ինչ ներառել կրկնօրինակում",
+            "keystoreExportModeFull": "Ամբողջական կրկնօրինակում (խորհուրդ է տրվում)",
+            "keystoreExportModeFullDesc": "Պահարանի հավատարմագրեր, AI զրույցների պատմություն, գործակալի հիշողություն, ֆայլերի պիտակներ, տեղադրված հավելումներ, համաժամացման լուսանկարներ և պահպանված նախընտրություններ։ Հավելվածի ամբողջական վիճակը մեկ կոդավորված ֆայլում։",
+            "keystoreExportModeVaultOnly": "Միայն պահարան (հին)",
+            "keystoreExportModeVaultOnlyDesc": "Միայն կոդավորված հավատարմագրերը և սերվերների պրոֆիլները։ Ավելի փոքր, ավելի արագ, նույնական v3.7.8-ից առաջվա արտահանումներին։ Օգտակար է սերվերները մեքենաների միջև տեղափոխելու համար առանց զրույցների պատմությունը հետևից քաշելու։"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Շարժական ռեժիմ. այս թղթապանակը պարունակում է ձեր ողջ AeroFTP տվյալները",
+                "body": "Յուրաքանչյուր շարժական տեղադրում ամբողջովին ինքնավար է. պահպանված սերվերները, AeroVault-ը, AI զրույցները և նախընտրությունները բոլորը գտնվում են AeroFTP.exe-ի կողքին։ v3.7.8-ից սկսած նույն համակարգչի վրա երկու շարժական թղթապանակները ամբողջովին անկախ են. մի թղթապանակում պրոֆիլի ջնջումն այլևս չի ազդում մյուսի վրա։",
+                "legacyWarning": "Մենք հայտնաբերեցինք մնացորդային տվյալներ նախորդ ընդհանուր տեղադրումից %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ հասցեում։ Դրանք այլևս չեն օգտագործվում այս շարժական տեղադրման կողմից։ Կարող եք ձեռքով հեռացնել դրանք, եթե դրանք ձեզ պետք չեն։",
+                "openFolder": "Բացել տվյալների թղթապանակը",
+                "dismiss": "Հասկացա"
             }
         }
     }

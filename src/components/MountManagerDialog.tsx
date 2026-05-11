@@ -445,7 +445,7 @@ export function MountManagerDialog({ onClose, initialProfileId, initialRemotePat
         >
             <div
                 {...modalDrag.panelProps}
-                className="w-full max-w-3xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800 max-h-[90vh] flex flex-col animate-scale-in"
+                className="w-full max-w-3xl overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800 max-h-[90vh] flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
             >
                 <div

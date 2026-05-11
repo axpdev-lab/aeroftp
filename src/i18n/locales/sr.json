@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Истински неутрална тамна у GitHub стилу, без плавог нијансе",
             "themeGreenLabel": "Зелена",
             "themeGreenDesc": "Шумска палета инспирисана природом за љубитеље зелене",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Шта укључити у резервну копију",
+            "keystoreExportModeFull": "Потпуна резервна копија (препоручено)",
+            "keystoreExportModeFullDesc": "Акредитиви трезора, историја AI разговора, меморија агента, ознаке датотека, инсталирани додаци, снимци синхронизације и сачуване поставке. Комплетно стање апликације у једној шифрованој датотеци.",
+            "keystoreExportModeVaultOnly": "Само трезор (наслеђено)",
+            "keystoreExportModeVaultOnlyDesc": "Само шифровани акредитиви и профили сервера. Мањи, бржи, идентичан извозима пре v3.7.8. Корисно приликом миграције сервера између машина без вучења историје разговора са собом."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Преносиви режим: ова фасцикла садржи све ваше AeroFTP податке",
+                "body": "Свака преносива инсталација је потпуно самостална: сачувани сервери, AeroVault, AI разговори и поставке живе поред AeroFTP.exe. Од v3.7.8 надаље, две преносиве фасцикле на истом рачунару су потпуно независне: брисање профила у једној фасцикли више не утиче на другу.",
+                "legacyWarning": "Открили смо преостале податке из претходне дељене инсталације на %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ова преносива инсталација их више не користи. Можете их ручно уклонити ако вам нису потребни.",
+                "openFolder": "Отвори фасциклу података",
+                "dismiss": "Разумем"
             }
         }
     }

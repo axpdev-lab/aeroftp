@@ -1329,8 +1329,7 @@ impl StorageProvider for FilenProvider {
         let file_uuid = uuid::Uuid::new_v4().to_string();
 
         // ceil_div(file_size, CHUNK_SIZE), guaranteed >= 1 since size > 0.
-        let total_chunks: u64 =
-            file_size.div_ceil(FILEN_CHUNK_SIZE as u64);
+        let total_chunks: u64 = file_size.div_ceil(FILEN_CHUNK_SIZE as u64);
 
         filen_log(&format!(
             "upload begin '{}' size={} chunks={} parallel={}",
@@ -2188,8 +2187,8 @@ async fn upload_filen_chunk(
         )));
     }
 
-    let upload_resp: serde_json::Value = serde_json::from_str(&resp_text)
-        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+    let upload_resp: serde_json::Value =
+        serde_json::from_str(&resp_text).map_err(|e| ProviderError::ParseError(e.to_string()))?;
     if upload_resp["status"].as_bool() != Some(true) {
         return Err(ProviderError::TransferFailed(format!(
             "Upload chunk {} rejected: {}",
@@ -2262,9 +2261,8 @@ async fn download_filen_chunk(
                 .collect::<String>();
             // Retry only on classes that may recover. 4xx (except 408/429)
             // are authoritative, so we surface them immediately.
-            let retryable = status.is_server_error()
-                || status.as_u16() == 408
-                || status.as_u16() == 429;
+            let retryable =
+                status.is_server_error() || status.as_u16() == 408 || status.as_u16() == 429;
             let err = format!("status {}: {}", status, body_preview);
             if !retryable {
                 return Err(err);
@@ -2323,25 +2321,21 @@ mod tests {
     /// the chunked upload pipeline relies on.
     #[test]
     fn encrypt_decrypt_roundtrip_per_chunk_format() {
-        let file_key: String = (0..32)
-            .map(|i| format!("{:02x}", i as u8))
-            .collect();
+        let file_key: String = (0..32).map(|i| format!("{:02x}", i as u8)).collect();
 
         let plaintext = (0..4096u32)
             .flat_map(|i| i.to_le_bytes())
             .collect::<Vec<u8>>();
 
         let encrypted =
-            FilenProvider::encrypt_file_content(&plaintext, &file_key)
-                .expect("encrypt");
+            FilenProvider::encrypt_file_content(&plaintext, &file_key).expect("encrypt");
         assert_eq!(
             encrypted.len(),
             plaintext.len() + 12 + 16,
             "encrypted len must be plaintext + nonce(12) + tag(16)"
         );
         let decrypted =
-            FilenProvider::decrypt_file_content(&encrypted, &file_key)
-                .expect("decrypt");
+            FilenProvider::decrypt_file_content(&encrypted, &file_key).expect("decrypt");
         assert_eq!(decrypted, plaintext, "round-trip must be byte-exact");
     }
 
@@ -2350,14 +2344,10 @@ mod tests {
     /// what makes parallel chunk uploads safe under AES-GCM.
     #[test]
     fn each_chunk_uses_a_fresh_nonce() {
-        let file_key: String = (0..32)
-            .map(|i| format!("{:02x}", i as u8))
-            .collect();
+        let file_key: String = (0..32).map(|i| format!("{:02x}", i as u8)).collect();
         let plaintext = vec![0xAB_u8; 1024];
-        let a = FilenProvider::encrypt_file_content(&plaintext, &file_key)
-            .expect("encrypt a");
-        let b = FilenProvider::encrypt_file_content(&plaintext, &file_key)
-            .expect("encrypt b");
+        let a = FilenProvider::encrypt_file_content(&plaintext, &file_key).expect("encrypt a");
+        let b = FilenProvider::encrypt_file_content(&plaintext, &file_key).expect("encrypt b");
         assert_ne!(
             a, b,
             "two encryptions of the same plaintext must differ (random nonce)"

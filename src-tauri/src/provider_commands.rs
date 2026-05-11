@@ -391,7 +391,9 @@ impl ProviderConnectionParams {
         if provider_type == ProviderType::S3 {
             tracing::info!(
                 "[S3] provider_commands: self.verify_cert={:?} self.endpoint={:?} self.bucket={:?}",
-                self.verify_cert, self.endpoint, self.bucket
+                self.verify_cert,
+                self.endpoint,
+                self.bucket
             );
             if let Some(verify) = self.verify_cert {
                 extra.insert("verify_cert".to_string(), verify.to_string());
@@ -8821,7 +8823,9 @@ pub async fn b2_restore_hidden(
         .as_any_mut()
         .downcast_mut::<crate::providers::B2Provider>()
         .ok_or_else(|| "B2 downcast failed".to_string())?;
-    b2.restore_hidden_file(&path).await.map_err(|e| e.to_string())
+    b2.restore_hidden_file(&path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Hard-delete every version of a B2 file (including hide markers and any

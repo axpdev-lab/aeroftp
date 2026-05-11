@@ -880,16 +880,18 @@ impl StorageProvider for PCloudProvider {
         // trash we fall back to Ok(false) and let pCloud's 30-day auto
         // retention reclaim the space. Benchmark cleanup is unaffected
         // because the test root is a folder.
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }
         let trashed = self.list_trash().await?;
         let target = trashed.iter().find(|e| e.name == basename).and_then(|e| {
             // Prefer folderid: that path actually works against trash_clear.
-            e.metadata
-                .get("folderid")
-                .map(|fid| (fid.clone(), true))
+            e.metadata.get("folderid").map(|fid| (fid.clone(), true))
         });
         match target {
             Some((id, is_folder)) => {

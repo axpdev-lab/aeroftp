@@ -1636,19 +1636,20 @@ impl StorageProvider for OpenDriveProvider {
         // OpenDrive trash entries carry opendrive_item_id and
         // opendrive_trash_type ("file"|"folder") in metadata. Match by
         // basename and dispatch to the inherent helper.
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }
         let trashed = self.list_trash().await?;
-        let target = trashed
-            .iter()
-            .find(|e| e.name == basename)
-            .and_then(|e| {
-                let id = e.metadata.get("opendrive_item_id")?;
-                let kind = e.metadata.get("opendrive_trash_type")?;
-                Some((id.clone(), kind == "folder"))
-            });
+        let target = trashed.iter().find(|e| e.name == basename).and_then(|e| {
+            let id = e.metadata.get("opendrive_item_id")?;
+            let kind = e.metadata.get("opendrive_trash_type")?;
+            Some((id.clone(), kind == "folder"))
+        });
         match target {
             Some((id, is_dir)) => {
                 self.permanent_delete_from_trash(&id, is_dir).await?;

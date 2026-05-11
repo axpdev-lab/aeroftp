@@ -1693,7 +1693,10 @@ impl StorageProvider for FileLuProvider {
                     last_err = None;
                     break;
                 }
-                Err(e) if Self::is_filelu_transient_5xx(&e) && attempt + 1 < FILELU_DELETE_ATTEMPTS => {
+                Err(e)
+                    if Self::is_filelu_transient_5xx(&e)
+                        && attempt + 1 < FILELU_DELETE_ATTEMPTS =>
+                {
                     let backoff_ms = 500u64 * (1u64 << attempt);
                     tracing::debug!(
                         "FileLu delete returned transient 5xx ({}), retrying after {}ms (attempt {}/{})",
@@ -1747,7 +1750,11 @@ impl StorageProvider for FileLuProvider {
         // (the API has no `folder/permanent_delete` endpoint and there is
         // no parent-id field on deleted file entries to safely associate
         // them with the dropped folder).
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }

@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "GitHubスタイルの真にニュートラルなダーク、青みなし",
             "themeGreenLabel": "グリーン",
             "themeGreenDesc": "緑が好きな人のための自然にインスパイアされた森のパレット",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "バックアップに含める内容",
+            "keystoreExportModeFull": "完全バックアップ（推奨）",
+            "keystoreExportModeFullDesc": "ボルトの認証情報、AIチャット履歴、エージェントメモリ、ファイルタグ、インストール済みプラグイン、同期スナップショット、保存された設定。アプリケーションの完全な状態を1つの暗号化されたファイルに収録します。",
+            "keystoreExportModeVaultOnly": "ボルトのみ（レガシー）",
+            "keystoreExportModeVaultOnlyDesc": "暗号化された認証情報とサーバープロファイルのみ。より小さく、より速く、v3.7.8以前のエクスポートと同一です。チャット履歴を引きずらずにマシン間でサーバーを移行する際に便利です。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4402,11 +4402,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "ポータブルモード: このフォルダーにすべてのAeroFTPデータが保存されます",
+                "body": "各ポータブルインストールは完全に自己完結型です。保存されたサーバー、AeroVault、AIチャット、設定はすべてAeroFTP.exeの隣に配置されます。v3.7.8以降、同じPC上の2つのポータブルフォルダーは完全に独立しています。あるフォルダーでプロファイルを削除しても、もう一方には影響しなくなりました。",
+                "legacyWarning": "以前の共有インストールの残存データを %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ で検出しました。このポータブルインストールでは使用されなくなりました。不要な場合は手動で削除できます。",
+                "openFolder": "データフォルダーを開く",
+                "dismiss": "了解"
             }
         }
     }
