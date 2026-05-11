@@ -76,8 +76,8 @@ The header is a fixed-size structure at offset 0. All multi-byte integers are **
 | 44 | 40 | `wrapped_master_key` | AES-KW wrapped master key |
 | 84 | 40 | `wrapped_mac_key` | AES-KW wrapped MAC key |
 | 124 | 4 | `chunk_size` | Plaintext chunk size in bytes (LE u32) |
-| 128 | 64 | `header_mac` | HMAC-SHA512 over bytes 0..128 |
-| 192 | 320 | `reserved` | Zero-filled, reserved for future use |
+| 128 | 320 | `reserved` | Zero-filled, reserved for future use |
+| 448 | 64 | `header_mac` | HMAC-SHA512 over all 512 header bytes with bytes 448..512 zeroed |
 
 **Total**: 512 bytes
 
@@ -108,7 +108,7 @@ The `wrapped_mac_key` protects the 256-bit MAC key used for HMAC-SHA512 header i
 
 ### 3.5 Header MAC
 
-The `header_mac` field contains an HMAC-SHA512 computed over the first 128 bytes of the header (offsets 0-127, which includes everything except the MAC itself and the reserved area).
+The `header_mac` field contains an HMAC-SHA512 computed over the full 512-byte header with the MAC field itself (bytes 448..512) zeroed before hashing. The reserved bytes are therefore authenticated and must remain zero unless a future format assigns them.
 
 The MAC key used is the unwrapped `mac_key`.
 

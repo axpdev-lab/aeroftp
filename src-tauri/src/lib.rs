@@ -25,6 +25,7 @@ use url::Url;
 
 mod aerovault;
 mod aerovault_v2;
+mod aerovault_v3;
 pub mod agent_memory_db;
 pub mod ai;
 pub mod ai_core;
@@ -14270,6 +14271,13 @@ pub fn run() {
             aerovault_v2::vault_v2_sync_apply,
             aerovault_v2::vault_v2_scan_directory,
             aerovault_v2::vault_v2_add_directory,
+            // AeroVault v3 draft wrapper-stack backend
+            aerovault_v3::vault_v3_create,
+            aerovault_v3::vault_v3_open,
+            aerovault_v3::is_vault_v3,
+            aerovault_v3::vault_v3_add_files,
+            aerovault_v3::vault_v3_extract_entry,
+            aerovault_v3::vault_v3_security_info,
             // Remote Vault: open .aerovault on remote servers
             vault_remote::vault_v2_download_remote,
             vault_remote::vault_v2_upload_remote,
