@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] {filename}-ის კოპირება ვერ მოხერხდა",
+            "copy_start": "[{location}] მიმდინარეობს {filename}-ის კოპირება...",
+            "copy_success": "[{location}] {filename} დაკოპირდა {destination}-ში"
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "რედაქტორის გადართვა",
             "toggleTerminal": "ტერმინალის გადართვა",
             "toggleTheme": "თემის შეცვლა",
-            "view": "ხედი"
+            "view": "ხედი",
+            "copyFiles": "გაცვლის ბუფერში კოპირება",
+            "copyToOtherPanel": "კოპირება მეორე პანელში",
+            "cutFiles": "გაცვლის ბუფერში ამოჭრა",
+            "cycleLocalPanels": "ლოკალური პანელების მონაცვლეობა",
+            "dualPanel": "ორმაგი პანელი (AeroFile)",
+            "extendSelectionDown": "მონიშვნის გაფართოება ქვემოთ",
+            "extendSelectionUp": "მონიშვნის გაფართოება ზემოთ",
+            "jumpFirst": "პირველ ელემენტზე გადასვლა",
+            "jumpLast": "ბოლო ელემენტზე გადასვლა",
+            "moveToOtherPanel": "გადატანა მეორე პანელში",
+            "pasteFiles": "ჩასმა გაცვლის ბუფერიდან",
+            "properties": "თვისებები",
+            "quickLook": "სწრაფი დათვალიერება",
+            "toggleDualPanel": "ორმაგი პანელის ჩართვა/გამორთვა"
         },
         "overwrite": {
             "title": "ფაილი უკვე არსებობს",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "ორმაგი პანელი",
+            "dualPanelTooltip": "ორი ლოკალური პანელის გვერდიგვერდ ჩვენება",
+            "leftPanel": "მარცხენა პანელი",
+            "rightPanel": "მარჯვენა პანელი",
+            "copyToOtherPanel": "კოპირება მეორე პანელში",
+            "moveToOtherPanel": "გადატანა მეორე პანელში",
+            "copiedToOtherPanel": "დაკოპირდა მეორე პანელში",
+            "movedToOtherPanel": "გადატანილია მეორე პანელში"
         }
     }
 }

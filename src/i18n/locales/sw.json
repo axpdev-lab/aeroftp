@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Imeshindwa kunakili {filename}",
+            "copy_start": "[{location}] Inanakili {filename}...",
+            "copy_success": "[{location}] {filename} imenakiliwa kwenda {destination}"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Geuza kihariri",
             "toggleTerminal": "Geuza terminali",
             "toggleTheme": "Badilisha mandhari",
-            "view": "Mwonekano"
+            "view": "Mwonekano",
+            "copyFiles": "Nakili kwenye ubao wa kunakili",
+            "copyToOtherPanel": "Nakili kwenye paneli nyingine",
+            "cutFiles": "Kata kwenye ubao wa kunakili",
+            "cycleLocalPanels": "Zungusha paneli za ndani",
+            "dualPanel": "Paneli mbili (AeroFile)",
+            "extendSelectionDown": "Panua uteuzi chini",
+            "extendSelectionUp": "Panua uteuzi juu",
+            "jumpFirst": "Ruka kwenye kipengele cha kwanza",
+            "jumpLast": "Ruka kwenye kipengele cha mwisho",
+            "moveToOtherPanel": "Hamisha kwenye paneli nyingine",
+            "pasteFiles": "Bandika kutoka ubao wa kunakili",
+            "properties": "Sifa",
+            "quickLook": "Hakiki ya haraka",
+            "toggleDualPanel": "Washa/zima paneli mbili"
         },
         "overwrite": {
             "title": "Faili tayari ipo",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Paneli mbili",
+            "dualPanelTooltip": "Onyesha paneli mbili za ndani bega kwa bega",
+            "leftPanel": "Paneli ya kushoto",
+            "rightPanel": "Paneli ya kulia",
+            "copyToOtherPanel": "Nakili kwenye paneli nyingine",
+            "moveToOtherPanel": "Hamisha kwenye paneli nyingine",
+            "copiedToOtherPanel": "Imenakiliwa kwenye paneli nyingine",
+            "movedToOtherPanel": "Imehamishwa kwenye paneli nyingine"
         }
     }
 }

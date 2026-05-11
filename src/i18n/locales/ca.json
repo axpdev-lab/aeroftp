@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] No s'ha pogut copiar {filename}",
+            "copy_start": "[{location}] Copiant {filename}...",
+            "copy_success": "[{location}] {filename} copiat a {destination}"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Alterna l'editor",
             "toggleTerminal": "Alterna el terminal",
             "toggleTheme": "Canvia el tema",
-            "view": "Visualització"
+            "view": "Visualització",
+            "copyFiles": "Copia al porta-retalls",
+            "copyToOtherPanel": "Copia a l'altre panell",
+            "cutFiles": "Retalla al porta-retalls",
+            "cycleLocalPanels": "Alterna panells locals",
+            "dualPanel": "Doble panell (AeroFile)",
+            "extendSelectionDown": "Amplia la selecció cap avall",
+            "extendSelectionUp": "Amplia la selecció cap amunt",
+            "jumpFirst": "Vés al primer element",
+            "jumpLast": "Vés a l'últim element",
+            "moveToOtherPanel": "Mou a l'altre panell",
+            "pasteFiles": "Enganxa des del porta-retalls",
+            "properties": "Propietats",
+            "quickLook": "Vista ràpida",
+            "toggleDualPanel": "Activa/desactiva doble panell"
         },
         "overwrite": {
             "title": "El fitxer ja existeix",
@@ -4507,12 +4524,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Doble panell",
+            "dualPanelTooltip": "Mostra dos panells locals un al costat de l'altre",
+            "leftPanel": "Panell esquerre",
+            "rightPanel": "Panell dret",
+            "copyToOtherPanel": "Copia a l'altre panell",
+            "moveToOtherPanel": "Mou a l'altre panell",
+            "copiedToOtherPanel": "Copiat a l'altre panell",
+            "movedToOtherPanel": "Mogut a l'altre panell"
         }
     }
 }

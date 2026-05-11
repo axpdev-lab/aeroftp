@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Kunne ikke kopiere {filename}",
+            "copy_start": "[{location}] Kopierer {filename}...",
+            "copy_success": "[{location}] {filename} kopieret til {destination}"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Skift editor",
             "toggleTerminal": "Skift terminal",
             "toggleTheme": "Skift tema",
-            "view": "Vis"
+            "view": "Vis",
+            "copyFiles": "Kopiér til udklipsholder",
+            "copyToOtherPanel": "Kopiér til det andet panel",
+            "cutFiles": "Klip til udklipsholder",
+            "cycleLocalPanels": "Skift mellem lokale paneler",
+            "dualPanel": "Dobbelt panel (AeroFile)",
+            "extendSelectionDown": "Udvid markering nedad",
+            "extendSelectionUp": "Udvid markering opad",
+            "jumpFirst": "Spring til første element",
+            "jumpLast": "Spring til sidste element",
+            "moveToOtherPanel": "Flyt til det andet panel",
+            "pasteFiles": "Indsæt fra udklipsholder",
+            "properties": "Egenskaber",
+            "quickLook": "Hurtig forhåndsvisning",
+            "toggleDualPanel": "Slå dobbelt panel til/fra"
         },
         "overwrite": {
             "title": "Filen eksisterer allerede",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dobbelt panel",
+            "dualPanelTooltip": "Vis to lokale paneler side om side",
+            "leftPanel": "Venstre panel",
+            "rightPanel": "Højre panel",
+            "copyToOtherPanel": "Kopiér til det andet panel",
+            "moveToOtherPanel": "Flyt til det andet panel",
+            "copiedToOtherPanel": "Kopieret til det andet panel",
+            "movedToOtherPanel": "Flyttet til det andet panel"
         }
     }
 }

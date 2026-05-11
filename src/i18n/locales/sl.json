@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Datoteke {filename} ni mogoče kopirati",
+            "copy_start": "[{location}] Kopiranje {filename}...",
+            "copy_success": "[{location}] {filename} kopirano v {destination}"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Preklopi urejevalnik",
             "toggleTerminal": "Preklopi terminal",
             "toggleTheme": "Preklopi temo",
-            "view": "Pogled"
+            "view": "Pogled",
+            "copyFiles": "Kopiraj v odložišče",
+            "copyToOtherPanel": "Kopiraj v drugi pladenj",
+            "cutFiles": "Izreži v odložišče",
+            "cycleLocalPanels": "Krožno preklapljanje med lokalnimi pladnji",
+            "dualPanel": "Dvojni pladenj (AeroFile)",
+            "extendSelectionDown": "Razširi izbor navzdol",
+            "extendSelectionUp": "Razširi izbor navzgor",
+            "jumpFirst": "Skoči na prvi element",
+            "jumpLast": "Skoči na zadnji element",
+            "moveToOtherPanel": "Premakni v drugi pladenj",
+            "pasteFiles": "Prilepi iz odložišča",
+            "properties": "Lastnosti",
+            "quickLook": "Hitri predogled",
+            "toggleDualPanel": "Vklopi/izklopi dvojni pladenj"
         },
         "overwrite": {
             "title": "Datoteka že obstaja",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dvojni pladenj",
+            "dualPanelTooltip": "Prikaži dva lokalna pladnja drug ob drugem",
+            "leftPanel": "Levi pladenj",
+            "rightPanel": "Desni pladenj",
+            "copyToOtherPanel": "Kopiraj v drugi pladenj",
+            "moveToOtherPanel": "Premakni v drugi pladenj",
+            "copiedToOtherPanel": "Kopirano v drugi pladenj",
+            "movedToOtherPanel": "Premaknjeno v drugi pladenj"
         }
     }
 }

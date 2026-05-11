@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Nem sikerült másolni: {filename}",
+            "copy_start": "[{location}] {filename} másolása...",
+            "copy_success": "[{location}] {filename} másolva ide: {destination}"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Szerkesztő be/ki",
             "toggleTerminal": "Terminál be/ki",
             "toggleTheme": "Téma váltása",
-            "view": "Nézet"
+            "view": "Nézet",
+            "copyFiles": "Másolás a vágólapra",
+            "copyToOtherPanel": "Másolás a másik panelre",
+            "cutFiles": "Kivágás a vágólapra",
+            "cycleLocalPanels": "Helyi panelek váltása",
+            "dualPanel": "Dupla panel (AeroFile)",
+            "extendSelectionDown": "Kijelölés bővítése lefelé",
+            "extendSelectionUp": "Kijelölés bővítése felfelé",
+            "jumpFirst": "Ugrás az első elemre",
+            "jumpLast": "Ugrás az utolsó elemre",
+            "moveToOtherPanel": "Áthelyezés a másik panelre",
+            "pasteFiles": "Beillesztés a vágólapról",
+            "properties": "Tulajdonságok",
+            "quickLook": "Gyors előnézet",
+            "toggleDualPanel": "Dupla panel be-/kikapcsolása"
         },
         "overwrite": {
             "title": "A fájl már létezik",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dupla panel",
+            "dualPanelTooltip": "Két helyi panel megjelenítése egymás mellett",
+            "leftPanel": "Bal panel",
+            "rightPanel": "Jobb panel",
+            "copyToOtherPanel": "Másolás a másik panelre",
+            "moveToOtherPanel": "Áthelyezés a másik panelre",
+            "copiedToOtherPanel": "Másolva a másik panelre",
+            "movedToOtherPanel": "Áthelyezve a másik panelre"
         }
     }
 }

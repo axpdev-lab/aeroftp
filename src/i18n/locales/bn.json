@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] {filename} কপি করা যায়নি",
+            "copy_start": "[{location}] {filename} কপি করা হচ্ছে...",
+            "copy_success": "[{location}] {filename} {destination}-এ কপি করা হয়েছে"
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "এডিটর টগল করুন",
             "toggleTerminal": "টার্মিনাল টগল করুন",
             "toggleTheme": "থিম পরিবর্তন",
-            "view": "দেখুন"
+            "view": "দেখুন",
+            "copyFiles": "ক্লিপবোর্ডে কপি করুন",
+            "copyToOtherPanel": "অন্য প্যানেলে কপি করুন",
+            "cutFiles": "ক্লিপবোর্ডে কাট করুন",
+            "cycleLocalPanels": "লোকাল প্যানেল পরিবর্তন করুন",
+            "dualPanel": "ডুয়াল প্যানেল (AeroFile)",
+            "extendSelectionDown": "নিচের দিকে সিলেকশন বাড়ান",
+            "extendSelectionUp": "উপরের দিকে সিলেকশন বাড়ান",
+            "jumpFirst": "প্রথম আইটেমে যান",
+            "jumpLast": "শেষ আইটেমে যান",
+            "moveToOtherPanel": "অন্য প্যানেলে সরান",
+            "pasteFiles": "ক্লিপবোর্ড থেকে পেস্ট করুন",
+            "properties": "বৈশিষ্ট্য",
+            "quickLook": "দ্রুত প্রিভিউ",
+            "toggleDualPanel": "ডুয়াল প্যানেল চালু/বন্ধ করুন"
         },
         "overwrite": {
             "title": "ফাইল ইতিমধ্যে বিদ্যমান",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "ডুয়াল প্যানেল",
+            "dualPanelTooltip": "দুটি লোকাল প্যানেল পাশাপাশি দেখান",
+            "leftPanel": "বাম প্যানেল",
+            "rightPanel": "ডান প্যানেল",
+            "copyToOtherPanel": "অন্য প্যানেলে কপি করুন",
+            "moveToOtherPanel": "অন্য প্যানেলে সরান",
+            "copiedToOtherPanel": "অন্য প্যানেলে কপি হয়েছে",
+            "movedToOtherPanel": "অন্য প্যানেলে সরানো হয়েছে"
         }
     }
 }

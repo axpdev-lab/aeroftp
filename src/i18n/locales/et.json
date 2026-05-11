@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Faili {filename} ei õnnestunud kopeerida",
+            "copy_start": "[{location}] {filename} kopeerimine...",
+            "copy_success": "[{location}] {filename} kopeeritud asukohta {destination}"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Lülita redaktor",
             "toggleTerminal": "Lülita terminal",
             "toggleTheme": "Vaheta teemat",
-            "view": "Vaade"
+            "view": "Vaade",
+            "copyFiles": "Kopeeri lõikelauale",
+            "copyToOtherPanel": "Kopeeri teisele paneelile",
+            "cutFiles": "Lõika lõikelauale",
+            "cycleLocalPanels": "Vaheta kohalike paneelide vahel",
+            "dualPanel": "Topeltpaneel (AeroFile)",
+            "extendSelectionDown": "Laienda valikut allapoole",
+            "extendSelectionUp": "Laienda valikut ülespoole",
+            "jumpFirst": "Hüppa esimesele üksusele",
+            "jumpLast": "Hüppa viimasele üksusele",
+            "moveToOtherPanel": "Liiguta teisele paneelile",
+            "pasteFiles": "Kleebi lõikelaualt",
+            "properties": "Atribuudid",
+            "quickLook": "Kiireelvaade",
+            "toggleDualPanel": "Lülita topeltpaneel sisse/välja"
         },
         "overwrite": {
             "title": "Fail on juba olemas",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Topeltpaneel",
+            "dualPanelTooltip": "Kuva kaks kohalikku paneeli kõrvuti",
+            "leftPanel": "Vasak paneel",
+            "rightPanel": "Parem paneel",
+            "copyToOtherPanel": "Kopeeri teisele paneelile",
+            "moveToOtherPanel": "Liiguta teisele paneelile",
+            "copiedToOtherPanel": "Kopeeritud teisele paneelile",
+            "movedToOtherPanel": "Liigutatud teisele paneelile"
         }
     }
 }

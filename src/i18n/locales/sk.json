@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Nepodarilo sa skopírovať {filename}",
+            "copy_start": "[{location}] Kopírovanie {filename}...",
+            "copy_success": "[{location}] {filename} skopírovaný do {destination}"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Prepnúť editor",
             "toggleTerminal": "Prepnúť terminál",
             "toggleTheme": "Prepnúť tému",
-            "view": "Zobraziť"
+            "view": "Zobraziť",
+            "copyFiles": "Kopírovať do schránky",
+            "copyToOtherPanel": "Kopírovať do druhého panela",
+            "cutFiles": "Vystrihnúť do schránky",
+            "cycleLocalPanels": "Prepínať lokálne panely",
+            "dualPanel": "Dvojitý panel (AeroFile)",
+            "extendSelectionDown": "Rozšíriť výber nadol",
+            "extendSelectionUp": "Rozšíriť výber nahor",
+            "jumpFirst": "Prejsť na prvú položku",
+            "jumpLast": "Prejsť na poslednú položku",
+            "moveToOtherPanel": "Presunúť do druhého panela",
+            "pasteFiles": "Vložiť zo schránky",
+            "properties": "Vlastnosti",
+            "quickLook": "Rýchly náhľad",
+            "toggleDualPanel": "Zapnúť/vypnúť dvojitý panel"
         },
         "overwrite": {
             "title": "Súbor už existuje",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dvojitý panel",
+            "dualPanelTooltip": "Zobraziť dva lokálne panely vedľa seba",
+            "leftPanel": "Ľavý panel",
+            "rightPanel": "Pravý panel",
+            "copyToOtherPanel": "Kopírovať do druhého panela",
+            "moveToOtherPanel": "Presunúť do druhého panela",
+            "copiedToOtherPanel": "Skopírované do druhého panela",
+            "movedToOtherPanel": "Presunuté do druhého panela"
         }
     }
 }

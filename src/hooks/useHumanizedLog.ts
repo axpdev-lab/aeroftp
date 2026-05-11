@@ -42,7 +42,7 @@ export interface HumanizedLogParams {
 export type HumanizedOperationType =
     | 'CONNECT' | 'DISCONNECT'
     | 'UPLOAD' | 'DOWNLOAD'
-    | 'DELETE' | 'RENAME' | 'MKDIR' | 'MOVE'
+    | 'DELETE' | 'RENAME' | 'MKDIR' | 'MOVE' | 'COPY'
     | 'NAVIGATE'
     | 'DELETE_MULTIPLE' | 'UPLOAD_MULTIPLE' | 'DOWNLOAD_MULTIPLE'
     | 'SYNC' | 'RECONNECT';

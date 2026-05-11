@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] មិនអាចចម្លង {filename} បានទេ",
+            "copy_start": "[{location}] កំពុងចម្លង {filename}...",
+            "copy_success": "[{location}] បានចម្លង {filename} ទៅ {destination}"
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "បិទ/បើកកម្មវិធីកែសម្រួល",
             "toggleTerminal": "បិទ/បើក Terminal",
             "toggleTheme": "ប្តូររូបរាង",
-            "view": "ទិដ្ឋភាព"
+            "view": "ទិដ្ឋភាព",
+            "copyFiles": "ចម្លងទៅក្ដារតម្បៀតខ្ទាស់",
+            "copyToOtherPanel": "ចម្លងទៅបន្ទះមួយទៀត",
+            "cutFiles": "កាត់ទៅក្ដារតម្បៀតខ្ទាស់",
+            "cycleLocalPanels": "ផ្លាស់ប្ដូរបន្ទះមូលដ្ឋាន",
+            "dualPanel": "បន្ទះពីរ (AeroFile)",
+            "extendSelectionDown": "ពង្រីកការជ្រើសរើសចុះក្រោម",
+            "extendSelectionUp": "ពង្រីកការជ្រើសរើសឡើងលើ",
+            "jumpFirst": "លោតទៅធាតុដំបូង",
+            "jumpLast": "លោតទៅធាតុចុងក្រោយ",
+            "moveToOtherPanel": "ផ្លាស់ទីទៅបន្ទះមួយទៀត",
+            "pasteFiles": "បិទភ្ជាប់ពីក្ដារតម្បៀតខ្ទាស់",
+            "properties": "លក្ខណសម្បត្តិ",
+            "quickLook": "មើលរហ័ស",
+            "toggleDualPanel": "បិទ/បើកបន្ទះពីរ"
         },
         "overwrite": {
             "title": "ឯកសារមានរួចហើយ",
@@ -4507,12 +4524,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "បន្ទះពីរ",
+            "dualPanelTooltip": "បង្ហាញបន្ទះមូលដ្ឋានពីរនៅជាប់គ្នា",
+            "leftPanel": "បន្ទះខាងឆ្វេង",
+            "rightPanel": "បន្ទះខាងស្ដាំ",
+            "copyToOtherPanel": "ចម្លងទៅបន្ទះមួយទៀត",
+            "moveToOtherPanel": "ផ្លាស់ទីទៅបន្ទះមួយទៀត",
+            "copiedToOtherPanel": "បានចម្លងទៅបន្ទះមួយទៀត",
+            "movedToOtherPanel": "បានផ្លាស់ទីទៅបន្ទះមួយទៀត"
         }
     }
 }

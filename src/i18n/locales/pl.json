@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Nie można skopiować {filename}",
+            "copy_start": "[{location}] Kopiowanie {filename}...",
+            "copy_success": "[{location}] Skopiowano {filename} do {destination}"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Przełącz edytor",
             "toggleTerminal": "Przełącz terminal",
             "toggleTheme": "Zmień motyw",
-            "view": "Widok"
+            "view": "Widok",
+            "copyFiles": "Kopiuj do schowka",
+            "copyToOtherPanel": "Kopiuj do drugiego panelu",
+            "cutFiles": "Wytnij do schowka",
+            "cycleLocalPanels": "Przełączaj panele lokalne",
+            "dualPanel": "Podwójny panel (AeroFile)",
+            "extendSelectionDown": "Rozszerz zaznaczenie w dół",
+            "extendSelectionUp": "Rozszerz zaznaczenie w górę",
+            "jumpFirst": "Przejdź do pierwszego elementu",
+            "jumpLast": "Przejdź do ostatniego elementu",
+            "moveToOtherPanel": "Przenieś do drugiego panelu",
+            "pasteFiles": "Wklej ze schowka",
+            "properties": "Właściwości",
+            "quickLook": "Szybki podgląd",
+            "toggleDualPanel": "Włącz/wyłącz podwójny panel"
         },
         "overwrite": {
             "title": "Plik już istnieje",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Podwójny panel",
+            "dualPanelTooltip": "Pokaż dwa panele lokalne obok siebie",
+            "leftPanel": "Lewy panel",
+            "rightPanel": "Prawy panel",
+            "copyToOtherPanel": "Kopiuj do drugiego panelu",
+            "moveToOtherPanel": "Przenieś do drugiego panelu",
+            "copiedToOtherPanel": "Skopiowano do drugiego panelu",
+            "movedToOtherPanel": "Przeniesiono do drugiego panelu"
         }
     }
 }

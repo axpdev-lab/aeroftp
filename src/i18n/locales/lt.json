@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Nepavyko nukopijuoti {filename}",
+            "copy_start": "[{location}] Kopijuojama {filename}...",
+            "copy_success": "[{location}] {filename} nukopijuotas į {destination}"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Įjungti/Išjungti redaktorių",
             "toggleTerminal": "Įjungti/Išjungti terminalą",
             "toggleTheme": "Keisti temą",
-            "view": "Rodinys"
+            "view": "Rodinys",
+            "copyFiles": "Kopijuoti į iškarpinę",
+            "copyToOtherPanel": "Kopijuoti į kitą skydelį",
+            "cutFiles": "Iškirpti į iškarpinę",
+            "cycleLocalPanels": "Perjungti vietinius skydelius",
+            "dualPanel": "Dvigubas skydelis (AeroFile)",
+            "extendSelectionDown": "Išplėsti pasirinkimą žemyn",
+            "extendSelectionUp": "Išplėsti pasirinkimą aukštyn",
+            "jumpFirst": "Pereiti į pirmą elementą",
+            "jumpLast": "Pereiti į paskutinį elementą",
+            "moveToOtherPanel": "Perkelti į kitą skydelį",
+            "pasteFiles": "Įklijuoti iš iškarpinės",
+            "properties": "Savybės",
+            "quickLook": "Greita peržiūra",
+            "toggleDualPanel": "Įjungti/išjungti dvigubą skydelį"
         },
         "overwrite": {
             "title": "Failas jau egzistuoja",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dvigubas skydelis",
+            "dualPanelTooltip": "Rodyti du vietinius skydelius greta",
+            "leftPanel": "Kairysis skydelis",
+            "rightPanel": "Dešinysis skydelis",
+            "copyToOtherPanel": "Kopijuoti į kitą skydelį",
+            "moveToOtherPanel": "Perkelti į kitą skydelį",
+            "copiedToOtherPanel": "Nukopijuota į kitą skydelį",
+            "movedToOtherPanel": "Perkelta į kitą skydelį"
         }
     }
 }

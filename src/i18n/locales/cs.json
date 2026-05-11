@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Nelze zkopírovat {filename}",
+            "copy_start": "[{location}] Kopírování {filename}...",
+            "copy_success": "[{location}] {filename} zkopírován do {destination}"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Přepnout editor",
             "toggleTerminal": "Přepnout terminál",
             "toggleTheme": "Změnit motiv",
-            "view": "Zobrazení"
+            "view": "Zobrazení",
+            "copyFiles": "Kopírovat do schránky",
+            "copyToOtherPanel": "Kopírovat do druhého panelu",
+            "cutFiles": "Vyjmout do schránky",
+            "cycleLocalPanels": "Přepínat místní panely",
+            "dualPanel": "Dvojitý panel (AeroFile)",
+            "extendSelectionDown": "Rozšířit výběr dolů",
+            "extendSelectionUp": "Rozšířit výběr nahoru",
+            "jumpFirst": "Skočit na první položku",
+            "jumpLast": "Skočit na poslední položku",
+            "moveToOtherPanel": "Přesunout do druhého panelu",
+            "pasteFiles": "Vložit ze schránky",
+            "properties": "Vlastnosti",
+            "quickLook": "Rychlý náhled",
+            "toggleDualPanel": "Přepnout dvojitý panel"
         },
         "overwrite": {
             "title": "Soubor již existuje",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dvojitý panel",
+            "dualPanelTooltip": "Zobrazí dva místní panely vedle sebe",
+            "leftPanel": "Levý panel",
+            "rightPanel": "Pravý panel",
+            "copyToOtherPanel": "Kopírovat do druhého panelu",
+            "moveToOtherPanel": "Přesunout do druhého panelu",
+            "copiedToOtherPanel": "Zkopírováno do druhého panelu",
+            "movedToOtherPanel": "Přesunuto do druhého panelu"
         }
     }
 }

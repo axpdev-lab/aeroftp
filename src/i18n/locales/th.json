@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] ไม่สามารถคัดลอก {filename}",
+            "copy_start": "[{location}] กำลังคัดลอก {filename}...",
+            "copy_success": "[{location}] คัดลอก {filename} ไปยัง {destination} แล้ว"
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "สลับตัวแก้ไข",
             "toggleTerminal": "สลับเทอร์มินัล",
             "toggleTheme": "สลับธีม",
-            "view": "มุมมอง"
+            "view": "มุมมอง",
+            "copyFiles": "คัดลอกไปยังคลิปบอร์ด",
+            "copyToOtherPanel": "คัดลอกไปยังแผงอีกด้าน",
+            "cutFiles": "ตัดไปยังคลิปบอร์ด",
+            "cycleLocalPanels": "สลับระหว่างแผงในเครื่อง",
+            "dualPanel": "แผงคู่ (AeroFile)",
+            "extendSelectionDown": "ขยายการเลือกลง",
+            "extendSelectionUp": "ขยายการเลือกขึ้น",
+            "jumpFirst": "ไปยังรายการแรก",
+            "jumpLast": "ไปยังรายการสุดท้าย",
+            "moveToOtherPanel": "ย้ายไปยังแผงอีกด้าน",
+            "pasteFiles": "วางจากคลิปบอร์ด",
+            "properties": "คุณสมบัติ",
+            "quickLook": "ดูตัวอย่างด่วน",
+            "toggleDualPanel": "เปิด/ปิดแผงคู่"
         },
         "overwrite": {
             "title": "ไฟล์มีอยู่แล้ว",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "แผงคู่",
+            "dualPanelTooltip": "แสดงแผงในเครื่องสองแผงเคียงข้างกัน",
+            "leftPanel": "แผงด้านซ้าย",
+            "rightPanel": "แผงด้านขวา",
+            "copyToOtherPanel": "คัดลอกไปยังแผงอีกด้าน",
+            "moveToOtherPanel": "ย้ายไปยังแผงอีกด้าน",
+            "copiedToOtherPanel": "คัดลอกไปยังแผงอีกด้านแล้ว",
+            "movedToOtherPanel": "ย้ายไปยังแผงอีกด้านแล้ว"
         }
     }
 }

@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Kunne ikke kopiere {filename}",
+            "copy_start": "[{location}] Kopierer {filename}...",
+            "copy_success": "[{location}] {filename} kopiert til {destination}"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Veksle redigerer",
             "toggleTerminal": "Veksle terminal",
             "toggleTheme": "Bytt tema",
-            "view": "Vis"
+            "view": "Vis",
+            "copyFiles": "Kopier til utklippstavle",
+            "copyToOtherPanel": "Kopier til andre panel",
+            "cutFiles": "Klipp ut til utklippstavle",
+            "cycleLocalPanels": "Bla gjennom lokale paneler",
+            "dualPanel": "Dobbel panel (AeroFile)",
+            "extendSelectionDown": "Utvid utvalg nedover",
+            "extendSelectionUp": "Utvid utvalg oppover",
+            "jumpFirst": "Hopp til første element",
+            "jumpLast": "Hopp til siste element",
+            "moveToOtherPanel": "Flytt til andre panel",
+            "pasteFiles": "Lim inn fra utklippstavle",
+            "properties": "Egenskaper",
+            "quickLook": "Hurtigvisning",
+            "toggleDualPanel": "Slå på/av dobbel panel"
         },
         "overwrite": {
             "title": "Filen eksisterer allerede",
@@ -4507,12 +4524,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dobbel panel",
+            "dualPanelTooltip": "Vis to lokale paneler ved siden av hverandre",
+            "leftPanel": "Venstre panel",
+            "rightPanel": "Høyre panel",
+            "copyToOtherPanel": "Kopier til andre panel",
+            "moveToOtherPanel": "Flytt til andre panel",
+            "copiedToOtherPanel": "Kopiert til andre panel",
+            "movedToOtherPanel": "Flyttet til andre panel"
         }
     }
 }

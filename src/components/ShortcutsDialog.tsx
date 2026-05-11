@@ -22,6 +22,8 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
                 { keys: ['Enter'], action: t('shortcuts.openFolder') },
                 { keys: ['Backspace'], action: t('shortcuts.goUp') },
                 { keys: ['Tab'], action: t('shortcuts.switchPanel') },
+                { keys: ['Home'], action: t('shortcuts.jumpFirst') },
+                { keys: ['End'], action: t('shortcuts.jumpLast') },
                 { keys: ['Ctrl', 'R'], action: t('shortcuts.refreshPanel') },
             ]
         },
@@ -32,6 +34,20 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
                 { keys: ['Delete'], action: t('shortcuts.deleteSelected') },
                 { keys: ['F2'], action: t('shortcuts.rename') },
                 { keys: ['Ctrl', 'N'], action: t('shortcuts.newFolder') },
+                { keys: ['F7'], action: t('shortcuts.newFolder') },
+                { keys: ['Ctrl', 'C'], action: t('shortcuts.copyFiles') },
+                { keys: ['Ctrl', 'X'], action: t('shortcuts.cutFiles') },
+                { keys: ['Ctrl', 'V'], action: t('shortcuts.pasteFiles') },
+                { keys: ['Alt', 'Enter'], action: t('shortcuts.properties') },
+                { keys: ['Space'], action: t('shortcuts.quickLook') },
+            ]
+        },
+        {
+            category: t('shortcuts.dualPanel'), items: [
+                { keys: ['Ctrl', 'Shift', 'D'], action: t('shortcuts.toggleDualPanel') },
+                { keys: ['F5'], action: t('shortcuts.copyToOtherPanel') },
+                { keys: ['F6'], action: t('shortcuts.moveToOtherPanel') },
+                { keys: ['Tab'], action: t('shortcuts.cycleLocalPanels') },
             ]
         },
         {
@@ -39,6 +55,8 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
                 { keys: ['Ctrl', 'A'], action: t('browser.selectAll') },
                 { keys: ['Ctrl', 'Click'], action: t('shortcuts.toggleSelection') },
                 { keys: ['Shift', 'Click'], action: t('shortcuts.rangeSelection') },
+                { keys: ['Shift', '↑'], action: t('shortcuts.extendSelectionUp') },
+                { keys: ['Shift', '↓'], action: t('shortcuts.extendSelectionDown') },
             ]
         },
         {
@@ -46,7 +64,6 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
                 { keys: ['Ctrl', '1'], action: t('shortcuts.toggleEditor') },
                 { keys: ['Ctrl', '2'], action: t('shortcuts.toggleTerminal') },
                 { keys: ['Ctrl', '3'], action: t('shortcuts.toggleAgent') },
-                { keys: ['Ctrl', 'Shift', 'D'], action: t('shortcuts.toggleDevtools') },
                 { keys: ['Ctrl', 'Shift', 'L'], action: t('shortcuts.activityLog') },
                 { keys: ['Ctrl', 'Shift', 'M'], action: t('shortcuts.debugPanel') },
                 { keys: ['Ctrl', 'Shift', 'V'], action: t('shortcuts.detailedCards') },
@@ -86,7 +103,7 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
             {/* Dialog */}
             <div
                 {...modalDrag.panelProps}
-                className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-in"
+                className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden animate-scale-in"
             >
                 {/* Header */}
                 <div
@@ -107,31 +124,33 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
                     </button>
                 </div>
 
-                {/* Content */}
-                <div className="p-4 overflow-y-auto max-h-[calc(80vh-80px)]">
-                    <div className="grid md:grid-cols-2 gap-6">
+                {/* Content. Compact density: smaller text + 3 column grid so the
+                    expanded shortcut list (F5/F6/F7/Home/End + dual-panel) still
+                    fits a single viewport without scrolling. */}
+                <div className="px-4 py-3 overflow-y-auto max-h-[calc(85vh-80px)]">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {shortcuts.map(category => (
                             <div key={category.category}>
-                                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+                                <h3 className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
                                     {category.category}
                                 </h3>
-                                <div className="space-y-2">
+                                <div className="space-y-1">
                                     {category.items.map((shortcut, idx) => (
                                         <div
                                             key={idx}
-                                            className="flex items-center justify-between py-1.5"
+                                            className="flex items-center justify-between py-0.5 gap-2"
                                         >
-                                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                                            <span className="text-xs text-gray-700 dark:text-gray-300 truncate">
                                                 {shortcut.action}
                                             </span>
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex items-center gap-0.5 flex-shrink-0">
                                                 {shortcut.keys.map((key, kidx) => (
                                                     <React.Fragment key={kidx}>
-                                                        <kbd className="px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded shadow-sm">
+                                                        <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded shadow-sm">
                                                             {key}
                                                         </kbd>
                                                         {kidx < shortcut.keys.length - 1 && (
-                                                            <span className="text-gray-400">+</span>
+                                                            <span className="text-gray-400 text-[10px]">+</span>
                                                         )}
                                                     </React.Fragment>
                                                 ))}

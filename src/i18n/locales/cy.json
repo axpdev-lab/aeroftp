@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Methwyd copïo {filename}",
+            "copy_start": "[{location}] Yn copïo {filename}...",
+            "copy_success": "[{location}] Copïwyd {filename} i {destination}"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Toglo Golygydd",
             "toggleTerminal": "Toglo Terfynell",
             "toggleTheme": "Newid thema",
-            "view": "Golwg"
+            "view": "Golwg",
+            "copyFiles": "Copïo i'r clipfwrdd",
+            "copyToOtherPanel": "Copïo i'r panel arall",
+            "cutFiles": "Torri i'r clipfwrdd",
+            "cycleLocalPanels": "Cylchu panelau lleol",
+            "dualPanel": "Panel Deuol (AeroFile)",
+            "extendSelectionDown": "Ymestyn y dewis i lawr",
+            "extendSelectionUp": "Ymestyn y dewis i fyny",
+            "jumpFirst": "Neidio i'r eitem gyntaf",
+            "jumpLast": "Neidio i'r eitem olaf",
+            "moveToOtherPanel": "Symud i'r panel arall",
+            "pasteFiles": "Gludo o'r clipfwrdd",
+            "properties": "Priodweddau",
+            "quickLook": "Rhagolwg Cyflym",
+            "toggleDualPanel": "Toglo panel deuol"
         },
         "overwrite": {
             "title": "Mae'r ffeil eisoes yn bodoli",
@@ -4507,12 +4524,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Panel Deuol",
+            "dualPanelTooltip": "Dangos dau banel lleol ochr yn ochr",
+            "leftPanel": "Panel Chwith",
+            "rightPanel": "Panel De",
+            "copyToOtherPanel": "Copïo i'r panel arall",
+            "moveToOtherPanel": "Symud i'r panel arall",
+            "copiedToOtherPanel": "Copïwyd i'r panel arall",
+            "movedToOtherPanel": "Symudwyd i'r panel arall"
         }
     }
 }

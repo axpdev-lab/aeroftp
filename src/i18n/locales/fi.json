@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Tiedostoa {filename} ei voitu kopioida",
+            "copy_start": "[{location}] Kopioidaan {filename}...",
+            "copy_success": "[{location}] {filename} kopioitu kohteeseen {destination}"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Vaihda editori",
             "toggleTerminal": "Vaihda pääte",
             "toggleTheme": "Vaihda teemaa",
-            "view": "Näytä"
+            "view": "Näytä",
+            "copyFiles": "Kopioi leikepöydälle",
+            "copyToOtherPanel": "Kopioi toiseen paneeliin",
+            "cutFiles": "Leikkaa leikepöydälle",
+            "cycleLocalPanels": "Vaihda paikallisten paneelien välillä",
+            "dualPanel": "Kaksoispaneeli (AeroFile)",
+            "extendSelectionDown": "Laajenna valintaa alaspäin",
+            "extendSelectionUp": "Laajenna valintaa ylöspäin",
+            "jumpFirst": "Siirry ensimmäiseen kohteeseen",
+            "jumpLast": "Siirry viimeiseen kohteeseen",
+            "moveToOtherPanel": "Siirrä toiseen paneeliin",
+            "pasteFiles": "Liitä leikepöydältä",
+            "properties": "Ominaisuudet",
+            "quickLook": "Pikakatselu",
+            "toggleDualPanel": "Vaihda kaksoispaneeli päälle/pois"
         },
         "overwrite": {
             "title": "Tiedosto on jo olemassa",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Kaksoispaneeli",
+            "dualPanelTooltip": "Näytä kaksi paikallista paneelia rinnakkain",
+            "leftPanel": "Vasen paneeli",
+            "rightPanel": "Oikea paneeli",
+            "copyToOtherPanel": "Kopioi toiseen paneeliin",
+            "moveToOtherPanel": "Siirrä toiseen paneeliin",
+            "copiedToOtherPanel": "Kopioitu toiseen paneeliin",
+            "movedToOtherPanel": "Siirretty toiseen paneeliin"
         }
     }
 }

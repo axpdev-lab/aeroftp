@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] {filename}을(를) 복사할 수 없습니다",
+            "copy_start": "[{location}] {filename} 복사 중...",
+            "copy_success": "[{location}] {filename}을(를) {destination}(으)로 복사했습니다"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "에디터 전환",
             "toggleTerminal": "터미널 전환",
             "toggleTheme": "테마 전환",
-            "view": "보기"
+            "view": "보기",
+            "copyFiles": "클립보드에 복사",
+            "copyToOtherPanel": "다른 패널로 복사",
+            "cutFiles": "클립보드로 잘라내기",
+            "cycleLocalPanels": "로컬 패널 순환",
+            "dualPanel": "이중 패널 (AeroFile)",
+            "extendSelectionDown": "선택 영역을 아래로 확장",
+            "extendSelectionUp": "선택 영역을 위로 확장",
+            "jumpFirst": "첫 항목으로 이동",
+            "jumpLast": "마지막 항목으로 이동",
+            "moveToOtherPanel": "다른 패널로 이동",
+            "pasteFiles": "클립보드에서 붙여넣기",
+            "properties": "속성",
+            "quickLook": "빠른 미리보기",
+            "toggleDualPanel": "이중 패널 전환"
         },
         "overwrite": {
             "title": "파일이 이미 존재합니다",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "이중 패널",
+            "dualPanelTooltip": "두 개의 로컬 패널을 나란히 표시",
+            "leftPanel": "왼쪽 패널",
+            "rightPanel": "오른쪽 패널",
+            "copyToOtherPanel": "다른 패널로 복사",
+            "moveToOtherPanel": "다른 패널로 이동",
+            "copiedToOtherPanel": "다른 패널로 복사됨",
+            "movedToOtherPanel": "다른 패널로 이동됨"
         }
     }
 }

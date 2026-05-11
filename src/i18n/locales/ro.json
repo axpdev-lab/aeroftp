@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Nu s-a putut copia {filename}",
+            "copy_start": "[{location}] Se copiază {filename}...",
+            "copy_success": "[{location}] {filename} copiat în {destination}"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Comută editorul",
             "toggleTerminal": "Comută terminalul",
             "toggleTheme": "Comută tema",
-            "view": "Vizualizare"
+            "view": "Vizualizare",
+            "copyFiles": "Copiază în clipboard",
+            "copyToOtherPanel": "Copiază în celălalt panou",
+            "cutFiles": "Decupează în clipboard",
+            "cycleLocalPanels": "Comută între panourile locale",
+            "dualPanel": "Panou dublu (AeroFile)",
+            "extendSelectionDown": "Extinde selecția în jos",
+            "extendSelectionUp": "Extinde selecția în sus",
+            "jumpFirst": "Salt la primul element",
+            "jumpLast": "Salt la ultimul element",
+            "moveToOtherPanel": "Mută în celălalt panou",
+            "pasteFiles": "Lipește din clipboard",
+            "properties": "Proprietăți",
+            "quickLook": "Previzualizare rapidă",
+            "toggleDualPanel": "Activează/dezactivează panoul dublu"
         },
         "overwrite": {
             "title": "Fișierul există deja",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Panou dublu",
+            "dualPanelTooltip": "Afișează două panouri locale alăturate",
+            "leftPanel": "Panoul din stânga",
+            "rightPanel": "Panoul din dreapta",
+            "copyToOtherPanel": "Copiază în celălalt panou",
+            "moveToOtherPanel": "Mută în celălalt panou",
+            "copiedToOtherPanel": "Copiat în celălalt panou",
+            "movedToOtherPanel": "Mutat în celălalt panou"
         }
     }
 }
