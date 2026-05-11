@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Atidaryti sluoksnį",
             "aerovaultOverlayExpired": "AeroVault Overlay užrakintas dėl neveiklumo. Norėdami tęsti, atidarykite seifą iš naujo."
         },
-        "ai.agentMode.title": "Agento rezimas",
-        "ai.agentMode.description": "Valdo irankiu patvirtinimo elgsena, zingsniu limitus ir autonomijos lygi.",
-        "ai.agentMode.safe": "Saugus",
-        "ai.agentMode.safeDesc": "Tik saugus irankiai vykdomi automatiskai. Be sesijos atminties. Maks. 5 zingsniai.",
-        "ai.agentMode.normal": "Normalus",
-        "ai.agentMode.normalDesc": "Saugus irankiai vykdomi automatiskai. Vidutiniai irankiai patvirtinami per sesija. Maks. 10 zingsniu.",
-        "ai.agentMode.expert": "Ekspertas",
-        "ai.agentMode.expertDesc": "Saugus ir vidutiniai irankiai vykdomi automatiskai. Didelees rizikos patvirtinami per sesija. Maks. 25 zingsniai.",
-        "ai.agentMode.extreme": "Ekstremalus",
-        "ai.agentMode.extremeDesc": "Visi irankiai vykdomi automatiskai. Be patvirtinimu. Maks. 50 zingsniu. Tik Cyber.",
         "security": {
             "totp": {
                 "back": "Atgal",

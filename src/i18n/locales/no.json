@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Åpne overlegg",
             "aerovaultOverlayExpired": "AeroVault Overlay er låst på grunn av inaktivitet. Åpne hvelvet på nytt for å fortsette."
         },
-        "ai.agentMode.title": "Agentmodus",
-        "ai.agentMode.description": "Styrer verktoyets godkjenningsatferd, trinngrenser og autonominiva.",
-        "ai.agentMode.safe": "Sikker",
-        "ai.agentMode.safeDesc": "Kun sikre verktoy kjores automatisk. Ingen sesjonsminne. Maks. 5 trinn.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "Sikre verktoy kjores automatisk. Middels verktoy godkjennes per sesjon. Maks. 10 trinn.",
-        "ai.agentMode.expert": "Ekspert",
-        "ai.agentMode.expertDesc": "Sikre og middels verktoy kjores automatisk. Hoyrisiko godkjennes per sesjon. Maks. 25 trinn.",
-        "ai.agentMode.extreme": "Ekstrem",
-        "ai.agentMode.extremeDesc": "Alle verktoy kjores automatisk. Ingen bekreftelser. Maks. 50 trinn. Kun Cyber.",
         "security": {
             "totp": {
                 "back": "Tilbake",

@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Odpri prekrivni sloj",
             "aerovaultOverlayExpired": "AeroVault Overlay je zaklenjen zaradi nedejavnosti. Za nadaljevanje znova odprite trezor."
         },
-        "ai.agentMode.title": "Nacin agenta",
-        "ai.agentMode.description": "Nadzoruje obnasanje odobritve orodij, omejitve korakov in raven avtonomije.",
-        "ai.agentMode.safe": "Varno",
-        "ai.agentMode.safeDesc": "Samo varna orodja se izvajajo samodejno. Brez pomnilnika seje. Najvec 5 korakov.",
-        "ai.agentMode.normal": "Normalno",
-        "ai.agentMode.normalDesc": "Varna orodja se izvajajo samodejno. Srednja orodja odobrena za sejo. Najvec 10 korakov.",
-        "ai.agentMode.expert": "Strokovnjak",
-        "ai.agentMode.expertDesc": "Varna in srednja se izvajajo samodejno. Visoko tvegana odobrena za sejo. Najvec 25 korakov.",
-        "ai.agentMode.extreme": "Ekstremno",
-        "ai.agentMode.extremeDesc": "Vsa orodja se izvajajo samodejno. Brez potrditev. Najvec 50 korakov. Samo Cyber.",
         "security": {
             "totp": {
                 "back": "Nazaj",

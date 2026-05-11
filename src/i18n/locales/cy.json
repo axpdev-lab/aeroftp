@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Agor yr haen",
             "aerovaultOverlayExpired": "Mae AeroVault Overlay wedi'i gloi oherwydd anweithgarwch. Ailagor y gladdgell i barhau."
         },
-        "ai.agentMode.title": "Modd Asiant",
-        "ai.agentMode.description": "Yn rheoli ymddygiad cymeradwyo offer, terfynau camau, a lefel ymreolaeth.",
-        "ai.agentMode.safe": "Diogel",
-        "ai.agentMode.safeDesc": "Dim ond offer diogel sy'n gweithredu'n awtomatig. Dim cof sesiwn. Uchafswm 5 cam.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "Offer diogel yn gweithredu'n awtomatig. Offer canolig yn cael eu cymeradwyo am y sesiwn. Uchafswm 10 cam.",
-        "ai.agentMode.expert": "Arbenigwr",
-        "ai.agentMode.expertDesc": "Offer diogel a chanolig yn gweithredu'n awtomatig. Risg uchel yn cael eu cymeradwyo am y sesiwn. Uchafswm 25 cam.",
-        "ai.agentMode.extreme": "Eithafol",
-        "ai.agentMode.extremeDesc": "Pob offeryn yn gweithredu'n awtomatig. Dim cadarnhad. Uchafswm 50 cam. Cyber yn unig.",
         "security": {
             "totp": {
                 "back": "Yn ôl",

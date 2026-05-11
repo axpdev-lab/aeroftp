@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Abrir capa",
             "aerovaultOverlayExpired": "AeroVault Overlay bloqueouse por inactividade. Abre de novo a caixa forte para continuar."
         },
-        "ai.agentMode.title": "Modo axente",
-        "ai.agentMode.description": "Controla o comportamento de aprobación de ferramentas, os límites de pasos e o nivel de autonomía.",
-        "ai.agentMode.safe": "Seguro",
-        "ai.agentMode.safeDesc": "Só as ferramentas seguras se executan automaticamente. Sen memoria de sesión. Máx. 5 pasos.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "As ferramentas seguras execútanse automaticamente. As de risco medio apróbanse para a sesión. Máx. 10 pasos.",
-        "ai.agentMode.expert": "Experto",
-        "ai.agentMode.expertDesc": "As seguras e medias execútanse automaticamente. As de alto risco apróbanse para a sesión. Máx. 25 pasos.",
-        "ai.agentMode.extreme": "Extremo",
-        "ai.agentMode.extremeDesc": "Todas as ferramentas se executan automaticamente. Sen confirmacións. Máx. 50 pasos. Só Cyber.",
         "security": {
             "totp": {
                 "back": "Atrás",

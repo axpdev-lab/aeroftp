@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Katmanı aç",
             "aerovaultOverlayExpired": "AeroVault Overlay hareketsizlik nedeniyle kilitlendi. Devam etmek için kasayı yeniden açın."
         },
-        "ai.agentMode.title": "Ajan Modu",
-        "ai.agentMode.description": "Arac onay davranisini, adim limitlerini ve otonomi seviyesini kontrol eder.",
-        "ai.agentMode.safe": "Guvenli",
-        "ai.agentMode.safeDesc": "Yalnizca guvenli araclar otomatik calisir. Oturum bellegi yok. Maks. 5 adim.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "Guvenli araclar otomatik calisir. Orta araclar oturum basina onaylanir. Maks. 10 adim.",
-        "ai.agentMode.expert": "Uzman",
-        "ai.agentMode.expertDesc": "Guvenli ve orta otomatik calisir. Yuksek riskli oturum basina onaylanir. Maks. 25 adim.",
-        "ai.agentMode.extreme": "Ekstrem",
-        "ai.agentMode.extremeDesc": "Tum araclar otomatik calisir. Onay yok. Maks. 50 adim. Yalnizca Cyber.",
         "security": {
             "totp": {
                 "back": "Geri",

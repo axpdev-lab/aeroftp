@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Buksan ang overlay",
             "aerovaultOverlayExpired": "Naka-lock ang AeroVault Overlay dahil sa kawalan ng aktibidad. Buksan muli ang vault upang magpatuloy."
         },
-        "ai.agentMode.title": "Mode ng Ahente",
-        "ai.agentMode.description": "Kinokontrol ang gawi ng pag-apruba ng mga kasangkapan, limitasyon ng mga hakbang at antas ng awtonomiya.",
-        "ai.agentMode.safe": "Ligtas",
-        "ai.agentMode.safeDesc": "Mga ligtas na kasangkapan lang ang awtomatikong isinasagawa. Walang memorya ng sesyon. Max 5 hakbang.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "Mga ligtas na kasangkapan ay awtomatikong isinasagawa. Mga katamtamang kasangkapan ay inaprubahan sa bawat sesyon. Max 10 hakbang.",
-        "ai.agentMode.expert": "Eksperto",
-        "ai.agentMode.expertDesc": "Ligtas at katamtaman ay awtomatikong isinasagawa. Mataas na panganib ay inaprubahan sa bawat sesyon. Max 25 hakbang.",
-        "ai.agentMode.extreme": "Matindi",
-        "ai.agentMode.extremeDesc": "Lahat ng kasangkapan ay awtomatikong isinasagawa. Walang kumpirmasyon. Max 50 hakbang. Cyber lang.",
         "security": {
             "totp": {
                 "back": "Bumalik",

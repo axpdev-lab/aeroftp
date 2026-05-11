@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Ava kiht",
             "aerovaultOverlayExpired": "AeroVault Overlay on mitteaktiivsuse tõttu lukustatud. Jätkamiseks ava varahoidla uuesti."
         },
-        "ai.agentMode.title": "Agendi režiim",
-        "ai.agentMode.description": "Juhib tööriistade kinnitamise käitumist, sammupiiranguid ja autonoomia taset.",
-        "ai.agentMode.safe": "Turvaline",
-        "ai.agentMode.safeDesc": "Ainult turvalised tööriistad käivituvad automaatselt. Seansi mälu puudub. Maks 5 sammu.",
-        "ai.agentMode.normal": "Tavaline",
-        "ai.agentMode.normalDesc": "Turvalised tööriistad käivituvad automaatselt. Keskmise riskiga tööriistad kinnitatakse seansi jaoks. Maks 10 sammu.",
-        "ai.agentMode.expert": "Ekspert",
-        "ai.agentMode.expertDesc": "Turvalised ja keskmised käivituvad automaatselt. Kõrge riskiga kinnitatakse seansi jaoks. Maks 25 sammu.",
-        "ai.agentMode.extreme": "Äärmuslik",
-        "ai.agentMode.extremeDesc": "Kõik tööriistad käivituvad automaatselt. Kinnitusi ei küsita. Maks 50 sammu. Ainult Cyber.",
         "security": {
             "totp": {
                 "back": "Tagasi",

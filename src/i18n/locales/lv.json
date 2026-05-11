@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Atvērt slāni",
             "aerovaultOverlayExpired": "AeroVault Overlay ir bloķēts neaktivitātes dēļ. Lai turpinātu, atveriet seifu vēlreiz."
         },
-        "ai.agentMode.title": "Agenta rezims",
-        "ai.agentMode.description": "Kontrole riku apstiprinasanas uzvedibui, solu ierobezojumiem un autonomijas limeni.",
-        "ai.agentMode.safe": "Dross",
-        "ai.agentMode.safeDesc": "Tikai drosi riki tiek izpilditi automatiski. Nav sesijas atminas. Maks. 5 soli.",
-        "ai.agentMode.normal": "Normales",
-        "ai.agentMode.normalDesc": "Drosi riki tiek izpilditi automatiski. Videja limena riki apstiprinati pa sesiju. Maks. 10 soli.",
-        "ai.agentMode.expert": "Eksperts",
-        "ai.agentMode.expertDesc": "Drosi un videja limena riki tiek izpilditi automatiski. Augsta riska riki apstiprinati pa sesiju. Maks. 25 soli.",
-        "ai.agentMode.extreme": "Ekstremals",
-        "ai.agentMode.extremeDesc": "Visi riki tiek izpilditi automatiski. Nav apstiprinajumu. Maks. 50 soli. Tikai Cyber.",
         "security": {
             "totp": {
                 "back": "Atpakaļ",

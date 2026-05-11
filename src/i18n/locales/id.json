@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Buka lapisan",
             "aerovaultOverlayExpired": "AeroVault Overlay terkunci karena tidak aktif. Buka kembali brankas untuk melanjutkan."
         },
-        "ai.agentMode.title": "Mode Agen",
-        "ai.agentMode.description": "Mengontrol perilaku persetujuan alat, batas langkah, dan tingkat otonomi.",
-        "ai.agentMode.safe": "Aman",
-        "ai.agentMode.safeDesc": "Hanya alat aman yang dijalankan otomatis. Tanpa memori sesi. Maks. 5 langkah.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "Alat aman dijalankan otomatis. Alat menengah disetujui per sesi. Maks. 10 langkah.",
-        "ai.agentMode.expert": "Ahli",
-        "ai.agentMode.expertDesc": "Alat aman dan menengah dijalankan otomatis. Risiko tinggi disetujui per sesi. Maks. 25 langkah.",
-        "ai.agentMode.extreme": "Ekstrem",
-        "ai.agentMode.extremeDesc": "Semua alat dijalankan otomatis. Tanpa konfirmasi. Maks. 50 langkah. Hanya Cyber.",
         "security": {
             "totp": {
                 "back": "Kembali",
