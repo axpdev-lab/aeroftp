@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Nakili kwenye paneli nyingine",
             "moveToOtherPanel": "Hamisha kwenye paneli nyingine",
             "copiedToOtherPanel": "Imenakiliwa kwenye paneli nyingine",
-            "movedToOtherPanel": "Imehamishwa kwenye paneli nyingine"
+            "movedToOtherPanel": "Imehamishwa kwenye paneli nyingine",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

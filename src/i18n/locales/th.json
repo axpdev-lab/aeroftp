@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "คัดลอกไปยังแผงอีกด้าน",
             "moveToOtherPanel": "ย้ายไปยังแผงอีกด้าน",
             "copiedToOtherPanel": "คัดลอกไปยังแผงอีกด้านแล้ว",
-            "movedToOtherPanel": "ย้ายไปยังแผงอีกด้านแล้ว"
+            "movedToOtherPanel": "ย้ายไปยังแผงอีกด้านแล้ว",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

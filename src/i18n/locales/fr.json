@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "Copier vers l'autre panneau",
             "moveToOtherPanel": "Déplacer vers l'autre panneau",
             "copiedToOtherPanel": "Copié vers l'autre panneau",
-            "movedToOtherPanel": "Déplacé vers l'autre panneau"
+            "movedToOtherPanel": "Déplacé vers l'autre panneau",
+            "itemsLower": "éléments",
+            "resizePanels": "Redimensionner les panneaux"
         }
     }
 }

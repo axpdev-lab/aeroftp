@@ -251,9 +251,17 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     {state.meta && <span>v{state.meta.version} | {state.entries.length} {t('vault.totalItems')}</span>}
                     <button
                         onClick={() => {
-                            // Cleanup remote if needed
+                            // Local vaults persist on every backend operation
+                            // (vault_v3_add_files / delete / move / etc. all call
+                            // save_open_vault under the hood), so "Save" here is
+                            // just a confirm-and-close: go back to the vault home
+                            // screen. Remote vaults instead need an explicit
+                            // upload of the temp file before close, which is what
+                            // handleSaveRemoteAndClose does.
                             if (state.remoteLocalPath) {
                                 state.handleCleanupRemote();
+                            } else {
+                                state.setMode('home');
                             }
                         }}
                         className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-medium transition-colors"

@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "კოპირება მეორე პანელში",
             "moveToOtherPanel": "გადატანა მეორე პანელში",
             "copiedToOtherPanel": "დაკოპირდა მეორე პანელში",
-            "movedToOtherPanel": "გადატანილია მეორე პანელში"
+            "movedToOtherPanel": "გადატანილია მეორე პანელში",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

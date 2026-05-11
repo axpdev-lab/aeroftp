@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Sao chép sang bảng kia",
             "moveToOtherPanel": "Di chuyển sang bảng kia",
             "copiedToOtherPanel": "Đã sao chép sang bảng kia",
-            "movedToOtherPanel": "Đã di chuyển sang bảng kia"
+            "movedToOtherPanel": "Đã di chuyển sang bảng kia",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "复制到另一面板",
             "moveToOtherPanel": "移动到另一面板",
             "copiedToOtherPanel": "已复制到另一面板",
-            "movedToOtherPanel": "已移动到另一面板"
+            "movedToOtherPanel": "已移动到另一面板",
+            "itemsLower": "项",
+            "resizePanels": "调整面板大小"
         }
     }
 }

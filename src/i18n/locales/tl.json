@@ -4531,7 +4531,9 @@
             "copyToOtherPanel": "Kopyahin sa kabilang panel",
             "moveToOtherPanel": "Ilipat sa kabilang panel",
             "copiedToOtherPanel": "Nakopya sa kabilang panel",
-            "movedToOtherPanel": "Inilipat sa kabilang panel"
+            "movedToOtherPanel": "Inilipat sa kabilang panel",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

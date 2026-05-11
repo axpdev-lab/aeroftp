@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "दूसरे पैनल में कॉपी करें",
             "moveToOtherPanel": "दूसरे पैनल में ले जाएं",
             "copiedToOtherPanel": "दूसरे पैनल में कॉपी किया गया",
-            "movedToOtherPanel": "दूसरे पैनल में ले जाया गया"
+            "movedToOtherPanel": "दूसरे पैनल में ले जाया गया",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

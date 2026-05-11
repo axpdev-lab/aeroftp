@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "Копіювати на іншу панель",
             "moveToOtherPanel": "Перемістити на іншу панель",
             "copiedToOtherPanel": "Скопійовано на іншу панель",
-            "movedToOtherPanel": "Переміщено на іншу панель"
+            "movedToOtherPanel": "Переміщено на іншу панель",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "In das andere Panel kopieren",
             "moveToOtherPanel": "In das andere Panel verschieben",
             "copiedToOtherPanel": "In das andere Panel kopiert",
-            "movedToOtherPanel": "In das andere Panel verschoben"
+            "movedToOtherPanel": "In das andere Panel verschoben",
+            "itemsLower": "Elemente",
+            "resizePanels": "Panels neu skalieren"
         }
     }
 }

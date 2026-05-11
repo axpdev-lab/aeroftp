@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Kopiér til det andet panel",
             "moveToOtherPanel": "Flyt til det andet panel",
             "copiedToOtherPanel": "Kopieret til det andet panel",
-            "movedToOtherPanel": "Flyttet til det andet panel"
+            "movedToOtherPanel": "Flyttet til det andet panel",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

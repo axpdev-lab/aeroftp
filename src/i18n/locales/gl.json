@@ -4531,7 +4531,9 @@
             "copyToOtherPanel": "Copiar ao outro panel",
             "moveToOtherPanel": "Mover ao outro panel",
             "copiedToOtherPanel": "Copiado ao outro panel",
-            "movedToOtherPanel": "Movido ao outro panel"
+            "movedToOtherPanel": "Movido ao outro panel",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "Kopiuj do drugiego panelu",
             "moveToOtherPanel": "Przenieś do drugiego panelu",
             "copiedToOtherPanel": "Skopiowano do drugiego panelu",
-            "movedToOtherPanel": "Przeniesiono do drugiego panelu"
+            "movedToOtherPanel": "Przeniesiono do drugiego panelu",
+            "itemsLower": "elementy",
+            "resizePanels": "Zmień rozmiar paneli"
         }
     }
 }

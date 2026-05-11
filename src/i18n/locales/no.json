@@ -4531,7 +4531,9 @@
             "copyToOtherPanel": "Kopier til andre panel",
             "moveToOtherPanel": "Flytt til andre panel",
             "copiedToOtherPanel": "Kopiert til andre panel",
-            "movedToOtherPanel": "Flyttet til andre panel"
+            "movedToOtherPanel": "Flyttet til andre panel",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

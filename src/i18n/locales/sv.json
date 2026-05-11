@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Kopiera till andra panelen",
             "moveToOtherPanel": "Flytta till andra panelen",
             "copiedToOtherPanel": "Kopierat till andra panelen",
-            "movedToOtherPanel": "Flyttat till andra panelen"
+            "movedToOtherPanel": "Flyttat till andra panelen",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

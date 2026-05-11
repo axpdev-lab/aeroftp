@@ -269,6 +269,7 @@ import DuplicateFinderDialog from './components/DuplicateFinderDialog';
 import DiskUsageTreemap from './components/DiskUsageTreemap';
 import { FileTagBadge } from './components/FileTagBadge';
 import { VaultIcon } from './components/icons/VaultIcon';
+import { OverlayIcon } from './components/icons/OverlayIcon';
 import type { TrashItem, FolderSizeResult, LocalTab } from './types/aerofile';
 
 // Utilities
@@ -5448,11 +5449,20 @@ interface UpdateVerificationInfo {
    * the opposite local panel's current directory. Wired to F5 / F6 and to the
    * "Copy to other panel" / "Move to other panel" context menu items.
    */
-  const transferLocalSelectionAcrossPanels = useCallback(async (mode: 'copy' | 'move') => {
-    const sourceId = activeLocalPanelId;
+  const transferLocalSelectionAcrossPanels = useCallback(async (mode: 'copy' | 'move', sourceOverride?: 'local' | 'local2') => {
+    // sourceOverride lets the right-click context menu pin which panel
+    // owns the selection at the moment the menu was opened, instead of
+    // racing with React state updates: showLocalContextMenu does
+    // setActiveLocalPanelId(localPanelId) synchronously, but this
+    // useCallback closure may still hold the previous activeLocalPanelId
+    // because closures are bound at render time, not at action time.
+    // F5 / F6 keyboard shortcuts call without override and rely on the
+    // closure's value, which by then is already in sync with focus.
+    const sourceId: 'local' | 'local2' = sourceOverride ?? activeLocalPanelId;
     const targetId: 'local' | 'local2' = sourceId === 'local' ? 'local2' : 'local';
     const sourceSelection = sourceId === 'local2' ? selectedLocalFiles2 : selectedLocalFiles;
     const sourceFiles = sourceId === 'local2' ? localFiles2 : localFiles;
+    const sourceDir = sourceId === 'local2' ? currentLocalPath2 : currentLocalPath;
     const targetDir = targetId === 'local2' ? currentLocalPath2 : currentLocalPath;
     if (!targetDir || sourceSelection.size === 0) return;
     const names = Array.from(sourceSelection);
@@ -5460,6 +5470,7 @@ interface UpdateVerificationInfo {
     if (selected.length === 0) return;
 
     let ok = 0, failed = 0;
+    const okNames: string[] = [];
     for (const file of selected) {
       const sep = targetDir.includes('\\') && !targetDir.includes('/') ? '\\' : '/';
       const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
@@ -5473,19 +5484,30 @@ interface UpdateVerificationInfo {
           to: destPath,
         });
         ok++;
+        okNames.push(file.name);
       } catch (e) {
         failed++;
         notify.error(mode === 'copy' ? t('toast.copyFailed') || 'Copy failed' : t('toast.renameFailed', { error: '' }) || 'Move failed', `${file.name}: ${String(e)}`);
       }
     }
-    if (sourceId === 'local2' && currentLocalPath2) await loadLocalFiles2(currentLocalPath2);
-    else await loadLocalFiles(currentLocalPath);
-    if (targetId === 'local2' && currentLocalPath2) await loadLocalFiles2(currentLocalPath2);
-    else await loadLocalFiles(currentLocalPath);
+    // Refresh both panels after the transfer so the source pane drops
+    // moved entries and the target pane shows the new ones. Skip the
+    // refresh when one side has no current path (panel never opened).
+    if (currentLocalPath) await loadLocalFiles(currentLocalPath);
+    if (currentLocalPath2) await loadLocalFiles2(currentLocalPath2);
     if (ok > 0) {
+      // Rich activity-log line: name(s) + sourceDir → targetDir. The
+      // previous "1 → /target/path" form was ambiguous about which file
+      // was moved and where it came from.
+      const summary = okNames.length === 1
+        ? okNames[0]
+        : `${okNames.length} ${t('aerofile.itemsLower') || 'items'}`;
+      const detail = sourceDir
+        ? `${summary}: ${sourceDir} → ${targetDir}${failed > 0 ? ` (${failed} failed)` : ''}`
+        : `${summary} → ${targetDir}${failed > 0 ? ` (${failed} failed)` : ''}`;
       notify.success(
         mode === 'copy' ? t('aerofile.copiedToOtherPanel') || 'Copied to other panel' : t('aerofile.movedToOtherPanel') || 'Moved to other panel',
-        `${ok} → ${targetDir}${failed > 0 ? ` (${failed} failed)` : ''}`,
+        detail,
       );
     }
   }, [activeLocalPanelId, selectedLocalFiles, selectedLocalFiles2, localFiles, localFiles2, currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2, notify, t]);
@@ -6964,7 +6986,27 @@ interface UpdateVerificationInfo {
         await loadRemoteFiles(undefined, true);
       } else {
         await invoke('rename_local_file', { from: path, to: newPath });
-        await loadLocalFiles(currentLocalPath);
+        // Refresh whichever local panel(s) actually list this directory.
+        // The previous unconditional `loadLocalFiles(currentLocalPath)`
+        // missed renames that originated in panel 2, leaving the new
+        // name invisible until Ctrl+R. When both panels point at the
+        // same directory (common after Tab cycling) we reload both.
+        const refreshes: Promise<unknown>[] = [];
+        if (currentLocalPath && parentDir === currentLocalPath) {
+          refreshes.push(loadLocalFiles(currentLocalPath));
+        }
+        if (currentLocalPath2 && parentDir === currentLocalPath2) {
+          refreshes.push(loadLocalFiles2(currentLocalPath2));
+        }
+        if (refreshes.length === 0 && currentLocalPath) {
+          // Path-matching missed (e.g. trailing slash mismatch): fall back
+          // to refreshing the focused panel so the rename is at least
+          // visible somewhere.
+          refreshes.push(activeLocalPanelId === 'local2' && currentLocalPath2
+            ? loadLocalFiles2(currentLocalPath2)
+            : loadLocalFiles(currentLocalPath));
+        }
+        await Promise.all(refreshes);
       }
       humanLog.logSuccess('RENAME', { oldname: name, newname: newName, isRemote }, logId);
       notify.success(t('toast.renamed'), newName);
@@ -8191,15 +8233,19 @@ interface UpdateVerificationInfo {
         action: () => uploadMultipleFiles(filesToUpload),
         disabled: !isConnected
       },
-      // AeroFile dual-panel: send to the opposite local panel
+      // AeroFile dual-panel: send to the opposite local panel. Pass the
+      // panel id captured at right-click time (localPanelId param of
+      // showLocalContextMenu) so the transfer always reads the SOURCE
+      // panel's selection, not whatever `activeLocalPanelId` was in the
+      // closure at the time this useCallback was built.
       ...(isAeroFileDualActive ? [{
         label: t('aerofile.copyToOtherPanel'),
         icon: <Columns2 size={14} />,
-        action: () => { void transferLocalSelectionAcrossPanels('copy'); },
+        action: () => { void transferLocalSelectionAcrossPanels('copy', localPanelId); },
       } as ContextMenuItem, {
         label: t('aerofile.moveToOtherPanel'),
         icon: <ArrowRightLeft size={14} />,
-        action: () => { void transferLocalSelectionAcrossPanels('move'); },
+        action: () => { void transferLocalSelectionAcrossPanels('move', localPanelId); },
       } as ContextMenuItem] : []),
       {
         label: 'Open with default app',
@@ -10414,7 +10460,7 @@ interface UpdateVerificationInfo {
                           : `AeroVault: ${t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel.'}`}
                         aria-label={aeroVaultOverlaySession ? 'AeroVault ON' : 'AeroVault'}
                       >
-                        <VaultIcon size={16} className={aeroVaultOverlaySession ? 'text-white' : 'text-emerald-400'} />
+                        <VaultIcon variant="outline" size={16} className={aeroVaultOverlaySession ? 'text-white' : 'text-gray-600 dark:text-gray-300'} />
                       </button>
                       {usesProviderApi(getActiveProviderProtocol()) && (
                         <button
@@ -10437,7 +10483,7 @@ interface UpdateVerificationInfo {
                             : `AeroCrypt: ${t('toolbar.aerocryptOverlayInactive')}`}
                           aria-label={rcloneCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
                         >
-                          <Shield size={16} className={rcloneCryptVaultId ? 'text-white' : 'text-blue-400'} />
+                          <OverlayIcon size={16} className={rcloneCryptVaultId ? 'text-white' : 'text-gray-600 dark:text-gray-300'} />
                         </button>
                       )}
                       <button
@@ -10642,7 +10688,7 @@ interface UpdateVerificationInfo {
                         className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/20 text-blue-500 border border-blue-500/30"
                         title={t('toolbar.aerocryptOverlayActive')}
                       >
-                        <Shield size={11} className="text-blue-400" />
+                        <OverlayIcon size={11} className="text-blue-400" />
                         AEROCRYPT
                       </span>
                     )}
@@ -11274,6 +11320,7 @@ interface UpdateVerificationInfo {
                   showSidebar={showSidebar}
                   sidebarCurrentPath={sidebarCurrentPath}
                   sidebarOnNavigate={handleSidebarNavigate}
+                  sidebarActivePanelMarker={isDualLocalAeroFileMode ? (sidebarTargetPanelId === 'local2' ? 'R' : 'L') : undefined}
                   recentPaths={recentPaths}
                   setRecentPaths={setRecentPaths}
                   iconProvider={iconProvider}
@@ -11289,14 +11336,44 @@ interface UpdateVerificationInfo {
 
                 {(!isConnected || !showRemotePanel) && showDualLocalPanel && (
                   <>
-                    {/* Resize handle between the two AeroFile local panels. */}
+                    {/* Resize handle between the two AeroFile local panels.
+                        Operable from keyboard as well: tabIndex=0 so it can
+                        take focus, Arrow Left/Right shift the split by 5 %,
+                        Home / End jump to the extremes, Enter resets to 50/50.
+                        Required because the dual-panel feature is targeted
+                        at Linux keyboard-only setups, where mouse-only resize
+                        would silently lock users out of one panel. */}
                     <div
                       role="separator"
                       aria-orientation="vertical"
                       aria-label={t('aerofile.resizePanels') || 'Resize panels'}
+                      aria-valuemin={20}
+                      aria-valuemax={180}
+                      aria-valuenow={Math.round(dualPanelLeftFlex * 100)}
+                      tabIndex={0}
                       onMouseDown={startDualPanelResize}
                       onDoubleClick={() => setDualPanelLeftFlex(1.0)}
-                      className="w-1 hover:w-1.5 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 transition-colors flex-shrink-0"
+                      onKeyDown={(e) => {
+                        const STEP = 0.1;
+                        const clamp = (v: number) => Math.max(0.2, Math.min(1.8, v));
+                        if (e.key === 'ArrowLeft') {
+                          e.preventDefault();
+                          setDualPanelLeftFlex(prev => clamp(prev - STEP));
+                        } else if (e.key === 'ArrowRight') {
+                          e.preventDefault();
+                          setDualPanelLeftFlex(prev => clamp(prev + STEP));
+                        } else if (e.key === 'Home') {
+                          e.preventDefault();
+                          setDualPanelLeftFlex(0.2);
+                        } else if (e.key === 'End') {
+                          e.preventDefault();
+                          setDualPanelLeftFlex(1.8);
+                        } else if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setDualPanelLeftFlex(1.0);
+                        }
+                      }}
+                      className="w-1 hover:w-1.5 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 focus:bg-blue-500 focus:outline-none transition-colors flex-shrink-0"
                       style={{ touchAction: 'none' }}
                     />
                   <LocalFilePanel

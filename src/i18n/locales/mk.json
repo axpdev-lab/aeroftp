@@ -4531,7 +4531,9 @@
             "copyToOtherPanel": "Копирај во другиот панел",
             "moveToOtherPanel": "Премести во другиот панел",
             "copiedToOtherPanel": "Копирано во другиот панел",
-            "movedToOtherPanel": "Преместено во другиот панел"
+            "movedToOtherPanel": "Преместено во другиот панел",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

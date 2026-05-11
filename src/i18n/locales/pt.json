@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "Copiar para o outro painel",
             "moveToOtherPanel": "Mover para o outro painel",
             "copiedToOtherPanel": "Copiado para o outro painel",
-            "movedToOtherPanel": "Movido para o outro painel"
+            "movedToOtherPanel": "Movido para o outro painel",
+            "itemsLower": "itens",
+            "resizePanels": "Redimensionar painéis"
         }
     }
 }

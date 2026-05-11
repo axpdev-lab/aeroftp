@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "もう一方のパネルにコピー",
             "moveToOtherPanel": "もう一方のパネルに移動",
             "copiedToOtherPanel": "もう一方のパネルにコピーしました",
-            "movedToOtherPanel": "もう一方のパネルに移動しました"
+            "movedToOtherPanel": "もう一方のパネルに移動しました",
+            "itemsLower": "項目",
+            "resizePanels": "パネルのサイズを変更"
         }
     }
 }

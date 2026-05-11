@@ -157,6 +157,9 @@ export interface LocalFilePanelProps {
   showSidebar: boolean;
   sidebarCurrentPath?: string;
   sidebarOnNavigate?: (path: string) => void;
+  /** L / R marker rendered in the PlacesSidebar header when dual mode is on,
+   * so the user can tell which local panel the sidebar will drive on click. */
+  sidebarActivePanelMarker?: 'L' | 'R';
   recentPaths: string[];
   setRecentPaths: React.Dispatch<React.SetStateAction<string[]>>;
 
@@ -258,6 +261,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   showSidebar,
   sidebarCurrentPath,
   sidebarOnNavigate,
+  sidebarActivePanelMarker,
   recentPaths,
   setRecentPaths,
   getTagsForFile,
@@ -350,11 +354,11 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     )
   );
 
-  const focusRingClass = isDualMode && isFocused
-    ? (panelKey === 'local2'
-        ? 'ring-1 ring-inset ring-amber-400/70 dark:ring-amber-500/60'
-        : 'ring-1 ring-inset ring-blue-400/70 dark:ring-blue-500/60')
-    : '';
+  // Focus indication moves to a discrete L/R chip in the header bar plus
+  // the StatusBar marker and the PlacesSidebar header, instead of a tinted
+  // ring around the whole panel: the ring was getting confused with the
+  // drag-over highlight and added visual noise to a panel that already has
+  // a path bar and a toolbar above the file list.
   const crossPanelRingClass = crossPanelTarget === panelKey
     ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10'
     : '';
@@ -362,7 +366,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     <div
       role="region"
       aria-label={panelKey === 'local2' ? 'Local files (right panel)' : 'Local files'}
-      className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col ${crossPanelRingClass} ${focusRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
+      className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col ${crossPanelRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
       style={style}
       onDragOver={(e) => onPanelDragOver(e, panelKey)}
       onDrop={(e) => onPanelDrop(e, panelKey)}
@@ -382,6 +386,25 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
       )}
       {/* Header: BreadcrumbBar (AeroFile) or Address Bar (Connected) */}
       <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+        {/* Dual-panel L/R marker. Shown only in dual mode, sits before the
+            path bar so the user always sees which panel they are pointing
+            at without leaving the toolbar area. Mirrors the StatusBar and
+            the PlacesSidebar header markers (same letter, same accent). */}
+        {isDualMode && (
+          <span
+            aria-label={panelKey === 'local2' ? 'Right panel' : 'Left panel'}
+            title={panelKey === 'local2' ? 'Right panel' : 'Left panel'}
+            className={`flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold tracking-wider transition-opacity ${
+              isFocused ? 'opacity-100' : 'opacity-40'
+            } ${
+              panelKey === 'local2'
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+            }`}
+          >
+            {panelKey === 'local2' ? 'R' : 'L'}
+          </span>
+        )}
         {isAeroFileMode ? (
           <div className="flex-1 flex items-center gap-1.5 min-w-0">
             <div className="flex-1 min-w-0">
@@ -569,6 +592,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             labelCounts={labelCounts}
             activeTagFilter={activeTagFilter}
             onTagFilter={onTagFilter}
+            activePanelMarker={sidebarActivePanelMarker}
           />
         )}
         <div className="flex-1 overflow-auto" onContextMenu={(e) => {

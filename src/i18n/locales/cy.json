@@ -4531,7 +4531,9 @@
             "copyToOtherPanel": "Copïo i'r panel arall",
             "moveToOtherPanel": "Symud i'r panel arall",
             "copiedToOtherPanel": "Copïwyd i'r panel arall",
-            "movedToOtherPanel": "Symudwyd i'r panel arall"
+            "movedToOtherPanel": "Symudwyd i'r panel arall",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

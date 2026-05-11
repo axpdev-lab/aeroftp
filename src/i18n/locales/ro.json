@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "Copiază în celălalt panou",
             "moveToOtherPanel": "Mută în celălalt panou",
             "copiedToOtherPanel": "Copiat în celălalt panou",
-            "movedToOtherPanel": "Mutat în celălalt panou"
+            "movedToOtherPanel": "Mutat în celălalt panou",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }
