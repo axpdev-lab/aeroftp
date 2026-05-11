@@ -1652,7 +1652,18 @@
             "openSettings": "Nastavenia",
             "showShortcuts": "Zobraziť skratky",
             "closeDialog": "Zavrieť / Zrušiť",
-            "helpText": "Stlačte [F1] pre pomoc"
+            "helpText": "Stlačte [F1] pre pomoc",
+            "activityLog": "Denník aktivity",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Podrobné karty serverov",
+            "quit": "Ukončiť AeroFTP",
+            "toggleAgent": "Prepnúť AeroAgent",
+            "toggleDevtools": "Prepnúť AeroTools",
+            "toggleEditor": "Prepnúť editor",
+            "toggleTerminal": "Prepnúť terminál",
+            "toggleTheme": "Prepnúť tému",
+            "view": "Zobraziť"
         },
         "overwrite": {
             "title": "Súbor už existuje",
@@ -3165,7 +3176,11 @@
                 "pause": "Pozastavit",
                 "copyAll": "Kopirovat vsetko",
                 "clear": "Vymazat",
-                "emptyMessage": "Vystup konzoly sa tu objavi, ked je aktivny rezim ladenia."
+                "emptyMessage": "Vystup konzoly sa tu objavi, ked je aktivny rezim ladenia.",
+                "allSources": "Všetky zdroje",
+                "sourceFilterTitle": "Filtrovať podľa zdroja",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Rezim React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopírovať zoznam súborov do schránky",
             "filesCopied": "{count} záznamov súborov skopírovaných do schránky",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (tabuľka)",
+                "json": "JSON (pole)",
+                "ndjson": "NDJSON (jeden na riadok)",
+                "scopeLogs": "Exportovať Logs ako",
+                "scopeNetwork": "Exportovať Network ako",
+                "text": "Obyčajný text",
+                "title": "Exportovať"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault okruh",
+                "connectivity": "Sonda aktívneho pripojenia",
+                "copyResults": "Kopírovať výsledky",
+                "copyResultsTitle": "Kopírovať výsledky ako Markdown",
+                "i18nSweep": "Prechádzanie kľúčov i18n",
+                "ipcSpeed": "Vzorka rýchlosti IPC",
+                "knownHosts": "čítanie known_hosts",
+                "passed": "úspešných",
+                "pluginIntegrity": "Integrita pluginu",
+                "providerSelftest": "Samočinný test poskytovateľa (iba na čítanie)",
+                "runAll": "Spustiť všetko",
+                "runOne": "Spustiť tento test",
+                "vaultRoundtrip": "Okruh trezoru"
+            },
+            "bundle": {
+                "title": "Exportovať diagnostický balík (ZIP)"
+            }
         },
         "menu": {
             "file": "Subor",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Správca pripojení...",
             "activityLog": "Denník aktivít",
-            "detailedCards": "Podrobné karty serverov"
+            "detailedCards": "Podrobné karty serverov",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Cakanie na prikazy...",

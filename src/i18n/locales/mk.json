@@ -1652,7 +1652,18 @@
             "openSettings": "Поставки",
             "showShortcuts": "Прикажи кратенки",
             "closeDialog": "Затвори / Откажи",
-            "helpText": "Притисни [F1] за помош"
+            "helpText": "Притисни [F1] за помош",
+            "activityLog": "Дневник на активности",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Детални картички за сервер",
+            "quit": "Излези од AeroFTP",
+            "toggleAgent": "Прикажи/Скриј AeroAgent",
+            "toggleDevtools": "Прикажи/Скриј AeroTools",
+            "toggleEditor": "Прикажи/Скриј уредник",
+            "toggleTerminal": "Прикажи/Скриј терминал",
+            "toggleTheme": "Промени тема",
+            "view": "Преглед"
         },
         "overwrite": {
             "title": "Датотеката веќе постои",
@@ -3165,7 +3176,11 @@
                 "pause": "Паузирај",
                 "copyAll": "Копирај сe",
                 "clear": "Исчисти",
-                "emptyMessage": "Излезот на конзолата ќе се појави тука кога режимот за дебагирање е активен."
+                "emptyMessage": "Излезот на конзолата ќе се појави тука кога режимот за дебагирање е активен.",
+                "allSources": "Сите извори",
+                "sourceFilterTitle": "Филтрирај по извор",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React режим",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Копирај листа на датотеки во клипборд",
             "filesCopied": "{count} записи на датотеки копирани во меморија",
-            "title": "Дебаг"
+            "title": "Дебаг",
+            "export": {
+                "csv": "CSV (табела)",
+                "json": "JSON (низа)",
+                "ndjson": "NDJSON (еден по ред)",
+                "scopeLogs": "Извези Logs како",
+                "scopeNetwork": "Извези Network како",
+                "text": "Обичен текст",
+                "title": "Извези"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault повратно патување",
+                "connectivity": "Проверка на активна врска",
+                "copyResults": "Копирај резултати",
+                "copyResultsTitle": "Копирај резултати како Markdown",
+                "i18nSweep": "Преглед на i18n клучеви",
+                "ipcSpeed": "IPC примерок на брзина",
+                "knownHosts": "known_hosts читање",
+                "passed": "поминати",
+                "pluginIntegrity": "Интегритет на додаток",
+                "providerSelftest": "Самотест на провајдер (само за читање)",
+                "runAll": "Изврши ги сите",
+                "runOne": "Изврши го овој тест",
+                "vaultRoundtrip": "Повратно патување на трезорот"
+            },
+            "bundle": {
+                "title": "Извези дијагностички пакет (ZIP)"
+            }
         },
         "menu": {
             "file": "Датотека",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Управувач со монтирања...",
             "activityLog": "Дневник на активности",
-            "detailedCards": "Детални картички за сервери"
+            "detailedCards": "Детални картички за сервери",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Чека команди...",

@@ -1652,7 +1652,18 @@
             "openSettings": "เปิดการตั้งค่า",
             "showShortcuts": "แสดงทางลัด",
             "closeDialog": "ปิด / ยกเลิก",
-            "helpText": "กด [F1] เพื่อขอความช่วยเหลือ"
+            "helpText": "กด [F1] เพื่อขอความช่วยเหลือ",
+            "activityLog": "บันทึกกิจกรรม",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด",
+            "quit": "ออกจาก AeroFTP",
+            "toggleAgent": "สลับ AeroAgent",
+            "toggleDevtools": "สลับ AeroTools",
+            "toggleEditor": "สลับตัวแก้ไข",
+            "toggleTerminal": "สลับเทอร์มินัล",
+            "toggleTheme": "สลับธีม",
+            "view": "มุมมอง"
         },
         "overwrite": {
             "title": "ไฟล์มีอยู่แล้ว",
@@ -3165,7 +3176,11 @@
                 "pause": "หยุดชั่วคราว",
                 "copyAll": "คัดลอกทั้งหมด",
                 "clear": "ล้าง",
-                "emptyMessage": "ผลลัพธ์คอนโซลจะปรากฏที่นี่เมื่อโหมดดีบักเปิดใช้งาน"
+                "emptyMessage": "ผลลัพธ์คอนโซลจะปรากฏที่นี่เมื่อโหมดดีบักเปิดใช้งาน",
+                "allSources": "ทุกแหล่งที่มา",
+                "sourceFilterTitle": "กรองตามแหล่งที่มา",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "โหมด React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "คัดลอกรายการไฟล์ไปยังคลิปบอร์ด",
             "filesCopied": "คัดลอก {count} รายการไฟล์ไปยังคลิปบอร์ดแล้ว",
-            "title": "ดีบัก"
+            "title": "ดีบัก",
+            "export": {
+                "csv": "CSV (สเปรดชีต)",
+                "json": "JSON (อาร์เรย์)",
+                "ndjson": "NDJSON (หนึ่งรายการต่อบรรทัด)",
+                "scopeLogs": "ส่งออก Logs เป็น",
+                "scopeNetwork": "ส่งออก Network เป็น",
+                "text": "ข้อความธรรมดา",
+                "title": "ส่งออก"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "การไป-กลับของ AeroVault",
+                "connectivity": "การตรวจสอบการเชื่อมต่อที่ใช้งานอยู่",
+                "copyResults": "คัดลอกผลลัพธ์",
+                "copyResultsTitle": "คัดลอกผลลัพธ์เป็น Markdown",
+                "i18nSweep": "การกวาดคีย์ i18n",
+                "ipcSpeed": "ตัวอย่างความเร็ว IPC",
+                "knownHosts": "การอ่าน known_hosts",
+                "passed": "ผ่าน",
+                "pluginIntegrity": "ความสมบูรณ์ของปลั๊กอิน",
+                "providerSelftest": "การทดสอบตนเองของผู้ให้บริการ (อ่านอย่างเดียว)",
+                "runAll": "เรียกใช้ทั้งหมด",
+                "runOne": "เรียกใช้การทดสอบนี้",
+                "vaultRoundtrip": "การไป-กลับของห้องนิรภัย"
+            },
+            "bundle": {
+                "title": "ส่งออกชุดข้อมูลวินิจฉัย (ZIP)"
+            }
         },
         "menu": {
             "file": "ไฟล์",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "ตัวจัดการการเมาท์...",
             "activityLog": "บันทึกกิจกรรม",
-            "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด"
+            "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "รอคำสั่ง...",

@@ -77,6 +77,7 @@ interface TitlebarProps {
     onToggleTerminal: () => void;
     onToggleAgent: () => void;
     onToggleActivityLog: () => void;
+    onToggleDebugPanel: () => void;
     onQuit: () => void;
     onCheckForUpdates: () => void;
     hasActivity: boolean;
@@ -150,12 +151,12 @@ const TitlebarMenu: React.FC<TitlebarMenuProps> = ({ label, items, isOpen, onOpe
                                         : 'text-[var(--color-text-primary)] hover:bg-[var(--color-accent)] hover:text-white cursor-default'
                                 }`}
                             >
-                                <span className="flex items-center gap-1.5">
+                                <span className="flex items-center gap-1.5 whitespace-nowrap">
                                     <span className={`inline-block w-3 text-center ${item.checked ? '' : 'opacity-0'}`} aria-hidden>✓</span>
                                     <span>{item.label}</span>
                                 </span>
                                 {item.shortcut && (
-                                    <span className={`ml-8 text-[10px] ${item.disabled ? 'text-[var(--color-text-tertiary)]' : 'text-[var(--color-text-tertiary)] group-hover:text-white/70'}`}>{item.shortcut}</span>
+                                    <span className={`ml-8 text-[10px] whitespace-nowrap ${item.disabled ? 'text-[var(--color-text-tertiary)]' : 'text-[var(--color-text-tertiary)] group-hover:text-white/70'}`}>{item.shortcut}</span>
                                 )}
                             </button>
                         )
@@ -188,7 +189,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onRefresh, onNewFolder, onToggleDevTools, onToggleTheme,
         onToggleDebugMode, onRename, onDelete, onSelectAll,
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
-        onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onQuit,
+        onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onToggleDebugPanel, onQuit,
         onCheckForUpdates, hasActivity,
         cardLayout, onToggleCardLayout,
     } = props;
@@ -280,6 +281,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('menu.toggleAgent'), shortcut: 'Ctrl+3', onClick: onToggleAgent },
         { separator: true },
         { label: t('menu.activityLog'), shortcut: 'Ctrl+Shift+L', onClick: onToggleActivityLog },
+        { label: t('menu.debugPanel'), shortcut: 'Ctrl+Shift+M', onClick: onToggleDebugPanel },
     ];
 
     const helpMenu: MenuEntry[] = [

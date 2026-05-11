@@ -42,10 +42,24 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
             ]
         },
         {
+            category: t('shortcuts.view'), items: [
+                { keys: ['Ctrl', '1'], action: t('shortcuts.toggleEditor') },
+                { keys: ['Ctrl', '2'], action: t('shortcuts.toggleTerminal') },
+                { keys: ['Ctrl', '3'], action: t('shortcuts.toggleAgent') },
+                { keys: ['Ctrl', 'Shift', 'D'], action: t('shortcuts.toggleDevtools') },
+                { keys: ['Ctrl', 'Shift', 'L'], action: t('shortcuts.activityLog') },
+                { keys: ['Ctrl', 'Shift', 'M'], action: t('shortcuts.debugPanel') },
+                { keys: ['Ctrl', 'Shift', 'V'], action: t('shortcuts.detailedCards') },
+                { keys: ['Ctrl', 'T'], action: t('shortcuts.toggleTheme') },
+            ]
+        },
+        {
             category: t('shortcuts.general'), items: [
+                { keys: ['Ctrl', 'Shift', 'P'], action: t('shortcuts.commandPalette') },
                 { keys: ['Ctrl', 'F'], action: t('shortcuts.focusSearch') },
                 { keys: ['Ctrl', ','], action: t('shortcuts.openSettings') },
                 { keys: ['F1'], action: t('shortcuts.showShortcuts') },
+                { keys: ['Ctrl', 'Q'], action: t('shortcuts.quit') },
                 { keys: ['Escape'], action: t('shortcuts.closeDialog') },
             ]
         },
@@ -72,7 +86,7 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ isOpen, onClos
             {/* Dialog */}
             <div
                 {...modalDrag.panelProps}
-                className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-in"
+                className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden animate-scale-in"
             >
                 {/* Header */}
                 <div

@@ -1652,7 +1652,18 @@
             "openSettings": "Asetukset",
             "showShortcuts": "Näytä pikanäppäimet",
             "closeDialog": "Sulje / Peruuta",
-            "helpText": "Paina [F1] ohjeita varten"
+            "helpText": "Paina [F1] ohjeita varten",
+            "activityLog": "Toimintaloki",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Yksityiskohtaiset palvelinkortit",
+            "quit": "Lopeta AeroFTP",
+            "toggleAgent": "Vaihda AeroAgent",
+            "toggleDevtools": "Vaihda AeroTools",
+            "toggleEditor": "Vaihda editori",
+            "toggleTerminal": "Vaihda pääte",
+            "toggleTheme": "Vaihda teemaa",
+            "view": "Näytä"
         },
         "overwrite": {
             "title": "Tiedosto on jo olemassa",
@@ -3165,7 +3176,11 @@
                 "pause": "Tauko",
                 "copyAll": "Kopioi kaikki",
                 "clear": "Tyhjennä",
-                "emptyMessage": "Konsolituloste näkyy tässä kun virheenkorjaustila on aktiivinen."
+                "emptyMessage": "Konsolituloste näkyy tässä kun virheenkorjaustila on aktiivinen.",
+                "allSources": "Kaikki lähteet",
+                "sourceFilterTitle": "Suodata lähteen mukaan",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React-tila",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopioi tiedostoluettelo leikepöydälle",
             "filesCopied": "{count} tiedostomerkintää kopioitu leikepöydälle",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (taulukko)",
+                "json": "JSON (taulukko)",
+                "ndjson": "NDJSON (yksi per rivi)",
+                "scopeLogs": "Vie Logs muodossa",
+                "scopeNetwork": "Vie Network muodossa",
+                "text": "Pelkkä teksti",
+                "title": "Vie"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault edestakaisin",
+                "connectivity": "Aktiivisen yhteyden luotain",
+                "copyResults": "Kopioi tulokset",
+                "copyResultsTitle": "Kopioi tulokset Markdownina",
+                "i18nSweep": "i18n-avainten läpikäynti",
+                "ipcSpeed": "IPC-nopeusnäyte",
+                "knownHosts": "known_hosts-luku",
+                "passed": "läpäisty",
+                "pluginIntegrity": "Liitännäisen eheys",
+                "providerSelftest": "Palveluntarjoajan itsetesti (vain luku)",
+                "runAll": "Suorita kaikki",
+                "runOne": "Suorita tämä testi",
+                "vaultRoundtrip": "Holvin edestakaisin"
+            },
+            "bundle": {
+                "title": "Vie diagnostiikkapaketti (ZIP)"
+            }
         },
         "menu": {
             "file": "Tiedosto",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Liitäntöjen hallinta...",
             "activityLog": "Tapahtumaloki",
-            "detailedCards": "Yksityiskohtaiset palvelinkortit"
+            "detailedCards": "Yksityiskohtaiset palvelinkortit",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Odotetaan komentoja...",

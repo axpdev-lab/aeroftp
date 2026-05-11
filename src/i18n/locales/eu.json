@@ -1652,7 +1652,18 @@
             "openSettings": "Ireki ezarpenak",
             "showShortcuts": "Erakutsi lasterbideak",
             "closeDialog": "Itxi elkarrizketa / Ezeztatu",
-            "helpText": "Sakatu [F1] edozein unetan hau ikusteko"
+            "helpText": "Sakatu [F1] edozein unetan hau ikusteko",
+            "activityLog": "Jardueraren erregistroa",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Zerbitzari-txartel xeheak",
+            "quit": "Irten AeroFTP-tik",
+            "toggleAgent": "Txandakatu AeroAgent",
+            "toggleDevtools": "Txandakatu AeroTools",
+            "toggleEditor": "Txandakatu editorea",
+            "toggleTerminal": "Txandakatu terminala",
+            "toggleTheme": "Aldatu gaia",
+            "view": "Ikuspegia"
         },
         "overwrite": {
             "title": "Fitxategia badago lehendik",
@@ -3165,7 +3176,11 @@
                 "pause": "Pausatu",
                 "copyAll": "Denak kopiatu",
                 "clear": "Garbitu",
-                "emptyMessage": "Kontsolaren irteera hemen agertuko da Arazketa Modua aktibo dagoenean."
+                "emptyMessage": "Kontsolaren irteera hemen agertuko da Arazketa Modua aktibo dagoenean.",
+                "allSources": "Iturri guztiak",
+                "sourceFilterTitle": "Iragazi iturriaren arabera",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React Modua",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopiatu fitxategi-zerrenda arbelera",
             "filesCopied": "{count} fitxategi sarrera arbelera kopiatuak",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (kalkulu-orria)",
+                "json": "JSON (array)",
+                "ndjson": "NDJSON (bat lerroko)",
+                "scopeLogs": "Esportatu Logs honela",
+                "scopeNetwork": "Esportatu Network honela",
+                "text": "Testu soila",
+                "title": "Esportatu"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault joan-etorria",
+                "connectivity": "Konexio aktiboaren proba",
+                "copyResults": "Kopiatu emaitzak",
+                "copyResultsTitle": "Kopiatu emaitzak Markdown gisa",
+                "i18nSweep": "i18n gakoen barreiatzea",
+                "ipcSpeed": "IPC abiadura lagina",
+                "knownHosts": "known_hosts irakurketa",
+                "passed": "gainditutakoak",
+                "pluginIntegrity": "Pluginaren osotasuna",
+                "providerSelftest": "Hornitzailearen auto-proba (irakurtzeko soilik)",
+                "runAll": "Exekutatu denak",
+                "runOne": "Exekutatu proba hau",
+                "vaultRoundtrip": "Kutxa gotorraren joan-etorria"
+            },
+            "bundle": {
+                "title": "Esportatu diagnostiko-sorta (ZIP)"
+            }
         },
         "menu": {
             "file": "Fitxategia",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Muntaketa-kudeatzailea...",
             "activityLog": "Jarduera erregistroa",
-            "detailedCards": "Zerbitzari-txartel zehatzak"
+            "detailedCards": "Zerbitzari-txartel zehatzak",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",

@@ -1652,7 +1652,18 @@
             "openSettings": "ការកំណត់",
             "showShortcuts": "បង្ហាញផ្លូវកាត់",
             "closeDialog": "បិទ / បោះបង់",
-            "helpText": "ចុច [F1] សម្រាប់ជំនួយ"
+            "helpText": "ចុច [F1] សម្រាប់ជំនួយ",
+            "activityLog": "កំណត់ហេតុសកម្មភាព",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "កាតម៉ាស៊ីនមេលម្អិត",
+            "quit": "ចាកចេញ AeroFTP",
+            "toggleAgent": "បិទ/បើក AeroAgent",
+            "toggleDevtools": "បិទ/បើក AeroTools",
+            "toggleEditor": "បិទ/បើកកម្មវិធីកែសម្រួល",
+            "toggleTerminal": "បិទ/បើក Terminal",
+            "toggleTheme": "ប្តូររូបរាង",
+            "view": "ទិដ្ឋភាព"
         },
         "overwrite": {
             "title": "ឯកសារមានរួចហើយ",
@@ -3165,7 +3176,11 @@
                 "pause": "ផ្អាក",
                 "copyAll": "ចម្លងទាំងអស់",
                 "clear": "សម្អាត",
-                "emptyMessage": "គ្មានកំណត់ហេតុ"
+                "emptyMessage": "គ្មានកំណត់ហេតុ",
+                "allSources": "ប្រភពទាំងអស់",
+                "sourceFilterTitle": "ត្រងតាមប្រភព",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "របៀប React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "ចំលងបញ្ជីឯកសារទៅក្ដារតម្បៀតខ្ទាស់",
             "filesCopied": "បានចម្លង {count} ធាតុឯកសារទៅក្តារតម្បៀតខ្ទាស់",
-            "title": "កែកំហុស"
+            "title": "កែកំហុស",
+            "export": {
+                "csv": "CSV (សៀវភៅបញ្ជី)",
+                "json": "JSON (អារ៉េ)",
+                "ndjson": "NDJSON (មួយក្នុងមួយបន្ទាត់)",
+                "scopeLogs": "នាំចេញ Logs ជា",
+                "scopeNetwork": "នាំចេញ Network ជា",
+                "text": "អត្ថបទធម្មតា",
+                "title": "នាំចេញ"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "ដំណើរទៅមកនៃ AeroVault",
+                "connectivity": "ការត្រួតពិនិត្យតំណភ្ជាប់សកម្ម",
+                "copyResults": "ចម្លងលទ្ធផល",
+                "copyResultsTitle": "ចម្លងលទ្ធផលជា Markdown",
+                "i18nSweep": "ការវាស់វែងគន្លឹះ i18n",
+                "ipcSpeed": "គំរូល្បឿន IPC",
+                "knownHosts": "ការអាន known_hosts",
+                "passed": "ជោគជ័យ",
+                "pluginIntegrity": "ភាពពេញលេញនៃកម្មវិធីជំនួយ",
+                "providerSelftest": "ការសាកល្បងខ្លួនឯងរបស់អ្នកផ្ដល់សេវា (អានតែប៉ុណ្ណោះ)",
+                "runAll": "ដំណើរការទាំងអស់",
+                "runOne": "ដំណើរការការសាកល្បងនេះ",
+                "vaultRoundtrip": "ដំណើរទៅមកនៃ Vault"
+            },
+            "bundle": {
+                "title": "នាំចេញកញ្ចប់វិនិច្ឆ័យ (ZIP)"
+            }
         },
         "menu": {
             "file": "ឯកសារ",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "កម្មវិធីគ្រប់គ្រងការភ្ជាប់...",
             "activityLog": "កំណត់ហេតុសកម្មភាព",
-            "detailedCards": "កាតម៉ាស៊ីនមេលម្អិត"
+            "detailedCards": "កាតម៉ាស៊ីនមេលម្អិត",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "កំពុងរង់ចាំពាក្យបញ្ជា...",

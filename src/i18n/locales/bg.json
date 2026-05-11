@@ -1652,7 +1652,18 @@
             "openSettings": "Настройки",
             "showShortcuts": "Покажи комбинации",
             "closeDialog": "Затвори / Отказ",
-            "helpText": "Натисни [F1] за помощ"
+            "helpText": "Натисни [F1] за помощ",
+            "activityLog": "Дневник на активността",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Подробни карти на сървъри",
+            "quit": "Изход от AeroFTP",
+            "toggleAgent": "Превключи AeroAgent",
+            "toggleDevtools": "Превключи AeroTools",
+            "toggleEditor": "Превключи редактора",
+            "toggleTerminal": "Превключи терминала",
+            "toggleTheme": "Смени темата",
+            "view": "Изглед"
         },
         "overwrite": {
             "title": "Файлът вече съществува",
@@ -3165,7 +3176,11 @@
                 "pause": "Пауза",
                 "copyAll": "Копиране на всички",
                 "clear": "Изчистване",
-                "emptyMessage": "Изходът от конзолата ще се появи тук, когато режимът за отстраняване на грешки е активен."
+                "emptyMessage": "Изходът от конзолата ще се появи тук, когато режимът за отстраняване на грешки е активен.",
+                "allSources": "Всички източници",
+                "sourceFilterTitle": "Филтриране по източник",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React режим",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Копирай списък с файлове в клипборда",
             "filesCopied": "{count} записа на файлове са копирани в клипборда",
-            "title": "Отстраняване на грешки"
+            "title": "Отстраняване на грешки",
+            "export": {
+                "csv": "CSV (електронна таблица)",
+                "json": "JSON (масив)",
+                "ndjson": "NDJSON (по един на ред)",
+                "scopeLogs": "Експортиране на Logs като",
+                "scopeNetwork": "Експортиране на Network като",
+                "text": "Обикновен текст",
+                "title": "Експортиране"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault обиколка",
+                "connectivity": "Проверка на активна връзка",
+                "copyResults": "Копирай резултатите",
+                "copyResultsTitle": "Копирай резултатите като Markdown",
+                "i18nSweep": "i18n преглед на ключове",
+                "ipcSpeed": "IPC проба на скоростта",
+                "knownHosts": "known_hosts четене",
+                "passed": "успешни",
+                "pluginIntegrity": "Цялост на плъгина",
+                "providerSelftest": "Самотест на доставчика (само за четене)",
+                "runAll": "Изпълни всички",
+                "runOne": "Изпълни този тест",
+                "vaultRoundtrip": "Обиколка на сейфа"
+            },
+            "bundle": {
+                "title": "Експортиране на диагностичен пакет (ZIP)"
+            }
         },
         "menu": {
             "file": "Файл",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Мениджър на монтирания...",
             "activityLog": "Дневник на активността",
-            "detailedCards": "Подробни карти на сървърите"
+            "detailedCards": "Подробни карти на сървърите",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Очакване на команди...",

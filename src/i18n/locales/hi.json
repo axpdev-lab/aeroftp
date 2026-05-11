@@ -1652,7 +1652,18 @@
             "openSettings": "सेटिंग्स खोलें",
             "showShortcuts": "शॉर्टकट दिखाएं",
             "closeDialog": "संवाद बंद करें / रद्द करें",
-            "helpText": "सहायता के लिए [F1] दबाएं"
+            "helpText": "सहायता के लिए [F1] दबाएं",
+            "activityLog": "गतिविधि लॉग",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "विस्तृत सर्वर कार्ड",
+            "quit": "AeroFTP बंद करें",
+            "toggleAgent": "AeroAgent टॉगल करें",
+            "toggleDevtools": "AeroTools टॉगल करें",
+            "toggleEditor": "एडिटर टॉगल करें",
+            "toggleTerminal": "टर्मिनल टॉगल करें",
+            "toggleTheme": "थीम बदलें",
+            "view": "दृश्य"
         },
         "overwrite": {
             "title": "फ़ाइल पहले से मौजूद है",
@@ -3165,7 +3176,11 @@
                 "pause": "रोकें",
                 "copyAll": "सभी कॉपी करें",
                 "clear": "साफ़ करें",
-                "emptyMessage": "डीबग मोड सक्रिय होने पर कंसोल आउटपुट यहाँ दिखाई देगा।"
+                "emptyMessage": "डीबग मोड सक्रिय होने पर कंसोल आउटपुट यहाँ दिखाई देगा।",
+                "allSources": "सभी स्रोत",
+                "sourceFilterTitle": "स्रोत के अनुसार फ़िल्टर करें",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React मोड",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "फ़ाइल सूची क्लिपबोर्ड पर कॉपी करें",
             "filesCopied": "{count} फ़ाइल प्रविष्टियाँ क्लिपबोर्ड पर कॉपी की गईं",
-            "title": "डीबग"
+            "title": "डीबग",
+            "export": {
+                "csv": "CSV (स्प्रेडशीट)",
+                "json": "JSON (सरणी)",
+                "ndjson": "NDJSON (प्रति पंक्ति एक)",
+                "scopeLogs": "Logs को इस रूप में निर्यात करें",
+                "scopeNetwork": "Network को इस रूप में निर्यात करें",
+                "text": "सादा पाठ",
+                "title": "निर्यात"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault राउंड-ट्रिप",
+                "connectivity": "सक्रिय कनेक्शन जाँच",
+                "copyResults": "परिणाम कॉपी करें",
+                "copyResultsTitle": "परिणाम Markdown के रूप में कॉपी करें",
+                "i18nSweep": "i18n कुंजी स्वीप",
+                "ipcSpeed": "IPC गति नमूना",
+                "knownHosts": "known_hosts पठन",
+                "passed": "उत्तीर्ण",
+                "pluginIntegrity": "प्लगइन अखंडता",
+                "providerSelftest": "प्रदाता स्व-परीक्षण (केवल पठन)",
+                "runAll": "सभी चलाएँ",
+                "runOne": "यह परीक्षण चलाएँ",
+                "vaultRoundtrip": "वॉल्ट राउंड-ट्रिप"
+            },
+            "bundle": {
+                "title": "डायग्नोस्टिक बंडल निर्यात करें (ZIP)"
+            }
         },
         "menu": {
             "file": "फ़ाइल",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "माउंट प्रबंधक...",
             "activityLog": "गतिविधि लॉग",
-            "detailedCards": "विस्तृत सर्वर कार्ड"
+            "detailedCards": "विस्तृत सर्वर कार्ड",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "कमांड की प्रतीक्षा में...",

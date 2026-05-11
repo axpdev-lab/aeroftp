@@ -1645,7 +1645,18 @@
             "openSettings": "Բացել կարգավորումները",
             "showShortcuts": "Ցուցադրել դյուրանցումները",
             "closeDialog": "Փակել երկխոսությունը / Չեղարկել",
-            "helpText": "Սեղմեք [F1] ցանկացած ժամանակ սա տեսնելու համար"
+            "helpText": "Սեղմեք [F1] ցանկացած ժամանակ սա տեսնելու համար",
+            "activityLog": "Գործունեության մատյան",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Մանրամասն սերվերի քարտեր",
+            "quit": "Դուրս գալ AeroFTP-ից",
+            "toggleAgent": "Միացնել/Անջատել AeroAgent",
+            "toggleDevtools": "Միացնել/Անջատել AeroTools",
+            "toggleEditor": "Միացնել/Անջատել խմբագիրը",
+            "toggleTerminal": "Միացնել/Անջատել տերմինալը",
+            "toggleTheme": "Փոխել թեման",
+            "view": "Տեսք"
         },
         "overwrite": {
             "title": "Ֆայլը արդեն գոյություն ունի",
@@ -3158,7 +3169,11 @@
                 "pause": "Կանգնեցնել",
                 "copyAll": "Պատճենել բոլորը",
                 "clear": "Մաքրել",
-                "emptyMessage": "Վերահսկման ելքը կայտնվի այստեղ՝ երբ վրիպազերկման ռեժիմը ակտիվ է։"
+                "emptyMessage": "Վերահսկման ելքը կայտնվի այստեղ՝ երբ վրիպազերկման ռեժիմը ակտիվ է։",
+                "allSources": "Բոլոր աղբյուրները",
+                "sourceFilterTitle": "Զտել ըստ աղբյուրի",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React ռեժիմ",
@@ -3176,7 +3191,34 @@
             },
             "copyFileListToClipboard": "Պատճենել ֆայլերի ցանկը սեղմատախտակին",
             "filesCopied": "{count} ֆայլի գրառում պատճենվեց սեղմատախտակ",
-            "title": "Վրիպազերկում"
+            "title": "Վրիպազերկում",
+            "export": {
+                "csv": "CSV (աղյուսակ)",
+                "json": "JSON (զանգված)",
+                "ndjson": "NDJSON (մեկը՝ տողի)",
+                "scopeLogs": "Արտահանել Logs-ը որպես",
+                "scopeNetwork": "Արտահանել Network-ը որպես",
+                "text": "Սովորական տեքստ",
+                "title": "Արտահանել"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault շրջագայություն",
+                "connectivity": "Ակտիվ կապի ստուգում",
+                "copyResults": "Պատճենել արդյունքները",
+                "copyResultsTitle": "Պատճենել արդյունքները որպես Markdown",
+                "i18nSweep": "i18n բանալիների սկան",
+                "ipcSpeed": "IPC արագության նմուշ",
+                "knownHosts": "known_hosts ընթերցում",
+                "passed": "հաջողված",
+                "pluginIntegrity": "Հավելման ամբողջականություն",
+                "providerSelftest": "Մատակարարի ինքնաթեստ (միայն ընթերցման)",
+                "runAll": "Կատարել բոլորը",
+                "runOne": "Կատարել այս թեստը",
+                "vaultRoundtrip": "Պահոցի շրջագայություն"
+            },
+            "bundle": {
+                "title": "Արտահանել ախտորոշիչ փաթեթը (ZIP)"
+            }
         },
         "menu": {
             "file": "Ֆայլ",
@@ -3211,7 +3253,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Միացման կառավարիչ...",
             "activityLog": "Գործունեության մատյան",
-            "detailedCards": "Մանրամասն սերվերի քարտեր"
+            "detailedCards": "Մանրամասն սերվերի քարտեր",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Սպասում է հրամանների...",

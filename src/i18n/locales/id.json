@@ -1652,7 +1652,18 @@
             "openSettings": "Pengaturan",
             "showShortcuts": "Lihat Pintasan",
             "closeDialog": "Tutup / Batal",
-            "helpText": "Tekan [F1] untuk bantuan"
+            "helpText": "Tekan [F1] untuk bantuan",
+            "activityLog": "Log Aktivitas",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Kartu server terperinci",
+            "quit": "Keluar dari AeroFTP",
+            "toggleAgent": "Alihkan AeroAgent",
+            "toggleDevtools": "Alihkan AeroTools",
+            "toggleEditor": "Alihkan Editor",
+            "toggleTerminal": "Alihkan Terminal",
+            "toggleTheme": "Ubah tema",
+            "view": "Tampilan"
         },
         "overwrite": {
             "title": "File sudah ada",
@@ -3165,7 +3176,11 @@
                 "pause": "Jeda",
                 "copyAll": "Salin Semua",
                 "clear": "Bersihkan",
-                "emptyMessage": "Output konsol akan muncul di sini saat mode debug aktif."
+                "emptyMessage": "Output konsol akan muncul di sini saat mode debug aktif.",
+                "allSources": "Semua sumber",
+                "sourceFilterTitle": "Filter berdasarkan sumber",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Mode React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Salin daftar file ke clipboard",
             "filesCopied": "{count} entri file disalin ke clipboard",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (spreadsheet)",
+                "json": "JSON (larik)",
+                "ndjson": "NDJSON (satu per baris)",
+                "scopeLogs": "Ekspor Logs sebagai",
+                "scopeNetwork": "Ekspor Network sebagai",
+                "text": "Teks biasa",
+                "title": "Ekspor"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Putaran AeroVault",
+                "connectivity": "Pemeriksaan koneksi aktif",
+                "copyResults": "Salin hasil",
+                "copyResultsTitle": "Salin hasil sebagai Markdown",
+                "i18nSweep": "Pemindaian kunci i18n",
+                "ipcSpeed": "Sampel kecepatan IPC",
+                "knownHosts": "pembacaan known_hosts",
+                "passed": "lulus",
+                "pluginIntegrity": "Integritas plugin",
+                "providerSelftest": "Uji mandiri penyedia (hanya baca)",
+                "runAll": "Jalankan semua",
+                "runOne": "Jalankan tes ini",
+                "vaultRoundtrip": "Putaran brankas"
+            },
+            "bundle": {
+                "title": "Ekspor paket diagnostik (ZIP)"
+            }
         },
         "menu": {
             "file": "File",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Pengelola Mount...",
             "activityLog": "Log Aktivitas",
-            "detailedCards": "Kartu server terperinci"
+            "detailedCards": "Kartu server terperinci",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu perintah...",

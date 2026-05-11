@@ -1652,7 +1652,18 @@
             "openSettings": "პარამეტრები",
             "showShortcuts": "მალსახმობების ჩვენება",
             "closeDialog": "დახურვა / გაუქმება",
-            "helpText": "დააჭირეთ [F1] დახმარებისთვის"
+            "helpText": "დააჭირეთ [F1] დახმარებისთვის",
+            "activityLog": "აქტივობის ჟურნალი",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "სერვერის დეტალური ბარათები",
+            "quit": "AeroFTP-დან გასვლა",
+            "toggleAgent": "AeroAgent-ის გადართვა",
+            "toggleDevtools": "AeroTools-ის გადართვა",
+            "toggleEditor": "რედაქტორის გადართვა",
+            "toggleTerminal": "ტერმინალის გადართვა",
+            "toggleTheme": "თემის შეცვლა",
+            "view": "ხედი"
         },
         "overwrite": {
             "title": "ფაილი უკვე არსებობს",
@@ -3165,7 +3176,11 @@
                 "pause": "დაპაუზება",
                 "copyAll": "ყველას კოპირება",
                 "clear": "გასუფთავება",
-                "emptyMessage": "კონსოლის გამომავალი ინფორმაცია გამოჩნდება აქ, როდესაც გამართვის რეჟიმი აქტიურია."
+                "emptyMessage": "კონსოლის გამომავალი ინფორმაცია გამოჩნდება აქ, როდესაც გამართვის რეჟიმი აქტიურია.",
+                "allSources": "ყველა წყარო",
+                "sourceFilterTitle": "გაფილტვრა წყაროს მიხედვით",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React რეჟიმი",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "ფაილების სიის clipboard-ში კოპირება",
             "filesCopied": "{count} ფაილის ჩანაწერი დაკოპირდა ბუფერში",
-            "title": "გამართვა"
+            "title": "გამართვა",
+            "export": {
+                "csv": "CSV (ცხრილი)",
+                "json": "JSON (მასივი)",
+                "ndjson": "NDJSON (თითო ხაზზე)",
+                "scopeLogs": "Logs-ის ექსპორტი როგორც",
+                "scopeNetwork": "Network-ის ექსპორტი როგორც",
+                "text": "უბრალო ტექსტი",
+                "title": "ექსპორტი"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault მრგვალი მოგზაურობა",
+                "connectivity": "აქტიური კავშირის შემოწმება",
+                "copyResults": "შედეგების კოპირება",
+                "copyResultsTitle": "შედეგების კოპირება Markdown-ის სახით",
+                "i18nSweep": "i18n გასაღებების სკანირება",
+                "ipcSpeed": "IPC სიჩქარის ნიმუში",
+                "knownHosts": "known_hosts წაკითხვა",
+                "passed": "გავიდა",
+                "pluginIntegrity": "მოდულის მთლიანობა",
+                "providerSelftest": "მომწოდებლის თვითტესტი (მხოლოდ წაკითხვა)",
+                "runAll": "ყველას გაშვება",
+                "runOne": "ამ ტესტის გაშვება",
+                "vaultRoundtrip": "სეიფის მრგვალი მოგზაურობა"
+            },
+            "bundle": {
+                "title": "დიაგნოსტიკური პაკეტის ექსპორტი (ZIP)"
+            }
         },
         "menu": {
             "file": "ფაილი",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "მონტირების მენეჯერი...",
             "activityLog": "აქტივობის ჟურნალი",
-            "detailedCards": "დეტალური სერვერის ბარათები"
+            "detailedCards": "დეტალური სერვერის ბარათები",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "ბრძანებების მოლოდინში...",

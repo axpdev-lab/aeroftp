@@ -1652,7 +1652,18 @@
             "openSettings": "Cài đặt",
             "showShortcuts": "Hiện phím tắt",
             "closeDialog": "Đóng / Hủy",
-            "helpText": "Nhấn [F1] để xem trợ giúp"
+            "helpText": "Nhấn [F1] để xem trợ giúp",
+            "activityLog": "Nhật ký hoạt động",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Thẻ máy chủ chi tiết",
+            "quit": "Thoát AeroFTP",
+            "toggleAgent": "Bật/tắt AeroAgent",
+            "toggleDevtools": "Bật/tắt AeroTools",
+            "toggleEditor": "Bật/tắt Trình soạn thảo",
+            "toggleTerminal": "Bật/tắt Terminal",
+            "toggleTheme": "Đổi giao diện",
+            "view": "Xem"
         },
         "overwrite": {
             "title": "Tệp đã tồn tại",
@@ -3165,7 +3176,11 @@
                 "pause": "Tạm dừng",
                 "copyAll": "Sao chép tất cả",
                 "clear": "Xóa",
-                "emptyMessage": "Đầu ra bảng điều khiển sẽ xuất hiện ở đây khi Chế độ gỡ lỗi đang hoạt động."
+                "emptyMessage": "Đầu ra bảng điều khiển sẽ xuất hiện ở đây khi Chế độ gỡ lỗi đang hoạt động.",
+                "allSources": "Tất cả nguồn",
+                "sourceFilterTitle": "Lọc theo nguồn",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Chế độ React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Sao chép danh sách tệp vào clipboard",
             "filesCopied": "Đã sao chép {count} mục tệp vào bộ nhớ tạm",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (bảng tính)",
+                "json": "JSON (mảng)",
+                "ndjson": "NDJSON (mỗi dòng một mục)",
+                "scopeLogs": "Xuất Logs dưới dạng",
+                "scopeNetwork": "Xuất Network dưới dạng",
+                "text": "Văn bản thuần",
+                "title": "Xuất"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Vòng lặp AeroVault",
+                "connectivity": "Kiểm tra kết nối đang hoạt động",
+                "copyResults": "Sao chép kết quả",
+                "copyResultsTitle": "Sao chép kết quả dưới dạng Markdown",
+                "i18nSweep": "Quét khóa i18n",
+                "ipcSpeed": "Mẫu tốc độ IPC",
+                "knownHosts": "đọc known_hosts",
+                "passed": "đã đạt",
+                "pluginIntegrity": "Tính toàn vẹn của plugin",
+                "providerSelftest": "Tự kiểm tra nhà cung cấp (chỉ đọc)",
+                "runAll": "Chạy tất cả",
+                "runOne": "Chạy bài kiểm tra này",
+                "vaultRoundtrip": "Vòng lặp kho"
+            },
+            "bundle": {
+                "title": "Xuất gói chẩn đoán (ZIP)"
+            }
         },
         "menu": {
             "file": "Tệp",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Trình quản lý gắn kết...",
             "activityLog": "Nhật ký hoạt động",
-            "detailedCards": "Thẻ máy chủ chi tiết"
+            "detailedCards": "Thẻ máy chủ chi tiết",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Đang chờ lệnh...",

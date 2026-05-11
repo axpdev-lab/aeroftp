@@ -1652,7 +1652,18 @@
             "openSettings": "Beállítások",
             "showShortcuts": "Parancsok mutatása",
             "closeDialog": "Bezárás / Mégse",
-            "helpText": "Nyomjon [F1]-et a segítségért"
+            "helpText": "Nyomjon [F1]-et a segítségért",
+            "activityLog": "Tevékenységi napló",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Részletes szerverkártyák",
+            "quit": "Kilépés az AeroFTP-ből",
+            "toggleAgent": "AeroAgent be/ki",
+            "toggleDevtools": "AeroTools be/ki",
+            "toggleEditor": "Szerkesztő be/ki",
+            "toggleTerminal": "Terminál be/ki",
+            "toggleTheme": "Téma váltása",
+            "view": "Nézet"
         },
         "overwrite": {
             "title": "A fájl már létezik",
@@ -3165,7 +3176,11 @@
                 "pause": "Szünet",
                 "copyAll": "Mindent másol",
                 "clear": "Törlés",
-                "emptyMessage": "A konzol kimenet itt jelenik meg, ha a hibakeresési mód aktív."
+                "emptyMessage": "A konzol kimenet itt jelenik meg, ha a hibakeresési mód aktív.",
+                "allSources": "Összes forrás",
+                "sourceFilterTitle": "Szűrés forrás szerint",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React mód",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Fájllista másolása vágólapra",
             "filesCopied": "{count} fájlbejegyzés másolva a vágólapra",
-            "title": "Hibakeresés"
+            "title": "Hibakeresés",
+            "export": {
+                "csv": "CSV (táblázat)",
+                "json": "JSON (tömb)",
+                "ndjson": "NDJSON (soronként egy)",
+                "scopeLogs": "Logs exportálása mint",
+                "scopeNetwork": "Network exportálása mint",
+                "text": "Egyszerű szöveg",
+                "title": "Exportálás"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault oda-vissza",
+                "connectivity": "Aktív kapcsolat ellenőrzése",
+                "copyResults": "Eredmények másolása",
+                "copyResultsTitle": "Eredmények másolása Markdown formátumban",
+                "i18nSweep": "i18n kulcsok átvizsgálása",
+                "ipcSpeed": "IPC sebesség minta",
+                "knownHosts": "known_hosts olvasás",
+                "passed": "sikerült",
+                "pluginIntegrity": "Bővítmény integritása",
+                "providerSelftest": "Szolgáltató önteszt (csak olvasható)",
+                "runAll": "Összes futtatása",
+                "runOne": "Ezen teszt futtatása",
+                "vaultRoundtrip": "Széf oda-vissza"
+            },
+            "bundle": {
+                "title": "Diagnosztikai csomag exportálása (ZIP)"
+            }
         },
         "menu": {
             "file": "Fájl",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Csatolási kezelő...",
             "activityLog": "Tevékenységnapló",
-            "detailedCards": "Részletes szerverkártyák"
+            "detailedCards": "Részletes szerverkártyák",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",

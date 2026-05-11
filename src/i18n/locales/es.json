@@ -1652,7 +1652,18 @@
             "openSettings": "Abrir configuración",
             "showShortcuts": "Mostrar atajos",
             "closeDialog": "Cerrar ventana / Cancelar",
-            "helpText": "Presiona [F1] en cualquier momento para ver esto"
+            "helpText": "Presiona [F1] en cualquier momento para ver esto",
+            "activityLog": "Registro de actividad",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Tarjetas de servidor detalladas",
+            "quit": "Salir de AeroFTP",
+            "toggleAgent": "Alternar AeroAgent",
+            "toggleDevtools": "Alternar AeroTools",
+            "toggleEditor": "Alternar editor",
+            "toggleTerminal": "Alternar terminal",
+            "toggleTheme": "Cambiar tema",
+            "view": "Vista"
         },
         "overwrite": {
             "title": "El archivo ya existe",
@@ -3165,7 +3176,11 @@
                 "pause": "Pausar",
                 "copyAll": "Copiar todo",
                 "clear": "Limpiar",
-                "emptyMessage": "La salida de consola aparecerá aquí cuando el Modo Depuración esté activo."
+                "emptyMessage": "La salida de consola aparecerá aquí cuando el Modo Depuración esté activo.",
+                "allSources": "Todas las fuentes",
+                "sourceFilterTitle": "Filtrar por fuente",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Modo React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Copiar lista de archivos al portapapeles",
             "filesCopied": "{count} entradas de archivos copiadas al portapapeles",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (hoja de cálculo)",
+                "json": "JSON (matriz)",
+                "ndjson": "NDJSON (uno por línea)",
+                "scopeLogs": "Exportar Logs como",
+                "scopeNetwork": "Exportar Network como",
+                "text": "Texto sin formato",
+                "title": "Exportar"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Ida y vuelta de AeroVault",
+                "connectivity": "Sondeo de conexión activa",
+                "copyResults": "Copiar resultados",
+                "copyResultsTitle": "Copiar resultados como Markdown",
+                "i18nSweep": "Barrido de claves i18n",
+                "ipcSpeed": "Muestra de velocidad IPC",
+                "knownHosts": "lectura de known_hosts",
+                "passed": "superadas",
+                "pluginIntegrity": "Integridad del complemento",
+                "providerSelftest": "Autotest del proveedor (solo lectura)",
+                "runAll": "Ejecutar todo",
+                "runOne": "Ejecutar esta prueba",
+                "vaultRoundtrip": "Ida y vuelta de la caja fuerte"
+            },
+            "bundle": {
+                "title": "Exportar paquete de diagnóstico (ZIP)"
+            }
         },
         "menu": {
             "file": "Archivo",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Administrador de montajes...",
             "activityLog": "Registro de actividad",
-            "detailedCards": "Tarjetas de servidor detalladas"
+            "detailedCards": "Tarjetas de servidor detalladas",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Esperando comandos...",

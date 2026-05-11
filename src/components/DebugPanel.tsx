@@ -3,7 +3,10 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Wifi, Activity, Monitor, ScrollText, Layout, Copy, Trash2, Pause, Play } from 'lucide-react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { X, Wifi, Activity, Monitor, ScrollText, Layout, Copy, Trash2, Pause, Play, Download, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Circle, Loader2, Package } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import type { EffectiveTheme } from '../hooks/useTheme';
 import { TRANSFER_EVENT_BRIDGE } from '../hooks/useTransferEvents';
@@ -14,12 +17,61 @@ function ts() {
     return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-// ─── Global console capture (singleton, survives mount/unmount) ───────────
+// ─── Privacy redaction pipeline ────────────────────────────────────────────
+// Applied to every log entry (JS console, backend Rust, IPC argument summaries)
+// before it reaches the buffer. Default: always on, no toggle. The Rust log file
+// on disk keeps the raw form for offline forensic use; everything that appears
+// in the panel UI, copy-to-clipboard, and future exports is sanitized first.
+//
+// Patterns are ordered most-specific-first so a Bearer token does not get
+// double-replaced by the JWT heuristic. Replacement strings are stable so
+// duplicate detection across log lines still works after redaction.
+const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
+    // API keys (Anthropic, OpenAI projects, generic sk-*)
+    { pattern: /sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}/g, replacement: 'sk-***REDACTED***' },
+    { pattern: /sk_(live|test)_[A-Za-z0-9]{16,}/g, replacement: 'sk_***REDACTED***' },
+    // OAuth Bearer / x-api-key headers
+    { pattern: /\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*/g, replacement: 'Bearer ***REDACTED***' },
+    { pattern: /\bx-api-key\s*[:=]\s*[^\s,;'"<>]+/gi, replacement: 'x-api-key: ***REDACTED***' },
+    { pattern: /\bauthorization\s*[:=]\s*[^\s,;'"<>]+/gi, replacement: 'authorization: ***REDACTED***' },
+    // JWT-shaped tokens (3 base64url segments separated by '.')
+    { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
+    // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host
+    { pattern: /\b((?:ftps?|sftp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
+    // Email addresses
+    { pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***' },
+    // IPv4 addresses, but keep loopback / unspecified for local-debug clarity
+    {
+        pattern: /\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b)((?:\d{1,3}\.){3}\d{1,3})\b/g,
+        replacement: '***.***.***.***',
+    },
+    // Home directories
+    { pattern: /\/home\/[A-Za-z0-9._-]+/g, replacement: '/home/***' },
+    { pattern: /\/Users\/[A-Za-z0-9._-]+/g, replacement: '/Users/***' },
+    { pattern: /C:\\Users\\[^\\]+/gi, replacement: 'C:\\Users\\***' },
+    // Generic high-entropy hex blobs (likely keys / hashes / nonces), 32+ chars
+    { pattern: /\b[A-Fa-f0-9]{32,}\b/g, replacement: '***HEX-REDACTED***' },
+];
+
+function redactSensitive(msg: string): string {
+    if (!msg) return msg;
+    let result = msg;
+    for (const { pattern, replacement } of REDACTION_PATTERNS) {
+        result = result.replace(pattern, replacement);
+    }
+    return result;
+}
+
+// ─── Global console + backend log capture (singleton, survives mount/unmount) ─
+type LogLevelName = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'TRACE';
+type LogSource = 'js' | 'rust';
+
 interface CapturedLog {
     id: number;
     timestamp: string;
-    level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'TRACE';
+    level: LogLevelName;
     message: string;
+    source: LogSource;
 }
 
 const globalLogBuffer: CapturedLog[] = [];
@@ -27,6 +79,18 @@ let globalLogId = 0;
 let globalCaptureRefCount = 0;
 let restoreConsole: (() => void) | null = null;
 const globalLogListeners = new Set<() => void>();
+
+// tauri-plugin-log 2.x emits LogLevel as u16: 1=Trace, 2=Debug, 3=Info, 4=Warn, 5=Error.
+const RUST_LEVEL_MAP: Record<number, LogLevelName> = {
+    1: 'TRACE',
+    2: 'DEBUG',
+    3: 'INFO',
+    4: 'WARN',
+    5: 'ERROR',
+};
+
+let backendBridgeUnlisten: UnlistenFn | null = null;
+let backendBridgeRefCount = 0;
 
 /// Ref-counted patch of `console.{log,warn,error,debug}` that survives as long
 /// as at least one DebugPanel is mounted. When the last panel unmounts, the
@@ -42,8 +106,8 @@ function activateGlobalCapture() {
     const origDebug = console.debug;
 
     const addEntry = (level: CapturedLog['level'], args: unknown[]) => {
-        const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-        const entry: CapturedLog = { id: globalLogId++, timestamp: ts(), level, message: msg };
+        const raw = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+        const entry: CapturedLog = { id: globalLogId++, timestamp: ts(), level, message: redactSensitive(raw), source: 'js' };
         globalLogBuffer.push(entry);
         if (globalLogBuffer.length > 500) globalLogBuffer.splice(0, globalLogBuffer.length - 500);
         queueMicrotask(() => globalLogListeners.forEach(fn => fn()));
@@ -68,6 +132,46 @@ function deactivateGlobalCapture() {
     if (globalCaptureRefCount === 0 && restoreConsole) {
         restoreConsole();
         restoreConsole = null;
+    }
+}
+
+function pushBackendEntry(message: string, level: LogLevelName) {
+    const entry: CapturedLog = { id: globalLogId++, timestamp: ts(), level, message: redactSensitive(message), source: 'rust' };
+    globalLogBuffer.push(entry);
+    if (globalLogBuffer.length > 500) globalLogBuffer.splice(0, globalLogBuffer.length - 500);
+    queueMicrotask(() => globalLogListeners.forEach(fn => fn()));
+}
+
+// Subscribe to backend `log::*` events forwarded by tauri-plugin-log via
+// `TargetKind::Webview`. Ref-counted to mirror activateGlobalCapture: the
+// listener is torn down when the last DebugPanel unmounts.
+function activateBackendLogBridge() {
+    backendBridgeRefCount += 1;
+    if (backendBridgeRefCount > 1) return;
+    // Async setup; intentionally not awaited, fire-and-forget on mount.
+    listen<{ message: string; level: number }>('log://log', (event) => {
+        const lvl = RUST_LEVEL_MAP[event.payload.level] || 'INFO';
+        // Plugin formats with `{level} {target}: {message}` in stdout, but the
+        // emitted payload only carries the message string. Keep as-is so the
+        // user sees the same line the file logger writes.
+        pushBackendEntry(event.payload.message, lvl);
+    }).then((unlisten) => {
+        // If we already detached before the promise resolved, the ref count
+        // is 0 and we should call unlisten immediately.
+        if (backendBridgeRefCount === 0) {
+            unlisten();
+        } else {
+            backendBridgeUnlisten = unlisten;
+        }
+    }).catch(() => { /* tauri host not available (browser preview) */ });
+}
+
+function deactivateBackendLogBridge() {
+    if (backendBridgeRefCount === 0) return;
+    backendBridgeRefCount -= 1;
+    if (backendBridgeRefCount === 0 && backendBridgeUnlisten) {
+        backendBridgeUnlisten();
+        backendBridgeUnlisten = null;
     }
 }
 
@@ -98,7 +202,12 @@ function notifyNetworkListeners() {
 }
 
 function addNetworkEntry(entry: Omit<NetworkEntry, 'id' | 'timestamp'>) {
-    const e: NetworkEntry = { ...entry, id: globalNetworkId++, timestamp: ts() };
+    const e: NetworkEntry = {
+        ...entry,
+        id: globalNetworkId++,
+        timestamp: ts(),
+        detail: redactSensitive(entry.detail || ''),
+    };
     globalNetworkBuffer.push(e);
     if (globalNetworkBuffer.length > 300) globalNetworkBuffer.splice(0, globalNetworkBuffer.length - 300);
     notifyNetworkListeners();
@@ -213,19 +322,212 @@ interface SystemInfo {
     known_hosts_exists: boolean;
 }
 
+// ─── Export helpers ───────────────────────────────────────────────────────
+//
+// Buffers fed to these helpers are ALREADY redacted by `redactSensitive`
+// at push time, so no extra sanitization happens here. The file format
+// determines layout only.
+
+type ExportFormat = 'text' | 'json' | 'ndjson' | 'csv';
+const EXPORT_EXT: Record<ExportFormat, string> = { text: 'log', json: 'json', ndjson: 'ndjson', csv: 'csv' };
+
+function csvEscape(s: string): string {
+    if (/[",\n\r]/.test(s)) {
+        return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+}
+
+function formatLogsText(logs: CapturedLog[]): string {
+    return logs.map(l => `[${l.timestamp}] [${l.source.toUpperCase()}] [${l.level}] ${l.message}`).join('\n');
+}
+
+function formatLogsJson(logs: CapturedLog[]): string {
+    return JSON.stringify(logs, null, 2);
+}
+
+function formatLogsNdjson(logs: CapturedLog[]): string {
+    return logs.map(l => JSON.stringify(l)).join('\n');
+}
+
+function formatLogsCsv(logs: CapturedLog[]): string {
+    const header = 'timestamp,source,level,message';
+    const rows = logs.map(l => `${l.timestamp},${l.source},${l.level},${csvEscape(l.message)}`);
+    return [header, ...rows].join('\n');
+}
+
+function formatNetworkText(events: NetworkEntry[]): string {
+    return events.map(e => {
+        const dur = e.duration ? ` ${e.duration}ms` : '';
+        return `[${e.timestamp}] [${e.type}] [${e.status}]${dur} ${e.command}: ${e.detail}`;
+    }).join('\n');
+}
+
+function formatNetworkJson(events: NetworkEntry[]): string {
+    return JSON.stringify(events, null, 2);
+}
+
+function formatNetworkNdjson(events: NetworkEntry[]): string {
+    return events.map(e => JSON.stringify(e)).join('\n');
+}
+
+function formatNetworkCsv(events: NetworkEntry[]): string {
+    const header = 'timestamp,type,status,command,duration_ms,detail';
+    const rows = events.map(e => [
+        e.timestamp,
+        e.type,
+        e.status,
+        csvEscape(e.command),
+        e.duration != null ? String(e.duration) : '',
+        csvEscape(e.detail),
+    ].join(','));
+    return [header, ...rows].join('\n');
+}
+
+function exportFilename(kind: 'logs' | 'network', fmt: ExportFormat): string {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `aeroftp-${kind}-${stamp}.${EXPORT_EXT[fmt]}`;
+}
+
+async function exportToFile(content: string, kind: 'logs' | 'network', fmt: ExportFormat) {
+    const path = await save({
+        defaultPath: exportFilename(kind, fmt),
+        filters: [{ name: fmt.toUpperCase(), extensions: [EXPORT_EXT[fmt]] }],
+    });
+    if (!path) return;
+    await writeTextFile(path, content);
+}
+
 type LogEntry = CapturedLog;
 
 // TransferEvent type removed: handled by global network capture
 
-type TabId = 'connection' | 'network' | 'system' | 'logs' | 'frontend';
+type TabId = 'connection' | 'network' | 'system' | 'logs' | 'frontend' | 'tests';
 
 const TAB_IDS: { id: TabId; icon: React.ReactNode }[] = [
     { id: 'connection', icon: <Wifi size={13} /> },
     { id: 'network', icon: <Activity size={13} /> },
     { id: 'system', icon: <Monitor size={13} /> },
     { id: 'logs', icon: <ScrollText size={13} /> },
+    { id: 'tests', icon: <FlaskConical size={13} /> },
     { id: 'frontend', icon: <Layout size={13} /> },
 ];
+
+// ─── Tests tab ─────────────────────────────────────────────────────────────
+//
+// 6 tests are backend-driven (Tauri commands in `debug_tests.rs`) and 2 are
+// frontend-only (IPC latency benchmark, i18n key sweep). Each test produces
+// the same shape so the UI renders them uniformly.
+
+type TestStatus = 'idle' | 'running' | 'pass' | 'fail' | 'warn' | 'skipped';
+
+interface TestRunResult {
+    status: 'pass' | 'fail' | 'warn' | 'skipped';
+    duration_ms: number;
+    message: string;
+    details?: string;
+}
+
+interface TestRecord {
+    status: TestStatus;
+    duration_ms?: number;
+    message?: string;
+    details?: string;
+}
+
+type TestId =
+    | 'connectivity'
+    | 'vault_roundtrip'
+    | 'known_hosts'
+    | 'aerovault_roundtrip'
+    | 'plugin_integrity'
+    | 'provider_selftest'
+    | 'ipc_speed'
+    | 'i18n_sweep';
+
+const TEST_CATALOG: { id: TestId; labelKey: string; runner: 'backend' | 'frontend'; cmd?: string }[] = [
+    { id: 'connectivity', labelKey: 'debug.tests.connectivity', runner: 'backend', cmd: 'debug_test_connectivity' },
+    { id: 'vault_roundtrip', labelKey: 'debug.tests.vaultRoundtrip', runner: 'backend', cmd: 'debug_test_vault_roundtrip' },
+    { id: 'known_hosts', labelKey: 'debug.tests.knownHosts', runner: 'backend', cmd: 'debug_test_known_hosts' },
+    { id: 'aerovault_roundtrip', labelKey: 'debug.tests.aerovaultRoundtrip', runner: 'backend', cmd: 'debug_test_aerovault_roundtrip' },
+    { id: 'plugin_integrity', labelKey: 'debug.tests.pluginIntegrity', runner: 'backend', cmd: 'debug_test_plugin_integrity' },
+    { id: 'provider_selftest', labelKey: 'debug.tests.providerSelftest', runner: 'backend', cmd: 'debug_test_provider_selftest' },
+    { id: 'ipc_speed', labelKey: 'debug.tests.ipcSpeed', runner: 'frontend' },
+    { id: 'i18n_sweep', labelKey: 'debug.tests.i18nSweep', runner: 'frontend' },
+];
+
+async function runIpcSpeedTest(): Promise<TestRunResult> {
+    const t0 = performance.now();
+    const samples: number[] = [];
+    const N = 50;
+    for (let i = 0; i < N; i++) {
+        const s = performance.now();
+        try {
+            await invoke('get_system_info');
+        } catch {
+            return { status: 'fail', duration_ms: Math.round(performance.now() - t0), message: 'invoke get_system_info failed mid-bench' };
+        }
+        samples.push(performance.now() - s);
+    }
+    samples.sort((a, b) => a - b);
+    const p50 = samples[Math.floor(N * 0.5)];
+    const p95 = samples[Math.floor(N * 0.95)];
+    const max = samples[N - 1];
+    const status: 'pass' | 'warn' = p95 > 50 ? 'warn' : 'pass';
+    return {
+        status,
+        duration_ms: Math.round(performance.now() - t0),
+        message: `${N} invokes — P50 ${p50.toFixed(1)}ms · P95 ${p95.toFixed(1)}ms · max ${max.toFixed(1)}ms`,
+    };
+}
+
+async function runI18nSweepTest(): Promise<TestRunResult> {
+    const t0 = performance.now();
+    try {
+        const lang = (document.documentElement.lang || navigator.language || 'en').split('-')[0];
+        if (lang === 'en') {
+            return { status: 'skipped', duration_ms: Math.round(performance.now() - t0), message: 'Active locale is English (no comparison needed)' };
+        }
+        const [enRes, locRes] = await Promise.all([
+            fetch(`/locales/${'en'}.json`).catch(() => null),
+            fetch(`/locales/${lang}.json`).catch(() => null),
+        ]);
+        if (!enRes || !enRes.ok || !locRes || !locRes.ok) {
+            return { status: 'skipped', duration_ms: Math.round(performance.now() - t0), message: 'Locale files not reachable via /locales (build mode only)' };
+        }
+        const en = await enRes.json();
+        const loc = await locRes.json();
+        const enKeys = new Set<string>();
+        const locValues: Record<string, string> = {};
+        const walk = (obj: any, prefix: string, sink: Set<string> | null, values: Record<string, string> | null) => {
+            for (const k of Object.keys(obj)) {
+                const key = prefix ? `${prefix}.${k}` : k;
+                if (obj[k] && typeof obj[k] === 'object' && !Array.isArray(obj[k])) {
+                    walk(obj[k], key, sink, values);
+                } else if (typeof obj[k] === 'string') {
+                    if (sink) sink.add(key);
+                    if (values) values[key] = obj[k];
+                }
+            }
+        };
+        walk(en, '', enKeys, null);
+        walk(loc.translations || loc, '', null, locValues);
+        let missing = 0;
+        let placeholder = 0;
+        for (const k of enKeys) {
+            if (!(k in locValues)) missing++;
+            else if (locValues[k].includes('[NEEDS TRANSLATION]')) placeholder++;
+        }
+        const status: 'pass' | 'warn' = (missing + placeholder) === 0 ? 'pass' : 'warn';
+        return {
+            status,
+            duration_ms: Math.round(performance.now() - t0),
+            message: `${lang}: ${enKeys.size} reference keys · ${missing} missing · ${placeholder} placeholder`,
+        };
+    } catch (e) {
+        return { status: 'fail', duration_ms: Math.round(performance.now() - t0), message: `Sweep failed: ${String(e).slice(0, 120)}` };
+    }
+}
 
 const InfoRow: React.FC<{ label: string; value: string | React.ReactNode; mono?: boolean }> = ({ label, value, mono }) => (
     <div className="flex items-start py-1 px-3 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
@@ -271,7 +573,16 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [logFilter, setLogFilter] = useState<string>('ALL');
+    const [sourceFilter, setSourceFilter] = useState<'all' | LogSource>('all');
     const [logPaused, setLogPaused] = useState(false);
+    const [exportMenuOpen, setExportMenuOpen] = useState(false);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
+    const [testResults, setTestResults] = useState<Record<TestId, TestRecord>>(() => {
+        const init: Partial<Record<TestId, TestRecord>> = {};
+        for (const t of TEST_CATALOG) init[t.id] = { status: 'idle' };
+        return init as Record<TestId, TestRecord>;
+    });
+    const [testsRunningAll, setTestsRunningAll] = useState(false);
     const [networkEvents, setNetworkEvents] = useState<NetworkEntry[]>([]);
     const [connectTime] = useState(() => isConnected ? new Date() : null);
     const logEndRef = useRef<HTMLDivElement>(null);
@@ -296,6 +607,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     useEffect(() => {
         activateGlobalCapture();
         activateNetworkCapture();
+        activateBackendLogBridge();
 
         setLogs([...globalLogBuffer]);
         setNetworkEvents([...globalNetworkBuffer]);
@@ -313,6 +625,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
             globalNetworkListeners.delete(netListener);
             deactivateGlobalCapture();
             deactivateNetworkCapture();
+            deactivateBackendLogBridge();
         };
     }, []);
 
@@ -349,9 +662,150 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
     }, [height, onResizePointerDown]);
 
     const copyLogs = useCallback(() => {
-        const text = logs.map(l => `[${l.timestamp}] [${l.level}] ${l.message}`).join('\n');
+        const text = logs.map(l => `[${l.timestamp}] [${l.source.toUpperCase()}] [${l.level}] ${l.message}`).join('\n');
         navigator.clipboard.writeText(text);
     }, [logs]);
+
+    // Close export dropdown on outside click
+    useEffect(() => {
+        if (!exportMenuOpen) return;
+        const onDown = (e: MouseEvent) => {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+                setExportMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [exportMenuOpen]);
+
+    const runSingleTest = useCallback(async (id: TestId) => {
+        const spec = TEST_CATALOG.find(t => t.id === id);
+        if (!spec) return;
+        setTestResults(prev => ({ ...prev, [id]: { status: 'running' } }));
+        try {
+            let res: TestRunResult;
+            if (spec.runner === 'backend' && spec.cmd) {
+                res = await invoke<TestRunResult>(spec.cmd);
+            } else if (id === 'ipc_speed') {
+                res = await runIpcSpeedTest();
+            } else if (id === 'i18n_sweep') {
+                res = await runI18nSweepTest();
+            } else {
+                res = { status: 'fail', duration_ms: 0, message: 'Unknown runner' };
+            }
+            setTestResults(prev => ({
+                ...prev,
+                [id]: {
+                    status: res.status,
+                    duration_ms: res.duration_ms,
+                    message: res.message,
+                    details: res.details,
+                },
+            }));
+        } catch (err) {
+            setTestResults(prev => ({
+                ...prev,
+                [id]: { status: 'fail', message: String(err).slice(0, 200) },
+            }));
+        }
+    }, []);
+
+    const runAllTests = useCallback(async () => {
+        if (testsRunningAll) return;
+        setTestsRunningAll(true);
+        for (const t of TEST_CATALOG) {
+            await runSingleTest(t.id);
+        }
+        setTestsRunningAll(false);
+    }, [testsRunningAll, runSingleTest]);
+
+    const copyTestResults = useCallback(() => {
+        const lines: string[] = ['# AeroFTP DebugPanel diagnostic suite'];
+        for (const t of TEST_CATALOG) {
+            const r = testResults[t.id];
+            const label = t.id;
+            if (r.status === 'idle') {
+                lines.push(`- [ ] ${label}: not run`);
+            } else if (r.status === 'running') {
+                lines.push(`- [~] ${label}: running...`);
+            } else {
+                const dur = r.duration_ms != null ? ` (${r.duration_ms}ms)` : '';
+                const tag = r.status === 'pass' ? 'PASS' : r.status === 'warn' ? 'WARN' : r.status === 'skipped' ? 'SKIP' : 'FAIL';
+                lines.push(`- [${tag}] ${label}${dur}: ${r.message ?? ''}`);
+            }
+        }
+        navigator.clipboard.writeText(lines.join('\n'));
+    }, [testResults]);
+
+    const runExportBundle = useCallback(async () => {
+        try {
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const path = await save({
+                defaultPath: `aeroftp-diagnostic-${stamp}.zip`,
+                filters: [{ name: 'ZIP', extensions: ['zip'] }],
+            });
+            if (!path) return;
+
+            // Buffers are already redacted at push time. We re-stream them
+            // here as NDJSON because that is the format that survives every
+            // common downstream tool (jq, Datadog, grep).
+            const logsNdjson = logs.map(l => JSON.stringify(l)).join('\n');
+            const networkNdjson = networkEvents.map(e => JSON.stringify(e)).join('\n');
+
+            // localStorage: only emit key + length + truncated value preview,
+            // never raw values. Anything that looks sensitive gets the same
+            // redactSensitive sweep client-side before serialization.
+            const localStorageDump: Array<{ key: string; length: number; preview: string }> = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k) continue;
+                const v = localStorage.getItem(k) || '';
+                localStorageDump.push({
+                    key: k,
+                    length: v.length,
+                    preview: redactSensitive(v.slice(0, 200)),
+                });
+            }
+
+            await invoke<string>('debug_export_bundle', {
+                outputPath: path,
+                bundle: {
+                    logs_ndjson: logsNdjson,
+                    network_ndjson: networkNdjson,
+                    system_info: systemInfo ?? {},
+                    tests_state: testResults,
+                    local_storage_keys: localStorageDump,
+                    app_version: systemInfo?.app_version ?? 'unknown',
+                },
+            });
+        } catch (err) {
+            console.error('DebugPanel bundle export failed:', err);
+        }
+    }, [logs, networkEvents, systemInfo, testResults]);
+
+    const runExport = useCallback(async (fmt: ExportFormat) => {
+        setExportMenuOpen(false);
+        try {
+            if (activeTab === 'network') {
+                const content =
+                    fmt === 'text' ? formatNetworkText(networkEvents)
+                    : fmt === 'json' ? formatNetworkJson(networkEvents)
+                    : fmt === 'ndjson' ? formatNetworkNdjson(networkEvents)
+                    : formatNetworkCsv(networkEvents);
+                await exportToFile(content, 'network', fmt);
+            } else {
+                // Default: export the unified Logs buffer (covers logs/connection/system/frontend tabs).
+                const content =
+                    fmt === 'text' ? formatLogsText(logs)
+                    : fmt === 'json' ? formatLogsJson(logs)
+                    : fmt === 'ndjson' ? formatLogsNdjson(logs)
+                    : formatLogsCsv(logs);
+                await exportToFile(content, 'logs', fmt);
+            }
+        } catch (err) {
+            console.error('DebugPanel export failed:', err);
+        }
+    }, [activeTab, logs, networkEvents]);
 
     if (!isVisible) return null;
 
@@ -407,9 +861,48 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                         </button>
                     ))}
                 </div>
-                <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500">
-                    <X size={14} />
-                </button>
+                <div className="flex items-center gap-1">
+                    {/* Diagnostic bundle export: one-click ZIP with system_info,
+                        logs, network, tests state, localStorage preview, and
+                        the redacted aeroftp.log tail. */}
+                    <button
+                        onClick={runExportBundle}
+                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 flex items-center gap-1"
+                        title={t('debug.bundle.title')}
+                    >
+                        <Package size={14} />
+                    </button>
+                    {/* Export dropdown: appears for any tab, content scope depends on active tab. */}
+                    <div ref={exportMenuRef} className="relative">
+                        <button
+                            onClick={() => setExportMenuOpen(v => !v)}
+                            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 flex items-center gap-1"
+                            title={t('debug.export.title')}
+                        >
+                            <Download size={14} />
+                        </button>
+                        {exportMenuOpen && (
+                            <div className="absolute right-0 top-full mt-1 min-w-[180px] py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50">
+                                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400">
+                                    {activeTab === 'network' ? t('debug.export.scopeNetwork') : t('debug.export.scopeLogs')}
+                                </div>
+                                {(['text', 'json', 'ndjson', 'csv'] as ExportFormat[]).map(fmt => (
+                                    <button
+                                        key={fmt}
+                                        onClick={() => runExport(fmt)}
+                                        className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between"
+                                    >
+                                        <span>{t(`debug.export.${fmt}`)}</span>
+                                        <span className="text-[10px] text-gray-400 font-mono">.{EXPORT_EXT[fmt]}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500">
+                        <X size={14} />
+                    </button>
+                </div>
             </div>
 
             {/* Tab content */}
@@ -557,6 +1050,16 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                     <option value="INFO">{t('debug.logs.info')}</option>
                                     <option value="DEBUG">{t('debug.logs.debug')}</option>
                                 </select>
+                                <select
+                                    value={sourceFilter}
+                                    onChange={e => setSourceFilter(e.target.value as 'all' | LogSource)}
+                                    className="text-xs px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                                    title={t('debug.logs.sourceFilterTitle')}
+                                >
+                                    <option value="all">{t('debug.logs.allSources')}</option>
+                                    <option value="rust">{t('debug.logs.sourceRust')}</option>
+                                    <option value="js">{t('debug.logs.sourceJs')}</option>
+                                </select>
                                 <span className="text-gray-400 text-[10px]">{logs.length} {t('debug.logs.entries')}</span>
                             </div>
                             <div className="flex items-center gap-1">
@@ -574,9 +1077,20 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                         <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-900 rounded-lg p-2 font-mono text-[11px] leading-relaxed">
                             {logs
                                 .filter(l => logFilter === 'ALL' || l.level === logFilter)
+                                .filter(l => sourceFilter === 'all' || l.source === sourceFilter)
                                 .map(l => (
                                     <div key={l.id} className="flex gap-2 hover:bg-gray-200/50 dark:hover:bg-gray-800/50">
                                         <span className="text-gray-500 dark:text-gray-600 shrink-0">{l.timestamp}</span>
+                                        <span
+                                            className={`shrink-0 w-9 text-center text-[9px] font-semibold rounded px-1 ${
+                                                l.source === 'rust'
+                                                    ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                                                    : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400'
+                                            }`}
+                                            title={l.source === 'rust' ? t('debug.logs.sourceRust') : t('debug.logs.sourceJs')}
+                                        >
+                                            {l.source === 'rust' ? 'RUST' : 'JS'}
+                                        </span>
                                         <span className={`shrink-0 w-12 text-right ${levelColor[l.level]}`}>{l.level}</span>
                                         <span className="text-gray-700 dark:text-gray-300 break-all">{l.message}</span>
                                     </div>
@@ -622,6 +1136,71 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                         </div>
                     </div>
                 )}
+
+                {/* Tests Tab */}
+                {activeTab === 'tests' && (
+                    <div className="p-2 flex flex-col" style={{ height: height - 60 }}>
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={runAllTests}
+                                    disabled={testsRunningAll}
+                                    className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60 disabled:opacity-50"
+                                >
+                                    {testsRunningAll ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                                    {t('debug.tests.runAll')}
+                                </button>
+                                <button
+                                    onClick={copyTestResults}
+                                    className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500"
+                                    title={t('debug.tests.copyResultsTitle')}
+                                >
+                                    <Copy size={12} /> {t('debug.tests.copyResults')}
+                                </button>
+                            </div>
+                            <span className="text-[10px] text-gray-400">
+                                {Object.values(testResults).filter(r => r.status === 'pass').length}/{TEST_CATALOG.length} {t('debug.tests.passed')}
+                            </span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                            {TEST_CATALOG.map(test => {
+                                const r = testResults[test.id];
+                                const statusIcon =
+                                    r.status === 'pass' ? <CheckCircle2 size={14} className="text-green-500" /> :
+                                    r.status === 'fail' ? <XCircle size={14} className="text-red-500" /> :
+                                    r.status === 'warn' ? <AlertTriangle size={14} className="text-amber-500" /> :
+                                    r.status === 'skipped' ? <Circle size={14} className="text-gray-400" /> :
+                                    r.status === 'running' ? <Loader2 size={14} className="text-blue-500 animate-spin" /> :
+                                    <Circle size={14} className="text-gray-300 dark:text-gray-600" />;
+                                return (
+                                    <div key={test.id} className="flex items-start gap-2 py-2 px-3 border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                                        <div className="pt-0.5">{statusIcon}</div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t(test.labelKey)}</span>
+                                                <span className="text-[10px] text-gray-400 font-mono">{test.runner === 'backend' ? 'rust' : 'js'}</span>
+                                                {r.duration_ms != null && (
+                                                    <span className="text-[10px] text-gray-400 font-mono">{r.duration_ms}ms</span>
+                                                )}
+                                            </div>
+                                            {r.message && (
+                                                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 break-all">{r.message}</div>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => runSingleTest(test.id)}
+                                            disabled={r.status === 'running' || testsRunningAll}
+                                            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 disabled:opacity-30"
+                                            title={t('debug.tests.runOne')}
+                                        >
+                                            <Play size={11} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -630,7 +1209,9 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
 export {
     activateGlobalCapture,
     activateNetworkCapture,
+    activateBackendLogBridge,
     deactivateGlobalCapture,
     deactivateNetworkCapture,
+    deactivateBackendLogBridge,
 };
 export default DebugPanel;
