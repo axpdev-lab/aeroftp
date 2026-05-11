@@ -363,6 +363,7 @@ const App: React.FC = () => {
     setSwapPanels,
     setFontSize,
     cardLayout,
+    setCardLayout,
     disableUpdateChecks,
     SETTINGS_KEY,
   } = settings;
@@ -1328,6 +1329,11 @@ interface UpdateVerificationInfo {
     'Ctrl+Shift+P': () => setShowCommandPalette(v => !v),
     'Ctrl+Shift+L': () => setShowActivityLog(v => !v),
     'Ctrl+T': cycleTheme,
+    // Toggle the My Servers card density. The detailed variant runs
+    // per-server health probes at render time, so it stays explicitly
+    // opt-in (default install resolves to compact). Mirrors the View
+    // menu entry and the Settings > Appearance toggle.
+    'Ctrl+Shift+V': () => setCardLayout(cardLayout === 'detailed' ? 'compact' : 'detailed'),
 
     // Delete: delete selected files
     'Delete': () => {
@@ -1649,7 +1655,7 @@ interface UpdateVerificationInfo {
     }
   }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
     universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
-    activePanel, currentRemotePath, currentLocalPath, isConnected]);
+    activePanel, currentRemotePath, currentLocalPath, isConnected, cardLayout]);
 
 
   // Persist last known quota to the saved server profile (best-effort) so the
@@ -8592,6 +8598,8 @@ interface UpdateVerificationInfo {
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
+          cardLayout={cardLayout}
+          onToggleCardLayout={() => setCardLayout(cardLayout === 'detailed' ? 'compact' : 'detailed')}
         />
 
         <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />

@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentatsioon",
             "mcp": "MCP Server...",
             "mountManager": "Ühenduste haldur...",
-            "activityLog": "Tegevuslogi"
+            "activityLog": "Tegevuslogi",
+            "detailedCards": "Üksikasjalikud serverikaardid"
         },
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",

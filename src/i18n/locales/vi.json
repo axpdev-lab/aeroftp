@@ -3217,7 +3217,8 @@
             "documentation": "Tài liệu",
             "mcp": "MCP Server...",
             "mountManager": "Trình quản lý gắn kết...",
-            "activityLog": "Nhật ký hoạt động"
+            "activityLog": "Nhật ký hoạt động",
+            "detailedCards": "Thẻ máy chủ chi tiết"
         },
         "activityPanel": {
             "awaitingCommands": "Đang chờ lệnh...",

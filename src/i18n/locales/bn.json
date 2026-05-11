@@ -3217,7 +3217,8 @@
             "documentation": "ডকুমেন্টেশন",
             "mcp": "MCP Server...",
             "mountManager": "মাউন্ট ম্যানেজার...",
-            "activityLog": "অ্যাক্টিভিটি লগ"
+            "activityLog": "অ্যাক্টিভিটি লগ",
+            "detailedCards": "বিস্তারিত সার্ভার কার্ড"
         },
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",

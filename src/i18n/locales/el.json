@@ -3217,7 +3217,8 @@
             "documentation": "Τεκμηρίωση",
             "mcp": "MCP Server...",
             "mountManager": "Διαχειριστής Προσαρτήσεων...",
-            "activityLog": "Αρχείο δραστηριότητας"
+            "activityLog": "Αρχείο δραστηριότητας",
+            "detailedCards": "Λεπτομερείς κάρτες διακομιστή"
         },
         "activityPanel": {
             "awaitingCommands": "Αναμονή εντολών...",

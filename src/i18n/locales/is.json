@@ -3217,7 +3217,8 @@
             "documentation": "Skjölun",
             "mcp": "MCP Server...",
             "mountManager": "Tengingarstjóri...",
-            "activityLog": "Aðgerðaskrá"
+            "activityLog": "Aðgerðaskrá",
+            "detailedCards": "Ítarleg netþjónakort"
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",

@@ -3337,6 +3337,7 @@
             "rename": "Rinomina",
             "delete": "Elimina",
             "refresh": "Aggiorna",
+            "detailedCards": "Card server dettagliate",
             "toggleTheme": "Cambia Tema",
             "devtools": "AeroTools",
             "toggleDevtools": "AeroTools",

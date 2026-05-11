@@ -3210,7 +3210,8 @@
             "documentation": "Փաստաթղթեր",
             "mcp": "MCP Server...",
             "mountManager": "Միացման կառավարիչ...",
-            "activityLog": "Գործունեության մատյան"
+            "activityLog": "Գործունեության մատյան",
+            "detailedCards": "Մանրամասն սերվերի քարտեր"
         },
         "activityPanel": {
             "awaitingCommands": "Սպասում է հրամանների...",

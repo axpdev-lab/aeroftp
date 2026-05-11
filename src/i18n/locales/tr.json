@@ -3217,7 +3217,8 @@
             "documentation": "Belgelendirme",
             "mcp": "MCP Server...",
             "mountManager": "Bağlama Yöneticisi...",
-            "activityLog": "Etkinlik Günlüğü"
+            "activityLog": "Etkinlik Günlüğü",
+            "detailedCards": "Ayrıntılı sunucu kartları"
         },
         "activityPanel": {
             "awaitingCommands": "Komut bekleniyor...",

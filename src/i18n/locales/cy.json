@@ -3217,7 +3217,8 @@
             "documentation": "Dogfennaeth",
             "mcp": "MCP Server...",
             "mountManager": "Rheolwr Mowntio...",
-            "activityLog": "Log Gweithgaredd"
+            "activityLog": "Log Gweithgaredd",
+            "detailedCards": "Cardiau gweinydd manwl"
         },
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",

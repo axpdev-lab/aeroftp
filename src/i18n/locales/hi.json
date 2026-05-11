@@ -3217,7 +3217,8 @@
             "documentation": "दस्तावेज़",
             "mcp": "MCP Server...",
             "mountManager": "माउंट प्रबंधक...",
-            "activityLog": "गतिविधि लॉग"
+            "activityLog": "गतिविधि लॉग",
+            "detailedCards": "विस्तृत सर्वर कार्ड"
         },
         "activityPanel": {
             "awaitingCommands": "कमांड की प्रतीक्षा में...",

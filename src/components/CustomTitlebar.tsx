@@ -27,6 +27,10 @@ interface MenuItem {
     onClick: () => void;
     separator?: false;
     disabled?: boolean;
+    /// When true, a ✓ glyph is shown to the left of the label so the
+    /// item reads as a toggle (used by View menu entries that mirror
+    /// a persisted UI preference: detailed cards, etc.).
+    checked?: boolean;
 }
 
 interface MenuSeparator {
@@ -76,6 +80,13 @@ interface TitlebarProps {
     onQuit: () => void;
     onCheckForUpdates: () => void;
     hasActivity: boolean;
+    /// My Servers card density: `compact` is the default (lightweight,
+    /// no per-server health probe at render time); `detailed` opts the
+    /// list into the heavier card variant that probes each server.
+    /// Surfaced both here in the View menu and in Settings > Appearance;
+    /// the two reads and writes the same persisted preference.
+    cardLayout: 'compact' | 'detailed';
+    onToggleCardLayout: () => void;
 }
 
 // ─── TitlebarMenu sub-component ─────────────────────────────────────────────
@@ -139,7 +150,10 @@ const TitlebarMenu: React.FC<TitlebarMenuProps> = ({ label, items, isOpen, onOpe
                                         : 'text-[var(--color-text-primary)] hover:bg-[var(--color-accent)] hover:text-white cursor-default'
                                 }`}
                             >
-                                <span>{item.label}</span>
+                                <span className="flex items-center gap-1.5">
+                                    <span className={`inline-block w-3 text-center ${item.checked ? '' : 'opacity-0'}`} aria-hidden>✓</span>
+                                    <span>{item.label}</span>
+                                </span>
                                 {item.shortcut && (
                                     <span className={`ml-8 text-[10px] ${item.disabled ? 'text-[var(--color-text-tertiary)]' : 'text-[var(--color-text-tertiary)] group-hover:text-white/70'}`}>{item.shortcut}</span>
                                 )}
@@ -176,6 +190,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
         onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onQuit,
         onCheckForUpdates, hasActivity,
+        cardLayout, onToggleCardLayout,
     } = props;
 
     const t = useTranslation();
@@ -245,6 +260,18 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const viewMenu: MenuEntry[] = [
         { label: t('menu.refresh'), shortcut: 'Ctrl+R', onClick: onRefresh, disabled: !hasFilePanel },
         { separator: true },
+        {
+            // Mirror of Settings > Appearance > "Detailed server cards"
+            // because power users discover toggles in the View menu and
+            // we want the per-server health-check pass (heavy on older
+            // hardware) to stay explicitly opt-in. Default install
+            // resolves to `compact` so a fresh boot never fires the
+            // probes.
+            label: t('menu.detailedCards'),
+            shortcut: 'Ctrl+Shift+V',
+            onClick: onToggleCardLayout,
+            checked: cardLayout === 'detailed',
+        },
         { label: t('menu.toggleTheme'), shortcut: 'Ctrl+T', onClick: onToggleTheme },
         { separator: true },
         { label: t('menu.toggleDevtools'), shortcut: 'Ctrl+Shift+D', onClick: onToggleDevTools },

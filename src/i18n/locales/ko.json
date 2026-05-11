@@ -3217,7 +3217,8 @@
             "documentation": "문서",
             "mcp": "MCP Server...",
             "mountManager": "마운트 관리자...",
-            "activityLog": "활동 로그"
+            "activityLog": "활동 로그",
+            "detailedCards": "상세 서버 카드"
         },
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",

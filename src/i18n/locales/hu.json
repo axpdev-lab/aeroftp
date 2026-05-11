@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentáció",
             "mcp": "MCP Server...",
             "mountManager": "Csatolási kezelő...",
-            "activityLog": "Tevékenységnapló"
+            "activityLog": "Tevékenységnapló",
+            "detailedCards": "Részletes szerverkártyák"
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",

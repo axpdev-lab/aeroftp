@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentaatio",
             "mcp": "MCP Server...",
             "mountManager": "Liitäntöjen hallinta...",
-            "activityLog": "Tapahtumaloki"
+            "activityLog": "Tapahtumaloki",
+            "detailedCards": "Yksityiskohtaiset palvelinkortit"
         },
         "activityPanel": {
             "awaitingCommands": "Odotetaan komentoja...",

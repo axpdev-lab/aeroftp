@@ -3217,7 +3217,8 @@
             "documentation": "Nyaraka",
             "mcp": "MCP Server...",
             "mountManager": "Kidhibiti cha Kupachika...",
-            "activityLog": "Kumbukumbu ya Shughuli"
+            "activityLog": "Kumbukumbu ya Shughuli",
+            "detailedCards": "Kadi za seva za kina"
         },
         "activityPanel": {
             "awaitingCommands": "Inasubiri amri...",

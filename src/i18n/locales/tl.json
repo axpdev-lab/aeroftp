@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentasyon",
             "mcp": "MCP Server...",
             "mountManager": "Tagapamahala ng Mount...",
-            "activityLog": "Log ng Aktibidad"
+            "activityLog": "Log ng Aktibidad",
+            "detailedCards": "Mga detalyadong card ng server"
         },
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",
