@@ -62,6 +62,26 @@ function redactSensitive(msg: string): string {
     return result;
 }
 
+function safeStringifyLogArg(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'bigint') return `${value.toString()}n`;
+    if (value instanceof Error) return `${value.name}: ${value.message}`;
+    try {
+        const serialized = JSON.stringify(value);
+        if (serialized !== undefined) return serialized;
+    } catch { /* fall through */ }
+    try {
+        return String(value);
+    } catch {
+        return Object.prototype.toString.call(value);
+    }
+}
+
+function localStoragePreview(value: string): string {
+    const preview = redactSensitive(value.slice(0, 200));
+    return preview.length > 80 ? `${preview.slice(0, 80)}...` : preview;
+}
+
 // ─── Global console + backend log capture (singleton, survives mount/unmount) ─
 type LogLevelName = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'TRACE';
 type LogSource = 'js' | 'rust';
@@ -106,7 +126,7 @@ function activateGlobalCapture() {
     const origDebug = console.debug;
 
     const addEntry = (level: CapturedLog['level'], args: unknown[]) => {
-        const raw = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+        const raw = args.map(safeStringifyLogArg).join(' ');
         const entry: CapturedLog = { id: globalLogId++, timestamp: ts(), level, message: redactSensitive(raw), source: 'js' };
         globalLogBuffer.push(entry);
         if (globalLogBuffer.length > 500) globalLogBuffer.splice(0, globalLogBuffer.length - 500);
@@ -1129,7 +1149,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                 return (
                                     <div key={key} className="flex items-center py-1 px-3 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
                                         <span className="text-xs font-mono text-gray-700 dark:text-gray-300 w-48 shrink-0 truncate">{key}</span>
-                                        <span className="text-[10px] text-gray-400 truncate">{val.length > 80 ? val.slice(0, 80) + '...' : val}</span>
+                                        <span className="text-[10px] text-gray-400 truncate">{val.length} bytes · {localStoragePreview(val)}</span>
                                     </div>
                                 );
                             })}

@@ -108,22 +108,22 @@ pub async fn debug_test_vault_roundtrip() -> Result<TestResult, String> {
         }
     };
 
-    let key = "__aeroftp_debug_test_roundtrip__";
+    let key = format!("__aeroftp_debug_test_roundtrip_{}__", uuid::Uuid::new_v4());
     let value = "round_trip_test_value_OK";
 
-    if let Err(e) = store.store(key, value) {
+    if let Err(e) = store.store(&key, value) {
         return Ok(TestResult::fail(t0, format!("Write failed: {}", e)));
     }
 
-    let read_value = match store.get(key) {
+    let read_value = match store.get(&key) {
         Ok(v) => v,
         Err(e) => {
-            let _ = store.delete(key);
+            let _ = store.delete(&key);
             return Ok(TestResult::fail(t0, format!("Read failed: {}", e)));
         }
     };
 
-    let _ = store.delete(key);
+    let _ = store.delete(&key);
 
     if read_value == value {
         Ok(TestResult::pass(t0, "Vault write/read/delete cycle OK"))

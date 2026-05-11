@@ -188,6 +188,9 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [manageCopiedId, setManageCopiedId] = useState<string | null>(null);
 
+  const humanLogRef = React.useRef(humanLog);
+  humanLogRef.current = humanLog;
+
   const loadExistingLinks = useCallback(async () => {
     setManageLoading(true);
     setManageError(null);
@@ -204,15 +207,19 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
 
   const handleRevoke = useCallback(async (linkPath: string) => {
     setRevokingId(linkPath);
+    const log = humanLogRef.current;
+    const logId = log.logRaw('activity.share_link_deleting', 'INFO', { provider: providerName, filename: fileName }, 'running');
     try {
       await invoke('provider_remove_share_link', { path: linkPath });
       setExistingLinks(prev => prev.filter(l => l.id !== linkPath));
+      log.updateEntry(logId, { status: 'success', message: t('activity.share_link_deleted', { provider: providerName, filename: fileName }) });
     } catch (err) {
       setManageError(String(err));
+      log.updateEntry(logId, { status: 'error', message: t('activity.share_link_delete_failed', { provider: providerName, filename: fileName }) });
     } finally {
       setRevokingId(null);
     }
-  }, []);
+  }, [fileName, providerName, t]);
 
   // Load links when switching to manage tab
   useEffect(() => {
@@ -220,9 +227,6 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
       loadExistingLinks();
     }
   }, [activeTab, caps.supportsList, loadExistingLinks]);
-
-  const humanLogRef = React.useRef(humanLog);
-  humanLogRef.current = humanLog;
 
   const generateLink = useCallback(async (opts?: { password?: string; expiresInSecs?: number | null; permissions?: string }) => {
     setState('loading');
@@ -250,13 +254,13 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
 
-      log.updateEntry(logId, { status: 'success', message: `[${providerName}] Share link created: ${result.url}` });
+      log.updateEntry(logId, { status: 'success', message: t('activity.share_link_created', { provider: providerName, filename: fileName }) });
     } catch (err) {
       setError(String(err));
       setState('error');
-      log.updateEntry(logId, { status: 'error', message: `[${providerName}] Share link failed` });
+      log.updateEntry(logId, { status: 'error', message: t('activity.share_link_failed', { provider: providerName, filename: fileName }) });
     }
-  }, [path, providerName, fileName]);
+  }, [path, providerName, fileName, t]);
 
   // Auto-generate for providers without advanced options
   const didRun = React.useRef(false);

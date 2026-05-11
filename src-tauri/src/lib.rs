@@ -13277,7 +13277,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_log::Builder::default()
-                .level(log::LevelFilter::Info)
+                .level(log::LevelFilter::Trace)
                 // Fan-out backend logs to the webview via the `log://log` event,
                 // consumed by the in-app DebugPanel. Stdout + LogDir targets are
                 // preserved by default; this one is additive.
