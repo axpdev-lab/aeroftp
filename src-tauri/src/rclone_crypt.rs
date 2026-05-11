@@ -36,11 +36,15 @@ const CHUNK_TAG_SIZE: usize = 16;
 /// Ciphertext chunk size = plaintext + tag.
 const CHUNK_CIPHER_SIZE: usize = CHUNK_DATA_SIZE + CHUNK_TAG_SIZE;
 
-/// scrypt parameters matching rclone: N=16384 (2^14), r=8, p=1, output=64.
+/// scrypt parameters matching rclone: N=16384 (2^14), r=8, p=1, output=80.
 const SCRYPT_LOG_N: u8 = 14;
 const SCRYPT_R: u32 = 8;
 const SCRYPT_P: u32 = 1;
-const SCRYPT_KEY_LEN: usize = 64;
+const SCRYPT_KEY_LEN: usize = 80;
+const SCRYPT_PARAMS_LEN: usize = 64;
+const RCLONE_DEFAULT_SALT: [u8; 16] = [
+    0xA8, 0x0D, 0xF4, 0x3A, 0x8F, 0xBD, 0x03, 0x08, 0xA7, 0xCA, 0xB8, 0x3E, 0x58, 0x1F, 0x86, 0xB1,
+];
 
 /// AES block size.
 const AES_BLOCK: usize = 16;
@@ -60,6 +64,7 @@ pub enum FilenameEncryption {
 pub struct RcloneCryptKeys {
     pub name_key: [u8; 32],
     pub data_key: [u8; 32],
+    pub name_tweak: [u8; 16],
     pub filename_encryption: FilenameEncryption,
     #[allow(dead_code)] // Used in Phase 4 directory traversal
     pub directory_name_encryption: bool,
@@ -131,6 +136,7 @@ impl Drop for RcloneCryptKeys {
     fn drop(&mut self) {
         self.name_key.zeroize();
         self.data_key.zeroize();
+        self.name_tweak.zeroize();
     }
 }
 
@@ -139,25 +145,42 @@ impl Drop for RcloneCryptKeys {
 /// Derive name_key (32 bytes) and data_key (32 bytes) from password and
 /// optional salt (password2). Compatible with rclone's scrypt parameters.
 pub fn derive_keys(password: &str, salt: &str) -> Result<([u8; 32], [u8; 32]), String> {
-    let params = ScryptParams::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P, SCRYPT_KEY_LEN)
+    let (name_key, data_key, _) = derive_keys_with_tweak(password, salt)?;
+    Ok((name_key, data_key))
+}
+
+/// Derive data_key (32 bytes), name_key (32 bytes), and name_tweak (16 bytes).
+///
+/// Rclone derives 80 bytes in this order: data key, name key, then EME tweak.
+pub fn derive_keys_with_tweak(
+    password: &str,
+    salt: &str,
+) -> Result<([u8; 32], [u8; 32], [u8; 16]), String> {
+    // scrypt 0.11 limits Params::len to <=64 for password-hash metadata, but
+    // the raw scrypt() function accepts rclone's 80-byte output buffer.
+    let params = ScryptParams::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P, SCRYPT_PARAMS_LEN)
         .map_err(|e| format!("invalid scrypt params: {}", e))?;
 
     let mut key_bytes = [0u8; SCRYPT_KEY_LEN];
-    scrypt(
-        password.as_bytes(),
-        salt.as_bytes(),
-        &params,
-        &mut key_bytes,
-    )
-    .map_err(|e| format!("scrypt failed: {}", e))?;
+    if !password.is_empty() {
+        let salt_bytes: &[u8] = if salt.is_empty() {
+            &RCLONE_DEFAULT_SALT
+        } else {
+            salt.as_bytes()
+        };
+        scrypt(password.as_bytes(), salt_bytes, &params, &mut key_bytes)
+            .map_err(|e| format!("scrypt failed: {}", e))?;
+    }
 
     let mut name_key = [0u8; 32];
     let mut data_key = [0u8; 32];
-    name_key.copy_from_slice(&key_bytes[..32]);
-    data_key.copy_from_slice(&key_bytes[32..]);
+    let mut name_tweak = [0u8; 16];
+    data_key.copy_from_slice(&key_bytes[..32]);
+    name_key.copy_from_slice(&key_bytes[32..64]);
+    name_tweak.copy_from_slice(&key_bytes[64..80]);
 
     key_bytes.zeroize();
-    Ok((name_key, data_key))
+    Ok((name_key, data_key, name_tweak))
 }
 
 // ── Phase 1: File content decryption ───────────────────────────────────────
@@ -654,8 +677,8 @@ pub async fn rclone_crypt_unlock(
     let secret_pwd = secrecy::SecretString::from(password);
     let salt_str = salt.unwrap_or_default();
 
-    let (name_key, data_key) =
-        derive_keys(secrecy::ExposeSecret::expose_secret(&secret_pwd), &salt_str)?;
+    let (name_key, data_key, name_tweak) =
+        derive_keys_with_tweak(secrecy::ExposeSecret::expose_secret(&secret_pwd), &salt_str)?;
 
     let fe = match filename_encryption.as_deref() {
         Some("off") => FilenameEncryption::Off,
@@ -668,6 +691,7 @@ pub async fn rclone_crypt_unlock(
     let keys = RcloneCryptKeys {
         name_key,
         data_key,
+        name_tweak,
         filename_encryption: fe,
         directory_name_encryption: dne,
     };
@@ -701,7 +725,7 @@ pub async fn rclone_crypt_lock(
 pub async fn rclone_crypt_decrypt_name(
     state: tauri::State<'_, RcloneCryptState>,
     vault_id: String,
-    dir_iv_base64: String,
+    _dir_iv_base64: String,
     encrypted_name: String,
 ) -> Result<String, String> {
     let vaults = state.vaults.lock().await;
@@ -711,11 +735,10 @@ pub async fn rclone_crypt_decrypt_name(
         return Ok(encrypted_name);
     }
 
-    let dir_iv = parse_dir_iv(&dir_iv_base64)?;
     if keys.filename_encryption == FilenameEncryption::Obfuscate {
-        return deobfuscate_name(&dir_iv, &encrypted_name);
+        return deobfuscate_name(&keys.name_tweak, &encrypted_name);
     }
-    decrypt_name(&keys.name_key, &dir_iv, &encrypted_name)
+    decrypt_name(&keys.name_key, &keys.name_tweak, &encrypted_name)
 }
 
 /// Encrypt a single filename using the unlocked keys and a directory IV.
@@ -723,7 +746,7 @@ pub async fn rclone_crypt_decrypt_name(
 pub async fn rclone_crypt_encrypt_name(
     state: tauri::State<'_, RcloneCryptState>,
     vault_id: String,
-    dir_iv_base64: String,
+    _dir_iv_base64: String,
     plain_name: String,
 ) -> Result<String, String> {
     let vaults = state.vaults.lock().await;
@@ -733,11 +756,10 @@ pub async fn rclone_crypt_encrypt_name(
         return Ok(plain_name);
     }
 
-    let dir_iv = parse_dir_iv(&dir_iv_base64)?;
     if keys.filename_encryption == FilenameEncryption::Obfuscate {
-        return obfuscate_name(&dir_iv, &plain_name);
+        return obfuscate_name(&keys.name_tweak, &plain_name);
     }
-    encrypt_name(&keys.name_key, &dir_iv, &plain_name)
+    encrypt_name(&keys.name_key, &keys.name_tweak, &plain_name)
 }
 
 /// Decrypt file content. Takes raw encrypted bytes (base64-encoded from frontend),
@@ -838,20 +860,6 @@ pub async fn rclone_crypt_encrypt_file_path(
     let encrypted = encrypt_file_content(&plaintext, &data_key)?;
     let guard = OutputPathGuard::new(&encrypted_output_path)?;
     guard.write_all(&encrypted)
-}
-
-/// Parse a 16-byte dirIV from base64.
-fn parse_dir_iv(base64_str: &str) -> Result<[u8; 16], String> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(base64_str)
-        .map_err(|e| format!("dirIV base64 decode failed: {}", e))?;
-    if bytes.len() != 16 {
-        return Err(format!("dirIV must be 16 bytes, got {}", bytes.len()));
-    }
-    let mut iv = [0u8; 16];
-    iv.copy_from_slice(&bytes);
-    Ok(iv)
 }
 
 /// Helper for cryptcheck: stream-decrypts a remote file and computes its hash (e.g. MD5 or SHA-256).
@@ -1321,6 +1329,54 @@ mod tests {
         assert_eq!(
             decrypt_name(&name_key, &dir_iv, "qgm4avr35m5loi1th53ato71v0").unwrap(),
             "123"
+        );
+    }
+
+    #[test]
+    fn golden_rclone_174_real_standard_filenames() {
+        // Generated with rclone v1.74.0:
+        //   password = test-password-179
+        //   password2 = test-salt-179
+        //   filename_encryption = standard
+        //   directory_name_encryption = true
+        //   rclone backend encode crypt: docs report.txt docs/report.txt
+        let (name_key, _, name_tweak) =
+            derive_keys_with_tweak("test-password-179", "test-salt-179").unwrap();
+
+        assert_eq!(
+            encrypt_name(&name_key, &name_tweak, "docs")
+                .unwrap()
+                .to_lowercase(),
+            "d5qf5g718ha9us9plevsksujks"
+        );
+        assert_eq!(
+            decrypt_name(&name_key, &name_tweak, "d5qf5g718ha9us9plevsksujks").unwrap(),
+            "docs"
+        );
+
+        assert_eq!(
+            encrypt_name(&name_key, &name_tweak, "report.txt")
+                .unwrap()
+                .to_lowercase(),
+            "flgaonufs8d1utd0ev8qhjikgg"
+        );
+        assert_eq!(
+            decrypt_name(&name_key, &name_tweak, "flgaonufs8d1utd0ev8qhjikgg").unwrap(),
+            "report.txt"
+        );
+
+        let encoded_path = format!(
+            "{}/{}",
+            encrypt_name(&name_key, &name_tweak, "docs")
+                .unwrap()
+                .to_lowercase(),
+            encrypt_name(&name_key, &name_tweak, "report.txt")
+                .unwrap()
+                .to_lowercase()
+        );
+        assert_eq!(
+            encoded_path,
+            "d5qf5g718ha9us9plevsksujks/flgaonufs8d1utd0ev8qhjikgg"
         );
     }
 
