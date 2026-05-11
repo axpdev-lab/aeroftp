@@ -1652,7 +1652,18 @@
             "openSettings": "Ρυθμίσεις",
             "showShortcuts": "Εμφάνιση συντομεύσεων",
             "closeDialog": "Κλείσιμο / Ακύρωση",
-            "helpText": "Πατήστε [F1] για βοήθεια"
+            "helpText": "Πατήστε [F1] για βοήθεια",
+            "activityLog": "Αρχείο δραστηριότητας",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Αναλυτικές κάρτες διακομιστή",
+            "quit": "Έξοδος από το AeroFTP",
+            "toggleAgent": "Εναλλαγή AeroAgent",
+            "toggleDevtools": "Εναλλαγή AeroTools",
+            "toggleEditor": "Εναλλαγή επεξεργαστή",
+            "toggleTerminal": "Εναλλαγή τερματικού",
+            "toggleTheme": "Αλλαγή θέματος",
+            "view": "Προβολή"
         },
         "overwrite": {
             "title": "Το αρχείο υπάρχει ήδη",
@@ -3165,7 +3176,11 @@
                 "pause": "Παύση",
                 "copyAll": "Αντιγραφή όλων",
                 "clear": "Εκκαθάριση",
-                "emptyMessage": "Η έξοδος κονσόλας θα εμφανιστεί εδώ όταν η Λειτουργία Αποσφαλμάτωσης είναι ενεργή."
+                "emptyMessage": "Η έξοδος κονσόλας θα εμφανιστεί εδώ όταν η Λειτουργία Αποσφαλμάτωσης είναι ενεργή.",
+                "allSources": "Όλες οι πηγές",
+                "sourceFilterTitle": "Φιλτράρισμα κατά πηγή",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Λειτουργία React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Αντιγραφή λίστας αρχείων στο πρόχειρο",
             "filesCopied": "{count} εγγραφές αρχείων αντιγράφηκαν στο πρόχειρο",
-            "title": "Αποσφαλμάτωση"
+            "title": "Αποσφαλμάτωση",
+            "export": {
+                "csv": "CSV (υπολογιστικό φύλλο)",
+                "json": "JSON (πίνακας)",
+                "ndjson": "NDJSON (ένα ανά γραμμή)",
+                "scopeLogs": "Εξαγωγή Logs ως",
+                "scopeNetwork": "Εξαγωγή Network ως",
+                "text": "Απλό κείμενο",
+                "title": "Εξαγωγή"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Διαδρομή μετ' επιστροφής AeroVault",
+                "connectivity": "Ανίχνευση ενεργής σύνδεσης",
+                "copyResults": "Αντιγραφή αποτελεσμάτων",
+                "copyResultsTitle": "Αντιγραφή αποτελεσμάτων ως Markdown",
+                "i18nSweep": "Σάρωση κλειδιών i18n",
+                "ipcSpeed": "Δείγμα ταχύτητας IPC",
+                "knownHosts": "ανάγνωση known_hosts",
+                "passed": "επιτυχημένα",
+                "pluginIntegrity": "Ακεραιότητα προσθέτου",
+                "providerSelftest": "Αυτοδιαγνωστικός πάροχου (μόνο ανάγνωση)",
+                "runAll": "Εκτέλεση όλων",
+                "runOne": "Εκτέλεση αυτού του τεστ",
+                "vaultRoundtrip": "Διαδρομή μετ' επιστροφής θησαυροφυλακίου"
+            },
+            "bundle": {
+                "title": "Εξαγωγή πακέτου διαγνωστικών (ZIP)"
+            }
         },
         "menu": {
             "file": "Αρχείο",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Διαχειριστής Προσαρτήσεων...",
             "activityLog": "Αρχείο δραστηριότητας",
-            "detailedCards": "Λεπτομερείς κάρτες διακομιστή"
+            "detailedCards": "Λεπτομερείς κάρτες διακομιστή",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Αναμονή εντολών...",

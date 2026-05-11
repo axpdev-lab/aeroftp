@@ -1652,7 +1652,18 @@
             "openSettings": "設定を開く",
             "showShortcuts": "ショートカット表示",
             "closeDialog": "閉じる / キャンセル",
-            "helpText": "いつでも [F1] で表示"
+            "helpText": "いつでも [F1] で表示",
+            "activityLog": "アクティビティログ",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "詳細なサーバーカード",
+            "quit": "AeroFTPを終了",
+            "toggleAgent": "AeroAgentの表示切替",
+            "toggleDevtools": "AeroToolsの表示切替",
+            "toggleEditor": "エディターの表示切替",
+            "toggleTerminal": "ターミナルの表示切替",
+            "toggleTheme": "テーマを切替",
+            "view": "表示"
         },
         "overwrite": {
             "title": "ファイルは既に存在します",
@@ -3130,7 +3141,11 @@
                 "pause": "一時停止",
                 "copyAll": "すべてコピー",
                 "clear": "クリア",
-                "emptyMessage": "デバッグモードが有効なときにコンソール出力がここに表示されます。"
+                "emptyMessage": "デバッグモードが有効なときにコンソール出力がここに表示されます。",
+                "allSources": "すべてのソース",
+                "sourceFilterTitle": "ソースでフィルター",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Reactモード",
@@ -3148,7 +3163,34 @@
             },
             "copyFileListToClipboard": "ファイル一覧をクリップボードにコピー",
             "filesCopied": "{count} 件のファイルエントリをクリップボードにコピーしました",
-            "title": "デバッグ"
+            "title": "デバッグ",
+            "export": {
+                "csv": "CSV (スプレッドシート)",
+                "json": "JSON (配列)",
+                "ndjson": "NDJSON (1行に1件)",
+                "scopeLogs": "Logs をエクスポート",
+                "scopeNetwork": "Network をエクスポート",
+                "text": "プレーンテキスト",
+                "title": "エクスポート"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault ラウンドトリップ",
+                "connectivity": "アクティブ接続プローブ",
+                "copyResults": "結果をコピー",
+                "copyResultsTitle": "結果を Markdown 形式でコピー",
+                "i18nSweep": "i18n キースイープ",
+                "ipcSpeed": "IPC 速度サンプル",
+                "knownHosts": "known_hosts の読み取り",
+                "passed": "成功",
+                "pluginIntegrity": "プラグイン整合性",
+                "providerSelftest": "プロバイダーセルフテスト (読み取り専用)",
+                "runAll": "すべて実行",
+                "runOne": "このテストを実行",
+                "vaultRoundtrip": "保管庫のラウンドトリップ"
+            },
+            "bundle": {
+                "title": "診断バンドルをエクスポート (ZIP)"
+            }
         },
         "menu": {
             "file": "ファイル",
@@ -3183,7 +3225,8 @@
             "mcp": "MCP Server...",
             "mountManager": "マウントマネージャー...",
             "activityLog": "アクティビティログ",
-            "detailedCards": "詳細なサーバーカード"
+            "detailedCards": "詳細なサーバーカード",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",

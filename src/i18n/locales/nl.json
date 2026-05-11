@@ -1652,7 +1652,18 @@
             "openSettings": "Instellingen",
             "showShortcuts": "Toon sneltoetsen",
             "closeDialog": "Sluiten",
-            "helpText": "Druk op [F1] voor hulp"
+            "helpText": "Druk op [F1] voor hulp",
+            "activityLog": "Activiteitenlogboek",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Gedetailleerde serverkaarten",
+            "quit": "AeroFTP afsluiten",
+            "toggleAgent": "AeroAgent in-/uitschakelen",
+            "toggleDevtools": "AeroTools in-/uitschakelen",
+            "toggleEditor": "Editor in-/uitschakelen",
+            "toggleTerminal": "Terminal in-/uitschakelen",
+            "toggleTheme": "Thema wisselen",
+            "view": "Weergave"
         },
         "overwrite": {
             "title": "Bestand bestaat al",
@@ -3165,7 +3176,11 @@
                 "pause": "Pauzeren",
                 "copyAll": "Alles kopiëren",
                 "clear": "Wissen",
-                "emptyMessage": "Console-uitvoer verschijnt hier wanneer Debugmodus actief is."
+                "emptyMessage": "Console-uitvoer verschijnt hier wanneer Debugmodus actief is.",
+                "allSources": "Alle bronnen",
+                "sourceFilterTitle": "Filteren op bron",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React-modus",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Bestandslijst kopiëren naar klembord",
             "filesCopied": "{count} bestandsvermeldingen gekopieerd naar klembord",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (spreadsheet)",
+                "json": "JSON (array)",
+                "ndjson": "NDJSON (één per regel)",
+                "scopeLogs": "Logs exporteren als",
+                "scopeNetwork": "Network exporteren als",
+                "text": "Platte tekst",
+                "title": "Exporteren"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault retourrit",
+                "connectivity": "Actieve verbindingscontrole",
+                "copyResults": "Resultaten kopiëren",
+                "copyResultsTitle": "Resultaten als Markdown kopiëren",
+                "i18nSweep": "i18n-sleutelcontrole",
+                "ipcSpeed": "IPC-snelheidsmonster",
+                "knownHosts": "known_hosts lezen",
+                "passed": "geslaagd",
+                "pluginIntegrity": "Plug-in-integriteit",
+                "providerSelftest": "Provider-zelftest (alleen-lezen)",
+                "runAll": "Alles uitvoeren",
+                "runOne": "Deze test uitvoeren",
+                "vaultRoundtrip": "Kluis-retourrit"
+            },
+            "bundle": {
+                "title": "Diagnostische bundel exporteren (ZIP)"
+            }
         },
         "menu": {
             "file": "Bestand",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Koppelingsbeheer...",
             "activityLog": "Activiteitenlog",
-            "detailedCards": "Gedetailleerde serverkaarten"
+            "detailedCards": "Gedetailleerde serverkaarten",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Wacht op opdrachten...",

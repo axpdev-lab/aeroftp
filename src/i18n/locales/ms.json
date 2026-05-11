@@ -1652,7 +1652,18 @@
             "openSettings": "Tetapan",
             "showShortcuts": "Tunjuk Pintasan",
             "closeDialog": "Tutup / Batal",
-            "helpText": "Tekan [F1] untuk bantuan"
+            "helpText": "Tekan [F1] untuk bantuan",
+            "activityLog": "Log Aktiviti",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Kad pelayan terperinci",
+            "quit": "Keluar dari AeroFTP",
+            "toggleAgent": "Togol AeroAgent",
+            "toggleDevtools": "Togol AeroTools",
+            "toggleEditor": "Togol Editor",
+            "toggleTerminal": "Togol Terminal",
+            "toggleTheme": "Tukar tema",
+            "view": "Paparan"
         },
         "overwrite": {
             "title": "Fail sudah wujud",
@@ -3165,7 +3176,11 @@
                 "pause": "Jeda",
                 "copyAll": "Salin semua",
                 "clear": "Kosongkan",
-                "emptyMessage": "Output konsol akan muncul di sini apabila Mod Nyahpepijat aktif."
+                "emptyMessage": "Output konsol akan muncul di sini apabila Mod Nyahpepijat aktif.",
+                "allSources": "Semua sumber",
+                "sourceFilterTitle": "Tapis mengikut sumber",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Mod React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Salin senarai fail ke papan keratan",
             "filesCopied": "{count} entri fail disalin ke papan keratan",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (hamparan)",
+                "json": "JSON (tatasusunan)",
+                "ndjson": "NDJSON (satu setiap baris)",
+                "scopeLogs": "Eksport Logs sebagai",
+                "scopeNetwork": "Eksport Network sebagai",
+                "text": "Teks biasa",
+                "title": "Eksport"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Pusingan AeroVault",
+                "connectivity": "Pemeriksaan sambungan aktif",
+                "copyResults": "Salin keputusan",
+                "copyResultsTitle": "Salin keputusan sebagai Markdown",
+                "i18nSweep": "Pengimbasan kunci i18n",
+                "ipcSpeed": "Sampel kelajuan IPC",
+                "knownHosts": "bacaan known_hosts",
+                "passed": "lulus",
+                "pluginIntegrity": "Integriti pemalam",
+                "providerSelftest": "Ujian kendiri pembekal (baca sahaja)",
+                "runAll": "Jalankan semua",
+                "runOne": "Jalankan ujian ini",
+                "vaultRoundtrip": "Pusingan peti besi"
+            },
+            "bundle": {
+                "title": "Eksport himpunan diagnostik (ZIP)"
+            }
         },
         "menu": {
             "file": "Fail",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Pengurus Lekapan...",
             "activityLog": "Log Aktiviti",
-            "detailedCards": "Kad pelayan terperinci"
+            "detailedCards": "Kad pelayan terperinci",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu arahan...",

@@ -1652,7 +1652,18 @@
             "openSettings": "Gosodiadau",
             "showShortcuts": "Dangos llwybrau byr",
             "closeDialog": "Cau / Canslo",
-            "helpText": "Gwasgwch [F1] am help"
+            "helpText": "Gwasgwch [F1] am help",
+            "activityLog": "Cofnod gweithgaredd",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Cardiau gweinydd manwl",
+            "quit": "Gadael AeroFTP",
+            "toggleAgent": "Toglo AeroAgent",
+            "toggleDevtools": "Toglo AeroTools",
+            "toggleEditor": "Toglo Golygydd",
+            "toggleTerminal": "Toglo Terfynell",
+            "toggleTheme": "Newid thema",
+            "view": "Golwg"
         },
         "overwrite": {
             "title": "Mae'r ffeil eisoes yn bodoli",
@@ -3165,7 +3176,11 @@
                 "pause": "Oedi",
                 "copyAll": "Copïo popeth",
                 "clear": "Clirio",
-                "emptyMessage": "Bydd allbwn consol yn ymddangos yma pan fydd y Modd Dadfygio'n weithredol."
+                "emptyMessage": "Bydd allbwn consol yn ymddangos yma pan fydd y Modd Dadfygio'n weithredol.",
+                "allSources": "Pob ffynhonnell",
+                "sourceFilterTitle": "Hidlo yn ôl ffynhonnell",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Modd React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Copïo rhestr ffeiliau i'r clipfwrdd",
             "filesCopied": "{count} cofnod ffeiliau wedi'u copïo i'r clipfwrdd",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (taenlen)",
+                "json": "JSON (arae)",
+                "ndjson": "NDJSON (un fesul llinell)",
+                "scopeLogs": "Allforio Logs fel",
+                "scopeNetwork": "Allforio Network fel",
+                "text": "Testun plaen",
+                "title": "Allforio"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Taith gron AeroVault",
+                "connectivity": "Archwiliad cysylltiad gweithredol",
+                "copyResults": "Copïo'r canlyniadau",
+                "copyResultsTitle": "Copïo'r canlyniadau fel Markdown",
+                "i18nSweep": "Sgubiad allweddi i18n",
+                "ipcSpeed": "Sampl cyflymder IPC",
+                "knownHosts": "darlleniad known_hosts",
+                "passed": "wedi pasio",
+                "pluginIntegrity": "Cyfanrwydd ategyn",
+                "providerSelftest": "Hunan-brawf darparwr (darllen yn unig)",
+                "runAll": "Rhedeg pob un",
+                "runOne": "Rhedeg y prawf hwn",
+                "vaultRoundtrip": "Taith gron y gladdgell"
+            },
+            "bundle": {
+                "title": "Allforio bwndel diagnostig (ZIP)"
+            }
         },
         "menu": {
             "file": "Ffeil",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Rheolwr Mowntio...",
             "activityLog": "Log Gweithgaredd",
-            "detailedCards": "Cardiau gweinydd manwl"
+            "detailedCards": "Cardiau gweinydd manwl",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",

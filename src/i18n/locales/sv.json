@@ -1652,7 +1652,18 @@
             "openSettings": "Inställningar",
             "showShortcuts": "Visa genvägar",
             "closeDialog": "Stäng / Avbryt",
-            "helpText": "Tryck [F1] för hjälp"
+            "helpText": "Tryck [F1] för hjälp",
+            "activityLog": "Aktivitetslogg",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Detaljerade serverkort",
+            "quit": "Avsluta AeroFTP",
+            "toggleAgent": "Växla AeroAgent",
+            "toggleDevtools": "Växla AeroTools",
+            "toggleEditor": "Växla redigerare",
+            "toggleTerminal": "Växla terminal",
+            "toggleTheme": "Byt tema",
+            "view": "Visa"
         },
         "overwrite": {
             "title": "Filen finns redan",
@@ -3165,7 +3176,11 @@
                 "pause": "Pausa",
                 "copyAll": "Kopiera alla",
                 "clear": "Rensa",
-                "emptyMessage": "Konsolutdata visas här när felsökningsläge är aktivt."
+                "emptyMessage": "Konsolutdata visas här när felsökningsläge är aktivt.",
+                "allSources": "Alla källor",
+                "sourceFilterTitle": "Filtrera efter källa",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React-läge",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopiera fillista till urklipp",
             "filesCopied": "{count} filposter kopierade till urklipp",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (kalkylblad)",
+                "json": "JSON (array)",
+                "ndjson": "NDJSON (en per rad)",
+                "scopeLogs": "Exportera Logs som",
+                "scopeNetwork": "Exportera Network som",
+                "text": "Vanlig text",
+                "title": "Exportera"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault rundtur",
+                "connectivity": "Aktiv anslutningssond",
+                "copyResults": "Kopiera resultat",
+                "copyResultsTitle": "Kopiera resultat som Markdown",
+                "i18nSweep": "i18n-nyckelgenomgång",
+                "ipcSpeed": "IPC-hastighetsprov",
+                "knownHosts": "known_hosts-läsning",
+                "passed": "godkända",
+                "pluginIntegrity": "Plugin-integritet",
+                "providerSelftest": "Leverantörens självtest (skrivskyddad)",
+                "runAll": "Kör alla",
+                "runOne": "Kör detta test",
+                "vaultRoundtrip": "Valv-rundtur"
+            },
+            "bundle": {
+                "title": "Exportera diagnostikpaket (ZIP)"
+            }
         },
         "menu": {
             "file": "Arkiv",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Monteringshanterare...",
             "activityLog": "Aktivitetslogg",
-            "detailedCards": "Detaljerade serverkort"
+            "detailedCards": "Detaljerade serverkort",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Vantar pa kommandon...",

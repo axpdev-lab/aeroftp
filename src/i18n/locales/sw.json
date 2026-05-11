@@ -1652,7 +1652,18 @@
             "openSettings": "Mipangilio",
             "showShortcuts": "Onyesha Njia za Mkato",
             "closeDialog": "Funga / Ghairi",
-            "helpText": "Bonyeza [F1] kwa msaada"
+            "helpText": "Bonyeza [F1] kwa msaada",
+            "activityLog": "Kumbukumbu ya shughuli",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Kadi za kina za seva",
+            "quit": "Funga AeroFTP",
+            "toggleAgent": "Geuza AeroAgent",
+            "toggleDevtools": "Geuza AeroTools",
+            "toggleEditor": "Geuza kihariri",
+            "toggleTerminal": "Geuza terminali",
+            "toggleTheme": "Badilisha mandhari",
+            "view": "Mwonekano"
         },
         "overwrite": {
             "title": "Faili tayari ipo",
@@ -3165,7 +3176,11 @@
                 "pause": "Sitisha",
                 "copyAll": "Nakili zote",
                 "clear": "Futa",
-                "emptyMessage": "Matokeo ya console yataonekana hapa wakati Hali ya Utatuzi iko hai."
+                "emptyMessage": "Matokeo ya console yataonekana hapa wakati Hali ya Utatuzi iko hai.",
+                "allSources": "Vyanzo vyote",
+                "sourceFilterTitle": "Chuja kwa chanzo",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Hali ya React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Nakili orodha ya faili kwenye ubao wa kunakili",
             "filesCopied": "Maingizo {count} ya faili yamenakiliwa kwenye ubao wa kunakili",
-            "title": "Utatuzi"
+            "title": "Utatuzi",
+            "export": {
+                "csv": "CSV (lahajedwali)",
+                "json": "JSON (safu)",
+                "ndjson": "NDJSON (moja kwa kila mstari)",
+                "scopeLogs": "Hamisha Logs kama",
+                "scopeNetwork": "Hamisha Network kama",
+                "text": "Maandishi sahili",
+                "title": "Hamisha"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Safari ya mzunguko ya AeroVault",
+                "connectivity": "Ukaguzi wa muunganisho hai",
+                "copyResults": "Nakili matokeo",
+                "copyResultsTitle": "Nakili matokeo kama Markdown",
+                "i18nSweep": "Ukaguzi wa funguo za i18n",
+                "ipcSpeed": "Sampuli ya kasi ya IPC",
+                "knownHosts": "kusoma known_hosts",
+                "passed": "yamefaulu",
+                "pluginIntegrity": "Uadilifu wa programu-jalizi",
+                "providerSelftest": "Jaribio la kibinafsi la mtoa huduma (kusoma tu)",
+                "runAll": "Endesha zote",
+                "runOne": "Endesha jaribio hili",
+                "vaultRoundtrip": "Safari ya mzunguko ya hifadhi"
+            },
+            "bundle": {
+                "title": "Hamisha kifurushi cha uchunguzi (ZIP)"
+            }
         },
         "menu": {
             "file": "Faili",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Kidhibiti cha Kupachika...",
             "activityLog": "Kumbukumbu ya Shughuli",
-            "detailedCards": "Kadi za seva za kina"
+            "detailedCards": "Kadi za seva za kina",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Inasubiri amri...",

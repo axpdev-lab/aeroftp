@@ -1652,7 +1652,18 @@
             "openSettings": "Nustatymai",
             "showShortcuts": "Rodyti trumpinius",
             "closeDialog": "Uždaryti / Atšaukti",
-            "helpText": "Spauskite [F1] pagalbai"
+            "helpText": "Spauskite [F1] pagalbai",
+            "activityLog": "Veiklos žurnalas",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Išsamios serverio kortelės",
+            "quit": "Išeiti iš AeroFTP",
+            "toggleAgent": "Įjungti/Išjungti AeroAgent",
+            "toggleDevtools": "Įjungti/Išjungti AeroTools",
+            "toggleEditor": "Įjungti/Išjungti redaktorių",
+            "toggleTerminal": "Įjungti/Išjungti terminalą",
+            "toggleTheme": "Keisti temą",
+            "view": "Rodinys"
         },
         "overwrite": {
             "title": "Failas jau egzistuoja",
@@ -3165,7 +3176,11 @@
                 "pause": "Pauzuoti",
                 "copyAll": "Kopijuoti viską",
                 "clear": "Išvalyti",
-                "emptyMessage": "Konsolės išvestis bus rodoma čia, kai derinimo režimas aktyvus."
+                "emptyMessage": "Konsolės išvestis bus rodoma čia, kai derinimo režimas aktyvus.",
+                "allSources": "Visi šaltiniai",
+                "sourceFilterTitle": "Filtruoti pagal šaltinį",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React režimas",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopijuoti failų sąrašą į iškarpinę",
             "filesCopied": "{count} failų įrašų nukopijuota į iškarpinę",
-            "title": "Derinimas"
+            "title": "Derinimas",
+            "export": {
+                "csv": "CSV (skaičiuoklė)",
+                "json": "JSON (masyvas)",
+                "ndjson": "NDJSON (po vieną eilutėje)",
+                "scopeLogs": "Eksportuoti Logs kaip",
+                "scopeNetwork": "Eksportuoti Network kaip",
+                "text": "Paprastas tekstas",
+                "title": "Eksportuoti"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault apvali kelionė",
+                "connectivity": "Aktyvaus ryšio patikra",
+                "copyResults": "Kopijuoti rezultatus",
+                "copyResultsTitle": "Kopijuoti rezultatus kaip Markdown",
+                "i18nSweep": "i18n raktų peržiūra",
+                "ipcSpeed": "IPC greičio pavyzdys",
+                "knownHosts": "known_hosts skaitymas",
+                "passed": "praėjo",
+                "pluginIntegrity": "Įskiepio vientisumas",
+                "providerSelftest": "Tiekėjo savitikra (tik skaitymui)",
+                "runAll": "Vykdyti visus",
+                "runOne": "Vykdyti šį testą",
+                "vaultRoundtrip": "Saugyklos apvali kelionė"
+            },
+            "bundle": {
+                "title": "Eksportuoti diagnostikos paketą (ZIP)"
+            }
         },
         "menu": {
             "file": "Failas",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Prijungimo tvarkyklė...",
             "activityLog": "Veiklos zurnalas",
-            "detailedCards": "Išsamios serverių kortelės"
+            "detailedCards": "Išsamios serverių kortelės",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Laukiama komandų...",

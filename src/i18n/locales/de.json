@@ -1652,7 +1652,18 @@
             "openSettings": "Einstellungen öffnen",
             "showShortcuts": "Shortcuts anzeigen",
             "closeDialog": "Schließen / Abbrechen",
-            "helpText": "Drücken Sie [F1] jederzeit für Hilfe"
+            "helpText": "Drücken Sie [F1] jederzeit für Hilfe",
+            "activityLog": "Aktivitätsprotokoll",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Detaillierte Serverkarten",
+            "quit": "AeroFTP beenden",
+            "toggleAgent": "AeroAgent umschalten",
+            "toggleDevtools": "AeroTools umschalten",
+            "toggleEditor": "Editor umschalten",
+            "toggleTerminal": "Terminal umschalten",
+            "toggleTheme": "Design wechseln",
+            "view": "Ansicht"
         },
         "overwrite": {
             "title": "Datei existiert bereits",
@@ -3165,7 +3176,11 @@
                 "pause": "Pausieren",
                 "copyAll": "Alle kopieren",
                 "clear": "Löschen",
-                "emptyMessage": "Konsolenausgabe erscheint hier, wenn der Debug-Modus aktiv ist."
+                "emptyMessage": "Konsolenausgabe erscheint hier, wenn der Debug-Modus aktiv ist.",
+                "allSources": "Alle Quellen",
+                "sourceFilterTitle": "Nach Quelle filtern",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React-Modus",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Dateiliste in Zwischenablage kopieren",
             "filesCopied": "{count} Dateieinträge in die Zwischenablage kopiert",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (Tabelle)",
+                "json": "JSON (Array)",
+                "ndjson": "NDJSON (einer pro Zeile)",
+                "scopeLogs": "Logs exportieren als",
+                "scopeNetwork": "Network exportieren als",
+                "text": "Klartext",
+                "title": "Exportieren"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault Round-Trip",
+                "connectivity": "Aktive Verbindungsprüfung",
+                "copyResults": "Ergebnisse kopieren",
+                "copyResultsTitle": "Ergebnisse als Markdown kopieren",
+                "i18nSweep": "i18n-Schlüsseldurchlauf",
+                "ipcSpeed": "IPC-Geschwindigkeitsprobe",
+                "knownHosts": "known_hosts-Lesen",
+                "passed": "bestanden",
+                "pluginIntegrity": "Plugin-Integrität",
+                "providerSelftest": "Anbieter-Selbsttest (schreibgeschützt)",
+                "runAll": "Alle ausführen",
+                "runOne": "Diesen Test ausführen",
+                "vaultRoundtrip": "Tresor-Round-Trip"
+            },
+            "bundle": {
+                "title": "Diagnose-Bundle exportieren (ZIP)"
+            }
         },
         "menu": {
             "file": "Datei",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Mount-Manager...",
             "activityLog": "Aktivitätsprotokoll",
-            "detailedCards": "Detaillierte Serverkarten"
+            "detailedCards": "Detaillierte Serverkarten",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Warte auf Befehle...",

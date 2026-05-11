@@ -1652,7 +1652,18 @@
             "openSettings": "설정 열기",
             "showShortcuts": "단축키 표시",
             "closeDialog": "닫기 / 취소",
-            "helpText": "언제든지 [F1]을 눌러 확인"
+            "helpText": "언제든지 [F1]을 눌러 확인",
+            "activityLog": "활동 로그",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "상세 서버 카드",
+            "quit": "AeroFTP 종료",
+            "toggleAgent": "AeroAgent 전환",
+            "toggleDevtools": "AeroTools 전환",
+            "toggleEditor": "에디터 전환",
+            "toggleTerminal": "터미널 전환",
+            "toggleTheme": "테마 전환",
+            "view": "보기"
         },
         "overwrite": {
             "title": "파일이 이미 존재합니다",
@@ -3165,7 +3176,11 @@
                 "pause": "일시정지",
                 "copyAll": "모두 복사",
                 "clear": "지우기",
-                "emptyMessage": "디버그 모드가 활성화되면 여기에 콘솔 출력이 표시됩니다."
+                "emptyMessage": "디버그 모드가 활성화되면 여기에 콘솔 출력이 표시됩니다.",
+                "allSources": "모든 소스",
+                "sourceFilterTitle": "소스별 필터",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React 모드",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "파일 목록을 클립보드에 복사",
             "filesCopied": "{count}개의 파일 항목이 클립보드에 복사됨",
-            "title": "디버그"
+            "title": "디버그",
+            "export": {
+                "csv": "CSV (스프레드시트)",
+                "json": "JSON (배열)",
+                "ndjson": "NDJSON (한 줄에 하나)",
+                "scopeLogs": "Logs 내보내기 형식",
+                "scopeNetwork": "Network 내보내기 형식",
+                "text": "일반 텍스트",
+                "title": "내보내기"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault 왕복",
+                "connectivity": "활성 연결 검사",
+                "copyResults": "결과 복사",
+                "copyResultsTitle": "결과를 Markdown으로 복사",
+                "i18nSweep": "i18n 키 스윕",
+                "ipcSpeed": "IPC 속도 샘플",
+                "knownHosts": "known_hosts 읽기",
+                "passed": "통과",
+                "pluginIntegrity": "플러그인 무결성",
+                "providerSelftest": "제공자 자체 테스트 (읽기 전용)",
+                "runAll": "모두 실행",
+                "runOne": "이 테스트 실행",
+                "vaultRoundtrip": "보관함 왕복"
+            },
+            "bundle": {
+                "title": "진단 번들 내보내기 (ZIP)"
+            }
         },
         "menu": {
             "file": "파일",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "마운트 관리자...",
             "activityLog": "활동 로그",
-            "detailedCards": "상세 서버 카드"
+            "detailedCards": "상세 서버 카드",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",

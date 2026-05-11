@@ -42,6 +42,7 @@ pub mod cross_profile_transfer;
 mod crypto;
 mod cryptomator;
 mod cyber_tools;
+mod debug_tests;
 mod delta_sync;
 // `pub` only so `tests/integration_delta_sync.rs` (separate crate) can
 // inject a MockDeltaTransport. Everything but the hidden inner helper
@@ -13277,6 +13278,12 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)
+                // Fan-out backend logs to the webview via the `log://log` event,
+                // consumed by the in-app DebugPanel. Stdout + LogDir targets are
+                // preserved by default; this one is additive.
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Webview,
+                ))
                 .build(),
         )
         .plugin(tauri_plugin_autostart::init(
@@ -13319,6 +13326,15 @@ pub fn run() {
         .setup(move |app| {
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder};
             use tauri_plugin_window_state::{StateFlags, WindowExt};
+
+            // Bridge `tracing::*` events to the `log` facade so the
+            // tauri-plugin-log Webview target picks them up too. Without this
+            // bridge every provider that uses `tracing::info!` (S3, WebDAV,
+            // OAuth, sync, etc.) emits into the void: tauri-plugin-log only
+            // captures `log::*` macros. The bridge is fire-and-forget; if a
+            // subscriber is already installed (unlikely in our setup) we
+            // silently keep the existing one.
+            let _ = tracing::subscriber::set_global_default(TracingToLogBridge);
 
             // Wait for tauri-plugin-localhost to bind the loopback port before
             // any webview tries to load from it.
@@ -14170,6 +14186,14 @@ pub fn run() {
             get_dependencies,
             check_crate_versions,
             get_system_info,
+            // DebugPanel diagnostic suite (Tests tab)
+            debug_tests::debug_test_connectivity,
+            debug_tests::debug_test_vault_roundtrip,
+            debug_tests::debug_test_known_hosts,
+            debug_tests::debug_test_aerovault_roundtrip,
+            debug_tests::debug_test_plugin_integrity,
+            debug_tests::debug_test_provider_selftest,
+            debug_tests::debug_export_bundle,
             // Updater commands
             check_update,
             read_update_marker,
@@ -14696,6 +14720,84 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+// ─── Tracing -> log bridge ────────────────────────────────────────────────
+//
+// tauri-plugin-log only captures `log::*` macros. Providers (S3, WebDAV,
+// OAuth, sync, etc.) use `tracing::*` for structured events, so without
+// this bridge the entire provider layer is invisible to the in-app
+// DebugPanel and to the on-disk `aeroftp.log`. The bridge converts every
+// tracing Event into a `log::Record` and forwards it to whatever logger
+// `log::set_logger` installed (in our case, the tauri-plugin-log dispatch
+// which fans out to stdout, the log file, and the Webview target).
+//
+// We only handle the message field and rely on `record_debug` for
+// everything else: Arguments<'_>::Debug is identical to Display, so
+// formatted log strings come through unchanged. Span entry/exit and span
+// fields are intentionally dropped (no provider uses spans today).
+
+struct TracingToLogBridge;
+
+struct LogMessageVisitor(String);
+
+impl tracing::field::Visit for LogMessageVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        use std::fmt::Write;
+        if field.name() == "message" {
+            // Arguments<'_>::Debug renders identical to Display, so the
+            // formatted log line comes through without quoting.
+            let _ = write!(&mut self.0, "{:?}", value);
+        } else {
+            let _ = write!(&mut self.0, " {}={:?}", field.name(), value);
+        }
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        use std::fmt::Write;
+        if field.name() == "message" {
+            self.0.push_str(value);
+        } else {
+            let _ = write!(&mut self.0, " {}={}", field.name(), value);
+        }
+    }
+}
+
+impl tracing::Subscriber for TracingToLogBridge {
+    fn enabled(&self, _metadata: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, _attrs: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+
+    fn record(&self, _id: &tracing::span::Id, _values: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _id: &tracing::span::Id, _follows: &tracing::span::Id) {}
+
+    fn event(&self, event: &tracing::Event<'_>) {
+        let meta = event.metadata();
+        let level = match *meta.level() {
+            tracing::Level::ERROR => log::Level::Error,
+            tracing::Level::WARN => log::Level::Warn,
+            tracing::Level::INFO => log::Level::Info,
+            tracing::Level::DEBUG => log::Level::Debug,
+            tracing::Level::TRACE => log::Level::Trace,
+        };
+        let mut visitor = LogMessageVisitor(String::new());
+        event.record(&mut visitor);
+        let msg = visitor.0.trim_start();
+        log::logger().log(
+            &log::Record::builder()
+                .args(format_args!("{}", msg))
+                .level(level)
+                .target(meta.target())
+                .build(),
+        );
+    }
+
+    fn enter(&self, _id: &tracing::span::Id) {}
+    fn exit(&self, _id: &tracing::span::Id) {}
 }
 
 #[cfg(test)]

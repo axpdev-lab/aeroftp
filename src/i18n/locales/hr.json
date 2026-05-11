@@ -1652,7 +1652,18 @@
             "openSettings": "Otvori postavke",
             "showShortcuts": "Prikaži prečace",
             "closeDialog": "Zatvori dijalog / Odustani",
-            "helpText": "Pritisnite [F1] bilo kada za prikaz ovog dijaloga"
+            "helpText": "Pritisnite [F1] bilo kada za prikaz ovog dijaloga",
+            "activityLog": "Zapisnik aktivnosti",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Detaljne kartice poslužitelja",
+            "quit": "Izađi iz AeroFTP",
+            "toggleAgent": "Prikaži/Sakrij AeroAgent",
+            "toggleDevtools": "Prikaži/Sakrij AeroTools",
+            "toggleEditor": "Prikaži/Sakrij uređivač",
+            "toggleTerminal": "Prikaži/Sakrij terminal",
+            "toggleTheme": "Promijeni temu",
+            "view": "Prikaz"
         },
         "overwrite": {
             "title": "Datoteka već postoji",
@@ -3165,7 +3176,11 @@
                 "pause": "Pauziraj",
                 "copyAll": "Kopiraj sve",
                 "clear": "Očisti",
-                "emptyMessage": "Izlaz konzole pojavit će se ovdje kada je način otklanjanja pogrešaka aktivan."
+                "emptyMessage": "Izlaz konzole pojavit će se ovdje kada je način otklanjanja pogrešaka aktivan.",
+                "allSources": "Svi izvori",
+                "sourceFilterTitle": "Filtriraj po izvoru",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React način",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopiraj popis datoteka u međuspremnik",
             "filesCopied": "{count} unosa datoteka kopirano u međuspremnik",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (proračunska tablica)",
+                "json": "JSON (polje)",
+                "ndjson": "NDJSON (jedan po retku)",
+                "scopeLogs": "Izvezi Logs kao",
+                "scopeNetwork": "Izvezi Network kao",
+                "text": "Obični tekst",
+                "title": "Izvezi"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault povratni put",
+                "connectivity": "Provjera aktivne veze",
+                "copyResults": "Kopiraj rezultate",
+                "copyResultsTitle": "Kopiraj rezultate kao Markdown",
+                "i18nSweep": "Pregled i18n ključeva",
+                "ipcSpeed": "IPC uzorak brzine",
+                "knownHosts": "čitanje known_hosts",
+                "passed": "uspješno",
+                "pluginIntegrity": "Integritet dodatka",
+                "providerSelftest": "Samotest pružatelja (samo za čitanje)",
+                "runAll": "Pokreni sve",
+                "runOne": "Pokreni ovaj test",
+                "vaultRoundtrip": "Povratni put trezora"
+            },
+            "bundle": {
+                "title": "Izvezi dijagnostički paket (ZIP)"
+            }
         },
         "menu": {
             "file": "Datoteka",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Upravitelj montiranja...",
             "activityLog": "Dnevnik aktivnosti",
-            "detailedCards": "Detaljne kartice poslužitelja"
+            "detailedCards": "Detaljne kartice poslužitelja",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Čekanje naredbi...",

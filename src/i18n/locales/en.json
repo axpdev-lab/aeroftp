@@ -1464,8 +1464,36 @@
         "userAgent": "User Agent",
         "windowSize": "Window Size"
       },
+      "bundle": {
+        "title": "Export diagnostic bundle (ZIP)"
+      },
+      "export": {
+        "csv": "CSV (spreadsheet)",
+        "json": "JSON (array)",
+        "ndjson": "NDJSON (one per line)",
+        "scopeLogs": "Export Logs as",
+        "scopeNetwork": "Export Network as",
+        "text": "Plain text",
+        "title": "Export"
+      },
+      "tests": {
+        "aerovaultRoundtrip": "AeroVault round-trip",
+        "connectivity": "Active connection probe",
+        "copyResults": "Copy results",
+        "copyResultsTitle": "Copy results as Markdown",
+        "i18nSweep": "i18n key sweep",
+        "ipcSpeed": "IPC speed sample",
+        "knownHosts": "known_hosts read",
+        "passed": "passed",
+        "pluginIntegrity": "Plugin integrity",
+        "providerSelftest": "Provider self-test (read-only)",
+        "runAll": "Run all",
+        "runOne": "Run this test",
+        "vaultRoundtrip": "Vault round-trip"
+      },
       "logs": {
         "allLevels": "All Levels",
+        "allSources": "All sources",
         "clear": "Clear",
         "copyAll": "Copy all",
         "debug": "Debug",
@@ -1475,6 +1503,9 @@
         "info": "Info",
         "pause": "Pause",
         "resume": "Resume",
+        "sourceFilterTitle": "Filter by source",
+        "sourceJs": "JS",
+        "sourceRust": "Rust",
         "warning": "Warning"
       },
       "network": {
@@ -1826,6 +1857,7 @@
       "toggleEditor": "Editor",
       "toggleTerminal": "Terminal",
       "activityLog": "Activity Log",
+      "debugPanel": "Debug Panel",
       "selectAll": "Select All",
       "detailedCards": "Detailed Server Cards",
       "toggleTheme": "Toggle Theme",
@@ -2954,8 +2986,12 @@
       "title": "Sharing"
     },
     "shortcuts": {
+      "activityLog": "Activity Log",
       "closeDialog": "Close dialog / Cancel",
+      "commandPalette": "Command Palette",
+      "debugPanel": "Debug Panel",
       "deleteSelected": "Delete selected",
+      "detailedCards": "Detailed server cards",
       "downloadSelected": "Download selected",
       "fileOperations": "File Operations",
       "focusSearch": "Focus search",
@@ -2966,6 +3002,7 @@
       "newFolder": "New folder",
       "openFolder": "Open folder / Download file",
       "openSettings": "Open Settings",
+      "quit": "Quit AeroFTP",
       "rangeSelection": "Range selection",
       "refreshPanel": "Refresh current panel",
       "rename": "Rename",
@@ -2973,8 +3010,14 @@
       "showShortcuts": "Show shortcuts",
       "switchPanel": "Switch panel focus",
       "title": "Keyboard Shortcuts",
+      "toggleAgent": "Toggle AeroAgent",
+      "toggleDevtools": "Toggle AeroTools",
+      "toggleEditor": "Toggle Editor",
       "toggleSelection": "Toggle selection",
-      "uploadSelected": "Upload selected"
+      "toggleTerminal": "Toggle Terminal",
+      "toggleTheme": "Toggle theme",
+      "uploadSelected": "Upload selected",
+      "view": "View"
     },
     "sidebar": {
       "add_to_sidebar": "Add to Sidebar",

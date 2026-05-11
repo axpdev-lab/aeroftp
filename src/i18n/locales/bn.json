@@ -1652,7 +1652,18 @@
             "openSettings": "সেটিংস খুলুন",
             "showShortcuts": "শর্টকাট দেখান",
             "closeDialog": "বন্ধ / বাতিল",
-            "helpText": "সাহায্যের জন্য [F1] চাপুন"
+            "helpText": "সাহায্যের জন্য [F1] চাপুন",
+            "activityLog": "কার্যকলাপ লগ",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "বিস্তারিত সার্ভার কার্ড",
+            "quit": "AeroFTP থেকে প্রস্থান",
+            "toggleAgent": "AeroAgent টগল করুন",
+            "toggleDevtools": "AeroTools টগল করুন",
+            "toggleEditor": "এডিটর টগল করুন",
+            "toggleTerminal": "টার্মিনাল টগল করুন",
+            "toggleTheme": "থিম পরিবর্তন",
+            "view": "দেখুন"
         },
         "overwrite": {
             "title": "ফাইল ইতিমধ্যে বিদ্যমান",
@@ -3165,7 +3176,11 @@
                 "pause": "বিরতি দিন",
                 "copyAll": "সব কপি করুন",
                 "clear": "সাফ করুন",
-                "emptyMessage": "ডিবাগ মোড চালু থাকলে কনসোল আউটপুট এখানে দেখাবে।"
+                "emptyMessage": "ডিবাগ মোড চালু থাকলে কনসোল আউটপুট এখানে দেখাবে।",
+                "allSources": "সব উৎস",
+                "sourceFilterTitle": "উৎস অনুযায়ী ফিল্টার করুন",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React মোড",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "ফাইল তালিকা ক্লিপবোর্ডে অনুলিপি করুন",
             "filesCopied": "{count}টি ফাইল এন্ট্রি ক্লিপবোর্ডে কপি করা হয়েছে",
-            "title": "ডিবাগ"
+            "title": "ডিবাগ",
+            "export": {
+                "csv": "CSV (স্প্রেডশিট)",
+                "json": "JSON (অ্যারে)",
+                "ndjson": "NDJSON (প্রতি লাইনে একটি)",
+                "scopeLogs": "Logs রপ্তানি করুন এই হিসাবে",
+                "scopeNetwork": "Network রপ্তানি করুন এই হিসাবে",
+                "text": "সাধারণ টেক্সট",
+                "title": "রপ্তানি"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault রাউন্ড-ট্রিপ",
+                "connectivity": "সক্রিয় সংযোগ পরীক্ষা",
+                "copyResults": "ফলাফল কপি করুন",
+                "copyResultsTitle": "ফলাফল Markdown হিসেবে কপি করুন",
+                "i18nSweep": "i18n কী স্ক্যান",
+                "ipcSpeed": "IPC গতি নমুনা",
+                "knownHosts": "known_hosts পড়া",
+                "passed": "উত্তীর্ণ",
+                "pluginIntegrity": "প্লাগইন অখণ্ডতা",
+                "providerSelftest": "প্রদানকারীর স্ব-পরীক্ষা (শুধু পড়া)",
+                "runAll": "সব চালান",
+                "runOne": "এই পরীক্ষাটি চালান",
+                "vaultRoundtrip": "ভল্ট রাউন্ড-ট্রিপ"
+            },
+            "bundle": {
+                "title": "ডায়াগনস্টিক বান্ডেল রপ্তানি করুন (ZIP)"
+            }
         },
         "menu": {
             "file": "ফাইল",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "মাউন্ট ম্যানেজার...",
             "activityLog": "অ্যাক্টিভিটি লগ",
-            "detailedCards": "বিস্তারিত সার্ভার কার্ড"
+            "detailedCards": "বিস্তারিত সার্ভার কার্ড",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",

@@ -391,6 +391,22 @@ const App: React.FC = () => {
     } catch { /* ignore */ }
   }, [swapPanels, setSwapPanels, SETTINGS_KEY]);
 
+  // cardLayout toggle: persists to vault/localStorage AND emits
+  // `aeroftp-settings-changed` so the `useCardLayout` consumers in
+  // ServerCard / MyServersPanel actually re-render. Without the event
+  // the menu / shortcut only flips React state in App.tsx and the
+  // downstream hook keeps showing the previous layout.
+  const toggleCardLayout = useCallback(async () => {
+    const next: 'compact' | 'detailed' = cardLayout === 'detailed' ? 'compact' : 'detailed';
+    setCardLayout(next);
+    try {
+      const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
+      const updated = { ...(existing || {}), cardLayout: next };
+      await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
+      window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+    } catch { /* ignore */ }
+  }, [cardLayout, setCardLayout, SETTINGS_KEY]);
+
   const usesProviderApi = (protocol?: ProviderType) => {
     return !!protocol && (protocol === 'ftp' || protocol === 'ftps' || isNonFtpProvider(protocol));
   };
@@ -1328,12 +1344,13 @@ interface UpdateVerificationInfo {
     'Ctrl+,': () => setShowSettingsPanel(true),
     'Ctrl+Shift+P': () => setShowCommandPalette(v => !v),
     'Ctrl+Shift+L': () => setShowActivityLog(v => !v),
+    'Ctrl+Shift+M': () => setShowDebugPanel(v => !v),
     'Ctrl+T': cycleTheme,
     // Toggle the My Servers card density. The detailed variant runs
     // per-server health probes at render time, so it stays explicitly
     // opt-in (default install resolves to compact). Mirrors the View
     // menu entry and the Settings > Appearance toggle.
-    'Ctrl+Shift+V': () => setCardLayout(cardLayout === 'detailed' ? 'compact' : 'detailed'),
+    'Ctrl+Shift+V': () => { toggleCardLayout(); },
 
     // Delete: delete selected files
     'Delete': () => {
@@ -1655,7 +1672,7 @@ interface UpdateVerificationInfo {
     }
   }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
     universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
-    activePanel, currentRemotePath, currentLocalPath, isConnected, cardLayout]);
+    activePanel, currentRemotePath, currentLocalPath, isConnected, cardLayout, toggleCardLayout]);
 
 
   // Persist last known quota to the saved server profile (best-effort) so the
@@ -8595,11 +8612,12 @@ interface UpdateVerificationInfo {
           onToggleTerminal={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'terminal' })); }}
           onToggleAgent={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'agent' })); }}
           onToggleActivityLog={() => setShowActivityLog(v => !v)}
+          onToggleDebugPanel={() => setShowDebugPanel(v => !v)}
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
           cardLayout={cardLayout}
-          onToggleCardLayout={() => setCardLayout(cardLayout === 'detailed' ? 'compact' : 'detailed')}
+          onToggleCardLayout={toggleCardLayout}
         />
 
         <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
@@ -11221,8 +11239,10 @@ interface UpdateVerificationInfo {
           />
         )}
 
-        {/* Debug Panel */}
-        {debugMode && showDebugPanel && (
+        {/* Debug Panel: open from View menu (Ctrl+Shift+M) in any theme.
+            `debugMode` stays a separate concept (verbose console capture / DEBUG badge),
+            no longer required to render the panel itself. */}
+        {showDebugPanel && (
           <DebugPanel
             isVisible={true}
             onClose={() => setShowDebugPanel(false)}

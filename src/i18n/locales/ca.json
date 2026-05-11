@@ -1652,7 +1652,18 @@
             "openSettings": "Configuració",
             "showShortcuts": "Mostrar dreceres",
             "closeDialog": "Tancar / Cancel·lar",
-            "helpText": "Premeu [F1] per ajuda"
+            "helpText": "Premeu [F1] per ajuda",
+            "activityLog": "Registre d'activitat",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Targetes de servidor detallades",
+            "quit": "Surt d'AeroFTP",
+            "toggleAgent": "Alterna AeroAgent",
+            "toggleDevtools": "Alterna AeroTools",
+            "toggleEditor": "Alterna l'editor",
+            "toggleTerminal": "Alterna el terminal",
+            "toggleTheme": "Canvia el tema",
+            "view": "Visualització"
         },
         "overwrite": {
             "title": "El fitxer ja existeix",
@@ -3165,7 +3176,11 @@
                 "pause": "Pausar",
                 "copyAll": "Copiar-ho tot",
                 "clear": "Esborrar",
-                "emptyMessage": "La sortida de la consola apareixerà aquí quan el mode de depuració estigui actiu."
+                "emptyMessage": "La sortida de la consola apareixerà aquí quan el mode de depuració estigui actiu.",
+                "allSources": "Totes les fonts",
+                "sourceFilterTitle": "Filtra per font",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Mode React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Copiar llista de fitxers al porta-retalls",
             "filesCopied": "{count} entrades de fitxers copiades al porta-retalls",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (full de càlcul)",
+                "json": "JSON (matriu)",
+                "ndjson": "NDJSON (un per línia)",
+                "scopeLogs": "Exporta Logs com a",
+                "scopeNetwork": "Exporta Network com a",
+                "text": "Text pla",
+                "title": "Exporta"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Anada i tornada d'AeroVault",
+                "connectivity": "Sondeig de connexió activa",
+                "copyResults": "Copia els resultats",
+                "copyResultsTitle": "Copia els resultats com a Markdown",
+                "i18nSweep": "Escombrada de claus i18n",
+                "ipcSpeed": "Mostra de velocitat IPC",
+                "knownHosts": "lectura de known_hosts",
+                "passed": "superats",
+                "pluginIntegrity": "Integritat del connector",
+                "providerSelftest": "Autotest del proveïdor (només lectura)",
+                "runAll": "Executa-ho tot",
+                "runOne": "Executa aquesta prova",
+                "vaultRoundtrip": "Anada i tornada de la caixa forta"
+            },
+            "bundle": {
+                "title": "Exporta el paquet de diagnòstic (ZIP)"
+            }
         },
         "menu": {
             "file": "Fitxer",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Gestor de muntatges...",
             "activityLog": "Registre d'Activitat",
-            "detailedCards": "Targetes de servidor detallades"
+            "detailedCards": "Targetes de servidor detallades",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",

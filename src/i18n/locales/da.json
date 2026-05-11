@@ -1652,7 +1652,18 @@
             "openSettings": "Indstillinger",
             "showShortcuts": "Vis genveje",
             "closeDialog": "Luk / Annuller",
-            "helpText": "Tryk [F1] for hjælp"
+            "helpText": "Tryk [F1] for hjælp",
+            "activityLog": "Aktivitetslog",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Detaljerede serverkort",
+            "quit": "Afslut AeroFTP",
+            "toggleAgent": "Skift AeroAgent",
+            "toggleDevtools": "Skift AeroTools",
+            "toggleEditor": "Skift editor",
+            "toggleTerminal": "Skift terminal",
+            "toggleTheme": "Skift tema",
+            "view": "Vis"
         },
         "overwrite": {
             "title": "Filen eksisterer allerede",
@@ -3165,7 +3176,11 @@
                 "pause": "Pause",
                 "copyAll": "Kopier alle",
                 "clear": "Ryd",
-                "emptyMessage": "Konsoloutput vises her, når fejlsøgningstilstand er aktiv."
+                "emptyMessage": "Konsoloutput vises her, når fejlsøgningstilstand er aktiv.",
+                "allSources": "Alle kilder",
+                "sourceFilterTitle": "Filtrer efter kilde",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React-tilstand",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopier filliste til udklipsholder",
             "filesCopied": "{count} filposter kopieret til udklipsholder",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (regneark)",
+                "json": "JSON (array)",
+                "ndjson": "NDJSON (en pr. linje)",
+                "scopeLogs": "Eksportér Logs som",
+                "scopeNetwork": "Eksportér Network som",
+                "text": "Almindelig tekst",
+                "title": "Eksportér"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault tur-retur",
+                "connectivity": "Aktiv forbindelsessonde",
+                "copyResults": "Kopiér resultater",
+                "copyResultsTitle": "Kopiér resultater som Markdown",
+                "i18nSweep": "i18n nøglegennemgang",
+                "ipcSpeed": "IPC hastighedsprøve",
+                "knownHosts": "known_hosts læsning",
+                "passed": "bestået",
+                "pluginIntegrity": "Plugin-integritet",
+                "providerSelftest": "Udbyder-selvtest (skrivebeskyttet)",
+                "runAll": "Kør alle",
+                "runOne": "Kør denne test",
+                "vaultRoundtrip": "Boks tur-retur"
+            },
+            "bundle": {
+                "title": "Eksportér diagnostisk pakke (ZIP)"
+            }
         },
         "menu": {
             "file": "Fil",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Mount-håndtering...",
             "activityLog": "Aktivitetslog",
-            "detailedCards": "Detaljerede serverkort"
+            "detailedCards": "Detaljerede serverkort",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Afventer kommandoer...",

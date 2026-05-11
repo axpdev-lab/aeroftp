@@ -1652,7 +1652,18 @@
             "openSettings": "Open Settings",
             "showShortcuts": "Show shortcuts",
             "closeDialog": "Close dialog / Cancel",
-            "helpText": "Press [F1] anytime to show this dialog"
+            "helpText": "Press [F1] anytime to show this dialog",
+            "activityLog": "Aðgerðaskrá",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Ítarleg þjónsspjöld",
+            "quit": "Hætta í AeroFTP",
+            "toggleAgent": "Víxla AeroAgent",
+            "toggleDevtools": "Víxla AeroTools",
+            "toggleEditor": "Víxla ritil",
+            "toggleTerminal": "Víxla skipanalínu",
+            "toggleTheme": "Skipta um þema",
+            "view": "Skoða"
         },
         "overwrite": {
             "title": "Skráin er þegar til",
@@ -3165,7 +3176,11 @@
                 "pause": "Hlé",
                 "copyAll": "Afrita Allt",
                 "clear": "Hreinsa",
-                "emptyMessage": "Stjórnborðsúttak mun birtast hér þegar villusýnarhamur er virkur."
+                "emptyMessage": "Stjórnborðsúttak mun birtast hér þegar villusýnarhamur er virkur.",
+                "allSources": "Allar heimildir",
+                "sourceFilterTitle": "Sía eftir heimild",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React Hamur",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Afrita skráalista á klippispjald",
             "filesCopied": "{count} skráarfærslur afritaðar á klippispjald",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (töflureiknir)",
+                "json": "JSON (fylki)",
+                "ndjson": "NDJSON (eitt á línu)",
+                "scopeLogs": "Flytja Logs út sem",
+                "scopeNetwork": "Flytja Network út sem",
+                "text": "Hreinn texti",
+                "title": "Flytja út"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault hringferð",
+                "connectivity": "Virk tengingarprófun",
+                "copyResults": "Afrita niðurstöður",
+                "copyResultsTitle": "Afrita niðurstöður sem Markdown",
+                "i18nSweep": "i18n lyklayfirferð",
+                "ipcSpeed": "IPC hraðasýni",
+                "knownHosts": "known_hosts lestur",
+                "passed": "stóðust",
+                "pluginIntegrity": "Heilleiki viðbótar",
+                "providerSelftest": "Sjálfsprófun veitanda (aðeins lestur)",
+                "runAll": "Keyra allt",
+                "runOne": "Keyra þetta próf",
+                "vaultRoundtrip": "Hringferð hvelfingar"
+            },
+            "bundle": {
+                "title": "Flytja út greiningarpakka (ZIP)"
+            }
         },
         "menu": {
             "file": "Skrá",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Tengingarstjóri...",
             "activityLog": "Aðgerðaskrá",
-            "detailedCards": "Ítarleg netþjónakort"
+            "detailedCards": "Ítarleg netþjónakort",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",

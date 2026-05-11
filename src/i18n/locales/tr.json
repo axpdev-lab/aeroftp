@@ -1652,7 +1652,18 @@
             "openSettings": "Ayarları Aç",
             "showShortcuts": "Kısayolları Göster",
             "closeDialog": "Kapat / İptal",
-            "helpText": "Yardım için [F1]"
+            "helpText": "Yardım için [F1]",
+            "activityLog": "Etkinlik günlüğü",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Ayrıntılı sunucu kartları",
+            "quit": "AeroFTP'den çık",
+            "toggleAgent": "AeroAgent'i aç/kapat",
+            "toggleDevtools": "AeroTools'u aç/kapat",
+            "toggleEditor": "Düzenleyiciyi aç/kapat",
+            "toggleTerminal": "Terminali aç/kapat",
+            "toggleTheme": "Temayı değiştir",
+            "view": "Görünüm"
         },
         "overwrite": {
             "title": "Dosya zaten mevcut",
@@ -3165,7 +3176,11 @@
                 "pause": "Duraklat",
                 "copyAll": "Tümünü kopyala",
                 "clear": "Temizle",
-                "emptyMessage": "Hata Ayıklama Modu etkinken konsol çıktısı burada görünecektir."
+                "emptyMessage": "Hata Ayıklama Modu etkinken konsol çıktısı burada görünecektir.",
+                "allSources": "Tüm kaynaklar",
+                "sourceFilterTitle": "Kaynağa göre filtrele",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React Modu",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Dosya listesini panoya kopyala",
             "filesCopied": "{count} dosya girdisi panoya kopyalandı",
-            "title": "Hata Ayıklama"
+            "title": "Hata Ayıklama",
+            "export": {
+                "csv": "CSV (elektronik tablo)",
+                "json": "JSON (dizi)",
+                "ndjson": "NDJSON (satır başına bir)",
+                "scopeLogs": "Logs şu biçimde dışa aktar",
+                "scopeNetwork": "Network şu biçimde dışa aktar",
+                "text": "Düz metin",
+                "title": "Dışa aktar"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault gidiş-dönüş",
+                "connectivity": "Aktif bağlantı denetimi",
+                "copyResults": "Sonuçları kopyala",
+                "copyResultsTitle": "Sonuçları Markdown olarak kopyala",
+                "i18nSweep": "i18n anahtar taraması",
+                "ipcSpeed": "IPC hız örneği",
+                "knownHosts": "known_hosts okuma",
+                "passed": "başarılı",
+                "pluginIntegrity": "Eklenti bütünlüğü",
+                "providerSelftest": "Sağlayıcı kendi kendini test (salt okunur)",
+                "runAll": "Tümünü çalıştır",
+                "runOne": "Bu testi çalıştır",
+                "vaultRoundtrip": "Kasa gidiş-dönüş"
+            },
+            "bundle": {
+                "title": "Tanılama paketini dışa aktar (ZIP)"
+            }
         },
         "menu": {
             "file": "Dosya",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Bağlama Yöneticisi...",
             "activityLog": "Etkinlik Günlüğü",
-            "detailedCards": "Ayrıntılı sunucu kartları"
+            "detailedCards": "Ayrıntılı sunucu kartları",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Komut bekleniyor...",

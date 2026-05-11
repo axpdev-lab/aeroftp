@@ -1652,7 +1652,18 @@
             "openSettings": "Налаштування",
             "showShortcuts": "Показати шорткати",
             "closeDialog": "Закрити",
-            "helpText": "Натисніть [F1] для довідки"
+            "helpText": "Натисніть [F1] для довідки",
+            "activityLog": "Журнал активності",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Детальні картки серверів",
+            "quit": "Вийти з AeroFTP",
+            "toggleAgent": "Перемкнути AeroAgent",
+            "toggleDevtools": "Перемкнути AeroTools",
+            "toggleEditor": "Перемкнути редактор",
+            "toggleTerminal": "Перемкнути термінал",
+            "toggleTheme": "Змінити тему",
+            "view": "Вигляд"
         },
         "overwrite": {
             "title": "Файл вже існує",
@@ -3165,7 +3176,11 @@
                 "pause": "Пауза",
                 "copyAll": "Копіювати все",
                 "clear": "Очистити",
-                "emptyMessage": "Вивід консолі з'явиться тут при увімкненому режимі налагодження."
+                "emptyMessage": "Вивід консолі з'явиться тут при увімкненому режимі налагодження.",
+                "allSources": "Усі джерела",
+                "sourceFilterTitle": "Фільтрувати за джерелом",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Режим React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Скопіювати список файлів до буфера обміну",
             "filesCopied": "{count} записів файлів скопійовано до буфера обміну",
-            "title": "Налагодження"
+            "title": "Налагодження",
+            "export": {
+                "csv": "CSV (електронна таблиця)",
+                "json": "JSON (масив)",
+                "ndjson": "NDJSON (по одному на рядок)",
+                "scopeLogs": "Експортувати Logs як",
+                "scopeNetwork": "Експортувати Network як",
+                "text": "Звичайний текст",
+                "title": "Експорт"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Цикл AeroVault",
+                "connectivity": "Перевірка активного з'єднання",
+                "copyResults": "Копіювати результати",
+                "copyResultsTitle": "Копіювати результати як Markdown",
+                "i18nSweep": "Огляд ключів i18n",
+                "ipcSpeed": "Зразок швидкості IPC",
+                "knownHosts": "читання known_hosts",
+                "passed": "успішно",
+                "pluginIntegrity": "Цілісність плагіна",
+                "providerSelftest": "Самотест постачальника (лише для читання)",
+                "runAll": "Запустити всі",
+                "runOne": "Запустити цей тест",
+                "vaultRoundtrip": "Цикл сховища"
+            },
+            "bundle": {
+                "title": "Експортувати діагностичний пакет (ZIP)"
+            }
         },
         "menu": {
             "file": "Файл",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Менеджер монтування...",
             "activityLog": "Журнал активності",
-            "detailedCards": "Детальні картки серверів"
+            "detailedCards": "Детальні картки серверів",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Очікування команд...",

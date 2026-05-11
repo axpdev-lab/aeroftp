@@ -1652,7 +1652,18 @@
             "openSettings": "Iestatījumi",
             "showShortcuts": "Rādīt saīsnes",
             "closeDialog": "Aizvērt / Atcelt",
-            "helpText": "Spiediet [F1] palīdzībai"
+            "helpText": "Spiediet [F1] palīdzībai",
+            "activityLog": "Aktivitātes žurnāls",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Detalizētas servera kartītes",
+            "quit": "Iziet no AeroFTP",
+            "toggleAgent": "Pārslēgt AeroAgent",
+            "toggleDevtools": "Pārslēgt AeroTools",
+            "toggleEditor": "Pārslēgt redaktoru",
+            "toggleTerminal": "Pārslēgt termināli",
+            "toggleTheme": "Mainīt tēmu",
+            "view": "Skats"
         },
         "overwrite": {
             "title": "Fails jau pastāv",
@@ -3165,7 +3176,11 @@
                 "pause": "Pauzēt",
                 "copyAll": "Kopēt visu",
                 "clear": "Notīrīt",
-                "emptyMessage": "Konsoles izvade parādīsies šeit, kad atklūdošanas režīms ir aktīvs."
+                "emptyMessage": "Konsoles izvade parādīsies šeit, kad atklūdošanas režīms ir aktīvs.",
+                "allSources": "Visi avoti",
+                "sourceFilterTitle": "Filtrēt pēc avota",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React režīms",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopēt failu sarakstu starpliktuvē",
             "filesCopied": "{count} failu ieraksti nokopēti starpliktuvē",
-            "title": "Atkļūdošana"
+            "title": "Atkļūdošana",
+            "export": {
+                "csv": "CSV (izklājlapa)",
+                "json": "JSON (masīvs)",
+                "ndjson": "NDJSON (viens uz rindiņu)",
+                "scopeLogs": "Eksportēt Logs kā",
+                "scopeNetwork": "Eksportēt Network kā",
+                "text": "Vienkāršs teksts",
+                "title": "Eksportēt"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault aprite",
+                "connectivity": "Aktīva savienojuma pārbaude",
+                "copyResults": "Kopēt rezultātus",
+                "copyResultsTitle": "Kopēt rezultātus kā Markdown",
+                "i18nSweep": "i18n atslēgu pārskats",
+                "ipcSpeed": "IPC ātruma paraugs",
+                "knownHosts": "known_hosts lasīšana",
+                "passed": "izturēti",
+                "pluginIntegrity": "Spraudņa integritāte",
+                "providerSelftest": "Pakalpojuma sniedzēja paštests (tikai lasīšanai)",
+                "runAll": "Palaist visus",
+                "runOne": "Palaist šo testu",
+                "vaultRoundtrip": "Glabātavas aprite"
+            },
+            "bundle": {
+                "title": "Eksportēt diagnostikas pakotni (ZIP)"
+            }
         },
         "menu": {
             "file": "Fails",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Montēšanas pārvaldnieks...",
             "activityLog": "Aktivitāšu žurnāls",
-            "detailedCards": "Detalizētas serveru kartes"
+            "detailedCards": "Detalizētas serveru kartes",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Gaida komandas...",

@@ -1457,6 +1457,17 @@
             "openSettings": "Apri Impostazioni",
             "showShortcuts": "Mostra scorciatoie",
             "closeDialog": "Chiudi finestra / Annulla",
+            "quit": "Esci da AeroFTP",
+            "view": "Vista",
+            "toggleEditor": "Mostra/nascondi Editor",
+            "toggleTerminal": "Mostra/nascondi Terminal",
+            "toggleAgent": "Mostra/nascondi AeroAgent",
+            "toggleDevtools": "Mostra/nascondi AeroTools",
+            "toggleTheme": "Cambia tema",
+            "activityLog": "Registro attività",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Schede server dettagliate",
+            "commandPalette": "Palette comandi",
             "helpText": "Premi [F1] in qualsiasi momento per mostrare questa finestra"
         },
         "dialogs": {
@@ -3293,8 +3304,36 @@
                 "tauriRuntime": "Runtime Tauri",
                 "browser": "Browser"
             },
+            "bundle": {
+                "title": "Esporta bundle diagnostico (ZIP)"
+            },
+            "export": {
+                "title": "Esporta",
+                "scopeLogs": "Esporta Log come",
+                "scopeNetwork": "Esporta Network come",
+                "text": "Testo semplice",
+                "json": "JSON (array)",
+                "ndjson": "NDJSON (uno per riga)",
+                "csv": "CSV (foglio di calcolo)"
+            },
+            "tests": {
+                "connectivity": "Probe connessione attiva",
+                "vaultRoundtrip": "Round-trip vault",
+                "knownHosts": "Lettura known_hosts",
+                "aerovaultRoundtrip": "Round-trip AeroVault",
+                "pluginIntegrity": "Integrità plugin",
+                "providerSelftest": "Auto-test provider (sola lettura)",
+                "ipcSpeed": "Campione velocità IPC",
+                "i18nSweep": "Scansione chiavi i18n",
+                "runAll": "Esegui tutti",
+                "runOne": "Esegui questo test",
+                "copyResults": "Copia risultati",
+                "copyResultsTitle": "Copia risultati come Markdown",
+                "passed": "superati"
+            },
             "logs": {
                 "allLevels": "Tutti i livelli",
+                "allSources": "Tutte le origini",
                 "error": "Errore",
                 "warning": "Avviso",
                 "info": "Info",
@@ -3304,6 +3343,9 @@
                 "pause": "Pausa",
                 "copyAll": "Copia tutto",
                 "clear": "Cancella",
+                "sourceFilterTitle": "Filtra per origine",
+                "sourceJs": "JS",
+                "sourceRust": "Rust",
                 "emptyMessage": "L'output della console apparirà qui quando la modalità Debug è attiva."
             },
             "frontend": {
@@ -3357,7 +3399,8 @@
             "documentation": "Documentazione",
             "mcp": "MCP Server...",
             "mountManager": "Gestione mount...",
-            "activityLog": "Registro attività"
+            "activityLog": "Registro attività",
+            "debugPanel": "Debug Panel"
         },
         "mountManager": {
             "title": "Gestione mount",

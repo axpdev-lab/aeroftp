@@ -1652,7 +1652,18 @@
             "openSettings": "Seaded",
             "showShortcuts": "Näita kiirklahve",
             "closeDialog": "Sulge / Loobu",
-            "helpText": "Vajuta [F1] abi saamiseks"
+            "helpText": "Vajuta [F1] abi saamiseks",
+            "activityLog": "Tegevuslogi",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Üksikasjalikud serverikaardid",
+            "quit": "Välju AeroFTP-st",
+            "toggleAgent": "Lülita AeroAgent",
+            "toggleDevtools": "Lülita AeroTools",
+            "toggleEditor": "Lülita redaktor",
+            "toggleTerminal": "Lülita terminal",
+            "toggleTheme": "Vaheta teemat",
+            "view": "Vaade"
         },
         "overwrite": {
             "title": "Fail on juba olemas",
@@ -3165,7 +3176,11 @@
                 "pause": "Peata",
                 "copyAll": "Kopeeri kõik",
                 "clear": "Tühjenda",
-                "emptyMessage": "Konsooli väljund kuvatakse siin, kui silumisrežiim on aktiivne."
+                "emptyMessage": "Konsooli väljund kuvatakse siin, kui silumisrežiim on aktiivne.",
+                "allSources": "Kõik allikad",
+                "sourceFilterTitle": "Filtreeri allika järgi",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React režiim",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopeeri failide nimekiri lõikelauale",
             "filesCopied": "{count} failikirjet kopeeritud lõikelauale",
-            "title": "Silumine"
+            "title": "Silumine",
+            "export": {
+                "csv": "CSV (arvutustabel)",
+                "json": "JSON (massiiv)",
+                "ndjson": "NDJSON (üks rea kohta)",
+                "scopeLogs": "Ekspordi Logs kujul",
+                "scopeNetwork": "Ekspordi Network kujul",
+                "text": "Lihttekst",
+                "title": "Ekspordi"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault edasi-tagasi",
+                "connectivity": "Aktiivse ühenduse sond",
+                "copyResults": "Kopeeri tulemused",
+                "copyResultsTitle": "Kopeeri tulemused Markdownina",
+                "i18nSweep": "i18n võtmete läbivaatus",
+                "ipcSpeed": "IPC kiiruse näidis",
+                "knownHosts": "known_hosts lugemine",
+                "passed": "läbitud",
+                "pluginIntegrity": "Plugina terviklikkus",
+                "providerSelftest": "Pakkuja enesetest (ainult lugemine)",
+                "runAll": "Käivita kõik",
+                "runOne": "Käivita see test",
+                "vaultRoundtrip": "Hoidla edasi-tagasi"
+            },
+            "bundle": {
+                "title": "Ekspordi diagnostikapakett (ZIP)"
+            }
         },
         "menu": {
             "file": "Fail",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Ühenduste haldur...",
             "activityLog": "Tegevuslogi",
-            "detailedCards": "Üksikasjalikud serverikaardid"
+            "detailedCards": "Üksikasjalikud serverikaardid",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",

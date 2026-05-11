@@ -1652,7 +1652,18 @@
             "openSettings": "Ustawienia",
             "showShortcuts": "Pokaż skróty",
             "closeDialog": "Zamknij",
-            "helpText": "Wciśnij [F1] dla pomocy"
+            "helpText": "Wciśnij [F1] dla pomocy",
+            "activityLog": "Dziennik aktywności",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Szczegółowe karty serwerów",
+            "quit": "Zakończ AeroFTP",
+            "toggleAgent": "Przełącz AeroAgent",
+            "toggleDevtools": "Przełącz AeroTools",
+            "toggleEditor": "Przełącz edytor",
+            "toggleTerminal": "Przełącz terminal",
+            "toggleTheme": "Zmień motyw",
+            "view": "Widok"
         },
         "overwrite": {
             "title": "Plik już istnieje",
@@ -3165,7 +3176,11 @@
                 "pause": "Pauza",
                 "copyAll": "Kopiuj wszystko",
                 "clear": "Wyczyść",
-                "emptyMessage": "Wyjście konsoli pojawi się tutaj, gdy tryb debugowania jest aktywny."
+                "emptyMessage": "Wyjście konsoli pojawi się tutaj, gdy tryb debugowania jest aktywny.",
+                "allSources": "Wszystkie źródła",
+                "sourceFilterTitle": "Filtruj według źródła",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Tryb React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopiuj listę plików do schowka",
             "filesCopied": "Skopiowano {count} wpisów plików do schowka",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (arkusz kalkulacyjny)",
+                "json": "JSON (tablica)",
+                "ndjson": "NDJSON (jeden na linię)",
+                "scopeLogs": "Eksportuj Logs jako",
+                "scopeNetwork": "Eksportuj Network jako",
+                "text": "Zwykły tekst",
+                "title": "Eksportuj"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Tam i z powrotem AeroVault",
+                "connectivity": "Sonda aktywnego połączenia",
+                "copyResults": "Kopiuj wyniki",
+                "copyResultsTitle": "Kopiuj wyniki jako Markdown",
+                "i18nSweep": "Przegląd kluczy i18n",
+                "ipcSpeed": "Próbka szybkości IPC",
+                "knownHosts": "odczyt known_hosts",
+                "passed": "zaliczone",
+                "pluginIntegrity": "Integralność wtyczki",
+                "providerSelftest": "Autotest dostawcy (tylko do odczytu)",
+                "runAll": "Uruchom wszystkie",
+                "runOne": "Uruchom ten test",
+                "vaultRoundtrip": "Tam i z powrotem sejfu"
+            },
+            "bundle": {
+                "title": "Eksportuj pakiet diagnostyczny (ZIP)"
+            }
         },
         "menu": {
             "file": "Plik",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Menedżer montowań...",
             "activityLog": "Dziennik aktywności",
-            "detailedCards": "Szczegółowe karty serwerów"
+            "detailedCards": "Szczegółowe karty serwerów",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Oczekiwanie na polecenia...",

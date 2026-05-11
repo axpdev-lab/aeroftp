@@ -1652,7 +1652,18 @@
             "openSettings": "Nastavitve",
             "showShortcuts": "Prikaži bližnjice",
             "closeDialog": "Zapri / Prekliči",
-            "helpText": "Pritisnite [F1] za pomoč"
+            "helpText": "Pritisnite [F1] za pomoč",
+            "activityLog": "Dnevnik dejavnosti",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Podrobne kartice strežnikov",
+            "quit": "Zapri AeroFTP",
+            "toggleAgent": "Preklopi AeroAgent",
+            "toggleDevtools": "Preklopi AeroTools",
+            "toggleEditor": "Preklopi urejevalnik",
+            "toggleTerminal": "Preklopi terminal",
+            "toggleTheme": "Preklopi temo",
+            "view": "Pogled"
         },
         "overwrite": {
             "title": "Datoteka že obstaja",
@@ -3165,7 +3176,11 @@
                 "pause": "Zaustavi",
                 "copyAll": "Kopiraj vse",
                 "clear": "Počisti",
-                "emptyMessage": "Izhod konzole se bo prikazal tukaj, ko bo aktiven način razhroščevanja."
+                "emptyMessage": "Izhod konzole se bo prikazal tukaj, ko bo aktiven način razhroščevanja.",
+                "allSources": "Vsi viri",
+                "sourceFilterTitle": "Filtriraj po viru",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Način React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopiraj seznam datotek v odložišče",
             "filesCopied": "{count} vnosov datotek kopiranih v odložišče",
-            "title": "Razhroščevanje"
+            "title": "Razhroščevanje",
+            "export": {
+                "csv": "CSV (preglednica)",
+                "json": "JSON (polje)",
+                "ndjson": "NDJSON (en na vrstico)",
+                "scopeLogs": "Izvozi Logs kot",
+                "scopeNetwork": "Izvozi Network kot",
+                "text": "Navadno besedilo",
+                "title": "Izvozi"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Krožno potovanje AeroVault",
+                "connectivity": "Preverjanje aktivne povezave",
+                "copyResults": "Kopiraj rezultate",
+                "copyResultsTitle": "Kopiraj rezultate kot Markdown",
+                "i18nSweep": "Pregled ključev i18n",
+                "ipcSpeed": "Vzorec hitrosti IPC",
+                "knownHosts": "branje known_hosts",
+                "passed": "uspešnih",
+                "pluginIntegrity": "Celovitost vtičnika",
+                "providerSelftest": "Samodiagnostika ponudnika (samo za branje)",
+                "runAll": "Zaženi vse",
+                "runOne": "Zaženi ta test",
+                "vaultRoundtrip": "Krožno potovanje trezorja"
+            },
+            "bundle": {
+                "title": "Izvozi diagnostični paket (ZIP)"
+            }
         },
         "menu": {
             "file": "Datoteka",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Upravitelj priklopov...",
             "activityLog": "Dnevnik dejavnosti",
-            "detailedCards": "Podrobne kartice strežnikov"
+            "detailedCards": "Podrobne kartice strežnikov",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Čakanje na ukaze...",

@@ -1652,7 +1652,18 @@
             "openSettings": "Mga Setting",
             "showShortcuts": "Ipakita ang Shortcuts",
             "closeDialog": "Isara / Kanselahin",
-            "helpText": "Pindutin ang [F1] para sa tulong"
+            "helpText": "Pindutin ang [F1] para sa tulong",
+            "activityLog": "Log ng aktibidad",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Detalyadong mga card ng server",
+            "quit": "Lumabas sa AeroFTP",
+            "toggleAgent": "I-toggle ang AeroAgent",
+            "toggleDevtools": "I-toggle ang AeroTools",
+            "toggleEditor": "I-toggle ang editor",
+            "toggleTerminal": "I-toggle ang terminal",
+            "toggleTheme": "Baguhin ang tema",
+            "view": "Tingnan"
         },
         "overwrite": {
             "title": "Mayroon nang file",
@@ -3165,7 +3176,11 @@
                 "pause": "I-pause",
                 "copyAll": "Kopyahin lahat",
                 "clear": "I-clear",
-                "emptyMessage": "Lalabas dito ang console output kapag aktibo ang Debug Mode."
+                "emptyMessage": "Lalabas dito ang console output kapag aktibo ang Debug Mode.",
+                "allSources": "Lahat ng pinagmulan",
+                "sourceFilterTitle": "Salain ayon sa pinagmulan",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React Mode",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Kopyahin ang listahan ng file sa clipboard",
             "filesCopied": "{count} na mga entry ng file ang nakopya sa clipboard",
-            "title": "Debug"
+            "title": "Debug",
+            "export": {
+                "csv": "CSV (spreadsheet)",
+                "json": "JSON (array)",
+                "ndjson": "NDJSON (isa kada linya)",
+                "scopeLogs": "I-export ang Logs bilang",
+                "scopeNetwork": "I-export ang Network bilang",
+                "text": "Plain text",
+                "title": "I-export"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Round-trip ng AeroVault",
+                "connectivity": "Pagsusuri ng aktibong koneksyon",
+                "copyResults": "Kopyahin ang mga resulta",
+                "copyResultsTitle": "Kopyahin ang mga resulta bilang Markdown",
+                "i18nSweep": "Pag-sweep ng mga susi ng i18n",
+                "ipcSpeed": "Sample ng bilis ng IPC",
+                "knownHosts": "pagbabasa ng known_hosts",
+                "passed": "pumasa",
+                "pluginIntegrity": "Integridad ng plugin",
+                "providerSelftest": "Self-test ng provider (basahin lamang)",
+                "runAll": "Patakbuhin lahat",
+                "runOne": "Patakbuhin ang pagsubok na ito",
+                "vaultRoundtrip": "Round-trip ng vault"
+            },
+            "bundle": {
+                "title": "I-export ang diagnostic bundle (ZIP)"
+            }
         },
         "menu": {
             "file": "File",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Tagapamahala ng Mount...",
             "activityLog": "Log ng Aktibidad",
-            "detailedCards": "Mga detalyadong card ng server"
+            "detailedCards": "Mga detalyadong card ng server",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",

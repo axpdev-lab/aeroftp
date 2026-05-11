@@ -1652,7 +1652,18 @@
             "openSettings": "打开设置",
             "showShortcuts": "显示快捷键",
             "closeDialog": "关闭对话框 / 取消",
-            "helpText": "随时按 [F1] 显示此对话框"
+            "helpText": "随时按 [F1] 显示此对话框",
+            "activityLog": "活动日志",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "详细服务器卡片",
+            "quit": "退出 AeroFTP",
+            "toggleAgent": "切换 AeroAgent",
+            "toggleDevtools": "切换 AeroTools",
+            "toggleEditor": "切换编辑器",
+            "toggleTerminal": "切换终端",
+            "toggleTheme": "切换主题",
+            "view": "视图"
         },
         "overwrite": {
             "title": "文件已存在",
@@ -3165,7 +3176,11 @@
                 "pause": "暂停",
                 "copyAll": "全部复制",
                 "clear": "清除",
-                "emptyMessage": "启用调试模式后，控制台输出将显示在此处。"
+                "emptyMessage": "启用调试模式后，控制台输出将显示在此处。",
+                "allSources": "所有来源",
+                "sourceFilterTitle": "按来源筛选",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "React 模式",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "将文件列表复制到剪贴板",
             "filesCopied": "已复制 {count} 个文件条目到剪贴板",
-            "title": "调试"
+            "title": "调试",
+            "export": {
+                "csv": "CSV (电子表格)",
+                "json": "JSON (数组)",
+                "ndjson": "NDJSON (每行一条)",
+                "scopeLogs": "导出 Logs 为",
+                "scopeNetwork": "导出 Network 为",
+                "text": "纯文本",
+                "title": "导出"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "AeroVault 往返测试",
+                "connectivity": "活动连接探测",
+                "copyResults": "复制结果",
+                "copyResultsTitle": "以 Markdown 格式复制结果",
+                "i18nSweep": "i18n 键扫描",
+                "ipcSpeed": "IPC 速度采样",
+                "knownHosts": "known_hosts 读取",
+                "passed": "通过",
+                "pluginIntegrity": "插件完整性",
+                "providerSelftest": "提供商自检 (只读)",
+                "runAll": "全部运行",
+                "runOne": "运行此测试",
+                "vaultRoundtrip": "保险库往返测试"
+            },
+            "bundle": {
+                "title": "导出诊断包 (ZIP)"
+            }
         },
         "menu": {
             "file": "文件",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "挂载管理器...",
             "activityLog": "活动日志",
-            "detailedCards": "详细服务器卡片"
+            "detailedCards": "详细服务器卡片",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "等待命令...",

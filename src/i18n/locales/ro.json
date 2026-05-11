@@ -1652,7 +1652,18 @@
             "openSettings": "Setări",
             "showShortcuts": "Arată scurtături",
             "closeDialog": "Închidere / Anulare",
-            "helpText": "Apăsați [F1] pentru ajutor"
+            "helpText": "Apăsați [F1] pentru ajutor",
+            "activityLog": "Jurnal de activitate",
+            "commandPalette": "Command Palette",
+            "debugPanel": "Debug Panel",
+            "detailedCards": "Carduri detaliate de server",
+            "quit": "Ieșire din AeroFTP",
+            "toggleAgent": "Comută AeroAgent",
+            "toggleDevtools": "Comută AeroTools",
+            "toggleEditor": "Comută editorul",
+            "toggleTerminal": "Comută terminalul",
+            "toggleTheme": "Comută tema",
+            "view": "Vizualizare"
         },
         "overwrite": {
             "title": "Fișierul există deja",
@@ -3165,7 +3176,11 @@
                 "pause": "Pauză",
                 "copyAll": "Copiază tot",
                 "clear": "Șterge",
-                "emptyMessage": "Ieșirea consolei va apărea aici când Modul de depanare este activ."
+                "emptyMessage": "Ieșirea consolei va apărea aici când Modul de depanare este activ.",
+                "allSources": "Toate sursele",
+                "sourceFilterTitle": "Filtrează după sursă",
+                "sourceJs": "JS",
+                "sourceRust": "Rust"
             },
             "frontend": {
                 "reactMode": "Mod React",
@@ -3183,7 +3198,34 @@
             },
             "copyFileListToClipboard": "Copiază lista de fișiere în clipboard",
             "filesCopied": "{count} intrări de fișiere copiate în clipboard",
-            "title": "Depanare"
+            "title": "Depanare",
+            "export": {
+                "csv": "CSV (foaie de calcul)",
+                "json": "JSON (matrice)",
+                "ndjson": "NDJSON (unul pe linie)",
+                "scopeLogs": "Exportă Logs ca",
+                "scopeNetwork": "Exportă Network ca",
+                "text": "Text simplu",
+                "title": "Exportă"
+            },
+            "tests": {
+                "aerovaultRoundtrip": "Dus-întors AeroVault",
+                "connectivity": "Sondă de conexiune activă",
+                "copyResults": "Copiază rezultatele",
+                "copyResultsTitle": "Copiază rezultatele ca Markdown",
+                "i18nSweep": "Scanare chei i18n",
+                "ipcSpeed": "Mostră de viteză IPC",
+                "knownHosts": "citire known_hosts",
+                "passed": "trecute",
+                "pluginIntegrity": "Integritatea pluginului",
+                "providerSelftest": "Autotest furnizor (doar citire)",
+                "runAll": "Rulează toate",
+                "runOne": "Rulează acest test",
+                "vaultRoundtrip": "Dus-întors seif"
+            },
+            "bundle": {
+                "title": "Exportă pachetul de diagnostic (ZIP)"
+            }
         },
         "menu": {
             "file": "Fișier",
@@ -3218,7 +3260,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Manager de montări...",
             "activityLog": "Jurnal activitate",
-            "detailedCards": "Carduri server detaliate"
+            "detailedCards": "Carduri server detaliate",
+            "debugPanel": "Debug Panel"
         },
         "activityPanel": {
             "awaitingCommands": "Se asteapta comenzi...",
