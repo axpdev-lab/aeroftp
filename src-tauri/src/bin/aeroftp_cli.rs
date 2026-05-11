@@ -21290,21 +21290,6 @@ async fn cmd_crypt_get(
     0
 }
 
-fn parse_rclone_dir_iv_base64(value: &str) -> Result<[u8; 16], String> {
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(value)
-        .map_err(|e| format!("invalid --dir-iv-base64: {}", e))?;
-    if bytes.len() != 16 {
-        return Err(format!(
-            "invalid --dir-iv-base64 length: expected 16 bytes, got {}",
-            bytes.len()
-        ));
-    }
-    let mut iv = [0u8; 16];
-    iv.copy_from_slice(&bytes);
-    Ok(iv)
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn cmd_rclone_crypt_put(
     url: &str,
@@ -21325,13 +21310,14 @@ async fn cmd_rclone_crypt_put(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, remote_path));
 
-    let (name_key, data_key) = match ftp_client_gui_lib::rclone_crypt::derive_keys(password, salt) {
-        Ok(keys) => keys,
-        Err(e) => {
-            print_error(format, &format!("rclone key derivation failed: {}", e), 5);
-            return 5;
-        }
-    };
+    let (name_key, data_key, name_tweak) =
+        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak(password, salt) {
+            Ok(keys) => keys,
+            Err(e) => {
+                print_error(format, &format!("rclone key derivation failed: {}", e), 5);
+                return 5;
+            }
+        };
 
     let plaintext = match std::fs::read(local_file) {
         Ok(d) => d,
@@ -21366,22 +21352,14 @@ async fn cmd_rclone_crypt_put(
     let encrypted_name = match filename_encryption {
         RcloneFilenameEncryption::Off => plain_name.clone(),
         RcloneFilenameEncryption::Standard => {
-            let Some(iv_b64) = dir_iv_base64 else {
-                print_error(
-                    format,
-                    "--dir-iv-base64 is required with --filename-encryption standard",
-                    5,
-                );
-                return 5;
-            };
-            let dir_iv = match parse_rclone_dir_iv_base64(iv_b64) {
-                Ok(iv) => iv,
-                Err(e) => {
-                    print_error(format, &e, 5);
-                    return 5;
-                }
-            };
-            match ftp_client_gui_lib::rclone_crypt::encrypt_name(&name_key, &dir_iv, &plain_name) {
+            if dir_iv_base64.is_some() && cli.verbose > 0 {
+                eprintln!("Note: --dir-iv-base64 is ignored for rclone-compatible standard names; the EME tweak is derived from the password.");
+            }
+            match ftp_client_gui_lib::rclone_crypt::encrypt_name(
+                &name_key,
+                &name_tweak,
+                &plain_name,
+            ) {
                 Ok(name) => name,
                 Err(e) => {
                     print_error(
@@ -21394,22 +21372,10 @@ async fn cmd_rclone_crypt_put(
             }
         }
         RcloneFilenameEncryption::Obfuscate => {
-            let Some(iv_b64) = dir_iv_base64 else {
-                print_error(
-                    format,
-                    "--dir-iv-base64 is required with --filename-encryption obfuscate",
-                    5,
-                );
-                return 5;
-            };
-            let dir_iv = match parse_rclone_dir_iv_base64(iv_b64) {
-                Ok(iv) => iv,
-                Err(e) => {
-                    print_error(format, &e, 5);
-                    return 5;
-                }
-            };
-            match ftp_client_gui_lib::rclone_crypt::obfuscate_name(&dir_iv, &plain_name) {
+            if dir_iv_base64.is_some() && cli.verbose > 0 {
+                eprintln!("Note: --dir-iv-base64 is ignored for rclone-compatible obfuscated names; the tweak is derived from the password.");
+            }
+            match ftp_client_gui_lib::rclone_crypt::obfuscate_name(&name_tweak, &plain_name) {
                 Ok(name) => name,
                 Err(e) => {
                     print_error(
@@ -22858,13 +22824,14 @@ async fn cmd_cryptcheck(
     let salt = password2
         .unwrap_or_else(|| std::env::var("AEROFTP_RCLONE_CRYPT_PASSWORD2").unwrap_or_default());
 
-    let (name_key, data_key) = match ftp_client_gui_lib::rclone_crypt::derive_keys(&pwd, &salt) {
-        Ok(keys) => keys,
-        Err(e) => {
-            print_error(format, &format!("Key derivation failed: {}", e), 5);
-            return 5;
-        }
-    };
+    let (name_key, data_key, name_tweak) =
+        match ftp_client_gui_lib::rclone_crypt::derive_keys_with_tweak(&pwd, &salt) {
+            Ok(keys) => keys,
+            Err(e) => {
+                print_error(format, &format!("Key derivation failed: {}", e), 5);
+                return 5;
+            }
+        };
 
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
@@ -22893,31 +22860,6 @@ async fn cmd_cryptcheck(
     let locals = scan_local_tree(local_path, &scan_opts);
     let remotes = scan_remote_tree(&mut provider, &remote_path_resolved, &scan_opts).await;
 
-    let mut dir_ivs: std::collections::HashMap<String, [u8; 16]> = std::collections::HashMap::new();
-    for r in &remotes {
-        let is_dir_iv = r.rel_path.ends_with("/dirIV")
-            || r.rel_path.ends_with("/diriv")
-            || r.rel_path.ends_with("/.diriv")
-            || r.rel_path == "dirIV"
-            || r.rel_path == "diriv"
-            || r.rel_path == ".diriv";
-        if is_dir_iv {
-            let full_path = format!("{}/{}", remote_path_resolved, r.rel_path);
-            if let Ok(data) = provider.download_to_bytes(&full_path).await {
-                if data.len() == 16 {
-                    let mut iv = [0u8; 16];
-                    iv.copy_from_slice(&data);
-                    let parent = Path::new(&r.rel_path)
-                        .parent()
-                        .unwrap_or(Path::new(""))
-                        .to_string_lossy()
-                        .to_string();
-                    dir_ivs.insert(parent, iv);
-                }
-            }
-        }
-    }
-
     let mut decrypted_remotes = std::collections::HashMap::new();
     for r in &remotes {
         let is_dir_iv = r.rel_path.ends_with("/dirIV")
@@ -22931,37 +22873,25 @@ async fn cmd_cryptcheck(
         }
 
         let components: Vec<&str> = r.rel_path.split('/').collect();
-        let mut current_enc_dir = String::new();
         let mut current_dec_dir = String::new();
         let mut ok = true;
 
         for comp in components.iter() {
-            let dir_iv = if current_enc_dir.is_empty() {
-                dir_ivs.get("").copied().or(Some([0u8; 16]))
-            } else {
-                dir_ivs.get(&current_enc_dir).copied()
-            };
-
             let dec_comp = if filename_encryption == "off" {
                 comp.to_string()
-            } else if let Some(iv) = dir_iv {
-                match ftp_client_gui_lib::rclone_crypt::decrypt_name(&name_key, &iv, comp) {
+            } else {
+                match ftp_client_gui_lib::rclone_crypt::decrypt_name(&name_key, &name_tweak, comp) {
                     Ok(n) => n,
                     Err(_) => {
                         ok = false;
                         break;
                     }
                 }
-            } else {
-                ok = false;
-                break;
             };
 
-            if !current_enc_dir.is_empty() {
-                current_enc_dir.push('/');
+            if !current_dec_dir.is_empty() {
                 current_dec_dir.push('/');
             }
-            current_enc_dir.push_str(comp);
             current_dec_dir.push_str(&dec_comp);
         }
 
