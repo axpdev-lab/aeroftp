@@ -961,9 +961,9 @@
             "themeGreenDesc": "Naturinspirert skogpalett for elskere av grønt",
             "keystoreExportModeTitle": "Hva som skal inkluderes i sikkerhetskopien",
             "keystoreExportModeFull": "Full sikkerhetskopi (anbefalt)",
-            "keystoreExportModeFullDesc": "Vault-legitimasjon, AI-chathistorikk, agentminne, filtagger, installerte plugins, synkroniseringsbilder og lagrede innstillinger. Den komplette applikasjonstilstanden i én kryptert fil.",
-            "keystoreExportModeVaultOnly": "Kun vault (eldre)",
-            "keystoreExportModeVaultOnlyDesc": "Kun den krypterte legitimasjonen og serverprofiler. Mindre, raskere, identisk med eksporter før v3.7.8. Nyttig ved migrering av servere mellom maskiner uten å dra med seg chatthistorikken."
+            "keystoreExportModeFullDesc": "Hvelv-legitimasjon, AI-chathistorikk, agentminne, filtagger, installerte plugins, synkroniseringsbilder og lagrede preferanser. Hele applikasjonens tilstand i én kryptert fil.",
+            "keystoreExportModeVaultOnly": "Kun hvelv (eldre)",
+            "keystoreExportModeVaultOnlyDesc": "Bare den krypterte legitimasjonen og serverprofilene. Mindre, raskere, identisk med eksporter før v3.7.8. Nyttig når du flytter servere mellom maskiner uten å dra med chathistorikken."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4433,7 +4433,7 @@
         "portable": {
             "banner": {
                 "title": "Bærbar modus: denne mappen inneholder alle AeroFTP-dataene dine",
-                "body": "Hver bærbar installasjon er fullstendig selvstendig: lagrede servere, AeroVault, AI-chatter og innstillinger ligger alle ved siden av AeroFTP.exe. Fra v3.7.8 og utover er to bærbare mapper på samme PC fullstendig uavhengige: å slette en profil i én mappe påvirker ikke lenger den andre.",
+                "body": "Hver bærbar installasjon er helt selvstendig: lagrede servere, AeroVault, AI-chatter og preferanser ligger alle ved siden av AeroFTP.exe. Fra v3.7.8 og fremover er to bærbare mapper på samme PC helt uavhengige, å slette en profil i én mappe påvirker ikke lenger den andre.",
                 "legacyWarning": "Vi oppdaget gjenværende data fra en tidligere delt installasjon på %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Den brukes ikke lenger av denne bærbare installasjonen. Du kan fjerne den manuelt hvis du ikke trenger den.",
                 "openFolder": "Åpne datamappe",
                 "dismiss": "Forstått"

@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Prawdziwy neutralny ciemny w stylu GitHub, bez niebieskiego odcienia",
             "themeGreenLabel": "Zielony",
             "themeGreenDesc": "Inspirowana naturą leśna paleta dla miłośników zieleni",
-            "keystoreExportModeTitle": "Co uwzględnić w kopii zapasowej",
-            "keystoreExportModeFull": "Pełna kopia zapasowa (zalecane)",
-            "keystoreExportModeFullDesc": "Poświadczenia sejfu, historia czatów AI, pamięć agenta, etykiety plików, zainstalowane wtyczki, migawki synchronizacji i zapisane preferencje. Kompletny stan aplikacji w jednym zaszyfrowanym pliku.",
-            "keystoreExportModeVaultOnly": "Tylko sejf (starsze)",
-            "keystoreExportModeVaultOnlyDesc": "Tylko zaszyfrowane poświadczenia i profile serwerów. Mniejsze, szybsze, identyczne z eksportami sprzed v3.7.8. Przydatne przy migracji serwerów między komputerami bez ciągnięcia za sobą historii czatów."
+            "keystoreExportModeTitle": "Co dołączyć do kopii zapasowej",
+            "keystoreExportModeFull": "Pełny backup (zalecane)",
+            "keystoreExportModeFullDesc": "Dane uwierzytelniające skarbca, historia czatów AI, pamięć agenta, tagi plików, zainstalowane pluginy, migawki synchronizacji oraz zapisane preferencje. Kompletny stan aplikacji w jednym zaszyfrowanym pliku.",
+            "keystoreExportModeVaultOnly": "Tylko skarbiec (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Tylko zaszyfrowane dane uwierzytelniające i profile serwerów. Mniejszy, szybszy, identyczny z eksportami sprzed v3.7.8. Przydatny przy migracji serwerów między komputerami bez przenoszenia historii czatów."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4403,9 +4403,9 @@
         },
         "portable": {
             "banner": {
-                "title": "Tryb przenośny: ten folder zawiera wszystkie Twoje dane AeroFTP",
-                "body": "Każda instalacja przenośna jest w pełni samodzielna: zapisane serwery, AeroVault, czaty AI i preferencje znajdują się obok AeroFTP.exe. Od v3.7.8 dwa foldery przenośne na tym samym komputerze są całkowicie niezależne: usunięcie profilu w jednym folderze nie wpływa już na drugi.",
-                "legacyWarning": "Wykryliśmy pozostałe dane z poprzedniej współdzielonej instalacji w %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nie są już używane przez tę instalację przenośną. Możesz je ręcznie usunąć, jeśli nie są potrzebne.",
+                "title": "Tryb przenośny: ten folder zawiera wszystkie dane AeroFTP",
+                "body": "Każda instalacja przenośna jest w pełni samodzielna: zapisane serwery, AeroVault, czaty AI i preferencje znajdują się obok pliku AeroFTP.exe. Od wersji v3.7.8 dwa foldery przenośne na tym samym komputerze są całkowicie niezależne. Usunięcie profilu w jednym folderze nie wpływa już na drugi.",
+                "legacyWarning": "Wykryliśmy pozostałości danych z poprzedniej instalacji współdzielonej w %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nie są one już używane przez tę instalację przenośną. Możesz je usunąć ręcznie, jeśli ich nie potrzebujesz.",
                 "openFolder": "Otwórz folder danych",
                 "dismiss": "Rozumiem"
             }

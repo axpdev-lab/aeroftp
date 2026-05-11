@@ -961,9 +961,9 @@
             "themeGreenDesc": "Naturan inspiratutako baso-paleta berdearen maitaleentzat",
             "keystoreExportModeTitle": "Zer sartu babeskopian",
             "keystoreExportModeFull": "Babeskopia osoa (gomendatua)",
-            "keystoreExportModeFullDesc": "Vault-eko kredentzialak, AI txat-historia, agentearen memoria, fitxategi-etiketak, instalatutako pluginak, sinkronizazio-argazkiak eta gordetako hobespenak. Aplikazioaren egoera osoa zifratutako fitxategi bakar batean.",
-            "keystoreExportModeVaultOnly": "Vault soilik (zaharkitua)",
-            "keystoreExportModeVaultOnlyDesc": "Soilik kredentzial zifratuak eta zerbitzari-profilak. Txikiagoa, azkarragoa, v3.7.8 baino lehenagoko esportazioen berdina. Erabilgarria zerbitzariak makinen artean migratzeko txat-historia atzetik arrastatu gabe."
+            "keystoreExportModeFullDesc": "Kutxa gotorraren kredentzialak, AI txat historia, agentearen memoria, fitxategi etiketak, instalatutako pluginak, sinkronizazio argazkiak eta gordetako hobespenak. Aplikazioaren egoera osoa fitxategi zifratu bakar batean.",
+            "keystoreExportModeVaultOnly": "Kutxa gotorra soilik (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Zifratutako kredentzialak eta zerbitzari profilak soilik. Txikiagoa, azkarragoa, v3.7.8 aurreko esportazioen berdina. Erabilgarria zerbitzariak makinen artean migratzean, txat historia eraman gabe."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4432,11 +4432,11 @@
         },
         "portable": {
             "banner": {
-                "title": "Modu eramangarria: karpeta honek zure AeroFTP datu guztiak gordetzen ditu",
-                "body": "Instalazio eramangarri bakoitza guztiz autonomoa da: gordetako zerbitzariak, AeroVault, AI txatak eta hobespenak guztiak AeroFTP.exe ondoan bizi dira. v3.7.8tik aurrera, ordenagailu berean dauden bi karpeta eramangarri guztiz independenteak dira: karpeta batean profil bat ezabatzeak ez du gehiago bestea eragiten.",
-                "legacyWarning": "Lehengo instalazio partekatu baten hondar-datuak hauteman ditugu %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ helbidean. Instalazio eramangarri honek ez ditu jada erabiltzen. Eskuz ken ditzakezu behar ez badituzu.",
+                "title": "Modu eramangarria: karpeta honek AeroFTP datu guztiak ditu",
+                "body": "Instalazio eramangarri bakoitza guztiz autonomoa da: gordetako zerbitzariak, AeroVault, AI txatak eta hobespenak AeroFTP.exe-ren ondoan daude. v3.7.8 bertsiotik aurrera, ordenagailu berean dauden bi karpeta eramangarri guztiz independenteak dira: karpeta batean profil bat ezabatzeak ez du jada bestea eragiten.",
+                "legacyWarning": "Aurreko instalazio partekatu baten hondar-datuak detektatu ditugu %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ kokapenean. Instalazio eramangarri honek jada ez ditu erabiltzen. Eskuz ken ditzakezu behar ez badituzu.",
                 "openFolder": "Ireki datuen karpeta",
-                "dismiss": "Ulertua"
+                "dismiss": "Ulertuta"
             }
         }
     }

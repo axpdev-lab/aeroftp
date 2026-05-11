@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Giza la kweli la kati katika mtindo wa GitHub, bila tinti ya bluu",
             "themeGreenLabel": "Kijani",
             "themeGreenDesc": "Paleti ya msitu iliyochochewa na asili kwa wapenzi wa rangi ya kijani",
-            "keystoreExportModeTitle": "Cha kujumuisha katika nakala rudufu",
-            "keystoreExportModeFull": "Nakala rudufu kamili (inashauriwa)",
-            "keystoreExportModeFullDesc": "Vitambulisho vya vault, historia ya gumzo la AI, kumbukumbu ya wakala, vitambulisho vya faili, programu-jalizi zilizosakinishwa, picha za usawazishaji, na mapendeleo yaliyohifadhiwa. Hali kamili ya programu katika faili moja iliyosimbwa kwa njia fiche.",
-            "keystoreExportModeVaultOnly": "Vault tu (urithi)",
-            "keystoreExportModeVaultOnlyDesc": "Tu vitambulisho vilivyosimbwa kwa njia fiche na wasifu wa seva. Ndogo, haraka, sawa na uhamishaji wa kabla ya v3.7.8. Inafaa wakati wa kuhamisha seva kati ya mashine bila kuburuza historia ya gumzo nawe."
+            "keystoreExportModeTitle": "Cha kujumuisha kwenye backup",
+            "keystoreExportModeFull": "Backup kamili (inapendekezwa)",
+            "keystoreExportModeFullDesc": "Vitambulisho vya vault, historia ya mazungumzo ya AI, kumbukumbu ya wakala, lebo za faili, plugins zilizosakinishwa, picha za usawazishaji, na mapendeleo yaliyohifadhiwa. Hali kamili ya programu katika faili moja iliyosimbwa.",
+            "keystoreExportModeVaultOnly": "Vault tu (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Vitambulisho vilivyosimbwa na wasifu wa seva tu. Ndogo, haraka zaidi, sawa na ku-export kabla ya v3.7.8. Inafaa wakati wa kuhamisha seva kati ya mashine bila kubeba historia ya mazungumzo."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4413,9 +4413,9 @@
         },
         "portable": {
             "banner": {
-                "title": "Hali ya kubebeka: folda hii inashikilia data yako yote ya AeroFTP",
-                "body": "Kila usakinishaji wa kubebeka unajitegemea kabisa: seva zilizohifadhiwa, AeroVault, gumzo la AI na mapendeleo yote yapo karibu na AeroFTP.exe. Kuanzia v3.7.8, folda mbili za kubebeka kwenye PC moja ni huru kabisa: kufuta wasifu katika folda moja hakuathiri tena nyingine.",
-                "legacyWarning": "Tuligundua data iliyobaki kutoka usakinishaji wa awali wa pamoja katika %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Haitumiki tena na usakinishaji huu wa kubebeka. Unaweza kuiondoa wewe mwenyewe ikiwa huitaji.",
+                "title": "Hali ya portable: folda hii ina data yako yote ya AeroFTP",
+                "body": "Kila usakinishaji wa portable umekamilika peke yake: seva zilizohifadhiwa, AeroVault, mazungumzo ya AI na mapendeleo yote yapo karibu na AeroFTP.exe. Kuanzia v3.7.8, folda mbili za portable kwenye PC moja ni huru kabisa. Kufuta wasifu katika folda moja hakuathiri tena nyingine.",
+                "legacyWarning": "Tumegundua data iliyobaki kutoka usakinishaji wa awali wa pamoja kwenye %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Haitumiki tena na usakinishaji huu wa portable. Unaweza kuiondoa kwa mkono ikiwa huihitaji.",
                 "openFolder": "Fungua folda ya data",
                 "dismiss": "Nimeelewa"
             }

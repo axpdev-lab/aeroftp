@@ -961,9 +961,9 @@
             "themeGreenDesc": "Loodusest inspireeritud metsapalett rohelise armastajatele",
             "keystoreExportModeTitle": "Mida varukoopiasse lisada",
             "keystoreExportModeFull": "Täielik varukoopia (soovitatav)",
-            "keystoreExportModeFullDesc": "Vaulti mandaadid, AI-vestluste ajalugu, agendi mälu, faili sildid, paigaldatud pluginad, sünkroniseerimise hetketõmmised ja salvestatud eelistused. Rakenduse täielik olek ühes krüpteeritud failis.",
-            "keystoreExportModeVaultOnly": "Ainult vault (vana)",
-            "keystoreExportModeVaultOnlyDesc": "Ainult krüpteeritud mandaadid ja serveriprofiilid. Väiksem, kiirem, identne v3.7.8 eelsete ekspordifailidega. Kasulik serverite migreerimisel masinate vahel ilma vestluste ajalugu kaasa lohistamata."
+            "keystoreExportModeFullDesc": "Hoidla mandaadid, AI vestluste ajalugu, agendi mälu, failimärgendid, paigaldatud pluginad, sünkroonimise hetktõmmised ja salvestatud eelistused. Rakenduse täielik olek ühes krüpteeritud failis.",
+            "keystoreExportModeVaultOnly": "Ainult hoidla (pärand)",
+            "keystoreExportModeVaultOnlyDesc": "Ainult krüpteeritud mandaadid ja serveriprofiilid. Väiksem, kiirem, identne v3.7.8 eelsete ekspordifailidega. Kasulik serverite migreerimisel masinate vahel ilma vestluste ajalugu kaasa võtmata."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4414,8 +4414,8 @@
         "portable": {
             "banner": {
                 "title": "Kaasaskantav režiim: see kaust sisaldab kõiki teie AeroFTP andmeid",
-                "body": "Iga kaasaskantav paigaldus on täielikult iseseisev: salvestatud serverid, AeroVault, AI-vestlused ja eelistused asuvad kõik AeroFTP.exe kõrval. Alates versioonist v3.7.8 on kaks kaasaskantavat kausta samas arvutis täiesti sõltumatud: ühes kaustas profiili kustutamine ei mõjuta enam teist.",
-                "legacyWarning": "Tuvastasime jääkandmed varasemast jagatud paigaldusest asukohas %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. See kaasaskantav paigaldus neid enam ei kasuta. Saate need käsitsi eemaldada, kui te neid ei vaja.",
+                "body": "Iga kaasaskantav paigaldus on täielikult iseseisev: salvestatud serverid, AeroVault, AI vestlused ja eelistused asuvad kõik AeroFTP.exe kõrval. Alates versioonist v3.7.8 on kaks kaasaskantavat kausta samas arvutis täiesti sõltumatud: profiili kustutamine ühes kaustas ei mõjuta enam teist.",
+                "legacyWarning": "Tuvastasime jääkandmed varasemast jagatud paigaldusest asukohas %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Käesolev kaasaskantav paigaldus seda enam ei kasuta. Võite need käsitsi eemaldada, kui te neid ei vaja.",
                 "openFolder": "Ava andmekaust",
                 "dismiss": "Selge"
             }

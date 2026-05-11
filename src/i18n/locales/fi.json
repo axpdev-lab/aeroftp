@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Aito neutraali tumma GitHub-tyyliin, ilman sinistä vivahdetta",
             "themeGreenLabel": "Vihreä",
             "themeGreenDesc": "Luonnosta inspiroitu metsäpaletti vihreän rakastajille",
-            "keystoreExportModeTitle": "Mitä sisällyttää varmuuskopioon",
+            "keystoreExportModeTitle": "Mitä varmuuskopioon sisällytetään",
             "keystoreExportModeFull": "Täysi varmuuskopio (suositeltu)",
-            "keystoreExportModeFullDesc": "Vaultin tunnistetiedot, tekoälykeskustelujen historia, agentin muisti, tiedostotunnisteet, asennetut laajennukset, synkronointiotokset ja tallennetut asetukset. Sovelluksen täydellinen tila yhdessä salatussa tiedostossa.",
-            "keystoreExportModeVaultOnly": "Vain vault (vanha)",
-            "keystoreExportModeVaultOnlyDesc": "Vain salatut tunnistetiedot ja palvelinprofiilit. Pienempi, nopeampi, sama kuin v3.7.8:aa edeltävät viennit. Hyödyllinen, kun siirretään palvelimia koneiden välillä ilman keskusteluhistorian raahaamista mukana."
+            "keystoreExportModeFullDesc": "Holvin tunnistetiedot, AI-keskusteluhistoria, agentin muisti, tiedostotunnisteet, asennetut pluginit, synkronointitilannekuvat ja tallennetut asetukset. Sovelluksen täydellinen tila yhdessä salatussa tiedostossa.",
+            "keystoreExportModeVaultOnly": "Vain holvi (vanha)",
+            "keystoreExportModeVaultOnlyDesc": "Vain salatut tunnistetiedot ja palvelinprofiilit. Pienempi, nopeampi, identtinen v3.7.8 versiota edeltäneiden vientien kanssa. Hyödyllinen, kun siirrät palvelimia koneiden välillä ilman keskusteluhistoriaa."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4413,9 +4413,9 @@
         },
         "portable": {
             "banner": {
-                "title": "Kannettava tila: tämä kansio sisältää kaikki AeroFTP-tietosi",
-                "body": "Jokainen kannettava asennus on täysin itsenäinen: tallennetut palvelimet, AeroVault, tekoälykeskustelut ja asetukset sijaitsevat kaikki AeroFTP.exe:n vieressä. Versiosta v3.7.8 alkaen kaksi kannettavaa kansiota samassa tietokoneessa ovat täysin riippumattomia: profiilin poistaminen yhdestä kansiosta ei enää vaikuta toiseen.",
-                "legacyWarning": "Havaitsimme jäännösdataa aiemmasta jaetusta asennuksesta sijainnissa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tämä kannettava asennus ei enää käytä sitä. Voit poistaa sen manuaalisesti, jos et tarvitse sitä.",
+                "title": "Siirrettävä tila: tämä kansio sisältää kaikki AeroFTP-tietosi",
+                "body": "Jokainen siirrettävä asennus on täysin itsenäinen: tallennetut palvelimet, AeroVault, AI-keskustelut ja asetukset sijaitsevat kaikki AeroFTP.exe-tiedoston vieressä. Versiosta v3.7.8 alkaen kaksi siirrettävää kansiota samassa tietokoneessa ovat täysin riippumattomia: profiilin poistaminen yhdessä kansiossa ei enää vaikuta toiseen.",
+                "legacyWarning": "Havaitsimme jäännösdataa aiemmasta jaetusta asennuksesta sijainnissa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tämä siirrettävä asennus ei enää käytä sitä. Voit poistaa sen manuaalisesti, jos et tarvitse sitä.",
                 "openFolder": "Avaa datakansio",
                 "dismiss": "Selvä"
             }

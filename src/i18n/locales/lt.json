@@ -960,10 +960,10 @@
             "themeGreenLabel": "Žalia",
             "themeGreenDesc": "Gamtos įkvėpta miško paletė žalios mylėtojams",
             "keystoreExportModeTitle": "Ką įtraukti į atsarginę kopiją",
-            "keystoreExportModeFull": "Pilna atsarginė kopija (rekomenduojama)",
-            "keystoreExportModeFullDesc": "Saugyklos kredencialai, AI pokalbių istorija, agento atmintis, failų žymos, įdiegti papildiniai, sinchronizavimo momentinės nuotraukos ir išsaugotos nuostatos. Visa programos būsena viename užšifruotame faile.",
-            "keystoreExportModeVaultOnly": "Tik saugykla (pasenęs)",
-            "keystoreExportModeVaultOnlyDesc": "Tik užšifruoti kredencialai ir serverio profiliai. Mažesnis, greitesnis, identiškas eksportams iki v3.7.8. Naudinga perkeliant serverius tarp kompiuterių neperkeliant pokalbių istorijos."
+            "keystoreExportModeFull": "Visa atsarginė kopija (rekomenduojama)",
+            "keystoreExportModeFullDesc": "Saugyklos prisijungimo duomenys, AI pokalbių istorija, agento atmintis, failų žymos, įdiegti įskiepiai, sinchronizavimo momentinės kopijos ir išsaugotos nuostatos. Visa programos būsena viename užšifruotame faile.",
+            "keystoreExportModeVaultOnly": "Tik saugykla (pasenusi)",
+            "keystoreExportModeVaultOnlyDesc": "Tik užšifruoti prisijungimo duomenys ir serverių profiliai. Mažesnė, greitesnė, identiška iki v3.7.8 versijų eksportams. Naudinga perkeliant serverius tarp kompiuterių be pokalbių istorijos."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4414,7 +4414,7 @@
         "portable": {
             "banner": {
                 "title": "Nešiojamasis režimas: šiame aplanke saugomi visi jūsų AeroFTP duomenys",
-                "body": "Kiekvienas nešiojamasis diegimas yra visiškai savarankiškas: išsaugoti serveriai, AeroVault, AI pokalbiai ir nuostatos – visi jie yra šalia AeroFTP.exe. Nuo v3.7.8 du nešiojamieji aplankai tame pačiame kompiuteryje yra visiškai nepriklausomi: profilio ištrynimas viename aplanke nebeveikia kito.",
+                "body": "Kiekvienas nešiojamasis diegimas yra visiškai savarankiškas: išsaugoti serveriai, AeroVault, AI pokalbiai ir nuostatos yra šalia AeroFTP.exe. Nuo v3.7.8 versijos du nešiojamieji aplankai tame pačiame kompiuteryje yra visiškai nepriklausomi, profilio ištrynimas viename aplanke nebeturi įtakos kitam.",
                 "legacyWarning": "Aptikome likusių duomenų iš ankstesnio bendro diegimo vietoje %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šis nešiojamasis diegimas jų nebenaudoja. Galite juos pašalinti rankiniu būdu, jei jų nereikia.",
                 "openFolder": "Atidaryti duomenų aplanką",
                 "dismiss": "Supratau"

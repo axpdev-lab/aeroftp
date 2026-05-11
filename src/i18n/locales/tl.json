@@ -960,10 +960,10 @@
             "themeGreenLabel": "Berde",
             "themeGreenDesc": "Paletang gubat na inspirasyon ng kalikasan para sa mga mahilig sa berde",
             "keystoreExportModeTitle": "Ano ang isasama sa backup",
-            "keystoreExportModeFull": "Buong backup (inirerekomenda)",
-            "keystoreExportModeFullDesc": "Mga kredensyal ng vault, kasaysayan ng chat ng AI, memorya ng ahente, mga tag ng file, mga naka-install na plugin, mga snapshot ng pag-sync, at mga naka-save na kagustuhan. Ang kumpletong kalagayan ng aplikasyon sa isang naka-encrypt na file.",
-            "keystoreExportModeVaultOnly": "Vault lang (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Tanging ang mga naka-encrypt na kredensyal at mga profile ng server. Mas maliit, mas mabilis, kapareho ng mga export bago ang v3.7.8. Kapaki-pakinabang kapag naglilipat ng mga server sa pagitan ng mga makina nang hindi kinakailangang dalhin ang kasaysayan ng chat."
+            "keystoreExportModeFull": "Kumpletong backup (inirerekomenda)",
+            "keystoreExportModeFullDesc": "Mga credential ng vault, kasaysayan ng AI chat, memorya ng agent, file tags, mga naka-install na plugin, mga sync snapshot, at mga naka-save na preference. Ang kumpletong estado ng aplikasyon sa isang naka-encrypt na file.",
+            "keystoreExportModeVaultOnly": "Vault lamang (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Ang mga naka-encrypt na credential at server profile lamang. Mas maliit, mas mabilis, at katulad ng mga export bago ang v3.7.8. Kapaki-pakinabang kapag inililipat ang mga server sa pagitan ng mga makina nang hindi kasama ang kasaysayan ng chat."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4432,11 +4432,11 @@
         },
         "portable": {
             "banner": {
-                "title": "Portable mode: ang folder na ito ang naglalaman ng lahat ng iyong data ng AeroFTP",
-                "body": "Ang bawat portable na pag-install ay ganap na self-contained: ang mga naka-save na server, AeroVault, mga chat ng AI at mga kagustuhan ay lahat nakatira sa tabi ng AeroFTP.exe. Mula sa v3.7.8 pasulong, ang dalawang portable folder sa parehong PC ay ganap na malaya: ang pagtanggal ng profile sa isang folder ay hindi na nakakaapekto sa kabila.",
-                "legacyWarning": "Nakakita kami ng natitirang data mula sa nakaraang shared install sa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Hindi na ito ginagamit ng portable installation na ito. Maaari mo itong manu-manong tanggalin kung hindi mo na kailangan.",
+                "title": "Portable mode: nasa folder na ito ang lahat ng iyong AeroFTP data",
+                "body": "Bawat portable installation ay ganap na self-contained: nakaligpit na servers, AeroVault, AI chats, at preferences ay pawang nasa tabi ng AeroFTP.exe. Mula sa v3.7.8, ang dalawang portable folder sa parehong PC ay ganap na hiwalay sa isa't isa. Ang pagtanggal ng profile sa isang folder ay hindi na nakakaapekto sa kabila.",
+                "legacyWarning": "Nakita namin ang natirang data mula sa nakaraang shared install sa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Hindi na ito ginagamit ng portable installation na ito. Maaari mo itong tanggalin nang manu-mano kung hindi mo na kailangan.",
                 "openFolder": "Buksan ang data folder",
-                "dismiss": "Nakuha"
+                "dismiss": "Naintindihan"
             }
         }
     }

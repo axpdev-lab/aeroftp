@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Sannarlega hlutlaust dökkt í GitHub stíl, án blás blæs",
             "themeGreenLabel": "Grænt",
             "themeGreenDesc": "Skógarlitir innblásnir af náttúrunni fyrir unnendur græna litarins",
-            "keystoreExportModeTitle": "Hvað á að taka með í afritið",
-            "keystoreExportModeFull": "Fullt afrit (mælt með)",
-            "keystoreExportModeFullDesc": "Auðkenni hvelfingar, gervigreindarspjallsögu, minni umboðsaðila, skráarmerki, uppsetta viðbætur, samstillingarmyndir og vistaðar stillingar. Heildarstaða forritsins í einni dulkóðaðri skrá.",
-            "keystoreExportModeVaultOnly": "Aðeins hvelfing (eldra)",
-            "keystoreExportModeVaultOnlyDesc": "Aðeins dulkóðuðu auðkennin og þjónaprófíla. Minna, hraðar, sams konar og útflutningar fyrir v3.7.8. Gagnlegt þegar þú flytur þjóna á milli véla án þess að draga spjallsöguna með þér."
+            "keystoreExportModeTitle": "Hvað á að taka með í afritinu",
+            "keystoreExportModeFull": "Heildarafrit (mælt með)",
+            "keystoreExportModeFullDesc": "Skírteini hvelfingar, AI spjallsaga, minni umboðsmanns, skráarmerkimiðar, uppsett plugin, samstillingar-skyndimyndir og vistaðar stillingar. Heildarástand forritsins í einni dulkóðaðri skrá.",
+            "keystoreExportModeVaultOnly": "Aðeins hvelfing (eldri)",
+            "keystoreExportModeVaultOnlyDesc": "Aðeins dulkóðuð skírteini og þjónaprófílar. Minni, hraðari, sami og útflutningar fyrir v3.7.8. Gagnlegt þegar þjónar eru fluttir milli véla án þess að taka spjallsögu með."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4432,11 +4432,11 @@
         },
         "portable": {
             "banner": {
-                "title": "Færanlegur hamur: þessi mappa geymir öll AeroFTP-gögnin þín",
-                "body": "Hver færanleg uppsetning er algjörlega sjálfstæð: vistaðir þjónar, AeroVault, gervigreindarspjall og stillingar búa öll við hlið AeroFTP.exe. Frá v3.7.8 eru tvær færanlegar möppur á sömu tölvu algerlega óháðar: að eyða prófíl í einni möppu hefur ekki lengur áhrif á hina.",
-                "legacyWarning": "Við greindum afgangsgögn frá fyrri sameiginlegri uppsetningu á %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Þau eru ekki lengur notuð af þessari færanlegu uppsetningu. Þú getur fjarlægt þau handvirkt ef þú þarft þau ekki.",
+                "title": "Færanlegur hamur: þessi mappa geymir öll AeroFTP gögnin þín",
+                "body": "Hver færanleg uppsetning er fullkomlega sjálfstæð: vistaðir þjónar, AeroVault, AI spjall og stillingar eru öll við hliðina á AeroFTP.exe. Frá útgáfu v3.7.8 og áfram eru tvær færanlegar möppur á sömu tölvu algjörlega óháðar, eyðing prófíls í einni möppu hefur ekki lengur áhrif á hina.",
+                "legacyWarning": "Við greindum afgangsgögn frá fyrri sameiginlegri uppsetningu á %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Þessi færanlega uppsetning notar þau ekki lengur. Þú getur fjarlægt þau handvirkt ef þú þarft þau ekki.",
                 "openFolder": "Opna gagnamöppu",
-                "dismiss": "Skil"
+                "dismiss": "Ég skil"
             }
         }
     }

@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Tối trung tính thực sự theo phong cách GitHub, không có sắc xanh",
             "themeGreenLabel": "Xanh Lá",
             "themeGreenDesc": "Bảng màu rừng lấy cảm hứng từ thiên nhiên cho những người yêu màu xanh",
-            "keystoreExportModeTitle": "Những gì cần đưa vào bản sao lưu",
-            "keystoreExportModeFull": "Sao lưu đầy đủ (khuyến nghị)",
-            "keystoreExportModeFullDesc": "Thông tin xác thực vault, lịch sử trò chuyện AI, bộ nhớ tác nhân, thẻ tệp, các plugin đã cài đặt, ảnh chụp đồng bộ và các tùy chọn đã lưu. Toàn bộ trạng thái ứng dụng trong một tệp được mã hóa duy nhất.",
-            "keystoreExportModeVaultOnly": "Chỉ vault (kế thừa)",
-            "keystoreExportModeVaultOnlyDesc": "Chỉ các thông tin xác thực được mã hóa và hồ sơ máy chủ. Nhỏ hơn, nhanh hơn, giống hệt với các bản xuất trước v3.7.8. Hữu ích khi di chuyển máy chủ giữa các máy mà không kéo theo lịch sử trò chuyện."
+            "keystoreExportModeTitle": "Những gì cần đưa vào backup",
+            "keystoreExportModeFull": "Backup đầy đủ (khuyến nghị)",
+            "keystoreExportModeFullDesc": "Thông tin xác thực vault, lịch sử trò chuyện AI, bộ nhớ tác nhân, thẻ tệp, các plugin đã cài đặt, ảnh chụp nhanh đồng bộ và các tùy chọn đã lưu. Toàn bộ trạng thái ứng dụng trong một tệp được mã hóa duy nhất.",
+            "keystoreExportModeVaultOnly": "Chỉ vault (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Chỉ thông tin xác thực được mã hóa và hồ sơ máy chủ. Nhỏ hơn, nhanh hơn, giống hệt các bản xuất trước v3.7.8. Hữu ích khi di chuyển máy chủ giữa các máy mà không kéo theo lịch sử trò chuyện."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4413,9 +4413,9 @@
         },
         "portable": {
             "banner": {
-                "title": "Chế độ di động: thư mục này chứa tất cả dữ liệu AeroFTP của bạn",
-                "body": "Mỗi cài đặt di động đều hoàn toàn độc lập: các máy chủ đã lưu, AeroVault, các cuộc trò chuyện AI và tùy chọn đều nằm bên cạnh AeroFTP.exe. Từ v3.7.8 trở đi, hai thư mục di động trên cùng một PC hoàn toàn độc lập: việc xóa một hồ sơ trong một thư mục không còn ảnh hưởng đến thư mục kia.",
-                "legacyWarning": "Chúng tôi đã phát hiện dữ liệu còn lại từ một cài đặt chia sẻ trước đó tại %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Cài đặt di động này không còn sử dụng nữa. Bạn có thể xóa thủ công nếu không cần.",
+                "title": "Chế độ di động: thư mục này chứa toàn bộ dữ liệu AeroFTP của bạn",
+                "body": "Mỗi lần cài đặt di động đều hoàn toàn độc lập: các máy chủ đã lưu, AeroVault, các cuộc trò chuyện AI và tùy chọn đều nằm cạnh AeroFTP.exe. Từ phiên bản v3.7.8 trở đi, hai thư mục di động trên cùng một PC hoàn toàn độc lập với nhau. Việc xóa hồ sơ trong một thư mục sẽ không còn ảnh hưởng đến thư mục khác.",
+                "legacyWarning": "Chúng tôi đã phát hiện dữ liệu còn sót lại từ lần cài đặt chia sẻ trước đó tại %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Bản cài đặt di động này không còn sử dụng dữ liệu đó nữa. Bạn có thể xóa thủ công nếu không cần.",
                 "openFolder": "Mở thư mục dữ liệu",
                 "dismiss": "Đã hiểu"
             }

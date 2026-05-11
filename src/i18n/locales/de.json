@@ -961,9 +961,9 @@
             "themeGreenDesc": "Naturinspirierte Waldpalette für Liebhaber von Grün",
             "keystoreExportModeTitle": "Was soll in das Backup aufgenommen werden",
             "keystoreExportModeFull": "Vollständiges Backup (empfohlen)",
-            "keystoreExportModeFullDesc": "Vault-Anmeldedaten, KI-Chatverlauf, Agenten-Speicher, Datei-Tags, installierte Plugins, Sync-Snapshots und gespeicherte Einstellungen. Der gesamte Anwendungszustand in einer einzigen verschlüsselten Datei.",
-            "keystoreExportModeVaultOnly": "Nur Vault (Legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Nur die verschlüsselten Anmeldedaten und Serverprofile. Kleiner, schneller, identisch mit Exporten vor v3.7.8. Nützlich beim Migrieren von Servern zwischen Rechnern, ohne den Chatverlauf mitzuschleppen."
+            "keystoreExportModeFullDesc": "Tresor-Zugangsdaten, AI-Chatverlauf, Agentenspeicher, Datei-Tags, installierte Plugins, Sync-Snapshots und gespeicherte Einstellungen. Der komplette Anwendungszustand in einer einzigen verschlüsselten Datei.",
+            "keystoreExportModeVaultOnly": "Nur Tresor (Legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Nur die verschlüsselten Zugangsdaten und Serverprofile. Kleiner, schneller, identisch mit Exporten vor v3.7.8. Nützlich, wenn Sie Server zwischen Rechnern migrieren, ohne den Chatverlauf mitzunehmen."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4403,9 +4403,9 @@
         },
         "portable": {
             "banner": {
-                "title": "Portabler Modus: dieser Ordner enthält alle Ihre AeroFTP-Daten",
-                "body": "Jede portable Installation ist vollständig eigenständig: gespeicherte Server, AeroVault, KI-Chats und Einstellungen befinden sich alle neben AeroFTP.exe. Ab v3.7.8 sind zwei portable Ordner auf demselben PC vollständig unabhängig: das Löschen eines Profils in einem Ordner wirkt sich nicht mehr auf den anderen aus.",
-                "legacyWarning": "Wir haben Restdaten einer früheren gemeinsam genutzten Installation unter %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ erkannt. Sie werden von dieser portablen Installation nicht mehr verwendet. Sie können sie manuell entfernen, wenn Sie sie nicht benötigen.",
+                "title": "Portabler Modus: Dieser Ordner enthält alle Ihre AeroFTP-Daten",
+                "body": "Jede portable Installation ist vollständig eigenständig: gespeicherte Server, AeroVault, AI-Chats und Einstellungen befinden sich alle neben der AeroFTP.exe. Ab v3.7.8 sind zwei portable Ordner auf demselben PC völlig unabhängig voneinander: Das Löschen eines Profils in einem Ordner wirkt sich nicht mehr auf den anderen aus.",
+                "legacyWarning": "Wir haben Restdaten einer früheren gemeinsamen Installation unter %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ erkannt. Sie werden von dieser portablen Installation nicht mehr verwendet. Sie können sie manuell entfernen, falls Sie sie nicht benötigen.",
                 "openFolder": "Datenordner öffnen",
                 "dismiss": "Verstanden"
             }

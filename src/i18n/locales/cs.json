@@ -961,9 +961,9 @@
             "themeGreenDesc": "Lesní paleta inspirovaná přírodou pro milovníky zelené",
             "keystoreExportModeTitle": "Co zahrnout do zálohy",
             "keystoreExportModeFull": "Úplná záloha (doporučeno)",
-            "keystoreExportModeFullDesc": "Přihlašovací údaje vaultu, historie AI chatu, paměť agenta, štítky souborů, nainstalované pluginy, snímky synchronizace a uložené předvolby. Kompletní stav aplikace v jediném šifrovaném souboru.",
-            "keystoreExportModeVaultOnly": "Pouze vault (staré)",
-            "keystoreExportModeVaultOnlyDesc": "Pouze šifrované přihlašovací údaje a profily serverů. Menší, rychlejší, identické s exporty před v3.7.8. Užitečné při migraci serverů mezi počítači bez nutnosti táhnout s sebou historii chatu."
+            "keystoreExportModeFullDesc": "Přihlašovací údaje trezoru, historie AI chatů, paměť agenta, štítky souborů, nainstalované pluginy, snímky synchronizace a uložené předvolby. Kompletní stav aplikace v jednom šifrovaném souboru.",
+            "keystoreExportModeVaultOnly": "Pouze trezor (starší režim)",
+            "keystoreExportModeVaultOnlyDesc": "Pouze šifrované přihlašovací údaje a profily serverů. Menší, rychlejší, identický s exporty před v3.7.8. Užitečné při migraci serverů mezi počítači bez přenosu historie chatů."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4414,9 +4414,9 @@
         "portable": {
             "banner": {
                 "title": "Přenosný režim: tato složka obsahuje všechna vaše data AeroFTP",
-                "body": "Každá přenosná instalace je plně samostatná: uložené servery, AeroVault, AI chaty a předvolby žijí vedle AeroFTP.exe. Od v3.7.8 jsou dvě přenosné složky na stejném PC zcela nezávislé: smazání profilu v jedné složce již neovlivňuje druhou.",
-                "legacyWarning": "Zjistili jsme zbylá data z předchozí sdílené instalace v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tato přenosná instalace je již nepoužívá. Pokud je nepotřebujete, můžete je ručně odstranit.",
-                "openFolder": "Otevřít složku dat",
+                "body": "Každá přenosná instalace je plně samostatná: uložené servery, AeroVault, AI chaty a předvolby jsou umístěny vedle souboru AeroFTP.exe. Od verze v3.7.8 jsou dvě přenosné složky na stejném počítači zcela nezávislé: smazání profilu v jedné složce již neovlivní druhou.",
+                "legacyWarning": "Zjistili jsme zbytková data z předchozí sdílené instalace v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tato přenosná instalace je již nepoužívá. Pokud je nepotřebujete, můžete je odstranit ručně.",
+                "openFolder": "Otevřít složku s daty",
                 "dismiss": "Rozumím"
             }
         }

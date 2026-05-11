@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "GitHub tarzında gerçek nötr karanlık, mavi ton içermez",
             "themeGreenLabel": "Yeşil",
             "themeGreenDesc": "Doğadan ilham alan orman paleti, yeşil sevenler için",
-            "keystoreExportModeTitle": "Yedeklemeye nelerin dahil edileceği",
-            "keystoreExportModeFull": "Tam yedekleme (önerilen)",
-            "keystoreExportModeFullDesc": "Vault kimlik bilgileri, AI sohbet geçmişi, ajan belleği, dosya etiketleri, yüklü eklentiler, eşitleme anlık görüntüleri ve kaydedilmiş tercihler. Tek bir şifrelenmiş dosyada tam uygulama durumu.",
-            "keystoreExportModeVaultOnly": "Yalnızca vault (eski)",
-            "keystoreExportModeVaultOnlyDesc": "Yalnızca şifrelenmiş kimlik bilgileri ve sunucu profilleri. Daha küçük, daha hızlı, v3.7.8 öncesi dışa aktarımlarla aynı. Sohbet geçmişini sürüklemeden sunucuları makineler arasında taşımak için kullanışlıdır."
+            "keystoreExportModeTitle": "Yedeklemeye neler dahil edilecek",
+            "keystoreExportModeFull": "Tam backup (önerilen)",
+            "keystoreExportModeFullDesc": "Kasa kimlik bilgileri, AI sohbet geçmişi, ajan belleği, dosya etiketleri, kurulu pluginler, senkronizasyon anlık görüntüleri ve kaydedilmiş tercihler. Tüm uygulama durumu tek bir şifrelenmiş dosyada.",
+            "keystoreExportModeVaultOnly": "Yalnızca kasa (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Yalnızca şifrelenmiş kimlik bilgileri ve sunucu profilleri. Daha küçük, daha hızlı, v3.7.8 öncesi dışa aktarımlarla aynı. Sunucuları makineler arasında sohbet geçmişini taşımadan aktarırken kullanışlıdır."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4413,9 +4413,9 @@
         },
         "portable": {
             "banner": {
-                "title": "Taşınabilir mod: bu klasör tüm AeroFTP verilerinizi içerir",
-                "body": "Her taşınabilir kurulum tamamen kendi kendine yeterlidir: kaydedilmiş sunucular, AeroVault, AI sohbetleri ve tercihler hepsi AeroFTP.exe'nin yanında bulunur. v3.7.8'den itibaren, aynı bilgisayardaki iki taşınabilir klasör tamamen bağımsızdır: bir klasördeki profili silmek artık diğerini etkilemez.",
-                "legacyWarning": "%LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ konumunda önceki bir paylaşılan kurulumdan kalan verileri tespit ettik. Bu taşınabilir kurulum tarafından artık kullanılmıyor. İhtiyacınız yoksa elle kaldırabilirsiniz.",
+                "title": "Taşınabilir mod: bu klasör tüm AeroFTP verilerinizi barındırır",
+                "body": "Her taşınabilir kurulum tamamen bağımsızdır: kayıtlı sunucular, AeroVault, AI sohbetleri ve tercihler hepsi AeroFTP.exe ile aynı dizinde bulunur. v3.7.8 sürümünden itibaren aynı bilgisayardaki iki taşınabilir klasör tamamen bağımsızdır. Bir klasördeki profili silmek artık diğerini etkilemez.",
+                "legacyWarning": "%LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ konumunda önceki paylaşımlı kurulumdan kalan verileri tespit ettik. Bu taşınabilir kurulum tarafından artık kullanılmıyor. İhtiyacınız yoksa manuel olarak kaldırabilirsiniz.",
                 "openFolder": "Veri klasörünü aç",
                 "dismiss": "Anladım"
             }

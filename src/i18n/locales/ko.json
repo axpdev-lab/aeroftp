@@ -961,9 +961,9 @@
             "themeGreenDesc": "녹색 애호가를 위한 자연에서 영감을 받은 숲 팔레트",
             "keystoreExportModeTitle": "백업에 포함할 항목",
             "keystoreExportModeFull": "전체 백업 (권장)",
-            "keystoreExportModeFullDesc": "볼트 자격 증명, AI 채팅 기록, 에이전트 메모리, 파일 태그, 설치된 플러그인, 동기화 스냅샷, 저장된 환경설정. 전체 애플리케이션 상태를 하나의 암호화된 파일에 담습니다.",
+            "keystoreExportModeFullDesc": "볼트 자격 증명, AI 채팅 기록, 에이전트 메모리, 파일 태그, 설치된 플러그인, 동기화 스냅샷 및 저장된 환경 설정. 전체 애플리케이션 상태를 하나의 암호화된 파일에 담습니다.",
             "keystoreExportModeVaultOnly": "볼트만 (레거시)",
-            "keystoreExportModeVaultOnlyDesc": "암호화된 자격 증명과 서버 프로필만 포함합니다. 더 작고 빠르며 v3.7.8 이전 내보내기와 동일합니다. 채팅 기록을 끌고 다니지 않고 머신 간에 서버를 마이그레이션할 때 유용합니다."
+            "keystoreExportModeVaultOnlyDesc": "암호화된 자격 증명과 서버 프로필만 포함합니다. 더 작고 빠르며 v3.7.8 이전 내보내기와 동일합니다. 채팅 기록을 함께 가져오지 않고 기기 간에 서버를 이전할 때 유용합니다."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4404,8 +4404,8 @@
         "portable": {
             "banner": {
                 "title": "포터블 모드: 이 폴더에 모든 AeroFTP 데이터가 저장됩니다",
-                "body": "모든 포터블 설치는 완전히 독립적입니다. 저장된 서버, AeroVault, AI 채팅 및 환경설정이 모두 AeroFTP.exe 옆에 있습니다. v3.7.8부터는 동일한 PC의 두 포터블 폴더가 완전히 독립적입니다. 한 폴더에서 프로필을 삭제해도 더 이상 다른 폴더에 영향을 미치지 않습니다.",
-                "legacyWarning": "이전 공유 설치의 잔여 데이터를 %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\에서 감지했습니다. 이 포터블 설치는 더 이상 이를 사용하지 않습니다. 필요하지 않다면 수동으로 제거할 수 있습니다.",
+                "body": "각 포터블 설치는 완전히 독립적입니다. 저장된 서버, AeroVault, AI 채팅 및 환경 설정이 모두 AeroFTP.exe 옆에 위치합니다. v3.7.8부터는 동일한 PC의 두 포터블 폴더가 완전히 독립적이며, 한 폴더에서 프로필을 삭제해도 다른 폴더에는 더 이상 영향을 주지 않습니다.",
+                "legacyWarning": "%LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ 위치에서 이전 공유 설치의 잔여 데이터를 감지했습니다. 이 포터블 설치에서는 더 이상 사용되지 않습니다. 필요하지 않은 경우 수동으로 제거할 수 있습니다.",
                 "openFolder": "데이터 폴더 열기",
                 "dismiss": "확인"
             }

@@ -959,10 +959,10 @@
             "themeTruedarkDesc": "Echt neutraal donker in GitHub-stijl, zonder blauwe tint",
             "themeGreenLabel": "Groen",
             "themeGreenDesc": "Natuurgeïnspireerd bospalet voor liefhebbers van groen",
-            "keystoreExportModeTitle": "Wat moet in de back-up worden opgenomen",
+            "keystoreExportModeTitle": "Wat op te nemen in de back-up",
             "keystoreExportModeFull": "Volledige back-up (aanbevolen)",
-            "keystoreExportModeFullDesc": "Vault-inloggegevens, AI-chatgeschiedenis, agentgeheugen, bestandstags, geïnstalleerde plug-ins, synchronisatie-snapshots en opgeslagen voorkeuren. De volledige applicatiestatus in één versleuteld bestand.",
-            "keystoreExportModeVaultOnly": "Alleen vault (legacy)",
+            "keystoreExportModeFullDesc": "Kluis-inloggegevens, AI-chatgeschiedenis, agentgeheugen, bestandstags, geïnstalleerde plugins, synchronisatiemomentopnamen en opgeslagen voorkeuren. De volledige toepassingsstatus in één versleuteld bestand.",
+            "keystoreExportModeVaultOnly": "Alleen kluis (verouderd)",
             "keystoreExportModeVaultOnlyDesc": "Alleen de versleutelde inloggegevens en serverprofielen. Kleiner, sneller, identiek aan exports van vóór v3.7.8. Handig bij het migreren van servers tussen machines zonder de chatgeschiedenis mee te slepen."
         },
         "devtools": {
@@ -4404,8 +4404,8 @@
         "portable": {
             "banner": {
                 "title": "Draagbare modus: deze map bevat al uw AeroFTP-gegevens",
-                "body": "Elke draagbare installatie is volledig zelfvoorzienend: opgeslagen servers, AeroVault, AI-chats en voorkeuren bevinden zich allemaal naast AeroFTP.exe. Vanaf v3.7.8 zijn twee draagbare mappen op dezelfde pc volledig onafhankelijk: het verwijderen van een profiel in de ene map heeft niet langer invloed op de andere.",
-                "legacyWarning": "We hebben resterende gegevens van een eerdere gedeelde installatie gedetecteerd op %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Deze worden niet meer gebruikt door deze draagbare installatie. U kunt ze handmatig verwijderen als u ze niet nodig heeft.",
+                "body": "Elke draagbare installatie is volledig zelfstandig: opgeslagen servers, AeroVault, AI-chats en voorkeuren bevinden zich allemaal naast AeroFTP.exe. Vanaf v3.7.8 zijn twee draagbare mappen op dezelfde pc volledig onafhankelijk, het verwijderen van een profiel in de ene map heeft niet langer invloed op de andere.",
+                "legacyWarning": "We hebben overgebleven gegevens gedetecteerd van een eerdere gedeelde installatie op %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Deze gegevens worden niet meer gebruikt door deze draagbare installatie. U kunt ze handmatig verwijderen als u ze niet nodig hebt.",
                 "openFolder": "Gegevensmap openen",
                 "dismiss": "Begrepen"
             }

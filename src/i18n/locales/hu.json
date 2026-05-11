@@ -961,9 +961,9 @@
             "themeGreenDesc": "Természet ihlette erdei paletta a zöld szerelmeseinek",
             "keystoreExportModeTitle": "Mit tartalmazzon a biztonsági mentés",
             "keystoreExportModeFull": "Teljes biztonsági mentés (ajánlott)",
-            "keystoreExportModeFullDesc": "Vault hitelesítő adatok, AI csevegési előzmények, ügynökmemória, fájlcímkék, telepített bővítmények, szinkronizációs pillanatképek és mentett beállítások. A teljes alkalmazásállapot egyetlen titkosított fájlban.",
-            "keystoreExportModeVaultOnly": "Csak vault (régi)",
-            "keystoreExportModeVaultOnlyDesc": "Csak a titkosított hitelesítő adatok és a kiszolgálóprofilok. Kisebb, gyorsabb, megegyezik a v3.7.8 előtti exportokkal. Hasznos szerverek gépek közötti migrálásakor anélkül, hogy a csevegési előzményeket magunkkal kellene vinnünk."
+            "keystoreExportModeFullDesc": "Trezor hitelesítő adatok, AI beszélgetési előzmények, ügynök memória, fájlcímkék, telepített pluginok, szinkronizációs pillanatképek és mentett beállítások. A teljes alkalmazásállapot egyetlen titkosított fájlban.",
+            "keystoreExportModeVaultOnly": "Csak trezor (örökölt)",
+            "keystoreExportModeVaultOnlyDesc": "Csak a titkosított hitelesítő adatok és szerverprofilok. Kisebb, gyorsabb, megegyezik a v3.7.8 előtti exportokkal. Hasznos, ha szervereket költöztet gépek között a beszélgetési előzmények nélkül."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4413,11 +4413,11 @@
         },
         "portable": {
             "banner": {
-                "title": "Hordozható mód: ez a mappa tartalmazza az összes AeroFTP-adatát",
-                "body": "Minden hordozható telepítés teljesen önálló: a mentett kiszolgálók, az AeroVault, az AI-csevegések és a beállítások mind az AeroFTP.exe mellett élnek. A v3.7.8-tól kezdve ugyanazon a PC-n lévő két hordozható mappa teljesen független: az egyik mappában lévő profil törlése már nem érinti a másikat.",
-                "legacyWarning": "Megmaradt adatokat észleltünk egy korábbi megosztott telepítésből a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ helyen. Ezeket a hordozható telepítés már nem használja. Ha nincs rá szüksége, manuálisan eltávolíthatja.",
+                "title": "Hordozható mód: ez a mappa tartalmazza az összes AeroFTP adatát",
+                "body": "Minden hordozható telepítés teljesen önálló: a mentett szerverek, az AeroVault, az AI beszélgetések és a beállítások mind az AeroFTP.exe mellett találhatók. A v3.7.8 verziótól kezdve két hordozható mappa ugyanazon a számítógépen teljesen független egymástól, az egyik mappában lévő profil törlése már nem érinti a másikat.",
+                "legacyWarning": "Maradék adatokat észleltünk egy korábbi megosztott telepítésből a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ helyen. Ezt a hordozható telepítés már nem használja. Manuálisan eltávolíthatja, ha nincs rá szüksége.",
                 "openFolder": "Adatmappa megnyitása",
-                "dismiss": "Értem"
+                "dismiss": "Rendben"
             }
         }
     }

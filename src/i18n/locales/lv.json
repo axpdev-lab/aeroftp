@@ -961,9 +961,9 @@
             "themeGreenDesc": "Dabas iedvesmota meža palete zaļā cienītājiem",
             "keystoreExportModeTitle": "Ko iekļaut dublējumkopijā",
             "keystoreExportModeFull": "Pilna dublējumkopija (ieteicams)",
-            "keystoreExportModeFullDesc": "Glabātavas akreditācijas dati, AI tērzēšanas vēsture, aģenta atmiņa, failu birkas, instalētie spraudņi, sinhronizācijas momentuzņēmumi un saglabātās preferences. Pilns lietojumprogrammas stāvoklis vienā šifrētā failā.",
-            "keystoreExportModeVaultOnly": "Tikai glabātava (mantojuma)",
-            "keystoreExportModeVaultOnlyDesc": "Tikai šifrētie akreditācijas dati un servera profili. Mazāks, ātrāks, identisks eksportiem pirms v3.7.8. Noderīgs, migrējot serverus starp datoriem, neatvelkot līdzi tērzēšanas vēsturi."
+            "keystoreExportModeFullDesc": "Glabātavas akreditācijas dati, AI sarunu vēsture, aģenta atmiņa, failu birkas, instalētie spraudņi, sinhronizācijas momentuzņēmumi un saglabātie iestatījumi. Pilnīgs lietojumprogrammas stāvoklis vienā šifrētā failā.",
+            "keystoreExportModeVaultOnly": "Tikai glabātava (mantotā)",
+            "keystoreExportModeVaultOnlyDesc": "Tikai šifrēti akreditācijas dati un serveru profili. Mazāks, ātrāks, identisks pirms v3.7.8 eksportiem. Noderīgs, pārvietojot serverus starp iekārtām bez sarunu vēstures pārvietošanas."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4413,9 +4413,9 @@
         },
         "portable": {
             "banner": {
-                "title": "Pārnēsājamais režīms: šajā mapē atrodas visi jūsu AeroFTP dati",
-                "body": "Katra pārnēsājamā instalācija ir pilnībā autonoma: saglabātie serveri, AeroVault, AI tērzēšana un preferences – tas viss atrodas blakus AeroFTP.exe. No v3.7.8 divas pārnēsājamās mapes vienā datorā ir pilnīgi neatkarīgas: profila dzēšana vienā mapē vairs neietekmē otru.",
-                "legacyWarning": "Mēs konstatējām atlikušos datus no iepriekšējās koplietotās instalācijas vietnē %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šī pārnēsājamā instalācija tos vairs neizmanto. Varat tos manuāli noņemt, ja tie nav vajadzīgi.",
+                "title": "Pārnēsājamais režīms: šajā mapē glabājas visi jūsu AeroFTP dati",
+                "body": "Katra pārnēsājamā instalācija ir pilnībā patstāvīga: saglabātie serveri, AeroVault, AI sarunas un iestatījumi atrodas blakus AeroFTP.exe. Sākot ar v3.7.8 versiju, divas pārnēsājamās mapes vienā datorā ir pilnīgi neatkarīgas, profila dzēšana vienā mapē vairs neietekmē otru.",
+                "legacyWarning": "Mēs konstatējām atlikušos datus no iepriekšējās koplietotās instalācijas vietā %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šī pārnēsājamā instalācija tos vairs neizmanto. Jūs varat tos manuāli noņemt, ja tie nav nepieciešami.",
                 "openFolder": "Atvērt datu mapi",
                 "dismiss": "Sapratu"
             }

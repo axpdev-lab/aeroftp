@@ -961,9 +961,9 @@
             "themeGreenDesc": "Paleta forestal inspirada en la naturaleza para los amantes del verde",
             "keystoreExportModeTitle": "Qué incluir en la copia de seguridad",
             "keystoreExportModeFull": "Copia de seguridad completa (recomendado)",
-            "keystoreExportModeFullDesc": "Credenciales del vault, historial de chat IA, memoria del agente, etiquetas de archivos, plugins instalados, instantáneas de sincronización y preferencias guardadas. El estado completo de la aplicación en un solo archivo cifrado.",
-            "keystoreExportModeVaultOnly": "Solo vault (heredado)",
-            "keystoreExportModeVaultOnlyDesc": "Solo las credenciales cifradas y los perfiles de servidor. Más pequeño, más rápido, idéntico a las exportaciones anteriores a v3.7.8. Útil para migrar servidores entre máquinas sin arrastrar el historial de chat."
+            "keystoreExportModeFullDesc": "Credenciales del baúl, historial de chats de AI, memoria del agente, etiquetas de archivos, plugins instalados, instantáneas de sincronización y preferencias guardadas. El estado completo de la aplicación en un único archivo cifrado.",
+            "keystoreExportModeVaultOnly": "Solo baúl (heredado)",
+            "keystoreExportModeVaultOnlyDesc": "Únicamente las credenciales cifradas y los perfiles de servidor. Más pequeño, más rápido, idéntico a las exportaciones anteriores a la v3.7.8. Útil al migrar servidores entre máquinas sin arrastrar el historial de chats."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4404,8 +4404,8 @@
         "portable": {
             "banner": {
                 "title": "Modo portátil: esta carpeta contiene todos tus datos de AeroFTP",
-                "body": "Cada instalación portátil es completamente autónoma: servidores guardados, AeroVault, chats de IA y preferencias viven todos junto a AeroFTP.exe. A partir de v3.7.8, dos carpetas portátiles en el mismo PC son completamente independientes: eliminar un perfil en una carpeta ya no afecta a la otra.",
-                "legacyWarning": "Hemos detectado datos residuales de una instalación compartida anterior en %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ya no son utilizados por esta instalación portátil. Puedes eliminarlos manualmente si no los necesitas.",
+                "body": "Cada instalación portátil es completamente autónoma: los servidores guardados, AeroVault, los chats de AI y las preferencias se encuentran junto a AeroFTP.exe. A partir de la v3.7.8, dos carpetas portátiles en el mismo PC son totalmente independientes: eliminar un perfil en una carpeta ya no afecta a la otra.",
+                "legacyWarning": "Hemos detectado datos residuales de una instalación compartida anterior en %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Esta instalación portátil ya no los utiliza. Puedes eliminarlos manualmente si no los necesitas.",
                 "openFolder": "Abrir carpeta de datos",
                 "dismiss": "Entendido"
             }
