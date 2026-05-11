@@ -3124,7 +3124,8 @@
                 "network": "Nettverk",
                 "system": "System",
                 "logs": "Logger",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Tester"
             },
             "connection": {
                 "status": "Status",

@@ -3124,7 +3124,8 @@
                 "network": "Jaringan",
                 "system": "Sistem",
                 "logs": "Log",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Tes"
             },
             "connection": {
                 "status": "Status",

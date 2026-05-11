@@ -3124,7 +3124,8 @@
                 "network": "Sit",
                 "system": "System",
                 "logs": "Logy",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Testy"
             },
             "connection": {
                 "status": "Stav",

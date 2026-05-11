@@ -3124,7 +3124,8 @@
                 "network": "Xarxa",
                 "system": "Sistema",
                 "logs": "Registres",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Proves"
             },
             "connection": {
                 "status": "Estat",

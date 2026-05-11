@@ -3124,7 +3124,8 @@
                 "network": "Мрежа",
                 "system": "Систем",
                 "logs": "Логови",
-                "frontend": "Фронтенд"
+                "frontend": "Фронтенд",
+                "tests": "Тестови"
             },
             "connection": {
                 "status": "Статус",

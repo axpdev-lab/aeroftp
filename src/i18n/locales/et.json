@@ -3124,7 +3124,8 @@
                 "network": "Võrk",
                 "system": "Süsteem",
                 "logs": "Logid",
-                "frontend": "Kasutajaliides"
+                "frontend": "Kasutajaliides",
+                "tests": "Testid"
             },
             "connection": {
                 "status": "Olek",

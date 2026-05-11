@@ -3124,7 +3124,8 @@
                 "network": "Rhwydwaith",
                 "system": "System",
                 "logs": "Logiau",
-                "frontend": "Blaen-wyneb"
+                "frontend": "Blaen-wyneb",
+                "tests": "Profion"
             },
             "connection": {
                 "status": "Statws",

@@ -3124,7 +3124,8 @@
                 "network": "Tinklas",
                 "system": "Sistema",
                 "logs": "Žurnalai",
-                "frontend": "Sąsaja"
+                "frontend": "Sąsaja",
+                "tests": "Testai"
             },
             "connection": {
                 "status": "Būsena",

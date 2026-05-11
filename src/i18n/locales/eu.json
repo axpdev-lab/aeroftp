@@ -3124,7 +3124,8 @@
                 "network": "Sarea",
                 "system": "Sistema",
                 "logs": "Erregistroak",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Probak"
             },
             "connection": {
                 "status": "Egoera",

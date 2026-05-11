@@ -3124,7 +3124,8 @@
                 "network": "네트워크",
                 "system": "시스템",
                 "logs": "로그",
-                "frontend": "프론트엔드"
+                "frontend": "프론트엔드",
+                "tests": "테스트"
             },
             "connection": {
                 "status": "상태",

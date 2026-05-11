@@ -3124,7 +3124,8 @@
                 "network": "Rede",
                 "system": "Sistema",
                 "logs": "Rexistros",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Probas"
             },
             "connection": {
                 "status": "Estado",

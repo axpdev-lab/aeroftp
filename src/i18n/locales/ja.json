@@ -3089,7 +3089,8 @@
                 "network": "ネットワーク",
                 "system": "システム",
                 "logs": "ログ",
-                "frontend": "フロントエンド"
+                "frontend": "フロントエンド",
+                "tests": "テスト"
             },
             "connection": {
                 "status": "状態",
