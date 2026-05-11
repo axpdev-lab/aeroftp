@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Não foi possível copiar {filename}",
+            "copy_start": "[{location}] A copiar {filename}...",
+            "copy_success": "[{location}] {filename} copiado para {destination}"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Alternar editor",
             "toggleTerminal": "Alternar terminal",
             "toggleTheme": "Alternar tema",
-            "view": "Visualizar"
+            "view": "Visualizar",
+            "copyFiles": "Copiar para a área de transferência",
+            "copyToOtherPanel": "Copiar para o outro painel",
+            "cutFiles": "Cortar para a área de transferência",
+            "cycleLocalPanels": "Alternar entre painéis locais",
+            "dualPanel": "Painel duplo (AeroFile)",
+            "extendSelectionDown": "Estender seleção para baixo",
+            "extendSelectionUp": "Estender seleção para cima",
+            "jumpFirst": "Ir para o primeiro item",
+            "jumpLast": "Ir para o último item",
+            "moveToOtherPanel": "Mover para o outro painel",
+            "pasteFiles": "Colar da área de transferência",
+            "properties": "Propriedades",
+            "quickLook": "Pré-visualização rápida",
+            "toggleDualPanel": "Ativar/desativar painel duplo"
         },
         "overwrite": {
             "title": "O ficheiro já existe",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Painel duplo",
+            "dualPanelTooltip": "Mostrar dois painéis locais lado a lado",
+            "leftPanel": "Painel esquerdo",
+            "rightPanel": "Painel direito",
+            "copyToOtherPanel": "Copiar para o outro painel",
+            "moveToOtherPanel": "Mover para o outro painel",
+            "copiedToOtherPanel": "Copiado para o outro painel",
+            "movedToOtherPanel": "Movido para o outro painel"
         }
     }
 }

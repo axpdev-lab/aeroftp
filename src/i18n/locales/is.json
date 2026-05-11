@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Ekki tókst að afrita {filename}",
+            "copy_start": "[{location}] Afrita {filename}...",
+            "copy_success": "[{location}] {filename} afritað í {destination}"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Víxla ritil",
             "toggleTerminal": "Víxla skipanalínu",
             "toggleTheme": "Skipta um þema",
-            "view": "Skoða"
+            "view": "Skoða",
+            "copyFiles": "Afrita á klippiborð",
+            "copyToOtherPanel": "Afrita í hinn gluggann",
+            "cutFiles": "Klippa á klippiborð",
+            "cycleLocalPanels": "Skipta milli staðbundinna glugga",
+            "dualPanel": "Tvöfaldur gluggi (AeroFile)",
+            "extendSelectionDown": "Útvíkka val niður",
+            "extendSelectionUp": "Útvíkka val upp",
+            "jumpFirst": "Fara á fyrsta atriði",
+            "jumpLast": "Fara á síðasta atriði",
+            "moveToOtherPanel": "Færa í hinn gluggann",
+            "pasteFiles": "Líma af klippiborði",
+            "properties": "Eiginleikar",
+            "quickLook": "Hrað forskoðun",
+            "toggleDualPanel": "Kveikja/slökkva á tvöföldum glugga"
         },
         "overwrite": {
             "title": "Skráin er þegar til",
@@ -4507,12 +4524,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Tvöfaldur gluggi",
+            "dualPanelTooltip": "Sýna tvo staðbundna glugga hlið við hlið",
+            "leftPanel": "Vinstri gluggi",
+            "rightPanel": "Hægri gluggi",
+            "copyToOtherPanel": "Afrita í hinn gluggann",
+            "moveToOtherPanel": "Færa í hinn gluggann",
+            "copiedToOtherPanel": "Afritað í hinn gluggann",
+            "movedToOtherPanel": "Fært í hinn gluggann"
         }
     }
 }

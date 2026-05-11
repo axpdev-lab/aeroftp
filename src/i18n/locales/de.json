@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] {filename} konnte nicht kopiert werden",
+            "copy_start": "[{location}] {filename} wird kopiert...",
+            "copy_success": "[{location}] {filename} nach {destination} kopiert"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Editor umschalten",
             "toggleTerminal": "Terminal umschalten",
             "toggleTheme": "Design wechseln",
-            "view": "Ansicht"
+            "view": "Ansicht",
+            "copyFiles": "In Zwischenablage kopieren",
+            "copyToOtherPanel": "In das andere Panel kopieren",
+            "cutFiles": "In Zwischenablage ausschneiden",
+            "cycleLocalPanels": "Zwischen lokalen Panels wechseln",
+            "dualPanel": "Doppelpanel (AeroFile)",
+            "extendSelectionDown": "Auswahl nach unten erweitern",
+            "extendSelectionUp": "Auswahl nach oben erweitern",
+            "jumpFirst": "Zum ersten Element springen",
+            "jumpLast": "Zum letzten Element springen",
+            "moveToOtherPanel": "In das andere Panel verschieben",
+            "pasteFiles": "Aus Zwischenablage einfügen",
+            "properties": "Eigenschaften",
+            "quickLook": "Schnellvorschau",
+            "toggleDualPanel": "Doppelpanel umschalten"
         },
         "overwrite": {
             "title": "Datei existiert bereits",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Doppelpanel",
+            "dualPanelTooltip": "Zwei lokale Panels nebeneinander anzeigen",
+            "leftPanel": "Linkes Panel",
+            "rightPanel": "Rechtes Panel",
+            "copyToOtherPanel": "In das andere Panel kopieren",
+            "moveToOtherPanel": "In das andere Panel verschieben",
+            "copiedToOtherPanel": "In das andere Panel kopiert",
+            "movedToOtherPanel": "In das andere Panel verschoben"
         }
     }
 }

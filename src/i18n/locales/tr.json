@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] {filename} kopyalanamadı",
+            "copy_start": "[{location}] {filename} kopyalanıyor...",
+            "copy_success": "[{location}] {filename}, {destination} konumuna kopyalandı"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Düzenleyiciyi aç/kapat",
             "toggleTerminal": "Terminali aç/kapat",
             "toggleTheme": "Temayı değiştir",
-            "view": "Görünüm"
+            "view": "Görünüm",
+            "copyFiles": "Panoya kopyala",
+            "copyToOtherPanel": "Diğer panele kopyala",
+            "cutFiles": "Panoya kes",
+            "cycleLocalPanels": "Yerel paneller arasında geç",
+            "dualPanel": "Çift panel (AeroFile)",
+            "extendSelectionDown": "Seçimi aşağı genişlet",
+            "extendSelectionUp": "Seçimi yukarı genişlet",
+            "jumpFirst": "İlk öğeye git",
+            "jumpLast": "Son öğeye git",
+            "moveToOtherPanel": "Diğer panele taşı",
+            "pasteFiles": "Panodan yapıştır",
+            "properties": "Özellikler",
+            "quickLook": "Hızlı bakış",
+            "toggleDualPanel": "Çift paneli aç/kapat"
         },
         "overwrite": {
             "title": "Dosya zaten mevcut",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Çift panel",
+            "dualPanelTooltip": "İki yerel paneli yan yana göster",
+            "leftPanel": "Sol panel",
+            "rightPanel": "Sağ panel",
+            "copyToOtherPanel": "Diğer panele kopyala",
+            "moveToOtherPanel": "Diğer panele taşı",
+            "copiedToOtherPanel": "Diğer panele kopyalandı",
+            "movedToOtherPanel": "Diğer panele taşındı"
         }
     }
 }

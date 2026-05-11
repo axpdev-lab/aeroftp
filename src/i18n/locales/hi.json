@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] {filename} कॉपी नहीं किया जा सका",
+            "copy_start": "[{location}] {filename} कॉपी हो रहा है...",
+            "copy_success": "[{location}] {filename} {destination} में कॉपी किया गया"
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "एडिटर टॉगल करें",
             "toggleTerminal": "टर्मिनल टॉगल करें",
             "toggleTheme": "थीम बदलें",
-            "view": "दृश्य"
+            "view": "दृश्य",
+            "copyFiles": "क्लिपबोर्ड पर कॉपी करें",
+            "copyToOtherPanel": "दूसरे पैनल में कॉपी करें",
+            "cutFiles": "क्लिपबोर्ड पर कट करें",
+            "cycleLocalPanels": "स्थानीय पैनल बदलें",
+            "dualPanel": "डुअल पैनल (AeroFile)",
+            "extendSelectionDown": "चयन नीचे की ओर बढ़ाएं",
+            "extendSelectionUp": "चयन ऊपर की ओर बढ़ाएं",
+            "jumpFirst": "पहले आइटम पर जाएं",
+            "jumpLast": "अंतिम आइटम पर जाएं",
+            "moveToOtherPanel": "दूसरे पैनल में ले जाएं",
+            "pasteFiles": "क्लिपबोर्ड से पेस्ट करें",
+            "properties": "गुण",
+            "quickLook": "त्वरित पूर्वावलोकन",
+            "toggleDualPanel": "डुअल पैनल चालू/बंद करें"
         },
         "overwrite": {
             "title": "फ़ाइल पहले से मौजूद है",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "डुअल पैनल",
+            "dualPanelTooltip": "दो स्थानीय पैनल साथ-साथ दिखाएं",
+            "leftPanel": "बायाँ पैनल",
+            "rightPanel": "दायाँ पैनल",
+            "copyToOtherPanel": "दूसरे पैनल में कॉपी करें",
+            "moveToOtherPanel": "दूसरे पैनल में ले जाएं",
+            "copiedToOtherPanel": "दूसरे पैनल में कॉपी किया गया",
+            "movedToOtherPanel": "दूसरे पैनल में ले जाया गया"
         }
     }
 }

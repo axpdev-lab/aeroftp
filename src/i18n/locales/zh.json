@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] 无法复制 {filename}",
+            "copy_start": "[{location}] 正在复制 {filename}...",
+            "copy_success": "[{location}] 已将 {filename} 复制到 {destination}"
         },
         "protocol": {
             "selectProtocol": "选择协议...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "切换编辑器",
             "toggleTerminal": "切换终端",
             "toggleTheme": "切换主题",
-            "view": "视图"
+            "view": "视图",
+            "copyFiles": "复制到剪贴板",
+            "copyToOtherPanel": "复制到另一面板",
+            "cutFiles": "剪切到剪贴板",
+            "cycleLocalPanels": "循环切换本地面板",
+            "dualPanel": "双面板（AeroFile）",
+            "extendSelectionDown": "向下扩展选择",
+            "extendSelectionUp": "向上扩展选择",
+            "jumpFirst": "跳转到第一项",
+            "jumpLast": "跳转到最后一项",
+            "moveToOtherPanel": "移动到另一面板",
+            "pasteFiles": "从剪贴板粘贴",
+            "properties": "属性",
+            "quickLook": "快速预览",
+            "toggleDualPanel": "切换双面板"
         },
         "overwrite": {
             "title": "文件已存在",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "双面板",
+            "dualPanelTooltip": "并排显示两个本地面板",
+            "leftPanel": "左面板",
+            "rightPanel": "右面板",
+            "copyToOtherPanel": "复制到另一面板",
+            "moveToOtherPanel": "移动到另一面板",
+            "copiedToOtherPanel": "已复制到另一面板",
+            "movedToOtherPanel": "已移动到另一面板"
         }
     }
 }

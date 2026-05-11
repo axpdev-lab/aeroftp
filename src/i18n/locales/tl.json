@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Hindi makopya ang {filename}",
+            "copy_start": "[{location}] Kinokopya ang {filename}...",
+            "copy_success": "[{location}] Nakopya ang {filename} sa {destination}"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "I-toggle ang editor",
             "toggleTerminal": "I-toggle ang terminal",
             "toggleTheme": "Baguhin ang tema",
-            "view": "Tingnan"
+            "view": "Tingnan",
+            "copyFiles": "Kopyahin sa clipboard",
+            "copyToOtherPanel": "Kopyahin sa kabilang panel",
+            "cutFiles": "Gupitin sa clipboard",
+            "cycleLocalPanels": "Paikutin ang mga lokal na panel",
+            "dualPanel": "Dobleng panel (AeroFile)",
+            "extendSelectionDown": "Palawakin ang pagpili pababa",
+            "extendSelectionUp": "Palawakin ang pagpili pataas",
+            "jumpFirst": "Pumunta sa unang item",
+            "jumpLast": "Pumunta sa huling item",
+            "moveToOtherPanel": "Ilipat sa kabilang panel",
+            "pasteFiles": "I-paste mula sa clipboard",
+            "properties": "Mga katangian",
+            "quickLook": "Mabilisang tingin",
+            "toggleDualPanel": "I-toggle ang dobleng panel"
         },
         "overwrite": {
             "title": "Mayroon nang file",
@@ -4507,12 +4524,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dobleng panel",
+            "dualPanelTooltip": "Ipakita ang dalawang lokal na panel nang magkatabi",
+            "leftPanel": "Kaliwang panel",
+            "rightPanel": "Kanang panel",
+            "copyToOtherPanel": "Kopyahin sa kabilang panel",
+            "moveToOtherPanel": "Ilipat sa kabilang panel",
+            "copiedToOtherPanel": "Nakopya sa kabilang panel",
+            "movedToOtherPanel": "Inilipat sa kabilang panel"
         }
     }
 }

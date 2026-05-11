@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Δεν ήταν δυνατή η αντιγραφή του {filename}",
+            "copy_start": "[{location}] Αντιγραφή του {filename}...",
+            "copy_success": "[{location}] Το {filename} αντιγράφηκε στο {destination}"
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Εναλλαγή επεξεργαστή",
             "toggleTerminal": "Εναλλαγή τερματικού",
             "toggleTheme": "Αλλαγή θέματος",
-            "view": "Προβολή"
+            "view": "Προβολή",
+            "copyFiles": "Αντιγραφή στο πρόχειρο",
+            "copyToOtherPanel": "Αντιγραφή στο άλλο παράθυρο",
+            "cutFiles": "Αποκοπή στο πρόχειρο",
+            "cycleLocalPanels": "Εναλλαγή τοπικών παραθύρων",
+            "dualPanel": "Διπλό παράθυρο (AeroFile)",
+            "extendSelectionDown": "Επέκταση επιλογής προς τα κάτω",
+            "extendSelectionUp": "Επέκταση επιλογής προς τα πάνω",
+            "jumpFirst": "Μετάβαση στο πρώτο στοιχείο",
+            "jumpLast": "Μετάβαση στο τελευταίο στοιχείο",
+            "moveToOtherPanel": "Μετακίνηση στο άλλο παράθυρο",
+            "pasteFiles": "Επικόλληση από το πρόχειρο",
+            "properties": "Ιδιότητες",
+            "quickLook": "Γρήγορη προεπισκόπηση",
+            "toggleDualPanel": "Εναλλαγή διπλού παραθύρου"
         },
         "overwrite": {
             "title": "Το αρχείο υπάρχει ήδη",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Διπλό παράθυρο",
+            "dualPanelTooltip": "Εμφάνιση δύο τοπικών παραθύρων δίπλα-δίπλα",
+            "leftPanel": "Αριστερό παράθυρο",
+            "rightPanel": "Δεξί παράθυρο",
+            "copyToOtherPanel": "Αντιγραφή στο άλλο παράθυρο",
+            "moveToOtherPanel": "Μετακίνηση στο άλλο παράθυρο",
+            "copiedToOtherPanel": "Αντιγράφηκε στο άλλο παράθυρο",
+            "movedToOtherPanel": "Μετακινήθηκε στο άλλο παράθυρο"
         }
     }
 }

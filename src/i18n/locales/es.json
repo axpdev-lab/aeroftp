@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] No se pudo copiar {filename}",
+            "copy_start": "[{location}] Copiando {filename}...",
+            "copy_success": "[{location}] {filename} copiado a {destination}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Alternar editor",
             "toggleTerminal": "Alternar terminal",
             "toggleTheme": "Cambiar tema",
-            "view": "Vista"
+            "view": "Vista",
+            "copyFiles": "Copiar al portapapeles",
+            "copyToOtherPanel": "Copiar al otro panel",
+            "cutFiles": "Cortar al portapapeles",
+            "cycleLocalPanels": "Alternar paneles locales",
+            "dualPanel": "Panel doble (AeroFile)",
+            "extendSelectionDown": "Extender selección hacia abajo",
+            "extendSelectionUp": "Extender selección hacia arriba",
+            "jumpFirst": "Ir al primer elemento",
+            "jumpLast": "Ir al último elemento",
+            "moveToOtherPanel": "Mover al otro panel",
+            "pasteFiles": "Pegar desde el portapapeles",
+            "properties": "Propiedades",
+            "quickLook": "Vista rápida",
+            "toggleDualPanel": "Activar/desactivar panel doble"
         },
         "overwrite": {
             "title": "El archivo ya existe",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Panel doble",
+            "dualPanelTooltip": "Mostrar dos paneles locales en paralelo",
+            "leftPanel": "Panel izquierdo",
+            "rightPanel": "Panel derecho",
+            "copyToOtherPanel": "Copiar al otro panel",
+            "moveToOtherPanel": "Mover al otro panel",
+            "copiedToOtherPanel": "Copiado al otro panel",
+            "movedToOtherPanel": "Movido al otro panel"
         }
     }
 }

@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Neizdevās kopēt {filename}",
+            "copy_start": "[{location}] Kopē {filename}...",
+            "copy_success": "[{location}] {filename} nokopēts uz {destination}"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Pārslēgt redaktoru",
             "toggleTerminal": "Pārslēgt termināli",
             "toggleTheme": "Mainīt tēmu",
-            "view": "Skats"
+            "view": "Skats",
+            "copyFiles": "Kopēt starpliktuvē",
+            "copyToOtherPanel": "Kopēt uz otru paneli",
+            "cutFiles": "Izgriezt starpliktuvē",
+            "cycleLocalPanels": "Pārslēgt lokālos paneļus",
+            "dualPanel": "Dubultais panelis (AeroFile)",
+            "extendSelectionDown": "Paplašināt atlasi uz leju",
+            "extendSelectionUp": "Paplašināt atlasi uz augšu",
+            "jumpFirst": "Pārlēkt uz pirmo vienumu",
+            "jumpLast": "Pārlēkt uz pēdējo vienumu",
+            "moveToOtherPanel": "Pārvietot uz otru paneli",
+            "pasteFiles": "Ielīmēt no starpliktuves",
+            "properties": "Rekvizīti",
+            "quickLook": "Ātrais priekšskatījums",
+            "toggleDualPanel": "Ieslēgt/izslēgt dubulto paneli"
         },
         "overwrite": {
             "title": "Fails jau pastāv",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Dubultais panelis",
+            "dualPanelTooltip": "Rādīt divus lokālos paneļus blakus",
+            "leftPanel": "Kreisais panelis",
+            "rightPanel": "Labais panelis",
+            "copyToOtherPanel": "Kopēt uz otru paneli",
+            "moveToOtherPanel": "Pārvietot uz otru paneli",
+            "copiedToOtherPanel": "Nokopēts uz otru paneli",
+            "movedToOtherPanel": "Pārvietots uz otru paneli"
         }
     }
 }

@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] {filename} をコピーできませんでした",
+            "copy_start": "[{location}] {filename} をコピー中...",
+            "copy_success": "[{location}] {filename} を {destination} にコピーしました"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "エディターの表示切替",
             "toggleTerminal": "ターミナルの表示切替",
             "toggleTheme": "テーマを切替",
-            "view": "表示"
+            "view": "表示",
+            "copyFiles": "クリップボードにコピー",
+            "copyToOtherPanel": "もう一方のパネルにコピー",
+            "cutFiles": "クリップボードに切り取り",
+            "cycleLocalPanels": "ローカルパネルを切り替え",
+            "dualPanel": "デュアルパネル (AeroFile)",
+            "extendSelectionDown": "選択範囲を下に拡張",
+            "extendSelectionUp": "選択範囲を上に拡張",
+            "jumpFirst": "最初の項目へ移動",
+            "jumpLast": "最後の項目へ移動",
+            "moveToOtherPanel": "もう一方のパネルに移動",
+            "pasteFiles": "クリップボードから貼り付け",
+            "properties": "プロパティ",
+            "quickLook": "クイックルックプレビュー",
+            "toggleDualPanel": "デュアルパネルの切り替え"
         },
         "overwrite": {
             "title": "ファイルは既に存在します",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "デュアルパネル",
+            "dualPanelTooltip": "2つのローカルパネルを並べて表示",
+            "leftPanel": "左パネル",
+            "rightPanel": "右パネル",
+            "copyToOtherPanel": "もう一方のパネルにコピー",
+            "moveToOtherPanel": "もう一方のパネルに移動",
+            "copiedToOtherPanel": "もう一方のパネルにコピーしました",
+            "movedToOtherPanel": "もう一方のパネルに移動しました"
         }
     }
 }

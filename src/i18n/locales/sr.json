@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Није могуће копирати {filename}",
+            "copy_start": "[{location}] Копирање {filename}...",
+            "copy_success": "[{location}] {filename} копиран у {destination}"
         },
         "protocol": {
             "selectProtocol": "Izaberi protokol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Укључи/искључи уређивач",
             "toggleTerminal": "Укључи/искључи терминал",
             "toggleTheme": "Промени тему",
-            "view": "Приказ"
+            "view": "Приказ",
+            "copyFiles": "Копирај у привремену меморију",
+            "copyToOtherPanel": "Копирај у други панел",
+            "cutFiles": "Исеци у привремену меморију",
+            "cycleLocalPanels": "Кружно мењај локалне панеле",
+            "dualPanel": "Двоструки панел (AeroFile)",
+            "extendSelectionDown": "Прошири избор надоле",
+            "extendSelectionUp": "Прошири избор нагоре",
+            "jumpFirst": "Скочи на прву ставку",
+            "jumpLast": "Скочи на последњу ставку",
+            "moveToOtherPanel": "Премести у други панел",
+            "pasteFiles": "Налепи из привремене меморије",
+            "properties": "Својства",
+            "quickLook": "Брзи преглед",
+            "toggleDualPanel": "Укључи/искључи двоструки панел"
         },
         "overwrite": {
             "title": "Датотека већ постоји",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Двоструки панел",
+            "dualPanelTooltip": "Прикажи два локална панела један поред другог",
+            "leftPanel": "Леви панел",
+            "rightPanel": "Десни панел",
+            "copyToOtherPanel": "Копирај у други панел",
+            "moveToOtherPanel": "Премести у други панел",
+            "copiedToOtherPanel": "Копирано у други панел",
+            "movedToOtherPanel": "Премештено у други панел"
         }
     }
 }

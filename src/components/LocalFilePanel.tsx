@@ -28,6 +28,7 @@ import { formatBytes, formatDate } from '../utils';
 import { LocalFile } from '../types';
 import type { TrashItem, FileTag } from '../types/aerofile';
 import { FileTagBadge } from './FileTagBadge';
+import type { PanelKey } from '../hooks/useDragAndDrop';
 
 // ============================================================================
 // Types
@@ -44,6 +45,18 @@ export interface LocalFilePanelProps {
   isAeroFileMode: boolean;
   isConnected: boolean;
   isDualMode?: boolean;
+  /**
+   * Identifies this local panel. AeroFile dual-panel mode uses 'local' for the
+   * primary panel (left) and 'local2' for the secondary panel (right).
+   * Defaults to 'local' for back-compat with single-panel layouts.
+   */
+  panelKey?: 'local' | 'local2';
+  /** True when this local panel has keyboard / drag focus in dual-panel mode. */
+  isFocused?: boolean;
+  /** Fired when the panel root gets pointer/keyboard focus. */
+  onPanelFocus?: () => void;
+  /** Inline style applied to the panel root: used by AeroFile dual-panel for resizable flex sizing. */
+  style?: React.CSSProperties;
 
   // --- Navigation ---
   currentPath: string;
@@ -111,16 +124,16 @@ export interface LocalFilePanelProps {
   onInlineRenameCancel: () => void;
 
   // --- Drag & Drop ---
-  onDragStart: (e: React.DragEvent, file: LocalFile, isRemote: boolean, selectedFiles: Set<string>, sortedFiles: LocalFile[]) => void;
+  onDragStart: (e: React.DragEvent, file: LocalFile, panelKey: PanelKey, selectedFiles: Set<string>, sortedFiles: LocalFile[]) => void;
   onDragEnd: () => void;
-  onDragOver: (e: React.DragEvent, path: string, isDir: boolean, isRemote: boolean) => void;
+  onDragOver: (e: React.DragEvent, path: string, isDir: boolean, panelKey: PanelKey) => void;
   onDragLeave: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent, path: string, isRemote: boolean) => void;
+  onDrop: (e: React.DragEvent, path: string, panelKey: PanelKey) => void;
   dropTargetPath: string | null;
   dragSourcePaths: string[];
   crossPanelTarget: string | null;
-  onPanelDragOver: (e: React.DragEvent, isRemote: boolean) => void;
-  onPanelDrop: (e: React.DragEvent, isRemote: boolean) => void;
+  onPanelDragOver: (e: React.DragEvent, panelKey: PanelKey) => void;
+  onPanelDrop: (e: React.DragEvent, panelKey: PanelKey) => void;
   onPanelDragLeave: (e: React.DragEvent) => void;
 
   // --- Context Menu ---
@@ -174,6 +187,10 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   isAeroFileMode,
   isConnected,
   isDualMode = false,
+  panelKey = 'local',
+  isFocused = false,
+  onPanelFocus,
+  style,
   currentPath,
   setCurrentPath,
   onNavigate,
@@ -329,14 +346,24 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     )
   );
 
+  const focusRingClass = isDualMode && isFocused
+    ? (panelKey === 'local2'
+        ? 'ring-1 ring-inset ring-amber-400/70 dark:ring-amber-500/60'
+        : 'ring-1 ring-inset ring-blue-400/70 dark:ring-blue-500/60')
+    : '';
+  const crossPanelRingClass = crossPanelTarget === panelKey
+    ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10'
+    : '';
   return (
     <div
       role="region"
-      aria-label="Local files"
-      className={`relative ${isDualMode ? 'w-1/2 min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
-      onDragOver={(e) => onPanelDragOver(e, false)}
-      onDrop={(e) => onPanelDrop(e, false)}
+      aria-label={panelKey === 'local2' ? 'Local files (right panel)' : 'Local files'}
+      className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col ${crossPanelRingClass} ${focusRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
+      style={style}
+      onDragOver={(e) => onPanelDragOver(e, panelKey)}
+      onDrop={(e) => onPanelDrop(e, panelKey)}
       onDragLeave={onPanelDragLeave}
+      onMouseDown={onPanelFocus}
     >
       {/* Drill-in spinner overlay (issue #178 #2). Debounced via CSS animation
           so fast listings (<250 ms) never reveal the spinner. Soft background,
@@ -671,11 +698,11 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   role="row"
                   aria-selected={selectedFiles.has(file.name)}
                   draggable={file.name !== '..' && inlineRename?.path !== file.path}
-                  onDragStart={(e) => onDragStart(e, file, false, selectedFiles, sortedFiles)}
+                  onDragStart={(e) => onDragStart(e, file, panelKey, selectedFiles, sortedFiles)}
                   onDragEnd={onDragEnd}
-                  onDragOver={(e) => onDragOver(e, file.path, file.is_dir, false)}
+                  onDragOver={(e) => onDragOver(e, file.path, file.is_dir, panelKey)}
                   onDragLeave={onDragLeave}
-                  onDrop={(e) => file.is_dir && onDrop(e, file.path, false)}
+                  onDrop={(e) => file.is_dir && onDrop(e, file.path, panelKey)}
                   onClick={(e) => handleFileClick(e, file, i)}
                   onDoubleClick={() => handleDoubleClick(file)}
                   onContextMenu={(e: React.MouseEvent) => onContextMenu(e, file)}
@@ -743,11 +770,11 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 role="row"
                 aria-selected={selectedFiles.has(file.name)}
                 draggable={file.name !== '..' && inlineRename?.path !== file.path}
-                onDragStart={(e) => onDragStart(e, file, false, selectedFiles, sortedFiles)}
+                onDragStart={(e) => onDragStart(e, file, panelKey, selectedFiles, sortedFiles)}
                 onDragEnd={onDragEnd}
-                onDragOver={(e) => onDragOver(e, file.path, file.is_dir, false)}
+                onDragOver={(e) => onDragOver(e, file.path, file.is_dir, panelKey)}
                 onDragLeave={onDragLeave}
-                onDrop={(e) => file.is_dir && onDrop(e, file.path, false)}
+                onDrop={(e) => file.is_dir && onDrop(e, file.path, panelKey)}
                 className={`file-grid-item ${
                   dropTargetPath === file.path && file.is_dir
                     ? 'ring-2 ring-green-500 bg-green-100 dark:bg-green-900/40'
@@ -848,9 +875,9 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             }}
             getFolderUpIcon={() => iconProvider.getFolderUpIcon(64)}
             onContextMenu={(e, file) => file ? onContextMenu(e, file) : onEmptyContextMenu(e)}
-            onDragStart={(e, file) => onDragStart(e, file, false, selectedFiles, sortedFiles)}
-            onDragOver={(e, file) => onDragOver(e, file.path, file.is_dir, false)}
-            onDrop={(e, file) => file.is_dir && onDrop(e, file.path, false)}
+            onDragStart={(e, file) => onDragStart(e, file, panelKey, selectedFiles, sortedFiles)}
+            onDragOver={(e, file) => onDragOver(e, file.path, file.is_dir, panelKey)}
+            onDrop={(e, file) => file.is_dir && onDrop(e, file.path, panelKey)}
             onDragLeave={onDragLeave}
             onDragEnd={onDragEnd}
             dragOverTarget={dropTargetPath}

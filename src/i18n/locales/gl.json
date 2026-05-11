@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Non se puido copiar {filename}",
+            "copy_start": "[{location}] Copiando {filename}...",
+            "copy_success": "[{location}] {filename} copiado en {destination}"
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Amosar/Ocultar o editor",
             "toggleTerminal": "Amosar/Ocultar a terminal",
             "toggleTheme": "Cambiar de tema",
-            "view": "Ver"
+            "view": "Ver",
+            "copyFiles": "Copiar ao portapapeis",
+            "copyToOtherPanel": "Copiar ao outro panel",
+            "cutFiles": "Cortar ao portapapeis",
+            "cycleLocalPanels": "Alternar paneis locais",
+            "dualPanel": "Panel dobre (AeroFile)",
+            "extendSelectionDown": "Estender a selección cara abaixo",
+            "extendSelectionUp": "Estender a selección cara arriba",
+            "jumpFirst": "Ir ao primeiro elemento",
+            "jumpLast": "Ir ao último elemento",
+            "moveToOtherPanel": "Mover ao outro panel",
+            "pasteFiles": "Pegar dende o portapapeis",
+            "properties": "Propiedades",
+            "quickLook": "Vista rápida",
+            "toggleDualPanel": "Activar/desactivar panel dobre"
         },
         "overwrite": {
             "title": "O ficheiro xa existe",
@@ -4507,12 +4524,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Panel dobre",
+            "dualPanelTooltip": "Amosar dous paneis locais un ao carón do outro",
+            "leftPanel": "Panel esquerdo",
+            "rightPanel": "Panel dereito",
+            "copyToOtherPanel": "Copiar ao outro panel",
+            "moveToOtherPanel": "Mover ao outro panel",
+            "copiedToOtherPanel": "Copiado ao outro panel",
+            "movedToOtherPanel": "Movido ao outro panel"
         }
     }
 }

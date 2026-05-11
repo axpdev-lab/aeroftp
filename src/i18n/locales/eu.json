@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Ezin izan da {filename} kopiatu",
+            "copy_start": "[{location}] {filename} kopiatzen...",
+            "copy_success": "[{location}] {filename} {destination}-(e)ra kopiatu da"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Txandakatu editorea",
             "toggleTerminal": "Txandakatu terminala",
             "toggleTheme": "Aldatu gaia",
-            "view": "Ikuspegia"
+            "view": "Ikuspegia",
+            "copyFiles": "Kopiatu arbelera",
+            "copyToOtherPanel": "Kopiatu beste panelera",
+            "cutFiles": "Ebaki arbelera",
+            "cycleLocalPanels": "Txandakatu panel lokalak",
+            "dualPanel": "Panel bikoitza (AeroFile)",
+            "extendSelectionDown": "Hedatu hautapena beherantz",
+            "extendSelectionUp": "Hedatu hautapena gorantz",
+            "jumpFirst": "Joan lehen elementura",
+            "jumpLast": "Joan azken elementura",
+            "moveToOtherPanel": "Mugitu beste panelera",
+            "pasteFiles": "Itsatsi arbeletik",
+            "properties": "Propietateak",
+            "quickLook": "Aurrebista azkarra",
+            "toggleDualPanel": "Aktibatu/desaktibatu panel bikoitza"
         },
         "overwrite": {
             "title": "Fitxategia badago lehendik",
@@ -4507,12 +4524,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Panel bikoitza",
+            "dualPanelTooltip": "Erakutsi bi panel lokal alboz albo",
+            "leftPanel": "Ezkerreko panela",
+            "rightPanel": "Eskuineko panela",
+            "copyToOtherPanel": "Kopiatu beste panelera",
+            "moveToOtherPanel": "Mugitu beste panelera",
+            "copiedToOtherPanel": "Beste panelera kopiatuta",
+            "movedToOtherPanel": "Beste panelera mugituta"
         }
     }
 }

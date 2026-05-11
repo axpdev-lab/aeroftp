@@ -550,6 +550,9 @@ const App: React.FC = () => {
   const [scanningState, setScanningState] = useState<ScanningState>(INITIAL_SCANNING_STATE);
   const hasActivity = hasActiveTransfer;  // Track if upload/download in progress
   const [activePanel, setActivePanel] = useState<'remote' | 'local'>('remote');
+  // Dual-panel: which local panel currently has focus (drives keyboard ops,
+  // visual focus ring, F5/F6 cross-panel actions, context menu targeting).
+  const [activeLocalPanelId, setActiveLocalPanelId] = useState<'local' | 'local2'>('local');
   // Phase 5: column visibility/order/widths/sort for AeroFile tables now live
   // in useAeroFile{Local,Remote}Columns. Sort is derived from hook config below.
   const localColumns = useAeroFileLocalColumns();
@@ -765,6 +768,40 @@ const App: React.FC = () => {
   // AeroFile sidebar state (persisted in localStorage)
   const [showSidebar, setShowSidebar] = useState(() => localStorage.getItem('aerofile_show_sidebar') !== 'false');
   const [showDualLocalPanel, setShowDualLocalPanel] = useState(() => localStorage.getItem('aerofile_dual_panel') === 'true');
+  // AeroFile dual-panel split ratio (flex-grow of left panel, range 0.2..1.8).
+  // Stored as a number; defaults to 1.0 (equal 50/50 split). Persisted.
+  const [dualPanelLeftFlex, setDualPanelLeftFlex] = useState<number>(() => {
+    const raw = localStorage.getItem('aerofile_dual_panel_split');
+    const n = raw ? parseFloat(raw) : NaN;
+    return Number.isFinite(n) && n >= 0.2 && n <= 1.8 ? n : 1.0;
+  });
+  const dualPanelContainerRef = useRef<HTMLDivElement | null>(null);
+  // Forward ref to transferLocalSelectionAcrossPanels: the function is defined
+  // later in this component but the F5/F6 keyboard handlers (declared before
+  // it) need a way to call it. Updated each render below.
+  const transferLocalSelectionAcrossPanelsRef = useRef<(mode: 'copy' | 'move') => void | Promise<void>>(() => {});
+  React.useEffect(() => {
+    localStorage.setItem('aerofile_dual_panel_split', String(dualPanelLeftFlex));
+  }, [dualPanelLeftFlex]);
+  const startDualPanelResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = dualPanelContainerRef.current;
+    if (!container) return;
+    const onMove = (ev: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const fraction = Math.max(0.1, Math.min(0.9, (ev.clientX - rect.left) / rect.width));
+      setDualPanelLeftFlex(2 * fraction);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+    };
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
   const toggleSidebar = useCallback(() => {
     setShowSidebar(prev => {
       const next = !prev;
@@ -1370,6 +1407,42 @@ interface UpdateVerificationInfo {
     setTheme(order[(order.indexOf(theme) + 1) % order.length]);
   }, [theme, setTheme]);
 
+  // AeroFile dual-panel state dispatcher: returns the file/selection/path/
+  // setters for whichever local panel currently owns focus. Used by keyboard
+  // shortcuts, context menus, and toolbar actions so panel 2 receives the same
+  // first-class keyboard support as panel 1 (required for keyboard-only Linux
+  // users). The function body is evaluated lazily — any state declared later
+  // in render (like sortedLocalFiles2) is fully initialised by the time a key
+  // press or right-click invokes it.
+  const getActiveLocalState = (id: 'local' | 'local2' = activeLocalPanelId) => {
+    if (id === 'local2') {
+      return {
+        id: 'local2' as const,
+        files: localFiles2,
+        sortedFiles: sortedLocalFiles2,
+        currentPath: currentLocalPath2,
+        selection: selectedLocalFiles2,
+        setSelection: setSelectedLocalFiles2,
+        load: loadLocalFiles2,
+        changeDir: changeLocalDirectory2,
+        lastIdx: lastSelectedLocalIndex2,
+        setLastIdx: setLastSelectedLocalIndex2,
+      };
+    }
+    return {
+      id: 'local' as const,
+      files: localFiles,
+      sortedFiles: sortedLocalFiles,
+      currentPath: currentLocalPath,
+      selection: selectedLocalFiles,
+      setSelection: setSelectedLocalFiles,
+      load: loadLocalFiles,
+      changeDir: changeLocalDirectory,
+      lastIdx: lastSelectedLocalIndex,
+      setLastIdx: setLastSelectedLocalIndex,
+    };
+  };
+
   // Keyboard Shortcuts
   useKeyboardShortcuts({
     'F1': () => setShowShortcutsDialog(v => !v),
@@ -1395,10 +1468,11 @@ interface UpdateVerificationInfo {
         const names = Array.from(selectedRemoteFiles);
         const files = remoteFiles.filter(f => names.includes(f.name));
         if (files.length > 0) deleteMultipleRemoteFiles(names);
-      } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-        const names = Array.from(selectedLocalFiles);
-        const files = localFiles.filter(f => names.includes(f.name));
-        if (files.length > 0) deleteMultipleLocalFiles(names);
+      } else if (activePanel === 'local') {
+        const panel = getActiveLocalState();
+        if (panel.selection.size > 0) {
+          deleteMultipleLocalFiles(Array.from(panel.selection), panel.id);
+        }
       }
     },
 
@@ -1410,10 +1484,17 @@ interface UpdateVerificationInfo {
         const file = sortedRemoteFiles.find(f => f.name === name) || remoteFiles.find(f => f.name === name);
         if (file) void handleRemoteFileAction(file);
       } else {
-        const name = Array.from(selectedLocalFiles)[0];
+        const panel = getActiveLocalState();
+        const name = Array.from(panel.selection)[0];
         if (!name) return;
-        const file = sortedLocalFiles.find(f => f.name === name) || localFiles.find(f => f.name === name);
-        if (file) void handleLocalFileAction(file);
+        const file = panel.sortedFiles.find(f => f.name === name) || panel.files.find(f => f.name === name);
+        if (file) {
+          if (file.is_dir) {
+            void panel.changeDir(file.path);
+          } else {
+            void handleLocalFileAction(file);
+          }
+        }
       }
     },
 
@@ -1426,13 +1507,21 @@ interface UpdateVerificationInfo {
         if (!isConnected || !showRemotePanel) return;
         if (currentRemotePath !== '/') changeRemoteDirectory('..');
       } else {
-        if (!currentLocalPath) return;
-        if (currentLocalPath !== '/') changeLocalDirectory(currentLocalPath.split(/[\\/]/).slice(0, -1).join('/') || '/');
+        const panel = getActiveLocalState();
+        if (!panel.currentPath) return;
+        if (panel.currentPath !== '/') panel.changeDir(panel.currentPath.split(/[\\/]/).slice(0, -1).join('/') || '/');
       }
     },
 
-    // Tab: switch active panel
+    // Tab: switch active panel. In AeroFile dual-panel mode, cycle between the
+    // two local panels (left → right → left). Otherwise toggle remote↔local.
     'Tab': () => {
+      const isAeroFileDualMode = (!isConnected || !showRemotePanel) && showDualLocalPanel;
+      if (isAeroFileDualMode) {
+        setActivePanel('local');
+        setActiveLocalPanelId(prev => prev === 'local' ? 'local2' : 'local');
+        return;
+      }
       setActivePanel(p => p === 'remote' ? 'local' : 'remote');
     },
 
@@ -1442,14 +1531,21 @@ interface UpdateVerificationInfo {
         const name = Array.from(selectedRemoteFiles)[0];
         const file = remoteFiles.find(f => f.name === name);
         if (file && file.name !== '..') startInlineRename(file.path, file.name, true);
-      } else if (activePanel === 'local' && selectedLocalFiles.size === 1) {
-        const name = Array.from(selectedLocalFiles)[0];
-        const file = localFiles.find(f => f.name === name);
-        if (file && file.name !== '..') startInlineRename(file.path, file.name, false);
+      } else if (activePanel === 'local') {
+        const panel = getActiveLocalState();
+        if (panel.selection.size === 1) {
+          const name = Array.from(panel.selection)[0];
+          const file = panel.files.find(f => f.name === name);
+          if (file && file.name !== '..') startInlineRename(file.path, file.name, false);
+        }
       }
     },
 
-    // Ctrl+N: new folder
+    // F7 / Ctrl+N: new folder (Total Commander style F7, classic Ctrl+N).
+    // Both target whichever panel currently has keyboard focus.
+    'F7': () => {
+      createFolder(activePanel === 'remote');
+    },
     'Ctrl+N': () => {
       createFolder(activePanel === 'remote');
     },
@@ -1459,7 +1555,8 @@ interface UpdateVerificationInfo {
       if (activePanel === 'remote') {
         setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name)));
       } else {
-        setSelectedLocalFiles(new Set(localFiles.map(f => f.name)));
+        const panel = getActiveLocalState();
+        panel.setSelection(new Set(panel.files.map(f => f.name)));
       }
     },
 
@@ -1480,12 +1577,29 @@ interface UpdateVerificationInfo {
     // Ctrl+R: refresh active panel
     'Ctrl+R': () => {
       if (activePanel === 'remote') loadRemoteFiles();
-      else loadLocalFiles(currentLocalPath);
+      else {
+        const panel = getActiveLocalState();
+        if (panel.currentPath) void panel.load(panel.currentPath);
+      }
     },
 
-    // Ctrl+F: toggle local search bar
+    // F5 / F6: Total Commander-style copy/move active local selection to the
+    // other local panel. AeroFile dual-panel mode only.
+    'F5': () => {
+      const isAeroFileDualMode = (!isConnected || !showRemotePanel) && showDualLocalPanel;
+      if (!isAeroFileDualMode) return;
+      void transferLocalSelectionAcrossPanelsRef.current('copy');
+    },
+    'F6': () => {
+      const isAeroFileDualMode = (!isConnected || !showRemotePanel) && showDualLocalPanel;
+      if (!isAeroFileDualMode) return;
+      void transferLocalSelectionAcrossPanelsRef.current('move');
+    },
+
+    // Ctrl+F: toggle search bar on the focused local panel
     'Ctrl+F': () => {
-      setShowLocalSearchBar(prev => !prev);
+      if (activeLocalPanelId === 'local2') setShowLocalSearchBar2(prev => !prev);
+      else setShowLocalSearchBar(prev => !prev);
     },
 
     // Ctrl+C: copy selected files
@@ -1493,9 +1607,12 @@ interface UpdateVerificationInfo {
       if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
         const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
         clipboardCopy(files, true, currentRemotePath);
-      } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-        const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-        clipboardCopy(files, false, currentLocalPath);
+      } else if (activePanel === 'local') {
+        const panel = getActiveLocalState();
+        if (panel.selection.size > 0 && panel.currentPath) {
+          const files = panel.files.filter(f => panel.selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+          clipboardCopy(files, false, panel.currentPath);
+        }
       }
     },
 
@@ -1504,9 +1621,12 @@ interface UpdateVerificationInfo {
       if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
         const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
         clipboardCut(files, true, currentRemotePath);
-      } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-        const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-        clipboardCut(files, false, currentLocalPath);
+      } else if (activePanel === 'local') {
+        const panel = getActiveLocalState();
+        if (panel.selection.size > 0 && panel.currentPath) {
+          const files = panel.files.filter(f => panel.selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
+          clipboardCut(files, false, panel.currentPath);
+        }
       }
     },
 
@@ -1515,7 +1635,8 @@ interface UpdateVerificationInfo {
       if (activePanel === 'remote') {
         clipboardPaste(true, currentRemotePath);
       } else {
-        clipboardPaste(false, currentLocalPath);
+        const panel = getActiveLocalState();
+        if (panel.currentPath) clipboardPaste(false, panel.currentPath);
       }
     },
 
@@ -1526,12 +1647,13 @@ interface UpdateVerificationInfo {
           setQuickLookOpen(false);
           return;
         }
-        const selectedLocal = [...selectedLocalFiles];
+        const panel = getActiveLocalState();
+        const selectedLocal = [...panel.selection];
         if (selectedLocal.length === 1) {
           const localName = selectedLocal[0];
-          const localFile = sortedLocalFiles.find(f => f.name === localName);
+          const localFile = panel.sortedFiles.find(f => f.name === localName);
           if (localFile && !localFile.is_dir) {
-            const idx = sortedLocalFiles.findIndex(f => f.name === localName);
+            const idx = panel.sortedFiles.findIndex(f => f.name === localName);
             if (idx !== -1) {
               setQuickLookIndex(idx);
               setQuickLookOpen(true);
@@ -1556,14 +1678,16 @@ interface UpdateVerificationInfo {
 
     // Alt+Enter: open properties for selected file (single or aggregate when multiple)
     'Alt+Enter': () => {
-      if (activePanel !== 'local' || selectedLocalFiles.size === 0) return;
-      if (selectedLocalFiles.size === 1) {
-        const fileName = [...selectedLocalFiles][0];
-        const file = localFiles.find(f => f.name === fileName);
+      if (activePanel !== 'local') return;
+      const panel = getActiveLocalState();
+      if (panel.selection.size === 0) return;
+      if (panel.selection.size === 1) {
+        const fileName = [...panel.selection][0];
+        const file = panel.files.find(f => f.name === fileName);
         if (file) {
           setPropertiesDialog({
             name: file.name,
-            path: file.path || `${currentLocalPath}/${file.name}`,
+            path: file.path || `${panel.currentPath}/${file.name}`,
             size: file.size,
             is_dir: file.is_dir,
             modified: file.modified,
@@ -1572,11 +1696,11 @@ interface UpdateVerificationInfo {
         }
         return;
       }
-      const selectedFiles = localFiles
-        .filter(f => selectedLocalFiles.has(f.name))
+      const selectedFiles = panel.files
+        .filter(f => panel.selection.has(f.name))
         .map(f => ({
           name: f.name,
-          path: f.path || `${currentLocalPath}/${f.name}`,
+          path: f.path || `${panel.currentPath}/${f.name}`,
           size: f.size,
           is_dir: f.is_dir,
           modified: f.modified,
@@ -1588,16 +1712,17 @@ interface UpdateVerificationInfo {
     // Arrow Down: select next file
     'ArrowDown': () => {
       if (activePanel === 'local') {
-        const files = sortedLocalFilesRef.current;
+        const panel = getActiveLocalState();
+        const files = panel.sortedFiles;
         if (files.length === 0) return;
-        const currentName = [...selectedLocalFiles][0];
+        const currentName = [...panel.selection][0];
         const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : -1;
         const nextIdx = Math.min(currentIdx + 1, files.length - 1);
         const next = files[nextIdx];
         if (next && next.name !== '..') {
-          setSelectedLocalFiles(new Set([next.name]));
-          setLastSelectedLocalIndex(nextIdx);
-          setPreviewFile(next);
+          panel.setSelection(new Set([next.name]));
+          panel.setLastIdx(nextIdx);
+          if (panel.id === 'local') setPreviewFile(next);
         }
       } else {
         const files = sortedRemoteFilesRef.current;
@@ -1616,16 +1741,17 @@ interface UpdateVerificationInfo {
     // Arrow Up: select previous file
     'ArrowUp': () => {
       if (activePanel === 'local') {
-        const files = sortedLocalFilesRef.current;
+        const panel = getActiveLocalState();
+        const files = panel.sortedFiles;
         if (files.length === 0) return;
-        const currentName = [...selectedLocalFiles][0];
+        const currentName = [...panel.selection][0];
         const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : files.length;
         const prevIdx = Math.max(currentIdx - 1, 0);
         const prev = files[prevIdx];
         if (prev && prev.name !== '..') {
-          setSelectedLocalFiles(new Set([prev.name]));
-          setLastSelectedLocalIndex(prevIdx);
-          setPreviewFile(prev);
+          panel.setSelection(new Set([prev.name]));
+          panel.setLastIdx(prevIdx);
+          if (panel.id === 'local') setPreviewFile(prev);
         }
       } else {
         const files = sortedRemoteFilesRef.current;
@@ -1644,14 +1770,15 @@ interface UpdateVerificationInfo {
     // Shift+Arrow Down: extend selection downward
     'Shift+ArrowDown': () => {
       if (activePanel === 'local') {
-        const files = sortedLocalFilesRef.current;
-        const currentName = [...selectedLocalFiles].pop();
+        const panel = getActiveLocalState();
+        const files = panel.sortedFiles;
+        const currentName = [...panel.selection].pop();
         const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : -1;
         const nextIdx = Math.min(currentIdx + 1, files.length - 1);
         const next = files[nextIdx];
         if (next && next.name !== '..') {
-          setSelectedLocalFiles(prev => new Set([...prev, next.name]));
-          setLastSelectedLocalIndex(nextIdx);
+          panel.setSelection(prev => new Set([...prev, next.name]));
+          panel.setLastIdx(nextIdx);
         }
       } else {
         const files = sortedRemoteFilesRef.current;
@@ -1669,14 +1796,15 @@ interface UpdateVerificationInfo {
     // Shift+Arrow Up: extend selection upward
     'Shift+ArrowUp': () => {
       if (activePanel === 'local') {
-        const files = sortedLocalFilesRef.current;
-        const currentName = [...selectedLocalFiles][0];
+        const panel = getActiveLocalState();
+        const files = panel.sortedFiles;
+        const currentName = [...panel.selection][0];
         const currentIdx = currentName ? files.findIndex(f => f.name === currentName) : files.length;
         const prevIdx = Math.max(currentIdx - 1, 0);
         const prev = files[prevIdx];
         if (prev && prev.name !== '..') {
-          setSelectedLocalFiles(prev2 => new Set([prev.name, ...prev2]));
-          setLastSelectedLocalIndex(prevIdx);
+          panel.setSelection(prev2 => new Set([prev.name, ...prev2]));
+          panel.setLastIdx(prevIdx);
         }
       } else {
         const files = sortedRemoteFilesRef.current;
@@ -1691,6 +1819,30 @@ interface UpdateVerificationInfo {
       }
     },
 
+    // Home / End: jump to first / last entry on the active panel (Total Commander style).
+    'Home': () => {
+      if (activePanel === 'local') {
+        const panel = getActiveLocalState();
+        const first = panel.sortedFiles.find(f => f.name !== '..');
+        if (first) { panel.setSelection(new Set([first.name])); panel.setLastIdx(panel.sortedFiles.indexOf(first)); }
+      } else {
+        const files = sortedRemoteFilesRef.current;
+        const first = files.find(f => f.name !== '..');
+        if (first) { setSelectedRemoteFiles(new Set([first.name])); setLastSelectedRemoteIndex(files.indexOf(first)); }
+      }
+    },
+    'End': () => {
+      if (activePanel === 'local') {
+        const panel = getActiveLocalState();
+        const last = panel.sortedFiles.slice().reverse().find(f => f.name !== '..');
+        if (last) { panel.setSelection(new Set([last.name])); panel.setLastIdx(panel.sortedFiles.indexOf(last)); }
+      } else {
+        const files = sortedRemoteFilesRef.current;
+        const last = files.slice().reverse().find(f => f.name !== '..');
+        if (last) { setSelectedRemoteFiles(new Set([last.name])); setLastSelectedRemoteIndex(files.indexOf(last)); }
+      }
+    },
+
     'Escape': () => {
       if (quickLookOpen) setQuickLookOpen(false);
       else if (universalPreviewOpen) closeUniversalPreview();
@@ -1700,16 +1852,19 @@ interface UpdateVerificationInfo {
       else if (showSettingsPanel) setShowSettingsPanel(false);
       else if (inputDialog) setInputDialog(null);
       else if (confirmDialog) setConfirmDialog(null);
-      else if (selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0) {
+      else if (selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0 || selectedLocalFiles2.size > 0) {
         setSelectedRemoteFiles(new Set());
         setSelectedLocalFiles(new Set());
+        setSelectedLocalFiles2(new Set());
         setLastSelectedRemoteIndex(null);
         setLastSelectedLocalIndex(null);
+        setLastSelectedLocalIndex2(null);
       }
     }
   }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
-    universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
-    activePanel, currentRemotePath, currentLocalPath, isConnected, showRemotePanel, cardLayout, toggleCardLayout, toggleDualLocalPanel]);
+    universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, selectedLocalFiles2, remoteFiles, localFiles, localFiles2,
+    activePanel, activeLocalPanelId, currentRemotePath, currentLocalPath, currentLocalPath2,
+    isConnected, showRemotePanel, cardLayout, toggleCardLayout, toggleDualLocalPanel, showDualLocalPanel]);
 
 
   // Persist last known quota to the saved server profile (best-effort) so the
@@ -2812,8 +2967,10 @@ interface UpdateVerificationInfo {
     humanLog,
     currentRemotePath,
     currentLocalPath,
+    currentLocalPath2,
     loadRemoteFiles,
     loadLocalFiles,
+    loadLocalFiles2,
     activeSessionId,
     sessions: sessions as Array<{ id: string; connectionParams?: { protocol?: string } }>,
     connectionParams,
@@ -5263,6 +5420,58 @@ interface UpdateVerificationInfo {
     notify.success(t('contextMenu.copied') || 'Copied', formatClipboardFileCount(files.length));
   };
 
+  /**
+   * AeroFile dual-panel: copy or move the active local panel's selection into
+   * the opposite local panel's current directory. Wired to F5 / F6 and to the
+   * "Copy to other panel" / "Move to other panel" context menu items.
+   */
+  const transferLocalSelectionAcrossPanels = useCallback(async (mode: 'copy' | 'move') => {
+    const sourceId = activeLocalPanelId;
+    const targetId: 'local' | 'local2' = sourceId === 'local' ? 'local2' : 'local';
+    const sourceSelection = sourceId === 'local2' ? selectedLocalFiles2 : selectedLocalFiles;
+    const sourceFiles = sourceId === 'local2' ? localFiles2 : localFiles;
+    const targetDir = targetId === 'local2' ? currentLocalPath2 : currentLocalPath;
+    if (!targetDir || sourceSelection.size === 0) return;
+    const names = Array.from(sourceSelection);
+    const selected = sourceFiles.filter(f => names.includes(f.name) && f.name !== '..');
+    if (selected.length === 0) return;
+
+    let ok = 0, failed = 0;
+    for (const file of selected) {
+      const sep = targetDir.includes('\\') && !targetDir.includes('/') ? '\\' : '/';
+      const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
+      if (destPath === file.path) {
+        failed++;
+        continue;
+      }
+      try {
+        await invoke(mode === 'copy' ? 'copy_local_file' : 'rename_local_file', {
+          from: file.path,
+          to: destPath,
+        });
+        ok++;
+      } catch (e) {
+        failed++;
+        notify.error(mode === 'copy' ? t('toast.copyFailed') || 'Copy failed' : t('toast.renameFailed', { error: '' }) || 'Move failed', `${file.name}: ${String(e)}`);
+      }
+    }
+    if (sourceId === 'local2' && currentLocalPath2) await loadLocalFiles2(currentLocalPath2);
+    else await loadLocalFiles(currentLocalPath);
+    if (targetId === 'local2' && currentLocalPath2) await loadLocalFiles2(currentLocalPath2);
+    else await loadLocalFiles(currentLocalPath);
+    if (ok > 0) {
+      notify.success(
+        mode === 'copy' ? t('aerofile.copiedToOtherPanel') || 'Copied to other panel' : t('aerofile.movedToOtherPanel') || 'Moved to other panel',
+        `${ok} → ${targetDir}${failed > 0 ? ` (${failed} failed)` : ''}`,
+      );
+    }
+  }, [activeLocalPanelId, selectedLocalFiles, selectedLocalFiles2, localFiles, localFiles2, currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2, notify, t]);
+  // Keep the F5/F6 forward ref pointing at the latest closure so the keyboard
+  // shortcut handler always invokes the up-to-date implementation.
+  React.useEffect(() => {
+    transferLocalSelectionAcrossPanelsRef.current = transferLocalSelectionAcrossPanels;
+  }, [transferLocalSelectionAcrossPanels]);
+
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
     setHasClipboard(true);
@@ -6436,8 +6645,9 @@ interface UpdateVerificationInfo {
     }
   };
 
-  const deleteMultipleLocalFiles = (filesOverride?: string[]) => {
-    const names = filesOverride || Array.from(selectedLocalFiles);
+  const deleteMultipleLocalFiles = (filesOverride?: string[], localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
+    const panel = getActiveLocalState(localPanelId);
+    const names = filesOverride || Array.from(panel.selection);
     if (names.length === 0) return;
 
     const performDelete = async () => {
@@ -6458,7 +6668,7 @@ interface UpdateVerificationInfo {
       for (const name of names) {
         if (batchCancelledRef.current) break;
 
-        const file = localFiles.find(f => f.name === name);
+        const file = panel.files.find(f => f.name === name);
         if (file) {
           try {
             await invoke('delete_to_trash', { path: file.path });
@@ -6474,8 +6684,8 @@ interface UpdateVerificationInfo {
         }
       }
       setScanningState(INITIAL_SCANNING_STATE);
-      await loadLocalFiles(currentLocalPath);
-      setSelectedLocalFiles(new Set());
+      if (panel.currentPath) await panel.load(panel.currentPath);
+      panel.setSelection(new Set());
       // Summary: same logic as remote (see deleteMultipleRemoteFiles)
       const loc = t('browser.local');
       const count = deletedFolders.length + deletedFiles.length;
@@ -6498,7 +6708,7 @@ interface UpdateVerificationInfo {
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
       const entries = names
-        .map(n => localFiles.find(f => f.name === n))
+        .map(n => panel.files.find(f => f.name === n))
         .filter(Boolean)
         .map(f => ({ name: f!.name, isDir: f!.is_dir }));
       setConfirmDialog({
@@ -6827,7 +7037,7 @@ interface UpdateVerificationInfo {
     setBatchRenameDialog(null);
   };
 
-  const createFolder = (isRemote: boolean) => {
+  const createFolder = (isRemote: boolean, localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
     setInputDialog({
       title: t('dialog.newFolder'),
       defaultValue: '',
@@ -6857,10 +7067,15 @@ interface UpdateVerificationInfo {
             }
             await loadRemoteFiles(undefined, true);
           } else {
-            // Create local folder
-            const path = currentLocalPath + '/' + name;
+            // Create local folder in the panel that has focus (dual-panel aware).
+            const basePath = localPanelId === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
+            const path = basePath + '/' + name;
             await invoke('create_local_folder', { path });
-            await loadLocalFiles(currentLocalPath);
+            if (localPanelId === 'local2' && currentLocalPath2) {
+              await loadLocalFiles2(currentLocalPath2);
+            } else {
+              await loadLocalFiles(currentLocalPath);
+            }
           }
           humanLog.logSuccess('MKDIR', { foldername: name, isRemote }, logId);
           notify.success(t('toast.folderCreated'), name);
@@ -7911,10 +8126,23 @@ interface UpdateVerificationInfo {
     }
   }, [currentLocalPath, importAeroFtpKeystoreFile, importAeroFtpProfileFile, notify, t]);
 
-  const showLocalContextMenu = (e: React.MouseEvent, file: LocalFile) => {
+  const showLocalContextMenu = (e: React.MouseEvent, file: LocalFile, localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
     e.preventDefault();
+    const ctxPanel = getActiveLocalState(localPanelId);
 
-    // Auto-select if not part of current selection
+    // Shadow the panel-1 names with active-panel accessors so every action in
+    // this 600-line menu (delete, rename, paste, archive, vault, properties,
+    // ...) operates on whichever local panel received the right-click. This
+    // is what unlocks full context-menu parity for panel 2 without touching
+    // every reference below.
+    const currentLocalPath = ctxPanel.currentPath;
+    const localFiles = ctxPanel.files;
+    const selectedLocalFiles = ctxPanel.selection;
+    const setSelectedLocalFiles = ctxPanel.setSelection;
+    const loadLocalFiles = (p: string) => ctxPanel.load(p);
+
+    // Auto-select if not part of current selection (target the panel that
+    // received the right-click, not always panel 1).
     let selection = new Set(selectedLocalFiles);
     if (!selection.has(file.name)) {
       selection = new Set([file.name]);
@@ -7932,6 +8160,7 @@ interface UpdateVerificationInfo {
     // Detect .aerovault early for context menu ordering
     const isAeroVaultFile = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
 
+    const isAeroFileDualActive = (!isConnected || !showRemotePanel) && showDualLocalPanel;
     const items: ContextMenuItem[] = [
       {
         label: uploadLabel,
@@ -7939,6 +8168,16 @@ interface UpdateVerificationInfo {
         action: () => uploadMultipleFiles(filesToUpload),
         disabled: !isConnected
       },
+      // AeroFile dual-panel: send to the opposite local panel
+      ...(isAeroFileDualActive ? [{
+        label: t('aerofile.copyToOtherPanel'),
+        icon: <Columns2 size={14} />,
+        action: () => { void transferLocalSelectionAcrossPanels('copy'); },
+      } as ContextMenuItem, {
+        label: t('aerofile.moveToOtherPanel'),
+        icon: <ArrowRightLeft size={14} />,
+        action: () => { void transferLocalSelectionAcrossPanels('move'); },
+      } as ContextMenuItem] : []),
       {
         label: 'Open with default app',
         icon: <ExternalLink size={14} />,
@@ -8534,31 +8773,33 @@ interface UpdateVerificationInfo {
     contextMenu.show(e, items);
   };
 
-  // Empty-area context menu for local panel (right-click on background)
-  const showLocalEmptyContextMenu = (e: React.MouseEvent) => {
+  // Empty-area context menu for local panel (right-click on background).
+  // Dual-panel aware: targets the panel that received the click.
+  const showLocalEmptyContextMenu = (e: React.MouseEvent, localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedLocalFiles(new Set());
+    const ctxPanel = getActiveLocalState(localPanelId);
+    ctxPanel.setSelection(new Set());
 
     const items: ContextMenuItem[] = [
       {
         label: t('contextMenu.paste') || 'Paste', icon: <ClipboardPaste size={14} />,
-        action: () => clipboardPaste(false, currentLocalPath),
+        action: () => { if (ctxPanel.currentPath) clipboardPaste(false, ctxPanel.currentPath); },
         disabled: !hasClipboard,
       },
       {
         label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
-        action: () => createFolder(false),
+        action: () => createFolder(false, localPanelId),
         divider: true,
       },
       {
         label: t('contextMenu.refresh') || 'Refresh', icon: <RefreshCw size={14} />,
-        action: () => loadLocalFiles(currentLocalPath),
+        action: () => { if (ctxPanel.currentPath) void ctxPanel.load(ctxPanel.currentPath); },
       },
       {
         label: t('contextMenu.selectAll') || 'Select All', icon: <CheckCircle2 size={14} />,
-        action: () => setSelectedLocalFiles(new Set(localFiles.map(f => f.name))),
-        disabled: localFiles.length === 0,
+        action: () => ctxPanel.setSelection(new Set(ctxPanel.files.map(f => f.name))),
+        disabled: ctxPanel.files.length === 0,
       },
     ];
     contextMenu.show(e, items);
@@ -10267,14 +10508,14 @@ interface UpdateVerificationInfo {
               </div>
 
               {/* Dual Panel (or single panel when not connected) */}
-              <div className="flex flex-1 min-h-0">
+              <div ref={dualPanelContainerRef} className="flex flex-1 min-h-0">
                 {/* Remote: hidden when not connected or local-only mode */}
                 {isConnected && showRemotePanel && <div
                   role="region"
                   aria-label="Remote files"
                   className={`relative w-1/2 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
-                  onDragOver={(e) => handlePanelDragOver(e, true)}
-                  onDrop={(e) => handlePanelDrop(e, true)}
+                  onDragOver={(e) => handlePanelDragOver(e, 'remote')}
+                  onDrop={(e) => handlePanelDrop(e, 'remote')}
                   onDragLeave={handlePanelDragLeave}
                 >
                   {/* Drill-in spinner overlay (issue #178 #2). Debounced to
@@ -10649,11 +10890,11 @@ interface UpdateVerificationInfo {
                               role="row"
                               aria-selected={selectedRemoteFiles.has(file.name)}
                               draggable={file.name !== '..' && inlineRename?.path !== file.path}
-                              onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
+                              onDragStart={(e) => handleDragStart(e, file, 'remote', selectedRemoteFiles, sortedRemoteFiles)}
                               onDragEnd={handleDragEnd}
-                              onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}
+                              onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, 'remote')}
                               onDragLeave={handleDragLeave}
-                              onDrop={(e) => file.is_dir && handleDrop(e, file.path, true)}
+                              onDrop={(e) => file.is_dir && handleDrop(e, file.path, 'remote')}
                               onClick={(e) => {
                                 if (file.name === '..') return;
                                 setActivePanel('remote');
@@ -10806,9 +11047,9 @@ interface UpdateVerificationInfo {
                         }}
                         getFolderUpIcon={() => iconProvider.getFolderUpIcon(64)}
                         onContextMenu={(e, file) => file ? showRemoteContextMenu(e, file as any) : undefined}
-                        onDragStart={(e, file) => handleDragStart(e, file as any, true, selectedRemoteFiles, sortedRemoteFiles)}
-                        onDragOver={(e, file) => handleDragOver(e, file.path, file.is_dir, true)}
-                        onDrop={(e, file) => file.is_dir && handleDrop(e, file.path, true)}
+                        onDragStart={(e, file) => handleDragStart(e, file as any, 'remote', selectedRemoteFiles, sortedRemoteFiles)}
+                        onDragOver={(e, file) => handleDragOver(e, file.path, file.is_dir, 'remote')}
+                        onDrop={(e, file) => file.is_dir && handleDrop(e, file.path, 'remote')}
                         onDragLeave={handleDragLeave}
                         onDragEnd={handleDragEnd}
                         dragOverTarget={dropTargetPath}
@@ -10837,11 +11078,11 @@ interface UpdateVerificationInfo {
                             key={`${file.name}-${i}`}
                             data-file-card
                             draggable={file.name !== '..' && inlineRename?.path !== file.path}
-                            onDragStart={(e) => handleDragStart(e, file, true, selectedRemoteFiles, sortedRemoteFiles)}
+                            onDragStart={(e) => handleDragStart(e, file, 'remote', selectedRemoteFiles, sortedRemoteFiles)}
                             onDragEnd={handleDragEnd}
-                            onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, true)}
+                            onDragOver={(e) => handleDragOver(e, file.path, file.is_dir, 'remote')}
                             onDragLeave={handleDragLeave}
-                            onDrop={(e) => file.is_dir && handleDrop(e, file.path, true)}
+                            onDrop={(e) => file.is_dir && handleDrop(e, file.path, 'remote')}
                             className={`file-grid-item ${dropTargetPath === file.path && file.is_dir
                               ? 'ring-2 ring-green-500 bg-green-100 dark:bg-green-900/40'
                               : selectedRemoteFiles.has(file.name) ? 'selected' : ''
@@ -10941,6 +11182,10 @@ interface UpdateVerificationInfo {
                   isAeroFileMode={!isConnected || !showRemotePanel}
                   isConnected={isConnected}
                   isDualMode={(!isConnected || !showRemotePanel) && showDualLocalPanel}
+                  panelKey="local"
+                  isFocused={(!isConnected || !showRemotePanel) && showDualLocalPanel && activeLocalPanelId === 'local'}
+                  onPanelFocus={() => { setActivePanel('local'); setActiveLocalPanelId('local'); }}
+                  style={(!isConnected || !showRemotePanel) && showDualLocalPanel ? { flexGrow: dualPanelLeftFlex, flexShrink: 1, flexBasis: 0 } : undefined}
                   className={isConnected && showRemotePanel ? (swapPanels ? 'order-1' : 'order-2') : undefined}
                   currentPath={currentLocalPath}
                   setCurrentPath={setCurrentLocalPath}
@@ -11018,10 +11263,25 @@ interface UpdateVerificationInfo {
                 />
 
                 {(!isConnected || !showRemotePanel) && showDualLocalPanel && (
+                  <>
+                    {/* Resize handle between the two AeroFile local panels. */}
+                    <div
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={t('aerofile.resizePanels') || 'Resize panels'}
+                      onMouseDown={startDualPanelResize}
+                      onDoubleClick={() => setDualPanelLeftFlex(1.0)}
+                      className="w-1 hover:w-1.5 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 transition-colors flex-shrink-0"
+                      style={{ touchAction: 'none' }}
+                    />
                   <LocalFilePanel
                     isAeroFileMode
                     isConnected={isConnected}
                     isDualMode
+                    panelKey="local2"
+                    isFocused={activeLocalPanelId === 'local2'}
+                    onPanelFocus={() => { setActivePanel('local'); setActiveLocalPanelId('local2'); }}
+                    style={{ flexGrow: 2 - dualPanelLeftFlex, flexShrink: 1, flexBasis: 0 }}
                     className="border-l border-gray-200 dark:border-gray-700"
                     currentPath={currentLocalPath2}
                     setCurrentPath={setCurrentLocalPath2}
@@ -11058,19 +11318,19 @@ interface UpdateVerificationInfo {
                     onInlineRenameCommit={commitInlineRename}
                     onInlineRenameStart={startInlineRename}
                     onInlineRenameCancel={() => setInlineRename(null)}
-                    onDragStart={(e) => e.preventDefault()}
-                    onDragEnd={() => {}}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDragLeave={() => {}}
-                    onDrop={(e) => e.preventDefault()}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
                     dropTargetPath={dropTargetPath}
-                    dragSourcePaths={[]}
-                    crossPanelTarget={null}
-                    onPanelDragOver={(e) => e.preventDefault()}
-                    onPanelDrop={(e) => e.preventDefault()}
-                    onPanelDragLeave={() => {}}
-                    onContextMenu={(e) => { e.preventDefault(); setActivePanel('local'); }}
-                    onEmptyContextMenu={(e) => { e.preventDefault(); setActivePanel('local'); }}
+                    dragSourcePaths={dragData?.sourcePaths || []}
+                    crossPanelTarget={crossPanelTarget}
+                    onPanelDragOver={handlePanelDragOver}
+                    onPanelDrop={handlePanelDrop}
+                    onPanelDragLeave={handlePanelDragLeave}
+                    onContextMenu={(e, file) => { setActiveLocalPanelId('local2'); showLocalContextMenu(e, file, 'local2'); }}
+                    onEmptyContextMenu={(e) => { setActiveLocalPanelId('local2'); showLocalEmptyContextMenu(e, 'local2'); }}
                     onOpenUniversalPreview={openUniversalPreview}
                     onOpenDevToolsPreview={openDevToolsPreview}
                     onUploadFile={uploadFile}
@@ -11093,6 +11353,7 @@ interface UpdateVerificationInfo {
                     t={t}
                     notify={notify}
                   />
+                  </>
                 )}
 
                 {/* Preview Panel - only in local-only (AeroFile) mode */}

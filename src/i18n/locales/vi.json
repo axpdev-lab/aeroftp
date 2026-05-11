@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Không thể sao chép {filename}",
+            "copy_start": "[{location}] Đang sao chép {filename}...",
+            "copy_success": "[{location}] Đã sao chép {filename} vào {destination}"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Bật/tắt Trình soạn thảo",
             "toggleTerminal": "Bật/tắt Terminal",
             "toggleTheme": "Đổi giao diện",
-            "view": "Xem"
+            "view": "Xem",
+            "copyFiles": "Sao chép vào bộ nhớ tạm",
+            "copyToOtherPanel": "Sao chép sang bảng kia",
+            "cutFiles": "Cắt vào bộ nhớ tạm",
+            "cycleLocalPanels": "Chuyển đổi giữa các bảng cục bộ",
+            "dualPanel": "Bảng kép (AeroFile)",
+            "extendSelectionDown": "Mở rộng vùng chọn xuống",
+            "extendSelectionUp": "Mở rộng vùng chọn lên",
+            "jumpFirst": "Đến mục đầu tiên",
+            "jumpLast": "Đến mục cuối cùng",
+            "moveToOtherPanel": "Di chuyển sang bảng kia",
+            "pasteFiles": "Dán từ bộ nhớ tạm",
+            "properties": "Thuộc tính",
+            "quickLook": "Xem nhanh",
+            "toggleDualPanel": "Bật/tắt bảng kép"
         },
         "overwrite": {
             "title": "Tệp đã tồn tại",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Bảng kép",
+            "dualPanelTooltip": "Hiển thị hai bảng cục bộ cạnh nhau",
+            "leftPanel": "Bảng trái",
+            "rightPanel": "Bảng phải",
+            "copyToOtherPanel": "Sao chép sang bảng kia",
+            "moveToOtherPanel": "Di chuyển sang bảng kia",
+            "copiedToOtherPanel": "Đã sao chép sang bảng kia",
+            "movedToOtherPanel": "Đã di chuyển sang bảng kia"
         }
     }
 }

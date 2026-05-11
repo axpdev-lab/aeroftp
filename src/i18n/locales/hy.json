@@ -1407,7 +1407,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Հնարավոր չեղավ պատճենել {filename}",
+            "copy_start": "[{location}] Պատճենում է {filename}...",
+            "copy_success": "[{location}] {filename} պատճենված է {destination}-ում"
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -1679,7 +1682,21 @@
             "toggleEditor": "Միացնել/Անջատել խմբագիրը",
             "toggleTerminal": "Միացնել/Անջատել տերմինալը",
             "toggleTheme": "Փոխել թեման",
-            "view": "Տեսք"
+            "view": "Տեսք",
+            "copyFiles": "Պատճենել սքավաղակին",
+            "copyToOtherPanel": "Պատճենել մյուս պանելում",
+            "cutFiles": "Կտրել սքավաղակին",
+            "cycleLocalPanels": "Փոխանցել տեղական պանելները",
+            "dualPanel": "Կրկնակի պանել (AeroFile)",
+            "extendSelectionDown": "Ընդլայնել ընտրությունը ներքև",
+            "extendSelectionUp": "Ընդլայնել ընտրությունը վերև",
+            "jumpFirst": "Անցնել առաջին տարրին",
+            "jumpLast": "Անցնել վերջին տարրին",
+            "moveToOtherPanel": "Տեղափոխել մյուս պանելում",
+            "pasteFiles": "Տեղադրել սքավաղակից",
+            "properties": "Հատկություններ",
+            "quickLook": "Արագ նայում",
+            "toggleDualPanel": "Միացնել/անջատել կրկնակի պանելը"
         },
         "overwrite": {
             "title": "Ֆայլը արդեն գոյություն ունի",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Կրկնակի պանել",
+            "dualPanelTooltip": "ցուցադրել երկու տեղական պանելներ կողք-կողքի",
+            "leftPanel": "Ձախ պանել",
+            "rightPanel": "Աջ պանել",
+            "copyToOtherPanel": "Պատճենել մյուս պանելում",
+            "moveToOtherPanel": "Տեղափոխել մյուս պանելում",
+            "copiedToOtherPanel": "Պատճենված է մյուս պանելում",
+            "movedToOtherPanel": "Տեղափոխված է մյուս պանելում"
         }
     }
 }

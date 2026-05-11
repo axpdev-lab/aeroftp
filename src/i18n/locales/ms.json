@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Tidak dapat menyalin {filename}",
+            "copy_start": "[{location}] Menyalin {filename}...",
+            "copy_success": "[{location}] {filename} disalin ke {destination}"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Togol Editor",
             "toggleTerminal": "Togol Terminal",
             "toggleTheme": "Tukar tema",
-            "view": "Paparan"
+            "view": "Paparan",
+            "copyFiles": "Salin ke papan keratan",
+            "copyToOtherPanel": "Salin ke panel lain",
+            "cutFiles": "Potong ke papan keratan",
+            "cycleLocalPanels": "Kitar panel tempatan",
+            "dualPanel": "Panel Berkembar (AeroFile)",
+            "extendSelectionDown": "Lanjutkan pilihan ke bawah",
+            "extendSelectionUp": "Lanjutkan pilihan ke atas",
+            "jumpFirst": "Lompat ke item pertama",
+            "jumpLast": "Lompat ke item terakhir",
+            "moveToOtherPanel": "Alih ke panel lain",
+            "pasteFiles": "Tampal dari papan keratan",
+            "properties": "Sifat",
+            "quickLook": "Pratonton Pantas",
+            "toggleDualPanel": "Togol panel berkembar"
         },
         "overwrite": {
             "title": "Fail sudah wujud",
@@ -4488,12 +4505,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Panel Berkembar",
+            "dualPanelTooltip": "Tunjukkan dua panel tempatan bersebelahan",
+            "leftPanel": "Panel Kiri",
+            "rightPanel": "Panel Kanan",
+            "copyToOtherPanel": "Salin ke panel lain",
+            "moveToOtherPanel": "Alih ke panel lain",
+            "copiedToOtherPanel": "Disalin ke panel lain",
+            "movedToOtherPanel": "Dialih ke panel lain"
         }
     }
 }

@@ -1414,7 +1414,10 @@
             "box_remove_watermark": "[Box] Removing watermark from {filename}...",
             "box_lock_folder": "[Box] Locking folder {filename}...",
             "zoho_create_document": "[Zoho WorkDrive] Creating document {filename}...",
-            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}..."
+            "zoho_delete_share_link": "[Zoho WorkDrive] Removing share link {filename}...",
+            "copy_error": "[{location}] Не удалось скопировать {filename}",
+            "copy_start": "[{location}] Копирование {filename}...",
+            "copy_success": "[{location}] {filename} скопирован в {destination}"
         },
         "protocol": {
             "selectProtocol": "Выберите протокол...",
@@ -1686,7 +1689,21 @@
             "toggleEditor": "Переключить редактор",
             "toggleTerminal": "Переключить терминал",
             "toggleTheme": "Сменить тему",
-            "view": "Вид"
+            "view": "Вид",
+            "copyFiles": "Копировать в буфер обмена",
+            "copyToOtherPanel": "Копировать в другую панель",
+            "cutFiles": "Вырезать в буфер обмена",
+            "cycleLocalPanels": "Переключение между локальными панелями",
+            "dualPanel": "Двойная панель (AeroFile)",
+            "extendSelectionDown": "Расширить выделение вниз",
+            "extendSelectionUp": "Расширить выделение вверх",
+            "jumpFirst": "Перейти к первому элементу",
+            "jumpLast": "Перейти к последнему элементу",
+            "moveToOtherPanel": "Переместить в другую панель",
+            "pasteFiles": "Вставить из буфера обмена",
+            "properties": "Свойства",
+            "quickLook": "Быстрый просмотр",
+            "toggleDualPanel": "Включить/выключить двойную панель"
         },
         "overwrite": {
             "title": "Файл уже существует",
@@ -4478,12 +4495,14 @@
             }
         },
         "aerofile": {
-            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
-            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
-            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
-            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
-            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
-            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
+            "dualPanel": "Двойная панель",
+            "dualPanelTooltip": "Показать две локальные панели рядом",
+            "leftPanel": "Левая панель",
+            "rightPanel": "Правая панель",
+            "copyToOtherPanel": "Копировать в другую панель",
+            "moveToOtherPanel": "Переместить в другую панель",
+            "copiedToOtherPanel": "Скопировано в другую панель",
+            "movedToOtherPanel": "Перемещено в другую панель"
         }
     }
 }
