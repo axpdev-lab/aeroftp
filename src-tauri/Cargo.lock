@@ -35,6 +35,7 @@ dependencies = [
  "aerovault",
  "aes 0.8.4",
  "aes-gcm 0.10.3",
+ "aes-gcm-siv",
  "aes-kw",
  "aes-siv",
  "anyhow",
