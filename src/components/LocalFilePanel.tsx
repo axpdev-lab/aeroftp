@@ -155,6 +155,8 @@ export interface LocalFilePanelProps {
 
   // --- Sidebar ---
   showSidebar: boolean;
+  sidebarCurrentPath?: string;
+  sidebarOnNavigate?: (path: string) => void;
   recentPaths: string[];
   setRecentPaths: React.Dispatch<React.SetStateAction<string[]>>;
 
@@ -254,6 +256,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   onRestoreTrashItem,
   onNavigateTrash,
   showSidebar,
+  sidebarCurrentPath,
+  sidebarOnNavigate,
   recentPaths,
   setRecentPaths,
   getTagsForFile,
@@ -554,8 +558,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
         {/* AeroFile Places Sidebar */}
         {showSidebar && isAeroFileMode && (
           <PlacesSidebar
-            currentPath={currentPath}
-            onNavigate={onNavigate}
+            currentPath={sidebarCurrentPath ?? currentPath}
+            onNavigate={sidebarOnNavigate ?? onNavigate}
             t={t}
             recentPaths={recentPaths}
             onClearRecent={() => setRecentPaths([])}

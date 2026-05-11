@@ -2293,6 +2293,29 @@ interface UpdateVerificationInfo {
     loadTrashItems();
   }, [loadTrashItems]);
 
+  const isDualLocalAeroFileMode = (!isConnected || !showRemotePanel) && showDualLocalPanel;
+  const sidebarTargetPanelId: 'local' | 'local2' = isDualLocalAeroFileMode ? activeLocalPanelId : 'local';
+  const sidebarCurrentPath = sidebarTargetPanelId === 'local2'
+    ? (currentLocalPath2 || currentLocalPath)
+    : currentLocalPath;
+  const statusBarLocalPath = isDualLocalAeroFileMode && activeLocalPanelId === 'local2'
+    ? (currentLocalPath2 || currentLocalPath)
+    : currentLocalPath;
+  const statusBarLocalFileCount = isDualLocalAeroFileMode && activeLocalPanelId === 'local2'
+    ? localFiles2.length
+    : localFiles.length;
+
+  function handleSidebarNavigate(path: string) {
+    setActivePanel('local');
+    if (sidebarTargetPanelId === 'local2') {
+      setActiveLocalPanelId('local2');
+      void changeLocalDirectory2(path);
+      return;
+    }
+    setActiveLocalPanelId('local');
+    void changeLocalDirectory(path);
+  }
+
   const handleRestoreTrashItem = useCallback(async (item: TrashItem) => {
     try {
       await invoke('restore_trash_item', { id: item.id, originalPath: item.original_path });
@@ -11249,6 +11272,8 @@ interface UpdateVerificationInfo {
                   onRestoreTrashItem={handleRestoreTrashItem}
                   onNavigateTrash={handleNavigateTrash}
                   showSidebar={showSidebar}
+                  sidebarCurrentPath={sidebarCurrentPath}
+                  sidebarOnNavigate={handleSidebarNavigate}
                   recentPaths={recentPaths}
                   setRecentPaths={setRecentPaths}
                   iconProvider={iconProvider}
@@ -11688,10 +11713,12 @@ interface UpdateVerificationInfo {
               return server ? `${username}@${server}` : activeSession?.serverName;
             })() : undefined}
             remotePath={currentRemotePath}
-            localPath={currentLocalPath}
+            localPath={statusBarLocalPath}
             remoteFileCount={remoteFiles.length}
-            localFileCount={localFiles.length}
+            localFileCount={statusBarLocalFileCount}
             activePanel={activePanel}
+            activeLocalPanelId={activeLocalPanelId}
+            dualLocalPanel={isDualLocalAeroFileMode}
             swapPanels={swapPanels}
             devToolsOpen={devToolsOpen}
             aeroFileActive={!showConnectionScreen && (!isConnected || !showRemotePanel)}
