@@ -9569,7 +9569,11 @@ interface UpdateVerificationInfo {
 
 
         <main className={`flex-1 min-h-0 p-6 overflow-auto flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
-          {showConnectionScreen ? (
+          {/* IntroHub stays mounted across connect/disconnect so the saved
+              servers list is already rendered when the user comes back via
+              the Home button or '+' tab. Hidden via CSS when a session is in
+              the foreground: zero remount = zero flash of the empty state. */}
+          <div className={showConnectionScreen ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
             <IntroHub
               connectionParams={connectionParams}
               quickConnectDirs={quickConnectDirs}
@@ -9870,7 +9874,8 @@ interface UpdateVerificationInfo {
                 }
               }}
             />
-          ) : (
+          </div>
+          {!showConnectionScreen && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
               {/* Session Tabs + Local Path Tabs */}
               <SessionTabs
