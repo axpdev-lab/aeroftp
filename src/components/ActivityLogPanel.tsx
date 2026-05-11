@@ -20,7 +20,7 @@ import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import {
     X, Trash2, ChevronDown, Terminal, Zap, Cloud,
     Plug, Unplug, Upload, Download, FolderPlus, FolderOpen, Pencil,
-    AlertCircle, Info, CheckCircle, Copy, Move,
+    AlertCircle, Info, CheckCircle, Copy, Move, RefreshCw, RotateCcw, Server,
     type LucideIcon
 } from 'lucide-react';
 import { useActivityLog, LogEntry, OperationType, getOperationIcon, formatTimestamp } from '../hooks/useActivityLog';
@@ -47,9 +47,62 @@ const OPERATION_ICONS: Record<string, LucideIcon> = {
     move: Move,
     'folder-plus': FolderPlus,
     'folder-open': FolderOpen,
+    'refresh-cw': RefreshCw,
     'alert-circle': AlertCircle,
     info: Info,
     'check-circle': CheckCircle,
+    'rotate-ccw': RotateCcw,
+    server: Server,
+    copy: Copy,
+};
+
+const FILTER_OPTIONS: OperationType[] = [
+    'CONNECT',
+    'DISCONNECT',
+    'UPLOAD',
+    'DOWNLOAD',
+    'DELETE',
+    'RESTORE',
+    'RENAME',
+    'MOVE',
+    'MKDIR',
+    'NAVIGATE',
+    'UPDATE',
+    'INFO',
+    'SUCCESS',
+    'ERROR',
+    'PROFILE_SAVE',
+    'PROFILE_DUPLICATE',
+];
+
+const FILTER_LABEL_KEYS: Partial<Record<OperationType, string>> = {
+    CONNECT: 'connect',
+    DISCONNECT: 'disconnect',
+    UPLOAD: 'upload',
+    DOWNLOAD: 'download',
+    DELETE: 'delete',
+    RESTORE: 'restore',
+    NAVIGATE: 'navigate',
+    ERROR: 'errors',
+};
+
+const FILTER_FALLBACK_LABELS: Record<OperationType, string> = {
+    CONNECT: 'Connect',
+    DISCONNECT: 'Disconnect',
+    UPLOAD: 'Upload',
+    DOWNLOAD: 'Download',
+    DELETE: 'Delete',
+    RENAME: 'Rename',
+    MOVE: 'Move',
+    MKDIR: 'New folder',
+    NAVIGATE: 'Navigate',
+    UPDATE: 'Update',
+    ERROR: 'Errors',
+    INFO: 'Info',
+    SUCCESS: 'Success',
+    RESTORE: 'Restore',
+    PROFILE_SAVE: 'Profile save',
+    PROFILE_DUPLICATE: 'Profile duplicate',
 };
 
 /**
@@ -538,6 +591,13 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
             return next;
         });
     }, []);
+    const getFilterLabel = useCallback((op: OperationType) => {
+        const labelKey = FILTER_LABEL_KEYS[op];
+        if (labelKey) {
+            return t(`activityPanel.filters.${labelKey}`);
+        }
+        return FILTER_FALLBACK_LABELS[op];
+    }, [t]);
     const [showCloudSync, setShowCloudSync] = useState<boolean>(() => {
         return localStorage.getItem('aeroftp_activitylog_show_cloudsync') !== '0';
     });
@@ -719,8 +779,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                                         {t('activityPanel.filters.all')}
                                     </button>
                                     <div className="border-t border-current opacity-10 my-1" />
-                                    {(['CONNECT','DISCONNECT','UPLOAD','DOWNLOAD','DELETE','RESTORE','NAVIGATE','ERROR'] as OperationType[]).map(op => {
-                                        const labelKey = `activityPanel.filters.${op === 'ERROR' ? 'errors' : op.toLowerCase()}`;
+                                    {FILTER_OPTIONS.map(op => {
                                         const checked = filterTypes.has(op);
                                         return (
                                             <label
@@ -733,7 +792,7 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                                                     onChange={() => toggleFilterType(op)}
                                                     className="cursor-pointer"
                                                 />
-                                                <span>{t(labelKey) || op}</span>
+                                                <span>{getFilterLabel(op)}</span>
                                             </label>
                                         );
                                     })}

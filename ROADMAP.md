@@ -64,8 +64,6 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   One surface for any pair of endpoints (local/local, local/remote, remote/local, remote/remote) with a FreeFileSync-style mirror, backup, and bisync workflow.
 - **Local Transport for AeroRsync**
   Delta sync local-to-local, the same wire-protocol-compatible engine extended to local filesystem pairs.
-- **Activity Log per-provider coverage**
-  Beyond generic CRUD, surface provider-specific events such as share link rotated, version restored, label applied.
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
 

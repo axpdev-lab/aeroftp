@@ -214,7 +214,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_debug_run_test",
-            description: "Execute one self-contained diagnostic probe and return its result. Available test_id values: 'known_hosts' (parse ~/.ssh/known_hosts and count entries), 'aerovault_roundtrip' (full AeroVault v2 codec create+open in tempdir, validates the encryption stack end-to-end), 'vault_roundtrip' (credential store write+read+delete on a temp key, requires the user's vault to be unlocked). All probes are local, idempotent, and never touch the user's real data. Use to validate a specific subsystem after a suspected change.",
+            description: "Execute one self-contained diagnostic probe and return its result. Available test_id values: 'known_hosts' (parse ~/.ssh/known_hosts and count entries), 'aerovault_roundtrip' (full AeroVault v2 codec create+open in tempdir, validates the encryption stack end-to-end), 'vault_roundtrip' (credential store write+read+delete on a unique temp key, requires the user's vault to be unlocked). All probes are local, idempotent, and never overwrite the user's real data. Use to validate a specific subsystem after a suspected change.",
             input_schema: json!({ "type": "object", "properties": {
                 "test_id": {
                     "type": "string",
@@ -650,14 +650,14 @@ async fn run_debug_test_for_mcp(test_id: &str) -> Result<Value, String> {
                     "message": "Vault locked: unlock to run this probe",
                 })),
             };
-            let key = "__aeroftp_debug_mcp_roundtrip__";
+            let key = format!("__aeroftp_debug_mcp_roundtrip_{}__", uuid::Uuid::new_v4());
             let value = "round_trip_test_value_OK";
-            store.store(key, value).map_err(|e| format!("write: {}", e))?;
-            let read_back = store.get(key).map_err(|e| {
-                let _ = store.delete(key);
+            store.store(&key, value).map_err(|e| format!("write: {}", e))?;
+            let read_back = store.get(&key).map_err(|e| {
+                let _ = store.delete(&key);
                 format!("read: {}", e)
             })?;
-            let _ = store.delete(key);
+            let _ = store.delete(&key);
             if read_back == value {
                 Ok(json!({
                     "status": "pass",

@@ -3764,12 +3764,17 @@ fn dump_connection_info(cli: &Cli, config: &ProviderConfig) {
         );
         if has_auth {
             let pass = config.password.as_deref().unwrap_or("");
+            let auth_state = if pass.is_empty() {
+                "(empty)".to_string()
+            } else {
+                format!("[redacted, len={}]", pass.chars().count())
+            };
             eprintln!(
                 "  password: {}",
-                if pass.is_empty() { "(empty)" } else { pass }
+                auth_state
             );
         } else {
-            eprintln!("  password: [redacted, use --dump auth to show]");
+            eprintln!("  password: [redacted, use --dump auth for presence/length only]");
         }
         if let Some(ref path) = config.initial_path {
             if !path.is_empty() {
