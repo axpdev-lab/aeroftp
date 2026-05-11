@@ -3124,7 +3124,8 @@
                 "network": "Omrežje",
                 "system": "Sistem",
                 "logs": "Dnevniki",
-                "frontend": "Čelni del"
+                "frontend": "Čelni del",
+                "tests": "Testi"
             },
             "connection": {
                 "status": "Stanje",

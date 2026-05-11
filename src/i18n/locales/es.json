@@ -3124,7 +3124,8 @@
                 "network": "Red",
                 "system": "Sistema",
                 "logs": "Registros",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Pruebas"
             },
             "connection": {
                 "status": "Estado",

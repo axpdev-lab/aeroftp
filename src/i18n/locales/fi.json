@@ -3124,7 +3124,8 @@
                 "network": "Verkko",
                 "system": "Järjestelmä",
                 "logs": "Lokit",
-                "frontend": "Käyttöliittymä"
+                "frontend": "Käyttöliittymä",
+                "tests": "Testit"
             },
             "connection": {
                 "status": "Tila",

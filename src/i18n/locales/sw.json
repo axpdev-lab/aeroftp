@@ -3124,7 +3124,8 @@
                 "network": "Mtandao",
                 "system": "Mfumo",
                 "logs": "Kumbukumbu",
-                "frontend": "Sehemu ya Mbele"
+                "frontend": "Sehemu ya Mbele",
+                "tests": "Vipimo"
             },
             "connection": {
                 "status": "Hali",

@@ -3263,7 +3263,8 @@
                 "network": "Rete",
                 "system": "Sistema",
                 "logs": "Log",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Test"
             },
             "connection": {
                 "status": "Stato",

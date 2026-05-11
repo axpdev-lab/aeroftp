@@ -3124,7 +3124,8 @@
                 "network": "Netkerfi",
                 "system": "Kerfi",
                 "logs": "Annálar",
-                "frontend": "Framendi"
+                "frontend": "Framendi",
+                "tests": "Próf"
             },
             "connection": {
                 "status": "Staða",

@@ -3124,7 +3124,8 @@
                 "network": "Hálózat",
                 "system": "Rendszer",
                 "logs": "Naplók",
-                "frontend": "Felület"
+                "frontend": "Felület",
+                "tests": "Tesztek"
             },
             "connection": {
                 "status": "Állapot",

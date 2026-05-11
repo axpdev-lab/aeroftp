@@ -3124,7 +3124,8 @@
                 "network": "ქსელი",
                 "system": "სისტემა",
                 "logs": "ლოგები",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "ტესტები"
             },
             "connection": {
                 "status": "სტატუსი",

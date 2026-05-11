@@ -3124,7 +3124,8 @@
                 "network": "Network",
                 "system": "System",
                 "logs": "Mga Log",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Mga Pagsubok"
             },
             "connection": {
                 "status": "Status",

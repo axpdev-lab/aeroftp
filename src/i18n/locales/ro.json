@@ -3124,7 +3124,8 @@
                 "network": "Rețea",
                 "system": "Sistem",
                 "logs": "Jurnale",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Teste"
             },
             "connection": {
                 "status": "Stare",

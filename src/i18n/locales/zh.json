@@ -3124,7 +3124,8 @@
                 "network": "网络",
                 "system": "系统",
                 "logs": "日志",
-                "frontend": "前端"
+                "frontend": "前端",
+                "tests": "测试"
             },
             "connection": {
                 "status": "状态",

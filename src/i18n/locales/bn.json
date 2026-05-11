@@ -3124,7 +3124,8 @@
                 "network": "নেটওয়ার্ক",
                 "system": "সিস্টেম",
                 "logs": "লগ",
-                "frontend": "ফ্রন্টএন্ড"
+                "frontend": "ফ্রন্টএন্ড",
+                "tests": "পরীক্ষা"
             },
             "connection": {
                 "status": "স্ট্যাটাস",

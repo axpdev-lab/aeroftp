@@ -1537,7 +1537,8 @@
         "frontend": "Frontend",
         "logs": "Logs",
         "network": "Network",
-        "system": "System"
+        "system": "System",
+        "tests": "Tests"
       }
     },
     "dependencies": {

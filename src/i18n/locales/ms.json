@@ -3124,7 +3124,8 @@
                 "network": "Rangkaian",
                 "system": "Sistem",
                 "logs": "Log",
-                "frontend": "Frontend"
+                "frontend": "Frontend",
+                "tests": "Ujian"
             },
             "connection": {
                 "status": "Status",

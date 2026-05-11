@@ -3124,7 +3124,8 @@
                 "network": "Tīkls",
                 "system": "Sistēma",
                 "logs": "Žurnāli",
-                "frontend": "Sask. lietot."
+                "frontend": "Sask. lietot.",
+                "tests": "Testi"
             },
             "connection": {
                 "status": "Statuss",
