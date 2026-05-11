@@ -960,10 +960,10 @@
             "themeGreenLabel": "Vert",
             "themeGreenDesc": "Palette forestière inspirée de la nature pour les amoureux du vert",
             "keystoreExportModeTitle": "Que faut-il inclure dans la sauvegarde",
-            "keystoreExportModeFull": "Sauvegarde complète (recommandée)",
-            "keystoreExportModeFullDesc": "Identifiants du coffre-fort, historique des conversations IA, mémoire de l'agent, étiquettes de fichiers, plugins installés, instantanés de synchronisation et préférences enregistrées. L'état complet de l'application dans un seul fichier chiffré.",
-            "keystoreExportModeVaultOnly": "Coffre-fort uniquement (ancien)",
-            "keystoreExportModeVaultOnlyDesc": "Uniquement les identifiants chiffrés et les profils de serveur. Plus petit, plus rapide, identique aux exports antérieurs à v3.7.8. Utile pour migrer des serveurs entre machines sans traîner l'historique des conversations."
+            "keystoreExportModeFull": "Sauvegarde complète (recommandé)",
+            "keystoreExportModeFullDesc": "Identifiants du coffre, historique des conversations AI, mémoire de l'agent, étiquettes de fichiers, plugins installés, instantanés de synchronisation et préférences enregistrées. L'état complet de l'application dans un seul fichier chiffré.",
+            "keystoreExportModeVaultOnly": "Coffre uniquement (hérité)",
+            "keystoreExportModeVaultOnlyDesc": "Uniquement les identifiants chiffrés et les profils de serveurs. Plus petit, plus rapide, identique aux exports antérieurs à la v3.7.8. Utile lors de la migration de serveurs entre machines sans emporter l'historique des conversations."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4404,8 +4404,8 @@
         "portable": {
             "banner": {
                 "title": "Mode portable : ce dossier contient toutes vos données AeroFTP",
-                "body": "Chaque installation portable est entièrement autonome : serveurs enregistrés, AeroVault, conversations IA et préférences résident tous à côté d'AeroFTP.exe. À partir de v3.7.8, deux dossiers portables sur le même PC sont totalement indépendants : supprimer un profil dans un dossier n'affecte plus l'autre.",
-                "legacyWarning": "Nous avons détecté des données résiduelles d'une installation partagée précédente à %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Elles ne sont plus utilisées par cette installation portable. Vous pouvez les supprimer manuellement si vous n'en avez pas besoin.",
+                "body": "Chaque installation portable est entièrement autonome : les serveurs enregistrés, AeroVault, les conversations AI et les préférences se trouvent tous à côté de AeroFTP.exe. À partir de la v3.7.8, deux dossiers portables sur le même PC sont totalement indépendants : supprimer un profil dans un dossier n'affecte plus l'autre.",
+                "legacyWarning": "Nous avons détecté des données résiduelles d'une installation partagée précédente dans %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Elles ne sont plus utilisées par cette installation portable. Vous pouvez les supprimer manuellement si vous n'en avez plus besoin.",
                 "openFolder": "Ouvrir le dossier de données",
                 "dismiss": "Compris"
             }

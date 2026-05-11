@@ -960,10 +960,10 @@
             "themeGreenLabel": "绿色",
             "themeGreenDesc": "为爱绿者打造的自然森林调色板",
             "keystoreExportModeTitle": "备份中包含的内容",
-            "keystoreExportModeFull": "完整备份（推荐）",
-            "keystoreExportModeFullDesc": "保险库凭据、AI 聊天历史、代理记忆、文件标签、已安装插件、同步快照和已保存的偏好设置。一个加密文件中包含完整的应用程序状态。",
+            "keystoreExportModeFull": "完整 backup（推荐）",
+            "keystoreExportModeFullDesc": "保险库凭据、AI 对话历史、代理记忆、文件标签、已安装的 plugin、同步快照和已保存的偏好设置。整个应用程序的完整状态保存在单个加密文件中。",
             "keystoreExportModeVaultOnly": "仅保险库（旧版）",
-            "keystoreExportModeVaultOnlyDesc": "仅包含加密的凭据和服务器配置文件。更小、更快，与 v3.7.8 之前的导出相同。在不带聊天历史的情况下在机器之间迁移服务器时非常有用。"
+            "keystoreExportModeVaultOnlyDesc": "仅包含加密凭据和服务器配置文件。体积更小、速度更快，与 v3.7.8 之前的导出完全相同。适用于在不同机器之间迁移服务器而不携带对话历史的场景。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4403,9 +4403,9 @@
         },
         "portable": {
             "banner": {
-                "title": "便携模式：此文件夹保存您所有的 AeroFTP 数据",
-                "body": "每个便携安装都是完全自包含的：已保存的服务器、AeroVault、AI 聊天和偏好设置都位于 AeroFTP.exe 旁边。从 v3.7.8 开始，同一台 PC 上的两个便携文件夹是完全独立的：在一个文件夹中删除配置文件不再影响另一个。",
-                "legacyWarning": "我们在 %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ 检测到之前共享安装的残留数据。此便携安装不再使用它们。如果不需要，您可以手动删除。",
+                "title": "便携模式：此文件夹保存了您所有的 AeroFTP 数据",
+                "body": "每个便携安装都是完全独立的：已保存的服务器、AeroVault、AI 对话和首选项都位于 AeroFTP.exe 旁边。从 v3.7.8 起，同一台电脑上的两个便携文件夹完全相互独立。在一个文件夹中删除某个配置文件不再会影响另一个文件夹。",
+                "legacyWarning": "我们在 %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ 检测到来自先前共享安装的残留数据。本便携安装已不再使用这些数据。如果您不需要，可以手动删除。",
                 "openFolder": "打开数据文件夹",
                 "dismiss": "知道了"
             }

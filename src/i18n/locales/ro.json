@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Întunecat neutru autentic în stil GitHub, fără tentă albastră",
             "themeGreenLabel": "Verde",
             "themeGreenDesc": "Paletă forestieră inspirată din natură pentru iubitorii de verde",
-            "keystoreExportModeTitle": "Ce să includeți în copia de rezervă",
-            "keystoreExportModeFull": "Copie de rezervă completă (recomandat)",
-            "keystoreExportModeFullDesc": "Acreditările vault-ului, istoricul conversațiilor AI, memoria agentului, etichetele fișierelor, pluginurile instalate, instantaneele de sincronizare și preferințele salvate. Starea completă a aplicației într-un singur fișier criptat.",
-            "keystoreExportModeVaultOnly": "Doar vault (moștenire)",
-            "keystoreExportModeVaultOnlyDesc": "Doar acreditările criptate și profilurile serverelor. Mai mic, mai rapid, identic cu exporturile anterioare v3.7.8. Util la migrarea serverelor între mașini fără a trage după sine istoricul conversațiilor."
+            "keystoreExportModeTitle": "Ce să incluzi în backup",
+            "keystoreExportModeFull": "Backup complet (recomandat)",
+            "keystoreExportModeFullDesc": "Credențialele seifului, istoricul conversațiilor AI, memoria agentului, tagurile fișierelor, plugin-urile instalate, snapshot-urile de sincronizare și preferințele salvate. Starea completă a aplicației într-un singur fișier criptat.",
+            "keystoreExportModeVaultOnly": "Doar seiful (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Doar credențialele criptate și profilurile de server. Mai mic, mai rapid, identic cu exporturile anterioare versiunii v3.7.8. Util la migrarea serverelor între mașini fără a aduce și istoricul conversațiilor."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4403,10 +4403,10 @@
         },
         "portable": {
             "banner": {
-                "title": "Mod portabil: acest folder conține toate datele dvs. AeroFTP",
-                "body": "Fiecare instalare portabilă este complet autonomă: serverele salvate, AeroVault, conversațiile AI și preferințele se află toate lângă AeroFTP.exe. Începând cu v3.7.8, două foldere portabile pe același PC sunt complet independente: ștergerea unui profil într-un folder nu mai afectează celălalt.",
-                "legacyWarning": "Am detectat date reziduale dintr-o instalare partajată anterioară la %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nu mai sunt folosite de această instalare portabilă. Le puteți elimina manual dacă nu aveți nevoie de ele.",
-                "openFolder": "Deschideți folderul de date",
+                "title": "Mod portabil: acest folder conține toate datele tale AeroFTP",
+                "body": "Fiecare instalare portabilă este complet autonomă: serverele salvate, AeroVault, conversațiile AI și preferințele se află toate lângă AeroFTP.exe. Începând cu v3.7.8, două foldere portabile pe același PC sunt complet independente. Ștergerea unui profil dintr-un folder nu mai afectează celălalt folder.",
+                "legacyWarning": "Am detectat date rămase de la o instalare partajată anterioară în %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Acestea nu mai sunt folosite de această instalare portabilă. Le poți elimina manual dacă nu îți sunt necesare.",
+                "openFolder": "Deschide folderul de date",
                 "dismiss": "Am înțeles"
             }
         }

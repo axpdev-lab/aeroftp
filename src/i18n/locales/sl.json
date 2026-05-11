@@ -960,10 +960,10 @@
             "themeGreenLabel": "Zelena",
             "themeGreenDesc": "Gozdna paleta, navdihnjena z naravo, za ljubitelje zelene",
             "keystoreExportModeTitle": "Kaj vključiti v varnostno kopijo",
-            "keystoreExportModeFull": "Polna varnostna kopija (priporočeno)",
-            "keystoreExportModeFullDesc": "Poverilnice trezorja, zgodovina klepetov UI, pomnilnik agenta, oznake datotek, nameščeni vtičniki, posnetki sinhronizacije in shranjene nastavitve. Celotno stanje aplikacije v eni šifrirani datoteki.",
-            "keystoreExportModeVaultOnly": "Samo trezor (zapuščeno)",
-            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane poverilnice in profili strežnikov. Manjše, hitrejše, enako izvozom pred v3.7.8. Uporabno pri selitvi strežnikov med računalniki, ne da bi vlekli s seboj zgodovino klepetov."
+            "keystoreExportModeFull": "Popoln backup (priporočeno)",
+            "keystoreExportModeFullDesc": "Poverilnice trezorja, zgodovina AI klepetov, spomin agenta, oznake datotek, nameščeni plugini, posnetki sinhronizacije in shranjene nastavitve. Celotno stanje aplikacije v eni šifrirani datoteki.",
+            "keystoreExportModeVaultOnly": "Samo trezor (zastarelo)",
+            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane poverilnice in profili strežnikov. Manjši, hitrejši, enak izvozom pred v3.7.8. Uporabno pri selitvi strežnikov med računalniki brez prenosa zgodovine klepetov."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4414,9 +4414,9 @@
         "portable": {
             "banner": {
                 "title": "Prenosni način: ta mapa vsebuje vse vaše podatke AeroFTP",
-                "body": "Vsaka prenosna namestitev je popolnoma samostojna: shranjeni strežniki, AeroVault, klepeti UI in nastavitve so vsi poleg AeroFTP.exe. Od v3.7.8 naprej sta dve prenosni mapi na istem računalniku popolnoma neodvisni: brisanje profila v eni mapi ne vpliva več na drugo.",
-                "legacyWarning": "Zaznali smo preostale podatke iz prejšnje skupne namestitve v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ta prenosna namestitev jih ne uporablja več. Lahko jih ročno odstranite, če jih ne potrebujete.",
-                "openFolder": "Odpri mapo podatkov",
+                "body": "Vsaka prenosna namestitev je popolnoma samostojna: shranjeni strežniki, AeroVault, AI klepeti in nastavitve so vsi poleg datoteke AeroFTP.exe. Od različice v3.7.8 sta dve prenosni mapi na istem računalniku popolnoma neodvisni. Izbris profila v eni mapi ne vpliva več na drugo.",
+                "legacyWarning": "Zaznali smo preostale podatke iz prejšnje skupne namestitve v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ta prenosna namestitev jih ne uporablja več. Če jih ne potrebujete, jih lahko ročno odstranite.",
+                "openFolder": "Odpri mapo s podatki",
                 "dismiss": "Razumem"
             }
         }

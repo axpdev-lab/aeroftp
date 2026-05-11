@@ -961,9 +961,9 @@
             "themeGreenDesc": "Paleta florestal inspirada na natureza para amantes do verde",
             "keystoreExportModeTitle": "O que incluir no backup",
             "keystoreExportModeFull": "Backup completo (recomendado)",
-            "keystoreExportModeFullDesc": "Credenciais do vault, histórico de chat de IA, memória do agente, etiquetas de arquivos, plugins instalados, snapshots de sincronização e preferências salvas. O estado completo da aplicação em um único arquivo criptografado.",
-            "keystoreExportModeVaultOnly": "Apenas vault (legado)",
-            "keystoreExportModeVaultOnlyDesc": "Apenas as credenciais criptografadas e perfis de servidor. Menor, mais rápido, idêntico às exportações anteriores à v3.7.8. Útil para migrar servidores entre máquinas sem arrastar o histórico de chat junto."
+            "keystoreExportModeFullDesc": "Credenciais do cofre, histórico de conversas da AI, memória do agente, tags de arquivos, plugins instalados, snapshots de sincronização e preferências salvas. O estado completo da aplicação em um único arquivo criptografado.",
+            "keystoreExportModeVaultOnly": "Apenas cofre (legado)",
+            "keystoreExportModeVaultOnlyDesc": "Apenas as credenciais criptografadas e os perfis de servidor. Menor, mais rápido, idêntico às exportações anteriores à v3.7.8. Útil ao migrar servidores entre máquinas sem levar junto o histórico de conversas."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4404,7 +4404,7 @@
         "portable": {
             "banner": {
                 "title": "Modo portátil: esta pasta contém todos os seus dados do AeroFTP",
-                "body": "Cada instalação portátil é totalmente autônoma: servidores salvos, AeroVault, chats de IA e preferências ficam todos ao lado do AeroFTP.exe. A partir da v3.7.8, duas pastas portáteis no mesmo PC são totalmente independentes: excluir um perfil em uma pasta não afeta mais a outra.",
+                "body": "Cada instalação portátil é totalmente autocontida: servidores salvos, AeroVault, conversas com a AI e preferências ficam todos ao lado do AeroFTP.exe. A partir da v3.7.8, duas pastas portáteis no mesmo PC são completamente independentes. Excluir um perfil em uma pasta não afeta mais a outra.",
                 "legacyWarning": "Detectamos dados residuais de uma instalação compartilhada anterior em %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Eles não são mais usados por esta instalação portátil. Você pode removê-los manualmente se não precisar deles.",
                 "openFolder": "Abrir pasta de dados",
                 "dismiss": "Entendi"

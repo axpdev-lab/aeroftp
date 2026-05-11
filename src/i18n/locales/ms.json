@@ -961,9 +961,9 @@
             "themeGreenDesc": "Palet hutan diinspirasikan alam untuk pencinta hijau",
             "keystoreExportModeTitle": "Apa yang hendak disertakan dalam sandaran",
             "keystoreExportModeFull": "Sandaran penuh (disyorkan)",
-            "keystoreExportModeFullDesc": "Kelayakan vault, sejarah sembang AI, ingatan ejen, tag fail, pemalam yang dipasang, snapshot penyegerakan, dan keutamaan yang disimpan. Keadaan aplikasi yang lengkap dalam satu fail yang disulitkan.",
-            "keystoreExportModeVaultOnly": "Vault sahaja (legasi)",
-            "keystoreExportModeVaultOnlyDesc": "Hanya kelayakan yang disulitkan dan profil pelayan. Lebih kecil, lebih pantas, sama seperti eksport sebelum v3.7.8. Berguna semasa memindahkan pelayan antara mesin tanpa membawa sejarah sembang bersama."
+            "keystoreExportModeFullDesc": "Kelayakan peti besi, sejarah sembang AI, memori ejen, tag fail, plugin yang dipasang, snapshot penyegerakan dan keutamaan tersimpan. Keadaan aplikasi yang lengkap dalam satu fail tersulit.",
+            "keystoreExportModeVaultOnly": "Peti besi sahaja (warisan)",
+            "keystoreExportModeVaultOnlyDesc": "Hanya kelayakan tersulit dan profil pelayan. Lebih kecil, lebih pantas, sama dengan eksport sebelum v3.7.8. Berguna semasa memindahkan pelayan antara mesin tanpa membawa sejarah sembang."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4414,8 +4414,8 @@
         "portable": {
             "banner": {
                 "title": "Mod mudah alih: folder ini menyimpan semua data AeroFTP anda",
-                "body": "Setiap pemasangan mudah alih adalah sepenuhnya berdiri sendiri: pelayan yang disimpan, AeroVault, sembang AI dan keutamaan semuanya tinggal di sebelah AeroFTP.exe. Bermula dari v3.7.8, dua folder mudah alih pada PC yang sama adalah sepenuhnya bebas: memadam profil dalam satu folder tidak lagi menjejaskan yang lain.",
-                "legacyWarning": "Kami mengesan data yang tertinggal daripada pemasangan kongsi sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ia tidak lagi digunakan oleh pemasangan mudah alih ini. Anda boleh mengeluarkannya secara manual jika anda tidak memerlukannya.",
+                "body": "Setiap pemasangan mudah alih adalah sepenuhnya berdikari: pelayan tersimpan, AeroVault, sembang AI dan keutamaan semuanya berada di sebelah AeroFTP.exe. Bermula dari v3.7.8, dua folder mudah alih pada PC yang sama adalah bebas sepenuhnya, memadam profil dalam satu folder tidak lagi menjejaskan folder yang lain.",
+                "legacyWarning": "Kami mengesan data yang tertinggal dari pemasangan bersama sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ia tidak lagi digunakan oleh pemasangan mudah alih ini. Anda boleh memadamnya secara manual jika tidak diperlukan.",
                 "openFolder": "Buka folder data",
                 "dismiss": "Faham"
             }

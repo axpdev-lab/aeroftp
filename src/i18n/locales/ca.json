@@ -961,9 +961,9 @@
             "themeGreenDesc": "Paleta forestal inspirada en la natura per als amants del verd",
             "keystoreExportModeTitle": "Què incloure a la còpia de seguretat",
             "keystoreExportModeFull": "Còpia de seguretat completa (recomanat)",
-            "keystoreExportModeFullDesc": "Credencials del vault, historial de xat d'IA, memòria de l'agent, etiquetes de fitxers, connectors instal·lats, instantànies de sincronització i preferències desades. L'estat complet de l'aplicació en un sol fitxer xifrat.",
-            "keystoreExportModeVaultOnly": "Només vault (heretat)",
-            "keystoreExportModeVaultOnlyDesc": "Només les credencials xifrades i els perfils de servidor. Més petit, més ràpid, idèntic a les exportacions anteriors a v3.7.8. Útil per migrar servidors entre màquines sense arrossegar l'historial de xat."
+            "keystoreExportModeFullDesc": "Credencials de la caixa forta, historial de xats d'AI, memòria de l'agent, etiquetes de fitxers, plugins instal·lats, instantànies de sincronització i preferències desades. L'estat complet de l'aplicació en un únic fitxer xifrat.",
+            "keystoreExportModeVaultOnly": "Només la caixa forta (heretat)",
+            "keystoreExportModeVaultOnlyDesc": "Només les credencials xifrades i els perfils de servidor. Més petit, més ràpid, idèntic a les exportacions anteriors a la v3.7.8. Útil per migrar servidors entre màquines sense arrossegar l'historial de xats."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4432,8 +4432,8 @@
         },
         "portable": {
             "banner": {
-                "title": "Mode portàtil: aquesta carpeta conté totes les vostres dades d'AeroFTP",
-                "body": "Cada instal·lació portàtil és completament autònoma: servidors desats, AeroVault, xats d'IA i preferències viuen al costat d'AeroFTP.exe. A partir de v3.7.8, dues carpetes portàtils al mateix PC són completament independents: eliminar un perfil en una carpeta ja no afecta l'altra.",
+                "title": "Mode portàtil: aquesta carpeta conté totes les dades d'AeroFTP",
+                "body": "Cada instal·lació portàtil és completament autònoma: els servidors desats, AeroVault, els xats d'AI i les preferències es troben al costat d'AeroFTP.exe. A partir de la v3.7.8, dues carpetes portàtils al mateix ordinador són totalment independents: eliminar un perfil en una carpeta ja no afecta l'altra.",
                 "legacyWarning": "Hem detectat dades residuals d'una instal·lació compartida anterior a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ja no s'utilitzen en aquesta instal·lació portàtil. Podeu eliminar-les manualment si no les necessiteu.",
                 "openFolder": "Obre la carpeta de dades",
                 "dismiss": "Entesos"

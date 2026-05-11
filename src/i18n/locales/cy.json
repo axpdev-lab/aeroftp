@@ -961,9 +961,9 @@
             "themeGreenDesc": "Palet coedwig wedi'i ysbrydoli gan natur i garwyr y gwyrdd",
             "keystoreExportModeTitle": "Beth i'w gynnwys yn y copi wrth gefn",
             "keystoreExportModeFull": "Copi wrth gefn llawn (argymhellir)",
-            "keystoreExportModeFullDesc": "Cyfrinachau'r gladdgell, hanes sgwrs AI, cof yr asiant, tagiau ffeil, ategion sydd wedi'u gosod, ciplun cydamseru, a dewisiadau wedi'u cadw. Cyflwr cyflawn y rhaglen mewn un ffeil wedi'i hamgryptio.",
+            "keystoreExportModeFullDesc": "Manylion mewngofnodi'r gladdgell, hanes sgyrsiau AI, cof yr asiant, tagiau ffeiliau, ategion wedi'u gosod, ciplluniau cydamseru a dewisiadau sydd wedi'u cadw. Cyflwr cyflawn y rhaglen mewn un ffeil wedi'i hamgryptio.",
             "keystoreExportModeVaultOnly": "Claddgell yn unig (etifeddol)",
-            "keystoreExportModeVaultOnlyDesc": "Dim ond y cyfrinachau wedi'u hamgryptio a phroffiliau gweinydd. Llai, cyflymach, yn union fel allforion cyn v3.7.8. Defnyddiol wrth fudo gweinyddwyr rhwng peiriannau heb lusgo hanes y sgwrs ar eich ôl."
+            "keystoreExportModeVaultOnlyDesc": "Dim ond y manylion mewngofnodi wedi'u hamgryptio a phroffiliau'r gweinyddion. Llai, cyflymach, yr un fath ag allforion cyn v3.7.8. Defnyddiol wrth fudo gweinyddion rhwng peiriannau heb lusgo hanes sgyrsiau gyda chi."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4433,10 +4433,10 @@
         "portable": {
             "banner": {
                 "title": "Modd cludadwy: mae'r ffolder hon yn dal eich holl ddata AeroFTP",
-                "body": "Mae pob gosodiad cludadwy yn hollol hunangynhwysol: gweinyddwyr wedi'u cadw, AeroVault, sgyrsiau AI a dewisiadau i gyd yn byw wrth ymyl AeroFTP.exe. O v3.7.8 ymlaen, mae dwy ffolder gludadwy ar yr un PC yn gwbl annibynnol: nid yw dileu proffil mewn un ffolder bellach yn effeithio ar y llall.",
-                "legacyWarning": "Rydym wedi canfod data dros ben o osodiad a rennir blaenorol yn %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nid yw'r gosodiad cludadwy hwn yn ei ddefnyddio mwyach. Gallwch ei dynnu â llaw os nad oes ei angen arnoch.",
-                "openFolder": "Agor ffolder data",
-                "dismiss": "Iawn"
+                "body": "Mae pob gosodiad cludadwy yn gwbl hunangynhwysol: mae'r gweinyddion sydd wedi'u cadw, AeroVault, sgyrsiau AI a dewisiadau i gyd yn byw wrth ymyl AeroFTP.exe. O v3.7.8 ymlaen, mae dau ffolder cludadwy ar yr un cyfrifiadur yn gwbl annibynnol: nid yw dileu proffil mewn un ffolder yn effeithio ar y llall mwyach.",
+                "legacyWarning": "Rydym wedi canfod data sy'n weddill o osodiad a rennir blaenorol yn %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nid yw'r gosodiad cludadwy hwn yn ei ddefnyddio mwyach. Gallwch ei dynnu â llaw os nad oes ei angen arnoch.",
+                "openFolder": "Agor y ffolder data",
+                "dismiss": "Iawn, deallaf"
             }
         }
     }

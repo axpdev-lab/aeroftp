@@ -960,10 +960,10 @@
             "themeGreenLabel": "Zelená",
             "themeGreenDesc": "Lesná paleta inšpirovaná prírodou pre milovníkov zelenej",
             "keystoreExportModeTitle": "Čo zahrnúť do zálohy",
-            "keystoreExportModeFull": "Úplná záloha (odporúčané)",
-            "keystoreExportModeFullDesc": "Prihlasovacie údaje trezora, história AI chatu, pamäť agenta, štítky súborov, nainštalované doplnky, snímky synchronizácie a uložené preferencie. Kompletný stav aplikácie v jednom šifrovanom súbore.",
-            "keystoreExportModeVaultOnly": "Iba trezor (staršie)",
-            "keystoreExportModeVaultOnlyDesc": "Iba šifrované prihlasovacie údaje a profily serverov. Menšie, rýchlejšie, totožné s exportmi pred v3.7.8. Užitočné pri migrácii serverov medzi počítačmi bez vlečenia histórie chatu so sebou."
+            "keystoreExportModeFull": "Úplný backup (odporúčané)",
+            "keystoreExportModeFullDesc": "Prihlasovacie údaje trezoru, história AI konverzácií, pamäť agenta, značky súborov, nainštalované pluginy, snímky synchronizácie a uložené predvoľby. Kompletný stav aplikácie v jednom šifrovanom súbore.",
+            "keystoreExportModeVaultOnly": "Iba trezor (legacy)",
+            "keystoreExportModeVaultOnlyDesc": "Iba šifrované prihlasovacie údaje a profily serverov. Menší, rýchlejší, identický s exportmi pred v3.7.8. Užitočné pri migrácii serverov medzi počítačmi bez prenášania histórie konverzácií."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4413,10 +4413,10 @@
         },
         "portable": {
             "banner": {
-                "title": "Prenosný režim: tento priečinok obsahuje všetky vaše údaje AeroFTP",
-                "body": "Každá prenosná inštalácia je plne samostatná: uložené servery, AeroVault, AI chaty a preferencie sa nachádzajú vedľa AeroFTP.exe. Od v3.7.8 sú dva prenosné priečinky v rovnakom PC úplne nezávislé: odstránenie profilu v jednom priečinku už neovplyvňuje druhý.",
-                "legacyWarning": "Zistili sme zvyšné údaje z predchádzajúcej zdieľanej inštalácie v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Táto prenosná inštalácia ich už nepoužíva. Ak ich nepotrebujete, môžete ich manuálne odstrániť.",
-                "openFolder": "Otvoriť priečinok údajov",
+                "title": "Prenosný režim: tento priečinok obsahuje všetky vaše dáta AeroFTP",
+                "body": "Každá prenosná inštalácia je plne sebestačná: uložené servery, AeroVault, AI konverzácie a predvoľby sa nachádzajú vedľa súboru AeroFTP.exe. Od verzie v3.7.8 sú dva prenosné priečinky na tom istom PC úplne nezávislé. Vymazanie profilu v jednom priečinku už neovplyvňuje druhý.",
+                "legacyWarning": "Zistili sme zvyšné dáta z predchádzajúcej zdieľanej inštalácie v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Táto prenosná inštalácia ich už nepoužíva. Ak ich nepotrebujete, môžete ich odstrániť manuálne.",
+                "openFolder": "Otvoriť priečinok s dátami",
                 "dismiss": "Rozumiem"
             }
         }

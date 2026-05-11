@@ -961,9 +961,9 @@
             "themeGreenDesc": "Šumska paleta nadahnuta prirodom za ljubitelje zelenog",
             "keystoreExportModeTitle": "Što uključiti u sigurnosnu kopiju",
             "keystoreExportModeFull": "Potpuna sigurnosna kopija (preporučeno)",
-            "keystoreExportModeFullDesc": "Vjerodajnice trezora, povijest AI razgovora, memorija agenta, oznake datoteka, instalirani dodaci, snimke sinkronizacije i spremljene postavke. Cjelovito stanje aplikacije u jednoj šifriranoj datoteci.",
-            "keystoreExportModeVaultOnly": "Samo trezor (naslijeđeno)",
-            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane vjerodajnice i profili poslužitelja. Manja, brža, identična izvozima prije v3.7.8. Korisno pri migraciji poslužitelja između strojeva bez vučenja povijesti razgovora sa sobom."
+            "keystoreExportModeFullDesc": "Vjerodajnice trezora, povijest AI razgovora, memorija agenta, oznake datoteka, instalirani pluginovi, snimke sinkronizacije i spremljene postavke. Cjelokupno stanje aplikacije u jednoj šifriranoj datoteci.",
+            "keystoreExportModeVaultOnly": "Samo trezor (zastarjelo)",
+            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane vjerodajnice i profili poslužitelja. Manji, brži, identičan izvozima prije verzije v3.7.8. Korisno pri seljenju poslužitelja između računala bez prenošenja povijesti razgovora."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4414,10 +4414,10 @@
         "portable": {
             "banner": {
                 "title": "Prijenosni način rada: ova mapa sadrži sve vaše AeroFTP podatke",
-                "body": "Svaka prijenosna instalacija potpuno je samostalna: spremljeni poslužitelji, AeroVault, AI razgovori i postavke žive uz AeroFTP.exe. Od v3.7.8 nadalje, dvije prijenosne mape na istom računalu potpuno su neovisne: brisanje profila u jednoj mapi više ne utječe na drugu.",
-                "legacyWarning": "Otkrili smo preostale podatke iz prethodne dijeljene instalacije na %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ova ih prijenosna instalacija više ne koristi. Možete ih ručno ukloniti ako vam ne trebaju.",
-                "openFolder": "Otvori mapu podataka",
-                "dismiss": "Razumijem"
+                "body": "Svaka prijenosna instalacija je potpuno samostalna: spremljeni poslužitelji, AeroVault, AI razgovori i postavke nalaze se uz AeroFTP.exe. Od verzije v3.7.8 nadalje, dvije prijenosne mape na istom računalu potpuno su neovisne, brisanje profila u jednoj mapi više ne utječe na drugu.",
+                "legacyWarning": "Otkrili smo preostale podatke iz prethodne dijeljene instalacije na %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ova prijenosna instalacija ih više ne koristi. Možete ih ručno ukloniti ako vam nisu potrebni.",
+                "openFolder": "Otvori mapu s podacima",
+                "dismiss": "U redu"
             }
         }
     }
