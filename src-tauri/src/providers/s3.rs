@@ -2445,6 +2445,29 @@ impl StorageProvider for S3Provider {
     // with pay-per-use pricing. There is no API to query "used/total" space for a bucket.
     // CloudWatch metrics (BucketSizeBytes) are delayed by ~24h and require separate permissions.
     // Returning NotSupported is the correct behavior for S3.
+    //
+    // Filen Desktop's local S3 bridge is an exception worth surfacing explicitly: users
+    // who attached AeroFTP through the local S3 endpoint expect to see the same quota
+    // bar they get on the native Filen API and WebDAV bridges, but the local S3 bridge
+    // simply does not expose any "used / available" pair through S3 verbs (HeadBucket
+    // returns no quota headers, no proprietary GET endpoint is published, and querying
+    // the cloud Filen API would require the account password / API key which the S3
+    // attachment never collects). The override below catches the Filen S3 case and
+    // returns a precise, user-facing message pointing at the native API / WebDAV
+    // attachments rather than the generic `NotSupported("storage_info")` placeholder.
+    // Issue #128 follow-up.
+    async fn storage_info(&mut self) -> Result<super::StorageInfo, ProviderError> {
+        if self.is_filen_s3_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Filen Desktop's local S3 bridge does not expose storage quota over S3. \
+                 Connect to the same Filen account through the native Filen API or the \
+                 WebDAV bridge to see the used/total bar; the S3 attachment is intended \
+                 for raw object access without quota reporting."
+                    .to_string(),
+            ));
+        }
+        Err(ProviderError::NotSupported("storage_info".to_string()))
+    }
 
     fn supports_share_links(&self) -> bool {
         true
@@ -2734,7 +2757,16 @@ impl StorageProvider for S3Provider {
 
         let from_key = from.trim_start_matches('/');
         let to_key = to.trim_start_matches('/');
-        let copy_source = format!("/{}/{}", self.config.bucket, from_key);
+        // Issue #128 follow-up: `x-amz-copy-source` must be percent-encoded
+        // the same way the destination URL is encoded under `build_url`,
+        // otherwise SigV4 canonicalisation reconstructs a different wire
+        // path from the (lenient) request and the bridge returns
+        // `401 SignatureDoesNotMatch`. Filen Desktop's local S3 bridge is
+        // strict about this: any space, emoji or RFC-3986 reserved char in
+        // the source key triggered the mismatch on rename / move. AWS and
+        // MinIO tolerated the unencoded form, which is why this went
+        // unnoticed until the Filen reproduction.
+        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
 
         let url = self.build_url(to_key);
 
@@ -3127,11 +3159,15 @@ impl StorageProvider for S3Provider {
         }
 
         let key = path.trim_start_matches('/');
-        // Restore by copying the old version to itself
+        // Restore by copying the old version to itself. `encode_s3_key_path`
+        // preserves slashes (unlike `urlencoding::encode` which encodes
+        // them as `%2F`), so a nested key survives the copy-source
+        // canonicalisation that strict S3 bridges (Filen Desktop local
+        // bridge, in particular) perform during SigV4 verification.
         let copy_source = format!(
             "/{}/{}?versionId={}",
             self.config.bucket,
-            urlencoding::encode(key),
+            encode_s3_key_path(key),
             urlencoding::encode(version_id)
         );
 
@@ -3193,7 +3229,9 @@ impl S3Provider {
             return Err(ProviderError::NotConnected);
         }
         let key = path.trim_start_matches('/');
-        let copy_source = format!("/{}/{}", self.config.bucket, urlencoding::encode(key));
+        // Slashes preserved via encode_s3_key_path; see server_copy /
+        // restore_version for the same rationale.
+        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(key));
         let url = self.build_url(key);
 
         use sha2::{Digest, Sha256};
