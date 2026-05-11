@@ -178,7 +178,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Info,
   Lock, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft
+  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2
 } from 'lucide-react';
 
 /**
@@ -318,6 +318,7 @@ import { useTransferEvents } from './hooks/useTransferEvents';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useFileTags } from './hooks/useFileTags';
 import { useFaviconDetection } from './hooks/useFaviconDetection';
+import { useLocalPanel } from './hooks/useLocalPanel';
 
 // ============================================================================
 // Main App Component
@@ -481,9 +482,53 @@ const App: React.FC = () => {
   // Provider capabilities (cached per session)
   const [providerCaps, setProviderCaps] = useState<{ versions: boolean; thumbnails: boolean; permissions: boolean; locking: boolean }>({ versions: false, thumbnails: false, permissions: false, locking: false });
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
-  const [localFiles, setLocalFiles] = useState<LocalFile[]>([]);
+  const localPanel = useLocalPanel({ panelId: 'local' });
+  const localPanel2 = useLocalPanel({ panelId: 'local2' });
+  const {
+    files: localFiles,
+    setFiles: setLocalFiles,
+    currentPath: currentLocalPath,
+    setCurrentPath: setCurrentLocalPath,
+    selectedFiles: selectedLocalFiles,
+    setSelectedFiles: setSelectedLocalFiles,
+    lastSelectedIndex: lastSelectedLocalIndex,
+    setLastSelectedIndex: setLastSelectedLocalIndex,
+    tabs: localTabs,
+    setTabs: setLocalTabs,
+    activeTabId: activeLocalTabId,
+    setActiveTabId: setActiveLocalTabId,
+    searchFilter: localSearchFilter,
+    setSearchFilter: setLocalSearchFilter,
+    showSearchBar: showLocalSearchBar,
+    setShowSearchBar: setShowLocalSearchBar,
+    searchRef: localSearchRef,
+    flattenedFiles: localFlattenedFiles,
+    setFlattenedFiles: setLocalFlattenedFiles,
+    flattenScanning: localFlattenScanning,
+    setFlattenScanning: setLocalFlattenScanning,
+    flattenTruncated: localFlattenTruncated,
+    setFlattenTruncated: setLocalFlattenTruncated,
+  } = localPanel;
+  const {
+    files: localFiles2,
+    setFiles: setLocalFiles2,
+    currentPath: currentLocalPath2,
+    setCurrentPath: setCurrentLocalPath2,
+    selectedFiles: selectedLocalFiles2,
+    setSelectedFiles: setSelectedLocalFiles2,
+    lastSelectedIndex: lastSelectedLocalIndex2,
+    setLastSelectedIndex: setLastSelectedLocalIndex2,
+    tabs: localTabs2,
+    setTabs: setLocalTabs2,
+    activeTabId: activeLocalTabId2,
+    setActiveTabId: setActiveLocalTabId2,
+    searchFilter: localSearchFilter2,
+    setSearchFilter: setLocalSearchFilter2,
+    showSearchBar: showLocalSearchBar2,
+    setShowSearchBar: setShowLocalSearchBar2,
+    searchRef: localSearchRef2,
+  } = localPanel2;
   const [currentRemotePath, setCurrentRemotePath] = useState('/');
-  const [currentLocalPath, setCurrentLocalPath] = useState('');
   const [connectionParams, setConnectionParams] = useState<ConnectionParams>({ server: '', username: '', password: '' });
   const [quickConnectDirs, setQuickConnectDirs] = useState({ remoteDir: '', localDir: '' });
   const [loading, setLoading] = useState(false);
@@ -513,10 +558,8 @@ const App: React.FC = () => {
   const remoteSortOrder: SortOrder = remoteColumns.config.sort?.dir ?? 'asc';
   const localSortField: SortField = (localColumns.config.sort?.colId ?? 'name') as SortField;
   const localSortOrder: SortOrder = localColumns.config.sort?.dir ?? 'asc';
-  const [selectedLocalFiles, setSelectedLocalFiles] = useState<Set<string>>(new Set());
   const [selectedRemoteFiles, setSelectedRemoteFiles] = useState<Set<string>>(new Set());
   const [lastSelectedRemoteIndex, setLastSelectedRemoteIndex] = useState<number | null>(null);
-  const [lastSelectedLocalIndex, setLastSelectedLocalIndex] = useState<number | null>(null);
   // Refs for keyboard navigation (sorted arrays defined later via useMemo)
   const sortedLocalFilesRef = useRef<LocalFile[]>([]);
   const sortedRemoteFilesRef = useRef<RemoteFile[]>([]);
@@ -721,6 +764,7 @@ const App: React.FC = () => {
   const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
   // AeroFile sidebar state (persisted in localStorage)
   const [showSidebar, setShowSidebar] = useState(() => localStorage.getItem('aerofile_show_sidebar') !== 'false');
+  const [showDualLocalPanel, setShowDualLocalPanel] = useState(() => localStorage.getItem('aerofile_dual_panel') === 'true');
   const toggleSidebar = useCallback(() => {
     setShowSidebar(prev => {
       const next = !prev;
@@ -755,19 +799,6 @@ const App: React.FC = () => {
   // Duplicate Finder & Disk Usage dialogs
   const [duplicateFinderPath, setDuplicateFinderPath] = useState<string | null>(null);
   const [diskUsagePath, setDiskUsagePath] = useState<string | null>(null);
-
-  // Local Path Tabs (AeroFile multi-tab browsing)
-  const [localTabs, setLocalTabs] = useState<LocalTab[]>(() => {
-    try {
-      const stored = localStorage.getItem('aerofile_local_tabs');
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
-  });
-  const [activeLocalTabId, setActiveLocalTabId] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('aerofile_active_tab') || null;
-    } catch { return null; }
-  });
 
   // File Tags (Finder-style color labels)
   const fileTags = useFileTags();
@@ -811,8 +842,6 @@ const App: React.FC = () => {
   const [batchPauseReason, setBatchPauseReason] = React.useState<string | null>(null);
   const batchResumeResolverRef = React.useRef<((action: 'resume' | 'cancel') => void) | null>(null);
 
-  const localSearchRef = React.useRef<HTMLInputElement>(null);
-
   // Race condition guard for loadLocalFiles: increments on each call,
   // stale responses are discarded when callId !== current counter value.
   const loadLocalCallIdRef = React.useRef(0);
@@ -831,14 +860,9 @@ const App: React.FC = () => {
   // Force stop mode: soft cancel was pressed, current file still transferring
   const isForceStopMode = cancelLevelRef.current === 1 && transferQueue.items.some(i => i.status === 'transferring');
 
-  const [localSearchFilter, setLocalSearchFilter] = useState('');
-  const [showLocalSearchBar, setShowLocalSearchBar] = useState(false);
   // T-FLATTEN-DESCENDANTS: typing `*` or `**` (alone, or followed by a name
   // filter) flattens the entire subtree under currentLocalPath. We keep the
   // result separate from `localFiles` so leaving flatten mode is instant.
-  const [localFlattenedFiles, setLocalFlattenedFiles] = useState<LocalFile[] | null>(null);
-  const [localFlattenScanning, setLocalFlattenScanning] = useState(false);
-  const [localFlattenTruncated, setLocalFlattenTruncated] = useState(false);
   const insecureCertPreviouslyEnabledRef = useRef(false);
 
   const t = useTranslation();
@@ -1260,6 +1284,14 @@ interface UpdateVerificationInfo {
     viewMode, setViewMode,
   } = preview;
   const [devToolsMaximized, setDevToolsMaximized] = useState(false);
+  const toggleDualLocalPanel = useCallback(() => {
+    setShowDualLocalPanel(prev => {
+      const next = !prev;
+      localStorage.setItem('aerofile_dual_panel', String(next));
+      if (next) setShowLocalPreview(false);
+      return next;
+    });
+  }, [setShowLocalPreview]);
 
   // T-FLATTEN-DESCENDANTS: parse the search filter and detect flatten intent.
   // Forms accepted: `*`, `**`, `* foo`, `** foo`. Anything else falls back to
@@ -1346,6 +1378,11 @@ interface UpdateVerificationInfo {
     'Ctrl+Shift+L': () => setShowActivityLog(v => !v),
     'Ctrl+Shift+M': () => setShowDebugPanel(v => !v),
     'Ctrl+T': cycleTheme,
+    'Ctrl+Shift+D': () => {
+      if (!isConnected || !showRemotePanel) {
+        toggleDualLocalPanel();
+      }
+    },
     // Toggle the My Servers card density. The detailed variant runs
     // per-server health probes at render time, so it stays explicitly
     // opt-in (default install resolves to compact). Mirrors the View
@@ -1672,7 +1709,7 @@ interface UpdateVerificationInfo {
     }
   }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
     universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, remoteFiles, localFiles,
-    activePanel, currentRemotePath, currentLocalPath, isConnected, cardLayout, toggleCardLayout]);
+    activePanel, currentRemotePath, currentLocalPath, isConnected, showRemotePanel, cardLayout, toggleCardLayout, toggleDualLocalPanel]);
 
 
   // Persist last known quota to the saved server profile (best-effort) so the
@@ -1879,6 +1916,12 @@ interface UpdateVerificationInfo {
     return sortFiles(source, remoteSortField, remoteSortOrder);
   }, [remoteFiles, remoteSearchResults, remoteSearchQuery, remoteSortField, remoteSortOrder, sortFiles]);
   const sortedLocalFiles = useMemo(() => sortFiles(filteredLocalFiles, localSortField, localSortOrder), [filteredLocalFiles, localSortField, localSortOrder, sortFiles]);
+  const filteredLocalFiles2 = useMemo(() => {
+    const q = localSearchFilter2.trim().toLowerCase();
+    if (!q) return localFiles2;
+    return localFiles2.filter(f => f.name.toLowerCase().includes(q));
+  }, [localFiles2, localSearchFilter2]);
+  const sortedLocalFiles2 = useMemo(() => sortFiles(filteredLocalFiles2, localSortField, localSortOrder), [filteredLocalFiles2, localSortField, localSortOrder, sortFiles]);
   // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
   sortedLocalFilesRef.current = sortedLocalFiles;
   sortedRemoteFilesRef.current = sortedRemoteFiles;
@@ -1911,6 +1954,12 @@ interface UpdateVerificationInfo {
   useEffect(() => {
     if (activeLocalTabId) localStorage.setItem('aerofile_active_tab', activeLocalTabId);
   }, [activeLocalTabId]);
+  useEffect(() => {
+    localStorage.setItem('aerofile_local_tabs_2', JSON.stringify(localTabs2));
+  }, [localTabs2]);
+  useEffect(() => {
+    if (activeLocalTabId2) localStorage.setItem('aerofile_active_tab_2', activeLocalTabId2);
+  }, [activeLocalTabId2]);
 
   const createLocalTab = useCallback(async () => {
     if (localTabs.length >= 12) return;
@@ -2362,6 +2411,85 @@ interface UpdateVerificationInfo {
       return false;
     }
   }, [showHiddenFiles, notify, t]);
+
+  const loadLocalFiles2 = useCallback(async (path: string): Promise<boolean> => {
+    try {
+      const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
+      setLocalFiles2(files);
+      setCurrentLocalPath2(path);
+      setSelectedLocalFiles2(new Set());
+      return true;
+    } catch (error) {
+      notify.error(t('common.error'), `Failed to list local files: ${error}`);
+      return false;
+    }
+  }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
+
+  const changeLocalDirectory2 = useCallback(async (path: string) => {
+    await loadLocalFiles2(path);
+  }, [loadLocalFiles2]);
+
+  const createLocalTab2 = useCallback(async () => {
+    if (localTabs2.length >= 12) return;
+    const home = await homeDir().catch(() => '/');
+    const id = `tab2-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const label = home.split(/[\\/]/).filter(Boolean).pop() || '/';
+    const newTab: LocalTab = { id, path: home, label, scrollTop: 0 };
+    setLocalTabs2(prev => [...prev, newTab]);
+    setActiveLocalTabId2(id);
+    await changeLocalDirectory2(home);
+  }, [localTabs2.length, changeLocalDirectory2, setLocalTabs2, setActiveLocalTabId2]);
+
+  const switchLocalTab2 = useCallback((tabId: string) => {
+    if (activeLocalTabId2) {
+      setLocalTabs2(prev => prev.map(tab =>
+        tab.id === activeLocalTabId2 ? { ...tab, path: currentLocalPath2, label: currentLocalPath2.split(/[\\/]/).filter(Boolean).pop() || '/' } : tab
+      ));
+    }
+    const target = localTabs2.find(t => t.id === tabId);
+    if (target) {
+      setActiveLocalTabId2(tabId);
+      changeLocalDirectory2(target.path);
+    }
+  }, [activeLocalTabId2, currentLocalPath2, localTabs2, changeLocalDirectory2, setLocalTabs2, setActiveLocalTabId2]);
+
+  const closeLocalTab2 = useCallback((tabId: string) => {
+    setLocalTabs2(prev => {
+      const idx = prev.findIndex(t => t.id === tabId);
+      const next = prev.filter(t => t.id !== tabId);
+      if (tabId === activeLocalTabId2 && next.length > 0) {
+        const newIdx = Math.min(idx, next.length - 1);
+        setActiveLocalTabId2(next[newIdx].id);
+        changeLocalDirectory2(next[newIdx].path);
+      } else if (next.length === 0) {
+        setActiveLocalTabId2(null);
+      }
+      return next;
+    });
+  }, [activeLocalTabId2, changeLocalDirectory2, setLocalTabs2, setActiveLocalTabId2]);
+
+  useEffect(() => {
+    if (!showDualLocalPanel || currentLocalPath2) return;
+    const seedPath = currentLocalPath || defaultLocalPath || '/';
+    void loadLocalFiles2(seedPath);
+  }, [showDualLocalPanel, currentLocalPath2, currentLocalPath, defaultLocalPath, loadLocalFiles2]);
+
+  useEffect(() => {
+    if (!showDualLocalPanel || !currentLocalPath2 || localTabs2.length > 0) return;
+    const id = `tab2-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const label = currentLocalPath2.split(/[\\/]/).filter(Boolean).pop() || '/';
+    setLocalTabs2([{ id, path: currentLocalPath2, label, scrollTop: 0 }]);
+    setActiveLocalTabId2(id);
+  }, [showDualLocalPanel, currentLocalPath2, localTabs2.length, setLocalTabs2, setActiveLocalTabId2]);
+
+  useEffect(() => {
+    if (!showDualLocalPanel || !activeLocalTabId2 || !currentLocalPath2) return;
+    setLocalTabs2(prev => prev.map(tab =>
+      tab.id === activeLocalTabId2
+        ? { ...tab, path: currentLocalPath2, label: currentLocalPath2.split(/[\\/]/).filter(Boolean).pop() || '/' }
+        : tab
+    ));
+  }, [showDualLocalPanel, activeLocalTabId2, currentLocalPath2, setLocalTabs2]);
 
   // AeroFile auto-refresh: watch the active local directory and reload its
   // listing when something changes underneath. Removes the need to hit Refresh
@@ -9901,6 +10029,13 @@ interface UpdateVerificationInfo {
                 onLocalTabClose={(!isConnected || !showRemotePanel) ? closeLocalTab : undefined}
                 onLocalNewTab={(!isConnected || !showRemotePanel) ? createLocalTab : undefined}
                 onLocalReorder={(!isConnected || !showRemotePanel) ? setLocalTabs : undefined}
+                showDualLocalTabs={(!isConnected || !showRemotePanel) && showDualLocalPanel}
+                localTabs2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? localTabs2 : undefined}
+                activeLocalTabId2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? activeLocalTabId2 : undefined}
+                onLocalTabClick2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? switchLocalTab2 : undefined}
+                onLocalTabClose2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? closeLocalTab2 : undefined}
+                onLocalNewTab2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? createLocalTab2 : undefined}
+                onLocalReorder2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? setLocalTabs2 : undefined}
               />
               {/* Toolbar */}
               <div role="toolbar" aria-label="File operations" className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
@@ -9928,6 +10063,16 @@ interface UpdateVerificationInfo {
                       title={showSidebar ? t('sidebar.places') : t('sidebar.places')}
                     >
                       <PanelLeft size={16} />
+                    </button>
+                  )}
+                  {(!isConnected || !showRemotePanel) && (
+                    <button
+                      onClick={toggleDualLocalPanel}
+                      className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showDualLocalPanel ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500'}`}
+                      title={t('aerofile.dualPanelTooltip') || 'Show two local panels side by side'}
+                      aria-label={t('aerofile.dualPanel') || 'Dual Panel'}
+                    >
+                      <Columns2 size={16} />
                     </button>
                   )}
                   {/* View Mode Toggle (3-way: list → grid → large) */}
@@ -10795,6 +10940,7 @@ interface UpdateVerificationInfo {
                 <LocalFilePanel
                   isAeroFileMode={!isConnected || !showRemotePanel}
                   isConnected={isConnected}
+                  isDualMode={(!isConnected || !showRemotePanel) && showDualLocalPanel}
                   className={isConnected && showRemotePanel ? (swapPanels ? 'order-1' : 'order-2') : undefined}
                   currentPath={currentLocalPath}
                   setCurrentPath={setCurrentLocalPath}
@@ -10871,8 +11017,86 @@ interface UpdateVerificationInfo {
                   notify={notify}
                 />
 
+                {(!isConnected || !showRemotePanel) && showDualLocalPanel && (
+                  <LocalFilePanel
+                    isAeroFileMode
+                    isConnected={isConnected}
+                    isDualMode
+                    className="border-l border-gray-200 dark:border-gray-700"
+                    currentPath={currentLocalPath2}
+                    setCurrentPath={setCurrentLocalPath2}
+                    onNavigate={changeLocalDirectory2}
+                    onRefresh={loadLocalFiles2}
+                    isPathCoherent
+                    isSyncPathMismatch={false}
+                    isSyncNavigation={false}
+                    syncBasePaths={null}
+                    isLoading={false}
+                    localFiles={localFiles2}
+                    sortedFiles={sortedLocalFiles2}
+                    selectedFiles={selectedLocalFiles2}
+                    setSelectedFiles={setSelectedLocalFiles2}
+                    lastSelectedIndex={lastSelectedLocalIndex2}
+                    setLastSelectedIndex={setLastSelectedLocalIndex2}
+                    setActivePanel={setActivePanel}
+                    setPreviewFile={setPreviewFile}
+                    localColumns={localColumns}
+                    searchFilter={localSearchFilter2}
+                    setSearchFilter={setLocalSearchFilter2}
+                    showSearchBar={showLocalSearchBar2}
+                    setShowSearchBar={setShowLocalSearchBar2}
+                    searchRef={localSearchRef2}
+                    viewMode={viewMode}
+                    showFileExtensions={showFileExtensions}
+                    debugMode={debugMode}
+                    doubleClickAction={doubleClickAction}
+                    inlineRename={inlineRename}
+                    inlineRenameValue={inlineRenameValue}
+                    setInlineRenameValue={setInlineRenameValue}
+                    inlineRenameRef={inlineRenameRef}
+                    onInlineRenameKeyDown={handleInlineRenameKeyDown}
+                    onInlineRenameCommit={commitInlineRename}
+                    onInlineRenameStart={startInlineRename}
+                    onInlineRenameCancel={() => setInlineRename(null)}
+                    onDragStart={(e) => e.preventDefault()}
+                    onDragEnd={() => {}}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDragLeave={() => {}}
+                    onDrop={(e) => e.preventDefault()}
+                    dropTargetPath={dropTargetPath}
+                    dragSourcePaths={[]}
+                    crossPanelTarget={null}
+                    onPanelDragOver={(e) => e.preventDefault()}
+                    onPanelDrop={(e) => e.preventDefault()}
+                    onPanelDragLeave={() => {}}
+                    onContextMenu={(e) => { e.preventDefault(); setActivePanel('local'); }}
+                    onEmptyContextMenu={(e) => { e.preventDefault(); setActivePanel('local'); }}
+                    onOpenUniversalPreview={openUniversalPreview}
+                    onOpenDevToolsPreview={openDevToolsPreview}
+                    onUploadFile={uploadFile}
+                    onOpenInFileManager={openInFileManager}
+                    isTrashView={false}
+                    trashItems={[]}
+                    onEmptyTrash={handleEmptyTrash}
+                    onRestoreTrashItem={handleRestoreTrashItem}
+                    onNavigateTrash={handleNavigateTrash}
+                    showSidebar={false}
+                    recentPaths={recentPaths}
+                    setRecentPaths={setRecentPaths}
+                    iconProvider={iconProvider}
+                    displayName={displayName}
+                    getSyncBadge={() => null}
+                    getTagsForFile={fileTags.getTagsForFile}
+                    labelCounts={fileTags.labelCounts}
+                    activeTagFilter={null}
+                    onTagFilter={fileTags.setActiveTagFilter}
+                    t={t}
+                    notify={notify}
+                  />
+                )}
+
                 {/* Preview Panel - only in local-only (AeroFile) mode */}
-                {showLocalPreview && (!isConnected || !showRemotePanel) && (
+                {showLocalPreview && (!isConnected || !showRemotePanel) && !showDualLocalPanel && (
                   <div
                     className="flex flex-col bg-gray-50 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 animate-slide-in-right relative"
                     style={{ width: previewPanelWidth, minWidth: 220, maxWidth: 500, flexShrink: 0 }}

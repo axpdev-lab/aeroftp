@@ -38,6 +38,13 @@ interface SessionTabsProps {
     onLocalNewTab?: () => void;
     onLocalReorder?: (tabs: LocalTab[]) => void;
     maxLocalTabs?: number;
+    localTabs2?: LocalTab[];
+    activeLocalTabId2?: string | null;
+    onLocalTabClick2?: (tabId: string) => void;
+    onLocalTabClose2?: (tabId: string) => void;
+    onLocalNewTab2?: () => void;
+    onLocalReorder2?: (tabs: LocalTab[]) => void;
+    showDualLocalTabs?: boolean;
     // Lock tabs during active transfers to prevent accidental session switch
     transferLocked?: boolean;
 }
@@ -210,6 +217,12 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
     onLocalNewTab,
     onLocalReorder,
     maxLocalTabs = 12,
+    localTabs2 = [],
+    activeLocalTabId2,
+    onLocalTabClick2,
+    onLocalTabClose2,
+    onLocalNewTab2,
+    showDualLocalTabs = false,
     transferLocked = false,
 }) => {
     const t = useTranslation();
@@ -453,6 +466,11 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                                 }}
                                 title={tab.path}
                             >
+                                {showDualLocalTabs && (
+                                    <span className={`shrink-0 px-1 rounded text-[10px] font-semibold ${isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'}`}>
+                                        L
+                                    </span>
+                                )}
                                 <Folder size={12} className={`shrink-0 ${isActive ? 'text-amber-500' : 'text-gray-400'}`} />
                                 <span className={`truncate text-sm ${isActive ? 'font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
                                     {tab.label || '/'}
@@ -476,6 +494,56 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                             <Plus size={13} />
                             {localTabs.length === 0 && <span className="text-xs">{t('localTabs.newTab')}</span>}
                         </button>
+                    )}
+                    {showDualLocalTabs && (
+                        <>
+                            <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 mx-1" />
+                            {localTabs2.map((tab) => {
+                                const isActive = tab.id === activeLocalTabId2;
+                                const canClose = localTabs2.length > 1;
+                                return (
+                                    <div
+                                        key={tab.id}
+                                        className={`group flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 rounded-lg cursor-pointer transition-all min-w-0 max-w-[180px] ${
+                                            isActive
+                                                ? 'bg-white dark:bg-gray-700 shadow-sm'
+                                                : 'hover:bg-gray-200 dark:hover:bg-gray-700/50'
+                                        }`}
+                                        onClick={() => onLocalTabClick2?.(tab.id)}
+                                        onAuxClick={(e) => {
+                                            if (e.button === 1 && canClose) { e.preventDefault(); onLocalTabClose2?.(tab.id); }
+                                        }}
+                                        onContextMenu={(e) => e.preventDefault()}
+                                        title={tab.path}
+                                    >
+                                        <span className={`shrink-0 px-1 rounded text-[10px] font-semibold ${isActive ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                                            R
+                                        </span>
+                                        <Folder size={12} className={`shrink-0 ${isActive ? 'text-amber-500' : 'text-gray-400'}`} />
+                                        <span className={`truncate text-sm ${isActive ? 'font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
+                                            {tab.label || '/'}
+                                        </span>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); if (canClose) onLocalTabClose2?.(tab.id); }}
+                                            disabled={!canClose}
+                                            className={`shrink-0 p-0.5 rounded transition-opacity ${canClose ? 'hover:bg-gray-300 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100' : 'opacity-20 cursor-default'}`}
+                                        >
+                                            <X size={10} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                            {localTabs2.length < maxLocalTabs && (
+                                <button
+                                    onClick={onLocalNewTab2}
+                                    className="shrink-0 p-1.5 ml-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
+                                    title={t('localTabs.newTab')}
+                                >
+                                    <Plus size={13} />
+                                    {localTabs2.length === 0 && <span className="text-xs">{t('localTabs.newTab')}</span>}
+                                </button>
+                            )}
+                        </>
                     )}
                 </>
             )}

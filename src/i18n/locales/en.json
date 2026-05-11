@@ -3078,6 +3078,14 @@
       "transferQueue": "Transfer Queue",
       "updateAvailable": "Update Available"
     },
+    "aerofile": {
+      "dualPanel": "Dual Panel",
+      "dualPanelTooltip": "Show two local panels side by side",
+      "leftPanel": "Left Panel",
+      "rightPanel": "Right Panel",
+      "copyToOtherPanel": "Copy to other panel",
+      "moveToOtherPanel": "Move to other panel"
+    },
     "statusBar": {
       "activityLog": "Activity Log",
       "aeroagent": "AeroAgent",

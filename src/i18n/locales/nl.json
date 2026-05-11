@@ -4476,6 +4476,14 @@
                 "openFolder": "Gegevensmap openen",
                 "dismiss": "Begrepen"
             }
+        },
+        "aerofile": {
+            "dualPanel": "[NEEDS TRANSLATION] Dual Panel",
+            "dualPanelTooltip": "[NEEDS TRANSLATION] Show two local panels side by side",
+            "leftPanel": "[NEEDS TRANSLATION] Left Panel",
+            "rightPanel": "[NEEDS TRANSLATION] Right Panel",
+            "copyToOtherPanel": "[NEEDS TRANSLATION] Copy to other panel",
+            "moveToOtherPanel": "[NEEDS TRANSLATION] Move to other panel"
         }
     }
 }
