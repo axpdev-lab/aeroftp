@@ -90,7 +90,7 @@ ripemd = "0.1"
 md-5 = "0.10"
 zip = { version = "8", default-features = false, features = ["deflate", "aes-crypto"] }
 walkdir = "2"
-quick-xml = "0.39"
+quick-xml = "0.40"
 
 # OAuth2 Cloud Providers (Sprint 2)
 oauth2 = { version = "5", default-features = false }
