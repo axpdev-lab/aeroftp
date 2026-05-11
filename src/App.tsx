@@ -7678,11 +7678,30 @@ interface UpdateVerificationInfo {
         }
 
         try {
-          const result = await invoke<{ imported: number; skipped: number; total: number }>('import_keystore', {
+          const result = await invoke<{
+            imported: number;
+            skipped: number;
+            total: number;
+            sqliteDbsRestored?: number;
+            filesRestored?: number;
+            localStorage?: Record<string, string>;
+          }>('import_keystore', {
             password,
             filePath,
             mergeStrategy: 'skip_existing',
+            importVault: true,
+            importSqlite: true,
+            importFiles: true,
+            importLocalStorage: true,
           });
+          if (result.localStorage && Object.keys(result.localStorage).length > 0) {
+            try {
+              const { applyLocalStorage } = await import('./utils/keystoreLocalStorage');
+              applyLocalStorage(result.localStorage);
+            } catch (e) {
+              console.warn('Failed to apply restored localStorage:', e);
+            }
+          }
           await refreshProfilesFromImportedKeystore();
           notify.success(
             t('settings.importKeystore') || 'Import Keystore',

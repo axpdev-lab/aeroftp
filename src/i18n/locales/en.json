@@ -2727,6 +2727,11 @@
       "keystoreExported": "Keystore exported successfully ({count} entries)",
       "keystoreImported": "Imported {imported} entries ({skipped} skipped)",
       "keystorePassword": "Backup password (min 8 characters)",
+      "keystoreExportModeTitle": "What to include in the backup",
+      "keystoreExportModeFull": "Full backup (recommended)",
+      "keystoreExportModeFullDesc": "Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
+      "keystoreExportModeVaultOnly": "Vault only (legacy)",
+      "keystoreExportModeVaultOnlyDesc": "Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along.",
       "launchOnStartup": "Launch on system startup",
       "launchOnStartupDesc": "Automatically start AeroFTP when your computer boots. Recommended if you use AeroCloud Sync.",
       "startMinimizedOnAutostart": "Start minimized to tray",
@@ -4394,6 +4399,15 @@
       "alignLeft": "Align left",
       "alignCenter": "Align center",
       "alignRight": "Align right"
+    },
+    "portable": {
+      "banner": {
+        "title": "Portable mode: this folder holds all your AeroFTP data",
+        "body": "Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
+        "legacyWarning": "We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
+        "openFolder": "Open data folder",
+        "dismiss": "Got it"
+      }
     }
   }
 }

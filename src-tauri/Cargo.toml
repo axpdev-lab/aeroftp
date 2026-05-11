@@ -181,11 +181,17 @@ unftp-core = "0.1"                                                     # FTP ser
 ratatui = "0.30"                                                       # Terminal UI framework
 crossterm = "0.29"                                                     # Cross-platform terminal control
 
-# aerorsync: native rsync protocol 31/32 implementation in Rust.
-# Optional dependencies gated by the `aerorsync` feature. Used by
-# `real_wire.rs` to decompress DEFLATED_DATA literals emitted by rsync's
-# sender when CPRES_ZSTD is negotiated. Off with `--no-default-features`.
-zstd = { version = "0.13", optional = true }
+# zstd compression. Used by two independent code paths:
+#   1. Keystore export v2 (`keystore_export.rs`) -- compresses the
+#      serialised payload before AES-GCM. Critical for full backups:
+#      the inner SQLite dumps and plugin/snapshot file tree compress
+#      3-6x, dropping a multi-tens-of-MB file back to single-digit MB.
+#      Promoted from optional to default in v3.7.8 so the file format
+#      can rely on zstd being always available (the `compression`
+#      envelope field never has to fall back at decode time).
+#   2. aerorsync `real_wire.rs` -- decompresses DEFLATED_DATA literals
+#      emitted by rsync's sender when CPRES_ZSTD is negotiated.
+zstd = "0.13"
 # aerorsync: XXH3-128 file-level checksum trailer (S8j). Provides
 # `xxhash_rust::xxh3::xxh3_128` used by the driver to compute the file
 # checksum rsync verifies at the end of a delta stream.
@@ -233,7 +239,7 @@ custom-protocol = ["tauri/custom-protocol"]
 # file retain the legacy name for backward compatibility.
 # Disable with `--no-default-features` for leaner builds or when
 # debugging the classic binary-rsync path on Unix.
-aerorsync = ["dep:zstd", "dep:xxhash-rust"]
+aerorsync = ["dep:xxhash-rust"]
 
 # Strada C: Docker-harness lane cfg flags. Declared here so
 # `#[cfg(ci_lane2)]` / `#[cfg(ci_lane3)]` do not surface

@@ -512,6 +512,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [keystoreExportConfirm, setKeystoreExportConfirm] = useState('');
     const [showKeystoreExportPassword, setShowKeystoreExportPassword] = useState(false);
     const [keystoreExporting, setKeystoreExporting] = useState(false);
+    /** v3.7.8: 'full' captures vault + SQLite DBs + plugins + localStorage,
+     *  'vault_only' falls back to the slim pre-v3.7.8 export for users who
+     *  just want to move credentials between machines without dragging
+     *  chat history and caches along.
+     */
+    const [keystoreExportMode, setKeystoreExportMode] = useState<'full' | 'vault_only'>('full');
     const [keystoreImporting, setKeystoreImporting] = useState(false);
     const [keystoreImportPassword, setKeystoreImportPassword] = useState('');
     const [showKeystoreImportPassword, setShowKeystoreImportPassword] = useState(false);
@@ -4206,6 +4212,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     </div>
                                                 </div>
                                                 <PasswordStrengthBar password={keystoreExportPassword} />
+                                                <div className="flex flex-col gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 text-xs">
+                                                    <div className="text-gray-700 dark:text-gray-300 font-medium">
+                                                        {t('settings.keystoreExportModeTitle')}
+                                                    </div>
+                                                    <label className="flex items-start gap-2 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="keystore-export-mode"
+                                                            value="full"
+                                                            checked={keystoreExportMode === 'full'}
+                                                            onChange={() => setKeystoreExportMode('full')}
+                                                            className="mt-0.5"
+                                                        />
+                                                        <div>
+                                                            <div className="text-gray-800 dark:text-gray-200 font-medium">{t('settings.keystoreExportModeFull')}</div>
+                                                            <div className="text-gray-500 dark:text-gray-400">{t('settings.keystoreExportModeFullDesc')}</div>
+                                                        </div>
+                                                    </label>
+                                                    <label className="flex items-start gap-2 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="keystore-export-mode"
+                                                            value="vault_only"
+                                                            checked={keystoreExportMode === 'vault_only'}
+                                                            onChange={() => setKeystoreExportMode('vault_only')}
+                                                            className="mt-0.5"
+                                                        />
+                                                        <div>
+                                                            <div className="text-gray-800 dark:text-gray-200 font-medium">{t('settings.keystoreExportModeVaultOnly')}</div>
+                                                            <div className="text-gray-500 dark:text-gray-400">{t('settings.keystoreExportModeVaultOnlyDesc')}</div>
+                                                        </div>
+                                                    </label>
+                                                </div>
                                                 <button
                                                     onClick={async () => {
                                                         setKeystoreMessage(null);
@@ -4236,11 +4275,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         if (!filePath) return;
                                                         setKeystoreExporting(true);
                                                         try {
+                                                            const { collectLocalStorage } = await import('../utils/keystoreLocalStorage');
                                                             const result = await invoke<{
                                                                 entriesCount: number;
+                                                                categories?: {
+                                                                    sqliteDbs?: number;
+                                                                    files?: number;
+                                                                    localStorageKeys?: number;
+                                                                };
                                                             }>('export_keystore', {
                                                                 password: keystoreExportPassword,
                                                                 filePath,
+                                                                mode: keystoreExportMode,
+                                                                localStorage: keystoreExportMode === 'full'
+                                                                    ? collectLocalStorage()
+                                                                    : undefined,
                                                             });
                                                             setKeystoreMessage({
                                                                 type: 'success',
@@ -4453,11 +4502,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             imported: number;
                                                                             skipped: number;
                                                                             total: number;
+                                                                            sqliteDbsRestored?: number;
+                                                                            filesRestored?: number;
+                                                                            localStorage?: Record<string, string>;
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,
                                                                             mergeStrategy: keystoreImportMerge,
+                                                                            // Default: import every section the file carries.
+                                                                            // A future "import dialog with section toggles"
+                                                                            // will override these per user selection.
+                                                                            importVault: true,
+                                                                            importSqlite: true,
+                                                                            importFiles: true,
+                                                                            importLocalStorage: true,
                                                                         });
+                                                                        // Apply the localStorage map returned by the
+                                                                        // backend. The backend deliberately stays out of
+                                                                        // WebView storage so the keystore is OS-agnostic.
+                                                                        if (result.localStorage && Object.keys(result.localStorage).length > 0) {
+                                                                            try {
+                                                                                const { applyLocalStorage } = await import('../utils/keystoreLocalStorage');
+                                                                                applyLocalStorage(result.localStorage);
+                                                                            } catch (e) {
+                                                                                console.warn('Failed to apply restored localStorage:', e);
+                                                                            }
+                                                                        }
                                                                         setKeystoreMessage({
                                                                             type: 'success',
                                                                             text: t('settings.keystoreImported', {

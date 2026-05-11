@@ -4,6 +4,7 @@ import { ConnectionParams, ServerProfile } from '../../types';
 import { IntroHubHeader, FormTab } from './IntroHubHeader';
 import { MyServersPanel } from './MyServersPanel';
 import { DiscoverPanel } from './DiscoverPanel';
+import { PortableIsolationBanner } from './PortableIsolationBanner';
 // CommandPalette removed: search is redundant with filter chips
 import { ConnectionScreen } from '../ConnectionScreen';
 import { ExportImportDialog } from '../ExportImportDialog';
@@ -349,6 +350,11 @@ export function IntroHub(props: IntroHubProps) {
                 serverCount={paletteServers.length}
                 serviceCount={getTotalServiceCount()}
             />
+
+            {/* Portable-mode first-run notice (v3.7.8): renders only when the
+                running binary detects portable.marker AND the user has not yet
+                dismissed it. Hidden on installed builds and after dismissal. */}
+            <PortableIsolationBanner />
 
             {/* Tab Content */}
             <div className="flex-1 min-h-0 overflow-auto p-6">
