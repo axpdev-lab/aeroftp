@@ -228,6 +228,8 @@ A full-featured local file manager built into AeroFTP. Toggle between remote and
 
 **v3.7.1 polish**: aggregate **multi-file Properties** dialog (Windows-style mixed-state indicators across the selection), **recursive `*` flatten search** that lists every descendant under the current directory in one shot, **smart "Open with default app"** routing in the right-click menu (vault containers open in AeroFTP, scripts drop into the AeroTools Terminal with the right shell prefix, anything else goes through the OS), and a **PathBar** with empty-area edit mode plus a trailing chevron dropdown over first-generation subdirectories.
 
+**Dual panel (v3.7.9, Slice A)**: two local panels side by side in AeroFile mode, toggled via the Columns icon in the toolbar or `Ctrl+Shift+D`. Full keyboard parity on the second panel (F2 / Delete / Enter / Backspace / clipboard / Quick Look / properties / arrows / Shift+arrow / Home / End all route to the focused pane; Tab cycles between local and local2). Total-Commander shortcuts: **F5** copies the selection to the other panel, **F6** moves it, **F7** creates a folder in the focused panel. Drag-and-drop between the two panes uses the existing `rename_local_file` / `copy_local_file` backend; Ctrl+drag switches from move (default) to copy. The separator is resizable from mouse and from keyboard (Arrow Left/Right ±10%, Home/End to extremes, Enter/Space to reset to 50/50). Unified tab strip with L / R markers and per-panel persistence. Slice B (each pane configurable as a local path or as a saved remote profile) and Slice C (FreeFileSync-style compare / mirror / backup / bisync workflows on top) follow in their own release windows. Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 2.
+
 ---
 
 ### Mount Manager
@@ -288,6 +290,24 @@ Create, manage, and browse encrypted containers that protect your files with a s
 | **Chunk size** | 64 KB | Per-chunk random nonce + authentication tag |
 
 > **Open format**: The `.aerovault` binary format is fully documented in the [AeroVault v2 Specification](docs/AEROVAULT-V2-SPEC.md) with implementation guides for Rust, Java, Python, Go, C, and JavaScript.
+
+**AeroVault v3 (Experimental, v3.7.9)**
+
+A draft container format that ships alongside v2 and is opt-in via the Experimental tier in the create dialog. v2 remains the default; there is no automatic v2 → v3 migration in this release.
+
+| Component | Algorithm | Details |
+| --------- | --------- | ------- |
+| **Chunking** | Gear-CDC (content-defined) | Variable-size boundaries; same plaintext bytes always produce the same chunk so dedup is stable across edits |
+| **Compression** | zstd, per chunk | Three profiles: fast (`-3`), balanced (`-9`), archive (`-19`) |
+| **Content encryption** | AES-256-GCM-SIV (RFC 8452) | 96-bit random nonce per chunk + per-chunk AAD bound to block index and chunk id |
+| **Chunk addressing** | BLAKE3 keyed, 128-bit | Content-addressed chunk id, also the dedup key |
+| **Cipher integrity** | BLAKE3-256 | Pre-decryption check on cipher blocks; load-bearing for the future v4 ECC layer |
+| **Key derivation** | Argon2id | 128 MiB / t=4 / p=4, identical to v2; derives two independent KEKs via HKDF (encryption + MAC) |
+| **Key wrapping** | AES-256-KW (RFC 3394) | Two independent random 256-bit working keys, one per KEK |
+| **Header integrity** | HMAC-SHA512 | 1024-byte header, MAC verified before any key unwrap |
+| **Extension area** | Reserved | Extension directory + payload region for the future v4 ECC layer; v3 readers skip non-critical unknown entries, reject critical unknown entries |
+
+The wire layout, the wrapper IDs, and the forward-compat contract (`v3 + ECC = v4`, the v3 vault is byte-equivalent to "v4 with ECC turned off") are pinned in the [AeroVault v3 Specification (draft)](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC. The v4 ECC layer (Reed-Solomon / Parchive blocks for single-bit-rot recovery on the encrypted chunks) is on the roadmap but not in v3.7.9.
 
 **Additional encryption features**:
 - **Overlay session model (v3.7.0)**: open an `.aerovault` once, then route every list/upload/download/rename through the encrypted overlay transparently. The provider sees only opaque vault chunks; the UI shows plaintext entries and folders. A status badge in the header marks when the overlay is active.

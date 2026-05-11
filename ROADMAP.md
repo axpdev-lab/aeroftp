@@ -17,6 +17,12 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🟢 Just Shipped
 
+- **AeroFile Dual Panel — Slice A** (v3.7.9)
+  Two local panels side by side in AeroFile mode, with full keyboard parity on the second panel (F2 / Delete / Enter / Backspace / clipboard / Quick Look / properties / arrows / Shift+arrow / Home / End all dispatch to the focused pane, Tab cycles between local and local2). Total-Commander shortcuts: F5 copy to other panel, F6 move to other panel, F7 new folder in the focused panel. Drag-and-drop between panes uses `rename_local_file` / `copy_local_file`; Ctrl+drag switches from move to copy. The separator is resizable from mouse and from keyboard (Arrow Left/Right ±10%, Home/End to extremes, Enter/Space to reset, `aria-valuenow` + `tabIndex=0`). Unified tab bar in the top strip with L/R markers and per-panel persistence. Slice B (each pane configurable as a local path or a saved remote profile) and Slice C (FreeFileSync-style mirror/backup/bisync workflows on top) follow in their own release windows.
+- **AeroVault v3 (Experimental tier)** (v3.7.9)
+  Draft container format that ships alongside v2. Pipeline: gear-CDC chunking → per-chunk zstd (fast `-3` / balanced `-9` / archive `-19`) → AES-256-GCM-SIV (RFC 8452, 96-bit random nonce + per-chunk AAD) → encrypted manifest. Chunks are content-addressed by BLAKE3-keyed-128 (chunk id, also the dedup key) and integrity-checked by BLAKE3-256 (cipher hash, pre-decryption check for the future ECC layer). Argon2id (128 MiB, t=4, p=4) derives two distinct KEKs via HKDF; both unwrap independent random 256-bit working keys through AES-KW. HMAC-SHA512 header tag verified before any unwrap. The 1024-byte header reserves an extension directory and an extension payload region so a future v4 reader can append Reed-Solomon / Parchive blocks without changing the header or manifest layout (`v3 + ECC = v4` forward-compat). v2 vaults remain the default; v3 is opt-in via the Experimental tier in the create dialog. No v2 → v3 migration in this release. Specification: [docs/AEROVAULT-V3-SPEC.md](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC.
+- **TOTP secret passthrough for Filen and MEGA** (v3.7.9)
+  Persisted base32 2FA secret per profile; the backend derives the 6-digit code on every reconnect via `totp_helper::generate_totp_code`. Closes the TOTP passthrough point in [issue #128](https://github.com/axpdev-lab/aeroftp/issues/128).
 - **AeroCrypt overlay first-class** (v3.7.2)
   rclone-crypt overlay promoted to a first-class encryption layer next to AeroVault. Folder transfers traverse encrypted directory trees end to end (BFS depth 64, per-level dirIV resolution), filename obfuscation via bucket-based ASCII + Latin-1, AEROCRYPT badge in the path bar. AeroCrypt toolbar button next to AeroVault.
 - **ImageKit + Uploadcare native integrations** (v3.7.2)
@@ -60,8 +66,10 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🟡 In Flight
 
-- **AeroFile Dual Panel**
-  One surface for any pair of endpoints (local/local, local/remote, remote/local, remote/remote) with a FreeFileSync-style mirror, backup, and bisync workflow.
+- **AeroFile Dual Panel — Slice B + Slice C**
+  Slice B promotes each pane from "local only" to "any saved endpoint" (local path or saved remote profile), with a unified transfer planner that routes inside the same trait the existing remote↔local DnD already uses. Slice C lands FreeFileSync-style compare / mirror / backup / bisync workflows on top of the dual-pane surface. Slice A shipped in v3.7.9.
+- **AeroVault v4 — ECC layer**
+  Reed-Solomon / Parchive-style redundancy applied to the encrypted chunks produced by AeroVault v3, on top of the extension directory and payload region already reserved by v3. A v3 vault opened by a v4-aware reader is byte-equivalent to "v4 with ECC turned off" (forward-compat contract pinned in the v3 spec). Tracked as `T-AEROVAULT-ECC` in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4.
 - **Local Transport for AeroRsync**
   Delta sync local-to-local, the same wire-protocol-compatible engine extended to local filesystem pairs.
 - **Bitbucket, Gitea, Forgejo native integrations**
@@ -112,8 +120,6 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Decentralized storage integration (NLnet grant submitted).
 - **Tor Support**
   Anonymous file transfers via Tor hidden services (NLnet grant submitted).
-- **AeroVault v3 with BLAKE3**
-  Replace the SHA-2 fast-hashing parts of the AeroVault v2 stack with BLAKE3 while keeping Argon2id for KDF. Now is the right moment to make this kind of cryptographic decision before the install base grows.
 - **ChaCha20 / XChaCha20 cipher family**
   Battery-efficient symmetric encryption option for mobile, exposed on desktop too for parity. Reference points: Kopia (ChaCha, zstd, BLAKE3) and Restic (zstd). Benchmark phase before pinning the default.
 - **Biometric Unlock**
