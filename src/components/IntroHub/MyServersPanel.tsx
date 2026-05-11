@@ -220,7 +220,12 @@ export function MyServersPanel({
     onOpenMountManager,
 }: MyServersPanelProps) {
     const t = useTranslation();
-    const [servers, setServers] = useState<ServerProfile[]>([]);
+    // Lazy init: read localStorage synchronously on first mount so the panel
+    // never flashes the empty "Get started" state when re-entering IntroHub
+    // (from AeroFile, from a connected session, or after a Discover->Servers
+    // tab switch). The useEffect below still re-runs on `lastUpdate` change
+    // for explicit refreshes triggered by the parent.
+    const [servers, setServers] = useState<ServerProfile[]>(() => getSavedServers());
     const [connectingId, setConnectingId] = useState<string | null>(null);
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -286,7 +291,38 @@ export function MyServersPanel({
     }, [viewMode]); // re-attach when container swaps between grid/list
 
     useEffect(() => {
+        // Always read localStorage first (sync, fast) so an unmount/remount
+        // cycle keeps the visible list stable.
         setServers(getSavedServers());
+        // Then reconcile with the vault. This recovers the list when
+        // localStorage was cleared/corrupted but the vault still has the
+        // profiles (Windows vault.db ACL recovery path, or a stale tab where
+        // localStorage went out of sync). Skip the update if both sources
+        // agree to avoid an unnecessary re-render.
+        let cancelled = false;
+        (async () => {
+            try {
+                const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', STORAGE_KEY);
+                if (cancelled || !vaultServers || vaultServers.length === 0) return;
+                let migrated = false;
+                for (const s of vaultServers) {
+                    if (!s.providerId) {
+                        const derived = deriveProviderId(s);
+                        if (derived) { s.providerId = derived; migrated = true; }
+                    }
+                }
+                if (migrated) {
+                    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(vaultServers)); } catch { /* quota */ }
+                }
+                setServers(prev => {
+                    if (prev.length === vaultServers.length && prev.every((p, i) => p.id === vaultServers[i].id)) {
+                        return prev;
+                    }
+                    return vaultServers;
+                });
+            } catch { /* vault not ready / locked, localStorage value stays */ }
+        })();
+        return () => { cancelled = true; };
     }, [lastUpdate]);
 
     useEffect(() => {
