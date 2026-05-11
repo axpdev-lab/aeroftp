@@ -51,6 +51,14 @@ Var AeroFTPWasInstalled
 ; desktop shortcut, an upgrade (any source — in-app updater, WinGet,
 ; manual reinstall) should not silently recreate it. See issue #123.
 Var AeroFTPHadDesktopShortcut
+; Captured at the very start of NSIS_HOOK_PREUNINSTALL, consumed at the
+; end of NSIS_HOOK_POSTUNINSTALL. "yes" means `$APPDATA\com.aeroftp.AeroFTP`
+; existed before the uninstaller sections ran. Combined with a post-state
+; check of the same path, it tells us whether the Tauri "Remove
+; application data" optional section actually deleted it -- the canonical
+; signal that the user selected "delete all data" on the components page.
+; See APPENDIX-O Auto-Update System addendum 2026-05-11.
+Var AeroFTPAppDataPresentPre
 
 ; CRITICAL: Tauri's bundled installer.nsi invokes the four hooks below by
 ; the names NSIS_HOOK_{PRE,POST}{INSTALL,UNINSTALL}, gated by an
@@ -201,6 +209,19 @@ Var AeroFTPHadDesktopShortcut
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+    ; --- Snapshot pre-state for "delete all data" detection ---
+    ; Recorded BEFORE Tauri's bundled uninstaller sections execute. If the
+    ; user ticked the optional "Remove application data" component on the
+    ; uninstaller's components page, Tauri's section will `RMDir /r` the
+    ; `$APPDATA\${IDENTIFIER}` directory between this hook and POSTUNINSTALL.
+    ; POSTUNINSTALL compares pre-state vs current state to know which
+    ; cleanup branch to take, instead of triple-prompting the user for
+    ; consent they already gave up front (issue #178 follow-up).
+    StrCpy $AeroFTPAppDataPresentPre "no"
+    IfFileExists "$APPDATA\com.aeroftp.AeroFTP\*.*" 0 _aeroftp_pre_appdata_done
+        StrCpy $AeroFTPAppDataPresentPre "yes"
+    _aeroftp_pre_appdata_done:
+
     ; --- Remove install dir from user PATH (HKCU) ---
     ; Mirror of NSIS_HOOK_POSTINSTALL. Read the current PATH, build a
     ; new value where ";$INSTDIR" (with or without the trailing ";")
@@ -262,18 +283,48 @@ _aeroftp_unpath_done:
     ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
     System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
 
-    ; --- Selective user data cleanup on uninstall ---
-    ; Three separate prompts let the user choose exactly what to remove.
-    ;
-    ; Silent mode (e.g. WinGet's `upgrade` flow, which runs the old
-    ; installer's uninstaller silently before launching the new one) MUST
-    ; preserve user data — otherwise every non-interactive upgrade would
-    ; either pop blocking modal dialogs or, worse, silently wipe the
-    ; user's saved servers, AI chats and cache. Skip the whole section
-    ; when ${Silent} is true and let the user reinstall keep everything.
-    IfSilent _aeroftp_data_cleanup_done
+    ; Selective user data cleanup moved to NSIS_HOOK_POSTUNINSTALL so the
+    ; hook can observe whether Tauri's optional "Remove application data"
+    ; section actually ran. See the matching POSTUNINSTALL block below.
+!macroend
 
-    ; 1) Saved servers, credentials, and vaults
+!macro NSIS_HOOK_POSTUNINSTALL
+    ; --- Coherent user-data cleanup, choice-aware ---
+    ;
+    ; Silent mode (WinGet upgrade, `/S` flag) preserves user data: same
+    ; contract as before (issue #128 line of reasoning). Skip everything.
+    IfSilent _aeroftp_post_data_cleanup_done
+
+    ; Decide which branch to take. Tauri's bundled NSIS template exposes
+    ; an optional component on the uninstaller's "Choose components" page
+    ; (labelled "Application data" / "Donnees d'application" depending on
+    ; locale) which, when ticked, runs `RMDir /r "$APPDATA\${IDENTIFIER}"`
+    ; as part of the standard uninstall sequence. We do not depend on
+    ; that section's internal symbol name (it has changed across Tauri
+    ; minors); instead we observe the side-effect: if the directory was
+    ; present before our PREUNINSTALL hook and is gone by the time
+    ; POSTUNINSTALL fires, the user opted in for "delete all data".
+    ;
+    ; "delete all"   => silently wipe the two extra paths the Tauri
+    ;                   section does not know about ($APPDATA\aeroftp,
+    ;                   the legacy vault location from pre-v3.7.6, and
+    ;                   $LOCALAPPDATA\com.aeroftp.AeroFTP, the WebView
+    ;                   cache + Cloud Filter state). No further prompts.
+    ; "kept"         => fall back to the granular 3-prompt flow so the
+    ;                   user can still cherry-pick what to remove.
+    StrCmp $AeroFTPAppDataPresentPre "yes" 0 _aeroftp_post_granular
+    IfFileExists "$APPDATA\com.aeroftp.AeroFTP\*.*" _aeroftp_post_granular 0
+
+    ; Branch A: coherent full wipe
+    DetailPrint "AeroFTP: Remove application data confirmed; wiping legacy vault and WebView caches."
+    RMDir /r "$APPDATA\aeroftp"
+    RMDir /r "$LOCALAPPDATA\com.aeroftp.AeroFTP"
+    Goto _aeroftp_post_data_cleanup_done
+
+    ; Branch B: granular per-area prompts
+    _aeroftp_post_granular:
+
+    ; 1) Saved servers, credentials, and vaults (legacy $APPDATA\aeroftp)
     MessageBox MB_YESNO|MB_ICONQUESTION \
         "Remove saved servers, credentials, and vaults?$\n$\n\
 This deletes all connection profiles, stored passwords,$\n\
@@ -285,15 +336,19 @@ Select 'No' to keep them for a future reinstall." \
     _skip_servers:
 
     ; 2) AI chat history and agent memory
+    ; (Skipped when Tauri already removed $APPDATA\com.aeroftp.AeroFTP via
+    ; its own section: the directory is gone and the RMDir below is a
+    ; no-op, but we suppress the prompt to avoid confusing the user.)
+    IfFileExists "$APPDATA\com.aeroftp.AeroFTP\*.*" 0 _skip_ai_prompt
     MessageBox MB_YESNO|MB_ICONQUESTION \
         "Remove AI chat history and agent memory?$\n$\n\
 This deletes AeroAgent conversations, tool history,$\n\
 and learned context." \
         IDYES _rm_ai IDNO _skip_ai
     _rm_ai:
-        ; Tauri app data — AI chat DB, ai_history.json, agent_memory.db
         RMDir /r "$APPDATA\com.aeroftp.AeroFTP"
     _skip_ai:
+    _skip_ai_prompt:
 
     ; 3) Cache and temporary files
     MessageBox MB_YESNO|MB_ICONQUESTION \
@@ -304,5 +359,5 @@ Safe to remove, frees disk space." \
     _rm_cache:
         RMDir /r "$LOCALAPPDATA\com.aeroftp.AeroFTP"
     _skip_cache:
-    _aeroftp_data_cleanup_done:
+    _aeroftp_post_data_cleanup_done:
 !macroend

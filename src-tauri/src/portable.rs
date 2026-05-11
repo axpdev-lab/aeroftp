@@ -108,6 +108,51 @@ pub fn credential_store_dir() -> Option<PathBuf> {
         .map(|base| base.join("aeroftp"))
 }
 
+/// Resolve the WebView2 / WebKitGTK per-window data directory.
+///
+/// In portable mode this is `<exe-dir>/data/webview`. Two portable
+/// installations of AeroFTP in different folders MUST NOT share WebView
+/// state (localStorage, IndexedDB, cookies, cache) otherwise deleting a
+/// saved server in one folder propagates to the other through the
+/// identifier-scoped default folder Windows picks for WebView2.
+///
+/// Returns `None` when not running as portable: in that case the default
+/// `WebviewWindowBuilder` behaviour (identifier-scoped folder under
+/// `%LOCALAPPDATA%` / `~/.local/share`) is preserved for installed
+/// builds so existing MSI/NSIS/.deb/.rpm users see no migration.
+pub fn webview_data_dir() -> Option<PathBuf> {
+    let data_root = portable_data_root()?;
+    let dir = data_root.join("webview");
+    ensure_dir(&dir).ok()?;
+    Some(dir)
+}
+
+/// True when an `EBWebView` folder exists under the shared, identifier-scoped
+/// `%LOCALAPPDATA%\com.aeroftp.AeroFTP` directory. Used by the portable
+/// migration wizard to detect "there is legacy state from a previous
+/// non-portable (or pre-isolation portable) install on this machine".
+///
+/// Only meaningful when running portable: an installed build expects that
+/// directory to exist (it's its own state).
+#[cfg(windows)]
+pub fn shared_webview_data_present() -> bool {
+    if !is_portable() {
+        return false;
+    }
+    let Some(local_appdata) = dirs::data_local_dir() else {
+        return false;
+    };
+    let candidate = local_appdata
+        .join("com.aeroftp.AeroFTP")
+        .join("EBWebView");
+    candidate.is_dir()
+}
+
+#[cfg(not(windows))]
+pub fn shared_webview_data_present() -> bool {
+    false
+}
+
 // ===========================================================================
 // Windows install-format detection
 // ===========================================================================

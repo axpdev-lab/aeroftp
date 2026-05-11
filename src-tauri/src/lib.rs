@@ -2448,6 +2448,43 @@ fn detect_install_format() -> String {
     }
 }
 
+/// Surface portable-mode state to the frontend.
+///
+/// Used by the IntroHub first-run banner to explain to portable users
+/// that their data lives in `<exe-dir>/data/...` and that, starting from
+/// v3.7.8, every portable folder is an isolated universe (WebView2 state
+/// included). When `shared_legacy_present` is true, there is a system-wide
+/// `%LOCALAPPDATA%\com.aeroftp.AeroFTP\EBWebView\` folder on disk left
+/// over from an earlier non-portable install (or from a pre-v3.7.8
+/// portable that shared that folder): the banner offers a one-click
+/// "Open folder" / "Dismiss" so the user can clean it up manually.
+#[derive(serde::Serialize)]
+struct PortableInfo {
+    is_portable: bool,
+    data_root: Option<String>,
+    webview_data_dir: Option<String>,
+    credential_store_dir: Option<String>,
+    shared_legacy_present: bool,
+}
+
+#[tauri::command]
+fn portable_info(app: tauri::AppHandle) -> PortableInfo {
+    let is_portable = portable::is_portable();
+    let data_root = if is_portable {
+        portable::app_data_dir(&app).ok().map(|p| p.display().to_string())
+    } else {
+        None
+    };
+    PortableInfo {
+        is_portable,
+        data_root,
+        webview_data_dir: portable::webview_data_dir().map(|p| p.display().to_string()),
+        credential_store_dir: portable::credential_store_dir()
+            .map(|p| p.display().to_string()),
+        shared_legacy_present: portable::shared_webview_data_present(),
+    }
+}
+
 #[tauri::command]
 fn copy_to_clipboard(text: String) -> Result<(), String> {
     let mut clipboard =
@@ -12980,22 +13017,50 @@ async fn export_filezilla_config(
 
 #[tauri::command]
 async fn export_keystore(
+    app: tauri::AppHandle,
     password: String,
     file_path: String,
+    // Optional v2 controls. Defaulting `mode` to "full" means the new
+    // backup contract kicks in immediately for v3.7.8+ frontends; older
+    // builds that pass nothing still get the safer default. The frontend
+    // can force "vault_only" to recover the legacy slim-export behaviour.
+    mode: Option<String>,
+    local_storage: Option<std::collections::HashMap<String, String>>,
 ) -> Result<keystore_export::KeystoreMetadata, String> {
-    keystore_export::export_keystore(&password, std::path::Path::new(&file_path))
-        .map_err(|e| e.to_string())
+    let mode = match mode.as_deref() {
+        None => keystore_export::ExportMode::Full,
+        Some(s) => keystore_export::ExportMode::from_str(s).map_err(|e| e.to_string())?,
+    };
+    let config_dir = portable::app_config_dir(&app).ok();
+    keystore_export::export_keystore(
+        &password,
+        std::path::Path::new(&file_path),
+        mode,
+        config_dir.as_deref(),
+        local_storage,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn import_keystore(
     app: tauri::AppHandle,
     password: String,
     file_path: String,
     merge_strategy: String,
+    // v2 selectivity. All four flags default to true when missing so a
+    // pre-v3.7.8 caller still gets "import everything in the file". The
+    // import dialog passes explicit booleans when the user toggles a
+    // section off.
+    import_vault: Option<bool>,
+    import_sqlite: Option<bool>,
+    import_files: Option<bool>,
+    import_local_storage: Option<bool>,
 ) -> Result<keystore_export::KeystoreImportResult, String> {
+    let progress_app = app.clone();
     let progress_cb = move |phase: &str, current: u32, total: u32| {
-        let _ = app.emit(
+        let _ = progress_app.emit(
             "keystore-import-progress",
             serde_json::json!({
                 "phase": phase,
@@ -13004,10 +13069,19 @@ async fn import_keystore(
             }),
         );
     };
+    let sections = keystore_export::ImportSections {
+        vault: import_vault.unwrap_or(true),
+        sqlite_dbs: import_sqlite.unwrap_or(true),
+        files: import_files.unwrap_or(true),
+        local_storage: import_local_storage.unwrap_or(true),
+    };
+    let config_dir = portable::app_config_dir(&app).ok();
     keystore_export::import_keystore(
         &password,
         std::path::Path::new(&file_path),
         &merge_strategy,
+        sections,
+        config_dir.as_deref(),
         Some(&progress_cb),
     )
     .map_err(|e| e.to_string())
@@ -13503,7 +13577,13 @@ pub fn run() {
             // Note: `.transparent(false)` is the default and is gated behind
             // the `macos-private-api` feature on macOS, so we omit the call
             // to keep the build portable.
-            let _main = WebviewWindowBuilder::new(app, "main", main_url)
+            //
+            // Portable mode: route WebView2/WebKitGTK state to <exe-dir>/data/webview
+            // so two portable installations in different folders cannot share
+            // localStorage, IndexedDB or cookies through the identifier-scoped
+            // default. Installed builds (None branch) keep Tauri's default
+            // identifier-scoped folder for zero-migration parity.
+            let main_builder = WebviewWindowBuilder::new(app, "main", main_url)
                 .title("AeroFTP")
                 .inner_size(1540.0, 1050.0)
                 .min_inner_size(1024.0, 600.0)
@@ -13513,8 +13593,12 @@ pub fn run() {
                 .closable(true)
                 .decorations(false)
                 .visible(false)
-                .disable_drag_drop_handler()
-                .build()?;
+                .disable_drag_drop_handler();
+            let main_builder = match portable::webview_data_dir() {
+                Some(dir) => main_builder.data_directory(dir),
+                None => main_builder,
+            };
+            let _main = main_builder.build()?;
 
             let accel = |shortcut: &'static str| -> Option<&'static str> {
                 #[cfg(target_os = "linux")]
@@ -13702,13 +13786,20 @@ pub fn run() {
                 }
             };
 
-            let _splash = WebviewWindowBuilder::new(app, "splashscreen", splash_url)
+            // Splash shares the same WebView data directory as main in portable
+            // mode so storage events emitted on first load don't fight a second
+            // identifier-scoped folder.
+            let splash_builder = WebviewWindowBuilder::new(app, "splashscreen", splash_url)
                 .title("AeroFTP")
                 .inner_size(420.0, 340.0)
                 .resizable(false)
                 .decorations(false)
-                .center()
-                .build()?;
+                .center();
+            let splash_builder = match portable::webview_data_dir() {
+                Some(dir) => splash_builder.data_directory(dir),
+                None => splash_builder,
+            };
+            let _splash = splash_builder.build()?;
 
             SPLASH_CREATED_AT.get_or_init(std::time::Instant::now);
             info!("Splash screen created");
@@ -13936,6 +14027,7 @@ pub fn run() {
             app_ready,
             set_close_to_tray,
             is_autostart_launch,
+            portable_info,
             copy_to_clipboard,
             local_panel_watcher::local_panel_watch,
             local_panel_watcher::local_panel_watch_stop,

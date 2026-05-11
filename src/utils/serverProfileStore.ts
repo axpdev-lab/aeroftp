@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import type { ServerProfile } from '../types';
-import { secureGetWithFallback, secureStoreAndClean } from './secureStorage';
+import { secureGet, secureStore } from './secureStorage';
 
 export const SAVED_SERVERS_ACCOUNT = 'server_profiles';
 export const SAVED_SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
@@ -18,21 +18,51 @@ const readLocalProfiles = (): ServerProfile[] => {
     }
 };
 
+/**
+ * Load saved server profiles.
+ *
+ * Vault is the sole source of truth: once the vault has been initialised
+ * for this installation (even if it holds an empty array), localStorage
+ * is never consulted. This is what makes two portable installations
+ * truly independent: deleting a profile in installation A leaves the
+ * vault as `[]`, and installation B's vault is a completely separate
+ * file untouched by that delete.
+ *
+ * Legacy migration: the very first time we run for this installation
+ * (vault key has never been written, so `secureGet` returns `null`) we
+ * import any profiles still sitting in localStorage from pre-v3.7.8
+ * builds, write them into the vault, and clear the localStorage entry
+ * so it cannot be re-read by an older co-installed binary.
+ */
 export const loadSavedServerProfiles = async (): Promise<ServerProfile[]> => {
-    const secureProfiles = await secureGetWithFallback<ServerProfile[]>(
-        SAVED_SERVERS_ACCOUNT,
-        SAVED_SERVERS_STORAGE_KEY,
-    );
-    if (secureProfiles && secureProfiles.length > 0) return secureProfiles;
-    return readLocalProfiles();
+    const vaultProfiles = await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT);
+    if (vaultProfiles !== null) return vaultProfiles;
+
+    const legacy = readLocalProfiles();
+    if (legacy.length > 0) {
+        try {
+            await secureStore(SAVED_SERVERS_ACCOUNT, legacy);
+            localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
+        } catch {
+            // Vault write failure: keep legacy data in localStorage as a
+            // best-effort fallback so the user does not lose profiles.
+        }
+    }
+    return legacy;
 };
 
+/**
+ * Persist saved server profiles to the vault and remove any stale
+ * localStorage backup. Writing only to the vault prevents bleed-through
+ * between co-installed builds (e.g. a portable folder next to an MSI
+ * install) once the vault per-installation isolation is in place.
+ */
 export const storeSavedServerProfiles = async (profiles: ServerProfile[]): Promise<void> => {
-    await secureStoreAndClean(SAVED_SERVERS_ACCOUNT, SAVED_SERVERS_STORAGE_KEY, profiles);
+    await secureStore(SAVED_SERVERS_ACCOUNT, profiles);
     try {
-        localStorage.setItem(SAVED_SERVERS_STORAGE_KEY, JSON.stringify(profiles));
+        localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
     } catch {
-        // best-effort sync backup
+        // best-effort cleanup
     }
 };
 
