@@ -186,6 +186,7 @@ use ssh_shell::{
 struct AeroVaultOverlaySessionRuntime {
     vault_path: String,
     password: SecretString,
+    version: u8,
     source: String,
     remote_vault_path: Option<String>,
     remote_local_path: Option<String>,
@@ -364,7 +365,13 @@ async fn aerovault_overlay_unlock(
     let now = Instant::now();
 
     // Validate credentials once and fail early.
-    let _ = aerovault_v2::vault_v2_open(vault_path.clone(), password.clone()).await?;
+    let version = if aerovault_v3::is_vault_v3(vault_path.clone()).await? {
+        let _ = aerovault_v3::vault_v3_open(vault_path.clone(), password.clone()).await?;
+        3
+    } else {
+        let _ = aerovault_v2::vault_v2_open(vault_path.clone(), password.clone()).await?;
+        2
+    };
 
     let mut sessions = overlay_state.sessions.lock().await;
     if let Some(existing_id) = sessions
@@ -399,6 +406,7 @@ async fn aerovault_overlay_unlock(
         AeroVaultOverlaySessionRuntime {
             vault_path,
             password: SecretString::new(password.into_boxed_str()),
+            version,
             source: normalized_source,
             remote_vault_path,
             remote_local_path,
@@ -429,7 +437,7 @@ async fn aerovault_overlay_list(
     session_id: String,
     path: Option<String>,
 ) -> Result<AeroVaultOverlayListResponse, String> {
-    let (vault_path, password, current_dir) = {
+    let (vault_path, password, version, current_dir) = {
         let mut sessions = overlay_state.sessions.lock().await;
         let now = Instant::now();
         let expired = {
@@ -456,15 +464,10 @@ async fn aerovault_overlay_list(
         (
             session.vault_path.clone(),
             session.password.expose_secret().to_string(),
+            session.version,
             session.current_dir.clone(),
         )
     };
-
-    let opened = aerovault_v2::vault_v2_open(vault_path, password).await?;
-    let entries = opened
-        .get("files")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "Invalid AeroVault open response".to_string())?;
 
     let prefix = if current_dir.is_empty() {
         String::new()
@@ -475,73 +478,132 @@ async fn aerovault_overlay_list(
     let mut child_names_seen: HashSet<String> = HashSet::new();
     let mut files: Vec<RemoteFile> = Vec::new();
 
-    for entry in entries {
-        let full_name = entry
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .replace('\\', "/");
-        if full_name.is_empty() {
-            continue;
-        }
-        if !prefix.is_empty() && !full_name.starts_with(&prefix) {
-            continue;
-        }
-
-        let rel = if prefix.is_empty() {
-            full_name.as_str()
-        } else {
-            &full_name[prefix.len()..]
-        };
-
-        if rel.is_empty() {
-            continue;
-        }
-
-        let mut split = rel.splitn(2, '/');
-        let first = split.next().unwrap_or_default();
-        let has_child = split.next().is_some();
-        if first.is_empty() {
-            continue;
-        }
-
-        if has_child {
-            if child_names_seen.insert(first.to_string()) {
-                files.push(RemoteFile {
-                    name: first.to_string(),
-                    path: format!("/{}", overlay_join(&current_dir, first)),
-                    size: None,
-                    is_dir: true,
-                    modified: None,
-                    permissions: None,
-                });
+    if version == 3 {
+        let opened = aerovault_v3::vault_v3_open(vault_path, password).await?;
+        for entry in opened.files {
+            let full_name = entry.name.replace('\\', "/");
+            if full_name.is_empty() {
+                continue;
             }
-            continue;
-        }
+            if !prefix.is_empty() && !full_name.starts_with(&prefix) {
+                continue;
+            }
 
-        child_names_seen.insert(first.to_string());
-        let size = entry.get("size").and_then(|v| v.as_u64());
-        let is_dir = entry
-            .get("is_dir")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let modified = entry.get("modified").and_then(|v| {
-            if v.is_null() {
-                None
-            } else if let Some(s) = v.as_str() {
-                Some(s.to_string())
+            let rel = if prefix.is_empty() {
+                full_name.as_str()
             } else {
-                Some(v.to_string())
+                &full_name[prefix.len()..]
+            };
+            if rel.is_empty() {
+                continue;
             }
-        });
-        files.push(RemoteFile {
-            name: first.to_string(),
-            path: format!("/{}", overlay_join(&current_dir, first)),
-            size,
-            is_dir,
-            modified,
-            permissions: None,
-        });
+
+            let mut split = rel.splitn(2, '/');
+            let first = split.next().unwrap_or_default();
+            let has_child = split.next().is_some();
+            if first.is_empty() {
+                continue;
+            }
+
+            if has_child {
+                if child_names_seen.insert(first.to_string()) {
+                    files.push(RemoteFile {
+                        name: first.to_string(),
+                        path: format!("/{}", overlay_join(&current_dir, first)),
+                        size: None,
+                        is_dir: true,
+                        modified: None,
+                        permissions: None,
+                    });
+                }
+                continue;
+            }
+
+            child_names_seen.insert(first.to_string());
+            files.push(RemoteFile {
+                name: first.to_string(),
+                path: format!("/{}", overlay_join(&current_dir, first)),
+                size: if entry.is_dir { None } else { Some(entry.size) },
+                is_dir: entry.is_dir,
+                modified: Some(entry.modified),
+                permissions: None,
+            });
+        }
+    } else {
+        let opened = aerovault_v2::vault_v2_open(vault_path, password).await?;
+        let entries = opened
+            .get("files")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| "Invalid AeroVault open response".to_string())?;
+
+        for entry in entries {
+            let full_name = entry
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .replace('\\', "/");
+            if full_name.is_empty() {
+                continue;
+            }
+            if !prefix.is_empty() && !full_name.starts_with(&prefix) {
+                continue;
+            }
+
+            let rel = if prefix.is_empty() {
+                full_name.as_str()
+            } else {
+                &full_name[prefix.len()..]
+            };
+
+            if rel.is_empty() {
+                continue;
+            }
+
+            let mut split = rel.splitn(2, '/');
+            let first = split.next().unwrap_or_default();
+            let has_child = split.next().is_some();
+            if first.is_empty() {
+                continue;
+            }
+
+            if has_child {
+                if child_names_seen.insert(first.to_string()) {
+                    files.push(RemoteFile {
+                        name: first.to_string(),
+                        path: format!("/{}", overlay_join(&current_dir, first)),
+                        size: None,
+                        is_dir: true,
+                        modified: None,
+                        permissions: None,
+                    });
+                }
+                continue;
+            }
+
+            child_names_seen.insert(first.to_string());
+            let size = entry.get("size").and_then(|v| v.as_u64());
+            let is_dir = entry
+                .get("is_dir")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let modified = entry.get("modified").and_then(|v| {
+                if v.is_null() {
+                    None
+                } else if let Some(s) = v.as_str() {
+                    Some(s.to_string())
+                } else {
+                    Some(v.to_string())
+                }
+            });
+            files.push(RemoteFile {
+                name: first.to_string(),
+                path: format!("/{}", overlay_join(&current_dir, first)),
+                size,
+                is_dir,
+                modified,
+                permissions: None,
+            });
+        }
     }
 
     files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
@@ -566,7 +628,7 @@ async fn aerovault_overlay_extract_entry(
     validate_path(&output_path)?;
     let entry_name = normalize_overlay_relative_path(&entry_path)?;
 
-    let (vault_path, password) = {
+    let (vault_path, password, version) = {
         let mut sessions = overlay_state.sessions.lock().await;
         let now = Instant::now();
         let expired = {
@@ -590,6 +652,7 @@ async fn aerovault_overlay_extract_entry(
         (
             session.vault_path.clone(),
             session.password.expose_secret().to_string(),
+            session.version,
         )
     };
 
@@ -601,19 +664,33 @@ async fn aerovault_overlay_extract_entry(
     std::fs::create_dir_all(out_parent)
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
 
-    let extracted = aerovault_v2::vault_v2_extract_entry(
-        vault_path,
-        password,
-        entry_name,
-        out_parent.to_string_lossy().to_string(),
-    )
-    .await
-    .map(std::path::PathBuf::from)?;
+    let extracted = if version == 3 {
+        aerovault_v3::vault_v3_extract_entry(
+            vault_path,
+            password,
+            entry_name,
+            out_parent.to_string_lossy().to_string(),
+        )
+        .await
+        .map(std::path::PathBuf::from)?
+    } else {
+        aerovault_v2::vault_v2_extract_entry(
+            vault_path,
+            password,
+            entry_name,
+            out_parent.to_string_lossy().to_string(),
+        )
+        .await
+        .map(std::path::PathBuf::from)?
+    };
 
     if extracted != out_path {
         match std::fs::rename(&extracted, &out_path) {
             Ok(_) => {}
             Err(_) => {
+                if extracted.is_dir() {
+                    return Err("Failed to move extracted directory to destination".to_string());
+                }
                 std::fs::copy(&extracted, &out_path)
                     .map_err(|e| format!("Failed to move extracted file: {}", e))?;
                 let _ = std::fs::remove_file(&extracted);
@@ -641,7 +718,7 @@ async fn aerovault_overlay_add_file(
         return Err("Local plaintext path must be a regular file".to_string());
     }
 
-    let (vault_path, password, current_dir) = {
+    let (vault_path, password, version, current_dir) = {
         let mut sessions = overlay_state.sessions.lock().await;
         let now = Instant::now();
         let expired = {
@@ -665,6 +742,7 @@ async fn aerovault_overlay_add_file(
         (
             session.vault_path.clone(),
             session.password.expose_secret().to_string(),
+            session.version,
             session.current_dir.clone(),
         )
     };
@@ -710,7 +788,25 @@ async fn aerovault_overlay_add_file(
         target_path
     };
 
-    let add_result = if current_dir.is_empty() {
+    let add_result = if version == 3 {
+        if current_dir.is_empty() {
+            aerovault_v3::vault_v3_add_files(
+                vault_path.clone(),
+                password.clone(),
+                vec![upload_source.to_string_lossy().to_string()],
+            )
+            .await
+            .map(|_| serde_json::json!({ "ok": true }))
+        } else {
+            aerovault_v3::vault_v3_add_files_to_dir(
+                vault_path.clone(),
+                password.clone(),
+                vec![upload_source.to_string_lossy().to_string()],
+                current_dir.clone(),
+            )
+            .await
+        }
+    } else if current_dir.is_empty() {
         aerovault_v2::vault_v2_add_files(
             vault_path.clone(),
             password.clone(),
@@ -751,7 +847,7 @@ async fn aerovault_overlay_create_directory(
         return Err("Invalid directory name".to_string());
     }
 
-    let (vault_path, password, current_dir) = {
+    let (vault_path, password, version, current_dir) = {
         let mut sessions = overlay_state.sessions.lock().await;
         let now = Instant::now();
         let expired = {
@@ -775,12 +871,17 @@ async fn aerovault_overlay_create_directory(
         (
             session.vault_path.clone(),
             session.password.expose_secret().to_string(),
+            session.version,
             session.current_dir.clone(),
         )
     };
 
     let dir_rel = normalize_overlay_relative_path(&overlay_join(&current_dir, folder))?;
-    aerovault_v2::vault_v2_create_directory(vault_path, password, dir_rel.clone()).await?;
+    if version == 3 {
+        aerovault_v3::vault_v3_create_directory(vault_path, password, dir_rel.clone()).await?;
+    } else {
+        aerovault_v2::vault_v2_create_directory(vault_path, password, dir_rel.clone()).await?;
+    }
     Ok(format!("/{}", dir_rel))
 }
 
@@ -795,7 +896,7 @@ async fn aerovault_overlay_delete_entries(
         return Ok(0);
     }
 
-    let (vault_path, password) = {
+    let (vault_path, password, version) = {
         let mut sessions = overlay_state.sessions.lock().await;
         let now = Instant::now();
         let expired = {
@@ -819,6 +920,7 @@ async fn aerovault_overlay_delete_entries(
         (
             session.vault_path.clone(),
             session.password.expose_secret().to_string(),
+            session.version,
         )
     };
 
@@ -831,9 +933,14 @@ async fn aerovault_overlay_delete_entries(
         }
     }
 
-    let result =
-        aerovault_v2::vault_v2_delete_entries(vault_path, password, normalized, recursive).await?;
-    let removed = result.get("removed").and_then(|v| v.as_u64()).unwrap_or(0);
+    let removed = if version == 3 {
+        let result = aerovault_v3::vault_v3_delete_entries(vault_path, password, normalized, recursive).await?;
+        result.get("removed").and_then(|v| v.as_u64()).unwrap_or(0)
+    } else {
+        let result =
+            aerovault_v2::vault_v2_delete_entries(vault_path, password, normalized, recursive).await?;
+        result.get("removed").and_then(|v| v.as_u64()).unwrap_or(0)
+    };
     Ok(removed)
 }
 
@@ -847,7 +954,7 @@ async fn aerovault_overlay_move_entry(
     let from_rel = normalize_overlay_relative_path(&from_path)?;
     let to_rel = normalize_overlay_relative_path(&to_path)?;
 
-    let (vault_path, password) = {
+    let (vault_path, password, version) = {
         let mut sessions = overlay_state.sessions.lock().await;
         let now = Instant::now();
         let expired = {
@@ -871,10 +978,15 @@ async fn aerovault_overlay_move_entry(
         (
             session.vault_path.clone(),
             session.password.expose_secret().to_string(),
+            session.version,
         )
     };
 
-    aerovault_v2::vault_v2_move_entry(vault_path, password, from_rel, to_rel.clone()).await?;
+    if version == 3 {
+        aerovault_v3::vault_v3_move_entry(vault_path, password, from_rel, to_rel.clone()).await?;
+    } else {
+        aerovault_v2::vault_v2_move_entry(vault_path, password, from_rel, to_rel.clone()).await?;
+    }
     Ok(format!("/{}", to_rel))
 }
 
@@ -895,7 +1007,7 @@ async fn aerovault_overlay_rename_entry(
         return Err("Invalid destination filename".to_string());
     }
 
-    let (vault_path, password) = {
+    let (vault_path, password, version) = {
         let mut sessions = overlay_state.sessions.lock().await;
         let now = Instant::now();
         let expired = {
@@ -919,16 +1031,27 @@ async fn aerovault_overlay_rename_entry(
         (
             session.vault_path.clone(),
             session.password.expose_secret().to_string(),
+            session.version,
         )
     };
 
-    aerovault_v2::vault_v2_rename_entry(
-        vault_path,
-        password,
-        entry_rel.clone(),
-        new_name.trim().to_string(),
-    )
-    .await?;
+    if version == 3 {
+        aerovault_v3::vault_v3_rename_entry(
+            vault_path,
+            password,
+            entry_rel.clone(),
+            new_name.trim().to_string(),
+        )
+        .await?;
+    } else {
+        aerovault_v2::vault_v2_rename_entry(
+            vault_path,
+            password,
+            entry_rel.clone(),
+            new_name.trim().to_string(),
+        )
+        .await?;
+    }
 
     let renamed = if let Some((parent, _)) = entry_rel.rsplit_once('/') {
         format!("{}/{}", parent, new_name.trim())
@@ -948,7 +1071,7 @@ async fn aerovault_overlay_copy_entry(
     let from_rel = normalize_overlay_relative_path(&from_path)?;
     let to_rel = normalize_overlay_relative_path(&to_path)?;
 
-    let (vault_path, password) = {
+    let (vault_path, password, version) = {
         let mut sessions = overlay_state.sessions.lock().await;
         let now = Instant::now();
         let expired = {
@@ -972,10 +1095,15 @@ async fn aerovault_overlay_copy_entry(
         (
             session.vault_path.clone(),
             session.password.expose_secret().to_string(),
+            session.version,
         )
     };
 
-    aerovault_v2::vault_v2_copy_entry(vault_path, password, from_rel, to_rel.clone()).await?;
+    if version == 3 {
+        aerovault_v3::vault_v3_copy_entry(vault_path, password, from_rel, to_rel.clone()).await?;
+    } else {
+        aerovault_v2::vault_v2_copy_entry(vault_path, password, from_rel, to_rel.clone()).await?;
+    }
     Ok(format!("/{}", to_rel))
 }
 
@@ -14276,7 +14404,16 @@ pub fn run() {
             aerovault_v3::vault_v3_open,
             aerovault_v3::is_vault_v3,
             aerovault_v3::vault_v3_add_files,
+            aerovault_v3::vault_v3_add_files_to_dir,
             aerovault_v3::vault_v3_extract_entry,
+            aerovault_v3::vault_v3_create_directory,
+            aerovault_v3::vault_v3_delete_entry,
+            aerovault_v3::vault_v3_delete_entries,
+            aerovault_v3::vault_v3_move_entry,
+            aerovault_v3::vault_v3_rename_entry,
+            aerovault_v3::vault_v3_copy_entry,
+            aerovault_v3::vault_v3_change_password,
+            aerovault_v3::vault_v3_add_directory,
             aerovault_v3::vault_v3_security_info,
             // Remote Vault: open .aerovault on remote servers
             vault_remote::vault_v2_download_remote,
@@ -14822,6 +14959,7 @@ mod overlay_helpers_tests {
         AeroVaultOverlaySessionRuntime {
             vault_path: "/tmp/x.aerovault".to_string(),
             password: SecretString::new("pw".to_string().into_boxed_str()),
+            version: 2,
             source: source.to_string(),
             remote_vault_path: None,
             remote_local_path: None,

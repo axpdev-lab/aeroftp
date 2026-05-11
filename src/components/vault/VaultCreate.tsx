@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Eye, EyeOff, Loader2, ChevronDown, FolderOpen } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { VaultState, securityLevels, SecurityLevel } from './useVaultState';
+import { VaultState, securityLevels, SecurityLevel, VaultV3CompressionProfile } from './useVaultState';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { formatSize } from '../../utils/formatters';
 
@@ -14,6 +14,12 @@ interface VaultCreateProps {
 
 export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
     const t = useTranslation();
+    const availableSecurityLevels = Object.keys(securityLevels) as SecurityLevel[];
+    const compressionProfiles: { id: VaultV3CompressionProfile; label: string; detail: string }[] = [
+        { id: 'fast', label: 'Fast', detail: 'zstd -3' },
+        { id: 'balanced', label: 'Balanced', detail: 'zstd -9' },
+        { id: 'archive', label: 'Archive', detail: 'zstd -19' },
+    ];
 
     return (
         <div className="p-4 flex flex-col gap-3">
@@ -73,7 +79,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                 {/* Dropdown */}
                 {state.showLevelDropdown && (
                     <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl overflow-hidden">
-                        {(Object.keys(securityLevels) as SecurityLevel[]).map((level) => {
+                        {availableSecurityLevels.map((level) => {
                             const config = securityLevels[level];
                             const Icon = config.icon;
                             const isSelected = level === state.securityLevel;
@@ -105,9 +111,36 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                 )}
             </div>
 
-            <label className="text-sm text-gray-500 dark:text-gray-400 mt-2">{t('vault.description_label')}</label>
-            <input value={state.description} onChange={e => state.setDescription(e.target.value)}
-                className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" placeholder="My secure vault" />
+            {state.securityLevel === 'experimental' && (
+                <>
+                    <label className="text-sm text-gray-500 dark:text-gray-400">Compression Profile</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {compressionProfiles.map((profile) => {
+                            const selected = state.compressionProfile === profile.id;
+                            return (
+                                <button
+                                    key={profile.id}
+                                    onClick={() => state.setCompressionProfile(profile.id)}
+                                    className={`rounded border px-3 py-2 text-left ${selected
+                                        ? 'border-amber-500 bg-amber-500/10 text-amber-300'
+                                        : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                >
+                                    <div className="text-sm font-medium">{profile.label}</div>
+                                    <div className="text-[11px] text-gray-500 dark:text-gray-400">{profile.detail}</div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
+
+            {state.securityLevel !== 'experimental' && (
+                <>
+                    <label className="text-sm text-gray-500 dark:text-gray-400 mt-2">{t('vault.description_label')}</label>
+                    <input value={state.description} onChange={e => state.setDescription(e.target.value)}
+                        className="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm" placeholder="My secure vault" />
+                </>
+            )}
 
             <label className="text-sm text-gray-500 dark:text-gray-400">{t('vault.password')}</label>
             <div className="relative">
