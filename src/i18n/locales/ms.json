@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Pemadaman lembut: fail yang dipadam boleh dipulihkan daripada sejarah versi",
             "b2NativeAdvBucketUsage": "Penggunaan storan peringkat bucket dipaparkan dalam bar status",
             "b2NativeAdvShareLinks": "Pautan kongsi dengan tempoh tamat tersuai (sehingga 7 hari)",
-            "b2NativeAdvVersions": "Sejarah versi fail penuh setiap objek"
+            "b2NativeAdvVersions": "Sejarah versi fail penuh setiap objek",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Jauh",

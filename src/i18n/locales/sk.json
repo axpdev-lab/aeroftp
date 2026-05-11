@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Mäkké odstránenie: odstránené súbory sa dajú obnoviť z histórie verzií",
             "b2NativeAdvBucketUsage": "Využitie úložiska na úrovni bucketu sa zobrazuje v stavovom riadku",
             "b2NativeAdvShareLinks": "Odkazy na zdieľanie s vlastným časom platnosti (až 7 dní)",
-            "b2NativeAdvVersions": "Úplná história verzií pre každý objekt"
+            "b2NativeAdvVersions": "Úplná história verzií pre každý objekt",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Vzdialený",

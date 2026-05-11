@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Maigā dzēšana: dzēstos failus var atjaunot no versiju vēstures",
             "b2NativeAdvBucketUsage": "Bucket līmeņa krātuves izmantošana tiek parādīta statusa joslā",
             "b2NativeAdvShareLinks": "Koplietošanas saites ar pielāgotu termiņu (līdz 7 dienām)",
-            "b2NativeAdvVersions": "Pilna faila versiju vēsture katram objektam"
+            "b2NativeAdvVersions": "Pilna faila versiju vēsture katram objektam",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Attālināts",

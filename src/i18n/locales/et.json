@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Pehme kustutamine: kustutatud faile saab versiooniloost taastada",
             "b2NativeAdvBucketUsage": "Bucket-tasandi salvestuskasutus kuvatakse olekuribal",
             "b2NativeAdvShareLinks": "Jagamislingid kohandatud aegumisega (kuni 7 päeva)",
-            "b2NativeAdvVersions": "Täielik failiversioonide ajalugu objekti kohta"
+            "b2NativeAdvVersions": "Täielik failiversioonide ajalugu objekti kohta",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Kaugserver",

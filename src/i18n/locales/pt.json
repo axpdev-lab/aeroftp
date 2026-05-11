@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Exclusão suave: arquivos excluídos são recuperáveis a partir do histórico de versões",
             "b2NativeAdvBucketUsage": "Uso de armazenamento por bucket exibido na barra de status",
             "b2NativeAdvShareLinks": "Links de compartilhamento com expiração personalizada (até 7 dias)",
-            "b2NativeAdvVersions": "Histórico completo de versões por objeto"
+            "b2NativeAdvVersions": "Histórico completo de versões por objeto",
+            "totpSecret": "Segredo TOTP (opcional, salvo)",
+            "totpSecretPlaceholder": "Segredo base32, ex. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Salve seu segredo 2FA uma única vez. O AeroFTP gerará o código de 6 dígitos automaticamente a cada reconexão, como faz um aplicativo autenticador."
         },
         "browser": {
             "remote": "Remoto",

@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Փափուկ ջնջում՝ ջնջված ֆայլերը կարող են վերականգնվել վերսիաների պատմությունից",
             "b2NativeAdvBucketUsage": "Bucket-ի մակարդակի պահոցման օգտագործումը ցուցադրվում է կարգավիճակի տողում",
             "b2NativeAdvShareLinks": "Կիսված հղումներ՝ հատուկ լարտվող ժամկետով (մինչև 7 օր)",
-            "b2NativeAdvVersions": "Ֆայլի վերսիաների լիարժեք պատմություն՝ յուրաքանչյուր օբյեկտի համար"
+            "b2NativeAdvVersions": "Ֆայլի վերսիաների լիարժեք պատմություն՝ յուրաքանչյուր օբյեկտի համար",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Հեռավոր",

@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Myk sletting: slettede filer kan gjenopprettes fra versjonshistorikken",
             "b2NativeAdvBucketUsage": "Lagringsbruk på bucket-nivå vises i statuslinjen",
             "b2NativeAdvShareLinks": "Delingslenker med tilpasset utløpstid (opptil 7 dager)",
-            "b2NativeAdvVersions": "Komplett filversjonshistorikk per objekt"
+            "b2NativeAdvVersions": "Komplett filversjonshistorikk per objekt",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Ekstern",

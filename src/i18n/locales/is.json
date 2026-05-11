@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Mjúk eyðing: eyddar skrár er hægt að endurheimta úr útgáfusögu",
             "b2NativeAdvBucketUsage": "Geymslu notkun á bucket stigi birt á stöðustikunni",
             "b2NativeAdvShareLinks": "Deilingartenglar með sérstilltum gildistíma (allt að 7 dagar)",
-            "b2NativeAdvVersions": "Heildarútgáfusaga skrár fyrir hvert hlutdeild"
+            "b2NativeAdvVersions": "Heildarútgáfusaga skrár fyrir hvert hlutdeild",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Fjartengdur",

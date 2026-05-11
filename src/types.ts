@@ -258,7 +258,8 @@ export interface ProviderOptions {
   pcloudRegion?: "us" | "eu";
 
   // Filen-specific
-  two_factor_code?: string; // Optional TOTP 2FA code
+  two_factor_code?: string; // Optional single-use TOTP 2FA code (NOT persisted)
+  totp_secret?: string;     // Optional persisted base32 TOTP secret. When set, the backend derives the 6-digit code on every connect via totp_helper. Used by Filen and MEGA.
   filen_auth_version?: number; // Last observed Filen authVersion (v1/v2/v3)
 
   // kDrive-specific

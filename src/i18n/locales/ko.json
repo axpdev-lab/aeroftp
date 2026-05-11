@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "소프트 삭제: 삭제된 파일은 버전 기록에서 복구 가능",
             "b2NativeAdvBucketUsage": "버킷 수준의 스토리지 사용량이 상태 표시줄에 표시됨",
             "b2NativeAdvShareLinks": "사용자 지정 만료 기간이 있는 공유 링크 (최대 7일)",
-            "b2NativeAdvVersions": "오브젝트별 전체 파일 버전 기록"
+            "b2NativeAdvVersions": "오브젝트별 전체 파일 버전 기록",
+            "totpSecret": "TOTP 시크릿(선택, 저장됨)",
+            "totpSecretPlaceholder": "Base32 시크릿, 예: JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "2FA 시크릿을 한 번만 저장하세요. AeroFTP는 인증 앱과 동일하게 재연결할 때마다 6자리 코드를 자동으로 생성합니다."
         },
         "browser": {
             "remote": "원격",

@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "ソフト削除: 削除されたファイルはバージョン履歴から復元可能",
             "b2NativeAdvBucketUsage": "バケットレベルのストレージ使用量がステータスバーに表示されます",
             "b2NativeAdvShareLinks": "カスタム有効期限付き共有リンク (最大 7 日間)",
-            "b2NativeAdvVersions": "オブジェクトごとの完全なファイルバージョン履歴"
+            "b2NativeAdvVersions": "オブジェクトごとの完全なファイルバージョン履歴",
+            "totpSecret": "TOTP シークレット（任意、保存）",
+            "totpSecretPlaceholder": "Base32 シークレット、例: JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "2FA シークレットを一度保存してください。AeroFTP は認証アプリと同じように、再接続のたびに 6 桁のコードを自動生成します。"
         },
         "browser": {
             "remote": "リモート",

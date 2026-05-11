@@ -234,14 +234,36 @@ impl MegaApiClient {
 
         if !response.status().is_success() {
             let status = response.status();
+            // Read the body before classifying. MEGA sometimes encodes the
+            // real reason as a negative numeric code in the response body
+            // (-15 ESID, -13 ESESSION, -26 EMFAREQUIRED) even when the HTTP
+            // layer chooses a non-2xx status. Surfacing the body in the log
+            // (truncated, no secrets) gives users and bug reports something
+            // actionable instead of a bare "402 Payment Required".
+            let body_preview = response
+                .text()
+                .await
+                .ok()
+                .map(|t| {
+                    let trimmed = t.trim();
+                    trimmed.chars().take(200).collect::<String>()
+                })
+                .unwrap_or_default();
+            tracing::warn!(
+                "[MEGA Native] non-success HTTP {} cmd={} body={:?}",
+                status,
+                cmd_name,
+                body_preview
+            );
             if status.as_u16() == 402 {
                 return Err(ProviderError::AuthenticationFailed(format!(
-                    "MEGA API returned HTTP {} (session expired or invalid)",
+                    "MEGA API returned HTTP {} (session expired or invalid). \
+                     Response body preview: {body_preview:?}",
                     status
                 )));
             }
             return Err(ProviderError::NetworkError(format!(
-                "MEGA API returned HTTP {}",
+                "MEGA API returned HTTP {} (body: {body_preview:?})",
                 status
             )));
         }
@@ -387,6 +409,18 @@ impl Drop for MegaNativeProvider {
 }
 
 impl MegaNativeProvider {
+    /// Resolve the effective `mfa` value forwarded to MEGA's `us` (login)
+    /// command. Returns the derived code when the user persisted a base32
+    /// TOTP secret, falls back to the single-use code, returns `None` when
+    /// the account has no 2FA configured. Called once per login attempt;
+    /// the derived value is bound to the current 30s slot.
+    fn effective_mfa_code(&self) -> Result<Option<String>, ProviderError> {
+        if let Some(secret) = self.config.totp_secret.as_ref() {
+            return crate::providers::totp_helper::generate_totp_code(secret).map(Some);
+        }
+        Ok(self.config.two_factor_code.clone())
+    }
+
     pub fn new(config: MegaConfig) -> Self {
         Self {
             config,
@@ -665,7 +699,7 @@ impl MegaNativeProvider {
                 "user": self.config.email.trim().to_lowercase(),
                 "uh": user_hash_b64,
             });
-            if let Some(mfa) = self.config.two_factor_code.as_deref() {
+            if let Some(mfa) = self.effective_mfa_code()? {
                 if let Some(obj) = us_request.as_object_mut() {
                     obj.insert("mfa".into(), json!(mfa));
                 }
@@ -737,7 +771,7 @@ impl MegaNativeProvider {
                 "user": self.config.email.trim().to_lowercase(),
                 "uh": uh_b64,
             });
-            if let Some(mfa) = self.config.two_factor_code.as_deref() {
+            if let Some(mfa) = self.effective_mfa_code()? {
                 if let Some(obj) = us_request.as_object_mut() {
                     obj.insert("mfa".into(), json!(mfa));
                 }
