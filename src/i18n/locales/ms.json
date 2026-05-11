@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentasi",
             "mcp": "MCP Server...",
             "mountManager": "Pengurus Lekapan...",
-            "activityLog": "Log Aktiviti"
+            "activityLog": "Log Aktiviti",
+            "detailedCards": "Kad pelayan terperinci"
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu arahan...",

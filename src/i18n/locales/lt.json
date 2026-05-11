@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentacija",
             "mcp": "MCP Server...",
             "mountManager": "Prijungimo tvarkyklė...",
-            "activityLog": "Veiklos zurnalas"
+            "activityLog": "Veiklos zurnalas",
+            "detailedCards": "Išsamios serverių kortelės"
         },
         "activityPanel": {
             "awaitingCommands": "Laukiama komandų...",

@@ -3217,7 +3217,8 @@
             "documentation": "Documentatie",
             "mcp": "MCP Server...",
             "mountManager": "Manager de montări...",
-            "activityLog": "Jurnal activitate"
+            "activityLog": "Jurnal activitate",
+            "detailedCards": "Carduri server detaliate"
         },
         "activityPanel": {
             "awaitingCommands": "Se asteapta comenzi...",

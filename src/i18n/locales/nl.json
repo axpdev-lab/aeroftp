@@ -3217,7 +3217,8 @@
             "documentation": "Documentatie",
             "mcp": "MCP Server...",
             "mountManager": "Koppelingsbeheer...",
-            "activityLog": "Activiteitenlog"
+            "activityLog": "Activiteitenlog",
+            "detailedCards": "Gedetailleerde serverkaarten"
         },
         "activityPanel": {
             "awaitingCommands": "Wacht op opdrachten...",

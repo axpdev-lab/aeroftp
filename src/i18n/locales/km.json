@@ -3217,7 +3217,8 @@
             "documentation": "ឯកសារកម្ម",
             "mcp": "MCP Server...",
             "mountManager": "កម្មវិធីគ្រប់គ្រងការភ្ជាប់...",
-            "activityLog": "កំណត់ហេតុសកម្មភាព"
+            "activityLog": "កំណត់ហេតុសកម្មភាព",
+            "detailedCards": "កាតម៉ាស៊ីនមេលម្អិត"
         },
         "activityPanel": {
             "awaitingCommands": "កំពុងរង់ចាំពាក្យបញ្ជា...",

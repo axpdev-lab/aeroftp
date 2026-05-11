@@ -3217,7 +3217,8 @@
             "documentation": "文档",
             "mcp": "MCP Server...",
             "mountManager": "挂载管理器...",
-            "activityLog": "活动日志"
+            "activityLog": "活动日志",
+            "detailedCards": "详细服务器卡片"
         },
         "activityPanel": {
             "awaitingCommands": "等待命令...",

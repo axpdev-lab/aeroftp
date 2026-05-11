@@ -3217,7 +3217,8 @@
             "documentation": "Документація",
             "mcp": "MCP Server...",
             "mountManager": "Менеджер монтування...",
-            "activityLog": "Журнал активності"
+            "activityLog": "Журнал активності",
+            "detailedCards": "Детальні картки серверів"
         },
         "activityPanel": {
             "awaitingCommands": "Очікування команд...",

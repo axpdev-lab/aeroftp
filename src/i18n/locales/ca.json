@@ -3217,7 +3217,8 @@
             "documentation": "Documentació",
             "mcp": "MCP Server...",
             "mountManager": "Gestor de muntatges...",
-            "activityLog": "Registre d'Activitat"
+            "activityLog": "Registre d'Activitat",
+            "detailedCards": "Targetes de servidor detallades"
         },
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",

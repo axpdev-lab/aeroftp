@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentazioa",
             "mcp": "MCP Server...",
             "mountManager": "Muntaketa-kudeatzailea...",
-            "activityLog": "Jarduera erregistroa"
+            "activityLog": "Jarduera erregistroa",
+            "detailedCards": "Zerbitzari-txartel zehatzak"
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",

@@ -3217,7 +3217,8 @@
             "documentation": "Documentacion",
             "mcp": "MCP Server...",
             "mountManager": "Administrador de montajes...",
-            "activityLog": "Registro de actividad"
+            "activityLog": "Registro de actividad",
+            "detailedCards": "Tarjetas de servidor detalladas"
         },
         "activityPanel": {
             "awaitingCommands": "Esperando comandos...",

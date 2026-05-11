@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentācija",
             "mcp": "MCP Server...",
             "mountManager": "Montēšanas pārvaldnieks...",
-            "activityLog": "Aktivitāšu žurnāls"
+            "activityLog": "Aktivitāšu žurnāls",
+            "detailedCards": "Detalizētas serveru kartes"
         },
         "activityPanel": {
             "awaitingCommands": "Gaida komandas...",

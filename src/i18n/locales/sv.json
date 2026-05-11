@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentation",
             "mcp": "MCP Server...",
             "mountManager": "Monteringshanterare...",
-            "activityLog": "Aktivitetslogg"
+            "activityLog": "Aktivitetslogg",
+            "detailedCards": "Detaljerade serverkort"
         },
         "activityPanel": {
             "awaitingCommands": "Vantar pa kommandon...",

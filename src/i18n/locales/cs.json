@@ -3217,7 +3217,8 @@
             "documentation": "Dokumentace",
             "mcp": "MCP Server...",
             "mountManager": "Správce připojení...",
-            "activityLog": "Protokol aktivit"
+            "activityLog": "Protokol aktivit",
+            "detailedCards": "Detailní karty serverů"
         },
         "activityPanel": {
             "awaitingCommands": "Čekání na příkazy...",
