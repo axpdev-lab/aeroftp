@@ -1393,12 +1393,10 @@ impl B2Provider {
             .files
             .into_iter()
             .find(|f| f.file_name == key && f.action == "hide")
-            .ok_or_else(|| {
-                ProviderError::NotFound(format!("no hide marker for '{}'", key))
-            })?;
-        let file_id = marker.file_id.ok_or_else(|| {
-            ProviderError::ServerError("hide marker missing fileId".into())
-        })?;
+            .ok_or_else(|| ProviderError::NotFound(format!("no hide marker for '{}'", key)))?;
+        let file_id = marker
+            .file_id
+            .ok_or_else(|| ProviderError::ServerError("hide marker missing fileId".into()))?;
         match self.do_delete_file_version(&key, &file_id).await {
             Ok(()) => Ok(()),
             Err(e) if is_b2_token_failure(&e) => {
@@ -1430,12 +1428,7 @@ impl B2Provider {
         let mut start_id: Option<String> = None;
         loop {
             let page = match self
-                .list_file_versions_page(
-                    &key,
-                    start_name.as_deref(),
-                    start_id.as_deref(),
-                    100,
-                )
+                .list_file_versions_page(&key, start_name.as_deref(), start_id.as_deref(), 100)
                 .await
             {
                 Ok(r) => r,
@@ -2123,12 +2116,7 @@ impl StorageProvider for B2Provider {
         let mut start_name: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let page = match self
-                .list_file_names(
-                    "",
-                    None,
-                    start_name.as_deref(),
-                    PAGE_SIZE,
-                )
+                .list_file_names("", None, start_name.as_deref(), PAGE_SIZE)
                 .await
             {
                 Ok(p) => p,
@@ -2397,7 +2385,11 @@ fn mask_authorize_secrets(body: &str) -> String {
     let value_end = value_start + end_offset;
     let value = &body[value_start..value_end];
     let head_len = value.len().min(6);
-    let masked = format!("{}…<{}B redacted>", &value[..head_len], value.len() - head_len);
+    let masked = format!(
+        "{}…<{}B redacted>",
+        &value[..head_len],
+        value.len() - head_len
+    );
     let mut out = String::with_capacity(body.len());
     out.push_str(&body[..value_start]);
     out.push_str(&masked);

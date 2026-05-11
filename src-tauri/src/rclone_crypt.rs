@@ -42,6 +42,7 @@ const SCRYPT_R: u32 = 8;
 const SCRYPT_P: u32 = 1;
 const SCRYPT_KEY_LEN: usize = 80;
 const SCRYPT_PARAMS_LEN: usize = 64;
+type RcloneCryptKeyMaterial = ([u8; 32], [u8; 32], [u8; 16]);
 const RCLONE_DEFAULT_SALT: [u8; 16] = [
     0xA8, 0x0D, 0xF4, 0x3A, 0x8F, 0xBD, 0x03, 0x08, 0xA7, 0xCA, 0xB8, 0x3E, 0x58, 0x1F, 0x86, 0xB1,
 ];
@@ -155,7 +156,7 @@ pub fn derive_keys(password: &str, salt: &str) -> Result<([u8; 32], [u8; 32]), S
 pub fn derive_keys_with_tweak(
     password: &str,
     salt: &str,
-) -> Result<([u8; 32], [u8; 32], [u8; 16]), String> {
+) -> Result<RcloneCryptKeyMaterial, String> {
     // scrypt 0.11 limits Params::len to <=64 for password-hash metadata, but
     // the raw scrypt() function accepts rclone's 80-byte output buffer.
     let params = ScryptParams::new(SCRYPT_LOG_N, SCRYPT_R, SCRYPT_P, SCRYPT_PARAMS_LEN)
@@ -1545,9 +1546,7 @@ mod tests {
         let decrypt_one_name = |encoded: &str| -> String {
             match mode {
                 FilenameEncryption::Off => encoded.to_string(),
-                FilenameEncryption::Standard => {
-                    decrypt_name(&name_key, &dir_iv, encoded).unwrap()
-                }
+                FilenameEncryption::Standard => decrypt_name(&name_key, &dir_iv, encoded).unwrap(),
                 FilenameEncryption::Obfuscate => deobfuscate_name(&dir_iv, encoded).unwrap(),
             }
         };

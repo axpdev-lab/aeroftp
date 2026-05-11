@@ -1331,6 +1331,15 @@ enum Commands {
         #[command(subcommand)]
         command: ExportCommands,
     },
+    /// Encrypted full-state backup of the AeroFTP installation
+    /// (vault entries, SQLite databases, plugins, sync snapshots, UI
+    /// preferences). The on-disk format is the same `.aeroftp-keystore`
+    /// envelope produced by the GUI, so files created via the CLI can
+    /// be imported through Settings > Backup and vice versa.
+    Keystore {
+        #[command(subcommand)]
+        command: KeystoreCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1373,6 +1382,140 @@ enum ExportCommands {
         #[arg(long)]
         profiles: Option<String>,
         /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+/// Selectivity for `aeroftp-cli keystore export`.
+///
+/// `full` (default) packages every vault entry plus the SQLite
+/// databases under `~/.config/com.aeroftp.AeroFTP/`, the user's
+/// installed plugins, rollback snapshots, and the GUI's whitelisted
+/// localStorage keys. `vault-only` writes the slim pre-v3.7.8 shape:
+/// vault entries only, no filesystem or UI state. The on-disk
+/// envelope is the same v2 format in both cases.
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum KeystoreExportModeArg {
+    /// Full snapshot (vault + SQLite DBs + plugins + sync snapshots + UI prefs)
+    Full,
+    /// Slim export, vault entries only, no filesystem state
+    #[clap(name = "vault-only")]
+    VaultOnly,
+}
+
+impl KeystoreExportModeArg {
+    fn into_inner(self) -> ftp_client_gui_lib::keystore_export::ExportMode {
+        match self {
+            Self::Full => ftp_client_gui_lib::keystore_export::ExportMode::Full,
+            Self::VaultOnly => ftp_client_gui_lib::keystore_export::ExportMode::VaultOnly,
+        }
+    }
+}
+
+/// Conflict resolution for `aeroftp-cli keystore import`.
+///
+/// `skip` (default) leaves existing vault entries alone -- the safer
+/// option for "rehydrate a new machine". `overwrite` replaces every
+/// existing entry with the backup's value, suitable for "restore my
+/// vault after I accidentally cleared it".
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum KeystoreMergeArg {
+    Skip,
+    Overwrite,
+}
+
+impl KeystoreMergeArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Skip => "skip",
+            Self::Overwrite => "overwrite",
+        }
+    }
+}
+
+#[derive(Subcommand)]
+enum KeystoreCommands {
+    /// Export an encrypted `.aeroftp-keystore` backup file.
+    ///
+    /// Password resolution order (first match wins):
+    ///   1. AEROFTP_KEYSTORE_PASSWORD environment variable
+    ///   2. `--password-stdin` (reads one line from stdin)
+    ///   3. `--password <pw>` (visible in process list, prints a warning)
+    ///   4. interactive prompt on stderr (when stdin is a TTY)
+    ///
+    /// Minimum password length is 8 characters; backend enforces.
+    Export {
+        /// Output `.aeroftp-keystore` path
+        #[arg(long, short = 'o')]
+        output: String,
+        /// Export mode
+        #[arg(long, value_enum, default_value_t = KeystoreExportModeArg::Full)]
+        mode: KeystoreExportModeArg,
+        /// Encryption password (visible in `ps`; prefer --password-stdin or env)
+        #[arg(long)]
+        password: Option<String>,
+        /// Read one password line from stdin
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Override the source config directory (where SQLite DBs and
+        /// plugins live). Defaults to the same directory the GUI uses.
+        #[arg(long = "config-dir")]
+        config_dir: Option<String>,
+        /// Output a JSON summary on stdout (metadata + size + zstd
+        /// ratio); errors go to stderr in any mode.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import an encrypted `.aeroftp-keystore` backup file into the
+    /// current installation. Sections that have been opted out via
+    /// `--skip-*` are left untouched on disk. After a successful
+    /// import that touched SQLite or files the CLI prints a
+    /// `requires_restart=true` line and exits 0; the AeroFTP GUI
+    /// must be restarted before exercising the restored DBs.
+    Import {
+        /// Backup `.aeroftp-keystore` path
+        #[arg(long, short = 'i')]
+        input: String,
+        /// Decryption password (same resolution order as `export`)
+        #[arg(long)]
+        password: Option<String>,
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Merge strategy for vault entries that already exist
+        #[arg(long, value_enum, default_value_t = KeystoreMergeArg::Skip)]
+        merge: KeystoreMergeArg,
+        /// Skip the vault entries section
+        #[arg(long = "skip-vault")]
+        skip_vault: bool,
+        /// Skip the SQLite databases section
+        #[arg(long = "skip-sqlite")]
+        skip_sqlite: bool,
+        /// Skip the file trees section (plugins, sync_snapshots)
+        #[arg(long = "skip-files")]
+        skip_files: bool,
+        /// Skip the localStorage UI-preferences section
+        #[arg(long = "skip-local-storage")]
+        skip_local_storage: bool,
+        /// Override the destination config directory
+        #[arg(long = "config-dir")]
+        config_dir: Option<String>,
+        /// Output a JSON import-result summary on stdout
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect the cleartext envelope metadata of a backup file
+    /// WITHOUT decrypting the payload. Useful for "what's in this
+    /// file?" before typing the password.
+    ///
+    /// NB: the cleartext metadata cannot be cryptographically trusted
+    /// before decryption. A genuine import double-checks the
+    /// authenticated copy embedded in the encrypted payload.
+    Info {
+        /// Backup `.aeroftp-keystore` path
+        #[arg(long, short = 'i')]
+        input: String,
+        /// Output a JSON summary on stdout
         #[arg(long)]
         json: bool,
     },
@@ -2768,7 +2911,9 @@ fn sanitize_filename(name: &str) -> String {
 /// `profiles` table to fit the row inside the visible area instead of
 /// spilling onto a second line (issue #129).
 fn terminal_width() -> usize {
-    crossterm::terminal::size().map(|(c, _)| c as usize).unwrap_or(120)
+    crossterm::terminal::size()
+        .map(|(c, _)| c as usize)
+        .unwrap_or(120)
 }
 
 /// Check if we should use color in output (respects NO_COLOR env var and TTY detection).
@@ -5149,8 +5294,7 @@ fn render_profiles_text(
     // Default per-shrinkable cap (matches pre-#129 behaviour for wide terms).
     let default_cap = 30usize;
     // Budget for ALL shrinkable columns combined.
-    let total_budget = term_cols
-        .saturating_sub(fixed_total + gap_chars + margin_chars);
+    let total_budget = term_cols.saturating_sub(fixed_total + gap_chars + margin_chars);
     // Per-column cap. Floor at 8 so even a 60-col terminal stays readable.
     let per_col_cap = (total_budget / shrinkable_count).max(8).min(default_cap);
 
@@ -5482,11 +5626,7 @@ fn render_profiles_text(
         let (total_tone, total_pct) = if summary.total_total > 0 {
             let pct = (summary.total_used as f64 / summary.total_total as f64) * 100.0;
             (
-                ftp_client_gui_lib_storage_tone(
-                    summary.total_used,
-                    summary.total_total,
-                )
-                .0,
+                ftp_client_gui_lib_storage_tone(summary.total_used, summary.total_total).0,
                 Some(pct),
             )
         } else {
@@ -5529,10 +5669,7 @@ fn render_profiles_text(
         );
     }
 
-    if overrides.interactive
-        && std::io::stdin().is_terminal()
-        && std::io::stderr().is_terminal()
-    {
+    if overrides.interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
         let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
         return interactive_profiles_loop(store, ordered);
     }
@@ -5617,11 +5754,7 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
         let target = match current.get(zero) {
             Some(p) => p.clone(),
             None => {
-                eprintln!(
-                    "No profile at index {}. Range: 1..={}.",
-                    idx,
-                    current.len()
-                );
+                eprintln!("No profile at index {}. Range: 1..={}.", idx, current.len());
                 continue;
             }
         };
@@ -9948,8 +10081,9 @@ mod serve_sftp {
                         });
                         let _ = tx.send(r);
                     });
-                    rx.recv()
-                        .unwrap_or_else(|_| Err(ProviderError::Other("provider worker failed".into())))
+                    rx.recv().unwrap_or_else(|_| {
+                        Err(ProviderError::Other("provider worker failed".into()))
+                    })
                 }};
             }
             if data.is_empty() {
@@ -13259,8 +13393,10 @@ fn collect_export_scaffold(
             continue;
         }
         if !proto_supported {
-            out.skipped
-                .push((name.to_string(), format!("protocol {} not exportable", protocol)));
+            out.skipped.push((
+                name.to_string(),
+                format!("protocol {} not exportable", protocol),
+            ));
             continue;
         }
         if secret.is_empty() {
@@ -13350,19 +13486,15 @@ async fn cmd_export_rclone(
         "opendrive",
     ];
 
-    let collected = match collect_export_scaffold(
-        &store,
-        &servers_json,
-        filter.as_deref(),
-        &supported,
-        &oauth,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            print_error(format, &e, 4);
-            return 4;
-        }
-    };
+    let collected =
+        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
+        {
+            Ok(c) => c,
+            Err(e) => {
+                print_error(format, &e, 4);
+                return 4;
+            }
+        };
 
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
@@ -13429,19 +13561,15 @@ async fn cmd_export_winscp(
     let supported = ["ftp", "ftps", "sftp"];
     let oauth: [&str; 0] = [];
 
-    let collected = match collect_export_scaffold(
-        &store,
-        &servers_json,
-        filter.as_deref(),
-        &supported,
-        &oauth,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            print_error(format, &e, 4);
-            return 4;
-        }
-    };
+    let collected =
+        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
+        {
+            Ok(c) => c,
+            Err(e) => {
+                print_error(format, &e, 4);
+                return 4;
+            }
+        };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -13508,19 +13636,15 @@ async fn cmd_export_filezilla(
     let supported = ["ftp", "ftps", "sftp"];
     let oauth: [&str; 0] = [];
 
-    let collected = match collect_export_scaffold(
-        &store,
-        &servers_json,
-        filter.as_deref(),
-        &supported,
-        &oauth,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            print_error(format, &e, 4);
-            return 4;
-        }
-    };
+    let collected =
+        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), &supported, &oauth)
+        {
+            Ok(c) => c,
+            Err(e) => {
+                print_error(format, &e, 4);
+                return 4;
+            }
+        };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -13563,6 +13687,401 @@ async fn cmd_export_filezilla(
     }
 }
 
+// ============ Keystore (full-state backup) ============
+//
+// CLI parity with the Settings > Backup UI: same `.aeroftp-keystore`
+// envelope, same Argon2id/AES-GCM/zstd parameters, same v1
+// backwards-compat path. The CLI cannot populate the
+// `local_storage` section (no WebView) so a CLI-produced backup
+// imported into a GUI installation may show "0 local_storage_keys"
+// even when the user did have UI prefs set: the prefs aren't lost,
+// they just aren't carried by a CLI export. Use the GUI's
+// Settings > Backup for a "carry everything" export.
+
+/// Resolve the keystore password. Resolution order (first non-empty
+/// wins): AEROFTP_KEYSTORE_PASSWORD env var → `--password-stdin` →
+/// `--password` flag (with `ps`-visibility warning) → interactive
+/// rpassword prompt on stderr. Returns an error when none apply,
+/// rather than silently exporting with an empty / placeholder
+/// password.
+///
+/// The password buffer is zeroized by the caller once the underlying
+/// keystore_export call has returned.
+fn resolve_keystore_password(
+    cli_password: &Option<String>,
+    password_stdin: bool,
+) -> Result<String, String> {
+    if let Ok(env_pw) = std::env::var("AEROFTP_KEYSTORE_PASSWORD") {
+        if !env_pw.is_empty() {
+            return Ok(env_pw);
+        }
+    }
+    if password_stdin {
+        let mut buf = String::new();
+        std::io::stdin()
+            .read_line(&mut buf)
+            .map_err(|e| format!("read stdin for keystore password: {e}"))?;
+        // Trim only the trailing newline, not internal whitespace
+        // (a password may legitimately end with spaces).
+        let trimmed = buf.trim_end_matches(['\n', '\r']).to_string();
+        if trimmed.is_empty() {
+            return Err("Empty password read from --password-stdin".to_string());
+        }
+        return Ok(trimmed);
+    }
+    if let Some(p) = cli_password {
+        if !p.is_empty() {
+            eprintln!(
+                "Warning: --password is visible in process list (ps). \
+                 Prefer AEROFTP_KEYSTORE_PASSWORD env var or --password-stdin."
+            );
+            return Ok(p.clone());
+        }
+    }
+    if std::io::stdin().is_terminal() {
+        eprint!("Keystore password: ");
+        std::io::stderr().flush().ok();
+        let pw = rpassword::read_password()
+            .map_err(|e| format!("read interactive password: {e}"))?;
+        if pw.is_empty() {
+            return Err("Empty password".to_string());
+        }
+        return Ok(pw);
+    }
+    Err("No keystore password available. Set AEROFTP_KEYSTORE_PASSWORD, \
+         pipe via --password-stdin, or run interactively."
+        .to_string())
+}
+
+/// Resolve the config directory the export/import should target.
+///
+/// `--config-dir <path>` overrides everything. Otherwise we use the
+/// same path the GUI would use via `portable::cli_app_config_dir()`,
+/// which mirrors `app_config_dir(app)` without an AppHandle. Returns
+/// `None` when no directory can be resolved (no $HOME, etc.), in
+/// which case the caller silently downgrades a Full export to vault-
+/// only rather than writing somewhere unexpected.
+fn resolve_keystore_config_dir(override_dir: &Option<String>) -> Option<PathBuf> {
+    if let Some(p) = override_dir {
+        return Some(PathBuf::from(p));
+    }
+    ftp_client_gui_lib::portable::cli_app_config_dir()
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_keystore_export(
+    cli: &Cli,
+    output: &str,
+    mode: KeystoreExportModeArg,
+    cli_password: &Option<String>,
+    password_stdin: bool,
+    config_dir_override: &Option<String>,
+    json: bool,
+    format: OutputFormat,
+) -> i32 {
+    use zeroize::Zeroize;
+
+    // 1. Unlock vault first so the keystore_export module can read
+    //    accounts via `CredentialStore::from_cache()`.
+    if let Err(e) = open_vault(cli) {
+        print_error(format, &format!("vault unavailable: {e}"), 6);
+        return 6;
+    }
+
+    // 2. Resolve password.
+    let mut password = match resolve_keystore_password(cli_password, password_stdin) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &e, 6);
+            return 6;
+        }
+    };
+    if password.len() < 8 {
+        password.zeroize();
+        print_error(
+            format,
+            "Keystore password must be at least 8 characters",
+            6,
+        );
+        return 6;
+    }
+
+    // 3. Resolve config_dir. Full mode without a resolvable config
+    //    dir is downgraded to vault-only with a stderr warning so we
+    //    never write into a surprising directory.
+    let config_dir = resolve_keystore_config_dir(config_dir_override);
+    let effective_mode = match (mode, config_dir.as_ref()) {
+        (KeystoreExportModeArg::Full, None) => {
+            eprintln!(
+                "Warning: --mode=full requested but no config directory could be resolved. \
+                 Falling back to vault-only export."
+            );
+            KeystoreExportModeArg::VaultOnly
+        }
+        (m, _) => m,
+    };
+    let inner_mode = effective_mode.into_inner();
+
+    // 4. Run the export in a blocking task so the async runtime is
+    //    not held by Argon2id + zstd. We clone the strings into the
+    //    blocking closure, then zeroize the original password buffer
+    //    once we have spawn_blocking under way.
+    let output_path = PathBuf::from(output);
+    let cfg_clone = config_dir.clone();
+    let password_for_call = password.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        ftp_client_gui_lib::keystore_export::export_keystore(
+            &password_for_call,
+            &output_path,
+            inner_mode,
+            cfg_clone.as_deref(),
+            None, // local_storage: CLI cannot populate WebView storage
+        )
+    })
+    .await;
+    password.zeroize();
+
+    let metadata = match result {
+        Ok(Ok(m)) => m,
+        Ok(Err(e)) => {
+            let exit = classify_keystore_error(&e.to_string());
+            print_error(format, &format!("keystore export failed: {e}"), exit);
+            return exit;
+        }
+        Err(join_err) => {
+            print_error(format, &format!("export task panicked: {join_err}"), 99);
+            return 99;
+        }
+    };
+
+    // 5. Stat the resulting file so we can surface size + ratio.
+    let file_size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+
+    if json {
+        let summary = serde_json::json!({
+            "status": "ok",
+            "path": output,
+            "mode": match effective_mode {
+                KeystoreExportModeArg::Full => "full",
+                KeystoreExportModeArg::VaultOnly => "vault-only",
+            },
+            "size_bytes": file_size,
+            "metadata": metadata,
+        });
+        println!("{}", summary);
+    } else if matches!(format, OutputFormat::Text) {
+        eprintln!(
+            "Keystore exported: {} entries, {} SQLite DBs, {} file blobs, {} localStorage keys",
+            metadata.entries_count,
+            metadata.categories.sqlite_dbs,
+            metadata.categories.files,
+            metadata.categories.local_storage_keys,
+        );
+        eprintln!(
+            "  → {} ({} bytes, mode={:?})",
+            output, file_size, inner_mode
+        );
+    }
+    0
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_keystore_import(
+    cli: &Cli,
+    input: &str,
+    cli_password: &Option<String>,
+    password_stdin: bool,
+    merge: KeystoreMergeArg,
+    skip_vault: bool,
+    skip_sqlite: bool,
+    skip_files: bool,
+    skip_local_storage: bool,
+    config_dir_override: &Option<String>,
+    json: bool,
+    format: OutputFormat,
+) -> i32 {
+    use zeroize::Zeroize;
+
+    if !std::path::Path::new(input).is_file() {
+        print_error(format, &format!("Backup file not found: {input}"), 2);
+        return 2;
+    }
+
+    // Unlock vault so import can write entries via CredentialStore.
+    if let Err(e) = open_vault(cli) {
+        print_error(format, &format!("vault unavailable: {e}"), 6);
+        return 6;
+    }
+
+    let mut password = match resolve_keystore_password(cli_password, password_stdin) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &e, 6);
+            return 6;
+        }
+    };
+
+    let config_dir = resolve_keystore_config_dir(config_dir_override);
+    if !skip_sqlite && !skip_files && config_dir.is_none() {
+        eprintln!(
+            "Warning: no config directory could be resolved; SQLite and file sections \
+             will be silently skipped. Pass --config-dir to override."
+        );
+    }
+
+    let sections = ftp_client_gui_lib::keystore_export::ImportSections {
+        vault: !skip_vault,
+        sqlite_dbs: !skip_sqlite,
+        files: !skip_files,
+        local_storage: !skip_local_storage,
+    };
+    let merge_strategy = merge.as_str().to_string();
+    let input_path = PathBuf::from(input);
+    let cfg_clone = config_dir.clone();
+    let password_for_call = password.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
+        // Lightweight progress relay to stderr -- one log line per
+        // phase transition so a tail observer sees that the import
+        // is making progress through Argon2id and zstd.
+        let progress_cb = |phase: &str, current: u32, total: u32| {
+            // Throttle: only emit at start of each phase + every 10%.
+            if current == 0 || (total > 0 && current % total.max(10) == 0) || current == total {
+                eprintln!("[keystore import] {phase}: {current}/{total}");
+            }
+        };
+        ftp_client_gui_lib::keystore_export::import_keystore(
+            &password_for_call,
+            &input_path,
+            &merge_strategy,
+            sections,
+            cfg_clone.as_deref(),
+            Some(&progress_cb),
+        )
+    })
+    .await;
+    password.zeroize();
+
+    let outcome = match result {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            let exit = classify_keystore_error(&e.to_string());
+            print_error(format, &format!("keystore import failed: {e}"), exit);
+            return exit;
+        }
+        Err(join_err) => {
+            print_error(format, &format!("import task panicked: {join_err}"), 99);
+            return 99;
+        }
+    };
+
+    if json {
+        let summary = serde_json::json!({
+            "status": "ok",
+            "imported": outcome.imported,
+            "skipped": outcome.skipped,
+            "total": outcome.total,
+            "sqlite_dbs_restored": outcome.sqlite_dbs_restored,
+            "files_restored": outcome.files_restored,
+            "local_storage_keys": outcome.local_storage.len(),
+            "requires_restart": outcome.requires_restart,
+        });
+        println!("{}", summary);
+    } else if matches!(format, OutputFormat::Text) {
+        eprintln!(
+            "Keystore imported: vault={} ({} skipped of {}), sqlite_dbs={}, files={}, local_storage_keys={}",
+            outcome.imported,
+            outcome.skipped,
+            outcome.total,
+            outcome.sqlite_dbs_restored,
+            outcome.files_restored,
+            outcome.local_storage.len(),
+        );
+        if outcome.requires_restart {
+            eprintln!(
+                "Restart AeroFTP before reopening AeroAgent/AeroFile: live SQLite \
+                 connections in the GUI process still reference the old DB files."
+            );
+        }
+    }
+    0
+}
+
+fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
+    if !std::path::Path::new(input).is_file() {
+        print_error(format, &format!("Backup file not found: {input}"), 2);
+        return 2;
+    }
+    let metadata = match ftp_client_gui_lib::keystore_export::read_keystore_metadata(
+        std::path::Path::new(input),
+    ) {
+        Ok(m) => m,
+        Err(e) => {
+            let exit = classify_keystore_error(&e.to_string());
+            print_error(format, &format!("keystore info failed: {e}"), exit);
+            return exit;
+        }
+    };
+    let file_size = std::fs::metadata(input).map(|m| m.len()).unwrap_or(0);
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "path": input,
+                "size_bytes": file_size,
+                "metadata": metadata,
+            })
+        );
+    } else if matches!(format, OutputFormat::Text) {
+        eprintln!("Backup file: {} ({} bytes)", input, file_size);
+        eprintln!("  Export date:    {}", metadata.export_date);
+        eprintln!("  AeroFTP:        {}", metadata.aeroftp_version);
+        eprintln!("  Vault entries:  {}", metadata.entries_count);
+        eprintln!(
+            "    server creds: {}",
+            metadata.categories.server_credentials
+        );
+        eprintln!(
+            "    profiles:     {}",
+            metadata.categories.server_profiles
+        );
+        eprintln!("    ai keys:      {}", metadata.categories.ai_keys);
+        eprintln!("    oauth tokens: {}", metadata.categories.oauth_tokens);
+        eprintln!("    config:       {}", metadata.categories.config_entries);
+        eprintln!("  SQLite DBs:     {}", metadata.categories.sqlite_dbs);
+        eprintln!("  File blobs:     {}", metadata.categories.files);
+        eprintln!(
+            "  localStorage:   {}",
+            metadata.categories.local_storage_keys
+        );
+        eprintln!(
+            "Note: metadata is shown from the cleartext envelope; it is verified \
+             against the encrypted copy only on actual import."
+        );
+    }
+    0
+}
+
+/// Map a keystore_export error message back to a CLI exit code.
+/// Matches the 0/1/2/4/5/6/8/11/99 scheme used elsewhere in
+/// `aeroftp-cli` so cron/CI pipelines can branch on it without
+/// parsing the error text.
+fn classify_keystore_error(msg: &str) -> i32 {
+    let low = msg.to_ascii_lowercase();
+    if low.contains("invalid password") || low.contains("decrypt") {
+        6 // auth failure
+    } else if low.contains("vault not ready") || low.contains("vault unavailable") {
+        5 // configuration / vault-locked
+    } else if low.contains("unsupported file version") || low.contains("unknown compression") {
+        7 // not-supported / unsupported version
+    } else if low.contains("io error") || low.contains("backup file") {
+        11 // I/O
+    } else {
+        99 // unclassified
+    }
+}
+
 fn emit_empty_export(json: bool, format: OutputFormat, skipped: &[(String, String)]) {
     if json {
         println!(
@@ -13595,11 +14114,7 @@ fn emit_export_success(
             })
         );
     } else {
-        eprintln!(
-            "Exported {} profiles to {}",
-            count,
-            target_path.display()
-        );
+        eprintln!("Exported {} profiles to {}", count, target_path.display());
         if !skipped.is_empty() {
             eprintln!();
             eprintln!("Skipped ({}):", skipped.len());
@@ -14369,8 +14884,7 @@ async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
 
                         // Visual bar (only meaningful when there is a cap)
                         let bar_width: usize = 40;
-                        let filled =
-                            (((pct.min(100.0)) / 100.0) * bar_width as f64) as usize;
+                        let filled = (((pct.min(100.0)) / 100.0) * bar_width as f64) as usize;
                         let empty = bar_width.saturating_sub(filled);
                         println!(
                             "  [{}{}] {:.1}%",
@@ -15486,7 +16000,11 @@ fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static s
             "<redacted-ip>",
             "IPv4 address",
         ),
-        (r"/home/[a-zA-Z0-9._-]+/", "/home/<redacted>/", "Linux home path"),
+        (
+            r"/home/[a-zA-Z0-9._-]+/",
+            "/home/<redacted>/",
+            "Linux home path",
+        ),
         (
             r"C:\\\\Users\\\\[a-zA-Z0-9._-]+",
             r"C:\\Users\\<redacted>",
@@ -15615,18 +16133,14 @@ async fn cmd_benchmark(
     // doc-comment for the rationale (Backblaze multipart SIGPIPE workaround).
     let _sigpipe_guard = SigpipeIgnoreGuard::new();
 
-    let cfg = match resolve_benchmark_config(
-        level,
-        sizes_override,
-        runs_override,
-        operations_override,
-    ) {
-        Ok(c) => c,
-        Err(msg) => {
-            print_error(format, &msg, 5);
-            return 5;
-        }
-    };
+    let cfg =
+        match resolve_benchmark_config(level, sizes_override, runs_override, operations_override) {
+            Ok(c) => c,
+            Err(msg) => {
+                print_error(format, &msg, 5);
+                return 5;
+            }
+        };
 
     if matches!(level, BenchmarkLevel::Deep) && !cli.quiet && matches!(format, OutputFormat::Text) {
         let total_bytes: u64 =
@@ -15653,7 +16167,8 @@ async fn cmd_benchmark(
     // is unique per run: if its creation fails the upload will hit "parent not
     // found" anyway, so we surface the mkdir error explicitly here.
     if let Err(e) = provider.mkdir(&bench_base).await {
-        if !matches!(e, ProviderError::AlreadyExists(_)) && !cli.quiet
+        if !matches!(e, ProviderError::AlreadyExists(_))
+            && !cli.quiet
             && matches!(format, OutputFormat::Text)
         {
             eprintln!("warning: could not create benchmark base dir: {}", e);
@@ -15775,11 +16290,8 @@ async fn cmd_benchmark(
                     }
                     Err(e) => {
                         upload_fatal += 1;
-                        let (h, hh) = benchmark_provider_hint(
-                            &protocol,
-                            anonymize_extra,
-                            &report_id,
-                        );
+                        let (h, hh) =
+                            benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
                         results.push(BenchmarkResult {
                             protocol: protocol.clone(),
                             provider_hint: h,
@@ -15790,7 +16302,11 @@ async fn cmd_benchmark(
                             warmup_runs_discarded: cfg.warmup_runs,
                             throughput_mbps: None,
                             latency_ms: BenchmarkStats {
-                                p50: 0.0, p95: 0.0, stddev: 0.0, min: 0.0, max: 0.0,
+                                p50: 0.0,
+                                p95: 0.0,
+                                stddev: 0.0,
+                                min: 0.0,
+                                max: 0.0,
                             },
                             tls_handshake_ms: None,
                             errors: BenchmarkErrors {
@@ -15893,8 +16409,7 @@ async fn cmd_benchmark(
             match provider.list(&test_root).await {
                 Ok(_) => {
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    let (h, hh) =
-                        benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
+                    let (h, hh) = benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
                     results.push(BenchmarkResult {
                         protocol: protocol.clone(),
                         provider_hint: h,
@@ -15933,8 +16448,7 @@ async fn cmd_benchmark(
             match provider.stat(&remote_path).await {
                 Ok(_) => {
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    let (h, hh) =
-                        benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
+                    let (h, hh) = benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
                     results.push(BenchmarkResult {
                         protocol: protocol.clone(),
                         provider_hint: h,
@@ -15973,8 +16487,7 @@ async fn cmd_benchmark(
             match provider.delete(&remote_path).await {
                 Ok(()) => {
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    let (h, hh) =
-                        benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
+                    let (h, hh) = benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
                     results.push(BenchmarkResult {
                         protocol: protocol.clone(),
                         provider_hint: h,
@@ -20181,7 +20694,8 @@ fn write_daemon_auth_token(token: &str) -> Result<(), String> {
     }
     #[cfg(not(unix))]
     {
-        std::fs::write(&path, token).map_err(|e| format!("Cannot write daemon auth token: {}", e))?;
+        std::fs::write(&path, token)
+            .map_err(|e| format!("Cannot write daemon auth token: {}", e))?;
     }
     #[cfg(unix)]
     {
@@ -24364,7 +24878,11 @@ async fn run_audit_backup_freshness(
     exit_code_flag: bool,
 ) -> i32 {
     if max_age_hours <= 0.0 || !max_age_hours.is_finite() {
-        print_error(format, "--max-age-hours must be a positive finite number", 3);
+        print_error(
+            format,
+            "--max-age-hours must be a positive finite number",
+            3,
+        );
         return 3;
     }
     let parallel = parallel.clamp(1, 16);
@@ -24417,10 +24935,9 @@ async fn run_audit_backup_freshness(
                                 host: meta.host.clone(),
                                 status: AuditStatus::Warning,
                                 message: Some(match &pattern_ref {
-                                    Some(p) => format!(
-                                        "no backups matching '{}' in {}",
-                                        p, path_ref
-                                    ),
+                                    Some(p) => {
+                                        format!("no backups matching '{}' in {}", p, path_ref)
+                                    }
                                     None => format!("no backups found in {}", path_ref),
                                 }),
                                 details: serde_json::json!({
@@ -29779,46 +30296,70 @@ async fn main() {
                 output,
                 profiles,
                 json,
-            } => {
-                cmd_export_rclone(
-                    output.clone(),
-                    profiles.clone(),
-                    *json,
-                    &cli,
-                    format,
-                )
-                .await
-            }
+            } => cmd_export_rclone(output.clone(), profiles.clone(), *json, &cli, format).await,
             ExportCommands::Winscp {
                 output,
                 profiles,
                 json,
-            } => {
-                cmd_export_winscp(
-                    output.clone(),
-                    profiles.clone(),
-                    *json,
-                    &cli,
-                    format,
-                )
-                .await
-            }
+            } => cmd_export_winscp(output.clone(), profiles.clone(), *json, &cli, format).await,
             ExportCommands::Filezilla {
                 output,
                 profiles,
                 json,
+            } => cmd_export_filezilla(output.clone(), profiles.clone(), *json, &cli, format).await,
+        },
+        Commands::Audit { command } => cmd_audit(command, &cli, format).await,
+        Commands::Keystore { command } => match command {
+            KeystoreCommands::Export {
+                output,
+                mode,
+                password,
+                password_stdin,
+                config_dir,
+                json,
             } => {
-                cmd_export_filezilla(
-                    output.clone(),
-                    profiles.clone(),
-                    *json,
+                cmd_keystore_export(
                     &cli,
+                    output,
+                    *mode,
+                    password,
+                    *password_stdin,
+                    config_dir,
+                    *json,
                     format,
                 )
                 .await
             }
+            KeystoreCommands::Import {
+                input,
+                password,
+                password_stdin,
+                merge,
+                skip_vault,
+                skip_sqlite,
+                skip_files,
+                skip_local_storage,
+                config_dir,
+                json,
+            } => {
+                cmd_keystore_import(
+                    &cli,
+                    input,
+                    password,
+                    *password_stdin,
+                    *merge,
+                    *skip_vault,
+                    *skip_sqlite,
+                    *skip_files,
+                    *skip_local_storage,
+                    config_dir,
+                    *json,
+                    format,
+                )
+                .await
+            }
+            KeystoreCommands::Info { input, json } => cmd_keystore_info(input, *json, format),
         },
-        Commands::Audit { command } => cmd_audit(command, &cli, format).await,
         Commands::Transfer {
             source_profile,
             dest_profile,
@@ -31438,8 +31979,7 @@ mod tests {
 
     #[test]
     fn benchmark_resolve_config_quick_defaults() {
-        let cfg =
-            resolve_benchmark_config(BenchmarkLevel::Quick, None, None, None).unwrap();
+        let cfg = resolve_benchmark_config(BenchmarkLevel::Quick, None, None, None).unwrap();
         assert_eq!(cfg.sizes_bytes, vec![10 * 1024 * 1024]);
         assert_eq!(cfg.runs_per_size, 1);
         assert_eq!(cfg.warmup_runs, 0);
@@ -31448,8 +31988,7 @@ mod tests {
 
     #[test]
     fn benchmark_resolve_config_standard_defaults() {
-        let cfg =
-            resolve_benchmark_config(BenchmarkLevel::Standard, None, None, None).unwrap();
+        let cfg = resolve_benchmark_config(BenchmarkLevel::Standard, None, None, None).unwrap();
         assert_eq!(cfg.sizes_bytes.len(), 3);
         assert_eq!(cfg.runs_per_size, 3);
         assert_eq!(cfg.warmup_runs, 1);
@@ -31460,50 +31999,30 @@ mod tests {
 
     #[test]
     fn benchmark_resolve_config_rejects_invalid_operations() {
-        let err = resolve_benchmark_config(
-            BenchmarkLevel::Standard,
-            None,
-            None,
-            Some("upload,nope"),
-        )
-        .unwrap_err();
+        let err =
+            resolve_benchmark_config(BenchmarkLevel::Standard, None, None, Some("upload,nope"))
+                .unwrap_err();
         assert!(err.contains("unknown operation"));
     }
 
     #[test]
     fn benchmark_resolve_config_rejects_oversized_payload() {
         // 10 GiB > 5 GiB cap
-        let err = resolve_benchmark_config(
-            BenchmarkLevel::Custom,
-            Some("10G"),
-            None,
-            None,
-        )
-        .unwrap_err();
+        let err =
+            resolve_benchmark_config(BenchmarkLevel::Custom, Some("10G"), None, None).unwrap_err();
         assert!(err.contains("5 GiB"));
     }
 
     #[test]
     fn benchmark_resolve_config_rejects_zero_size() {
-        let err = resolve_benchmark_config(
-            BenchmarkLevel::Custom,
-            Some("0"),
-            None,
-            None,
-        )
-        .unwrap_err();
+        let err =
+            resolve_benchmark_config(BenchmarkLevel::Custom, Some("0"), None, None).unwrap_err();
         assert!(err.to_lowercase().contains("zero"));
     }
 
     #[test]
     fn benchmark_resolve_config_clamps_runs() {
-        let cfg = resolve_benchmark_config(
-            BenchmarkLevel::Standard,
-            None,
-            Some(99),
-            None,
-        )
-        .unwrap();
+        let cfg = resolve_benchmark_config(BenchmarkLevel::Standard, None, Some(99), None).unwrap();
         assert_eq!(cfg.runs_per_size, 20);
     }
 
@@ -31636,19 +32155,11 @@ mod tests {
             "/"
         );
         assert_eq!(
-            strip_legacy_nextcloud_webdav_root(
-                "/remote.php/dav/files/alice",
-                "felicloud",
-                "alice"
-            ),
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "felicloud", "alice"),
             "/"
         );
         assert_eq!(
-            strip_legacy_nextcloud_webdav_root(
-                "/remote.php/dav/files/alice",
-                "nextcloud",
-                "alice"
-            ),
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "nextcloud", "alice"),
             "/"
         );
     }
@@ -31843,7 +32354,11 @@ mod tests {
                 audit: "x".into(),
                 timestamp: "now".into(),
                 servers_checked: n,
-                servers_ok: if matches!(status, AuditStatus::Ok) { n } else { 0 },
+                servers_ok: if matches!(status, AuditStatus::Ok) {
+                    n
+                } else {
+                    0
+                },
                 servers_warning: if matches!(status, AuditStatus::Warning) {
                     n
                 } else {
@@ -31854,7 +32369,11 @@ mod tests {
                 } else {
                     0
                 },
-                servers_error: if matches!(status, AuditStatus::Error) { n } else { 0 },
+                servers_error: if matches!(status, AuditStatus::Error) {
+                    n
+                } else {
+                    0
+                },
                 results: vec![],
             }
         };

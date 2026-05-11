@@ -1694,11 +1694,8 @@ impl StorageProvider for WebDavProvider {
                             }
                         }
                         Some(Err(e)) => {
-                            if super::is_unexpected_eof_after_full_body(
-                                &e,
-                                downloaded,
-                                total_size,
-                            ) {
+                            if super::is_unexpected_eof_after_full_body(&e, downloaded, total_size)
+                            {
                                 tracing::warn!(
                                     "[WEBDAV] Server closed connection without TLS close_notify but full body received ({}/{} bytes); accepting",
                                     downloaded,
@@ -2693,8 +2690,7 @@ mod tests {
         // We can't observe the network call without a real server, but
         // we assert the path resolution is what we expect by inspecting
         // the rewrite directly.
-        let mut provider =
-            WebDavProvider::new(test_config("https://cloud.example.com")).unwrap();
+        let mut provider = WebDavProvider::new(test_config("https://cloud.example.com")).unwrap();
         provider.connected = true;
         provider.current_path = "/remote.php/dav/files/raelb/".to_string();
         provider.server_root = Some("/remote.php/dav/files/raelb/".to_string());

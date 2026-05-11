@@ -536,11 +536,7 @@ impl StorageProvider for UploadcareProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if normalize_path(path) != "/" {
             return Err(ProviderError::NotFound(path.to_string()));
         }
@@ -617,9 +613,15 @@ fn file_to_entry(file: &UcFile) -> RemoteEntry {
 
 fn parse_uuid(path: &str) -> Result<String, ProviderError> {
     let normalized = normalize_path(path);
-    let uuid = normalized.trim_start_matches('/').split('/').next().unwrap_or("");
+    let uuid = normalized
+        .trim_start_matches('/')
+        .split('/')
+        .next()
+        .unwrap_or("");
     if uuid.is_empty() {
-        return Err(ProviderError::InvalidPath("Missing Uploadcare UUID".to_string()));
+        return Err(ProviderError::InvalidPath(
+            "Missing Uploadcare UUID".to_string(),
+        ));
     }
     if uuid.contains('\0') || uuid.contains("..") {
         return Err(ProviderError::InvalidPath(

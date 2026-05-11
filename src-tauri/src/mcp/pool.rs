@@ -325,7 +325,10 @@ fn find_unique_profile<'a>(
 
     match matches.as_slice() {
         [single] => Ok(*single),
-        [] => Err(format!("Server '{}' not found in saved profiles", server_query)),
+        [] => Err(format!(
+            "Server '{}' not found in saved profiles",
+            server_query
+        )),
         many => {
             let names = many
                 .iter()

@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "GitHub 风格的真正中性深色，无蓝色调",
             "themeGreenLabel": "绿色",
             "themeGreenDesc": "为爱绿者打造的自然森林调色板",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "备份中包含的内容",
+            "keystoreExportModeFull": "完整备份（推荐）",
+            "keystoreExportModeFullDesc": "保险库凭据、AI 聊天历史、代理记忆、文件标签、已安装插件、同步快照和已保存的偏好设置。一个加密文件中包含完整的应用程序状态。",
+            "keystoreExportModeVaultOnly": "仅保险库（旧版）",
+            "keystoreExportModeVaultOnlyDesc": "仅包含加密的凭据和服务器配置文件。更小、更快，与 v3.7.8 之前的导出相同。在不带聊天历史的情况下在机器之间迁移服务器时非常有用。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4402,11 +4402,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "便携模式：此文件夹保存您所有的 AeroFTP 数据",
+                "body": "每个便携安装都是完全自包含的：已保存的服务器、AeroVault、AI 聊天和偏好设置都位于 AeroFTP.exe 旁边。从 v3.7.8 开始，同一台 PC 上的两个便携文件夹是完全独立的：在一个文件夹中删除配置文件不再影响另一个。",
+                "legacyWarning": "我们在 %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ 检测到之前共享安装的残留数据。此便携安装不再使用它们。如果不需要，您可以手动删除。",
+                "openFolder": "打开数据文件夹",
+                "dismiss": "知道了"
             }
         }
     }

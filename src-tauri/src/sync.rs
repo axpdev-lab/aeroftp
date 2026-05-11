@@ -3187,7 +3187,10 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str("# AeroFTP sync script (auto-generated)\n");
             out.push_str(&format!("# Generated: {}\n", generated_at));
             if !template_name.is_empty() {
-                out.push_str(&format!("# Template: {}\n", template_name.replace('\n', " ")));
+                out.push_str(&format!(
+                    "# Template: {}\n",
+                    template_name.replace('\n', " ")
+                ));
             }
             if !template_description.is_empty() {
                 out.push_str(&format!(
@@ -3195,11 +3198,17 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
                     template_description.replace('\n', " ")
                 ));
             }
-            out.push_str(&format!("# Profile: {}\n", profile_display_name.replace('\n', " ")));
+            out.push_str(&format!(
+                "# Profile: {}\n",
+                profile_display_name.replace('\n', " ")
+            ));
             out.push_str("# Re-import via AeroSync > Templates > Import.\n");
             out.push_str(&format!("# {}{}\n", SYNC_SCRIPT_META_PREFIX, meta_json));
             out.push_str("set -euo pipefail\n\n");
-            out.push_str(&format!("PROFILE={}\n", shell_quote_bash(profile_display_name)));
+            out.push_str(&format!(
+                "PROFILE={}\n",
+                shell_quote_bash(profile_display_name)
+            ));
             out.push_str(&format!("LOCAL={}\n", shell_quote_bash(local_path)));
             out.push_str(&format!("REMOTE={}\n\n", shell_quote_bash(remote_path)));
             out.push_str("aeroftp-cli sync \\\n");
@@ -3217,7 +3226,10 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
                 out.push_str(&format!("  --retries {} \\\n", retries));
             }
             if let Some(sleep) = &retries_sleep {
-                out.push_str(&format!("  --retries-sleep {} \\\n", shell_quote_bash(sleep)));
+                out.push_str(&format!(
+                    "  --retries-sleep {} \\\n",
+                    shell_quote_bash(sleep)
+                ));
             }
             // Drop the trailing " \\\n" from the last argument and newline-terminate.
             if out.ends_with(" \\\n") {
@@ -3230,7 +3242,10 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str("# AeroFTP sync script (auto-generated)\n");
             out.push_str(&format!("# Generated: {}\n", generated_at));
             if !template_name.is_empty() {
-                out.push_str(&format!("# Template: {}\n", template_name.replace('\n', " ")));
+                out.push_str(&format!(
+                    "# Template: {}\n",
+                    template_name.replace('\n', " ")
+                ));
             }
             if !template_description.is_empty() {
                 out.push_str(&format!(
@@ -3238,7 +3253,10 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
                     template_description.replace('\n', " ")
                 ));
             }
-            out.push_str(&format!("# Profile: {}\n", profile_display_name.replace('\n', " ")));
+            out.push_str(&format!(
+                "# Profile: {}\n",
+                profile_display_name.replace('\n', " ")
+            ));
             out.push_str("# Re-import via AeroSync > Templates > Import.\n");
             out.push_str(&format!("# {}{}\n", SYNC_SCRIPT_META_PREFIX, meta_json));
             out.push_str("$ErrorActionPreference = 'Stop'\n\n");
@@ -3263,7 +3281,10 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
                 out.push_str(&format!("  --retries {} `\n", retries));
             }
             if let Some(sleep) = &retries_sleep {
-                out.push_str(&format!("  --retries-sleep {} `\n", shell_quote_pwsh(sleep)));
+                out.push_str(&format!(
+                    "  --retries-sleep {} `\n",
+                    shell_quote_pwsh(sleep)
+                ));
             }
             if out.ends_with(" `\n") {
                 out.truncate(out.len() - 3);

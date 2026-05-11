@@ -766,8 +766,8 @@ impl YandexDiskProvider {
                             } else if is_yandex_upload_retryable_status(status)
                                 && chunk_attempt < YANDEX_UPLOAD_CHUNK_MAX_RETRIES
                             {
-                                let backoff_ms = YANDEX_UPLOAD_BACKOFF_BASE_MS
-                                    * (1u64 << (chunk_attempt - 1));
+                                let backoff_ms =
+                                    YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << (chunk_attempt - 1));
                                 yd_log(&format!(
                                     "chunk {}-{} HTTP {} (attempt {}/{}), retry in {} ms",
                                     uploaded,
@@ -789,8 +789,8 @@ impl YandexDiskProvider {
                         }
                         Err(e) => {
                             if chunk_attempt < YANDEX_UPLOAD_CHUNK_MAX_RETRIES {
-                                let backoff_ms = YANDEX_UPLOAD_BACKOFF_BASE_MS
-                                    * (1u64 << (chunk_attempt - 1));
+                                let backoff_ms =
+                                    YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << (chunk_attempt - 1));
                                 yd_log(&format!(
                                     "chunk {}-{} network error (attempt {}/{}): {}. Retry in {} ms",
                                     uploaded,
@@ -1198,20 +1198,15 @@ impl StorageProvider for YandexDiskProvider {
             match put_result {
                 Ok(resp) => {
                     let status = resp.status();
-                    if status.is_success()
-                        || status.as_u16() == 201
-                        || status.as_u16() == 202
-                    {
+                    if status.is_success() || status.as_u16() == 201 || status.as_u16() == 202 {
                         yd_log(&format!(
                             "upload complete: {} bytes (attempt {}/{})",
                             total, attempt, YANDEX_UPLOAD_MAX_ATTEMPTS,
                         ));
                         return Ok(());
                     }
-                    let err = ProviderError::TransferFailed(format!(
-                        "Upload failed: HTTP {}",
-                        status,
-                    ));
+                    let err =
+                        ProviderError::TransferFailed(format!("Upload failed: HTTP {}", status,));
                     if is_yandex_upload_retryable_status(status)
                         && attempt < YANDEX_UPLOAD_MAX_ATTEMPTS
                     {

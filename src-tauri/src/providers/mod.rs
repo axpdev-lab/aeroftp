@@ -38,8 +38,8 @@ pub mod gitlab;
 pub mod google_drive;
 pub mod google_photos;
 pub mod http_retry;
-pub mod immich;
 pub mod imagekit;
+pub mod immich;
 pub mod internxt;
 pub mod jottacloud;
 pub mod kdrive;
@@ -84,8 +84,8 @@ pub use google_drive::GoogleDriveProvider;
 pub use google_photos::GooglePhotosProvider;
 #[allow(unused_imports)]
 pub use http_retry::{send_with_retry, HttpRetryConfig};
-pub use immich::ImmichProvider;
 pub use imagekit::ImageKitProvider;
+pub use immich::ImmichProvider;
 pub use internxt::InternxtProvider;
 pub use jottacloud::JottacloudProvider;
 pub use kdrive::KDriveProvider;
@@ -153,11 +153,7 @@ pub const MAX_DOWNLOAD_TO_BYTES: u64 = 500 * 1024 * 1024;
 /// 2. the streamed bytes already meet or exceed it (`received >= expected`)
 /// 3. the reqwest error is classified as body/decode
 /// 4. the underlying io::Error in the cause chain is `UnexpectedEof`
-pub fn is_unexpected_eof_after_full_body(
-    e: &reqwest::Error,
-    received: u64,
-    expected: u64,
-) -> bool {
+pub fn is_unexpected_eof_after_full_body(e: &reqwest::Error, received: u64, expected: u64) -> bool {
     use std::error::Error as _;
     if expected == 0 || received < expected {
         return false;

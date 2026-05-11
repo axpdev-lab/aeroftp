@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Istinski neutralna tamna u GitHub stilu, bez plavog tona",
             "themeGreenLabel": "Zelena",
             "themeGreenDesc": "Šumska paleta nadahnuta prirodom za ljubitelje zelenog",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Što uključiti u sigurnosnu kopiju",
+            "keystoreExportModeFull": "Potpuna sigurnosna kopija (preporučeno)",
+            "keystoreExportModeFullDesc": "Vjerodajnice trezora, povijest AI razgovora, memorija agenta, oznake datoteka, instalirani dodaci, snimke sinkronizacije i spremljene postavke. Cjelovito stanje aplikacije u jednoj šifriranoj datoteci.",
+            "keystoreExportModeVaultOnly": "Samo trezor (naslijeđeno)",
+            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane vjerodajnice i profili poslužitelja. Manja, brža, identična izvozima prije v3.7.8. Korisno pri migraciji poslužitelja između strojeva bez vučenja povijesti razgovora sa sobom."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Prijenosni način rada: ova mapa sadrži sve vaše AeroFTP podatke",
+                "body": "Svaka prijenosna instalacija potpuno je samostalna: spremljeni poslužitelji, AeroVault, AI razgovori i postavke žive uz AeroFTP.exe. Od v3.7.8 nadalje, dvije prijenosne mape na istom računalu potpuno su neovisne: brisanje profila u jednoj mapi više ne utječe na drugu.",
+                "legacyWarning": "Otkrili smo preostale podatke iz prethodne dijeljene instalacije na %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ova ih prijenosna instalacija više ne koristi. Možete ih ručno ukloniti ako vam ne trebaju.",
+                "openFolder": "Otvori mapu podataka",
+                "dismiss": "Razumijem"
             }
         }
     }

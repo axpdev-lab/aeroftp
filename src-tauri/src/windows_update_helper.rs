@@ -87,8 +87,8 @@ pub fn install_with_helper(
         ));
     }
 
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Cannot resolve current exe path: {e}"))?;
+    let exe_path =
+        std::env::current_exe().map_err(|e| format!("Cannot resolve current exe path: {e}"))?;
 
     let script = match format {
         InstallFormat::Msi => write_msi_helper(downloaded_path, &exe_path)?,
@@ -213,13 +213,12 @@ struct StagedPortable {
 ///   LICENSE.txt
 fn stage_portable_artifact(zip_path: &Path) -> Result<StagedPortable, String> {
     let stage_dir = temp_dir().join(format!("aeroftp-update-stage-{}", random_suffix()));
-    std::fs::create_dir_all(&stage_dir)
-        .map_err(|e| format!("Failed to create stage dir: {e}"))?;
+    std::fs::create_dir_all(&stage_dir).map_err(|e| format!("Failed to create stage dir: {e}"))?;
 
-    let file = std::fs::File::open(zip_path)
-        .map_err(|e| format!("Failed to open portable ZIP: {e}"))?;
-    let mut zip = zip::ZipArchive::new(file)
-        .map_err(|e| format!("Failed to read portable ZIP: {e}"))?;
+    let file =
+        std::fs::File::open(zip_path).map_err(|e| format!("Failed to open portable ZIP: {e}"))?;
+    let mut zip =
+        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read portable ZIP: {e}"))?;
 
     for i in 0..zip.len() {
         let mut entry = zip
@@ -500,7 +499,11 @@ fn schedule_deletion_at_reboot(path: &Path) {
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_DELAY_UNTIL_REBOOT};
 
-    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
     let ok = unsafe {
         MoveFileExW(
             PCWSTR::from_raw(wide.as_ptr()),

@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Gelap netral sejati gaya GitHub, tanpa nuansa biru",
             "themeGreenLabel": "Hijau",
             "themeGreenDesc": "Palet hutan terinspirasi alam untuk pencinta warna hijau",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Apa yang akan disertakan dalam cadangan",
+            "keystoreExportModeFull": "Cadangan penuh (disarankan)",
+            "keystoreExportModeFullDesc": "Kredensial vault, riwayat obrolan AI, memori agen, tag file, plugin terpasang, snapshot sinkronisasi, dan preferensi tersimpan. Status aplikasi lengkap dalam satu file terenkripsi.",
+            "keystoreExportModeVaultOnly": "Hanya vault (warisan)",
+            "keystoreExportModeVaultOnlyDesc": "Hanya kredensial terenkripsi dan profil server. Lebih kecil, lebih cepat, identik dengan ekspor sebelum v3.7.8. Berguna saat memigrasi server antar mesin tanpa harus membawa riwayat obrolan."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Mode portabel: folder ini menampung semua data AeroFTP Anda",
+                "body": "Setiap instalasi portabel sepenuhnya mandiri: server tersimpan, AeroVault, obrolan AI, dan preferensi semuanya berada di sebelah AeroFTP.exe. Mulai dari v3.7.8, dua folder portabel di PC yang sama sepenuhnya independen: menghapus profil di satu folder tidak lagi memengaruhi folder lainnya.",
+                "legacyWarning": "Kami mendeteksi sisa data dari instalasi bersama sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Data tersebut tidak lagi digunakan oleh instalasi portabel ini. Anda dapat menghapusnya secara manual jika tidak memerlukannya.",
+                "openFolder": "Buka folder data",
+                "dismiss": "Mengerti"
             }
         }
     }

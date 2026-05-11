@@ -58,10 +58,10 @@ pub mod delta_transport;
 mod number_parsing;
 pub mod portable;
 pub mod profile_loader;
-#[cfg(windows)]
-pub mod windows_update_helper;
 mod rsync_output;
 pub mod storage_dedup;
+#[cfg(windows)]
+pub mod windows_update_helper;
 // `pub` transitively so integration tests can construct `RsyncStats`
 // fixtures for MockDeltaTransport. Same accepted-debt note as above.
 pub mod rsync_over_ssh;
@@ -82,10 +82,11 @@ mod ftp_transfer_executor;
 mod health_check;
 mod host_key_check;
 mod infinicloud;
-mod keystore_export;
+pub mod keystore_export;
 mod local_panel_watcher;
 mod master_password;
 pub mod mcp;
+mod mount_manager;
 mod plugin_registry;
 mod plugins;
 pub mod profile_auth_state;
@@ -99,7 +100,6 @@ pub mod rclone_filter;
 pub mod rclone_import;
 mod session_commands;
 mod session_manager;
-mod mount_manager;
 #[cfg(not(target_os = "macos"))]
 mod speech;
 mod ssh_shell;
@@ -341,8 +341,7 @@ async fn aerovault_overlay_get_idle_timeout() -> Result<u64, String> {
 
 #[tauri::command]
 async fn aerovault_overlay_set_idle_timeout(seconds: u64) -> Result<u64, String> {
-    let clamped =
-        seconds.clamp(OVERLAY_IDLE_TIMEOUT_MIN_SECS, OVERLAY_IDLE_TIMEOUT_MAX_SECS);
+    let clamped = seconds.clamp(OVERLAY_IDLE_TIMEOUT_MIN_SECS, OVERLAY_IDLE_TIMEOUT_MAX_SECS);
     persist_overlay_idle_timeout(clamped)?;
     Ok(clamped)
 }
@@ -1966,7 +1965,10 @@ fn asset_matches_install_format(name: &str, install_format: &str) -> bool {
         // The NSIS installer is named `*_x64-setup.exe`. Anchor on
         // `-setup.exe` so we don't accidentally match the portable
         // .zip's inner name in any future pattern change.
-        "exe" => lower.ends_with("-setup.exe") || (lower.ends_with(".exe") && !lower.contains("portable")),
+        "exe" => {
+            lower.ends_with("-setup.exe")
+                || (lower.ends_with(".exe") && !lower.contains("portable"))
+        }
         // Portable ships as `AeroFTP-<ver>-portable-windows-x64.zip`.
         // The "portable" + ".zip" pair is unambiguous.
         "portable" => lower.contains("portable") && lower.ends_with(".zip"),
@@ -2403,7 +2405,9 @@ struct PortableInfo {
 fn portable_info(app: tauri::AppHandle) -> PortableInfo {
     let is_portable = portable::is_portable();
     let data_root = if is_portable {
-        portable::app_data_dir(&app).ok().map(|p| p.display().to_string())
+        portable::app_data_dir(&app)
+            .ok()
+            .map(|p| p.display().to_string())
     } else {
         None
     };
@@ -2411,8 +2415,7 @@ fn portable_info(app: tauri::AppHandle) -> PortableInfo {
         is_portable,
         data_root,
         webview_data_dir: portable::webview_data_dir().map(|p| p.display().to_string()),
-        credential_store_dir: portable::credential_store_dir()
-            .map(|p| p.display().to_string()),
+        credential_store_dir: portable::credential_store_dir().map(|p| p.display().to_string()),
         shared_legacy_present: portable::shared_webview_data_present(),
     }
 }
@@ -3020,20 +3023,12 @@ async fn install_windows_update(
             other => return Err(format!("Unknown Windows update format: .{other}")),
         };
 
-        info!(
-            "Installing Windows update: format={format}, path={downloaded_path}"
-        );
+        info!("Installing Windows update: format={format}, path={downloaded_path}");
 
         windows_update_helper::install_with_helper(&app, format, downloaded)?;
 
         let from_version = app.package_info().version.to_string();
-        write_update_marker(
-            &app,
-            &from_version,
-            "unknown",
-            format,
-            &verification_mode,
-        );
+        write_update_marker(&app, &from_version, "unknown", format, &verification_mode);
 
         // Give the helper script time to spawn before we exit. The script
         // pings 127.0.0.1 -n 3 (~2s) before doing anything destructive, so
@@ -5543,6 +5538,8 @@ fn get_system_info() -> SystemInfo {
     dep_versions.insert("scrypt".into(), env!("DEP_VERSION_SCRYPT").into());
     dep_versions.insert("blake3".into(), env!("DEP_VERSION_BLAKE3").into());
     dep_versions.insert("rustls".into(), env!("DEP_VERSION_RUSTLS").into());
+    dep_versions.insert("aerovault".into(), env!("DEP_VERSION_AEROVAULT").into());
+    dep_versions.insert("keyring".into(), env!("DEP_VERSION_KEYRING").into());
 
     SystemInfo {
         app_version: env!("CARGO_PKG_VERSION").into(),
@@ -12961,17 +12958,29 @@ async fn export_keystore(
 ) -> Result<keystore_export::KeystoreMetadata, String> {
     let mode = match mode.as_deref() {
         None => keystore_export::ExportMode::Full,
-        Some(s) => keystore_export::ExportMode::from_str(s).map_err(|e| e.to_string())?,
+        Some(s) => s
+            .parse::<keystore_export::ExportMode>()
+            .map_err(|e| e.to_string())?,
     };
     let config_dir = portable::app_config_dir(&app).ok();
-    keystore_export::export_keystore(
-        &password,
-        std::path::Path::new(&file_path),
-        mode,
-        config_dir.as_deref(),
-        local_storage,
-    )
-    .map_err(|e| e.to_string())
+    // AUDIT 2026-05-11 M1: Argon2id (128 MiB / t=4 / p=4) takes
+    // ~1-2 s of single-thread CPU. Running it on the Tauri async
+    // worker thread blocks every other in-flight async command and
+    // freezes the UI. Wrap the synchronous body in spawn_blocking so
+    // the worker stays responsive.
+    let file_path_owned = file_path.clone();
+    tokio::task::spawn_blocking(move || {
+        keystore_export::export_keystore(
+            &password,
+            std::path::Path::new(&file_path_owned),
+            mode,
+            config_dir.as_deref(),
+            local_storage,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("export_keystore join error: {e}"))?
 }
 
 #[tauri::command]
@@ -13008,15 +13017,43 @@ async fn import_keystore(
         local_storage: import_local_storage.unwrap_or(true),
     };
     let config_dir = portable::app_config_dir(&app).ok();
-    keystore_export::import_keystore(
-        &password,
-        std::path::Path::new(&file_path),
-        &merge_strategy,
-        sections,
-        config_dir.as_deref(),
-        Some(&progress_cb),
-    )
-    .map_err(|e| e.to_string())
+    // AUDIT 2026-05-11 M1: same reasoning as export_keystore.
+    // Argon2id + zstd decompress + potentially-large disk writes all
+    // run on a blocking worker so the async runtime stays free.
+    // `progress_cb` captures the cloned AppHandle and emits Tauri
+    // events from inside spawn_blocking, which is fine because
+    // AppHandle is Send + Sync.
+    let file_path_owned = file_path.clone();
+    let merge_strategy_owned = merge_strategy.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        keystore_export::import_keystore(
+            &password,
+            std::path::Path::new(&file_path_owned),
+            &merge_strategy_owned,
+            sections,
+            config_dir.as_deref(),
+            Some(&progress_cb),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("import_keystore join error: {e}"))??;
+    // AUDIT 2026-05-11 C2: bubble the restart hint to the frontend
+    // via a dedicated event in addition to the field on the return
+    // value. Two channels are cheap and let the import dialog
+    // surface a "Restart required" banner the moment the result
+    // lands, without depending on whether the user looked at the
+    // toast text.
+    if result.requires_restart {
+        let _ = app.emit(
+            "keystore-import-requires-restart",
+            serde_json::json!({
+                "sqlite_dbs_restored": result.sqlite_dbs_restored,
+                "files_restored": result.files_restored,
+            }),
+        );
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -13099,7 +13136,9 @@ async fn mount_list() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-async fn mount_save_config(config: mount_manager::MountConfig) -> Result<mount_manager::MountConfig, String> {
+async fn mount_save_config(
+    config: mount_manager::MountConfig,
+) -> Result<mount_manager::MountConfig, String> {
     mount_manager::upsert_config(config)
 }
 
@@ -13432,17 +13471,13 @@ pub fn run() {
             // evicts sessions past their idle timeout and emits `aerovault-overlay-expired`
             // so the frontend can drop overlay state without waiting for the next user action.
             {
-                let overlay_sessions = app
-                    .state::<AeroVaultOverlayState>()
-                    .sessions_handle();
+                let overlay_sessions = app.state::<AeroVaultOverlayState>().sessions_handle();
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     let mut ticker = tokio::time::interval(std::time::Duration::from_secs(
                         OVERLAY_SWEEPER_INTERVAL_SECS,
                     ));
-                    ticker.set_missed_tick_behavior(
-                        tokio::time::MissedTickBehavior::Delay,
-                    );
+                    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
                     loop {
                         ticker.tick().await;
                         let expired = {

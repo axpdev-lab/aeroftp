@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Giza la kweli la kati katika mtindo wa GitHub, bila tinti ya bluu",
             "themeGreenLabel": "Kijani",
             "themeGreenDesc": "Paleti ya msitu iliyochochewa na asili kwa wapenzi wa rangi ya kijani",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Cha kujumuisha katika nakala rudufu",
+            "keystoreExportModeFull": "Nakala rudufu kamili (inashauriwa)",
+            "keystoreExportModeFullDesc": "Vitambulisho vya vault, historia ya gumzo la AI, kumbukumbu ya wakala, vitambulisho vya faili, programu-jalizi zilizosakinishwa, picha za usawazishaji, na mapendeleo yaliyohifadhiwa. Hali kamili ya programu katika faili moja iliyosimbwa kwa njia fiche.",
+            "keystoreExportModeVaultOnly": "Vault tu (urithi)",
+            "keystoreExportModeVaultOnlyDesc": "Tu vitambulisho vilivyosimbwa kwa njia fiche na wasifu wa seva. Ndogo, haraka, sawa na uhamishaji wa kabla ya v3.7.8. Inafaa wakati wa kuhamisha seva kati ya mashine bila kuburuza historia ya gumzo nawe."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Hali ya kubebeka: folda hii inashikilia data yako yote ya AeroFTP",
+                "body": "Kila usakinishaji wa kubebeka unajitegemea kabisa: seva zilizohifadhiwa, AeroVault, gumzo la AI na mapendeleo yote yapo karibu na AeroFTP.exe. Kuanzia v3.7.8, folda mbili za kubebeka kwenye PC moja ni huru kabisa: kufuta wasifu katika folda moja hakuathiri tena nyingine.",
+                "legacyWarning": "Tuligundua data iliyobaki kutoka usakinishaji wa awali wa pamoja katika %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Haitumiki tena na usakinishaji huu wa kubebeka. Unaweza kuiondoa wewe mwenyewe ikiwa huitaji.",
+                "openFolder": "Fungua folda ya data",
+                "dismiss": "Nimeelewa"
             }
         }
     }

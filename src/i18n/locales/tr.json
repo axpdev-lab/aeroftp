@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "GitHub tarzında gerçek nötr karanlık, mavi ton içermez",
             "themeGreenLabel": "Yeşil",
             "themeGreenDesc": "Doğadan ilham alan orman paleti, yeşil sevenler için",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Yedeklemeye nelerin dahil edileceği",
+            "keystoreExportModeFull": "Tam yedekleme (önerilen)",
+            "keystoreExportModeFullDesc": "Vault kimlik bilgileri, AI sohbet geçmişi, ajan belleği, dosya etiketleri, yüklü eklentiler, eşitleme anlık görüntüleri ve kaydedilmiş tercihler. Tek bir şifrelenmiş dosyada tam uygulama durumu.",
+            "keystoreExportModeVaultOnly": "Yalnızca vault (eski)",
+            "keystoreExportModeVaultOnlyDesc": "Yalnızca şifrelenmiş kimlik bilgileri ve sunucu profilleri. Daha küçük, daha hızlı, v3.7.8 öncesi dışa aktarımlarla aynı. Sohbet geçmişini sürüklemeden sunucuları makineler arasında taşımak için kullanışlıdır."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Taşınabilir mod: bu klasör tüm AeroFTP verilerinizi içerir",
+                "body": "Her taşınabilir kurulum tamamen kendi kendine yeterlidir: kaydedilmiş sunucular, AeroVault, AI sohbetleri ve tercihler hepsi AeroFTP.exe'nin yanında bulunur. v3.7.8'den itibaren, aynı bilgisayardaki iki taşınabilir klasör tamamen bağımsızdır: bir klasördeki profili silmek artık diğerini etkilemez.",
+                "legacyWarning": "%LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ konumunda önceki bir paylaşılan kurulumdan kalan verileri tespit ettik. Bu taşınabilir kurulum tarafından artık kullanılmıyor. İhtiyacınız yoksa elle kaldırabilirsiniz.",
+                "openFolder": "Veri klasörünü aç",
+                "dismiss": "Anladım"
             }
         }
     }

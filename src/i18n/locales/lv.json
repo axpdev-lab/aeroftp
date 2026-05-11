@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Patiesi neitrāls tumšs GitHub stilā, bez zila toņa",
             "themeGreenLabel": "Zaļš",
             "themeGreenDesc": "Dabas iedvesmota meža palete zaļā cienītājiem",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Ko iekļaut dublējumkopijā",
+            "keystoreExportModeFull": "Pilna dublējumkopija (ieteicams)",
+            "keystoreExportModeFullDesc": "Glabātavas akreditācijas dati, AI tērzēšanas vēsture, aģenta atmiņa, failu birkas, instalētie spraudņi, sinhronizācijas momentuzņēmumi un saglabātās preferences. Pilns lietojumprogrammas stāvoklis vienā šifrētā failā.",
+            "keystoreExportModeVaultOnly": "Tikai glabātava (mantojuma)",
+            "keystoreExportModeVaultOnlyDesc": "Tikai šifrētie akreditācijas dati un servera profili. Mazāks, ātrāks, identisks eksportiem pirms v3.7.8. Noderīgs, migrējot serverus starp datoriem, neatvelkot līdzi tērzēšanas vēsturi."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Pārnēsājamais režīms: šajā mapē atrodas visi jūsu AeroFTP dati",
+                "body": "Katra pārnēsājamā instalācija ir pilnībā autonoma: saglabātie serveri, AeroVault, AI tērzēšana un preferences – tas viss atrodas blakus AeroFTP.exe. No v3.7.8 divas pārnēsājamās mapes vienā datorā ir pilnīgi neatkarīgas: profila dzēšana vienā mapē vairs neietekmē otru.",
+                "legacyWarning": "Mēs konstatējām atlikušos datus no iepriekšējās koplietotās instalācijas vietnē %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šī pārnēsājamā instalācija tos vairs neizmanto. Varat tos manuāli noņemt, ja tie nav vajadzīgi.",
+                "openFolder": "Atvērt datu mapi",
+                "dismiss": "Sapratu"
             }
         }
     }

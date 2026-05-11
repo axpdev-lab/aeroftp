@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Benetako iluna neutroa GitHub estiloan, urdin tonurik gabe",
             "themeGreenLabel": "Berdea",
             "themeGreenDesc": "Naturan inspiratutako baso-paleta berdearen maitaleentzat",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Zer sartu babeskopian",
+            "keystoreExportModeFull": "Babeskopia osoa (gomendatua)",
+            "keystoreExportModeFullDesc": "Vault-eko kredentzialak, AI txat-historia, agentearen memoria, fitxategi-etiketak, instalatutako pluginak, sinkronizazio-argazkiak eta gordetako hobespenak. Aplikazioaren egoera osoa zifratutako fitxategi bakar batean.",
+            "keystoreExportModeVaultOnly": "Vault soilik (zaharkitua)",
+            "keystoreExportModeVaultOnlyDesc": "Soilik kredentzial zifratuak eta zerbitzari-profilak. Txikiagoa, azkarragoa, v3.7.8 baino lehenagoko esportazioen berdina. Erabilgarria zerbitzariak makinen artean migratzeko txat-historia atzetik arrastatu gabe."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4431,11 +4431,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Modu eramangarria: karpeta honek zure AeroFTP datu guztiak gordetzen ditu",
+                "body": "Instalazio eramangarri bakoitza guztiz autonomoa da: gordetako zerbitzariak, AeroVault, AI txatak eta hobespenak guztiak AeroFTP.exe ondoan bizi dira. v3.7.8tik aurrera, ordenagailu berean dauden bi karpeta eramangarri guztiz independenteak dira: karpeta batean profil bat ezabatzeak ez du gehiago bestea eragiten.",
+                "legacyWarning": "Lehengo instalazio partekatu baten hondar-datuak hauteman ditugu %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ helbidean. Instalazio eramangarri honek ez ditu jada erabiltzen. Eskuz ken ditzakezu behar ez badituzu.",
+                "openFolder": "Ireki datuen karpeta",
+                "dismiss": "Ulertua"
             }
         }
     }

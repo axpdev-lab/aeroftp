@@ -36,7 +36,7 @@ use tokio_util::io::ReaderStream;
 
 use super::{
     response_bytes_with_limit, sanitize_api_error, ProviderConfig, ProviderError, ProviderType,
-    RemoteEntry, StorageProvider, StorageInfo, TransferOptimizationHints, AEROFTP_USER_AGENT,
+    RemoteEntry, StorageInfo, StorageProvider, TransferOptimizationHints, AEROFTP_USER_AGENT,
     MAX_DOWNLOAD_TO_BYTES,
 };
 
@@ -61,13 +61,9 @@ pub struct CloudinaryConfig {
 
 impl CloudinaryConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
-        let cloud_name = config
-            .extra
-            .get("cloud_name")
-            .cloned()
-            .ok_or_else(|| {
-                ProviderError::InvalidConfig("Cloudinary cloud name is required".to_string())
-            })?;
+        let cloud_name = config.extra.get("cloud_name").cloned().ok_or_else(|| {
+            ProviderError::InvalidConfig("Cloudinary cloud name is required".to_string())
+        })?;
         let api_key = config.username.clone().ok_or_else(|| {
             ProviderError::InvalidConfig("Cloudinary API key is required".to_string())
         })?;
@@ -680,11 +676,9 @@ impl StorageProvider for CloudinaryProvider {
                 "Cannot download a directory as a file".to_string(),
             ));
         }
-        let url = entry
-            .metadata
-            .get("secure_url")
-            .cloned()
-            .ok_or_else(|| ProviderError::NotFound("Cloudinary delivery URL missing".to_string()))?;
+        let url = entry.metadata.get("secure_url").cloned().ok_or_else(|| {
+            ProviderError::NotFound("Cloudinary delivery URL missing".to_string())
+        })?;
         validate_download_url(&url)?;
 
         let resp = self
@@ -731,11 +725,9 @@ impl StorageProvider for CloudinaryProvider {
                 "Cannot download a directory as bytes".to_string(),
             ));
         }
-        let url = entry
-            .metadata
-            .get("secure_url")
-            .cloned()
-            .ok_or_else(|| ProviderError::NotFound("Cloudinary delivery URL missing".to_string()))?;
+        let url = entry.metadata.get("secure_url").cloned().ok_or_else(|| {
+            ProviderError::NotFound("Cloudinary delivery URL missing".to_string())
+        })?;
         validate_download_url(&url)?;
         let resp = self
             .client
@@ -882,11 +874,9 @@ impl StorageProvider for CloudinaryProvider {
         if entry.is_dir {
             self.rmdir(&resolved).await
         } else {
-            let public_id = entry
-                .metadata
-                .get("public_id")
-                .cloned()
-                .ok_or_else(|| ProviderError::NotFound("Missing Cloudinary public_id".to_string()))?;
+            let public_id = entry.metadata.get("public_id").cloned().ok_or_else(|| {
+                ProviderError::NotFound("Missing Cloudinary public_id".to_string())
+            })?;
             self.delete_file_with_fallback(&public_id).await
         }
     }
@@ -1063,9 +1053,9 @@ impl StorageProvider for CloudinaryProvider {
             self.cache_resource_type(&f.public_id, &f.resource_type);
         }
         let pid_no_ext = trimmed.clone();
-        let entry = files.into_iter().find(|f| {
-            f.public_id == pid_no_ext || resource_display_name(f) == name
-        });
+        let entry = files
+            .into_iter()
+            .find(|f| f.public_id == pid_no_ext || resource_display_name(f) == name);
         match entry {
             Some(f) => Ok(resource_to_entry(&f, &parent)),
             None => Err(ProviderError::NotFound(format!("/{}", trimmed))),
@@ -1098,11 +1088,7 @@ impl StorageProvider for CloudinaryProvider {
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         let usage = self.fetch_usage().await?;
-        let used = usage
-            .storage
-            .as_ref()
-            .and_then(|m| m.usage)
-            .unwrap_or(0);
+        let used = usage.storage.as_ref().and_then(|m| m.usage).unwrap_or(0);
         // Cloudinary does not expose a storage-byte quota for free / paygo
         // plans. The plan-level cap is `credits.limit` (e.g. 25 credits/mo),
         // but credits are fungible across storage, bandwidth and
@@ -1147,11 +1133,7 @@ impl StorageProvider for CloudinaryProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1219,7 +1201,10 @@ fn resource_display_name(item: &CloudinaryResource) -> String {
         if !dn.trim().is_empty() {
             let mut name = dn.clone();
             if let Some(ref fmt) = item.format {
-                if !name.to_lowercase().ends_with(&format!(".{}", fmt.to_lowercase())) {
+                if !name
+                    .to_lowercase()
+                    .ends_with(&format!(".{}", fmt.to_lowercase()))
+                {
                     name = format!("{}.{}", name, fmt);
                 }
             }
@@ -1228,7 +1213,10 @@ fn resource_display_name(item: &CloudinaryResource) -> String {
     }
     let base = basename(&item.public_id).to_string();
     if let Some(ref fmt) = item.format {
-        if !base.is_empty() && !base.to_lowercase().ends_with(&format!(".{}", fmt.to_lowercase()))
+        if !base.is_empty()
+            && !base
+                .to_lowercase()
+                .ends_with(&format!(".{}", fmt.to_lowercase()))
         {
             return format!("{}.{}", base, fmt);
         }
@@ -1389,12 +1377,18 @@ mod tests {
 
     #[test]
     fn test_validate_download_url_accepts_cloudinary_https() {
-        assert!(validate_download_url("https://res.cloudinary.com/demo/image/upload/v1/sample.jpg").is_ok());
+        assert!(validate_download_url(
+            "https://res.cloudinary.com/demo/image/upload/v1/sample.jpg"
+        )
+        .is_ok());
     }
 
     #[test]
     fn test_validate_download_url_rejects_http() {
-        assert!(validate_download_url("http://res.cloudinary.com/demo/image/upload/v1/sample.jpg").is_err());
+        assert!(
+            validate_download_url("http://res.cloudinary.com/demo/image/upload/v1/sample.jpg")
+                .is_err()
+        );
     }
 
     #[test]

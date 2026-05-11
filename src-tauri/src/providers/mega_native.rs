@@ -1565,7 +1565,11 @@ impl StorageProvider for MegaNativeProvider {
         // path. Strip to basename before dispatch. Treat NotFound as
         // Ok(false) so a missing item (already cleared elsewhere) does
         // not fail the caller.
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }

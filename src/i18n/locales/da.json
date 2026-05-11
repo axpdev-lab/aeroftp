@@ -959,11 +959,11 @@
             "themeTruedarkDesc": "Ægte neutral mørk i GitHub-stil, uden blå nuance",
             "themeGreenLabel": "Grøn",
             "themeGreenDesc": "Naturinspireret skovpalette til elskere af det grønne",
-            "keystoreExportModeTitle": "[NEEDS TRANSLATION] What to include in the backup",
-            "keystoreExportModeFull": "[NEEDS TRANSLATION] Full backup (recommended)",
-            "keystoreExportModeFullDesc": "[NEEDS TRANSLATION] Vault credentials, AI chat history, agent memory, file tags, installed plugins, sync snapshots, and saved preferences. The complete application state in a single encrypted file.",
-            "keystoreExportModeVaultOnly": "[NEEDS TRANSLATION] Vault only (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "[NEEDS TRANSLATION] Just the encrypted credentials and server profiles. Smaller, faster, identical to pre-v3.7.8 exports. Useful when migrating servers between machines without dragging chat history along."
+            "keystoreExportModeTitle": "Hvad skal inkluderes i sikkerhedskopien",
+            "keystoreExportModeFull": "Fuld sikkerhedskopi (anbefales)",
+            "keystoreExportModeFullDesc": "Vault-legitimationsoplysninger, AI-chathistorik, agenthukommelse, filtags, installerede plugins, synkroniseringssnapshots og gemte præferencer. Den komplette applikationstilstand i én krypteret fil.",
+            "keystoreExportModeVaultOnly": "Kun vault (ældre)",
+            "keystoreExportModeVaultOnlyDesc": "Kun de krypterede legitimationsoplysninger og serverprofiler. Mindre, hurtigere, identisk med eksporter før v3.7.8. Nyttig ved migrering af servere mellem maskiner uden at slæbe chathistorikken med."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4412,11 +4412,11 @@
         },
         "portable": {
             "banner": {
-                "title": "[NEEDS TRANSLATION] Portable mode: this folder holds all your AeroFTP data",
-                "body": "[NEEDS TRANSLATION] Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "[NEEDS TRANSLATION] We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
-                "openFolder": "[NEEDS TRANSLATION] Open data folder",
-                "dismiss": "[NEEDS TRANSLATION] Got it"
+                "title": "Portabel tilstand: denne mappe indeholder alle dine AeroFTP-data",
+                "body": "Hver portabel installation er fuldt selvstændig: gemte servere, AeroVault, AI-chats og præferencer bor alle ved siden af AeroFTP.exe. Fra v3.7.8 og fremefter er to portable mapper på samme pc helt uafhængige: at slette en profil i én mappe påvirker ikke længere den anden.",
+                "legacyWarning": "Vi har registreret resterende data fra en tidligere delt installation på %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. De bruges ikke længere af denne portable installation. Du kan fjerne dem manuelt, hvis du ikke har brug for dem.",
+                "openFolder": "Åbn datamappe",
+                "dismiss": "Forstået"
             }
         }
     }

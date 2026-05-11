@@ -40,6 +40,7 @@ const TRACKED_DEPS: &[&str] = &[
     "blake3",
     "jsonwebtoken",
     "aerovault",
+    "keyring",
     // Archives
     "sevenz-rust",
     "zip",

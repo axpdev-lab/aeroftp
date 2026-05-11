@@ -2572,7 +2572,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
         // by `to_remote_entry`. If multiple trashed entries share the name
         // we delete the first match (the JSON:API listing returns newest
         // first per Zoho convention).
-        let basename = path.trim_end_matches('/').rsplit('/').next().unwrap_or(path);
+        let basename = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
         if basename.is_empty() {
             return Ok(false);
         }

@@ -108,6 +108,36 @@ pub fn credential_store_dir() -> Option<PathBuf> {
         .map(|base| base.join("aeroftp"))
 }
 
+/// CLI-friendly resolution of the per-app config directory, mirroring
+/// [`app_config_dir`] but without an `AppHandle`. Standalone binaries
+/// (`aeroftp-cli`, `aerorsync_serve`) use this so a full keystore
+/// export/import sees the same SQLite databases + plugin trees that
+/// the GUI runtime would.
+///
+/// The identifier is hard-coded to match `tauri.conf.json`. If that
+/// ever changes, the CLI and the GUI would resolve different folders
+/// and the keystore round-trip would target a different installation
+/// from the one the user is restoring, caught by
+/// `keystore_export::tests::cli_app_config_dir_matches_tauri_identifier`.
+///
+/// Returns `None` when no plausible config root exists (no `$HOME`,
+/// no `%APPDATA%`). Callers should fall back to "vault only" mode in
+/// that case rather than silently writing into the working directory.
+pub fn cli_app_config_dir() -> Option<PathBuf> {
+    if let Some(data_root) = portable_data_root() {
+        let dir = data_root.join("config");
+        ensure_dir(&dir).ok()?;
+        return Some(dir);
+    }
+    let base = dirs::config_dir()?;
+    Some(base.join("com.aeroftp.AeroFTP"))
+}
+
+/// The Tauri identifier hard-coded in `tauri.conf.json`. Exposed as a
+/// const so [`cli_app_config_dir`] and any future portable-aware
+/// helper share a single source of truth.
+pub const TAURI_APP_IDENTIFIER: &str = "com.aeroftp.AeroFTP";
+
 /// Resolve the WebView2 / WebKitGTK per-window data directory.
 ///
 /// In portable mode this is `<exe-dir>/data/webview`. Two portable
@@ -142,9 +172,7 @@ pub fn shared_webview_data_present() -> bool {
     let Some(local_appdata) = dirs::data_local_dir() else {
         return false;
     };
-    let candidate = local_appdata
-        .join("com.aeroftp.AeroFTP")
-        .join("EBWebView");
+    let candidate = local_appdata.join("com.aeroftp.AeroFTP").join("EBWebView");
     candidate.is_dir()
 }
 
@@ -257,7 +285,11 @@ fn detect_via_registry() -> Option<String> {
             log::info!(
                 "Windows install-format detected via registry: {} (key: {}\\{}, DisplayName: {})",
                 format,
-                if hive == HKEY_LOCAL_MACHINE { "HKLM" } else { "HKCU" },
+                if hive == HKEY_LOCAL_MACHINE {
+                    "HKLM"
+                } else {
+                    "HKCU"
+                },
                 sub_key_name,
                 display_name
             );

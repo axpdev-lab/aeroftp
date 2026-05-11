@@ -168,7 +168,10 @@ pub fn load_registry() -> MountRegistry {
     match mode {
         StorageMode::Sidecar => load_from_sidecar(),
         StorageMode::Vault => load_from_vault().unwrap_or_else(|e| {
-            tracing::warn!("Mount registry vault load failed ({}), falling back to sidecar", e);
+            tracing::warn!(
+                "Mount registry vault load failed ({}), falling back to sidecar",
+                e
+            );
             load_from_sidecar()
         }),
     }
@@ -194,8 +197,9 @@ fn load_from_sidecar() -> MountRegistry {
 fn load_from_vault() -> Result<MountRegistry, String> {
     let store = CredentialStore::from_cache().ok_or("Vault is locked")?;
     match store.get(VAULT_REGISTRY_KEY) {
-        Ok(json) => serde_json::from_str(&json)
-            .map_err(|e| format!("Mount registry vault parse: {}", e)),
+        Ok(json) => {
+            serde_json::from_str(&json).map_err(|e| format!("Mount registry vault parse: {}", e))
+        }
         Err(_) => Ok(MountRegistry {
             storage_mode: StorageMode::Vault,
             mounts: Vec::new(),
@@ -227,8 +231,8 @@ fn save_to_sidecar(registry: &MountRegistry) -> Result<(), String> {
 
 fn save_to_vault(registry: &MountRegistry) -> Result<(), String> {
     let store = CredentialStore::from_cache().ok_or("Vault is locked")?;
-    let json = serde_json::to_string(registry)
-        .map_err(|e| format!("Mount registry serialize: {}", e))?;
+    let json =
+        serde_json::to_string(registry).map_err(|e| format!("Mount registry serialize: {}", e))?;
     store
         .store(VAULT_REGISTRY_KEY, &json)
         .map_err(|e| format!("Mount registry vault store: {}", e))?;
@@ -270,7 +274,12 @@ fn validate_mountpoint(mp: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
         let letter = mp.trim().trim_end_matches(':');
-        if letter.len() != 1 || !letter.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
+        if letter.len() != 1
+            || !letter
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic())
+        {
             return Err("Windows mountpoint must be a drive letter like 'Z:'".to_string());
         }
         return Ok(());
@@ -340,10 +349,12 @@ pub fn suggest_mountpoint(profile: &str) -> String {
     {
         let safe: String = profile
             .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c.to_ascii_lowercase()
-            } else {
-                '-'
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
             })
             .collect();
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
@@ -477,11 +488,7 @@ pub async fn stop_mount(id: &str) -> Result<(), String> {
     }
 
     // Wait up to 5s for graceful exit.
-    let waited = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        entry.child.wait(),
-    )
-    .await;
+    let waited = tokio::time::timeout(std::time::Duration::from_secs(5), entry.child.wait()).await;
     if waited.is_err() {
         let _ = entry.child.start_kill();
         let _ = entry.child.wait().await;
@@ -551,15 +558,11 @@ pub async fn open_in_explorer(id: &str) -> Result<(), String> {
     let target = cfg.mountpoint.clone();
 
     #[cfg(target_os = "linux")]
-    let result = std::process::Command::new("xdg-open")
-        .arg(&target)
-        .spawn();
+    let result = std::process::Command::new("xdg-open").arg(&target).spawn();
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("open").arg(&target).spawn();
     #[cfg(windows)]
-    let result = std::process::Command::new("explorer")
-        .arg(&target)
-        .spawn();
+    let result = std::process::Command::new("explorer").arg(&target).spawn();
 
     result
         .map(|_| ())
@@ -681,8 +684,7 @@ fn render_systemd_unit(cli: &std::path::Path, cfg: &MountConfig) -> String {
 
 #[cfg(target_os = "linux")]
 fn shell_escape(s: &str) -> String {
-    if s
-        .chars()
+    if s.chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_' | ':'))
     {
         s.to_string()
@@ -718,8 +720,7 @@ fn uninstall_autostart_platform(id: &str) -> Result<(), String> {
     let _ = run_systemctl(&["--user", "disable", "--now", &unit_name]);
     let path = unit_path(id);
     if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|e| format!("Cannot remove systemd unit: {}", e))?;
+        std::fs::remove_file(&path).map_err(|e| format!("Cannot remove systemd unit: {}", e))?;
     }
     let _ = run_systemctl(&["--user", "daemon-reload"]);
     Ok(())
@@ -772,16 +773,7 @@ fn install_autostart_platform(cli: &std::path::Path, cfg: &MountConfig) -> Resul
     let task = task_name(&cfg.id);
     let output = std::process::Command::new("schtasks")
         .args([
-            "/Create",
-            "/TN",
-            &task,
-            "/SC",
-            "ONLOGON",
-            "/RL",
-            "LIMITED",
-            "/F",
-            "/TR",
-            &tr,
+            "/Create", "/TN", &task, "/SC", "ONLOGON", "/RL", "LIMITED", "/F", "/TR", &tr,
         ])
         .output()
         .map_err(|e| format!("schtasks invocation failed: {}", e))?;

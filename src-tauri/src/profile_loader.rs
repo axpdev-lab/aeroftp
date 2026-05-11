@@ -251,7 +251,10 @@ mod tests {
         assert_eq!(normalize_profile_option_key("region"), "region");
         assert_eq!(normalize_profile_option_key("endpoint"), "endpoint");
         assert_eq!(normalize_profile_option_key("bucket"), "bucket");
-        assert_eq!(normalize_profile_option_key("private_key_path"), "private_key_path");
+        assert_eq!(
+            normalize_profile_option_key("private_key_path"),
+            "private_key_path"
+        );
     }
 
     #[test]
