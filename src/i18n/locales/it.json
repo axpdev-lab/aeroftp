@@ -1439,6 +1439,14 @@
             "insecureConnectionUnencrypted": "Questa connessione non è cifrata. Le credenziali vengono inviate in chiaro.",
             "usedNoCap": "utilizzati (provider senza quota)"
         },
+        "aerofile": {
+            "dualPanel": "Doppio pannello",
+            "dualPanelTooltip": "Mostra due pannelli locali affiancati",
+            "leftPanel": "Pannello sinistro",
+            "rightPanel": "Pannello destro",
+            "copyToOtherPanel": "Copia nell'altro pannello",
+            "moveToOtherPanel": "Sposta nell'altro pannello"
+        },
         "shortcuts": {
             "title": "Scorciatoie da Tastiera",
             "navigation": "Navigazione",

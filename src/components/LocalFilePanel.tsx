@@ -43,6 +43,7 @@ export interface LocalFilePanelProps {
   // --- Mode & Layout ---
   isAeroFileMode: boolean;
   isConnected: boolean;
+  isDualMode?: boolean;
 
   // --- Navigation ---
   currentPath: string;
@@ -172,6 +173,7 @@ const isImageFile = (name: string) =>
 export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   isAeroFileMode,
   isConnected,
+  isDualMode = false,
   currentPath,
   setCurrentPath,
   onNavigate,
@@ -331,7 +333,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     <div
       role="region"
       aria-label="Local files"
-      className={`relative ${isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
+      className={`relative ${isDualMode ? 'w-1/2 min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col transition-all duration-300 ${crossPanelTarget === 'local' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}${extraClassName ? ` ${extraClassName}` : ''}`}
       onDragOver={(e) => onPanelDragOver(e, false)}
       onDrop={(e) => onPanelDrop(e, false)}
       onDragLeave={onPanelDragLeave}
