@@ -535,9 +535,6 @@ fn detect_binary_deleted() -> Option<bool> {
     }
 }
 
-/// Build the payload returned by `aeroftp_mcp_info`. Kept as a standalone
-/// function so unit tests can exercise the field shape without going
-/// through the full tool dispatch.
 // ─── Pass 6: DebugPanel snapshot + test runner for MCP agents ──────────────
 //
 // `build_debug_snapshot` mirrors the GUI DebugPanel "Connection" + "System"
@@ -737,6 +734,9 @@ async fn run_benchmark_via_subprocess(
         .map_err(|e| format!("Cannot parse benchmark JSON output: {}", e))
 }
 
+/// Build the payload returned by `aeroftp_mcp_info`. Kept as a standalone
+/// function so unit tests can exercise the field shape without going
+/// through the full tool dispatch.
 fn build_mcp_info() -> Value {
     let pid = std::process::id();
     let now = chrono::Utc::now();
@@ -884,7 +884,7 @@ pub async fn execute_tool(
         }
         "aeroftp_debug_snapshot" => {
             let tail_n = args
-                .and_then(|a| a.get("log_tail_lines"))
+                .get("log_tail_lines")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(200)
                 .min(2000) as usize;
@@ -908,23 +908,23 @@ pub async fn execute_tool(
                 Err(e) => return finish(tool_name, None, None, err(e), start),
             };
             let level = args
-                .and_then(|a| a.get("level"))
+                .get("level")
                 .and_then(|v| v.as_str())
                 .unwrap_or("quick")
                 .to_string();
             let sizes = args
-                .and_then(|a| a.get("sizes"))
+                .get("sizes")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             let runs = args
-                .and_then(|a| a.get("runs"))
+                .get("runs")
                 .and_then(|v| v.as_u64());
             let operations = args
-                .and_then(|a| a.get("operations"))
+                .get("operations")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             let anonymize_extra = args
-                .and_then(|a| a.get("anonymize_extra"))
+                .get("anonymize_extra")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             match run_benchmark_via_subprocess(&profile, &level, sizes.as_deref(), runs, operations.as_deref(), anonymize_extra).await {
