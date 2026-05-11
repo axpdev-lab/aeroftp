@@ -3263,6 +3263,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             />
                                         </div>
 
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.totpSecret')}</label>
+                                            <input
+                                                type="password"
+                                                value={connectionParams.options?.totp_secret || ''}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: { ...connectionParams.options, totp_secret: e.target.value || undefined }
+                                                })}
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                placeholder={t('connection.totpSecretPlaceholder')}
+                                                autoComplete="off"
+                                                spellCheck={false}
+                                            />
+                                            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
+                                        </div>
+
                                         <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">
                                             <p className="font-medium mb-1">{t('connection.filenEncryptionTitle')}</p>
                                             <p className="opacity-80">
@@ -3624,6 +3641,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 inputMode="numeric"
                                                 autoComplete="one-time-code"
                                             />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.totpSecret')}</label>
+                                            <input
+                                                type="password"
+                                                value={connectionParams.options?.totp_secret || ''}
+                                                onChange={(e) => onConnectionParamsChange({
+                                                    ...connectionParams,
+                                                    options: { ...connectionParams.options, totp_secret: e.target.value || undefined }
+                                                })}
+                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                placeholder={t('connection.totpSecretPlaceholder')}
+                                                autoComplete="off"
+                                                spellCheck={false}
+                                            />
+                                            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
                                         </div>
 
                                         <div className="space-y-2">

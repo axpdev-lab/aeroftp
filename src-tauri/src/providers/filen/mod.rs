@@ -737,8 +737,22 @@ impl StorageProvider for FilenProvider {
         let (auth_hash, derived_master_key) =
             Self::derive_auth_credentials(password, &auth_data.salt, auth_data.auth_version)?;
 
-        // Step 3: Login: Filen API requires twoFactorCode always; use "XXXXXX" when 2FA is not enabled
-        let two_fa = self.config.two_factor_code.as_deref().unwrap_or("XXXXXX");
+        // Step 3: Login: Filen API requires twoFactorCode always; use "XXXXXX" when 2FA is not enabled.
+        //
+        // The user can persist either a single-use code (typed at connection
+        // time) or a base32 TOTP secret (saved once, derived on demand). The
+        // secret takes precedence because it removes the manual prompt on
+        // every reconnect and matches what rclone does with Filen profiles.
+        let derived_totp = self
+            .config
+            .totp_secret
+            .as_ref()
+            .map(super::totp_helper::generate_totp_code)
+            .transpose()?;
+        let two_fa = derived_totp
+            .as_deref()
+            .or(self.config.two_factor_code.as_deref())
+            .unwrap_or("XXXXXX");
         let login_body = serde_json::json!({
             "email": self.config.email,
             "password": auth_hash,

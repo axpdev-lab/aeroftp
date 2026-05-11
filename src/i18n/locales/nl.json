@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Soft-delete: verwijderde bestanden zijn herstelbaar uit de versiegeschiedenis",
             "b2NativeAdvBucketUsage": "Opslaggebruik op bucket-niveau wordt weergegeven in de statusbalk",
             "b2NativeAdvShareLinks": "Deellinks met aangepaste vervaltijd (tot 7 dagen)",
-            "b2NativeAdvVersions": "Volledige bestandsversiegeschiedenis per object"
+            "b2NativeAdvVersions": "Volledige bestandsversiegeschiedenis per object",
+            "totpSecret": "TOTP-geheim (optioneel, opgeslagen)",
+            "totpSecretPlaceholder": "Base32-geheim, bijv. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Sla je 2FA-geheim één keer op. AeroFTP genereert automatisch de 6-cijferige code bij elke herverbinding, net als een authenticator-app."
         },
         "browser": {
             "remote": "Extern",

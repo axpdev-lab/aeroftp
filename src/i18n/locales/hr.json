@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Meko brisanje: izbrisane datoteke mogu se vratiti iz povijesti verzija",
             "b2NativeAdvBucketUsage": "Korištenje pohrane na razini bucketa prikazano u statusnoj traci",
             "b2NativeAdvShareLinks": "Poveznice za dijeljenje s prilagođenim rokom isteka (do 7 dana)",
-            "b2NativeAdvVersions": "Potpuna povijest verzija datoteke po objektu"
+            "b2NativeAdvVersions": "Potpuna povijest verzija datoteke po objektu",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Udaljeno",

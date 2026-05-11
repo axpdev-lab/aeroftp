@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Ήπια διαγραφή: τα διαγραμμένα αρχεία μπορούν να ανακτηθούν από το ιστορικό εκδόσεων",
             "b2NativeAdvBucketUsage": "Η χρήση αποθήκευσης σε επίπεδο bucket εμφανίζεται στη γραμμή κατάστασης",
             "b2NativeAdvShareLinks": "Σύνδεσμοι κοινής χρήσης με προσαρμοσμένη λήξη (έως 7 ημέρες)",
-            "b2NativeAdvVersions": "Πλήρες ιστορικό εκδόσεων αρχείου ανά αντικείμενο"
+            "b2NativeAdvVersions": "Πλήρες ιστορικό εκδόσεων αρχείου ανά αντικείμενο",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Απομακρυσμένο",

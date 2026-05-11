@@ -895,6 +895,10 @@ pub struct MegaConfig {
     /// the code is missing or wrong. Single-use, never persisted in profile
     /// options after a successful connect.
     pub two_factor_code: Option<String>,
+    /// Persisted base32 TOTP secret. When present, MEGA's `connect()` derives
+    /// the current 6-digit code via `totp_helper::generate_totp_code` and
+    /// forwards it as `mfa`. Removes the manual prompt on every reconnect.
+    pub totp_secret: Option<secrecy::SecretString>,
     /// Whether to save session for reconnection (used in future session persistence)
     #[allow(dead_code)]
     pub save_session: bool,
@@ -949,10 +953,18 @@ impl MegaConfig {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
 
+        let totp_secret = config
+            .extra
+            .get("totp_secret")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(secrecy::SecretString::from);
+
         Ok(Self {
             email,
             password: password.into(),
             two_factor_code,
+            totp_secret,
             save_session,
             logout_on_disconnect,
             connection_mode,
@@ -1111,8 +1123,15 @@ impl AzureConfig {
 pub struct FilenConfig {
     pub email: String,
     pub password: secrecy::SecretString,
-    /// Optional TOTP code for accounts with 2FA enabled
+    /// Single-use 6-digit TOTP code typed by the user at connection time.
+    /// Mutually exclusive with `totp_secret`: when both are present we prefer
+    /// the secret because it lets us re-derive a fresh code on every connect.
     pub two_factor_code: Option<String>,
+    /// Persisted base32 TOTP secret. When present, the provider derives the
+    /// current 6-digit code via `totp_helper::generate_totp_code` and forwards
+    /// it as `twoFactorCode` to Filen, replicating what an authenticator app
+    /// would do. Lets us drop the manual TOTP prompt on every reconnect.
+    pub totp_secret: Option<secrecy::SecretString>,
 }
 
 impl FilenConfig {
@@ -1129,10 +1148,17 @@ impl FilenConfig {
             .get("two_factor_code")
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
+        let totp_secret = config
+            .extra
+            .get("totp_secret")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(secrecy::SecretString::from);
         Ok(Self {
             email,
             password: password.into(),
             two_factor_code,
+            totp_secret,
         })
     }
 }

@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Dileu meddal: gellir adfer ffeiliau a ddilëwyd o hanes y fersiynau",
             "b2NativeAdvBucketUsage": "Defnydd storfa ar lefel bucket yn cael ei ddangos yn y bar statws",
             "b2NativeAdvShareLinks": "Dolenni rhannu gyda dyddiad dod i ben addasadwy (hyd at 7 diwrnod)",
-            "b2NativeAdvVersions": "Hanes fersiwn ffeil llawn fesul gwrthrych"
+            "b2NativeAdvVersions": "Hanes fersiwn ffeil llawn fesul gwrthrych",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Pell",

@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Ștergere temporară: fișierele șterse pot fi recuperate din istoricul versiunilor",
             "b2NativeAdvBucketUsage": "Utilizarea spațiului la nivel de bucket afișată în bara de stare",
             "b2NativeAdvShareLinks": "Linkuri de partajare cu expirare personalizată (până la 7 zile)",
-            "b2NativeAdvVersions": "Istoric complet al versiunilor pentru fiecare obiect"
+            "b2NativeAdvVersions": "Istoric complet al versiunilor pentru fiecare obiect",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "La distanță",

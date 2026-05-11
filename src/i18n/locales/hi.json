@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "सॉफ़्ट-डिलीट: हटाई गई फ़ाइलें संस्करण इतिहास से पुनर्प्राप्त की जा सकती हैं",
             "b2NativeAdvBucketUsage": "Bucket-स्तर का संग्रहण उपयोग स्थिति बार में दिखाया गया",
             "b2NativeAdvShareLinks": "कस्टम समाप्ति के साथ साझाकरण लिंक (7 दिनों तक)",
-            "b2NativeAdvVersions": "प्रत्येक ऑब्जेक्ट के लिए पूर्ण फ़ाइल संस्करण इतिहास"
+            "b2NativeAdvVersions": "प्रत्येक ऑब्जेक्ट के लिए पूर्ण फ़ाइल संस्करण इतिहास",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "दूरस्थ",

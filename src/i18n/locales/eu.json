@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Ezabatze leuna: ezabatutako fitxategiak bertsio-historialetik berreskuratu daitezke",
             "b2NativeAdvBucketUsage": "Bucket mailako biltegi-erabilera egoera-barran erakutsia",
             "b2NativeAdvShareLinks": "Partekatze-estekak iraungitze pertsonalizatuarekin (7 egun arte)",
-            "b2NativeAdvVersions": "Fitxategien bertsio-historial osoa objektu bakoitzeko"
+            "b2NativeAdvVersions": "Fitxategien bertsio-historial osoa objektu bakoitzeko",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Urrunekoa",

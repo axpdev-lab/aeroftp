@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "软删除：已删除的文件可从版本历史中恢复",
             "b2NativeAdvBucketUsage": "状态栏中显示 bucket 级别的存储使用情况",
             "b2NativeAdvShareLinks": "支持自定义过期时间的分享链接（最长 7 天）",
-            "b2NativeAdvVersions": "每个对象的完整文件版本历史"
+            "b2NativeAdvVersions": "每个对象的完整文件版本历史",
+            "totpSecret": "TOTP 密钥（可选，已保存）",
+            "totpSecretPlaceholder": "Base32 密钥，例如 JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "保存您的 2FA 密钥一次。AeroFTP 将在每次重新连接时自动生成 6 位代码，就像身份验证器应用一样。"
         },
         "browser": {
             "remote": "远程",

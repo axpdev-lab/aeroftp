@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Eliminació suau: els fitxers eliminats es poden recuperar des de l'historial de versions",
             "b2NativeAdvBucketUsage": "L'ús d'emmagatzematge a nivell de bucket es mostra a la barra d'estat",
             "b2NativeAdvShareLinks": "Enllaços de compartició amb caducitat personalitzada (fins a 7 dies)",
-            "b2NativeAdvVersions": "Historial complet de versions per cada objecte"
+            "b2NativeAdvVersions": "Historial complet de versions per cada objecte",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Remot",

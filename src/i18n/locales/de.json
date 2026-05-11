@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Soft-Delete: gelöschte Dateien können aus dem Versionsverlauf wiederhergestellt werden",
             "b2NativeAdvBucketUsage": "Speichernutzung auf Bucket-Ebene wird in der Statusleiste angezeigt",
             "b2NativeAdvShareLinks": "Freigabelinks mit benutzerdefinierter Ablaufzeit (bis zu 7 Tage)",
-            "b2NativeAdvVersions": "Vollständiger Dateiversionsverlauf pro Objekt"
+            "b2NativeAdvVersions": "Vollständiger Dateiversionsverlauf pro Objekt",
+            "totpSecret": "TOTP-Geheimnis (optional, gespeichert)",
+            "totpSecretPlaceholder": "Base32-Geheimnis, z. B. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Speichern Sie Ihr 2FA-Geheimnis einmal. AeroFTP generiert den 6-stelligen Code bei jeder erneuten Verbindung automatisch, wie eine Authentifizierungs-App."
         },
         "browser": {
             "remote": "Remote",

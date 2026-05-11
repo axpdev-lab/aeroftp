@@ -253,7 +253,10 @@
             "b2NativeAdvSoftDelete": "Xóa mềm: các tệp đã xóa có thể khôi phục từ lịch sử phiên bản",
             "b2NativeAdvBucketUsage": "Mức sử dụng bộ nhớ ở cấp bucket hiển thị trên thanh trạng thái",
             "b2NativeAdvShareLinks": "Liên kết chia sẻ với thời gian hết hạn tùy chỉnh (lên đến 7 ngày)",
-            "b2NativeAdvVersions": "Lịch sử phiên bản tệp đầy đủ cho mỗi đối tượng"
+            "b2NativeAdvVersions": "Lịch sử phiên bản tệp đầy đủ cho mỗi đối tượng",
+            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
+            "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
         },
         "browser": {
             "remote": "Từ xa",
