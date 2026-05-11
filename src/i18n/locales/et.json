@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Kopeeri teisele paneelile",
             "moveToOtherPanel": "Liiguta teisele paneelile",
             "copiedToOtherPanel": "Kopeeritud teisele paneelile",
-            "movedToOtherPanel": "Liigutatud teisele paneelile"
+            "movedToOtherPanel": "Liigutatud teisele paneelile",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

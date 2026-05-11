@@ -4531,7 +4531,9 @@
             "copyToOtherPanel": "Afrita í hinn gluggann",
             "moveToOtherPanel": "Færa í hinn gluggann",
             "copiedToOtherPanel": "Afritað í hinn gluggann",
-            "movedToOtherPanel": "Fært í hinn gluggann"
+            "movedToOtherPanel": "Fært í hinn gluggann",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

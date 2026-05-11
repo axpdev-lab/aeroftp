@@ -1447,7 +1447,9 @@
             "copyToOtherPanel": "Copia nell'altro pannello",
             "moveToOtherPanel": "Sposta nell'altro pannello",
             "copiedToOtherPanel": "Copiato nell'altro pannello",
-            "movedToOtherPanel": "Spostato nell'altro pannello"
+            "movedToOtherPanel": "Spostato nell'altro pannello",
+            "itemsLower": "elementi",
+            "resizePanels": "Ridimensiona pannelli"
         },
         "shortcuts": {
             "title": "Scorciatoie da Tastiera",

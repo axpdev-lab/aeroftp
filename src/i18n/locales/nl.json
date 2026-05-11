@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "Kopiëren naar ander paneel",
             "moveToOtherPanel": "Verplaatsen naar ander paneel",
             "copiedToOtherPanel": "Gekopieerd naar ander paneel",
-            "movedToOtherPanel": "Verplaatst naar ander paneel"
+            "movedToOtherPanel": "Verplaatst naar ander paneel",
+            "itemsLower": "items",
+            "resizePanels": "Panelen formaat wijzigen"
         }
     }
 }

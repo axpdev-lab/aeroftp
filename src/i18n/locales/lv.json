@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Kopēt uz otru paneli",
             "moveToOtherPanel": "Pārvietot uz otru paneli",
             "copiedToOtherPanel": "Nokopēts uz otru paneli",
-            "movedToOtherPanel": "Pārvietots uz otru paneli"
+            "movedToOtherPanel": "Pārvietots uz otru paneli",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

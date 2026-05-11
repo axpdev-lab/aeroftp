@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Kopírovat do druhého panelu",
             "moveToOtherPanel": "Přesunout do druhého panelu",
             "copiedToOtherPanel": "Zkopírováno do druhého panelu",
-            "movedToOtherPanel": "Přesunuto do druhého panelu"
+            "movedToOtherPanel": "Přesunuto do druhého panelu",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

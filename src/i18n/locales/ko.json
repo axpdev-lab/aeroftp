@@ -4502,7 +4502,9 @@
             "copyToOtherPanel": "다른 패널로 복사",
             "moveToOtherPanel": "다른 패널로 이동",
             "copiedToOtherPanel": "다른 패널로 복사됨",
-            "movedToOtherPanel": "다른 패널로 이동됨"
+            "movedToOtherPanel": "다른 패널로 이동됨",
+            "itemsLower": "항목",
+            "resizePanels": "패널 크기 조정"
         }
     }
 }

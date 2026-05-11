@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Αντιγραφή στο άλλο παράθυρο",
             "moveToOtherPanel": "Μετακίνηση στο άλλο παράθυρο",
             "copiedToOtherPanel": "Αντιγράφηκε στο άλλο παράθυρο",
-            "movedToOtherPanel": "Μετακινήθηκε στο άλλο παράθυρο"
+            "movedToOtherPanel": "Μετακινήθηκε στο άλλο παράθυρο",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

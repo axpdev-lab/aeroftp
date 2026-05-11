@@ -67,6 +67,10 @@ interface PlacesSidebarProps {
   labelCounts?: LabelCount[];
   activeTagFilter?: number | null;
   onTagFilter?: (labelId: number | null) => void;
+  // AeroFile dual-panel: which local panel the sidebar will drive on click.
+  // Only set when dual mode is active. The header renders a small L / R chip
+  // so the user knows where navigation will land before clicking.
+  activePanelMarker?: 'L' | 'R';
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +160,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   labelCounts = [],
   activeTagFilter = null,
   onTagFilter,
+  activePanelMarker,
 }) => {
   // -----------------------------------------------------------------------
   // State
@@ -664,9 +669,28 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     <div role="navigation" aria-label="Places sidebar" className="w-[200px] h-full bg-white/80 border-r border-gray-200 dark:bg-gray-900/50 dark:border-gray-700 flex flex-col overflow-hidden select-none">
       {/* Header with mode toggle */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700/50">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-          {sidebarMode === 'places' ? t('sidebar.places') : t('sidebar.folders')}
-        </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">
+            {sidebarMode === 'places' ? t('sidebar.places') : t('sidebar.folders')}
+          </span>
+          {/* Dual-panel target marker: tells the user which local panel the
+              sidebar will drive on click. Same letter and same accent as
+              the LocalFilePanel header chip and the StatusBar marker, so
+              the three indicators visually agree at a glance. */}
+          {activePanelMarker && (
+            <span
+              aria-label={activePanelMarker === 'R' ? 'Drives right panel' : 'Drives left panel'}
+              title={activePanelMarker === 'R' ? 'Drives right panel' : 'Drives left panel'}
+              className={`flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold tracking-wider ${
+                activePanelMarker === 'R'
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+              }`}
+            >
+              {activePanelMarker}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-0.5" role="group" aria-label="Sidebar mode">
           <button
             aria-pressed={sidebarMode === 'places'}

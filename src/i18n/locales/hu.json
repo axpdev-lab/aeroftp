@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "Másolás a másik panelre",
             "moveToOtherPanel": "Áthelyezés a másik panelre",
             "copiedToOtherPanel": "Másolva a másik panelre",
-            "movedToOtherPanel": "Áthelyezve a másik panelre"
+            "movedToOtherPanel": "Áthelyezve a másik panelre",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

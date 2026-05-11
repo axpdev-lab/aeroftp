@@ -1387,7 +1387,7 @@ pub async fn vault_v3_delete_entry(
     entry_name: String,
 ) -> Result<serde_json::Value, String> {
     let mut vault = open_vault(&vault_path, &password)?;
-    delete_entries_from_manifest(&mut vault, &[entry_name.clone()], false)?;
+    delete_entries_from_manifest(&mut vault, std::slice::from_ref(&entry_name), false)?;
     save_open_vault(&vault)?;
     Ok(serde_json::json!({
         "deleted": normalize_vault_relative_path(&entry_name)?,

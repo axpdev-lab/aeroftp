@@ -3103,7 +3103,9 @@
       "copyToOtherPanel": "Copy to other panel",
       "moveToOtherPanel": "Move to other panel",
       "copiedToOtherPanel": "Copied to other panel",
-      "movedToOtherPanel": "Moved to other panel"
+      "movedToOtherPanel": "Moved to other panel",
+      "itemsLower": "items",
+      "resizePanels": "Resize panels"
     },
     "statusBar": {
       "activityLog": "Activity Log",

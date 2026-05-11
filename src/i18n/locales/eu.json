@@ -4531,7 +4531,9 @@
             "copyToOtherPanel": "Kopiatu beste panelera",
             "moveToOtherPanel": "Mugitu beste panelera",
             "copiedToOtherPanel": "Beste panelera kopiatuta",
-            "movedToOtherPanel": "Beste panelera mugituta"
+            "movedToOtherPanel": "Beste panelera mugituta",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

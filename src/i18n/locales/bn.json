@@ -4512,7 +4512,9 @@
             "copyToOtherPanel": "অন্য প্যানেলে কপি করুন",
             "moveToOtherPanel": "অন্য প্যানেলে সরান",
             "copiedToOtherPanel": "অন্য প্যানেলে কপি হয়েছে",
-            "movedToOtherPanel": "অন্য প্যানেলে সরানো হয়েছে"
+            "movedToOtherPanel": "অন্য প্যানেলে সরানো হয়েছে",
+            "itemsLower": "items",
+            "resizePanels": "Resize panels"
         }
     }
 }

@@ -13406,7 +13406,20 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_log::Builder::default()
-                .level(log::LevelFilter::Trace)
+                // Global default stays at Info. Trace would otherwise fan the
+                // I/O reactor crates (mio, hyper, rustls, h2) into every log
+                // sink we register — including the Webview target below, which
+                // turns every poll() event into an IPC emit to the frontend.
+                // Observed effect: app blocked at startup after the first
+                // `mio::poll registering event source` line.
+                .level(log::LevelFilter::Info)
+                // Trace only for our own crates, so the DebugPanel and the
+                // Activity Log get the full backend story without dragging in
+                // the network reactor noise. `aeroftp` is the binary name,
+                // `ftp_client_gui_lib` is the lib name (kept for legacy log
+                // entries that still use the old crate name).
+                .level_for("aeroftp", log::LevelFilter::Trace)
+                .level_for("ftp_client_gui_lib", log::LevelFilter::Trace)
                 // Fan-out backend logs to the webview via the `log://log` event,
                 // consumed by the in-app DebugPanel. Stdout + LogDir targets are
                 // preserved by default; this one is additive.
