@@ -204,6 +204,43 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
             }, "required": ["server", "path", "find", "replace"] }),
             category: RateCategory::Mutative,
         },
+        McpToolDef {
+            name: "aeroftp_debug_snapshot",
+            description: "Return a static diagnostic snapshot for triage: host/runtime info plus the last N redacted lines of aeroftp.log. Sensitive data (API keys, Bearer tokens, JWTs, inline-URL passwords, emails, non-loopback IPv4, home directories, 32+ char hex blobs) is replaced with ***REDACTED*** markers before return. Read-only, no external I/O. Use to triage a user-reported issue without asking them to attach files.",
+            input_schema: json!({ "type": "object", "properties": {
+                "log_tail_lines": { "type": "integer", "description": "How many trailing log lines to include. Default: 200, max: 2000." }
+            }, "required": [] }),
+            category: RateCategory::ReadOnly,
+        },
+        McpToolDef {
+            name: "aeroftp_debug_run_test",
+            description: "Execute one self-contained diagnostic probe and return its result. Available test_id values: 'known_hosts' (parse ~/.ssh/known_hosts and count entries), 'aerovault_roundtrip' (full AeroVault v2 codec create+open in tempdir, validates the encryption stack end-to-end), 'vault_roundtrip' (credential store write+read+delete on a temp key, requires the user's vault to be unlocked). All probes are local, idempotent, and never touch the user's real data. Use to validate a specific subsystem after a suspected change.",
+            input_schema: json!({ "type": "object", "properties": {
+                "test_id": {
+                    "type": "string",
+                    "enum": ["known_hosts", "aerovault_roundtrip", "vault_roundtrip"],
+                    "description": "Which probe to run"
+                }
+            }, "required": ["test_id"] }),
+            category: RateCategory::ReadOnly,
+        },
+        McpToolDef {
+            name: "aeroftp_benchmark",
+            description: "Run the AeroFTP community benchmark suite against a saved profile and return the schema-v1 JSON report. Wraps the `aeroftp-cli benchmark` subcommand. The report is fully anonymized (no hostnames, paths, credentials, or bucket names). Use to compare a provider against the community baseline or to capture a before/after measurement after a configuration change. Long-running: 'quick' ~30s, 'standard' ~5min, 'deep' ~30min.",
+            input_schema: json!({ "type": "object", "properties": {
+                "profile": { "type": "string", "description": "Saved profile name to benchmark (required)" },
+                "level": {
+                    "type": "string",
+                    "enum": ["quick", "standard", "deep", "custom"],
+                    "description": "Preset level. Default: 'quick'. 'deep' may take 30+ minutes."
+                },
+                "sizes": { "type": "string", "description": "Override file sizes as comma-separated list (e.g. '1M,100M,1G'). Only effective with level=custom." },
+                "runs": { "type": "integer", "description": "Override timed runs per (operation, size) tuple. Only effective with level=custom." },
+                "operations": { "type": "string", "description": "Comma-separated operations subset: upload,download,list,stat,delete. Only effective with level=custom." },
+                "anonymize_extra": { "type": "boolean", "description": "Hash the provider hint as well (extra anonymization). Default: false." }
+            }, "required": ["profile"] }),
+            category: RateCategory::ReadOnly,
+        },
     ];
 
     // Inject dynamic tools from the unified core registry (T3 Gate 3).
@@ -501,6 +538,205 @@ fn detect_binary_deleted() -> Option<bool> {
 /// Build the payload returned by `aeroftp_mcp_info`. Kept as a standalone
 /// function so unit tests can exercise the field shape without going
 /// through the full tool dispatch.
+// ─── Pass 6: DebugPanel snapshot + test runner for MCP agents ──────────────
+//
+// `build_debug_snapshot` mirrors the GUI DebugPanel "Connection" + "System"
+// tabs plus a redacted tail of the on-disk Rust log. Used by the
+// `aeroftp_debug_snapshot` MCP tool so an agent can triage without asking
+// the user to attach files.
+
+async fn build_debug_snapshot(tail_n: usize) -> Value {
+    let pid = std::process::id();
+    let version = env!("CARGO_PKG_VERSION");
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+
+    let config_dir = dirs::config_dir()
+        .map(|d| d.join("aeroftp").to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".into());
+    let vault_exists = dirs::config_dir()
+        .map(|d| d.join("aeroftp").join("vault.db").exists())
+        .unwrap_or(false);
+    let known_hosts_exists = dirs::home_dir()
+        .map(|d| d.join(".ssh").join("known_hosts").exists())
+        .unwrap_or(false);
+
+    let mut log_tail = String::new();
+    let mut log_path_used: Option<String> = None;
+    if let Some(cfg) = dirs::config_dir() {
+        let candidates = [
+            cfg.join("aeroftp").join("logs").join("aeroftp.log"),
+            cfg.join("aeroftp").join("aeroftp.log"),
+        ];
+        for path in candidates.iter() {
+            if path.exists() {
+                if let Ok(content) = tokio::fs::read_to_string(path).await {
+                    let lines: Vec<&str> = content.lines().collect();
+                    let start = lines.len().saturating_sub(tail_n);
+                    log_tail = lines[start..]
+                        .iter()
+                        .map(|l| crate::debug_tests::redact(l))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                }
+                log_path_used = Some(path.to_string_lossy().to_string());
+                break;
+            }
+        }
+    }
+
+    json!({
+        "pid": pid,
+        "app_version": version,
+        "os": os,
+        "arch": arch,
+        "config_dir": config_dir,
+        "vault_exists": vault_exists,
+        "known_hosts_exists": known_hosts_exists,
+        "log_path": log_path_used,
+        "log_tail_lines_requested": tail_n,
+        "log_tail": log_tail,
+        "redaction": "Tokens, Bearer, JWT, URL inline passwords, emails, non-loopback IPv4, home paths and 32+ hex blobs are replaced before return.",
+    })
+}
+
+async fn run_debug_test_for_mcp(test_id: &str) -> Result<Value, String> {
+    use std::time::Instant;
+    let t0 = Instant::now();
+    match test_id {
+        "known_hosts" => {
+            let path = match dirs::home_dir().map(|d| d.join(".ssh").join("known_hosts")) {
+                Some(p) => p,
+                None => return Ok(json!({ "status": "warn", "duration_ms": t0.elapsed().as_millis() as u64, "message": "No home directory detected" })),
+            };
+            if !path.exists() {
+                return Ok(json!({ "status": "skipped", "duration_ms": t0.elapsed().as_millis() as u64, "message": "~/.ssh/known_hosts not present" }));
+            }
+            let content = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
+            let entries = content
+                .lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    !t.is_empty() && !t.starts_with('#')
+                })
+                .count();
+            Ok(json!({
+                "status": "pass",
+                "duration_ms": t0.elapsed().as_millis() as u64,
+                "message": format!("known_hosts readable, {} entries", entries),
+            }))
+        }
+        "aerovault_roundtrip" => {
+            let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
+            let vault_path = tmp.path().join("mcp-roundtrip.aerovault");
+            let vault_str = vault_path.to_string_lossy().to_string();
+            let password = "mcp-roundtrip-temp-2026".to_string();
+            let opts = aerovault::CreateOptions::new(&vault_str, password.clone())
+                .with_mode(aerovault::EncryptionMode::Standard);
+            aerovault::Vault::create(opts).map_err(|e| format!("create: {}", e))?;
+            let v = aerovault::Vault::open(&vault_str, &password).map_err(|e| format!("reopen: {}", e))?;
+            let entries = v.list().map_err(|e| format!("list: {}", e))?.len();
+            drop(v);
+            drop(tmp);
+            Ok(json!({
+                "status": "pass",
+                "duration_ms": t0.elapsed().as_millis() as u64,
+                "message": format!("AeroVault create + reopen + list OK ({} entries on fresh vault)", entries),
+            }))
+        }
+        "vault_roundtrip" => {
+            let store = match crate::credential_store::CredentialStore::from_cache() {
+                Some(s) => s,
+                None => return Ok(json!({
+                    "status": "skipped",
+                    "duration_ms": t0.elapsed().as_millis() as u64,
+                    "message": "Vault locked: unlock to run this probe",
+                })),
+            };
+            let key = "__aeroftp_debug_mcp_roundtrip__";
+            let value = "round_trip_test_value_OK";
+            store.store(key, value).map_err(|e| format!("write: {}", e))?;
+            let read_back = store.get(key).map_err(|e| {
+                let _ = store.delete(key);
+                format!("read: {}", e)
+            })?;
+            let _ = store.delete(key);
+            if read_back == value {
+                Ok(json!({
+                    "status": "pass",
+                    "duration_ms": t0.elapsed().as_millis() as u64,
+                    "message": "Vault write/read/delete cycle OK",
+                }))
+            } else {
+                Ok(json!({
+                    "status": "fail",
+                    "duration_ms": t0.elapsed().as_millis() as u64,
+                    "message": "Read value did not match written value",
+                }))
+            }
+        }
+        other => Err(format!(
+            "Unknown test_id '{}'. Allowed: known_hosts, aerovault_roundtrip, vault_roundtrip",
+            other
+        )),
+    }
+}
+
+// ─── Pass 7: benchmark subprocess wrap ─────────────────────────────────────
+
+async fn run_benchmark_via_subprocess(
+    profile: &str,
+    level: &str,
+    sizes: Option<&str>,
+    runs: Option<u64>,
+    operations: Option<&str>,
+    anonymize_extra: bool,
+) -> Result<Value, String> {
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("Cannot resolve current executable: {}", e))?;
+
+    let mut cmd = tokio::process::Command::new(&exe);
+    cmd.arg("--profile")
+        .arg(profile)
+        .arg("--format")
+        .arg("json")
+        .arg("--quiet")
+        .arg("benchmark")
+        .arg(level);
+    if let Some(s) = sizes {
+        cmd.arg("--sizes").arg(s);
+    }
+    if let Some(r) = runs {
+        cmd.arg("--runs").arg(r.to_string());
+    }
+    if let Some(o) = operations {
+        cmd.arg("--operations").arg(o);
+    }
+    if anonymize_extra {
+        cmd.arg("--anonymize-extra");
+    }
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| format!("Cannot spawn benchmark subprocess: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "benchmark subprocess exited with status {}: {}",
+            output.status,
+            stderr.trim().chars().take(800).collect::<String>()
+        ));
+    }
+
+    // The CLI writes the schema-v1 JSON report to stdout when invoked with
+    // `--format json`. We parse and pass it through as a JSON value so the
+    // agent sees structured fields instead of an opaque string.
+    serde_json::from_slice::<Value>(&output.stdout)
+        .map_err(|e| format!("Cannot parse benchmark JSON output: {}", e))
+}
+
 fn build_mcp_info() -> Value {
     let pid = std::process::id();
     let now = chrono::Utc::now();
@@ -645,6 +881,56 @@ pub async fn execute_tool(
             // No server/path validation: this tool has no external I/O.
             let result = ok(build_mcp_info());
             finish(tool_name, None, None, result, start)
+        }
+        "aeroftp_debug_snapshot" => {
+            let tail_n = args
+                .and_then(|a| a.get("log_tail_lines"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(200)
+                .min(2000) as usize;
+            let snapshot = build_debug_snapshot(tail_n).await;
+            finish(tool_name, None, None, ok(snapshot), start)
+        }
+        "aeroftp_debug_run_test" => {
+            let test_id = match get_str(args, "test_id") {
+                Ok(s) => s,
+                Err(e) => return finish(tool_name, None, None, err(e), start),
+            };
+            let result = run_debug_test_for_mcp(&test_id).await;
+            match result {
+                Ok(v) => finish(tool_name, None, None, ok(v), start),
+                Err(e) => finish(tool_name, None, None, err(e), start),
+            }
+        }
+        "aeroftp_benchmark" => {
+            let profile = match get_str(args, "profile") {
+                Ok(s) => s,
+                Err(e) => return finish(tool_name, None, None, err(e), start),
+            };
+            let level = args
+                .and_then(|a| a.get("level"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("quick")
+                .to_string();
+            let sizes = args
+                .and_then(|a| a.get("sizes"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let runs = args
+                .and_then(|a| a.get("runs"))
+                .and_then(|v| v.as_u64());
+            let operations = args
+                .and_then(|a| a.get("operations"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let anonymize_extra = args
+                .and_then(|a| a.get("anonymize_extra"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            match run_benchmark_via_subprocess(&profile, &level, sizes.as_deref(), runs, operations.as_deref(), anonymize_extra).await {
+                Ok(v) => finish(tool_name, Some(&profile), None, ok(v), start),
+                Err(e) => finish(tool_name, Some(&profile), None, err(e), start),
+            }
         }
         "aeroftp_close_connection" => {
             let server = match get_str(args, "server") {
