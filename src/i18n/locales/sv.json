@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Öppna överlägg",
             "aerovaultOverlayExpired": "AeroVault Overlay låst på grund av inaktivitet. Öppna valvet igen för att fortsätta."
         },
-        "ai.agentMode.title": "Agentlage",
-        "ai.agentMode.description": "Styr godkannandebeteende for verktyg, steggranser och autonominiva.",
-        "ai.agentMode.safe": "Saker",
-        "ai.agentMode.safeDesc": "Endast sakra verktyg kors automatiskt. Inget sessionsminne. Max 5 steg.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "Sakra verktyg kors automatiskt. Medelverktyg godkanns per session. Max 10 steg.",
-        "ai.agentMode.expert": "Expert",
-        "ai.agentMode.expertDesc": "Sakra och medel kors automatiskt. Hogrisk godkanns per session. Max 25 steg.",
-        "ai.agentMode.extreme": "Extrem",
-        "ai.agentMode.extremeDesc": "Alla verktyg kors automatiskt. Inga bekraftelser. Max 50 steg. Endast Cyber.",
         "security": {
             "totp": {
                 "back": "Tillbaka",

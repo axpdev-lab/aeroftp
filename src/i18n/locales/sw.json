@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Fungua tabaka",
             "aerovaultOverlayExpired": "AeroVault Overlay imefungwa kutokana na kutotumika. Fungua tena hifadhi ili kuendelea."
         },
-        "ai.agentMode.title": "Hali ya Wakala",
-        "ai.agentMode.description": "Inadhibiti tabia ya idhini ya zana, vikomo vya hatua na kiwango cha uhuru.",
-        "ai.agentMode.safe": "Salama",
-        "ai.agentMode.safeDesc": "Zana salama pekee zinatekelezwa kiotomatiki. Hakuna kumbukumbu ya kipindi. Hatua 5 za juu.",
-        "ai.agentMode.normal": "Kawaida",
-        "ai.agentMode.normalDesc": "Zana salama zinatekelezwa kiotomatiki. Zana za kati zinaidhinishwa kwa kipindi. Hatua 10 za juu.",
-        "ai.agentMode.expert": "Mtaalamu",
-        "ai.agentMode.expertDesc": "Salama na za kati zinatekelezwa kiotomatiki. Hatari kubwa zinaidhinishwa kwa kipindi. Hatua 25 za juu.",
-        "ai.agentMode.extreme": "Kali Sana",
-        "ai.agentMode.extremeDesc": "Zana zote zinatekelezwa kiotomatiki. Hakuna uthibitisho. Hatua 50 za juu. Cyber pekee.",
         "security": {
             "totp": {
                 "back": "Rudi",

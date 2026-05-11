@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Obre la capa",
             "aerovaultOverlayExpired": "AeroVault Overlay s'ha bloquejat per inactivitat. Torna a obrir la caixa forta per continuar."
         },
-        "ai.agentMode.title": "Mode d'agent",
-        "ai.agentMode.description": "Controla el comportament d'aprovació d'eines, els límits de passos i el nivell d'autonomia.",
-        "ai.agentMode.safe": "Segur",
-        "ai.agentMode.safeDesc": "Només les eines segures s'executen automàticament. Sense memòria de sessió. Màx. 5 passos.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "Les eines segures s'executen automàticament. Les eines mitjanes s'aproven per sessió. Màx. 10 passos.",
-        "ai.agentMode.expert": "Expert",
-        "ai.agentMode.expertDesc": "Les segures i mitjanes s'executen automàticament. Les d'alt risc s'aproven per sessió. Màx. 25 passos.",
-        "ai.agentMode.extreme": "Extrem",
-        "ai.agentMode.extremeDesc": "Totes les eines s'executen automàticament. Sense confirmacions. Màx. 50 passos. Només Cyber.",
         "security": {
             "totp": {
                 "back": "Enrere",

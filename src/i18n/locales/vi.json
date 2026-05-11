@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Mở lớp phủ",
             "aerovaultOverlayExpired": "AeroVault Overlay đã bị khóa do không hoạt động. Mở lại kho để tiếp tục."
         },
-        "ai.agentMode.title": "Che do Agent",
-        "ai.agentMode.description": "Kiem soat hanh vi phe duyet cong cu, gioi han buoc va muc do tu chu.",
-        "ai.agentMode.safe": "An toan",
-        "ai.agentMode.safeDesc": "Chi cac cong cu an toan tu dong thuc thi. Khong co bo nho phien. Toi da 5 buoc.",
-        "ai.agentMode.normal": "Binh thuong",
-        "ai.agentMode.normalDesc": "Cong cu an toan tu dong thuc thi. Cong cu trung binh duoc phe duyet theo phien. Toi da 10 buoc.",
-        "ai.agentMode.expert": "Chuyen gia",
-        "ai.agentMode.expertDesc": "An toan va trung binh tu dong thuc thi. Rui ro cao duoc phe duyet theo phien. Toi da 25 buoc.",
-        "ai.agentMode.extreme": "Cuc doan",
-        "ai.agentMode.extremeDesc": "Tat ca cong cu tu dong thuc thi. Khong can xac nhan. Toi da 50 buoc. Chi Cyber.",
         "security": {
             "totp": {
                 "back": "Quay lại",

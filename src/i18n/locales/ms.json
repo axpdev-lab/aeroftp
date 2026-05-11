@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Buka lapisan",
             "aerovaultOverlayExpired": "AeroVault Overlay dikunci kerana tidak aktif. Buka semula peti besi untuk meneruskan."
         },
-        "ai.agentMode.title": "Mod Ejen",
-        "ai.agentMode.description": "Mengawal tingkah laku kelulusan alat, had langkah dan tahap autonomi.",
-        "ai.agentMode.safe": "Selamat",
-        "ai.agentMode.safeDesc": "Hanya alat selamat dilaksanakan secara automatik. Tiada memori sesi. Maks. 5 langkah.",
-        "ai.agentMode.normal": "Normal",
-        "ai.agentMode.normalDesc": "Alat selamat dilaksanakan secara automatik. Alat sederhana diluluskan setiap sesi. Maks. 10 langkah.",
-        "ai.agentMode.expert": "Pakar",
-        "ai.agentMode.expertDesc": "Alat selamat dan sederhana dilaksanakan secara automatik. Risiko tinggi diluluskan setiap sesi. Maks. 25 langkah.",
-        "ai.agentMode.extreme": "Melampau",
-        "ai.agentMode.extremeDesc": "Semua alat dilaksanakan secara automatik. Tiada pengesahan. Maks. 50 langkah. Cyber sahaja.",
         "security": {
             "totp": {
                 "back": "Kembali",

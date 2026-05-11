@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "ओवरले खोलें",
             "aerovaultOverlayExpired": "निष्क्रियता के कारण AeroVault Overlay लॉक हो गया है। जारी रखने के लिए वॉल्ट को फिर से खोलें।"
         },
-        "ai.agentMode.title": "एजेंट मोड",
-        "ai.agentMode.description": "टूल अनुमोदन व्यवहार, चरण सीमाओं और स्वायत्तता स्तर को नियंत्रित करता है।",
-        "ai.agentMode.safe": "सुरक्षित",
-        "ai.agentMode.safeDesc": "केवल सुरक्षित टूल स्वचालित रूप से चलते हैं। कोई सत्र मेमोरी नहीं। अधिकतम 5 चरण।",
-        "ai.agentMode.normal": "सामान्य",
-        "ai.agentMode.normalDesc": "सुरक्षित टूल स्वचालित रूप से चलते हैं। मध्यम टूल सत्र के लिए अनुमोदित। अधिकतम 10 चरण।",
-        "ai.agentMode.expert": "विशेषज्ञ",
-        "ai.agentMode.expertDesc": "सुरक्षित और मध्यम स्वचालित रूप से चलते हैं। उच्च-जोखिम सत्र के लिए अनुमोदित। अधिकतम 25 चरण।",
-        "ai.agentMode.extreme": "चरम",
-        "ai.agentMode.extremeDesc": "सभी टूल स्वचालित रूप से चलते हैं। कोई पुष्टिकरण नहीं। अधिकतम 50 चरण। केवल Cyber।",
         "security": {
             "totp": {
                 "back": "वापस",

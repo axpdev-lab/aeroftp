@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Opna yfirlag",
             "aerovaultOverlayExpired": "AeroVault Overlay læst vegna aðgerðaleysis. Opnaðu hvelfinguna aftur til að halda áfram."
         },
-        "ai.agentMode.title": "Umbodshamur",
-        "ai.agentMode.description": "Stjornar hegdun verkfaerasamthykkis, skrefatakmork og sjalfraedisstig.",
-        "ai.agentMode.safe": "Oruggur",
-        "ai.agentMode.safeDesc": "Adheins orugg verkfaeri keyra sjalfvirkt. Engin lotuminni. Hamark 5 skref.",
-        "ai.agentMode.normal": "Venjulegur",
-        "ai.agentMode.normalDesc": "Orugg verkfaeri keyra sjalfvirkt. Midlungsverkfaeri samthykkt a lotu. Hamark 10 skref.",
-        "ai.agentMode.expert": "Serfraedhingur",
-        "ai.agentMode.expertDesc": "Orugg og midlungsverkfaeri keyra sjalfvirkt. Hahaettuverkfaeri samthykkt a lotu. Hamark 25 skref.",
-        "ai.agentMode.extreme": "Oflugur",
-        "ai.agentMode.extremeDesc": "Oll verkfaeri keyra sjalfvirkt. Engar stadfestingar. Hamark 50 skref. Adheins Cyber.",
         "security": {
             "totp": {
                 "back": "Til baka",

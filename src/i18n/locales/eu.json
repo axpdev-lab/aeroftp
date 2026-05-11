@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Ireki geruza",
             "aerovaultOverlayExpired": "AeroVault Overlay jardunik ezagatik blokeatu da. Ireki berriro kutxa gotorra jarraitzeko."
         },
-        "ai.agentMode.title": "Agente modua",
-        "ai.agentMode.description": "Tresnen onarpen portaera, urratsen mugak eta autonomia maila kontrolatzen ditu.",
-        "ai.agentMode.safe": "Segurua",
-        "ai.agentMode.safeDesc": "Tresna seguruak soilik automatikoki exekutatzen dira. Saio memoriarik gabe. Gehienez 5 urrats.",
-        "ai.agentMode.normal": "Normala",
-        "ai.agentMode.normalDesc": "Tresna seguruak automatikoki exekutatzen dira. Tarteko tresnak saiorako onartzen dira. Gehienez 10 urrats.",
-        "ai.agentMode.expert": "Aditua",
-        "ai.agentMode.expertDesc": "Seguruak eta tartekoak automatikoki exekutatzen dira. Arrisku handikoak saiorako onartzen dira. Gehienez 25 urrats.",
-        "ai.agentMode.extreme": "Muturrekoa",
-        "ai.agentMode.extremeDesc": "Tresna guztiak automatikoki exekutatzen dira. Berrespen gabe. Gehienez 50 urrats. Cyber soilik.",
         "security": {
             "totp": {
                 "back": "Atzera",

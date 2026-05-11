@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Avaa peittokerros",
             "aerovaultOverlayExpired": "AeroVault Overlay on lukittu käyttämättömyyden vuoksi. Avaa holvi uudelleen jatkaaksesi."
         },
-        "ai.agentMode.title": "Agenttitila",
-        "ai.agentMode.description": "Hallitsee työkalujen hyväksymiskäyttäytymistä, vaiheiden rajoja ja autonomian tasoa.",
-        "ai.agentMode.safe": "Turvallinen",
-        "ai.agentMode.safeDesc": "Vain turvalliset työkalut suoritetaan automaattisesti. Ei istuntomuistia. Enintään 5 vaihetta.",
-        "ai.agentMode.normal": "Normaali",
-        "ai.agentMode.normalDesc": "Turvalliset työkalut suoritetaan automaattisesti. Keskitason työkalut hyväksytään istunnolle. Enintään 10 vaihetta.",
-        "ai.agentMode.expert": "Asiantuntija",
-        "ai.agentMode.expertDesc": "Turvalliset ja keskitason suoritetaan automaattisesti. Korkean riskin hyväksytään istunnolle. Enintään 25 vaihetta.",
-        "ai.agentMode.extreme": "Äärimmäinen",
-        "ai.agentMode.extremeDesc": "Kaikki työkalut suoritetaan automaattisesti. Ei vahvistuksia. Enintään 50 vaihetta. Vain Cyber.",
         "security": {
             "totp": {
                 "back": "Takaisin",

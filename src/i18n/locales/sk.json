@@ -3659,16 +3659,6 @@
             "aerocryptImportOpen": "Otvoriť prekrytie",
             "aerovaultOverlayExpired": "AeroVault Overlay je uzamknutý kvôli nečinnosti. Pre pokračovanie znovu otvorte trezor."
         },
-        "ai.agentMode.title": "Rezim agenta",
-        "ai.agentMode.description": "Ovlada spravanie schvalovania nastrojov, limity krokov a uroven autonomie.",
-        "ai.agentMode.safe": "Bezpecny",
-        "ai.agentMode.safeDesc": "Iba bezpecne nastroje sa vykonavaju automaticky. Ziadna pamat relacie. Max. 5 krokov.",
-        "ai.agentMode.normal": "Normalny",
-        "ai.agentMode.normalDesc": "Bezpecne nastroje sa vykonavaju automaticky. Stredne nastroje schvalene na relaciu. Max. 10 krokov.",
-        "ai.agentMode.expert": "Expert",
-        "ai.agentMode.expertDesc": "Bezpecne a stredne sa vykonavaju automaticky. Vysokorizikove schvalene na relaciu. Max. 25 krokov.",
-        "ai.agentMode.extreme": "Extremny",
-        "ai.agentMode.extremeDesc": "Vsetky nastroje sa vykonavaju automaticky. Ziadne potvrdenia. Max. 50 krokov. Iba Cyber.",
         "security": {
             "totp": {
                 "back": "Späť",
