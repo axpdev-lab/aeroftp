@@ -1,0 +1,240 @@
+//! Z.2.3: Tauri command for local-to-local sync.
+//!
+//! Mirrors what `cmd_sync_local_to_local` does in the CLI (see
+//! `src/bin/aeroftp_cli.rs`) but exposed to the frontend so the AeroSync
+//! UI can present a "Local → Local" mode that walks a source directory,
+//! routes large files through `LocalDeltaTransport`, and falls back to
+//! plain copy otherwise. No SSH, no provider plumbing.
+
+#![cfg(feature = "aerorsync")]
+
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
+
+use crate::aerorsync::local_transport::LocalDeltaTransport;
+use crate::delta_transport::DeltaTransport;
+use crate::rsync_over_ssh::{RsyncError, DEFAULT_MIN_FILE_SIZE};
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocalSyncRequest {
+    pub source: String,
+    pub destination: String,
+    /// Comma-or-newline separated globs to exclude.
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// When true, route everything through plain `fs::copy` (skip delta).
+    #[serde(default)]
+    pub no_delta: bool,
+    /// Preview mode: walk + report, do not write.
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct LocalSyncReport {
+    pub status: String,
+    pub uploaded: u32,
+    pub skipped: u32,
+    pub errors: u32,
+    pub elapsed_ms: u128,
+    pub total_payload_bytes: u64,
+    pub bytes_on_wire: u64,
+    pub savings_ratio: f64,
+    pub error_messages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalSyncProgress {
+    pub processed: u32,
+    pub total: u32,
+    pub current_path: String,
+    pub bytes_on_wire: u64,
+    pub used_delta: bool,
+}
+
+/// Walk `source` and mirror every file into `destination`. Files at or above
+/// `DEFAULT_MIN_FILE_SIZE` (1 MiB) go through `LocalDeltaTransport` unless
+/// `no_delta` is set; smaller files fall back to plain copy.
+#[tauri::command]
+pub async fn local_sync_run(
+    app: AppHandle,
+    request: LocalSyncRequest,
+) -> Result<LocalSyncReport, String> {
+    let source = PathBuf::from(&request.source);
+    let destination = PathBuf::from(&request.destination);
+
+    if !source.exists() {
+        return Err(format!("Source path not found: {}", source.display()));
+    }
+    if !source.is_dir() {
+        return Err(format!(
+            "Source must be a directory: {}",
+            source.display()
+        ));
+    }
+    if !request.dry_run {
+        std::fs::create_dir_all(&destination)
+            .map_err(|e| format!("create destination {}: {}", destination.display(), e))?;
+    }
+
+    let exclude_matchers: Vec<globset::GlobMatcher> = request
+        .exclude
+        .iter()
+        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
+        .collect();
+
+    // Pre-walk to count total files (for accurate progress denominator).
+    let total_files: u32 = walkdir::WalkDir::new(&source)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .count() as u32;
+
+    let start = Instant::now();
+    let mut report = LocalSyncReport {
+        status: "ok".to_string(),
+        ..Default::default()
+    };
+
+    let transport = if request.no_delta {
+        None
+    } else {
+        Some(LocalDeltaTransport::new(DEFAULT_MIN_FILE_SIZE))
+    };
+
+    let mut processed: u32 = 0;
+    for entry in walkdir::WalkDir::new(&source).follow_links(false) {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                report.errors += 1;
+                report.error_messages.push(format!("walk: {}", e));
+                continue;
+            }
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = match entry.path().strip_prefix(&source) {
+            Ok(r) => r.to_path_buf(),
+            Err(_) => continue,
+        };
+        let rel_str = relative.to_string_lossy().to_string();
+        if rel_str.is_empty() {
+            continue;
+        }
+        let fname = entry
+            .file_name()
+            .to_string_lossy()
+            .to_string();
+        let rel_path_ref: &Path = relative.as_path();
+        let fname_path_ref: &Path = Path::new(&fname);
+        if exclude_matchers
+            .iter()
+            .any(|m| m.is_match(rel_path_ref) || m.is_match(fname_path_ref))
+        {
+            report.skipped += 1;
+            processed += 1;
+            continue;
+        }
+
+        let src = entry.path().to_path_buf();
+        let dst = destination.join(&relative);
+
+        if request.dry_run {
+            report.uploaded += 1;
+            processed += 1;
+            let _ = app.emit(
+                "local-sync-progress",
+                LocalSyncProgress {
+                    processed,
+                    total: total_files,
+                    current_path: rel_str,
+                    bytes_on_wire: 0,
+                    used_delta: false,
+                },
+            );
+            continue;
+        }
+
+        if let Some(parent) = dst.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                report.errors += 1;
+                report
+                    .error_messages
+                    .push(format!("mkdir {}: {}", parent.display(), e));
+                processed += 1;
+                continue;
+            }
+        }
+
+        let src_size = std::fs::metadata(&src).map(|m| m.len()).unwrap_or(0);
+        report.total_payload_bytes = report.total_payload_bytes.saturating_add(src_size);
+
+        let mut used_delta = false;
+        let mut wire_bytes: u64 = 0;
+
+        if let Some(t) = transport.as_ref() {
+            match t.upload(&src, dst.to_string_lossy().as_ref()).await {
+                Ok(s) => {
+                    used_delta = true;
+                    wire_bytes = s.bytes_sent;
+                }
+                Err(RsyncError::TooSmall { .. } | RsyncError::TransferFailed { .. }) => {
+                    // Fallback to plain copy below.
+                }
+                Err(e) => {
+                    report.errors += 1;
+                    report.error_messages.push(format!(
+                        "delta {}: {}; falling back to plain copy",
+                        rel_str, e
+                    ));
+                }
+            }
+        }
+
+        if !used_delta {
+            match std::fs::copy(&src, &dst) {
+                Ok(n) => wire_bytes = n,
+                Err(e) => {
+                    report.errors += 1;
+                    report
+                        .error_messages
+                        .push(format!("copy {}: {}", rel_str, e));
+                    processed += 1;
+                    continue;
+                }
+            }
+        }
+
+        report.uploaded += 1;
+        report.bytes_on_wire = report.bytes_on_wire.saturating_add(wire_bytes);
+        processed += 1;
+
+        let _ = app.emit(
+            "local-sync-progress",
+            LocalSyncProgress {
+                processed,
+                total: total_files,
+                current_path: rel_str,
+                bytes_on_wire: wire_bytes,
+                used_delta,
+            },
+        );
+    }
+
+    report.elapsed_ms = start.elapsed().as_millis();
+    report.savings_ratio = if report.total_payload_bytes > 0 {
+        report.bytes_on_wire as f64 / report.total_payload_bytes as f64
+    } else {
+        0.0
+    };
+    if report.errors > 0 {
+        report.status = "partial".to_string();
+    }
+    Ok(report)
+}

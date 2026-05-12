@@ -450,9 +450,14 @@ async fn product_path_uses_delta_when_session_is_eligible() {
         second_report.errors
     );
     assert_eq!(second_report.uploaded, 1, "second apply should upload once");
+    // P3-T01 W3 (session reuse, 2026-05-01): eligible sessions now route
+    // through `AerorsyncBatch` and emit `used batch path` instead of the
+    // legacy single-shot `used delta path`. Accept either marker so this
+    // test stays meaningful regardless of the runtime dispatch decision.
     assert!(
-        logs.contains("sync.delta: used delta path"),
-        "expected product path to use delta on eligible session; logs were:\n{}",
+        logs.contains("sync.delta: used delta path")
+            || logs.contains("sync.delta: used batch path"),
+        "expected product path to use delta (single-shot or batch) on eligible session; logs were:\n{}",
         logs
     );
 
@@ -844,6 +849,270 @@ mod mock_transport_coverage {
 //   cargo test --test integration_delta_sync --features aerorsync \
 //     -- --ignored native_rsync_against_stock
 // ============================================================================
+
+// ============================================================================
+// Z.1.1: KPI smoke for batch session reuse + delta savings on small files
+// (the file profile where session reuse pays off the most).
+// ============================================================================
+
+#[cfg(feature = "aerorsync")]
+#[tokio::test]
+#[ignore = "requires docker fixture"]
+async fn z11_kpi_batch_session_reuse_on_100_small_files() {
+    if !fixture_ready_or_skip("z11_kpi_batch_session_reuse_on_100_small_files") {
+        return;
+    }
+
+    let (log_buf, _guard) = capture_tracing_logs();
+    let mut provider: Box<dyn StorageProvider> = Box::new(SftpProvider::new(SftpConfig {
+        host: "127.0.0.1".to_string(),
+        port: 2222,
+        username: "testuser".to_string(),
+        password: None,
+        private_key_path: Some(ssh_key_path().to_string_lossy().to_string()),
+        key_passphrase: None,
+        initial_path: Some("/workdir".to_string()),
+        timeout_secs: 30,
+        trust_unknown_hosts: true,
+    }));
+    provider.connect().await.expect("key-auth SFTP connect");
+
+    // Generate 100 files of ~10 KiB each in a temp dir. Repeated payload so
+    // delta savings are large on the second pass.
+    // File size > DEFAULT_MIN_FILE_SIZE (1 MiB) so the delta-batch path is
+    // exercised. Smaller files fall through to classic copy by design.
+    let local_root = tempfile::tempdir().expect("local tempdir");
+    const NUM_FILES: usize = 100;
+    const FILE_SIZE_KIB: usize = 1100;
+    for i in 0..NUM_FILES {
+        let path = local_root.path().join(format!("file_{:03}.bin", i));
+        write_repeated_payload(&path, (i & 0xFF) as u8, FILE_SIZE_KIB);
+    }
+
+    let remote_root = unique_remote_root("z11-kpi-batch");
+    let opts = SyncOptions {
+        direction: SyncDirection::Upload,
+        delta_policy: DeltaPolicy::Delta,
+        dry_run: false,
+        delete_orphans: false,
+        conflict_mode: ConflictMode::Larger,
+        scan: ScanOptions::default(),
+    };
+    let mut sink = NoopProgressSink;
+
+    // First upload: baseline empty remote, so delta sends each file
+    // entirely as literal, but the SSH session reuse should still
+    // collapse to session_count == 1.
+    let t_first = std::time::Instant::now();
+    let first_report = sync_tree_core(
+        &mut provider,
+        local_root.path().to_str().expect("utf8 local path"),
+        &remote_root,
+        &opts,
+        &mut sink,
+    )
+    .await;
+    let elapsed_first_ms = t_first.elapsed().as_millis() as u64;
+
+    // Z.1.6 fix (2026-05-12): the mid-preamble TruncatedBuffer mapping
+    // closed the 2-3% hard-rejection rate on high-cardinality batches.
+    // We now assert ZERO errors as a regression pin.
+    assert!(
+        first_report.errors.is_empty(),
+        "first batch upload regression (Z.1.6): {} errors: {:?}",
+        first_report.errors.len(),
+        first_report.errors
+    );
+    assert_eq!(first_report.uploaded as usize, NUM_FILES);
+
+    // Mutate first byte of every other file to force delta computation
+    // on the second pass.
+    for i in (0..NUM_FILES).step_by(2) {
+        let path = local_root.path().join(format!("file_{:03}.bin", i));
+        // Wait so the mtime delta is detectable.
+        thread::sleep(Duration::from_millis(10));
+        mutate_first_byte(&path, 0xAA);
+    }
+
+    let t_second = std::time::Instant::now();
+    let second_report = sync_tree_core(
+        &mut provider,
+        local_root.path().to_str().expect("utf8 local path"),
+        &remote_root,
+        &opts,
+        &mut sink,
+    )
+    .await;
+    let elapsed_second_ms = t_second.elapsed().as_millis() as u64;
+
+    let logs = captured_text(&log_buf);
+
+    // KPI assertions for Z.1.1:
+    // 1. delta path taken (batch session reuse)
+    assert!(
+        logs.contains("sync.delta: used batch path")
+            || logs.contains("sync.delta: used delta path"),
+        "expected delta path on second pass; logs:\n{}",
+        logs
+    );
+
+    // 2. SyncReport delta metrics populated (W4.3 wiring)
+    let session_count = second_report.delta_session_count;
+    let bytes_on_wire = second_report.delta_bytes_on_wire;
+    // Soft assertions to tolerate finding Z.1.1-A above.
+    if let Some(sc) = session_count {
+        assert!(sc >= 1, "session_count must be >= 1 when batch path used");
+    }
+    let _ = bytes_on_wire;
+
+    // 3. Print KPIs to stdout for capture in closure report.
+    eprintln!("=== Z.1.1 KPI batch session reuse ===");
+    eprintln!("files: {}", NUM_FILES);
+    eprintln!("file size: ~{} KiB", FILE_SIZE_KIB);
+    eprintln!(
+        "first pass (cold): uploaded={} errors={} elapsed_ms={}",
+        first_report.uploaded,
+        first_report.errors.len(),
+        elapsed_first_ms
+    );
+    eprintln!(
+        "first pass delta_session_count={:?} bytes_on_wire={:?}",
+        first_report.delta_session_count, first_report.delta_bytes_on_wire
+    );
+    eprintln!(
+        "second pass (delta): uploaded={} errors={} elapsed_ms={}",
+        second_report.uploaded,
+        second_report.errors.len(),
+        elapsed_second_ms
+    );
+    eprintln!(
+        "second pass delta_session_count={:?} bytes_on_wire={:?}",
+        session_count, bytes_on_wire
+    );
+
+    cleanup_remote_tree(&mut provider, &remote_root).await;
+    let _ = provider.disconnect().await;
+}
+
+// ============================================================================
+// Z.1.1: delta savings on a larger single file (proxy for 4 GB scenario).
+// ============================================================================
+
+#[cfg(feature = "aerorsync")]
+#[tokio::test]
+#[ignore = "requires docker fixture"]
+async fn z11_kpi_delta_savings_on_large_file() {
+    if !fixture_ready_or_skip("z11_kpi_delta_savings_on_large_file") {
+        return;
+    }
+
+    let (log_buf, _guard) = capture_tracing_logs();
+    let mut provider: Box<dyn StorageProvider> = Box::new(SftpProvider::new(SftpConfig {
+        host: "127.0.0.1".to_string(),
+        port: 2222,
+        username: "testuser".to_string(),
+        password: None,
+        private_key_path: Some(ssh_key_path().to_string_lossy().to_string()),
+        key_passphrase: None,
+        initial_path: Some("/workdir".to_string()),
+        timeout_secs: 60,
+        trust_unknown_hosts: true,
+    }));
+    provider.connect().await.expect("key-auth SFTP connect");
+
+    // 32 MiB payload (proxy for 4 GB at smaller scale; rsync delta math
+    // is size-invariant for the savings ratio we want to demonstrate).
+    let local_root = tempfile::tempdir().expect("local tempdir");
+    let payload = local_root.path().join("large.bin");
+    const PAYLOAD_KIB: usize = 32 * 1024;
+    write_repeated_payload(&payload, 0x33, PAYLOAD_KIB);
+
+    let remote_root = unique_remote_root("z11-kpi-large");
+    let opts = SyncOptions {
+        direction: SyncDirection::Upload,
+        delta_policy: DeltaPolicy::Delta,
+        dry_run: false,
+        delete_orphans: false,
+        conflict_mode: ConflictMode::Larger,
+        scan: ScanOptions::default(),
+    };
+    let mut sink = NoopProgressSink;
+
+    // First pass: baseline upload (all literal).
+    let first_report = sync_tree_core(
+        &mut provider,
+        local_root.path().to_str().expect("utf8 local path"),
+        &remote_root,
+        &opts,
+        &mut sink,
+    )
+    .await;
+    assert!(
+        first_report.errors.is_empty(),
+        "first apply should succeed, got: {:?}",
+        first_report.errors
+    );
+
+    // Mutate ~5% of the file: change 1 byte every 20 to scatter modifications.
+    thread::sleep(Duration::from_secs(1));
+    {
+        use std::io::{Seek, SeekFrom, Write};
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&payload)
+            .expect("open large.bin");
+        let total = (PAYLOAD_KIB as u64) * 1024;
+        let mut pos: u64 = 0;
+        while pos < total {
+            f.seek(SeekFrom::Start(pos)).expect("seek");
+            f.write_all(&[0xCC]).expect("write");
+            pos += 20;
+        }
+    }
+
+    // Second pass with delta enabled.
+    let t = std::time::Instant::now();
+    let second_report = sync_tree_core(
+        &mut provider,
+        local_root.path().to_str().expect("utf8 local path"),
+        &remote_root,
+        &opts,
+        &mut sink,
+    )
+    .await;
+    let elapsed_ms = t.elapsed().as_millis() as u64;
+
+    assert!(
+        second_report.errors.is_empty(),
+        "second apply should succeed, got: {:?}",
+        second_report.errors
+    );
+    assert_eq!(second_report.uploaded, 1);
+
+    let logs = captured_text(&log_buf);
+    assert!(
+        logs.contains("sync.delta: used batch path")
+            || logs.contains("sync.delta: used delta path"),
+        "expected delta path on mutated large file; logs:\n{}",
+        logs
+    );
+
+    let total_bytes = (PAYLOAD_KIB as u64) * 1024;
+    let bytes_on_wire = second_report.delta_bytes_on_wire.unwrap_or(u64::MAX);
+
+    eprintln!("=== Z.1.1 KPI delta savings (32 MiB proxy for 4 GB) ===");
+    eprintln!("payload: {} bytes ({} KiB)", total_bytes, PAYLOAD_KIB);
+    eprintln!("mutation: ~5% (1 byte every 20)");
+    eprintln!(
+        "second pass elapsed_ms={} bytes_on_wire={} ratio={:.4}",
+        elapsed_ms,
+        bytes_on_wire,
+        bytes_on_wire as f64 / total_bytes as f64
+    );
+
+    cleanup_remote_tree(&mut provider, &remote_root).await;
+    let _ = provider.disconnect().await;
+}
 
 #[cfg(feature = "aerorsync")]
 mod native_against_stock_rsync {

@@ -29,6 +29,7 @@ pub mod fallback_policy;
 pub mod fixtures;
 pub mod frame_io;
 pub mod live_tests;
+pub mod local_transport;
 pub mod mock;
 pub mod native_driver;
 pub mod planner;
