@@ -1124,6 +1124,7 @@ struct RcloneCryptBrowserEntry {
 #[derive(Serialize)]
 struct RcloneCryptBrowserListResponse {
     current_path: String,
+    display_current_path: String,
     dir_iv_found: bool,
     files: Vec<RcloneCryptBrowserEntry>,
 }
@@ -1138,24 +1139,105 @@ fn join_remote_path(base: &str, name: &str) -> String {
     }
 }
 
+fn rclone_overlay_encode_path(
+    keys: &rclone_crypt::RcloneCryptKeys,
+    plain_path: &str,
+) -> Result<String, String> {
+    if plain_path.is_empty() || plain_path == "." || plain_path == "/" {
+        return Ok(plain_path.to_string());
+    }
+
+    let absolute = plain_path.starts_with('/');
+    let mut parts = Vec::new();
+    for part in plain_path.split('/') {
+        if part.is_empty() || part == "." {
+            continue;
+        }
+        if part == ".." || part.contains('\0') {
+            return Err("Invalid AeroCrypt path component".to_string());
+        }
+        parts.push(rclone_overlay_encode_name(
+            keys,
+            &keys.name_tweak,
+            part,
+            true,
+        )?);
+    }
+
+    let joined = parts.join("/");
+    if absolute {
+        Ok(format!("/{}", joined))
+    } else {
+        Ok(joined)
+    }
+}
+
+fn rclone_overlay_decode_path(
+    keys: &rclone_crypt::RcloneCryptKeys,
+    encrypted_path: &str,
+) -> String {
+    if encrypted_path.is_empty() || encrypted_path == "." || encrypted_path == "/" {
+        return encrypted_path.to_string();
+    }
+
+    let absolute = encrypted_path.starts_with('/');
+    let parts: Vec<String> = encrypted_path
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .map(|part| {
+            rclone_overlay_decode_name(keys, &keys.name_tweak, part, true)
+                .unwrap_or_else(|_| part.to_string())
+        })
+        .collect();
+
+    let joined = parts.join("/");
+    if absolute {
+        format!("/{}", joined)
+    } else {
+        joined
+    }
+}
+
+fn validate_single_remote_name(name: &str) -> Result<(), String> {
+    if name.trim().is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains('\0')
+    {
+        return Err("Invalid filename".to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn rclone_crypt_provider_list(
     provider_state: State<'_, provider_commands::ProviderState>,
     rclone_state: State<'_, rclone_crypt::RcloneCryptState>,
     vault_id: String,
     path: Option<String>,
+    plain_path: Option<bool>,
 ) -> Result<RcloneCryptBrowserListResponse, String> {
-    let (name_key, name_tweak, mode, directory_name_encryption) = {
+    let (name_key, data_key, name_tweak, mode, directory_name_encryption) = {
         let vaults = rclone_state.vaults.lock().await;
         let keys = vaults
             .get(&vault_id)
             .ok_or_else(|| "Vault not unlocked".to_string())?;
         (
             keys.name_key,
+            keys.data_key,
             keys.name_tweak,
             keys.filename_encryption,
             keys.directory_name_encryption,
         )
+    };
+    let keys = rclone_crypt::RcloneCryptKeys {
+        name_key,
+        data_key,
+        name_tweak,
+        filename_encryption: mode,
+        directory_name_encryption,
     };
 
     let mut provider_lock = provider_state.provider.lock().await;
@@ -1170,14 +1252,20 @@ async fn rclone_crypt_provider_list(
                 .await
                 .map_err(|e| format!("Failed to go up: {}", e))?;
         } else if !target.is_empty() && target != "." {
+            let target_path = if plain_path.unwrap_or(false) {
+                rclone_overlay_encode_path(&keys, target)?
+            } else {
+                target.to_string()
+            };
             provider
-                .cd(target)
+                .cd(&target_path)
                 .await
                 .map_err(|e| format!("Failed to change directory: {}", e))?;
         }
     }
 
     let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let display_current_path = rclone_overlay_decode_path(&keys, &current_path);
     let files = provider
         .list(".")
         .await
@@ -1227,9 +1315,106 @@ async fn rclone_crypt_provider_list(
 
     Ok(RcloneCryptBrowserListResponse {
         current_path,
+        display_current_path,
         dir_iv_found: true,
         files: out,
     })
+}
+
+#[tauri::command]
+async fn rclone_crypt_provider_mkdir(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    rclone_state: State<'_, rclone_crypt::RcloneCryptState>,
+    vault_id: String,
+    plain_name: String,
+) -> Result<String, String> {
+    validate_single_remote_name(&plain_name)?;
+
+    let (name_key, data_key, name_tweak, mode, directory_name_encryption) = {
+        let vaults = rclone_state.vaults.lock().await;
+        let keys = vaults
+            .get(&vault_id)
+            .ok_or_else(|| "Vault not unlocked".to_string())?;
+        (
+            keys.name_key,
+            keys.data_key,
+            keys.name_tweak,
+            keys.filename_encryption,
+            keys.directory_name_encryption,
+        )
+    };
+    let keys = rclone_crypt::RcloneCryptKeys {
+        name_key,
+        data_key,
+        name_tweak,
+        filename_encryption: mode,
+        directory_name_encryption,
+    };
+
+    let encrypted_name = rclone_overlay_encode_name(&keys, &keys.name_tweak, &plain_name, true)?;
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let encrypted_path = join_remote_path(&current_path, &encrypted_name);
+    provider
+        .mkdir(&encrypted_path)
+        .await
+        .map_err(|e| format!("Failed to create encrypted folder: {}", e))?;
+    Ok(encrypted_path)
+}
+
+#[tauri::command]
+async fn rclone_crypt_provider_rename(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    rclone_state: State<'_, rclone_crypt::RcloneCryptState>,
+    vault_id: String,
+    from_encrypted_path: String,
+    new_plain_name: String,
+    is_dir: bool,
+) -> Result<String, String> {
+    validate_single_remote_name(&new_plain_name)?;
+
+    let (name_key, data_key, name_tweak, mode, directory_name_encryption) = {
+        let vaults = rclone_state.vaults.lock().await;
+        let keys = vaults
+            .get(&vault_id)
+            .ok_or_else(|| "Vault not unlocked".to_string())?;
+        (
+            keys.name_key,
+            keys.data_key,
+            keys.name_tweak,
+            keys.filename_encryption,
+            keys.directory_name_encryption,
+        )
+    };
+    let keys = rclone_crypt::RcloneCryptKeys {
+        name_key,
+        data_key,
+        name_tweak,
+        filename_encryption: mode,
+        directory_name_encryption,
+    };
+
+    let encrypted_name =
+        rclone_overlay_encode_name(&keys, &keys.name_tweak, &new_plain_name, is_dir)?;
+    let parent = from_encrypted_path
+        .rsplit_once('/')
+        .map(|(parent, _)| if parent.is_empty() { "/" } else { parent })
+        .unwrap_or("/");
+    let to_encrypted_path = join_remote_path(parent, &encrypted_name);
+
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    provider
+        .rename(&from_encrypted_path, &to_encrypted_path)
+        .await
+        .map_err(|e| format!("Failed to rename encrypted entry: {}", e))?;
+    Ok(to_encrypted_path)
 }
 
 #[tauri::command]
@@ -14452,6 +14637,8 @@ pub fn run() {
             rclone_crypt::rclone_crypt_decrypt_file_path,
             rclone_crypt::rclone_crypt_encrypt_file_path,
             rclone_crypt_provider_list,
+            rclone_crypt_provider_mkdir,
+            rclone_crypt_provider_rename,
             rclone_crypt_provider_download_file,
             rclone_crypt_provider_upload_file,
             rclone_crypt_provider_download_folder,
@@ -15046,6 +15233,34 @@ mod overlay_helpers_tests {
             .unwrap(),
             "report.txt"
         );
+    }
+
+    #[test]
+    fn rclone_overlay_path_roundtrip_for_address_bar() {
+        let (name_key, data_key, name_tweak) =
+            rclone_crypt::derive_keys_with_tweak("test-password-179", "test-salt-179").unwrap();
+        let keys = rclone_crypt::RcloneCryptKeys {
+            name_key,
+            data_key,
+            name_tweak,
+            filename_encryption: rclone_crypt::FilenameEncryption::Standard,
+            directory_name_encryption: true,
+        };
+
+        let encrypted = rclone_overlay_encode_path(&keys, "/docs/sub folder").unwrap();
+        assert_ne!(encrypted, "/docs/sub folder");
+        assert_eq!(
+            rclone_overlay_decode_path(&keys, &encrypted),
+            "/docs/sub folder"
+        );
+    }
+
+    #[test]
+    fn rclone_overlay_rejects_unsafe_single_names() {
+        assert!(validate_single_remote_name("new-folder").is_ok());
+        assert!(validate_single_remote_name("../oops").is_err());
+        assert!(validate_single_remote_name("nested/folder").is_err());
+        assert!(validate_single_remote_name("\0bad").is_err());
     }
 
     // --- normalize_overlay_relative_path ---

@@ -48,6 +48,7 @@ interface RcloneCryptBrowserEntry {
 
 interface RcloneCryptBrowserListResponse {
   current_path: string;
+  display_current_path: string;
   dir_iv_found: boolean;
   files: RcloneCryptBrowserEntry[];
 }
@@ -531,6 +532,7 @@ const App: React.FC = () => {
     searchRef: localSearchRef2,
   } = localPanel2;
   const [currentRemotePath, setCurrentRemotePath] = useState('/');
+  const [currentRemoteDisplayPath, setCurrentRemoteDisplayPath] = useState('/');
   const [connectionParams, setConnectionParams] = useState<ConnectionParams>({ server: '', username: '', password: '' });
   const [quickConnectDirs, setQuickConnectDirs] = useState({ remoteDir: '', localDir: '' });
   const [loading, setLoading] = useState(false);
@@ -588,7 +590,7 @@ const App: React.FC = () => {
   } | null>(null);
   const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
-  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean } | null>(null);
+  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean; isDir?: boolean } | null>(null);
   const [inlineRenameValue, setInlineRenameValue] = useState('');
   const inlineRenameRef = useRef<HTMLInputElement>(null);
   const inlineRenameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1536,7 +1538,7 @@ interface UpdateVerificationInfo {
       if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {
         const name = Array.from(selectedRemoteFiles)[0];
         const file = remoteFiles.find(f => f.name === name);
-        if (file && file.name !== '..') startInlineRename(file.path, file.name, true);
+        if (file && file.name !== '..') startInlineRename(file.path, file.name, true, file.is_dir);
       } else if (activePanel === 'local') {
         const panel = getActiveLocalState();
         if (panel.selection.size === 1) {
@@ -2747,7 +2749,42 @@ interface UpdateVerificationInfo {
     };
   }, [notify, toast, t]);
 
-  const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean): Promise<FileListResponse | null> => {
+  const mapRcloneCryptListResponse = (cryptResponse: RcloneCryptBrowserListResponse) => ({
+    current_path: cryptResponse.current_path,
+    display_current_path: cryptResponse.display_current_path,
+    files: cryptResponse.files.map((file) => ({
+      name: file.decrypted_name,
+      path: file.path,
+      is_dir: file.is_dir,
+      size: file.size,
+      modified: file.modified,
+      permissions: file.permissions,
+      metadata: {
+        encrypted_name: file.name,
+        decrypt_ok: file.decrypt_ok ? 'true' : 'false',
+      },
+    })),
+  }) as FileListResponse & { display_current_path?: string };
+
+  const applyRemoteFileList = (response: FileListResponse & { display_current_path?: string }) => {
+    setRemoteFiles(response.files);
+    setCurrentRemotePath(response.current_path);
+    setCurrentRemoteDisplayPath(response.display_current_path || response.current_path);
+    setSelectedRemoteFiles(new Set());
+  };
+
+  const loadRcloneCryptOverlayFiles = async (vaultId: string, path?: string | null, plainPath?: boolean) => {
+    const cryptResponse = await invoke<RcloneCryptBrowserListResponse>('rclone_crypt_provider_list', {
+      vaultId,
+      path: path ?? null,
+      plainPath: !!plainPath,
+    });
+    const response = mapRcloneCryptListResponse(cryptResponse);
+    applyRemoteFileList(response);
+    return response;
+  };
+
+  const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean): Promise<FileListResponse | null> => {
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // Use override protocol if provided, then connectionParams, then active session (most robust)
@@ -2755,7 +2792,7 @@ interface UpdateVerificationInfo {
       const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
-      const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+      const isRcloneCryptOverlay = !ignoreRcloneCrypt && isProvider && !!rcloneCryptVaultId;
       logger.debug('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
 
       let response: FileListResponse;
@@ -2770,21 +2807,7 @@ interface UpdateVerificationInfo {
             vaultId: rcloneCryptVaultId,
             path: null,
           });
-          response = {
-            current_path: cryptResponse.current_path,
-            files: cryptResponse.files.map((file) => ({
-              name: file.decrypted_name,
-              path: file.path,
-              is_dir: file.is_dir,
-              size: file.size,
-              modified: file.modified,
-              permissions: file.permissions,
-              metadata: {
-                encrypted_name: file.name,
-                decrypt_ok: file.decrypt_ok ? 'true' : 'false',
-              },
-            })),
-          };
+          response = mapRcloneCryptListResponse(cryptResponse);
         } else {
           // Use provider API
           logger.debug('[loadRemoteFiles] Calling provider_list_files...');
@@ -2808,9 +2831,7 @@ interface UpdateVerificationInfo {
         // Use FTP API
         response = await invoke('list_files');
       }
-      setRemoteFiles(response.files);
-      setCurrentRemotePath(response.current_path);
-      setSelectedRemoteFiles(new Set());
+      applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
       return response;
     } catch (error) {
       if (String(error).toLowerCase().includes('vault not unlocked')) {
@@ -4708,7 +4729,7 @@ interface UpdateVerificationInfo {
       setLoading(false);
     }
   };
-  const changeRemoteDirectory = async (path: string, overrideProtocol?: string) => {
+  const changeRemoteDirectory = async (path: string, overrideProtocol?: string, plainPath?: boolean) => {
     // Sync navigation guard: prevent navigating above the sync base path
     if (isSyncNavigation && syncBasePaths && path === '..') {
       const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
@@ -4737,22 +4758,9 @@ interface UpdateVerificationInfo {
           const cryptResponse = await invoke<RcloneCryptBrowserListResponse>('rclone_crypt_provider_list', {
             vaultId: rcloneCryptVaultId,
             path,
+            plainPath: !!plainPath,
           });
-          response = {
-            current_path: cryptResponse.current_path,
-            files: cryptResponse.files.map((file) => ({
-              name: file.decrypted_name,
-              path: file.path,
-              is_dir: file.is_dir,
-              size: file.size,
-              modified: file.modified,
-              permissions: file.permissions,
-              metadata: {
-                encrypted_name: file.name,
-                decrypt_ok: file.decrypt_ok ? 'true' : 'false',
-              },
-            })),
-          };
+          response = mapRcloneCryptListResponse(cryptResponse);
         } else {
           // Use provider API
           response = await invoke('provider_change_dir', { path });
@@ -4763,9 +4771,7 @@ interface UpdateVerificationInfo {
       }
       // Discard response if a newer navigation was initiated while we awaited
       if (navId !== remoteNavCounter.current) return;
-      setRemoteFiles(response.files);
-      setCurrentRemotePath(response.current_path);
-      setSelectedRemoteFiles(new Set());
+      applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
       setRemoteSearchResults(null);
       humanLog.logNavigate(response.current_path, true);
 
@@ -6874,7 +6880,11 @@ interface UpdateVerificationInfo {
     }
   };
 
-  const renameFile = (path: string, currentName: string, isRemote: boolean) => {
+  const getRemoteFileIsDir = (path: string, fallback = false) => (
+    remoteFiles.find(f => f.path === path)?.is_dir ?? fallback
+  );
+
+  const renameFile = (path: string, currentName: string, isRemote: boolean, isDir?: boolean) => {
     setInputDialog({
       title: t('common.rename'),
       defaultValue: currentName,
@@ -6900,12 +6910,20 @@ interface UpdateVerificationInfo {
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = usesProviderApi(protocol);
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+            const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
 
             if (isAeroVaultOverlay) {
               await invoke<string>('aerovault_overlay_rename_entry', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 entryPath: path,
                 newName,
+              });
+            } else if (isRcloneCryptOverlay) {
+              await invoke<string>('rclone_crypt_provider_rename', {
+                vaultId: rcloneCryptVaultId,
+                fromEncryptedPath: path,
+                newPlainName: newName,
+                isDir: isDir ?? getRemoteFileIsDir(path),
               });
             } else if (isProvider) {
               await invoke('provider_rename', { from: path, to: newPath });
@@ -6928,10 +6946,10 @@ interface UpdateVerificationInfo {
   };
 
   // Inline rename: start editing directly in the file list
-  const startInlineRename = (path: string, name: string, isRemote: boolean) => {
+  const startInlineRename = (path: string, name: string, isRemote: boolean, isDir?: boolean) => {
     if (name === '..') return;
     if (isRemote && connectionParams.protocol === 'immich') return;
-    setInlineRename({ path, name, isRemote });
+    setInlineRename({ path, name, isRemote, isDir });
     setInlineRenameValue(name);
     // Focus input after render
     setTimeout(() => {
@@ -6951,7 +6969,7 @@ interface UpdateVerificationInfo {
   // Inline rename: commit the rename
   const commitInlineRename = async () => {
     if (!inlineRename) return;
-    const { path, name, isRemote } = inlineRename;
+    const { path, name, isRemote, isDir } = inlineRename;
     const newName = inlineRenameValue.trim();
 
     // Cancel if empty or unchanged
@@ -6977,12 +6995,20 @@ interface UpdateVerificationInfo {
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
         const isProvider = usesProviderApi(protocol);
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+        const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
 
         if (isAeroVaultOverlay) {
           await invoke<string>('aerovault_overlay_rename_entry', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPath: path,
             newName,
+          });
+        } else if (isRcloneCryptOverlay) {
+          await invoke<string>('rclone_crypt_provider_rename', {
+            vaultId: rcloneCryptVaultId,
+            fromEncryptedPath: path,
+            newPlainName: newName,
+            isDir: isDir ?? getRemoteFileIsDir(path),
           });
         } else if (isProvider) {
           await invoke('provider_rename', { from: path, to: newPath });
@@ -7061,12 +7087,21 @@ interface UpdateVerificationInfo {
           const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
           const isProvider = usesProviderApi(protocol);
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+          const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
+          const batchFile = batchRenameDialog?.files.find(f => f.path === oldPath);
 
           if (isAeroVaultOverlay) {
             await invoke<string>('aerovault_overlay_rename_entry', {
               sessionId: aeroVaultOverlaySession?.sessionId,
               entryPath: oldPath,
               newName,
+            });
+          } else if (isRcloneCryptOverlay) {
+            await invoke<string>('rclone_crypt_provider_rename', {
+              vaultId: rcloneCryptVaultId,
+              fromEncryptedPath: oldPath,
+              newPlainName: newName,
+              isDir: batchFile?.isDir ?? getRemoteFileIsDir(oldPath),
             });
           } else if (isProvider) {
             await invoke('provider_rename', { from: oldPath, to: newPath });
@@ -7123,6 +7158,7 @@ interface UpdateVerificationInfo {
             const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
             const isProvider = usesProviderApi(protocol);
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+            const isRcloneCryptOverlay = isProvider && !!rcloneCryptVaultId;
 
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
@@ -7130,6 +7166,11 @@ interface UpdateVerificationInfo {
               await invoke('aerovault_overlay_create_directory', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 dirName: name,
+              });
+            } else if (isRcloneCryptOverlay) {
+              await invoke<string>('rclone_crypt_provider_mkdir', {
+                vaultId: rcloneCryptVaultId,
+                plainName: name,
               });
             } else if (isProvider) {
               await invoke('provider_mkdir', { path });
@@ -7194,7 +7235,7 @@ interface UpdateVerificationInfo {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
+      { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true, file.is_dir), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
       ...(count > 1 && currentProtocol !== 'immich' ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
@@ -9004,7 +9045,7 @@ interface UpdateVerificationInfo {
             if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {
               const name = Array.from(selectedRemoteFiles)[0];
               const file = remoteFiles.find(f => f.name === name);
-              if (file) startInlineRename(file.path, file.name, true);
+              if (file) startInlineRename(file.path, file.name, true, file.is_dir);
             } else if (activePanel === 'local' && selectedLocalFiles.size === 1) {
               const name = Array.from(selectedLocalFiles)[0];
               const file = localFiles.find(f => f.name === name);
@@ -9679,11 +9720,11 @@ interface UpdateVerificationInfo {
             activeVaultId={rcloneCryptVaultId}
             onUnlocked={(vaultId) => {
               setRcloneCryptVaultId(vaultId);
-              void loadRemoteFiles(undefined, true);
+              void loadRcloneCryptOverlayFiles(vaultId);
             }}
             onLocked={() => {
               setRcloneCryptVaultId(null);
-              void loadRemoteFiles(undefined, true);
+              void loadRemoteFiles(undefined, true, true);
             }}
           />
         )}
@@ -9718,7 +9759,7 @@ interface UpdateVerificationInfo {
                       directoryNameEncryption: banner.directoryNameEncryption !== false,
                     });
                     setRcloneCryptVaultId(info.vault_id);
-                    void loadRemoteFiles(undefined, true);
+                    void loadRcloneCryptOverlayFiles(info.vault_id);
                     notify.success('AeroCrypt', t('toolbar.aerocryptOverlayActive'));
                   } catch (err) {
                     notify.error('AeroCrypt', String(err));
@@ -10481,7 +10522,7 @@ interface UpdateVerificationInfo {
                               const vaultId = rcloneCryptVaultId;
                               setRcloneCryptVaultId(null);
                               void invoke('rclone_crypt_lock', { vaultId }).catch(() => { });
-                              void loadRemoteFiles(undefined, true);
+                              void loadRemoteFiles(undefined, true, true);
                             } else {
                               setShowRcloneCryptUnlock(true);
                             }
@@ -10649,9 +10690,12 @@ interface UpdateVerificationInfo {
                       </div>
                       <input
                         type="text"
-                        value={isConnected ? currentRemotePath : t('browser.notConnected')}
-                        onChange={(e) => setCurrentRemotePath(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value)}
+                        value={isConnected ? (rcloneCryptVaultId ? currentRemoteDisplayPath : currentRemotePath) : t('browser.notConnected')}
+                        onChange={(e) => {
+                          if (rcloneCryptVaultId) setCurrentRemoteDisplayPath(e.target.value);
+                          else setCurrentRemotePath(e.target.value);
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && isConnected && changeRemoteDirectory((e.target as HTMLInputElement).value, undefined, !!rcloneCryptVaultId)}
                         disabled={!isConnected}
                         className={`flex-1 pl-1 pr-2 py-1 bg-transparent border-none outline-none text-sm cursor-text selection:bg-blue-200 dark:selection:bg-blue-800 disabled:cursor-default disabled:text-gray-400 disabled:bg-gray-50 dark:disabled:bg-gray-900 ${isSyncPathMismatch ? 'text-amber-600 dark:text-amber-400' : ''}`}
                         title={isSyncPathMismatch ? t('browser.syncPathMismatch') : isConnected ? t('browser.editPathHint') : t('browser.notConnected')}
@@ -11032,7 +11076,7 @@ interface UpdateVerificationInfo {
                                     onClick={(e) => {
                                       if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
                                         e.stopPropagation();
-                                        startInlineRename(file.path, file.name, true);
+                                        startInlineRename(file.path, file.name, true, file.is_dir);
                                       }
                                     }}
                                   >
@@ -11237,7 +11281,7 @@ interface UpdateVerificationInfo {
                                 onClick={(e) => {
                                   if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
                                     e.stopPropagation();
-                                    startInlineRename(file.path, file.name, true);
+                                    startInlineRename(file.path, file.name, true, file.is_dir);
                                   }
                                 }}
                               >

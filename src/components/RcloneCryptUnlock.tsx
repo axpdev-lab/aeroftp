@@ -35,6 +35,7 @@ interface RcloneCryptBrowserEntry {
 
 interface RcloneCryptBrowserListResponse {
     current_path: string;
+    display_current_path: string;
     dir_iv_found: boolean;
     files: RcloneCryptBrowserEntry[];
 }
@@ -207,7 +208,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
                 return a.decrypted_name.localeCompare(b.decrypted_name);
             });
-            setBrowserPath(result.current_path);
+            setBrowserPath(result.display_current_path || result.current_path);
             setBrowserDirIvFound(result.dir_iv_found);
             setBrowserFiles(sorted);
         } catch (e) {
