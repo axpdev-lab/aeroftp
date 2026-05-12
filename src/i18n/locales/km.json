@@ -3302,7 +3302,8 @@
             "mountManager": "កម្មវិធីគ្រប់គ្រងការភ្ជាប់...",
             "activityLog": "កំណត់ហេតុសកម្មភាព",
             "detailedCards": "កាតម៉ាស៊ីនមេលម្អិត",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "ការធ្វើសមកាលកម្មក្នុងតំបន់..."
         },
         "activityPanel": {
             "awaitingCommands": "កំពុងរង់ចាំពាក្យបញ្ជា...",
@@ -4524,6 +4525,29 @@
             "movedToOtherPanel": "បានផ្លាស់ទីទៅបន្ទះមួយទៀត",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: ពីតំបន់ទៅតំបន់",
+            "description": "ឆ្លុះថតប្រភពក្នុងតំបន់ទៅគោលដៅក្នុងតំបន់។ ឯកសារ ≥ 1 MiB ប្រើម៉ាស៊ីន delta ខាងក្នុង ឯឯកសារតូចជាងនេះប្រើការចម្លងផ្ទាល់។",
+            "source": "ប្រភព",
+            "destination": "គោលដៅ",
+            "browse": "រកមើល…",
+            "excludeLabel": "លំនាំមិនរាប់បញ្ចូល (បំបែកដោយក្បៀស ឬដោយបន្ទាត់ថ្មី)",
+            "useDelta": "ប្រើការបញ្ជូន delta (ឯកសារ ≥ 1 MiB)",
+            "dryRun": "ការដំណើរការសាកល្បង (បង្ហាញតែមើល)",
+            "running": "កំពុងដំណើរការ…",
+            "start": "ចាប់ផ្តើមការធ្វើសមកាលកម្ម",
+            "resultOk": "ការធ្វើសមកាលកម្មបានបញ្ចប់",
+            "resultPartial": "ការធ្វើសមកាលកម្មបានបញ្ចប់ដោយមានកំហុស",
+            "uploaded": "បានផ្ទុកឡើង",
+            "skipped": "បានរំលង",
+            "errors": "កំហុស",
+            "elapsed": "ពេលវេលាបានកន្លងផុត",
+            "payload": "Payload",
+            "bytesOnWire": "បៃនៅលើបណ្ដាញ",
+            "savings": "ការសន្សំ",
+            "errorDetails": "កំហុស, ព័ត៌មានលម្អិត",
+            "errorPathsRequired": "ប្រភព និងគោលដៅគឺចាំបាច់"
         }
     }
 }

@@ -3302,7 +3302,8 @@
             "mountManager": "Gerenciador de Montagens...",
             "activityLog": "Log de Atividades",
             "detailedCards": "Cartões de servidor detalhados",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Sincronização local..."
         },
         "activityPanel": {
             "awaitingCommands": "Aguardando comandos...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Movido para o outro painel",
             "itemsLower": "itens",
             "resizePanels": "Redimensionar painéis"
+        },
+        "localSync": {
+            "title": "AeroSync: local para local",
+            "description": "Espelha um diretório de origem local para um destino local. Ficheiros ≥ 1 MiB usam o motor delta integrado; ficheiros menores usam cópia direta.",
+            "source": "Origem",
+            "destination": "Destino",
+            "browse": "Procurar…",
+            "excludeLabel": "Padrões de exclusão (separados por vírgula ou nova linha)",
+            "useDelta": "Usar transporte delta (ficheiros ≥ 1 MiB)",
+            "dryRun": "Simulação (apenas pré-visualização)",
+            "running": "Em execução…",
+            "start": "Iniciar sincronização",
+            "resultOk": "Sincronização concluída",
+            "resultPartial": "Sincronização concluída com erros",
+            "uploaded": "Carregados",
+            "skipped": "Ignorados",
+            "errors": "Erros",
+            "elapsed": "Tempo decorrido",
+            "payload": "Payload",
+            "bytesOnWire": "Bytes na rede",
+            "savings": "Poupança",
+            "errorDetails": "erro(s), detalhes",
+            "errorPathsRequired": "Origem e destino são obrigatórios"
         }
     }
 }

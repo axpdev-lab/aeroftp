@@ -3302,7 +3302,8 @@
             "mountManager": "Upravitelj priklopov...",
             "activityLog": "Dnevnik dejavnosti",
             "detailedCards": "Podrobne kartice strežnikov",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Lokalna sinhronizacija..."
         },
         "activityPanel": {
             "awaitingCommands": "Čakanje na ukaze...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Premaknjeno v drugi pladenj",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: lokalno v lokalno",
+            "description": "Zrcali lokalni izvorni imenik v lokalni cilj. Datoteke ≥ 1 MiB uporabljajo vgrajeni delta pogon; manjše datoteke uporabljajo neposredno kopiranje.",
+            "source": "Vir",
+            "destination": "Cilj",
+            "browse": "Brskaj…",
+            "excludeLabel": "Vzorci izključitve (ločeni z vejico ali novo vrstico)",
+            "useDelta": "Uporabi delta transport (datoteke ≥ 1 MiB)",
+            "dryRun": "Preizkusni zagon (samo predogled)",
+            "running": "Izvaja se…",
+            "start": "Začni sinhronizacijo",
+            "resultOk": "Sinhronizacija zaključena",
+            "resultPartial": "Sinhronizacija zaključena z napakami",
+            "uploaded": "Naloženo",
+            "skipped": "Preskočeno",
+            "errors": "Napake",
+            "elapsed": "Pretečen čas",
+            "payload": "Payload",
+            "bytesOnWire": "Bajti v omrežju",
+            "savings": "Prihranek",
+            "errorDetails": "napaka(e), podrobnosti",
+            "errorPathsRequired": "Vir in cilj sta obvezna"
         }
     }
 }

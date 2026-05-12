@@ -3302,7 +3302,8 @@
             "mountManager": "Gestor de muntatges...",
             "activityLog": "Registre d'Activitat",
             "detailedCards": "Targetes de servidor detallades",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Sincronització local..."
         },
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",
@@ -4524,6 +4525,29 @@
             "movedToOtherPanel": "Mogut a l'altre panell",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: de local a local",
+            "description": "Reflecteix una carpeta d'origen local a una destinació local. Els fitxers ≥ 1 MiB utilitzen el motor delta intern; els fitxers més petits utilitzen la còpia directa.",
+            "source": "Origen",
+            "destination": "Destinació",
+            "browse": "Examina…",
+            "excludeLabel": "Patrons d'exclusió (separats per coma o salt de línia)",
+            "useDelta": "Utilitza transport delta (fitxers ≥ 1 MiB)",
+            "dryRun": "Simulació (només previsualització)",
+            "running": "En execució…",
+            "start": "Inicia la sincronització",
+            "resultOk": "Sincronització completada",
+            "resultPartial": "Sincronització completada amb errors",
+            "uploaded": "Pujats",
+            "skipped": "Omesos",
+            "errors": "Errors",
+            "elapsed": "Temps transcorregut",
+            "payload": "Payload",
+            "bytesOnWire": "Bytes a la xarxa",
+            "savings": "Estalvi",
+            "errorDetails": "error(s), detalls",
+            "errorPathsRequired": "L'origen i la destinació són obligatoris"
         }
     }
 }

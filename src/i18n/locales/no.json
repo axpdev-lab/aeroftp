@@ -3302,7 +3302,8 @@
             "mountManager": "Monteringsbehandler...",
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerte serverkort",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Lokal synkronisering..."
         },
         "activityPanel": {
             "awaitingCommands": "Venter på kommandoer...",
@@ -4524,6 +4525,29 @@
             "movedToOtherPanel": "Flyttet til andre panel",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: lokal til lokal",
+            "description": "Speiler en lokal kildemappe til en lokal destinasjon. Filer ≥ 1 MiB bruker den innebygde delta-motoren; mindre filer bruker direkte kopiering.",
+            "source": "Kilde",
+            "destination": "Destinasjon",
+            "browse": "Bla gjennom…",
+            "excludeLabel": "Eksklusjonsmønstre (atskilt med komma eller linjeskift)",
+            "useDelta": "Bruk delta-transport (filer ≥ 1 MiB)",
+            "dryRun": "Prøvekjøring (kun forhåndsvisning)",
+            "running": "Kjører…",
+            "start": "Start synkronisering",
+            "resultOk": "Synkronisering fullført",
+            "resultPartial": "Synkronisering fullført med feil",
+            "uploaded": "Lastet opp",
+            "skipped": "Hoppet over",
+            "errors": "Feil",
+            "elapsed": "Tid brukt",
+            "payload": "Payload",
+            "bytesOnWire": "Byte på nettverket",
+            "savings": "Besparelse",
+            "errorDetails": "feil, detaljer",
+            "errorPathsRequired": "Kilde og destinasjon er påkrevd"
         }
     }
 }

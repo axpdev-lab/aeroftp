@@ -3302,7 +3302,8 @@
             "mountManager": "挂载管理器...",
             "activityLog": "活动日志",
             "detailedCards": "详细服务器卡片",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "本地同步..."
         },
         "activityPanel": {
             "awaitingCommands": "等待命令...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "已移动到另一面板",
             "itemsLower": "项",
             "resizePanels": "调整面板大小"
+        },
+        "localSync": {
+            "title": "AeroSync: 本地到本地",
+            "description": "将本地源目录镜像到本地目标。≥ 1 MiB 的文件使用内置 delta 引擎；较小的文件使用直接复制。",
+            "source": "源",
+            "destination": "目标",
+            "browse": "浏览…",
+            "excludeLabel": "排除模式（用逗号或换行符分隔）",
+            "useDelta": "使用 delta 传输（≥ 1 MiB 文件）",
+            "dryRun": "试运行（仅预览）",
+            "running": "运行中…",
+            "start": "开始同步",
+            "resultOk": "同步完成",
+            "resultPartial": "同步完成，但有错误",
+            "uploaded": "已上传",
+            "skipped": "已跳过",
+            "errors": "错误",
+            "elapsed": "已用时间",
+            "payload": "Payload",
+            "bytesOnWire": "网络字节数",
+            "savings": "节省",
+            "errorDetails": "个错误，详情",
+            "errorPathsRequired": "源和目标为必填项"
         }
     }
 }

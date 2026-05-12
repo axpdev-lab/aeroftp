@@ -3302,7 +3302,8 @@
             "mountManager": "माउंट प्रबंधक...",
             "activityLog": "गतिविधि लॉग",
             "detailedCards": "विस्तृत सर्वर कार्ड",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "स्थानीय सिंक..."
         },
         "activityPanel": {
             "awaitingCommands": "कमांड की प्रतीक्षा में...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "दूसरे पैनल में ले जाया गया",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: स्थानीय से स्थानीय",
+            "description": "एक स्थानीय स्रोत डायरेक्टरी को स्थानीय गंतव्य पर मिरर करता है। ≥ 1 MiB फ़ाइलें आंतरिक delta इंजन का उपयोग करती हैं; छोटी फ़ाइलें सीधी कॉपी का उपयोग करती हैं।",
+            "source": "स्रोत",
+            "destination": "गंतव्य",
+            "browse": "ब्राउज़…",
+            "excludeLabel": "बहिष्करण पैटर्न (कॉमा या नई पंक्ति से अलग)",
+            "useDelta": "Delta ट्रांसपोर्ट का उपयोग करें (≥ 1 MiB फ़ाइलें)",
+            "dryRun": "ड्राई रन (केवल पूर्वावलोकन)",
+            "running": "चल रहा है…",
+            "start": "सिंक प्रारंभ करें",
+            "resultOk": "सिंक पूर्ण हुआ",
+            "resultPartial": "सिंक त्रुटियों के साथ पूर्ण हुआ",
+            "uploaded": "अपलोड किए गए",
+            "skipped": "छोड़े गए",
+            "errors": "त्रुटियाँ",
+            "elapsed": "बीता समय",
+            "payload": "Payload",
+            "bytesOnWire": "नेटवर्क पर बाइट्स",
+            "savings": "बचत",
+            "errorDetails": "त्रुटि(याँ), विवरण",
+            "errorPathsRequired": "स्रोत और गंतव्य आवश्यक हैं"
         }
     }
 }

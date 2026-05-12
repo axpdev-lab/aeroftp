@@ -3453,7 +3453,8 @@
             "mcp": "MCP Server...",
             "mountManager": "Gestione mount...",
             "activityLog": "Registro attività",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Sincronizzazione locale..."
         },
         "mountManager": {
             "title": "Gestione mount",
@@ -4505,6 +4506,29 @@
                 "openFolder": "Apri cartella dati",
                 "dismiss": "Ho capito"
             }
+        },
+        "localSync": {
+            "title": "AeroSync: locale verso locale",
+            "description": "Replica una cartella sorgente locale in una destinazione locale. I file ≥ 1 MiB usano il motore delta in-process; i file più piccoli usano la copia diretta.",
+            "source": "Sorgente",
+            "destination": "Destinazione",
+            "browse": "Sfoglia…",
+            "excludeLabel": "Pattern di esclusione (separati da virgola o newline)",
+            "useDelta": "Usa trasporto delta (file ≥ 1 MiB)",
+            "dryRun": "Simulazione (solo anteprima)",
+            "running": "In esecuzione…",
+            "start": "Avvia sincronizzazione",
+            "resultOk": "Sincronizzazione completata",
+            "resultPartial": "Sincronizzazione completata con errori",
+            "uploaded": "Trasferiti",
+            "skipped": "Saltati",
+            "errors": "Errori",
+            "elapsed": "Tempo trascorso",
+            "payload": "Payload",
+            "bytesOnWire": "Byte sulla rete",
+            "savings": "Risparmio",
+            "errorDetails": "errore/i, dettagli",
+            "errorPathsRequired": "Sorgente e destinazione sono obbligatorie"
         }
     }
 }

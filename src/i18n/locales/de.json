@@ -3302,7 +3302,8 @@
             "mountManager": "Mount-Manager...",
             "activityLog": "Aktivitätsprotokoll",
             "detailedCards": "Detaillierte Serverkarten",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Lokale Synchronisierung..."
         },
         "activityPanel": {
             "awaitingCommands": "Warte auf Befehle...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "In das andere Panel verschoben",
             "itemsLower": "Elemente",
             "resizePanels": "Panels neu skalieren"
+        },
+        "localSync": {
+            "title": "AeroSync: lokal zu lokal",
+            "description": "Spiegelt ein lokales Quellverzeichnis in ein lokales Zielverzeichnis. Dateien ≥ 1 MiB verwenden die integrierte Delta-Engine; kleinere Dateien verwenden direktes Kopieren.",
+            "source": "Quelle",
+            "destination": "Ziel",
+            "browse": "Durchsuchen…",
+            "excludeLabel": "Ausschlussmuster (durch Komma oder Zeilenumbruch getrennt)",
+            "useDelta": "Delta-Transport verwenden (Dateien ≥ 1 MiB)",
+            "dryRun": "Testlauf (nur Vorschau)",
+            "running": "Wird ausgeführt…",
+            "start": "Synchronisierung starten",
+            "resultOk": "Synchronisierung abgeschlossen",
+            "resultPartial": "Synchronisierung mit Fehlern abgeschlossen",
+            "uploaded": "Hochgeladen",
+            "skipped": "Übersprungen",
+            "errors": "Fehler",
+            "elapsed": "Verstrichene Zeit",
+            "payload": "Payload",
+            "bytesOnWire": "Bytes im Netzwerk",
+            "savings": "Einsparung",
+            "errorDetails": "Fehler, Details",
+            "errorPathsRequired": "Quelle und Ziel sind erforderlich"
         }
     }
 }

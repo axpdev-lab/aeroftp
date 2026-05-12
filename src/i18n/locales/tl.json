@@ -3302,7 +3302,8 @@
             "mountManager": "Tagapamahala ng Mount...",
             "activityLog": "Log ng Aktibidad",
             "detailedCards": "Mga detalyadong card ng server",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Lokal na sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",
@@ -4524,6 +4525,29 @@
             "movedToOtherPanel": "Inilipat sa kabilang panel",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: lokal sa lokal",
+            "description": "Sinasalamin ang lokal na source directory papunta sa lokal na destinasyon. Ang mga file na ≥ 1 MiB ay gumagamit ng built-in na delta engine; ang mas maliliit na file ay gumagamit ng direktang kopya.",
+            "source": "Pinagmulan",
+            "destination": "Destinasyon",
+            "browse": "Mag-browse…",
+            "excludeLabel": "Mga pattern ng pagbubukod (pinaghihiwalay ng kuwit o bagong linya)",
+            "useDelta": "Gumamit ng delta transport (mga file na ≥ 1 MiB)",
+            "dryRun": "Dry run (preview lamang)",
+            "running": "Tumatakbo…",
+            "start": "Simulan ang sync",
+            "resultOk": "Nakumpleto ang sync",
+            "resultPartial": "Nakumpleto ang sync na may mga error",
+            "uploaded": "Na-upload",
+            "skipped": "Nilaktawan",
+            "errors": "Mga error",
+            "elapsed": "Lumipas na oras",
+            "payload": "Payload",
+            "bytesOnWire": "Mga byte sa network",
+            "savings": "Naipon",
+            "errorDetails": "(mga) error, mga detalye",
+            "errorPathsRequired": "Kinakailangan ang pinagmulan at destinasyon"
         }
     }
 }

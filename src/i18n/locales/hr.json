@@ -3302,7 +3302,8 @@
             "mountManager": "Upravitelj montiranja...",
             "activityLog": "Dnevnik aktivnosti",
             "detailedCards": "Detaljne kartice poslužitelja",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Lokalna sinkronizacija..."
         },
         "activityPanel": {
             "awaitingCommands": "Čekanje naredbi...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Premješteno u drugi panel",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: lokalno na lokalno",
+            "description": "Zrcali lokalni izvorni direktorij u lokalno odredište. Datoteke ≥ 1 MiB koriste ugrađeni delta engine; manje datoteke koriste izravno kopiranje.",
+            "source": "Izvor",
+            "destination": "Odredište",
+            "browse": "Pregledaj…",
+            "excludeLabel": "Uzorci za isključivanje (odvojeni zarezom ili novim redom)",
+            "useDelta": "Koristi delta transport (datoteke ≥ 1 MiB)",
+            "dryRun": "Probno izvođenje (samo pregled)",
+            "running": "Izvršava se…",
+            "start": "Pokreni sinkronizaciju",
+            "resultOk": "Sinkronizacija dovršena",
+            "resultPartial": "Sinkronizacija dovršena s pogreškama",
+            "uploaded": "Preneseno",
+            "skipped": "Preskočeno",
+            "errors": "Pogreške",
+            "elapsed": "Proteklo vrijeme",
+            "payload": "Payload",
+            "bytesOnWire": "Bajtovi na mreži",
+            "savings": "Ušteda",
+            "errorDetails": "pogreška(e), pojedinosti",
+            "errorPathsRequired": "Izvor i odredište su obavezni"
         }
     }
 }

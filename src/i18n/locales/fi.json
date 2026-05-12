@@ -3302,7 +3302,8 @@
             "mountManager": "Liitäntöjen hallinta...",
             "activityLog": "Tapahtumaloki",
             "detailedCards": "Yksityiskohtaiset palvelinkortit",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Paikallinen synkronointi..."
         },
         "activityPanel": {
             "awaitingCommands": "Odotetaan komentoja...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Siirretty toiseen paneeliin",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: paikallisesta paikalliseen",
+            "description": "Peilaa paikallisen lähdehakemiston paikalliseen kohdehakemistoon. Tiedostot ≥ 1 MiB käyttävät sisäänrakennettua delta-moottoria; pienemmät tiedostot käyttävät suoraa kopiointia.",
+            "source": "Lähde",
+            "destination": "Kohde",
+            "browse": "Selaa…",
+            "excludeLabel": "Poissulkemiskuviot (eroteltu pilkulla tai rivinvaihdolla)",
+            "useDelta": "Käytä delta-kuljetusta (≥ 1 MiB tiedostot)",
+            "dryRun": "Testiajo (vain esikatselu)",
+            "running": "Käynnissä…",
+            "start": "Aloita synkronointi",
+            "resultOk": "Synkronointi valmis",
+            "resultPartial": "Synkronointi valmis virheineen",
+            "uploaded": "Ladattu",
+            "skipped": "Ohitettu",
+            "errors": "Virheet",
+            "elapsed": "Kulunut aika",
+            "payload": "Payload",
+            "bytesOnWire": "Tavut verkossa",
+            "savings": "Säästö",
+            "errorDetails": "virhe(itä), tiedot",
+            "errorPathsRequired": "Lähde ja kohde ovat pakollisia"
         }
     }
 }

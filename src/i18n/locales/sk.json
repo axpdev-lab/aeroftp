@@ -3302,7 +3302,8 @@
             "mountManager": "Správca pripojení...",
             "activityLog": "Denník aktivít",
             "detailedCards": "Podrobné karty serverov",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Lokálna synchronizácia..."
         },
         "activityPanel": {
             "awaitingCommands": "Cakanie na prikazy...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Presunuté do druhého panela",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: lokálne na lokálne",
+            "description": "Zrkadlí lokálny zdrojový adresár do lokálneho cieľa. Súbory ≥ 1 MiB používajú vstavaný delta engine; menšie súbory používajú priame kopírovanie.",
+            "source": "Zdroj",
+            "destination": "Cieľ",
+            "browse": "Prehliadať…",
+            "excludeLabel": "Vzory na vylúčenie (oddelené čiarkou alebo novým riadkom)",
+            "useDelta": "Použiť delta transport (súbory ≥ 1 MiB)",
+            "dryRun": "Skúšobný beh (iba náhľad)",
+            "running": "Prebieha…",
+            "start": "Spustiť synchronizáciu",
+            "resultOk": "Synchronizácia dokončená",
+            "resultPartial": "Synchronizácia dokončená s chybami",
+            "uploaded": "Nahrané",
+            "skipped": "Preskočené",
+            "errors": "Chyby",
+            "elapsed": "Uplynutý čas",
+            "payload": "Payload",
+            "bytesOnWire": "Bajty na sieti",
+            "savings": "Úspora",
+            "errorDetails": "chyba(y), podrobnosti",
+            "errorPathsRequired": "Zdroj a cieľ sú povinné"
         }
     }
 }

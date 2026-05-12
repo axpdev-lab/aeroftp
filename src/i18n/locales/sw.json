@@ -3302,7 +3302,8 @@
             "mountManager": "Kidhibiti cha Kupachika...",
             "activityLog": "Kumbukumbu ya Shughuli",
             "detailedCards": "Kadi za seva za kina",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Usawazishaji wa ndani..."
         },
         "activityPanel": {
             "awaitingCommands": "Inasubiri amri...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Imehamishwa kwenye paneli nyingine",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: ndani hadi ndani",
+            "description": "Inaakisi saraka chanzo ya ndani kwa lengo la ndani. Faili ≥ 1 MiB hutumia injini ya delta iliyojengwa ndani; faili ndogo hutumia nakili moja kwa moja.",
+            "source": "Chanzo",
+            "destination": "Lengo",
+            "browse": "Vinjari…",
+            "excludeLabel": "Ruwaza za kutojumuisha (zimetenganishwa kwa koma au mstari mpya)",
+            "useDelta": "Tumia usafirishaji wa delta (faili ≥ 1 MiB)",
+            "dryRun": "Jaribio (hakikisho pekee)",
+            "running": "Inaendelea…",
+            "start": "Anza usawazishaji",
+            "resultOk": "Usawazishaji umekamilika",
+            "resultPartial": "Usawazishaji umekamilika na makosa",
+            "uploaded": "Zimepakiwa",
+            "skipped": "Zimerukwa",
+            "errors": "Makosa",
+            "elapsed": "Muda uliopita",
+            "payload": "Payload",
+            "bytesOnWire": "Baiti kwenye mtandao",
+            "savings": "Uhifadhi",
+            "errorDetails": "kosa(zo), maelezo",
+            "errorPathsRequired": "Chanzo na lengo vinahitajika"
         }
     }
 }

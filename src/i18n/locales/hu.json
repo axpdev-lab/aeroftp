@@ -3302,7 +3302,8 @@
             "mountManager": "Csatolási kezelő...",
             "activityLog": "Tevékenységnapló",
             "detailedCards": "Részletes szerverkártyák",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Helyi szinkronizálás..."
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Áthelyezve a másik panelre",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: helyiről helyire",
+            "description": "Egy helyi forrásmappát tükröz egy helyi célmappába. Az ≥ 1 MiB méretű fájlok a beépített delta motort használják; a kisebb fájlok közvetlen másolást használnak.",
+            "source": "Forrás",
+            "destination": "Cél",
+            "browse": "Tallózás…",
+            "excludeLabel": "Kizárási minták (vesszővel vagy új sorral elválasztva)",
+            "useDelta": "Delta átvitel használata (≥ 1 MiB fájlok)",
+            "dryRun": "Próbafuttatás (csak előnézet)",
+            "running": "Folyamatban…",
+            "start": "Szinkronizálás indítása",
+            "resultOk": "Szinkronizálás befejezve",
+            "resultPartial": "Szinkronizálás hibákkal befejezve",
+            "uploaded": "Feltöltve",
+            "skipped": "Kihagyva",
+            "errors": "Hibák",
+            "elapsed": "Eltelt idő",
+            "payload": "Payload",
+            "bytesOnWire": "Hálózati bájtok",
+            "savings": "Megtakarítás",
+            "errorDetails": "hiba, részletek",
+            "errorPathsRequired": "A forrás és a cél kötelező"
         }
     }
 }
