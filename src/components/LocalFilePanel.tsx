@@ -26,9 +26,11 @@ import { getPreviewCategory, isPreviewable as isMediaPreviewable } from './Previ
 import { isPreviewable } from './DevTools';
 import { formatBytes, formatDate } from '../utils';
 import { LocalFile } from '../types';
-import type { TrashItem, FileTag } from '../types/aerofile';
+import type { ServerProfile } from '../types';
+import type { TrashItem, FileTag, PanelEndpoint } from '../types/aerofile';
 import { FileTagBadge } from './FileTagBadge';
 import type { PanelKey } from '../hooks/useDragAndDrop';
+import { PanelEndpointSelector } from './PanelEndpointSelector';
 
 // ============================================================================
 // Types
@@ -57,6 +59,13 @@ export interface LocalFilePanelProps {
   onPanelFocus?: () => void;
   /** Inline style applied to the panel root: used by AeroFile dual-panel for resizable flex sizing. */
   style?: React.CSSProperties;
+  endpointSelector?: {
+    endpoint: PanelEndpoint;
+    savedProfiles: ServerProfile[];
+    compactLabel?: string;
+    onChooseLocalFolder: () => void;
+    onChooseRemoteProfile: (profile: ServerProfile) => void;
+  };
 
   // --- Navigation ---
   currentPath: string;
@@ -196,6 +205,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   isFocused = false,
   onPanelFocus,
   style,
+  endpointSelector,
   currentPath,
   setCurrentPath,
   onNavigate,
@@ -404,6 +414,15 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
           >
             {panelKey === 'local2' ? 'R' : 'L'}
           </span>
+        )}
+        {endpointSelector && (
+          <PanelEndpointSelector
+            endpoint={endpointSelector.endpoint}
+            savedProfiles={endpointSelector.savedProfiles}
+            compactLabel={endpointSelector.compactLabel}
+            onChooseLocalFolder={endpointSelector.onChooseLocalFolder}
+            onChooseRemoteProfile={endpointSelector.onChooseRemoteProfile}
+          />
         )}
         {isAeroFileMode ? (
           <div className="flex-1 flex items-center gap-1.5 min-w-0">
