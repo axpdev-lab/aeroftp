@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import type { LocalFile, ProviderType, RemoteFile } from '../types';
+
 // AeroFile mode shared types
 // Used by PlacesSidebar, FolderTree, and future AeroFile components
 
@@ -79,6 +81,70 @@ export interface LocalTab {
   path: string;
   label: string;           // last path segment (folder name)
   scrollTop: number;
+}
+
+/** Physical panel slot in the unified dual-panel surface. */
+export type UnifiedPanelId = 'left' | 'right';
+
+/** Legacy local-panel instance id used by Slice A. */
+export type AeroFileLocalPanelId = 'local' | 'local2';
+
+/** Endpoint currently assigned to a unified panel. */
+export type PanelEndpoint =
+  | {
+      kind: 'local';
+      panelId: AeroFileLocalPanelId;
+      path: string;
+      tabId?: string | null;
+    }
+  | {
+      kind: 'remote';
+      profileId: string;
+      profileName: string;
+      protocol: ProviderType;
+      providerId?: string;
+      path: string;
+      tabId?: string | null;
+    }
+  | {
+      kind: 'aerovaultOverlay';
+      sessionId: string;
+      vaultPath: string;
+      source: 'local' | 'remote';
+      path: string;
+      tabId?: string | null;
+    };
+
+/** Pair classification used by the transfer planner. */
+export type PanelPairKind =
+  | 'local-local'
+  | 'local-remote'
+  | 'remote-local'
+  | 'remote-remote'
+  | 'overlay-local'
+  | 'local-overlay'
+  | 'overlay-remote'
+  | 'remote-overlay'
+  | 'overlay-overlay';
+
+export interface PanelCapabilities {
+  canUpload: boolean;
+  canDownload: boolean;
+  canMove: boolean;
+  canDelete: boolean;
+  canServerSideCopy: boolean;
+  canDeltaSync: boolean;
+  canOpenTerminalHere: boolean;
+}
+
+export interface UnifiedPanelState<TFile extends LocalFile | RemoteFile = LocalFile | RemoteFile> {
+  id: UnifiedPanelId;
+  endpoint: PanelEndpoint;
+  files: TFile[];
+  selected: Set<string>;
+  capabilities: PanelCapabilities;
+  loading: boolean;
+  error: string | null;
 }
 
 /** Tag label (preset or custom color label) */

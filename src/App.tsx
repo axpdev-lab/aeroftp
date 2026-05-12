@@ -117,6 +117,7 @@ import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { SyncPanel } from './components/SyncPanel';
 import { LocalSyncPanel } from './components/LocalSyncPanel';
+import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -284,6 +285,8 @@ import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorag
 import { loadSavedServerProfiles, mergeSavedServerProfile, storeSavedServerProfiles } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
+import { createRemoteEndpoint } from './utils/panelEndpoints';
+import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedTransferPlanner';
 import { useTranslation } from './i18n';
 
 // Components
@@ -322,6 +325,7 @@ import { useCloudSync } from './hooks/useCloudSync';
 import { useFileTags } from './hooks/useFileTags';
 import { useFaviconDetection } from './hooks/useFaviconDetection';
 import { useLocalPanel } from './hooks/useLocalPanel';
+import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 
 // ============================================================================
 // Main App Component
@@ -576,6 +580,11 @@ const App: React.FC = () => {
 
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void } | null>(null);
+  const [pendingUnifiedTransferPlan, setPendingUnifiedTransferPlan] = useState<{
+    plan: UnifiedTransferPlan;
+    sourceLocalPanelId?: 'local' | 'local2';
+  } | null>(null);
+  const [unifiedTransferExecuting, setUnifiedTransferExecuting] = useState(false);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
   const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
   const [zohoDeletedLinkIds] = useState(() => new Set<string>());
@@ -617,6 +626,7 @@ const App: React.FC = () => {
   const folderOverwriteApplyToAll = useRef<{ action: FolderMergeAction; enabled: boolean }>({ action: 'merge_overwrite', enabled: false });
   // showSettingsPanel provided by useSettings
   const [serversRefreshKey, setServersRefreshKey] = useState(0);
+  const [endpointSelectorProfiles, setEndpointSelectorProfiles] = useState<ServerProfile[]>([]);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   // Activate global console capture when debug mode is enabled.
@@ -690,6 +700,19 @@ const App: React.FC = () => {
       setRcloneCryptImportBanner(null);
     }
   }, [isConnected]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSavedServerProfiles()
+      .then(profiles => {
+        if (!cancelled) setEndpointSelectorProfiles(profiles);
+      })
+      .catch(() => {
+        if (!cancelled) setEndpointSelectorProfiles([]);
+      });
+    return () => { cancelled = true; };
+  }, [serversRefreshKey]);
+
   // Auto-leave IntroHub on the connect transition (false -> true). The render
   // condition allows IntroHub even when isConnected=true (Home button browse
   // without dropping the live session), so we only fire on the rising edge:
@@ -788,6 +811,7 @@ const App: React.FC = () => {
   // later in this component but the F5/F6 keyboard handlers (declared before
   // it) need a way to call it. Updated each render below.
   const transferLocalSelectionAcrossPanelsRef = useRef<(mode: 'copy' | 'move') => void | Promise<void>>(() => {});
+  const planLocalSelectionAcrossPanelsRef = useRef<(mode: 'copy' | 'move') => void | Promise<void>>(() => {});
   React.useEffect(() => {
     localStorage.setItem('aerofile_dual_panel_split', String(dualPanelLeftFlex));
   }, [dualPanelLeftFlex]);
@@ -1596,12 +1620,12 @@ interface UpdateVerificationInfo {
     'F5': () => {
       const isAeroFileDualMode = (!isConnected || !showRemotePanel) && showDualLocalPanel;
       if (!isAeroFileDualMode) return;
-      void transferLocalSelectionAcrossPanelsRef.current('copy');
+      void planLocalSelectionAcrossPanelsRef.current('copy');
     },
     'F6': () => {
       const isAeroFileDualMode = (!isConnected || !showRemotePanel) && showDualLocalPanel;
       if (!isAeroFileDualMode) return;
-      void transferLocalSelectionAcrossPanelsRef.current('move');
+      void planLocalSelectionAcrossPanelsRef.current('move');
     },
 
     // Ctrl+F: toggle search bar on the focused local panel
@@ -2088,6 +2112,73 @@ interface UpdateVerificationInfo {
   // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
   sortedLocalFilesRef.current = sortedLocalFiles;
   sortedRemoteFilesRef.current = sortedRemoteFiles;
+
+  const activeUnifiedRemoteProfile = useMemo(() => {
+    if (!isConnected) return null;
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = (connectionParams.protocol || activeSession?.connectionParams?.protocol || 'ftp') as ProviderType;
+    return {
+      id: connectionParams.savedServerId
+        || activeSession?.connectionParams?.savedServerId
+        || activeSession?.savedServerId
+        || activeSession?.serverId
+        || connectionParams.server
+        || 'active-remote',
+      name: activeSession?.serverName || connectionParams.displayName || connectionParams.server || 'Remote',
+      protocol,
+      providerId: connectionParams.providerId || activeSession?.providerId,
+      initialPath: activeSession?.serverInitialPath || quickConnectDirs.remoteDir,
+    };
+  }, [isConnected, sessions, activeSessionId, connectionParams, quickConnectDirs.remoteDir]);
+
+  // Z.3.1: shared model for the visual dual-panel slots. Existing UX still
+  // renders through the mature local/remote components; this controller gives
+  // Slice B a single typed view of endpoint, selection, capabilities and pair
+  // kind so the selector and transfer planner do not add more App.tsx state.
+  const unifiedPanelController = useUnifiedPanelController({
+    isConnected,
+    showRemotePanel,
+    dualLocalPanel: showDualLocalPanel,
+    swapPanels,
+    activeFilePanel: activePanel,
+    activeLocalPanelId,
+    localPanel: {
+      panelId: 'local',
+      path: currentLocalPath,
+      activeTabId: activeLocalTabId,
+      files: localFiles,
+      selected: selectedLocalFiles,
+      loading: localListLoading,
+    },
+    localPanel2: {
+      panelId: 'local2',
+      path: currentLocalPath2 || currentLocalPath,
+      activeTabId: activeLocalTabId2,
+      files: localFiles2,
+      selected: selectedLocalFiles2,
+      loading: false,
+    },
+    remotePanel: {
+      profile: activeUnifiedRemoteProfile,
+      path: currentRemotePath,
+      activeTabId: activeSessionId,
+      files: remoteFiles,
+      selected: selectedRemoteFiles,
+      loading: remoteListLoading,
+    },
+  });
+  const localUnifiedPanel = useMemo(
+    () => [unifiedPanelController.left, unifiedPanelController.right].find(panel =>
+      panel?.endpoint.kind === 'local' && panel.endpoint.panelId === 'local'
+    ) ?? null,
+    [unifiedPanelController.left, unifiedPanelController.right],
+  );
+  const local2UnifiedPanel = useMemo(
+    () => [unifiedPanelController.left, unifiedPanelController.right].find(panel =>
+      panel?.endpoint.kind === 'local' && panel.endpoint.panelId === 'local2'
+    ) ?? null,
+    [unifiedPanelController.left, unifiedPanelController.right],
+  );
 
   const handleRemoteSort = (field: SortField) => {
     const cur = remoteColumns.config.sort;
@@ -4882,6 +4973,54 @@ interface UpdateVerificationInfo {
     }
   };
 
+  const chooseEndpointLocalFolder = useCallback(async (panelId: 'local' | 'local2') => {
+    try {
+      const current = panelId === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: current || undefined,
+        title: panelId === 'local2' ? 'Choose right panel folder' : 'Choose left panel folder',
+      });
+      if (typeof selected !== 'string') return;
+      setActivePanel('local');
+      setActiveLocalPanelId(panelId);
+      if (panelId === 'local2') {
+        await changeLocalDirectory2(selected);
+      } else {
+        await changeLocalDirectory(selected);
+      }
+    } catch (error) {
+      notify.error(t('common.error'), String(error));
+    }
+  }, [currentLocalPath, currentLocalPath2, changeLocalDirectory2, notify, t]);
+
+  const chooseEndpointRemoteProfile = useCallback((panelId: 'local' | 'local2', profile: ServerProfile) => {
+    setActivePanel('local');
+    setActiveLocalPanelId(panelId);
+    const targetPanel = panelId === 'local' ? localUnifiedPanel : local2UnifiedPanel;
+    const selectedEndpoint = createRemoteEndpoint(profile, profile.initialPath?.trim() || '/');
+    const leftEndpoint = targetPanel?.id === 'left' ? selectedEndpoint : unifiedPanelController.left?.endpoint;
+    const rightEndpoint = targetPanel?.id === 'right' ? selectedEndpoint : unifiedPanelController.right?.endpoint;
+
+    if (leftEndpoint && rightEndpoint) {
+      setPendingUnifiedTransferPlan({
+        plan: createUnifiedTransferPlan({
+          mode: 'copy',
+          source: leftEndpoint,
+          destination: rightEndpoint,
+          preferDelta: true,
+        }),
+      });
+      return;
+    }
+
+    setShowCrossProfilePanel({
+      destId: profile.id,
+      destPath: selectedEndpoint.path,
+    });
+  }, [localUnifiedPanel, local2UnifiedPanel, unifiedPanelController.left, unifiedPanelController.right]);
+
   // Safe local path navigation with fallback for invalid paths
   // (e.g. imported backup from another PC with different directory structure)
   const safeChangeLocalDirectory = async (path: string): Promise<string> => {
@@ -5483,12 +5622,13 @@ interface UpdateVerificationInfo {
 
     let ok = 0, failed = 0;
     const okNames: string[] = [];
-    for (const file of selected) {
+    let nextIndex = 0;
+    const runOne = async (file: LocalFile) => {
       const sep = targetDir.includes('\\') && !targetDir.includes('/') ? '\\' : '/';
       const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
       if (destPath === file.path) {
         failed++;
-        continue;
+        return;
       }
       try {
         await invoke(mode === 'copy' ? 'copy_local_file' : 'rename_local_file', {
@@ -5501,7 +5641,14 @@ interface UpdateVerificationInfo {
         failed++;
         notify.error(mode === 'copy' ? t('toast.copyFailed') || 'Copy failed' : t('toast.renameFailed', { error: '' }) || 'Move failed', `${file.name}: ${String(e)}`);
       }
-    }
+    };
+    const workerCount = Math.min(4, selected.length);
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+      while (nextIndex < selected.length) {
+        const file = selected[nextIndex++];
+        if (file) await runOne(file);
+      }
+    }));
     // Refresh both panels after the transfer so the source pane drops
     // moved entries and the target pane shows the new ones. Skip the
     // refresh when one side has no current path (panel never opened).
@@ -5528,6 +5675,76 @@ interface UpdateVerificationInfo {
   React.useEffect(() => {
     transferLocalSelectionAcrossPanelsRef.current = transferLocalSelectionAcrossPanels;
   }, [transferLocalSelectionAcrossPanels]);
+
+  const planLocalSelectionAcrossPanels = useCallback((mode: 'copy' | 'move', sourceOverride?: 'local' | 'local2') => {
+    const sourceId: 'local' | 'local2' = sourceOverride ?? activeLocalPanelId;
+    const sourcePanel = sourceId === 'local' ? localUnifiedPanel : local2UnifiedPanel;
+    const targetPanel = sourceId === 'local' ? local2UnifiedPanel : localUnifiedPanel;
+    const sourceState = sourceId === 'local2'
+      ? { files: localFiles2, selected: selectedLocalFiles2 }
+      : { files: localFiles, selected: selectedLocalFiles };
+
+    if (!sourcePanel || !targetPanel) return;
+    const selectedNames = new Set(Array.from(sourceState.selected).filter(name => name !== '..'));
+    if (selectedNames.size === 0) return;
+    const selectedFiles = sourceState.files.filter(file => selectedNames.has(file.name));
+    const totalBytes = selectedFiles.reduce((sum, file) => sum + (file.size || 0), 0);
+
+    setPendingUnifiedTransferPlan({
+      sourceLocalPanelId: sourceId,
+      plan: createUnifiedTransferPlan({
+        mode,
+        source: sourcePanel.endpoint,
+        destination: targetPanel.endpoint,
+        entryCount: selectedFiles.length,
+        totalBytes,
+        preferDelta: mode !== 'copy',
+      }),
+    });
+  }, [
+    activeLocalPanelId,
+    localUnifiedPanel,
+    local2UnifiedPanel,
+    localFiles,
+    localFiles2,
+    selectedLocalFiles,
+    selectedLocalFiles2,
+  ]);
+
+  React.useEffect(() => {
+    planLocalSelectionAcrossPanelsRef.current = planLocalSelectionAcrossPanels;
+  }, [planLocalSelectionAcrossPanels]);
+
+  const executeUnifiedTransferPlan = useCallback(async () => {
+    if (!pendingUnifiedTransferPlan) return;
+    const { plan, sourceLocalPanelId } = pendingUnifiedTransferPlan;
+    setUnifiedTransferExecuting(true);
+    try {
+      if (plan.pairKind === 'local-local' && (plan.mode === 'copy' || plan.mode === 'move')) {
+        await transferLocalSelectionAcrossPanels(plan.mode, sourceLocalPanelId);
+        setPendingUnifiedTransferPlan(null);
+        return;
+      }
+
+      if (plan.pairKind === 'remote-remote' && plan.source.kind === 'remote' && plan.destination.kind === 'remote') {
+        setPendingUnifiedTransferPlan(null);
+        setShowCrossProfilePanel({
+          sourceId: plan.source.profileId,
+          sourcePath: plan.source.path,
+          destId: plan.destination.profileId,
+          destPath: plan.destination.path,
+        });
+        return;
+      }
+
+      notify.info(
+        'Unified transfer planner',
+        `${plan.pairKind} uses ${plan.engine}; execution binding lands in the next slice.`,
+      );
+    } finally {
+      setUnifiedTransferExecuting(false);
+    }
+  }, [pendingUnifiedTransferPlan, transferLocalSelectionAcrossPanels, notify]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
@@ -8288,11 +8505,11 @@ interface UpdateVerificationInfo {
       ...(isAeroFileDualActive ? [{
         label: t('aerofile.copyToOtherPanel'),
         icon: <Columns2 size={14} />,
-        action: () => { void transferLocalSelectionAcrossPanels('copy', localPanelId); },
+        action: () => { void planLocalSelectionAcrossPanels('copy', localPanelId); },
       } as ContextMenuItem, {
         label: t('aerofile.moveToOtherPanel'),
         icon: <ArrowRightLeft size={14} />,
-        action: () => { void transferLocalSelectionAcrossPanels('move', localPanelId); },
+        action: () => { void planLocalSelectionAcrossPanels('move', localPanelId); },
       } as ContextMenuItem] : []),
       {
         label: 'Open with default app',
@@ -9350,6 +9567,14 @@ interface UpdateVerificationInfo {
         <TransferToastContainer />
         <GlobalTooltip />
         {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
+        {pendingUnifiedTransferPlan && (
+          <UnifiedTransferPlanDialog
+            plan={pendingUnifiedTransferPlan.plan}
+            executing={unifiedTransferExecuting}
+            onExecute={() => { void executeUnifiedTransferPlan(); }}
+            onClose={() => setPendingUnifiedTransferPlan(null)}
+          />
+        )}
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
         {zohoShareLinksDialog && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={() => setZohoShareLinksDialog(null)}>
@@ -11311,6 +11536,12 @@ interface UpdateVerificationInfo {
                   isFocused={(!isConnected || !showRemotePanel) && showDualLocalPanel && activeLocalPanelId === 'local'}
                   onPanelFocus={() => { setActivePanel('local'); setActiveLocalPanelId('local'); }}
                   style={(!isConnected || !showRemotePanel) && showDualLocalPanel ? { flexGrow: dualPanelLeftFlex, flexShrink: 1, flexBasis: 0 } : undefined}
+                  endpointSelector={localUnifiedPanel ? {
+                    endpoint: localUnifiedPanel.endpoint,
+                    savedProfiles: endpointSelectorProfiles,
+                    onChooseLocalFolder: () => { void chooseEndpointLocalFolder('local'); },
+                    onChooseRemoteProfile: (profile) => chooseEndpointRemoteProfile('local', profile),
+                  } : undefined}
                   className={isConnected && showRemotePanel ? (swapPanels ? 'order-1' : 'order-2') : undefined}
                   currentPath={currentLocalPath}
                   setCurrentPath={setCurrentLocalPath}
@@ -11440,6 +11671,12 @@ interface UpdateVerificationInfo {
                     isFocused={activeLocalPanelId === 'local2'}
                     onPanelFocus={() => { setActivePanel('local'); setActiveLocalPanelId('local2'); }}
                     style={{ flexGrow: 2 - dualPanelLeftFlex, flexShrink: 1, flexBasis: 0 }}
+                    endpointSelector={local2UnifiedPanel ? {
+                      endpoint: local2UnifiedPanel.endpoint,
+                      savedProfiles: endpointSelectorProfiles,
+                      onChooseLocalFolder: () => { void chooseEndpointLocalFolder('local2'); },
+                      onChooseRemoteProfile: (profile) => chooseEndpointRemoteProfile('local2', profile),
+                    } : undefined}
                     className="border-l border-gray-200 dark:border-gray-700"
                     currentPath={currentLocalPath2}
                     setCurrentPath={setCurrentLocalPath2}
