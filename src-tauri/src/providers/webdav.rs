@@ -2099,11 +2099,24 @@ impl StorageProvider for WebDavProvider {
             .get("quota-used-bytes")
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0);
-        let free = props
+        // Nextcloud / ownCloud convention: `quota-available-bytes` can be negative.
+        //   -1 = unknown, -2 = unlimited (legacy), -3 = unlimited.
+        // Parse as i64 so we can detect the sentinel, then surface "unlimited" by
+        // returning total=0 / free=0, which the frontend StatusBar already renders
+        // as "used (no cap)". Without this, u64::parse rejects negative values,
+        // free falls back to 0, total collapses to `used`, and the UI shows
+        // "59.7 MB / 59.7 MB" (100% full) for accounts that are actually unlimited.
+        let free_raw = props
             .get("quota-available-bytes")
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(0);
-        let total = used + free;
+            .and_then(|s| s.parse::<i64>().ok());
+        let (free, total) = match free_raw {
+            Some(v) if v < 0 => (0u64, 0u64),
+            Some(v) => {
+                let f = v as u64;
+                (f, used.saturating_add(f))
+            }
+            None => (0u64, 0u64),
+        };
 
         Ok(super::StorageInfo { used, total, free })
     }
