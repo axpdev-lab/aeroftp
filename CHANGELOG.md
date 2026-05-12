@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### AeroRsync Native Streaming, Session Reuse, Default ON, and Local-to-Local Sync
+
+This release closes the P3-T01 cap and the Track Z.1 + Z.2 work in [APPENDIX-Z](docs/dev/roadmap/APPENDIX-Z_AeroRsync-and-AeroFile-Convergence.md). It is the first release where the native rsync delta-sync engine ships enabled by default on fresh installs and no longer caps file size at 256 MiB.
+
+**Streaming end-to-end**. The upload and download paths now stream delta plans through iterator-style state machines (`send_delta_phase_streaming` on the upload side, `apply_delta_streaming` + `StreamingAtomicWriter` on the download side). The 256 MiB in-memory cap that previously gated multi-gigabyte files is gone. A 4 GB cold upload and a 4 GB file re-synced after a 5% mutation both completed end-to-end against a real WD My Cloud NAS over residential SSH (862s / 846s wall clock respectively), confirming feature parity with the wire protocol and headroom for arbitrary file sizes. The writer ensures kill-9 safety by writing to a `.aerotmp` temp file and renaming atomically on completion.
+
+**Batch session reuse**. Multi-file batches now share a single SSH session via `AerorsyncBatch`. A 100-file batch (1.1 MiB each) against the Docker fixture archives `delta_session_count = Some(1)` and a 99.45% savings on the second pass. The session-pool spec keeps short-lived sessions to side-step long-running NAS embedded-SSH lock-ups, and the new `delta_session_count` / `delta_bytes_on_wire` fields are surfaced in `SyncReport`, plumbed into the AeroSync UI as `syncPanel.deltaBatchSummary` and `syncPanel.deltaBytesOnWire`, and translated across all 47 locales.
+
+**Host-key pinning symmetric across transports**. Classic SFTP (libssh2) and native probe (russh 0.57) now use the same `AERORSYNC_HOST_KEY_ALGS` ordering (Ed25519 → ECDSA → RSA SHA-2). Previously the two transports could land on different host keys when a server exposed multiple, which produced a fingerprint mismatch during pin verification. Both transports now publish identical preferences via `session.method_pref` (libssh2) and `russh::Preferred.key` (russh).
+
+**Default ON**. `load_native_rsync_enabled()` now returns `true` when no config file exists. Existing installs with a TOML config keep their stored choice (no breaking change). Users on a fresh boot get the native delta engine automatically; the legacy classic SFTP path remains opt-in via `Settings > Sync > Use native rsync = off` or by editing the config.
+
+**Wire preamble robustness**. A 2 to 3% hard-rejection rate on high-cardinality batches (≥ 50 files over a single SSH session) was traced to `read_u8_len_prefixed_ascii` returning `InvalidAlgoListLen` (terminal) when the SSH read chunk happened to end exactly on a length byte of the algo list. The parser now returns `TruncatedBuffer { needed, available }` (recoverable), letting the preamble exchange loop continue reading. Two regression unit tests pin the behaviour, and the Z.1.1 KPI batch test now asserts `errors = 0` (pre-fix: 2/100).
+
+**Local-to-local AeroSync (Z.2 track)**. A new `LocalDeltaTransport` implements the same `DeltaTransport` trait against pure local paths, bypassing SSH entirely. Files at or above 1 MiB go through the in-process delta engine; smaller files fall back to plain copy. Exposed two ways: the CLI auto-detects `aeroftp sync <SRC> <DST>` when both arguments are local paths (smoke: 99.91% savings on a 1-byte mutation of a 2 MiB file), and a dedicated AeroSync panel reachable from View → Local Sync... and from the command palette. The panel offers source and destination pickers, exclude patterns, a delta-transport toggle, dry-run preview, live progress events (`local-sync-progress`), and a final report with byte-savings percentage.
+
+#### Added
+
+- **AeroRsync streaming upload and download (W1, W2)**: the 256 MiB size cap is removed on both ends. Iterator-style delta plans (`send_delta_phase_streaming`, `apply_delta_streaming`) stream signatures and literals through the SSH session without buffering the full file in memory. `StreamingAtomicWriter` writes the reconstructed target to a temp file and renames atomically on success, kill-9-safe. Validated against 4 GB cold and 4 GB modified files over real residential SSH.
+- **Batch session reuse (W3)**: `AerorsyncBatch` shares one SSH session across a multi-file batch. `delta_session_count` and `delta_bytes_on_wire` are recorded in `SyncReport` and surfaced in the AeroSync UI under `syncPanel.deltaBatchSummary` / `syncPanel.deltaBytesOnWire`, translated in all 47 locales.
+- **Native rsync ON by default**: fresh installs (no `~/.config/aeroftp/sync.toml`) now enable the native rsync engine. Existing installs keep their stored choice.
+- **`LocalDeltaTransport` for local-to-local sync (Z.2.1)**: in-process delta engine that bypasses SSH for two local paths. Includes Unix mode and mtime preservation, `write_atomic_chunked` for kill-9 safety, a `LOCAL_DELTA_MAX_IN_MEMORY_BYTES = 256 MiB` guardrail with explicit `TransferFailed` for caller-side fallback, and a `TooSmall` fast path for files below 1 MiB.
+- **CLI `sync` local-to-local (Z.2.2)**: `aeroftp sync <SRC> <DST>` auto-detects when both arguments are local paths and routes through `LocalDeltaTransport`. `--local` forces detection, `--no-local-delta` falls back to plain copy. `--dry-run`, `--exclude`, and `--json` are supported. JSON shape: `{status, uploaded, skipped, errors, elapsed_ms, total_payload_bytes, bytes_on_wire, savings_ratio}`.
+- **AeroSync Local-to-Local panel (Z.2.3)**: new dedicated modal reachable from View → Local Sync... and from the command palette (Ctrl+Shift+P → "AeroSync: Local to Local"). Two folder pickers via `@tauri-apps/plugin-dialog`, exclude patterns (comma or newline separated globs), delta-transport toggle (on by default), dry-run mode, live progress bar driven by the `local-sync-progress` Tauri event, and a final report with byte counters and savings percentage. The Tauri command `local_sync_run` is feature-gated `aerorsync` (and the feature is on by default).
+
+#### Fixed
+
+- **Host-key fingerprint drift between transports (Z.1.4)**: `ssh_transport.rs` (libssh2 classic SFTP) and `russh_session_transport.rs` (russh native probe) now publish the same `AERORSYNC_HOST_KEY_ALGS` ordering. Servers exposing multiple host keys (typical OpenSSH default) no longer land on different fingerprints between the two transports, which previously could produce a pin mismatch on first use.
+- **Wire preamble truncation misclassified as hard rejection (Z.1.6)**: `read_u8_len_prefixed_ascii` in `real_wire.rs` was returning `InvalidAlgoListLen` (terminal) when the SSH read chunk ended on a length byte of the algo list. It now returns `TruncatedBuffer` so the preamble loop keeps reading. Zero hard rejections on 100-file batches (pre-fix: 2 to 3% intermittent).
+
+#### Changed
+
+- **`native_rsync_enabled` default**: `load_native_rsync_enabled()` returns `true` when no config file is present. Stored choices are preserved.
+
 ## [3.7.9] - 2026-05-11
 
 ### AeroFile Dual Panel (Slice A) and AeroVault v3 (Experimental)
